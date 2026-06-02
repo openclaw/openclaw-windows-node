@@ -55,7 +55,9 @@ public class OpenClawChatDataProviderTests
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
         public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+        public event EventHandler<System.Text.Json.JsonElement>? AgentsListUpdated;
         public bool IsDisposed { get; private set; }
+        public System.Text.Json.JsonElement? GetCurrentAgentsList() => null;
 
         public void RaiseStatus(ConnectionStatus s) { CurrentStatus = s; StatusChanged?.Invoke(this, s); }
         public void RaiseSessions(SessionInfo[] s) { Sessions = s; SessionsUpdated?.Invoke(this, s); }

@@ -126,8 +126,39 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private string[] _availableModels = Array.Empty<string>();
     private ConnectionStatus _status;
     private bool _disposed;
+    private System.Text.Json.JsonElement? _agentsList;
 
     public string DisplayName => "OpenClaw gateway";
+
+    /// <summary>
+    /// Display name for the default agent sourced from the gateway's agents.list
+    /// response. Returns <c>null</c> when the list has not arrived yet or the
+    /// main agent has no name entry; callers should fall back to a generic label.
+    /// </summary>
+    public string? DefaultAgentName
+    {
+        get
+        {
+            if (_agentsList is not { } list) return null;
+            if (!list.TryGetProperty("agents", out var agentsEl) ||
+                agentsEl.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return null;
+
+            // Derive the agent ID from the main session key (format: "agent:<agentId>:<sessionId>"
+            // or legacy short form like "main").
+            var mainKey = _bridge.MainSessionKey ?? "";
+            var parts = mainKey.Split(':');
+            var agentId = parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "main";
+
+            foreach (var agent in agentsEl.EnumerateArray())
+            {
+                var id = agent.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                if (string.Equals(id, agentId, StringComparison.OrdinalIgnoreCase))
+                    return agent.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
+            }
+            return null;
+        }
+    }
 
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _lastChatState;
@@ -176,6 +207,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _bridge.ChatMessageReceived += OnChatMessageReceived;
         _bridge.AgentEventReceived += OnAgentEventReceived;
         _bridge.ModelsListUpdated += OnModelsListUpdated;
+        _bridge.AgentsListUpdated += OnAgentsListUpdated;
+
+        // Seed agents list from whatever the bridge already knows.
+        if (bridge.GetCurrentAgentsList() is { } seedAgents)
+            _agentsList = seedAgents;
 
         // Bridge ctor may have been invoked AFTER the gateway client was
         // already Connected, in which case the StatusChanged → Connected
@@ -957,6 +993,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _bridge.ChatMessageReceived -= OnChatMessageReceived;
         _bridge.AgentEventReceived -= OnAgentEventReceived;
         _bridge.ModelsListUpdated -= OnModelsListUpdated;
+        _bridge.AgentsListUpdated -= OnAgentsListUpdated;
         _bridge.Dispose();
         return ValueTask.CompletedTask;
     }
@@ -1117,6 +1154,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             snapshot = BuildSnapshotLocked();
         }
         Logger.Info($"[ChatBridge] OnModelsListUpdated: count={_availableModels.Length}");
+        Publish(snapshot);
+    }
+
+    private void OnAgentsListUpdated(object? sender, System.Text.Json.JsonElement data)
+    {
+        _agentsList = data;
+        ChatDataSnapshot snapshot;
+        lock (_gate)
+        {
+            snapshot = BuildSnapshotLocked();
+        }
         Publish(snapshot);
     }
 

@@ -191,6 +191,8 @@ public class ToolMetaCacheTests
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
         public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+        public event EventHandler<System.Text.Json.JsonElement>? AgentsListUpdated;
+        public System.Text.Json.JsonElement? GetCurrentAgentsList() => null;
         public void RaiseStatus(ConnectionStatus status) => StatusChanged?.Invoke(this, status);
         public void RaiseSessions(SessionInfo[] sessions) => SessionsUpdated?.Invoke(this, sessions);
         public void RaiseChat(ChatMessageInfo message) => ChatMessageReceived?.Invoke(this, message);
