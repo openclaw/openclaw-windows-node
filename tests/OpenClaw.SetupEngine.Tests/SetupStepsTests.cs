@@ -738,6 +738,37 @@ public class SetupStepsTests : IDisposable
             commands);
     }
 
+    [Fact]
+    public async Task ConfigureGateway_UsesExtendedTimeoutForWslConfig()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok("GATEWAY_CONFIGURED"));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var wslCall = Assert.Single(commands.WslCalls);
+        Assert.Equal(ConfigureGatewayStep.GatewayConfigurationTimeout, wslCall.Timeout);
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_ReturnsTimeoutSpecificFailure()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, timeout) => new CommandResult(-1, "", "", timeout, TimedOut: true));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        var message = Assert.IsType<string>(result.Message);
+        Assert.Contains("Gateway configuration timed out after 120s", message);
+        Assert.DoesNotContain("exit -1", message);
+    }
+
     [Theory]
     [InlineData("""{"bootstrapToken":"boot-token"}""", "boot-token", "bootstrapToken")]
     [InlineData("""{"setupCode":"setup-code"}""", "setup-code", "setupCode")]
@@ -972,9 +1003,12 @@ public class SetupStepsTests : IDisposable
     private static CommandResult Fail(string stderr = "")
         => new(1, "", stderr, TimeSpan.Zero, TimedOut: false);
 
-    private sealed class FakeCommandRunner(Func<string[], CommandResult> run) : ICommandRunner
+    private sealed class FakeCommandRunner(
+        Func<string[], CommandResult> run,
+        Func<string, string, TimeSpan, CommandResult>? runInWsl = null) : ICommandRunner
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
+        public List<(string DistroName, string Command, TimeSpan Timeout)> WslCalls { get; } = [];
 
         public Task<CommandResult> RunAsync(
             string executable,
@@ -996,6 +1030,12 @@ public class SetupStepsTests : IDisposable
             IReadOnlyDictionary<string, string>? environment = null,
             CancellationToken ct = default,
             string? user = null)
-            => throw new NotSupportedException("RunInWslAsync is not expected in these tests.");
+        {
+            if (runInWsl == null)
+                throw new NotSupportedException("RunInWslAsync is not expected in these tests.");
+
+            WslCalls.Add((distroName, command, timeout));
+            return Task.FromResult(runInWsl(distroName, command, timeout));
+        }
     }
 }
