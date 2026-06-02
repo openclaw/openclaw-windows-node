@@ -634,7 +634,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _mcpStartupError = DescribeMcpStartupFailure(ex, McpPort);
             _logger.Error($"[MCP] Failed to start HTTP server on port {McpPort}: {_mcpStartupError}", ex);
             // Avoid leaking the half-constructed listener / CTS.
-            try { attempt?.Dispose(); } catch { /* ignore */ }
+            try { attempt?.Dispose(); }
+            catch (Exception cleanupEx)
+            {
+                _logger.Debug($"[MCP] Cleanup of half-started listener failed: {cleanupEx.Message}");
+            }
             _mcpServer = null;
         }
     }
@@ -896,7 +900,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
-            try { _canvasWindow.Close(); } catch { /* ignore */ }
+            try { _canvasWindow.Close(); }
+            catch (Exception ex) { _logger.Debug($"CanvasWindow.Close failed: {ex.Message}"); }
         }
         _canvasWindow = null;
     }
@@ -905,7 +910,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         if (_a2uiCanvasWindow != null && !_a2uiCanvasWindow.IsClosed)
         {
-            try { _a2uiCanvasWindow.Close(); } catch { /* ignore */ }
+            try { _a2uiCanvasWindow.Close(); }
+            catch (Exception ex) { _logger.Debug($"A2UICanvasWindow.Close failed: {ex.Message}"); }
         }
         _a2uiCanvasWindow = null;
     }
@@ -1117,7 +1123,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         catch (Exception ex)
         {
             // Failed lookup → require prompt: better to ask than to ship the
-            // user to an unverifiable destination.
+            // user to an unverifiable destination. The reason already carries the
+            // exception message back to the caller (and on into the user-facing
+            // confirmation), so the swallow here is intentional. Static method has
+            // no logger; emit a Trace breadcrumb in addition to the Reasons
+            // round-trip so the failure is also visible in debug traces.
+            System.Diagnostics.Trace.WriteLine($"NodeService.EnrichWithDnsRiskAsync: DNS lookup failed for '{uri.Host}': {ex.GetType().Name}: {ex.Message}");
             var extra = new List<string>(risk.Reasons) { $"DNS resolution failed for '{uri.Host}': {ex.Message}" };
             return risk with { RequiresConfirmation = true, Reasons = extra.Distinct(StringComparer.OrdinalIgnoreCase).ToArray() };
         }
@@ -1203,6 +1214,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
+                // CanvasCapability.HandleEval is the authoritative Error logger
+                // for this exception (it logs after the exception propagates via
+                // TrySetException). Use Debug here as a dispatcher-path breadcrumb
+                // to avoid mixed-severity duplicate logging for one fault.
+                _logger.Debug($"canvas.eval dispatcher caught exception: {ex.Message}");
                 tcs.TrySetException(ex);
             }
         });
@@ -1242,6 +1258,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
+                // CanvasCapability.HandleSnapshot logs at Error after propagation
+                // via TrySetException. Use Debug here as a dispatcher-path
+                // breadcrumb to avoid mixed-severity duplicate logging.
+                _logger.Debug($"canvas.snapshot dispatcher caught exception: {ex.Message}");
                 tcs.TrySetException(ex);
             }
         });
@@ -1273,6 +1293,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
+                // CanvasCapability.HandleA2UIDump logs at Error after propagation
+                // via TrySetException. Use Debug here as a dispatcher-path
+                // breadcrumb to avoid mixed-severity duplicate logging.
+                _logger.Debug($"canvas.a2ui.dump dispatcher caught exception: {ex.Message}");
                 tcs.TrySetException(ex);
             }
         });
@@ -1312,6 +1336,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
+                // CanvasCapability.HandleCaps logs at Error after propagation via
+                // TrySetException. Use Debug here as a dispatcher-path breadcrumb
+                // to avoid mixed-severity duplicate logging.
+                _logger.Debug($"canvas.caps dispatcher caught exception: {ex.Message}");
                 tcs.TrySetException(ex);
             }
         });
@@ -1408,10 +1436,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 if (!string.IsNullOrWhiteSpace(v)) _actionContext.SessionKey = v!;
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Bad props JSON is a gateway/agent bug, not an action-routing bug.
             // Keep the previous sessionKey rather than failing the push.
+            _logger.Debug($"Action push props JSON parse failed (sessionKey retained): {ex.Message}");
         }
     }
 
@@ -1957,40 +1986,50 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             DetachClientHandlers(client);
         }
 
-        try { _cameraCaptureService?.Dispose(); } catch { /* ignore */ }
-        try { _screenRecordingService?.Dispose(); } catch { /* ignore */ }
-        try { _textToSpeechService?.Dispose(); } catch { /* ignore */ }
+        // Best-effort disposal during teardown; surface failures at Debug for diagnostics
+        // but never let a cleanup throw block the rest of the teardown chain.
+        try { _cameraCaptureService?.Dispose(); } catch (Exception ex) { _logger.Debug($"Dispose CameraCaptureService failed: {ex.Message}"); }
+        try { _screenRecordingService?.Dispose(); } catch (Exception ex) { _logger.Debug($"Dispose ScreenRecordingService failed: {ex.Message}"); }
+        try { _textToSpeechService?.Dispose(); } catch (Exception ex) { _logger.Debug($"Dispose TextToSpeechService failed: {ex.Message}"); }
         var voiceService = _voiceService;
         _voiceService = null;
         if (voiceService != null)
         {
-            try { await voiceService.DisposeAsync().ConfigureAwait(false); } catch { /* ignore */ }
+            try { await voiceService.DisposeAsync().ConfigureAwait(false); } catch (Exception ex) { _logger.Debug($"Dispose VoiceService failed: {ex.Message}"); }
         }
         // MediaResolver owns SocketsHttpHandler + HttpClient (disposeHandler:true);
         // without disposal the connection pool survives node teardown/recreate.
-        try { _mediaResolver?.Dispose(); } catch { /* ignore */ }
+        try { _mediaResolver?.Dispose(); } catch (Exception ex) { _logger.Debug($"Dispose MediaResolver failed: {ex.Message}"); }
         _mediaResolver = null;
         // ActionDispatcher owns a SemaphoreSlim; without disposal the kernel
         // handle survives node teardown/recreate.
-        try { _actionDispatcher?.Dispose(); } catch { /* ignore */ }
+        try { _actionDispatcher?.Dispose(); } catch (Exception ex) { _logger.Debug($"Dispose ActionDispatcher failed: {ex.Message}"); }
         _actionDispatcher = null;
 
-        try { _navigationPromptGate.Dispose(); } catch { /* ignore */ }
+        try { _navigationPromptGate.Dispose(); } catch (Exception ex) { _logger.Debug($"Dispose NavigationPromptGate failed: {ex.Message}"); }
 
-        try { _deviceStatusProvider?.Dispose(); } catch { /* ignore */ }
+        try { _deviceStatusProvider?.Dispose(); } catch (Exception ex) { _logger.Debug($"Dispose DeviceStatusProvider failed: {ex.Message}"); }
 
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
             var window = _canvasWindow;
             _canvasWindow = null;
-            _dispatcherQueue.TryEnqueue(() => { try { window?.Close(); } catch { } });
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                try { window?.Close(); }
+                catch (Exception ex) { _logger.Debug($"Teardown CanvasWindow.Close failed: {ex.Message}"); }
+            });
         }
 
         if (_a2uiCanvasWindow != null && !_a2uiCanvasWindow.IsClosed)
         {
             var window = _a2uiCanvasWindow;
             _a2uiCanvasWindow = null;
-            _dispatcherQueue.TryEnqueue(() => { try { window?.Close(); } catch { } });
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                try { window?.Close(); }
+                catch (Exception ex) { _logger.Debug($"Teardown A2UICanvasWindow.Close failed: {ex.Message}"); }
+            });
         }
 
         GC.SuppressFinalize(this);

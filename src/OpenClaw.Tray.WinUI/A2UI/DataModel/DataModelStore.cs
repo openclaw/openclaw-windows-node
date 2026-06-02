@@ -113,9 +113,10 @@ public sealed class DataModelStore
                 model.SetByPointer(pointer, entry.ToJsonNode());
                 changed.Add(NormalizePath(pointer));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // bad pointer; skip — router logs aggregate.
+                OpenClawTray.Services.Logger.Debug($"DataModelStore: ApplyDelta bad pointer skipped: {ex.Message}");
             }
         }
 
@@ -314,7 +315,7 @@ public sealed class DataModelObservable
             _model.SetByPointer(pointer, value);
             NotifyPaths(new[] { Normalize(pointer) });
         }
-        catch { /* swallow; bad pointer */ }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"DataModelStore: SetByPointer bad pointer or value: {ex.Message}"); }
     }
 
     /// <summary>
@@ -377,8 +378,8 @@ public sealed class DataModelObservable
 
     private void Dispatch(Action callback)
     {
-        if (_dispatcher == null || _dispatcher.HasThreadAccess) { try { callback(); } catch { } return; }
-        _dispatcher.TryEnqueue(() => { try { callback(); } catch { } });
+        if (_dispatcher == null || _dispatcher.HasThreadAccess) { try { callback(); } catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"DataModelStore.Dispatch (direct): {ex.Message}"); } return; }
+        _dispatcher.TryEnqueue(() => { try { callback(); } catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"DataModelStore.Dispatch (enqueued): {ex.Message}"); } });
     }
 
     private static string Normalize(string p) =>

@@ -656,8 +656,9 @@ public sealed partial class ConnectionPage : Page
             }
             return "Remote";
         }
-        catch
+        catch (Exception ex)
         {
+            Services.Logger.Debug($"[ConnectionPage] ClassifyTopology failed for url '{rec.Url}': {ex.Message}");
             return null;
         }
     }
@@ -1863,11 +1864,11 @@ public sealed partial class ConnectionPage : Page
                 AuthErrorBar.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error;
                 AuthErrorBar.IsOpen = true;
             }
-            catch { /* last-ditch */ }
+            catch (Exception ex2) { Services.Logger.Debug($"[ConnectionPage] Last-ditch AuthErrorBar update failed: {ex2.Message}"); }
         }
         finally
         {
-            try { btn.IsEnabled = true; } catch { /* control may be detached */ }
+            try { btn.IsEnabled = true; } catch (Exception ex) { Services.Logger.Debug($"[ConnectionPage] Re-enabling button after auth failed (control detached?): {ex.Message}"); }
         }
     }
 
@@ -1945,7 +1946,8 @@ public sealed partial class ConnectionPage : Page
             var wasActive = string.Equals(_gatewayRegistry?.ActiveGatewayId, gwId, StringComparison.Ordinal);
             if (wasActive && _connectionManager != null)
             {
-                try { await _connectionManager.DisconnectAsync(); } catch { }
+                try { await _connectionManager.DisconnectAsync(); }
+                catch (Exception ex) { Services.Logger.Debug($"[ConnectionPage] Disconnect before removing gateway '{gwId}' threw: {ex.Message}"); }
             }
             _gatewayRegistry?.Remove(gwId);
             _gatewayRegistry?.Save();
@@ -2022,7 +2024,7 @@ public sealed partial class ConnectionPage : Page
             System.Net.Http.HttpResponseMessage? response = null;
             try { response = await httpClient.GetAsync(httpUrl, ct); }
             catch (OperationCanceledException) { throw; }
-            catch { }
+            catch (Exception ex) { Services.Logger.Debug($"[ConnectionPage] Reachability GET {httpUrl} threw: {ex.Message}"); }
 
             if (ct.IsCancellationRequested) return;
 
@@ -2030,7 +2032,7 @@ public sealed partial class ConnectionPage : Page
             {
                 try { response = await httpClient.GetAsync($"{httpUrl}/health", ct); }
                 catch (OperationCanceledException) { throw; }
-                catch { }
+                catch (Exception ex) { Services.Logger.Debug($"[ConnectionPage] Reachability GET {httpUrl}/health threw: {ex.Message}"); }
             }
 
             if (ct.IsCancellationRequested) return;
@@ -2211,7 +2213,7 @@ public sealed partial class ConnectionPage : Page
                     identityBackupMtimeUtc = info.LastWriteTimeUtc;
                 }
             }
-            catch { /* backup is best-effort; rollback simply skips restore */ }
+            catch (Exception ex) { Services.Logger.Debug($"[ConnectionPage] Identity backup metadata read for rollback failed (rollback will skip restore): {ex.Message}"); }
 
             if (!string.IsNullOrWhiteSpace(token))
             {
@@ -2374,7 +2376,7 @@ public sealed partial class ConnectionPage : Page
                     File.WriteAllText(identityKeyPath, identityBackup);
                 // else: another writer touched the file; preserve it.
             }
-            catch { /* best-effort restore; failure cannot regress further */ }
+            catch (Exception ex) { Services.Logger.Debug($"[ConnectionPage] Identity-file restore during rollback failed (cannot regress further): {ex.Message}"); }
         }
 
         if (settings != null)
@@ -2873,11 +2875,12 @@ public sealed partial class ConnectionPage : Page
             successPath = ok;
             // !ok falls into finally below — re-enable so user can retry.
         }
-        catch
+        catch (Exception ex)
         {
-            // Swallow; finally re-enables. The pairing list refresh has
-            // its own observable surface (gateway list-updated event), so
-            // there's no clean place to surface a per-row error here.
+            // Finally re-enables. The pairing list refresh has its own
+            // observable surface (gateway list-updated event), so there's
+            // no clean place to surface a per-row error here — but log it.
+            Services.Logger.Warn($"[ConnectionPage] Pairing row action failed: {ex.Message}");
         }
         finally
         {
@@ -3164,7 +3167,7 @@ public sealed partial class ConnectionPage : Page
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 return uri.Port > 0 ? $"{uri.Scheme}://{uri.Host}:{uri.Port}" : $"{uri.Scheme}://{uri.Host}";
         }
-        catch { }
+        catch (Exception ex) { Services.Logger.Debug($"[ConnectionPage] Url normalization fallback for '{url}': {ex.Message}"); }
         return url;
     }
 }

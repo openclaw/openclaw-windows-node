@@ -2638,7 +2638,8 @@ public sealed class StartKeepaliveStep : SetupStep
 
         if (File.Exists(markerPath))
         {
-            try { File.Delete(markerPath); } catch { }
+            try { File.Delete(markerPath); }
+            catch (Exception ex) { ctx.Logger.Debug($"[Keepalive] Stale marker delete failed: {ex.Message}"); }
         }
 
         // Launch detached keepalive process — keeps the distro alive so port forwarding
@@ -2709,8 +2710,12 @@ public sealed class StartKeepaliveStep : SetupStep
                 return IsKeepaliveCommandLine(GetProcessCommandLine(pid), distro);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            // TryGetExistingKeepalive returns false on any failure (file/process
+            // missing or unreadable). Static method — no ctx.Logger available.
+            // Debug-level via Trace so the failure is visible in dev diagnostics.
+            System.Diagnostics.Trace.WriteLine($"[Keepalive] TryGetExistingKeepalive failed: {ex.Message}");
             pid = 0;
             return false;
         }
@@ -2745,7 +2750,7 @@ public sealed class StartKeepaliveStep : SetupStep
                         ctx.Logger.Info($"[Uninstall] Killed keepalive process tree PID {proc.Id}");
                     }
                 }
-                catch { /* process may have exited */ }
+                catch (Exception ex) { ctx.Logger.Debug($"[Uninstall] Keepalive proc {proc.Id} cleanup skipped (may have exited): {ex.Message}"); }
                 finally { proc.Dispose(); }
             }
         }

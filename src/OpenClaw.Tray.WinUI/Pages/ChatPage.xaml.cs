@@ -361,7 +361,8 @@ public sealed partial class ChatPage : Page
         _functionalHost = null;
         _mountedProvider = null;
         _mountedThreadId = null;
-        try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
+        try { host?.Dispose(); }
+        catch (Exception ex) { Logger.Debug($"ChatPage: functional host dispose tear-down race: {ex.Message}"); }
     }
 
     private async Task InitializeWebViewAsync(SettingsManager settings)
@@ -641,7 +642,7 @@ public sealed partial class ChatPage : Page
     {
         if (string.IsNullOrEmpty(_chatUrl)) return;
         try { Process.Start(new ProcessStartInfo(_chatUrl) { UseShellExecute = true }); }
-        catch { /* shell launch failed — silently ignore */ }
+        catch (Exception ex) { Logger.Warn($"ChatPage: popout shell launch failed for url: {ex.Message}"); }
     }
 
     private void OnRetryChat(object sender, RoutedEventArgs e)
@@ -830,6 +831,6 @@ public sealed partial class ChatPage : Page
             };
             await dialog.ShowAsync();
         }
-        catch { /* dialog display failed, already logged */ }
+        catch (Exception ex) { Logger.Debug($"ChatPage: dialog display failed (already logged upstream): {ex.Message}"); }
     }
 }

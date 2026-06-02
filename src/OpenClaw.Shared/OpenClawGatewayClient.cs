@@ -2367,7 +2367,13 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             var streamHint = payload.TryGetProperty("stream", out var sh) ? sh.GetString() ?? "" : "";
             _logger.Debug($"Agent event received: stream={streamHint} len={rawMessageLength}");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Shape extraction is best-effort diagnostic only; payload still
+            // continues to downstream handlers. Log at Debug so a malformed
+            // event shape is visible without escalating to user-visible.
+            _logger.Debug($"[GatewayClient] Agent event shape extraction failed: {ex.GetType().Name}: {ex.Message}");
+        }
 
         // sessionKey is inside payload, not root. We deliberately do NOT
         // substitute a fallback like "unknown" or "main" — empty must

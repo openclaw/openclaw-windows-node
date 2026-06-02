@@ -252,7 +252,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Process is exiting; the logger writer may already be torn down.
+            // Nothing we can do — Trace.WriteLine matches the standard set in
+            // Services/Logger.cs's own ProcessExit handler; Console.Error is a
+            // belt-and-suspenders backup in case no Trace listener is attached.
+            try { System.Diagnostics.Trace.WriteLine($"App.OnProcessExit: logger unavailable: {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception) { /* Trace itself failed during process exit. */ }
+            try { Console.Error.WriteLine($"Process exiting (logger unavailable): {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception) { /* Console.Error itself failed during process exit — nothing left to call. */ }
+        }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -272,7 +282,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return protocolArgs.Uri?.ToString();
             }
         }
-        catch { /* Not activated via protocol, or not packaged */ }
+        catch (Exception ex)
+        {
+            // Not activated via protocol, or not packaged. Surface at Debug for diagnostics.
+            Logger.Debug($"GetProtocolActivationUri: {ex.GetType().Name}: {ex.Message}");
+        }
         return null;
     }
 
@@ -994,7 +1008,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
                     .AddText(ex.Message));
             }
-            catch { }
+            catch (Exception toastEx)
+            {
+                // Toast surface failed while reporting an outer error — outer error already logged above.
+                Logger.Debug($"Session action failure toast suppressed: {toastEx.Message}");
+            }
         }
     }
 
@@ -1665,7 +1683,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             var queued = _dispatcherQueue?.TryEnqueue(() =>
             {
                 try { ShowHub(page); tcs.SetResult(new { navigated = true, page }); }
-                catch (Exception ex) { tcs.SetResult(new { navigated = false, error = ex.Message }); }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"NavigationHandler ShowHub('{page}') failed: {ex.Message}");
+                    tcs.SetResult(new { navigated = false, error = ex.Message });
+                }
             }) ?? false;
             if (!queued) tcs.TrySetResult(new { navigated = false, error = "UI thread unavailable" });
             return await tcs.Task;
@@ -1773,7 +1795,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _settings.Save();
                 return new { name, value = prop.GetValue(_settings) };
             }
-            catch (Exception ex) { return new { error = ex.Message }; }
+            catch (Exception ex)
+            {
+                Logger.Warn($"SettingsHandler set '{name}' failed: {ex.Message}");
+                return new { error = ex.Message };
+            }
         };
 
         app.MenuHandler = () =>
@@ -1955,9 +1981,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     Logger.Info($"[WslKeepAlive] Stopped stale keepalive for {distroName} (PID {proc.Id}).");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Process may have exited while being inspected.
+                // Process may have exited while being inspected — common race; log at Debug.
+                Logger.Debug($"[WslKeepAlive] Inspect/stop race for PID {proc.Id}: {ex.GetType().Name}: {ex.Message}");
             }
             finally
             {
@@ -1982,9 +2009,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     Logger.Info($"[WslKeepAlive] Deleted stale keepalive marker for {distroName}.");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort cleanup; stale/corrupt markers are not fatal.
+                // Best-effort cleanup; stale/corrupt markers are not fatal. Log at Debug for diagnostics.
+                Logger.Debug($"[WslKeepAlive] Failed to process marker '{markerPath}': {ex.GetType().Name}: {ex.Message}");
             }
         }
     }
@@ -2006,7 +2034,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             p.WaitForExit(5000);
             return output.Trim();
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Logger.Debug($"GetProcessCommandLine(pid={pid}) failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     private static string ResolveWslExePath()
@@ -2095,7 +2127,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     "node-connected",
                     deviceId);
             }
-            catch { /* ignore */ }
+            catch (Exception ex)
+            {
+                Logger.Debug($"Node-connected toast suppressed: {ex.Message}");
+            }
         }
     }
 
@@ -2139,7 +2174,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     args.DeviceId);
             }
         }
-        catch { /* ignore */ }
+        catch (ObjectDisposedException ex)
+        {
+            // Shutdown race: the toast infrastructure is gone. Routine, not a bug.
+            Logger.Debug($"OnPairingStatusChanged handler skipped during shutdown (status={args.Status}): {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"OnPairingStatusChanged handler failed (status={args.Status}): {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -2676,7 +2719,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 _hubWindow.AppWindow.Show(activateWindow: false);
             }
-            catch { /* swallow */ }
+            catch (Exception ex)
+            {
+                Logger.Debug($"Hub window show/restore failed: {ex.Message}");
+            }
         }
     }
 
@@ -3769,7 +3815,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     if (!token.IsCancellationRequested)
                     {
                         Logger.Warn($"Deep link server error: {ex.Message}");
-                        try { await Task.Delay(1000, token); } catch { break; }
+                        try { await Task.Delay(1000, token); }
+                        catch (OperationCanceledException) { break; } // Expected: server cancelled, exit loop.
+                        catch (Exception delayEx)
+                        {
+                            // Defensive: keep the loop resilient even if future code adds awaits that throw other types.
+                            Logger.Debug($"Deep link server delay failed: {delayEx.GetType().Name}: {delayEx.Message}");
+                            break;
+                        }
                     }
                 }
             }

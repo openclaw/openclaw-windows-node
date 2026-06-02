@@ -71,7 +71,13 @@ public static class Logger
                 s_channel.Writer.TryComplete();
                 s_writerTask.Wait(TimeSpan.FromSeconds(2));
             }
-            catch { /* shutdown — nothing to do */ }
+            catch (Exception ex)
+            {
+                // Logger is self-referential — must not call Logger.* here (recursion
+                // risk if the logger itself is the thing that failed). Trace is the
+                // documented fallback for this file.
+                System.Diagnostics.Trace.WriteLine($"Logger.ProcessExit: flush failed: {ex.GetType().Name}: {ex.Message}");
+            }
         };
     }
 
@@ -155,9 +161,11 @@ public static class Logger
     private static void ReportWriteFailure(string detail)
     {
         LastWriteError = detail;
-        try { System.Diagnostics.Trace.WriteLine($"[OpenClaw Logger] {detail}"); } catch { }
+        try { System.Diagnostics.Trace.WriteLine($"[OpenClaw Logger] {detail}"); }
+        catch (Exception) { /* fallback diagnostics in the logger itself — cannot recurse into Log(). */ }
 #if DEBUG
-        try { System.Diagnostics.Debug.WriteLine($"[OpenClaw Logger] {detail}"); } catch { }
+        try { System.Diagnostics.Debug.WriteLine($"[OpenClaw Logger] {detail}"); }
+        catch (Exception) { /* see above. */ }
 #endif
     }
 }

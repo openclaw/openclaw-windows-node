@@ -288,7 +288,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 {
                     await lifecycle.ConnectAsync(ct);
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException) { /* Expected: connect was cancelled. */ }
                 catch (Exception ex)
                 {
                     _logger.Error($"[ConnMgr] Connect failed: {ex.Message}");
@@ -653,7 +653,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (Interlocked.Read(ref _generation) != gen || _disposed) return;
                 await ReconnectAsync();
             }
-            catch (ObjectDisposedException) { }
+            catch (ObjectDisposedException) { /* Expected: connection manager disposed during reconnect. */ }
             catch (Exception ex)
             {
                 _logger.Warn($"[ConnMgr] Operator token recovery reconnect failed: {ex.Message}");
@@ -1238,7 +1238,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (semaphoreEntered)
             {
-                try { _transitionSemaphore.Release(); } catch { }
+                try { _transitionSemaphore.Release(); }
+                catch (Exception ex) { _logger.Debug($"[ConnMgr] Dispose: transition semaphore release failed: {ex.Message}"); }
                 _transitionSemaphore.Dispose();
             }
 

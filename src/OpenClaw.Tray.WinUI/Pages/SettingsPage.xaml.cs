@@ -234,7 +234,7 @@ public sealed partial class SettingsPage : Page
                 .AddText("This is a test notification from OpenClaw settings.")
                 .Show();
         }
-        catch { }
+        catch (Exception ex) { Logger.Warn($"SettingsPage: test toast notification failed: {ex.Message}"); }
     }
 
     private void OnRemoveGateway(object sender, RoutedEventArgs e) =>
@@ -340,13 +340,14 @@ public sealed partial class SettingsPage : Page
                         if (doc.RootElement.TryGetProperty("message", out var msg) && msg.GetString() is { Length: > 0 } m)
                             errorMsg = m;
                     }
-                    catch { /* best effort */ }
+                    catch (Exception parseEx) { Logger.Debug($"SettingsPage: uninstall JSON parse failed (best effort): {parseEx.Message}"); }
                 }
                 ShowUninstallError(errorMsg);
             }
 
             // Clean up temp file
-            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex) { Logger.Debug($"SettingsPage: temp json delete failed: {ex.Message}"); }
         }
         catch (OperationCanceledException)
         {
@@ -358,7 +359,7 @@ public sealed partial class SettingsPage : Page
                     await proc.WaitForExitAsync(CancellationToken.None);
                 }
             }
-            catch { /* best effort cancellation cleanup */ }
+            catch (Exception ex) { Logger.Debug($"SettingsPage: kill-after-cancel cleanup failed: {ex.Message}"); }
 
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
@@ -369,13 +370,15 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
+            Logger.Warn($"SettingsPage: gateway uninstall failed: {ex}");
             ApplyUninstallUiState(UninstallUiState.Failure);
             ShowUninstallError(ex.Message);
         }
         finally
         {
             proc?.Dispose();
-            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex) { Logger.Debug($"SettingsPage: finally temp json delete failed: {ex.Message}"); }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
         }
@@ -390,7 +393,8 @@ public sealed partial class SettingsPage : Page
         var viewLogsButton = new Button { Content = "View Logs" };
         viewLogsButton.Click += (_, _) =>
         {
-            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); } catch { }
+            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: explorer.exe launch for logs path failed: {ex.Message}"); }
         };
 
         UninstallResultBar.Severity = InfoBarSeverity.Error;

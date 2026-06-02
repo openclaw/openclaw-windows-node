@@ -242,7 +242,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (v is SolidColorBrush brush) return brush.Color;
             }
         }
-        catch { /* resource lookup can throw in unpackaged/test hosts */ }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: resource brush lookup failed (unpackaged/test host?): {ex.Message}"); }
         return fallback;
     }
 
@@ -869,7 +869,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             {
                 ClipboardHelper.CopyText(text, flush: true);
             }
-            catch { /* clipboard contention — silently ignore */ }
+            catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: clipboard copy contention: {ex.Message}"); }
         }
 
         void ReadAloud(string entryId, string text) =>
@@ -2212,7 +2212,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                 // Include the operation kind in the screen-reader name so
                                 // users hear "Allow shell.exec" instead of bare "Allow".
                                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{allowLabel}{automationSuffix}");
-                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; } catch { }
+                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; }
+                                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
                             }),
                         Button(denyLabel,
                             () => onResponse?.Invoke(requestId, false))

@@ -490,7 +490,7 @@ public sealed class OpenClawChatRoot : Component
                     if (cancelled) return;
                     dq?.TryEnqueue(() => { if (!cancelled) welcomeSettledState.Set(true); });
                 }
-                catch { }
+                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatRoot: welcome settle race: {ex.Message}"); }
             });
             return () => { cancelled = true; };
         }),
@@ -838,10 +838,9 @@ public sealed class OpenClawChatRoot : Component
                 sb.Children.Add(anim);
                 sb.Begin();
             }
-            catch
+            catch (Exception ex)
             {
-                // Animations are non-essential — never let a storyboard error
-                // disrupt the skeleton surface render.
+                OpenClawTray.Services.Logger.Debug($"ChatRoot: skeleton storyboard animation failed (non-essential): {ex.Message}");
             }
         };
     }

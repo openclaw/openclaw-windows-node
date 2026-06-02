@@ -51,8 +51,10 @@ internal static class AtomicFile
             if (File.Exists(tempPath))
                 File.Delete(tempPath);
         }
-        catch
+        catch (Exception ex)
         {
+            // Best-effort temp cleanup; no logger available in this static helper.
+            System.Diagnostics.Trace.WriteLine($"AtomicFile.TryDeleteTemp('{tempPath}'): {ex.GetType().Name}: {ex.Message}");
         }
     }
 }
