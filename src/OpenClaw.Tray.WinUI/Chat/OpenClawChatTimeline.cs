@@ -1024,11 +1024,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     attachmentNames.Add(("🖼️", trimLine.Substring(4).Trim(), true));
                 else if (trimLine.StartsWith("\u200B📎 "))
                     attachmentNames.Add(("📎", trimLine.Substring(3).Trim(), false));
-                // Also match legacy format without zero-width space for backward compat
-                else if (trimLine.StartsWith("🖼️ ") && trimLine.Length < 260)
-                    attachmentNames.Add(("🖼️", trimLine.Substring(3).Trim(), true));
-                else if (trimLine.StartsWith("📎 ") && trimLine.Length < 260)
-                    attachmentNames.Add(("📎", trimLine.Substring(2).Trim(), false));
                 else
                     messageLines.Add(line);
             }

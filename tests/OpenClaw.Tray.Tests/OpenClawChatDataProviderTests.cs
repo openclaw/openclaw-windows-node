@@ -66,10 +66,16 @@ public class OpenClawChatDataProviderTests
     }
 
     private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots, List<ChatProviderNotification> notifications)
-        CreateProvider(SessionInfo[]? initial = null)
+        CreateProvider(SessionInfo[]? initial = null, string? toolMetaCachePath = null, string? attachmentMetaCachePath = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
-        var provider = new OpenClawChatDataProvider(bridge);
+        var provider = toolMetaCachePath is null && attachmentMetaCachePath is null
+            ? new OpenClawChatDataProvider(bridge)
+            : new OpenClawChatDataProvider(
+                bridge,
+                post: null,
+                toolMetaCacheFilePath: toolMetaCachePath ?? Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "tool-metadata.json"),
+                attachmentMetaCacheFilePath: attachmentMetaCachePath);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
@@ -1840,6 +1846,120 @@ public class OpenClawChatDataProviderTests
         Assert.Contains("test.txt", userEntry.Text);
     }
 
+    [Fact]
+    public async Task AttachmentMetadata_PersistsAndRehydratesFromHistory()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "Check this", default, new[]
+        {
+            new ChatAttachment
+            {
+                Type = "file",
+                MimeType = "text/plain",
+                FileName = "test.txt",
+                Content = Convert.ToBase64String(new byte[] { 72, 105 }),
+                SizeBytes = 2
+            }
+        });
+
+        var (bridge2, provider2, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "Check this", State = "final", Ts = sentTs }
+            }
+        });
+
+        await provider2.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Check this\n\u200B📎 test.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_RehydratesAttachmentOnlyHistoryMessage()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "", default, new[]
+        {
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "screenshot.png",
+                Content = Convert.ToBase64String(new byte[] { 1, 2, 3 }),
+                SizeBytes = 3
+            }
+        });
+
+        var (bridge2, provider2, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "", State = "final", Ts = sentTs }
+            }
+        });
+
+        await provider2.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("\u200B🖼️ screenshot.png", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_DoesNotRehydratePastedMarkerTextWithoutSidecar()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "\u200B📎 spoof.txt", State = "final", Ts = 1 }
+            }
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("📎 spoof.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithoutAttachment_EscapesPastedMarkerText()
+    {
+        var (_, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        await provider.SendMessageAsync("main", "\u200B📎 spoof.txt");
+
+        var userEntry = snapshots[0].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("📎 spoof.txt", userEntry.Text);
+    }
+
     // ── Auto-reload on connect: OnSessionsUpdated eager history load ──
 
     [Fact]
@@ -2228,5 +2348,28 @@ public class OpenClawChatDataProviderTests
         public void Info(string message) { }
         public void Warn(string message) { }
         public void Error(string message, Exception? ex = null) { }
+    }
+
+    private sealed class TempDirectory : IDisposable
+    {
+        public string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), "openclaw-chat-attachments-" + Guid.NewGuid().ToString("N"));
+
+        public TempDirectory()
+        {
+            Directory.CreateDirectory(DirectoryPath);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(DirectoryPath))
+                    Directory.Delete(DirectoryPath, recursive: true);
+            }
+            catch
+            {
+                // Test cleanup is best-effort.
+            }
+        }
     }
 }
