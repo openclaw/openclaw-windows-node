@@ -546,6 +546,18 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void CommandCenterTextHelper_DebugBundle_IncludesSanitizedTrayLogTail()
+    {
+        var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "CommandCenterTextHelper.cs");
+        Assert.Contains("Recent Tray Log", helper);
+        Assert.Contains("BuildRecentTrayLogTail(Logger.LogFilePath)", helper);
+        Assert.Contains("TokenSanitizer.Sanitize(line)", helper);
+        Assert.Contains("RecentTrayLogTailLines", helper);
+        Assert.Contains("RecentTrayLogMaxChars", helper);
+        Assert.Contains("FileShare.ReadWrite | FileShare.Delete", helper);
+    }
+
+    [Fact]
     public void DebugPage_DetailView_UsesGenerationCounterForRaceSafety()
     {
         // Hanselman v2 review #5/#6: long log reads must check a

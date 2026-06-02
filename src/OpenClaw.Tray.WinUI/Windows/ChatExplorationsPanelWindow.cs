@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.FunctionalUI.Hosting;
+using OpenClawTray.Services;
 using WinUIEx;
 
 namespace OpenClawTray.Windows;
@@ -30,7 +31,8 @@ public sealed class ChatExplorationsPanelWindow : WindowEx
 
         Closed += (_, _) =>
         {
-            try { _host?.Dispose(); } catch { }
+            try { _host?.Dispose(); }
+            catch (Exception ex) { Logger.Warn($"Failed to dispose chat explorations panel host: {ex.Message}"); }
             _host = null;
         };
     }

@@ -46,6 +46,10 @@ public sealed class SetupRunLock : IDisposable
     public void Dispose()
     {
         _stream.Dispose();
-        try { File.Delete(_path); } catch { }
+        try { File.Delete(_path); }
+        catch (Exception ex)
+        {
+            SetupDiagnostics.TryWriteStderrWarning($"Failed to delete setup lock '{_path}': {ex.Message}");
+        }
     }
 }

@@ -311,7 +311,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"OpenClaw process-exit logging failed: {ex}");
+        }
     }
 
     private static void LogCrash(string source, Exception? ex)
@@ -325,7 +328,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             var message = $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n";
             File.AppendAllText(CrashLogPath, message);
         }
-        catch { /* Can't log the crash logger crash */ }
+        catch (Exception logFileEx)
+        {
+            Trace.WriteLine($"OpenClaw crash file logging failed: {logFileEx}");
+        }
         
         try
         {
@@ -338,7 +344,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 Logger.Error($"CRASH {source}");
             }
         }
-        catch { /* Ignore logging failures */ }
+        catch (Exception loggerEx)
+        {
+            Trace.WriteLine($"OpenClaw crash logger failed: {loggerEx}");
+        }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -358,7 +367,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return protocolArgs.Uri?.ToString();
             }
         }
-        catch { /* Not activated via protocol, or not packaged */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Protocol activation lookup failed or is unavailable: {ex.Message}");
+        }
         return null;
     }
 
@@ -1080,7 +1092,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
                     .AddText(ex.Message));
             }
-            catch { }
+            catch (Exception toastEx)
+            {
+                Logger.Warn($"Failed to show session action failure toast: {toastEx.Message}");
+            }
         }
     }
 
@@ -2181,7 +2196,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     "node-connected",
                     deviceId);
             }
-            catch { /* ignore */ }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Failed to show node-connected toast for device '{deviceId}': {ex.Message}");
+            }
         }
     }
 
@@ -2212,7 +2230,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 else
                 {
-                    Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
+                    Logger.Info($"Suppressing duplicate Paired toast for device {DeviceIdForLog(deviceKey)}");
                 }
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
@@ -2225,7 +2243,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     args.DeviceId);
             }
         }
-        catch { /* ignore */ }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to handle pairing status '{args.Status}' for device '{DeviceIdForLog(args.DeviceId)}': {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -2235,6 +2256,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public static string BuildPairingApprovalCommand(string deviceId) =>
         $"openclaw devices approve {deviceId}";
+
+    private static string DeviceIdForLog(string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return "<none>";
+
+        var sanitized = TokenSanitizer.Sanitize(deviceId.Trim());
+        if (sanitized.Contains("[REDACTED", StringComparison.Ordinal))
+            return sanitized;
+
+        return sanitized.Length <= 8 ? sanitized : $"{sanitized[..8]}...";
+    }
 
     public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
     {
@@ -2762,7 +2795,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 _hubWindow.AppWindow.Show(activateWindow: false);
             }
-            catch { /* swallow */ }
+            catch (Exception ex)
+            {
+                Logger.Debug($"Failed to show hub window without activation before tray menu: {ex.Message}");
+            }
         }
     }
 

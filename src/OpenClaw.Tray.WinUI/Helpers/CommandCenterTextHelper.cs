@@ -3,6 +3,7 @@ using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -11,6 +12,9 @@ namespace OpenClawTray.Helpers;
 
 internal static class CommandCenterTextHelper
 {
+    private const int RecentTrayLogTailLines = 120;
+    private const int RecentTrayLogMaxChars = 24_000;
+
     // Pre-compiled patterns used in RedactSupportPath / RedactSupportValue.
     // Compiled once at startup; reused on every diagnostic / support-text build.
     private static readonly Regex PathWindowsUserPattern = new(
@@ -120,6 +124,7 @@ internal static class CommandCenterTextHelper
         AppendSection(builder, "Channel Summary", BuildChannelSummaryText(state.Channels));
         AppendSection(builder, "Activity Summary", BuildActivitySummary(state.RecentActivity));
         AppendSection(builder, "Extensibility Summary", BuildExtensibilitySummary(state.Channels));
+        AppendSection(builder, "Recent Tray Log", BuildRecentTrayLogTail(Logger.LogFilePath));
         return builder.ToString();
     }
 
@@ -323,6 +328,73 @@ internal static class CommandCenterTextHelper
         builder.AppendLine($"## {title}");
         builder.AppendLine(content.TrimEnd());
         builder.AppendLine();
+    }
+
+    private static string BuildRecentTrayLogTail(string? logPath)
+    {
+        if (string.IsNullOrWhiteSpace(logPath))
+            return "Tray log path is not configured.";
+
+        if (!File.Exists(logPath))
+            return $"Tray log does not exist: {RedactSupportPath(logPath)}";
+
+        var lines = new Queue<string>(RecentTrayLogTailLines);
+        try
+        {
+            using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                lines.Enqueue(RedactSupportLogLine(line));
+                while (lines.Count > RecentTrayLogTailLines)
+                    lines.Dequeue();
+            }
+        }
+        catch (IOException ex)
+        {
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {ex.Message}";
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {ex.Message}";
+        }
+
+        if (lines.Count == 0)
+            return $"Tray log is empty: {RedactSupportPath(logPath)}";
+
+        var builder = new StringBuilder();
+        builder.AppendLine($"Source: {RedactSupportPath(logPath)}");
+        builder.AppendLine($"Showing the last {lines.Count} lines. Secrets and local user paths are redacted.");
+        foreach (var line in lines)
+        {
+            if (builder.Length >= RecentTrayLogMaxChars)
+            {
+                builder.AppendLine("... truncated ...");
+                break;
+            }
+
+            builder.AppendLine(line);
+        }
+
+        return builder.ToString();
+    }
+
+    private static string RedactSupportLogLine(string line)
+    {
+        var redacted = TokenSanitizer.Sanitize(line);
+        foreach (var folder in new[]
+                 {
+                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                     Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+                 }.Where(folder => !string.IsNullOrWhiteSpace(folder)).OrderByDescending(folder => folder.Length))
+        {
+            redacted = redacted.Replace(folder, RedactSupportPath(folder), StringComparison.OrdinalIgnoreCase);
+        }
+
+        redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
+        return PathUnixUserPattern.Replace(redacted, "$HOME");
     }
 
     private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)

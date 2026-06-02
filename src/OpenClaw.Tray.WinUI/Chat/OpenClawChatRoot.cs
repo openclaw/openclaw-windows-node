@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Chat.Explorations;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -490,7 +491,14 @@ public sealed class OpenClawChatRoot : Component
                     if (cancelled) return;
                     dq?.TryEnqueue(() => { if (!cancelled) welcomeSettledState.Set(true); });
                 }
-                catch { }
+                catch (OperationCanceledException)
+                {
+                    // Cancellation is expected when the welcome eligibility signal changes.
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Welcome-state debounce failed: {ex.Message}");
+                }
             });
             return () => { cancelled = true; };
         }),

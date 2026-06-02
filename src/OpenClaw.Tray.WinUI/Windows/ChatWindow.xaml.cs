@@ -473,7 +473,8 @@ public sealed partial class ChatWindow : WindowEx
         var host = _functionalHost;
         _functionalHost = null;
         _mountedProvider = null;
-        try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
+        try { host?.Dispose(); }
+        catch (Exception ex) { Logger.Warn($"Failed to dispose chat host during teardown: {ex.Message}"); }
     }
 
     private void EagerlyLoadChatHistory()
@@ -493,7 +494,10 @@ public sealed partial class ChatWindow : WindowEx
                 if (snap.DefaultThreadId is { } threadId)
                     await provider.LoadHistoryAsync(threadId);
             }
-            catch { /* best effort — the normal mount path will retry */ }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Eager chat history load failed; normal mount path will retry: {ex.Message}");
+            }
         });
     }
 
@@ -657,7 +661,10 @@ public sealed partial class ChatWindow : WindowEx
             };
             await dialog.ShowAsync();
         }
-        catch { /* dialog display failed, already logged */ }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to show attachment error dialog: {ex.Message}");
+        }
     }
 
     private bool _backdropAppliedOnce;
@@ -787,7 +794,10 @@ public sealed partial class ChatWindow : WindowEx
             (App.Current as App)?.ShowHub("chat");
             this.Hide();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to pop out chat to hub: {ex.Message}");
+        }
     }
 
     private void RequestChatInputFocus()
