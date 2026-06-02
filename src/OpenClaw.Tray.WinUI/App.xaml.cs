@@ -460,6 +460,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
 
+        // Anchor the WinUI runtime so transient windows (UpdateDialog,
+        // setup wizard, etc.) don't terminate the process when closed.
+        // WinUI 3 Desktop's default DispatcherShutdownMode is
+        // OnLastWindowClose — without this override, closing the
+        // UpdateDialog on the startup path (when it is the only window)
+        // would shut down the WinUI runtime mid-flight and kill the
+        // in-progress download/extraction. We still control shutdown
+        // explicitly via Application.Exit().
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+
         // Check for updates before launching. Skip in test instances — no UI dialogs,
         // no network calls, no startup delay.
         if (DataDirOverride is null &&
