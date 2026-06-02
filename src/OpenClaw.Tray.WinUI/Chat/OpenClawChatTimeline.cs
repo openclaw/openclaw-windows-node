@@ -1993,6 +1993,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 // ▼ when collapsed (action: click to expand down).
                 var chevron = effectiveExpanded ? "▲" : "▼";
                 var stepCountLabel = $"{stepCount} step{(stepCount == 1 ? "" : "s")}";
+                var taskListHeaderAutomationName = $"{summaryLine}, {stepCountLabel}, {taskStatusText}, {(effectiveExpanded ? "expanded" : "collapsed")}";
 
                 Action toggleTaskList = () =>
                 {
@@ -2004,6 +2005,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                 // Per-step rows (used only when expanded).
                 var stepRows = new System.Collections.Generic.List<Element>();
+                var stepAutomationSummaries = new System.Collections.Generic.List<string>();
                 for (int i = 0; i < entries.Count; i++)
                 {
                     var e = entries[i];
@@ -2012,6 +2014,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     var prefix = StepPrefix(i);
                     var labelText = string.IsNullOrEmpty(prefix) ? label : $"{prefix} {label}";
                     var summary = ShortSummary(e);
+                    stepAutomationSummaries.Add(string.IsNullOrEmpty(summary) ? labelText : $"{labelText}: {summary}");
 
                     stepRows.Add(
                         (FlexRow(
@@ -2054,19 +2057,21 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         .Set(t => { t.FontSize = 11; }).VAlign(VerticalAlignment.Center)
                 ) with { ColumnGap = 8 }).Margin(0, 0, 0, 0);
 
-                var headerButton = Button(headerContent, toggleTaskList).Set(b =>
-                {
-                    b.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                    b.Padding = bubblePadding;
-                    b.CornerRadius = new CornerRadius(bubbleRadius.TopLeft, bubbleRadius.TopRight, effectiveExpanded ? 0 : bubbleRadius.BottomRight, effectiveExpanded ? 0 : bubbleRadius.BottomLeft);
-                }).Resources(r => r
-                    .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBackgroundPointerOver", themeBrush("SubtleFillColorTertiaryBrush"))
-                    .Set("ButtonBackgroundPressed", themeBrush("SubtleFillColorSecondaryBrush"))
-                    .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)));
+                var headerButton = Button(headerContent, toggleTaskList)
+                    .AutomationName(taskListHeaderAutomationName)
+                    .Set(b =>
+                    {
+                        b.HorizontalAlignment = HorizontalAlignment.Stretch;
+                        b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                        b.Padding = bubblePadding;
+                        b.CornerRadius = new CornerRadius(bubbleRadius.TopLeft, bubbleRadius.TopRight, effectiveExpanded ? 0 : bubbleRadius.BottomRight, effectiveExpanded ? 0 : bubbleRadius.BottomLeft);
+                    }).Resources(r => r
+                        .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
+                        .Set("ButtonBackgroundPointerOver", themeBrush("SubtleFillColorTertiaryBrush"))
+                        .Set("ButtonBackgroundPressed", themeBrush("SubtleFillColorSecondaryBrush"))
+                        .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
+                        .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
+                        .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)));
 
                 var cardChildren = new System.Collections.Generic.List<Element> { headerButton };
                 if (effectiveExpanded)
@@ -2075,6 +2080,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     // header + body read as one unit but the divide is clear.
                     cardChildren.Add(
                         Border(VStack(8, stepRows.ToArray()))
+                            .AutomationName($"Tool steps for: {summaryLine}. {string.Join("; ", stepAutomationSummaries)}")
                             .Set(b =>
                             {
                                 b.Padding = bubblePadding;
