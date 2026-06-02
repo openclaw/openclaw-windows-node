@@ -31,25 +31,44 @@
             </Border>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Spacing="12">
-            <Button x:Name="SecondaryButton" Content="Skip" Height="44"
-                    MinWidth="96"
-                    Click="Secondary_Click" IsEnabled="False" />
-            <Button x:Name="PrimaryButton" Content="Continue" Height="44"
-                    MinWidth="120"
-                    Click="Primary_Click" IsEnabled="False">
-                <Button.Resources>
-                    <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
-                    <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
-                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
-                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
-                </Button.Resources>
-            </Button>
-        </StackPanel>
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+            <StackPanel x:Name="RecoveryActions"
+                        Grid.Column="0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Left"
+                        Spacing="12"
+                        Visibility="Collapsed">
+                <Button x:Name="StartOverButton"
+                        Content="Start over"
+                        Height="44"
+                        MinWidth="104"
+                        Click="StartOver_Click" />
+                <Button x:Name="SkipWizardButton"
+                        Content="Skip wizard"
+                        Height="44"
+                        MinWidth="104"
+                        Click="SkipWizard_Click" />
+            </StackPanel>
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="12">
+                <Button x:Name="SecondaryButton" Content="Skip" Height="44"
+                        MinWidth="96"
+                        Click="Secondary_Click" IsEnabled="False" />
+                <Button x:Name="PrimaryButton" Content="Continue" Height="44"
+                        MinWidth="120"
+                        Click="Primary_Click" IsEnabled="False">
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
+                        <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
+                        <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
+                        <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
+                    </Button.Resources>
+                </Button>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Page>
