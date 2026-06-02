@@ -139,24 +139,28 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         get
         {
-            if (_agentsList is not { } list) return null;
-            if (!list.TryGetProperty("agents", out var agentsEl) ||
-                agentsEl.ValueKind != System.Text.Json.JsonValueKind.Array)
-                return null;
-
-            // Derive the agent ID from the main session key (format: "agent:<agentId>:<sessionId>"
-            // or legacy short form like "main").
-            var mainKey = _bridge.MainSessionKey ?? "";
-            var parts = mainKey.Split(':');
-            var agentId = parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "main";
-
-            foreach (var agent in agentsEl.EnumerateArray())
+            lock (_gate)
             {
-                var id = agent.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                if (string.Equals(id, agentId, StringComparison.OrdinalIgnoreCase))
-                    return agent.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
+                if (_agentsList is not { } list) return null;
+                if (!list.TryGetProperty("agents", out var agentsEl) ||
+                    agentsEl.ValueKind != System.Text.Json.JsonValueKind.Array)
+                    return null;
+
+                // Derive the agent ID from the main session key (format: "agent:<agentId>:<sessionId>"
+                // or legacy short form like "main").
+                var mainKey = _bridge.MainSessionKey ?? "";
+                var parts = mainKey.Split(':');
+                var agentId = parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "main";
+
+                foreach (var agent in agentsEl.EnumerateArray())
+                {
+                    if (agent.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                    var id = agent.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                    if (string.Equals(id, agentId, StringComparison.OrdinalIgnoreCase))
+                        return agent.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
+                }
+                return null;
             }
-            return null;
         }
     }
 
@@ -1159,10 +1163,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private void OnAgentsListUpdated(object? sender, System.Text.Json.JsonElement data)
     {
-        _agentsList = data;
         ChatDataSnapshot snapshot;
         lock (_gate)
         {
+            _agentsList = data;
             snapshot = BuildSnapshotLocked();
         }
         Publish(snapshot);

@@ -73,6 +73,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     // fires during construction can't be stomped back by a stale seed.
     private volatile ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
     private ModelsListInfo? _currentModels;
+    private readonly object _agentsListLock = new();
     private JsonElement? _currentAgentsList;
     private bool _disposed;
 
@@ -102,7 +103,10 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         };
         _agentsListUpdatedHandler = (s, e) =>
         {
-            _currentAgentsList = e;
+            lock (_agentsListLock)
+            {
+                _currentAgentsList = e;
+            }
             AgentsListUpdated?.Invoke(s, e);
         };
 
@@ -157,7 +161,13 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public bool HasHandshakeSnapshot => _client.HasHandshakeSnapshot;
     public SessionInfo[] GetSessionList() => _client.GetSessionList();
     public ModelsListInfo? GetCurrentModelsList() => _currentModels;
-    public JsonElement? GetCurrentAgentsList() => _currentAgentsList;
+    public JsonElement? GetCurrentAgentsList()
+    {
+        lock (_agentsListLock)
+        {
+            return _currentAgentsList;
+        }
+    }
 
     public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) =>
         _client.SendChatMessageAsync(message, sessionKey, sessionId, attachments);
