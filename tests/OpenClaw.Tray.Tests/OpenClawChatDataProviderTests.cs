@@ -2140,6 +2140,32 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task KeylessEvents_DiagnosticResetsOnReconnect()
+    {
+        var (bridge, provider, _, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "",
+            Role = "assistant",
+            Text = "first dropped payload"
+        });
+
+        Assert.Single(notifications, n => n.Title == "Chat_Notification_KeylessEventDropped");
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"second dropped payload"}""", sessionKey: ""));
+
+        Assert.Equal(2, notifications.Count(n => n.Title == "Chat_Notification_KeylessEventDropped"));
+        Assert.DoesNotContain(notifications, n =>
+            (n.Title?.Contains("dropped payload") ?? false) ||
+            (n.Message?.Contains("dropped payload") ?? false));
+    }
+
+    [Fact]
     public async Task AgentEvent_WithEmptySessionKey_IsDroppedAndDiagnosed()
     {
         var (bridge, provider, snapshots, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");

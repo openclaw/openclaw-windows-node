@@ -1028,6 +1028,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 _locallyInitiatedThreads.Clear();
                 _localSentTexts.Clear();
                 _historyRetryCount.Clear();
+                System.Threading.Interlocked.Exchange(ref _keylessEventDiagnosticRaised, 0);
             }
             else
             {
