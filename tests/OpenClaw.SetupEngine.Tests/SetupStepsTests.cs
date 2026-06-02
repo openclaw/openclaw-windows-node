@@ -1,6 +1,7 @@
 using OpenClaw.Connection;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -246,6 +247,45 @@ public class SetupStepsTests : IDisposable
         var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli's.sh", "2026.5.22'a");
 
         Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli'\\''s.sh' | bash -s -- --version '2026.5.22'\\''a'", command);
+    }
+
+    [Fact]
+    public void InstallCli_WindowsNodeToolsMarkdown_IncludesRequestedGuidance()
+    {
+        var markdown = InstallCliStep.BuildWindowsNodeToolsMarkdown();
+
+        Assert.Contains("This OpenClaw gateway runs in WSL", markdown);
+        Assert.Contains("openclaw nodes list", markdown);
+        Assert.Contains("openclaw nodes describe --node <nodeid>", markdown);
+        Assert.Contains("Use the Windows node for anything involving Windows desktop/UI", markdown);
+        Assert.Contains("Use the node's advertised commands and schemas", markdown);
+        Assert.Contains("use the Windows node `system.run` command. Normal gateway exec runs in WSL", markdown);
+        Assert.Contains("prefer the Windows node's A2UI/canvas commands", markdown);
+        Assert.Contains("URLs served only inside the WSL gateway are not directly reachable", markdown);
+        Assert.Contains("re-run `openclaw nodes list`", markdown);
+        Assert.DoesNotContain("exec policy", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("openclaw config unset tools.exec.mode", markdown);
+        Assert.DoesNotContain("openclaw config set tools.exec.security", markdown);
+        Assert.DoesNotContain("OPENCLAW_GATEWAY_TOKEN", markdown);
+        Assert.DoesNotContain("bootstrapToken", markdown);
+    }
+
+    [Fact]
+    public void InstallCli_WriteWindowsNodeToolsCommand_WritesDefaultWorkspaceToolsFile()
+    {
+        var command = InstallCliStep.BuildWriteWindowsNodeToolsCommand();
+
+        Assert.Contains("mkdir -p \"$HOME/.openclaw/workspace\"", command);
+        Assert.Contains("printf '%s' '", command);
+        Assert.Contains("| base64 -d > \"$HOME/.openclaw/workspace/TOOLS.md\"", command);
+        Assert.Contains("> \"$HOME/.openclaw/workspace/TOOLS.md\"", command);
+        Assert.DoesNotContain("<<", command);
+        Assert.DoesNotContain("`nodes`", command);
+        Assert.Contains("echo OPENCLAW_TOOLS_MD_READY", command);
+
+        var encoded = command.Split("printf '%s' '", 2)[1].Split("'", 2)[0];
+        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+        Assert.Equal(InstallCliStep.BuildWindowsNodeToolsMarkdown(), decoded);
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -1110,6 +1111,10 @@ public sealed class InstallCliStep : SetupStep
                         return pathResult;
                 }
 
+                var toolsResult = await WriteWindowsNodeToolsAsync(ctx, distro, user, ct);
+                if (!toolsResult.IsSuccess)
+                    return toolsResult;
+
                 ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
                 return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
             }
@@ -1130,6 +1135,59 @@ public sealed class InstallCliStep : SetupStep
 
         var escapedVersion = ShellEscape(trimmedVersion);
         return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
+    }
+
+    internal static string BuildWindowsNodeToolsMarkdown() =>
+        """
+        # Windows node guidance
+
+        This OpenClaw gateway runs in WSL and is expected to be paired with the OpenClaw Windows tray node (companion app). Treat this as standing context for this gateway session: WSL is the gateway environment, and the Windows node is the path to Windows-native capabilities.
+
+        Before using Windows-specific capabilities, discover the connected nodes and their commands:
+
+        ```bash
+        openclaw nodes list
+        openclaw nodes describe --node <nodeid>
+        ```
+
+        Use the Windows node for anything involving Windows desktop/UI, Windows files, screenshots or screen recording, camera, notifications, browser proxy, or Windows command execution. Do not assume the WSL shell can access Windows desktop state, Windows user files, or native Windows permissions. Use the node's advertised commands and schemas from `openclaw nodes describe` as the source of truth for how to call each capability.
+
+        For Windows shell work, use the Windows node `system.run` command. Normal gateway exec runs in WSL.
+
+        For canvas/UI work, prefer the Windows node's A2UI/canvas commands when available. URLs served only inside the WSL gateway are not directly reachable from the Windows node or Windows desktop; if you need to present UI, use A2UI instead of assuming a localhost URL inside WSL can be opened by the Windows node.
+
+        If capabilities look stale, ask the user to reconnect or restart the Windows node or gateway, then re-run `openclaw nodes list` and `openclaw nodes describe --node <nodeid>`.
+        """;
+
+    internal static string BuildWriteWindowsNodeToolsCommand()
+    {
+        var encodedMarkdown = Convert.ToBase64String(Encoding.UTF8.GetBytes(BuildWindowsNodeToolsMarkdown()));
+        return $"""
+            set -e
+            mkdir -p "$HOME/.openclaw/workspace"
+            printf '%s' '{encodedMarkdown}' | base64 -d > "$HOME/.openclaw/workspace/TOOLS.md"
+            echo OPENCLAW_TOOLS_MD_READY
+            """;
+    }
+
+    private static async Task<StepResult> WriteWindowsNodeToolsAsync(
+        SetupContext ctx,
+        string distro,
+        string user,
+        CancellationToken ct)
+    {
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            BuildWriteWindowsNodeToolsCommand(),
+            TimeSpan.FromSeconds(15),
+            ct: ct,
+            user: user);
+
+        if (result.ExitCode != 0 || !result.Stdout.Contains("OPENCLAW_TOOLS_MD_READY", StringComparison.Ordinal))
+            return StepResult.Fail($"Failed to write OpenClaw TOOLS.md guidance (exit {result.ExitCode}): {result.Stderr}");
+
+        ctx.Logger.Info("Wrote OpenClaw workspace TOOLS.md guidance for Windows node usage");
+        return StepResult.Ok();
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
