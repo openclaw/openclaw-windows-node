@@ -299,13 +299,11 @@ public sealed class OpenClawChatRoot : Component
         // timeline can skip re-rendering while the user types.
         var entryMeta = effectiveThread is null ? null : entryMetaSnapshot;
 
-        // The gateway's default agent identity is "Field" (matches the web UI footer),
-        // but for the WinUI tray we surface a generic "Assistant" label so the
-        // thinking indicator and sender chip read naturally to all users.
-        // TODO: wire to a real agent-name source (agents.list response or
-        // sessionDefaults.defaultAgentId from hello-ok) once available, then
-        // restore the per-agent name here.
-        const string assistantSenderLabel = "Assistant";
+        // Use the agent name from agents.list when available; fall back to
+        // "Assistant" so the label is always meaningful.
+        var assistantSenderLabel =
+            (_provider as OpenClawChatDataProvider)?.DefaultAgentName
+            ?? "Assistant";
 
         // Show inline "thinking" indicator only until this turn has an
         // assistant bubble. Tool calls can arrive before the first assistant
