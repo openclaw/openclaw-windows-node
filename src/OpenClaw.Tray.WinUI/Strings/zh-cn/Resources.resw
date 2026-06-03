@@ -4365,6 +4365,15 @@
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>本地网关</value>
   </data>
+  <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
+    <value>设置或重新配置本地网关</value>
+  </data>
+  <data name="SettingsPage_LocalGatewaySetup_Description.Text" xml:space="preserve">
+    <value>启动设置以安装由应用管理的 OpenClawGateway WSL 发行版，或为现有网关重新运行提供商和模型设置。只有在确认后才会替换现有本地网关。</value>
+  </data>
+  <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
+    <value>打开设置</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>检测到 MSIX 安装</value>
   </data>

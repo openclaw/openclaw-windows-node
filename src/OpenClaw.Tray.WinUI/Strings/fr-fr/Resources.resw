@@ -4365,6 +4365,15 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Passerelle locale</value>
   </data>
+  <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
+    <value>Configurer ou reconfigurer la passerelle locale</value>
+  </data>
+  <data name="SettingsPage_LocalGatewaySetup_Description.Text" xml:space="preserve">
+    <value>Lance la configuration pour installer une distribution WSL OpenClawGateway appartenant a l'application, ou relancer la configuration des fournisseurs et modeles pour une passerelle existante. Les passerelles locales existantes ne sont remplacees qu'apres confirmation.</value>
+  </data>
+  <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
+    <value>Ouvrir la configuration</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Installation MSIX détectée</value>
   </data>
