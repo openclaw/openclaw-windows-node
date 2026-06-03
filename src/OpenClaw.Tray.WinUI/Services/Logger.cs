@@ -77,10 +77,19 @@ public static class Logger
 
     public static string LogFilePath => _logFilePath;
 
+    // OPENCLAW_TRAY_TRACE=1 surfaces verbose protocol traces that are normally
+    // suppressed (e.g. per-event kind/phase dumps from the gateway client).
+    // Off by default so day-to-day logs aren't drowned in low-signal lines;
+    // diagnosis sessions can opt in without rebuilding.
+    private static readonly bool s_traceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_TRACE"), "1", StringComparison.Ordinal) ||
+        string.Equals(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_TRACE"), "true", StringComparison.OrdinalIgnoreCase);
+
     public static void Info(string message) => Log("INFO", message);
     public static void Warn(string message) => Log("WARN", message);
     public static void Error(string message) => Log("ERROR", message);
     public static void Debug(string message) => Log("DEBUG", message);
+    public static void Trace(string message) { if (s_traceEnabled) Log("TRACE", message); }
 
     private static void Log(string level, string message)
     {

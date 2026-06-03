@@ -1,3 +1,4 @@
+using System.Linq;
 using OpenClaw.Chat;
 
 namespace OpenClaw.Tray.Tests;
@@ -40,6 +41,47 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void NewTurnFinalAssistant_DoesNotOverwriteFinalizedPreviousAssistant()
+    {
+        // Regression: a system.run approval-denied scenario produces a turn
+        // shape like:
+        //   1. user prompt
+        //   2. assistant finalised reply ("I'll check by running ...")
+        //   3. tool call + tool output
+        //   4. status entries (approval submitted, denied, etc.)
+        //   5. NEW turn: final assistant reply ("I can't run that.")
+        //
+        // OpenClawChatDataProvider always tags chat.message events with
+        // ReconcilePrevious=true. Before the fix the reducer scanned
+        // backwards past the tool / status entries, found the previous
+        // turn's finalised assistant entry, and silently OVERWROTE its text
+        // in place — making the new reply invisible and corrupting the
+        // earlier bubble. After the fix, reconcile only collapses into a
+        // still-streaming assistant entry, so a finalised assistant from a
+        // completed turn is left alone and the new reply appears as its
+        // own bubble.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatUserMessageEvent("Identify which version of Node, Python, and git are installed."));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("I'll check by running a small command.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("system.run", "system.run"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("denied: no matching rule"));
+
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("I can't run that command — it was denied.", ReconcilePrevious: true));
+
+        var assistantEntries = updated.Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToList();
+        Assert.Equal(2, assistantEntries.Count);
+        Assert.Equal("I'll check by running a small command.", assistantEntries[0].Text);
+        Assert.Equal("I can't run that command — it was denied.", assistantEntries[1].Text);
+        Assert.False(assistantEntries[1].IsStreaming);
+    }
+
+    [Fact]
     public void FinalAssistant_UpdatesStreamingAssistantAfterTurnEnd()
     {
         var state = ChatTimelineReducer.Apply(
@@ -52,6 +94,121 @@ public class ChatTimelineReducerTests
         Assert.Single(updated.Entries);
         Assert.Equal("final", updated.Entries[0].Text);
         Assert.False(updated.Entries[0].IsStreaming);
+    }
+
+    [Fact]
+    public void StaleStreamingPreview_DoesNotMergeAcrossUserBoundary()
+    {
+        // Regression for the cross-turn stale-preview class identified by
+        // both reviewers: a streaming preview that never received its terminal
+        // frame (network drop / aborted turn) must not be silently overwritten
+        // by a NEXT turn's reconcile-flagged final once the user sends a new
+        // prompt. The user message acts as a hard turn boundary that clears
+        // both ActiveAssistantId and stale IsStreaming on prior entries.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatUserMessageEvent("first prompt"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("partial preview"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        // No final ever arrived for turn 1 — preview is orphaned.
+        // Now turn 2 begins with a fresh user message and final reply.
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("second prompt"));
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("turn 2 final", ReconcilePrevious: true));
+
+        var assistantEntries = updated.Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToList();
+        Assert.Equal(2, assistantEntries.Count);
+        Assert.Equal("partial preview", assistantEntries[0].Text);
+        Assert.False(assistantEntries[0].IsStreaming);
+        Assert.Equal("turn 2 final", assistantEntries[1].Text);
+    }
+
+    [Fact]
+    public void UserMessage_AsTurnBoundary_PreventsCrossTurnOverwrite()
+    {
+        // Regression for the dropped-ChatTurnEndEvent edge case: if the
+        // gateway omits chat.turn.end before the next user prompt, the
+        // reducer must still treat ChatUserMessageEvent as a hard turn
+        // boundary by clearing ActiveAssistantId. Otherwise the fast-path
+        // overwrite branch in UpsertAssistant would silently replace the
+        // previous turn's assistant reply in place.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatUserMessageEvent("first"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("first reply"));
+        // Note: NO ChatTurnEndEvent before the next user message.
+        Assert.NotNull(state.ActiveAssistantId);
+
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("second"));
+        Assert.Null(state.ActiveAssistantId);
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatMessageEvent("second reply"));
+
+        var assistantEntries = updated.Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToList();
+        Assert.Equal(2, assistantEntries.Count);
+        Assert.Equal("first reply", assistantEntries[0].Text);
+        Assert.Equal("second reply", assistantEntries[1].Text);
+    }
+
+    [Fact]
+    public void AddLocalUser_AsTurnBoundary_PreventsCrossTurnOverwrite()
+    {
+        // Same regression as above but exercises the PRODUCTION typed-message
+        // path (AddLocalUser) rather than gateway-injected ChatUserMessageEvent.
+        // The tray's text-input box calls AddLocalUser; SSE echoes are usually
+        // suppressed before they reach ApplyUserMessage. So the cross-turn
+        // boundary cleanup MUST also live in AddLocalUser.
+        var state = ChatTimelineReducer.AddLocalUser(
+            ChatTimelineState.Initial(),
+            "first",
+            "nonce-1");
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("first reply"));
+        // Note: NO ChatTurnEndEvent before the next typed message.
+        Assert.NotNull(state.ActiveAssistantId);
+
+        state = ChatTimelineReducer.AddLocalUser(state, "second", "nonce-2");
+        Assert.Null(state.ActiveAssistantId);
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatMessageEvent("second reply"));
+
+        var assistantEntries = updated.Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToList();
+        Assert.Equal(2, assistantEntries.Count);
+        Assert.Equal("first reply", assistantEntries[0].Text);
+        Assert.Equal("second reply", assistantEntries[1].Text);
+    }
+
+    [Fact]
+    public void AddLocalUser_ClearsStaleStreamingPreviewAcrossTurns()
+    {
+        // Stale-streaming regression via the production typed-message path.
+        // A streaming preview that never received its terminal frame must not
+        // be silently overwritten when the user types their next prompt.
+        var state = ChatTimelineReducer.AddLocalUser(
+            ChatTimelineState.Initial(),
+            "first prompt",
+            "nonce-1");
+        state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("partial preview"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        // No final ever arrived for turn 1 — preview is orphaned but still IsStreaming=true.
+        state = ChatTimelineReducer.AddLocalUser(state, "second prompt", "nonce-2");
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("turn 2 final", ReconcilePrevious: true));
+
+        var assistantEntries = updated.Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToList();
+        Assert.Equal(2, assistantEntries.Count);
+        Assert.Equal("partial preview", assistantEntries[0].Text);
+        Assert.False(assistantEntries[0].IsStreaming);
+        Assert.Equal("turn 2 final", assistantEntries[1].Text);
     }
 
     [Fact]
@@ -414,6 +571,50 @@ public class ChatTimelineReducerTests
         var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
 
         Assert.Null(updated.ActiveReasoningId);
+    }
+
+    [Fact]
+    public void ReasoningEnd_ClearsActiveReasoningIdWithoutEndingTurn()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatReasoningEvent("first pass"));
+
+        Assert.NotNull(state.ActiveReasoningId);
+        Assert.True(state.TurnActive);
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatReasoningEndEvent());
+
+        Assert.Null(updated.ActiveReasoningId);
+        Assert.True(updated.TurnActive);
+        // The original reasoning entry is preserved (not deleted).
+        Assert.Single(updated.Entries);
+        Assert.Equal("first pass", updated.Entries[0].Text);
+    }
+
+    [Fact]
+    public void ReasoningEnd_NextReasoningChunkStartsFreshEntry()
+    {
+        var s1 = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatReasoningDeltaEvent("thinking about A"));
+        var s2 = ChatTimelineReducer.Apply(s1, new ChatReasoningEndEvent());
+        var s3 = ChatTimelineReducer.Apply(s2, new ChatReasoningDeltaEvent("thinking about B"));
+
+        Assert.Equal(2, s3.Entries.Count);
+        Assert.Equal("thinking about A", s3.Entries[0].Text);
+        Assert.Equal("thinking about B", s3.Entries[1].Text);
+        Assert.Equal(ChatTimelineItemKind.Reasoning, s3.Entries[0].Kind);
+        Assert.Equal(ChatTimelineItemKind.Reasoning, s3.Entries[1].Kind);
+    }
+
+    [Fact]
+    public void ReasoningEnd_NoActiveReasoning_IsNoOp()
+    {
+        var initial = ChatTimelineState.Initial();
+        var updated = ChatTimelineReducer.Apply(initial, new ChatReasoningEndEvent());
+
+        Assert.Equal(initial, updated);
     }
 
     // ── Intent events ──

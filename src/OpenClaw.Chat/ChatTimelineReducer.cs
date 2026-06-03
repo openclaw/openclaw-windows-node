@@ -12,8 +12,9 @@ public static class ChatTimelineReducer
             ChatThinkingEvent => state with { TurnActive = true },
             ChatReasoningEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: true),
             ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false),
+            ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true),
-            ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: false, e.ReconcilePrevious),
+            ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious),
             ChatTurnEndEvent => ApplyTurnEnd(state),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
             ChatToolStartEvent e => ApplyToolStart(state, e),
@@ -32,6 +33,11 @@ public static class ChatTimelineReducer
 
     public static ChatTimelineState AddLocalUser(ChatTimelineState state, string text, string nonce)
     {
+        // User message = hard turn boundary. Must apply BEFORE appending the
+        // new user entry so a future reconcile-flagged final can't fast-path-
+        // overwrite the prior turn's assistant reply.
+        state = ClearStreamingAtTurnBoundary(state);
+
         var id = $"e{state.NextId}";
         var localNonces = state.LocalNonces;
         if (localNonces.Count >= MaxLocalNonces)
@@ -49,6 +55,31 @@ public static class ChatTimelineReducer
             LocalNonces = localNonces.Add(nonce),
             NextId = state.NextId + 1,
             TurnActive = true
+        };
+    }
+
+    // Hard turn boundary cleanup shared by both user-message entry points
+    // (AddLocalUser for typed input, ApplyUserMessage for gateway-injected
+    // events). Clears ActiveAssistantId/ActiveReasoningId and demotes any
+    // still-streaming assistant entry so the next reconcile-flagged final
+    // cannot silently overwrite the prior turn's reply when ChatTurnEndEvent
+    // is dropped or delayed by the gateway.
+    static ChatTimelineState ClearStreamingAtTurnBoundary(ChatTimelineState state)
+    {
+        var entries = state.Entries;
+        for (var i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Kind == ChatTimelineItemKind.Assistant && entries[i].IsStreaming)
+            {
+                entries = entries.SetItem(i, entries[i] with { IsStreaming = false });
+            }
+        }
+
+        return state with
+        {
+            Entries = entries,
+            ActiveAssistantId = null,
+            ActiveReasoningId = null
         };
     }
 
@@ -159,6 +190,9 @@ public static class ChatTimelineReducer
         {
             return state with { LocalNonces = state.LocalNonces.Remove(nonce) };
         }
+
+        // User message = hard turn boundary (see ClearStreamingAtTurnBoundary).
+        state = ClearStreamingAtTurnBoundary(state);
 
         var id = $"e{state.NextId}";
         return state with
@@ -310,8 +344,21 @@ public static class ChatTimelineReducer
                 var candidate = state.Entries[li];
                 if (candidate.Kind == ChatTimelineItemKind.Assistant)
                 {
+                    // ``reconcilePrevious`` only collapses into a still-streaming
+                    // assistant entry (a delta-state chat.message preview that
+                    // hasn't been replaced by its final yet). A finalised
+                    // assistant entry (IsStreaming=false, left behind by a
+                    // prior final chat.message or ApplyTurnEnd) belongs to a
+                    // completed turn and must NOT be overwritten by a new
+                    // turn's reply — doing so silently swaps an older bubble's
+                    // text in place and the new reply appears nowhere (see
+                    // the system.run-denied repro: user → reply → tool →
+                    // tool-output → reply, where the second reply was
+                    // overwriting the first instead of appending).
+                    // The byte-equal duplicate safety net is unconditional so
+                    // genuine duplicate emissions still collapse.
                     var shouldMerge =
-                        reconcilePrevious
+                        (reconcilePrevious && candidate.IsStreaming)
                         || string.Equals(candidate.Text, text, StringComparison.Ordinal);
                     if (!shouldMerge)
                         break;

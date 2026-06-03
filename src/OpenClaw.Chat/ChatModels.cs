@@ -134,7 +134,14 @@ public record ChatUserMessageEvent(string Text, string? Nonce = null) : ChatEven
 public record ChatThinkingEvent(string Text) : ChatEvent;
 public record ChatReasoningEvent(string Text) : ChatEvent;
 public record ChatReasoningDeltaEvent(string Text) : ChatEvent;
-public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false) : ChatEvent;
+/// <summary>
+/// Closes the current reasoning section so the next reasoning chunk starts a
+/// fresh bubble instead of appending/replacing the previous one. Emitted from
+/// the gateway's <c>stream:"item", kind:"reasoning", phase:"end"</c> bracket
+/// marker that delimits each distinct thinking pass within a single turn.
+/// </summary>
+public record ChatReasoningEndEvent() : ChatEvent;
+public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false, bool IsStreaming = false) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent() : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;

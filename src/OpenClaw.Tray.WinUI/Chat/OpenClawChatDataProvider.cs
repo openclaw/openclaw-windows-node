@@ -1310,10 +1310,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // assistant text (the gateway's EmbeddedBlockChunker emits completed
         // blocks, not token deltas — see spec §"Block Streaming"). Map both
         // to ChatMessageEvent so the reducer REPLACES the active assistant
-        // entry's text. Final additionally ends the turn.
+        // entry's text. We tag delta frames with IsStreaming:true so the
+        // reducer's reconcile-into-previous logic only collapses follow-up
+        // finals into a still-streaming preview — a finalised assistant
+        // from a completed earlier turn must not be silently overwritten
+        // by a brand-new turn's reply (e.g. user → reply → tool → reply).
+        // Final additionally ends the turn.
         ApplyEventAndPublish(
             threadId,
-            new ChatMessageEvent(RepairContentBlockSeams(TruncateForChatEntry(message.Text)), ReconcilePrevious: true),
+            new ChatMessageEvent(
+                RepairContentBlockSeams(TruncateForChatEntry(message.Text)),
+                ReconcilePrevious: true,
+                IsStreaming: !message.IsFinal),
             meta);
 
         if (message.IsFinal)
@@ -1895,7 +1903,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             var delta = deltaProp.GetString();
             if (!string.IsNullOrEmpty(delta))
+            {
+                try { Logger.Trace($"[ReasoningStream] kind=delta len={delta.Length}"); } catch { }
                 return new ChatReasoningDeltaEvent(delta);
+            }
         }
 
         var contentText = evt.Data.TryGetProperty("content", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String
@@ -1904,7 +1915,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 ? t.GetString()
                 : null);
         if (!string.IsNullOrEmpty(contentText))
+        {
+            try { Logger.Trace($"[ReasoningStream] kind=full len={contentText!.Length}"); } catch { }
             return new ChatReasoningEvent(contentText!);
+        }
 
         return null;
     }
@@ -1972,10 +1986,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (evt.Data.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
 
         var kind = evt.Data.TryGetProperty("kind", out var kindProp) ? kindProp.GetString() ?? "" : "";
+        var phase = evt.Data.TryGetProperty("phase", out var phaseProp) ? phaseProp.GetString() ?? "" : "";
+
+        // ``kind=reasoning`` brackets each distinct thinking pass the model
+        // performs within a turn (model reasons → tool call → reasons again).
+        // The reasoning prose itself arrives on ``stream:"reasoning"``; here
+        // we only need the ``phase=end`` boundary so the timeline reducer can
+        // close the active reasoning bubble. Without this signal consecutive
+        // reasoning passes concatenate into a single ever-growing entry,
+        // because ActiveReasoningId is otherwise only cleared on turn end.
+        if (string.Equals(kind, "reasoning", StringComparison.OrdinalIgnoreCase))
+        {
+            try { Logger.Trace($"[ReasoningItem] phase={phase}"); } catch { }
+            return string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)
+                ? new ChatReasoningEndEvent()
+                : null;
+        }
+
         if (!string.Equals(kind, "tool", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var phase = evt.Data.TryGetProperty("phase", out var phaseProp) ? phaseProp.GetString() ?? "" : "";
         var title = evt.Data.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "" : "";
         var toolName = ExtractToolKindFromTitle(title);
         var itemId = evt.Data.TryGetProperty("itemId", out var idProp) ? idProp.GetString() : null;

@@ -185,6 +185,11 @@ internal sealed class SetupOpenClawLogger(SetupLogger logger) : IOpenClawLogger
 {
     public void Info(string message) => logger.Info($"[WS] {message}");
     public void Debug(string message) => logger.Debug($"[WS] {message}");
+    // Trace intentionally drops to the default no-op: setup-engine sessions
+    // are short-lived and don't normally drive agent-event traffic, and there
+    // is no OPENCLAW_TRAY_TRACE-style opt-in gate available here. Letting the
+    // interface default (no-op) apply keeps verbose lines out of setup logs.
+    public void Trace(string message) { }
     public void Warn(string message) => logger.Warn($"[WS] {message}");
     public void Error(string message, Exception? ex = null) => logger.Error($"[WS] {message}{(ex != null ? $": {ex}" : "")}");
 }

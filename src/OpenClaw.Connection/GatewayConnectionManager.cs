@@ -1308,6 +1308,8 @@ internal sealed class DiagnosticTeeLogger : IOpenClawLogger
 
     public void Debug(string message) => _inner.Debug(message);
 
+    public void Trace(string message) => _inner.Trace(message);
+
     public void Warn(string message)
     {
         _inner.Warn(message);

@@ -638,6 +638,50 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task AgentEvent_ReasoningItemEnd_StartsFreshReasoningBubble()
+    {
+        // Regression: when the model reasons → tool → reasons again within
+        // a single turn, the second reasoning pass must render as its own
+        // bubble. The gateway brackets each pass with
+        // stream:"item", kind:"reasoning", phase:"start|end" — without
+        // honoring the end marker the second pass concatenates into the
+        // first bubble instead of replacing it.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"first pass"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item", """{"kind":"reasoning","phase":"end","itemId":"r1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"second pass"}"""));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var reasoningEntries = timeline.Entries.Where(e => e.Kind == ChatTimelineItemKind.Reasoning).ToList();
+        Assert.Equal(2, reasoningEntries.Count);
+        Assert.Equal("first pass", reasoningEntries[0].Text);
+        Assert.Equal("second pass", reasoningEntries[1].Text);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ReasoningItemStart_IsIgnored()
+    {
+        // Only phase=end closes the bubble; phase=start is informational
+        // and must not produce a stray timeline entry.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item", """{"kind":"reasoning","phase":"start","itemId":"r1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"only pass"}"""));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatTimelineItemKind.Reasoning, entry.Kind);
+        Assert.Equal("only pass", entry.Text);
+    }
+
+    [Fact]
     public async Task StopResponseAsync_WithActiveRun_CallsAbortRpc()
     {
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });

@@ -2366,6 +2366,18 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         {
             var streamHint = payload.TryGetProperty("stream", out var sh) ? sh.GetString() ?? "" : "";
             _logger.Debug($"Agent event received: stream={streamHint} len={rawMessageLength}");
+            // For item events, also surface kind+phase metadata (no payload
+            // content) so we can correlate which item kinds flow through.
+            // Trace-level: useful only when investigating event-shape issues
+            // and noisy under normal use.
+            if (string.Equals(streamHint, "item", StringComparison.OrdinalIgnoreCase) &&
+                payload.TryGetProperty("data", out var dataEl) &&
+                dataEl.ValueKind == JsonValueKind.Object)
+            {
+                var k = dataEl.TryGetProperty("kind", out var kp) ? kp.GetString() ?? "" : "";
+                var ph = dataEl.TryGetProperty("phase", out var pp) ? pp.GetString() ?? "" : "";
+                _logger.Trace($"Agent event item: kind={k} phase={ph}");
+            }
         }
         catch { }
 
