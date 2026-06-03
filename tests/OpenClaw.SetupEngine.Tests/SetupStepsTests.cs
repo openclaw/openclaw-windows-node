@@ -281,6 +281,20 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task PreflightWsl_SucceedsWithLocalizedVersionLabel()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args is ["--version"]
+                ? Ok("WSL 버전: 2.7.3.0\n커널 버전: 6.6.114.1-1\nWSLg 버전: 1.0.73\n")
+                : Ok());
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+    }
+
+    [Fact]
     public async Task CreateWslInstance_UsesDirectFreshInstallAndDoesNotExportBaseDistro()
     {
         var installed = false;

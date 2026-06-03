@@ -56,8 +56,8 @@ internal static class WslInstallSupport
     {
         var match = System.Text.RegularExpressions.Regex.Match(
             Normalize(output),
-            @"WSL\s+version:\s*(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            @"^\s*WSL\s+\D*?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Multiline);
 
         if (!match.Success)
         {
