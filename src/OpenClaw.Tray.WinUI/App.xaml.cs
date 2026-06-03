@@ -216,6 +216,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 Logger.Warn($"[App] Ignoring invalid OPENCLAW_LANGUAGE value: {langOverride}");
         }
 
+        // Wire the GatewayHostAccess localization indirection to LocalizationHelper.
+        // The classifier defaults to identity (returns the resource key as-is) for unit-test
+        // contexts that lack a WinUI runtime; in-app we point it at the real resource lookup.
+        GatewayHostAccessLocalization.GetString = LocalizationHelper.GetString;
+        GatewayHostAccessLocalization.Format = (key, args) => LocalizationHelper.Format(key, args);
+
         InitializeComponent();
         
         s_runMarker.Check();

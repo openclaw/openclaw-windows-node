@@ -465,9 +465,9 @@ public sealed partial class ConnectionPage : Page
             return;
         }
 
-        GatewayHostControlsTitleText.Text = "WSL gateway";
-        GatewayHostControlsDescriptionText.Text =
-            $"Open a shell or manage the local gateway service in {_activeHostAccessPlan.DistroName}.";
+        GatewayHostControlsDescriptionText.Text = LocalizationHelper.Format(
+            "ConnectionPage_GatewayHostControlsDescription_Format",
+            _activeHostAccessPlan.DistroName);
         GatewayHostOpenTerminalButton.IsEnabled = !_gatewayHostActionInProgress && _activeHostAccessPlan.CanOpenTerminal;
         GatewayHostStartButton.IsEnabled = !_gatewayHostActionInProgress;
         GatewayHostStopButton.IsEnabled = !_gatewayHostActionInProgress;
@@ -478,6 +478,9 @@ public sealed partial class ConnectionPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
         ToolTipService.SetToolTip(GatewayHostOpenTerminalButton, _activeHostAccessPlan.TerminalTooltip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            GatewayHostOpenTerminalButton,
+            _activeHostAccessPlan.TerminalLabel);
     }
 
     private void SetGatewayHostActionStatus(string message, bool isError = false)

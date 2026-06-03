@@ -215,6 +215,38 @@ public class LocalizationValidationTests
         "CronPage_CreateJobButton",
         "CronPage_EditJobTitle",
         "CronPage_SaveChangesButton",
+        // ConnectionPage gateway terminal controls — surfaced after PR #597
+        // landed in master. Seeded English-only across all 5 locales using the
+        // same deferred-translation pattern as the AgentEventsPage / SkillsPage
+        // / CronPage entries above. The Description_Format key takes the WSL
+        // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
+        "ConnectionPage_GatewayHostControlsTitle.Text",
+        "ConnectionPage_GatewayHostControlsDescription_Format",
+        "ConnectionPage_GatewayHostOpenTerminalLabel.Text",
+        "ConnectionPage_GatewayHostStart.Content",
+        "ConnectionPage_GatewayHostStop.Content",
+        "ConnectionPage_GatewayHostRestart.Content",
+        // Button tooltip + AutomationProperties.Name attached-property keys for
+        // the three WSL gateway lifecycle buttons (Start/Stop/Restart). The
+        // OpenTerminal button's tooltip and name are set dynamically in code
+        // from GatewayHostAccessPlan, so they're localized at the source
+        // (GatewayHostAccess_* keys below) rather than via x:Uid on the Button.
+        "ConnectionPage_GatewayHostStart.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
+        "ConnectionPage_GatewayHostStart.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "ConnectionPage_GatewayHostStop.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
+        "ConnectionPage_GatewayHostStop.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "ConnectionPage_GatewayHostRestart.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
+        "ConnectionPage_GatewayHostRestart.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        // GatewayHostAccess plan strings (terminal label / tooltip / disabled
+        // reasons). Resolved in the classifier via LocalizationHelper so the
+        // OpenTerminal button and any consumers of DisabledReason show
+        // localized text.
+        "GatewayHostAccess_OpenTerminalLabel",
+        "GatewayHostAccess_OpenSshTerminalLabel",
+        "GatewayHostAccess_OpenTerminalInWslTooltip_Format",
+        "GatewayHostAccess_OpenSshTerminalTooltip_Format",
+        "GatewayHostAccess_NoTerminalAccess",
+        "GatewayHostAccess_NoWslOrSshDisabled",
         "Command_GoToConnection_Title",
         "Command_GoToConnection_Subtitle",
         "Command_GoToChat_Title",

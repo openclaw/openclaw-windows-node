@@ -4828,4 +4828,58 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="CronPage_SaveChangesButton" xml:space="preserve">
     <value>Save Changes</value>
   </data>
+  <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
+    <value>WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
+    <value>Open a shell or manage the local gateway service in {0}.</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalLabel.Text" xml:space="preserve">
+    <value>Terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStart.Content" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStop.Content" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestart.Content" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStart.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway start in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStart.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Start WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStop.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway stop in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStop.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Stop WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestart.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway restart in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestart.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Restart WSL gateway</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
+    <value>Open SSH terminal</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalInWslTooltip_Format" xml:space="preserve">
+    <value>Open a terminal in the {0} WSL gateway.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalTooltip_Format" xml:space="preserve">
+    <value>Open an SSH terminal to {0}@{1}.</value>
+  </data>
+  <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
+    <value>This gateway does not have WSL or SSH terminal access.</value>
+  </data>
+  <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
+    <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
+  </data>
 </root>
