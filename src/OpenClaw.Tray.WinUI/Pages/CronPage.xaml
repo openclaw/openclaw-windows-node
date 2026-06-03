@@ -97,9 +97,9 @@
                         <TextBlock x:Uid="CronPage_SCHEDULE" Text="Schedule" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <ComboBox x:Name="FormScheduleKind" SelectedIndex="0" HorizontalAlignment="Stretch"
                                   SelectionChanged="OnScheduleKindChanged">
-                            <ComboBoxItem x:Uid="CronPage_Every" Content="Every" Tag="every"/>
-                            <ComboBoxItem x:Uid="CronPage_At" Content="At" Tag="at"/>
-                            <ComboBoxItem x:Uid="CronPage_Cron" Content="Cron" Tag="cron"/>
+                            <ComboBoxItem x:Uid="CronPage_ScheduleEveryOption" Content="Every" Tag="every"/>
+                            <ComboBoxItem x:Uid="CronPage_ScheduleAtOption" Content="At" Tag="at"/>
+                            <ComboBoxItem x:Uid="CronPage_ScheduleCronOption" Content="Cron" Tag="cron"/>
                         </ComboBox>
                     </StackPanel>
                 </Grid>
@@ -293,4 +293,3 @@
     </Grid>
     </ScrollViewer>
 </Page>
-
