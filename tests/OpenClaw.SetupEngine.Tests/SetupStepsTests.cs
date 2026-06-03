@@ -496,6 +496,7 @@ public class SetupStepsTests : IDisposable
     public void WslInstallSupport_ParsesVersionAndVerboseDistroList()
     {
         Assert.True(WslInstallSupport.TryParseWslVersion("WSL version: 2.7.3.0", out var version));
+        Assert.Equal(new Version(2, 7, 3, 0), version);
         Assert.True(WslInstallSupport.SupportsDirectNamedInstall(version));
 
         Assert.True(WslInstallSupport.TryGetDistroVersion(
@@ -505,34 +506,58 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(2, distroVersion);
     }
 
-    // Regression: wsl.exe emits UTF-16LE on some Windows builds; after NUL-stripping
-    // the label becomes "WSL-Version:" (hyphenated). Non-English Windows also uses
-    // fully localized labels (e.g. Spanish "Versión de WSL:"). All variants must parse.
+    // Regression: wsl.exe emits UTF-16LE on some Windows builds, and localized
+    // Windows changes the human-readable label around the stable WSL product token.
     [Theory]
-    [InlineData("WSL version: 2.7.3.0")]                       // English (space)
-    [InlineData("WSL-Version: 2.7.7.0")]                       // German / NUL-stripped UTF-16
-    [InlineData("WSL-Version: 2.7.7.0\nKernelversion: 6.18.26.1-1\nWSLg-Version: 1.0.73.2\nWindows-Version: 10.0.26300.8553")] // German full block
-    [InlineData("Versión de WSL: 2.7.3.0")]                    // Spanish localized
-    [InlineData("Versión de WSL: 2.7.3.0\nKernel: 5.15.0.1")]  // Spanish with trailing lines
-    public void WslInstallSupport_TryParseWslVersion_HandlesLocalizedAndHyphenatedLabels(string output)
+    [InlineData("WSL version: 2.7.3.0", "2.7.3.0")]                       // English
+    [InlineData("WSL-Version: 2.7.7.0", "2.7.7.0")]                       // German / NUL-stripped UTF-16
+    [InlineData("WSL-Version: 2.7.7.0\nKernelversion: 6.18.26.1-1\nWSLg-Version: 1.0.73.2\nWindows-Version: 10.0.26300.8553", "2.7.7.0")]
+    [InlineData("Versión de WSL: 2.7.3.0", "2.7.3.0")]                    // Spanish
+    [InlineData("Versión de WSL: 2.7.3.0\nKernel: 5.15.0.1", "2.7.3.0")]  // Spanish with trailing lines
+    [InlineData("WSL バージョン: 2.7.8.0", "2.7.8.0")]                    // Japanese-style label
+    [InlineData("WSL版本: 2.7.9.0", "2.7.9.0")]                          // No separator after WSL
+    public void WslInstallSupport_TryParseWslVersion_HandlesLocalizedAndHyphenatedLabels(string output, string expectedVersion)
     {
         Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version),
             $"Expected TryParseWslVersion to succeed for: {output}");
+        Assert.Equal(Version.Parse(expectedVersion), version);
         Assert.True(WslInstallSupport.SupportsDirectNamedInstall(version),
             $"Expected parsed version {version} to satisfy minimum install requirement");
     }
 
     [Theory]
-    [InlineData("WSL-Version: 2.7.7.0")]
-    [InlineData("Versión de WSL: 2.7.3.0")]
-    public void WslInstallSupport_TryParseWslVersion_NulStrippedUtf16_ParsesCorrectVersion(string raw)
+    [InlineData("WSL-Version: 2.7.7.0", "2.7.7.0")]
+    [InlineData("Versión de WSL: 2.7.3.0", "2.7.3.0")]
+    public void WslInstallSupport_TryParseWslVersion_NulStrippedUtf16_ParsesCorrectVersion(string raw, string expectedVersion)
     {
         // Simulate UTF-16LE NUL-byte injection then NUL-stripping.
         var utf16Encoded = string.Join("\0", raw.ToCharArray()) + "\0";
         var stripped = utf16Encoded.Replace("\0", "");
         Assert.True(WslInstallSupport.TryParseWslVersion(stripped, out var version),
             $"Expected TryParseWslVersion to succeed for NUL-stripped: {raw}");
-        Assert.True(version >= new Version(2, 4, 4));
+        Assert.Equal(Version.Parse(expectedVersion), version);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryParseWslVersion_IgnoresAdjacentWslAndWindowsVersionLines()
+    {
+        var output = "WSLg-Version: 1.0.73.2\n"
+            + "Windows-Version: 10.0.26300.8553\n"
+            + "Kernelversion: 6.18.26.1-1\n"
+            + "WSL-Version: 2.7.7.0\n";
+
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version));
+        Assert.Equal(new Version(2, 7, 7, 0), version);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryParseWslVersion_FailsWhenOnlyAdjacentComponentVersionsArePresent()
+    {
+        var output = "WSLg-Version: 1.0.73.2\n"
+            + "Windows-Version: 10.0.26300.8553\n"
+            + "Kernelversion: 6.18.26.1-1\n";
+
+        Assert.False(WslInstallSupport.TryParseWslVersion(output, out _));
     }
 
     [Fact]
