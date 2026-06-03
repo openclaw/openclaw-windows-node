@@ -59,17 +59,18 @@ public sealed class ReleaseSigningWorkflowTests
 
         Assert.Contains("Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime", workflow);
         Assert.Contains("Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-x64 -RequireAppLocalVCRuntime", workflow);
+        Assert.Contains("Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireAppLocalVCRuntime -SkipNativeLoadProbe", workflow);
         Assert.Contains("https://aka.ms/vc14/vc_redist.x64.exe", workflow);
         Assert.Contains("https://aka.ms/vc14/vc_redist.arm64.exe", workflow);
         Assert.Contains("Get-AuthenticodeSignature -LiteralPath $redist.Path", workflow);
         Assert.Contains("O=Microsoft Corporation", workflow);
         Assert.Contains("-InstallerVCRedistPath vc_redist.x64.exe", workflow);
-        Assert.Contains("publish-arm64 -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe", workflow);
+        Assert.Contains("publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe", workflow);
         Assert.Contains("/DvcRedist=vc_redist.x64.exe", workflow);
         Assert.Contains("/DvcRedist=vc_redist.arm64.exe", workflow);
         Assert.DoesNotContain("copy vc_redist.x64.exe publish-x64", workflow);
         Assert.DoesNotContain("copy vc_redist.x64.exe publish-arm64", workflow);
-        Assert.DoesNotContain("win-arm64.zip", workflow);
+        Assert.Contains("OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip", workflow);
         Assert.Contains("AfterInstall: InstallVCRuntime", installer);
         Assert.Contains("Exec(", installer);
         Assert.Contains("ResultCode = 3010", installer);
@@ -83,6 +84,7 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("OpenClawNativeDependencyProbe", verifier);
         Assert.Contains("SkipNativeLoadProbe", verifier);
         Assert.Contains("CopyOpenClawVCRuntimeToPublish", targets);
+        Assert.Contains("ResolveOpenClawVCRuntimeArm64FromVSInstall", targets);
     }
 
     [Fact]
