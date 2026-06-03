@@ -525,6 +525,39 @@ public class SetupStepsTests : IDisposable
             $"Expected parsed version {version} to satisfy minimum install requirement");
     }
 
+    // Mirrors microsoft/WSL localization/strings/*/Resources.resw MessagePackageVersions.
+    [Theory]
+    [InlineData("cs-CZ", "Verze WSL: 2.7.3.0")]
+    [InlineData("da-DK", "WSL-version: 2.7.3.0")]
+    [InlineData("de-DE", "WSL-Version: 2.7.3.0")]
+    [InlineData("en-GB", "WSL version: 2.7.3.0")]
+    [InlineData("en-US", "WSL version: 2.7.3.0")]
+    [InlineData("es-ES", "Versión de WSL: 2.7.3.0")]
+    [InlineData("fi-FI", "WSL-versio: 2.7.3.0")]
+    [InlineData("fr-FR", "Version WSL : 2.7.3.0")]
+    [InlineData("hu-HU", "WSL-verzió: 2.7.3.0")]
+    [InlineData("it-IT", "Versione WSL: 2.7.3.0")]
+    [InlineData("ja-JP", "WSL バージョン: 2.7.3.0")]
+    [InlineData("ko-KR", "WSL 버전: 2.7.3.0")]
+    [InlineData("nb-NO", "WSL-versjon: 2.7.3.0")]
+    [InlineData("nl-NL", "WSL-versie: 2.7.3.0")]
+    [InlineData("pl-PL", "Wersja podsystemu WSL: 2.7.3.0")]
+    [InlineData("pt-BR", "Versão do WSL: 2.7.3.0")]
+    [InlineData("pt-PT", "Versão WSL: 2.7.3.0")]
+    [InlineData("ru-RU", "Версия WSL: 2.7.3.0")]
+    [InlineData("sv-SE", "WSL-version: 2.7.3.0")]
+    [InlineData("tr-TR", "WSL sürümü: 2.7.3.0")]
+    [InlineData("zh-CN", "WSL 版本: 2.7.3.0")]
+    [InlineData("zh-TW", "WSL 版本： 2.7.3.0")]
+    public void WslInstallSupport_TryParseWslVersion_HandlesMicrosoftLocalizedPackageVersionLabels(
+        string locale,
+        string output)
+    {
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version),
+            $"Expected TryParseWslVersion to succeed for {locale}: {output}");
+        Assert.Equal(new Version(2, 7, 3, 0), version);
+    }
+
     [Theory]
     [InlineData("WSL-Version: 2.7.7.0", "2.7.7.0")]
     [InlineData("Versión de WSL: 2.7.3.0", "2.7.3.0")]
