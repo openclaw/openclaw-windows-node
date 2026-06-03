@@ -12,6 +12,14 @@ The Windows Node feature allows the tray app to receive commands from the OpenCl
 4. Toggle "Enable Node Mode" ON
 5. Click Save
 
+## Companion-App Setup Guidance
+
+For app-owned local WSL setup, after node pairing, setup ensures OpenClaw has seeded the runtime workspace and then injects fixed Windows-node guidance into that workspace's `AGENTS.md`. The injected block is setup-owned and idempotently replaced between managed markers, preserving any user-authored `AGENTS.md` content outside those markers and leaving OpenClaw source files unchanged.
+
+**Note on the apply script's WSL invocation.** The `WindowsNodeBootstrapContextStep` apply and rollback scripts are piped to `bash -s` via stdin (`RunInWslAsync(..., inputViaStdin: true)`) rather than the default `bash -c` argv path. This is required because `wsl.exe` performs shell variable expansion on argv before invoking bash, which would drop user-defined `$var` references in the multi-line script (`workspace='...'` followed by `mkdir -p "$workspace"` becomes `mkdir -p ""`). See `docs/WSL_EXE_ARGV_PITFALL.md` for the full writeup.
+
+The guidance helps the first companion-app OpenClaw session route Windows desktop, files, screenshots, camera, notifications, browser proxy, and Windows command tasks through the Windows node / `nodes` tool.
+
 ## What You Can Test Now
 
 ### 1. Settings Toggle

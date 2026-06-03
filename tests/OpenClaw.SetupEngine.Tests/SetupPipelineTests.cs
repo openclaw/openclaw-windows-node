@@ -60,13 +60,16 @@ public class SetupPipelineTests
     {
         var steps = SetupStepFactory.BuildDefaultSteps();
 
-        Assert.Equal(18, steps.Count);
+        Assert.Equal(19, steps.Count);
         Assert.IsType<PreflightOsStep>(steps[0]);
         Assert.IsType<PreflightWslStep>(steps[1]);
         Assert.IsType<CleanupStaleDistroStep>(steps[2]);
         Assert.IsType<CleanupStaleGatewayStep>(steps[3]);
         Assert.Contains(steps, s => s is ValidateWslLockdownStep);
         Assert.Contains(steps, s => s is RunGatewayWizardStep);
+        var pairNodeIndex = steps.FindIndex(s => s is PairNodeStep);
+        Assert.IsType<WindowsNodeBootstrapContextStep>(steps[pairNodeIndex + 1]);
+        Assert.IsType<VerifyEndToEndStep>(steps[pairNodeIndex + 2]);
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
     }
 
