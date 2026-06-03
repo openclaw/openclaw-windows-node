@@ -2285,7 +2285,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Gebruik</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Cron</value>
+    <value>Planning</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>Deze computer</value>

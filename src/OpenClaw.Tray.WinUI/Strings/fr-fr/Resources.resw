@@ -2284,7 +2284,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Utilisations</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Cron</value>
+    <value>Planification</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>Cet ordinateur</value>
