@@ -85,7 +85,7 @@ public static class Logger
     private static void Log(string level, string message)
     {
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-        var line = $"[{timestamp}] [{level}] {TokenSanitizer.Sanitize(message)}";
+        var line = $"[{timestamp}] [{level}] {TokenSanitizer.SanitizeLogMessage(message)}";
 
         // TryWrite is non-blocking. With DropOldest semantics the call should
         // never fail unless the writer has been completed (process shutdown).

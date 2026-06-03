@@ -364,7 +364,7 @@ internal static class CommandCenterTextHelper
 
         var builder = new StringBuilder();
         builder.AppendLine($"Source: {RedactSupportPath(logPath)}");
-        builder.AppendLine($"Showing the last {lines.Count} lines. Secrets and local user paths are redacted.");
+        builder.AppendLine($"Showing the last {lines.Count} lines. Sensitive values are redacted before writing and again before bundling.");
         foreach (var line in lines)
         {
             if (builder.Length >= RecentTrayLogMaxChars)
@@ -381,7 +381,7 @@ internal static class CommandCenterTextHelper
 
     private static string RedactSupportLogLine(string line)
     {
-        var redacted = TokenSanitizer.Sanitize(line);
+        var redacted = TokenSanitizer.SanitizeLogMessage(line);
         foreach (var folder in new[]
                  {
                      Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

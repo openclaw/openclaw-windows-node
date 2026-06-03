@@ -72,7 +72,7 @@ public static class DiagnosticsJsonlService
                 @event = eventName,
                 metadata
             };
-            var line = TokenSanitizer.Sanitize(JsonSerializer.Serialize(record));
+            var line = TokenSanitizer.SanitizeLogMessage(JsonSerializer.Serialize(record));
             channel.Writer.TryWrite(line);
         }
         catch (NotSupportedException ex)

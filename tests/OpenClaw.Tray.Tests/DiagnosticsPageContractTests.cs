@@ -551,10 +551,23 @@ public sealed class DiagnosticsPageContractTests
         var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "CommandCenterTextHelper.cs");
         Assert.Contains("Recent Tray Log", helper);
         Assert.Contains("BuildRecentTrayLogTail(Logger.LogFilePath)", helper);
-        Assert.Contains("TokenSanitizer.Sanitize(line)", helper);
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(line)", helper);
         Assert.Contains("RecentTrayLogTailLines", helper);
         Assert.Contains("RecentTrayLogMaxChars", helper);
         Assert.Contains("FileShare.ReadWrite | FileShare.Delete", helper);
+    }
+
+    [Fact]
+    public void TrayLogWriters_SanitizeSensitiveValuesBeforeWriting()
+    {
+        var logger = Read("src", "OpenClaw.Tray.WinUI", "Services", "Logger.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(message)", logger);
+
+        var diagnosticsJsonl = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsJsonlService.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(JsonSerializer.Serialize(record))", diagnosticsJsonl);
+
+        var crashLogger = Read("src", "OpenClaw.Tray.WinUI", "Services", "AppCrashLogger.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage", crashLogger);
     }
 
     [Fact]

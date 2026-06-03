@@ -228,6 +228,30 @@ public class TokenSanitizerTests
         Assert.Contains("[REDACTED]", sanitized);
     }
 
+    [Fact]
+    public void SanitizeLogMessage_RedactsLocalUserPaths()
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage(@"Failed reading C:\Users\alice\AppData\Local\OpenClawTray\settings.json");
+
+        Assert.DoesNotContain("alice", sanitized);
+        Assert.Contains("%USERPROFILE%", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsNetworkAndIdentityValues()
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage("Connect to ws://gateway.example.com:19001/ as alice@example.com via 10.1.2.3 and alice@server:22");
+
+        Assert.DoesNotContain("gateway.example.com", sanitized);
+        Assert.DoesNotContain("alice@example.com", sanitized);
+        Assert.DoesNotContain("10.1.2.3", sanitized);
+        Assert.DoesNotContain("alice@server", sanitized);
+        Assert.Contains("ws://<host>:19001/", sanitized);
+        Assert.Contains("<email>", sanitized);
+        Assert.Contains("<ip>", sanitized);
+        Assert.Contains("<user>@<host>:22", sanitized);
+    }
+
     private static int CountOccurrences(string source, string pattern)
     {
         var count = 0;
