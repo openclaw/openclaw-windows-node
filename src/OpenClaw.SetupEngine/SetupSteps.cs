@@ -54,9 +54,15 @@ internal static class WslInstallSupport
 
     public static bool TryParseWslVersion(string output, out Version version)
     {
+        // WSL outputs UTF-16LE on some Windows builds; after NUL-stripping the label may
+        // appear as the hyphenated form "WSL-Version:" instead of the English space form
+        // "WSL version:".  On non-English Windows, wsl.exe can also emit a fully localized
+        // label (e.g. German "WSL-Version:", Spanish "Versión de WSL:") or similar.
+        // The alternation below covers the confirmed variants without over-matching
+        // unrelated numeric output.
         var match = System.Text.RegularExpressions.Regex.Match(
             Normalize(output),
-            @"WSL\s+version:\s*(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?",
+            @"(?:WSL[\s\-]+version|vers[ií][oó]n\s+de\s+wsl):\s*(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         if (!match.Success)
