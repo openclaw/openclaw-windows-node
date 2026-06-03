@@ -27,6 +27,9 @@ public sealed record GatewayRecord
     /// <summary>True for gateways provisioned locally (localhost/WSL).</summary>
     public bool IsLocal { get; init; }
 
+    /// <summary>True when this gateway is known to require v2 auth signatures.</summary>
+    public bool RequiresV2Signature { get; init; }
+
     /// <summary>WSL distro name for gateway records provisioned by SetupEngine.</summary>
     public string? SetupManagedDistroName { get; init; }
 

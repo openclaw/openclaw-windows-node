@@ -2641,6 +2641,27 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ Download vereist</value>
   </data>
+  <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
+    <value>Spraakinvoer is pas klaar nadat ten minste één spraakmodel is gedownload.</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffTitle" xml:space="preserve">
+    <value>Spraakinvoer is uitgeschakeld</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffMessage" xml:space="preserve">
+    <value>Schakel Spraak-naar-tekst in bij Spraakinstellingen en download daarna een spraakmodel voordat u de microfoon in de chat gebruikt.</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredTitle" xml:space="preserve">
+    <value>Spraakmodel vereist</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
+    <value>Spraak-naar-tekst is ingeschakeld, maar spraakinvoer werkt pas nadat ten minste één spraakmodel is gedownload.</value>
+  </data>
+  <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
+    <value>Spraak- en audio-instellingen openen</value>
+  </data>
+  <data name="ChatVoiceDialog_Dismiss" xml:space="preserve">
+    <value>Sluiten</value>
+  </data>
   <data name="VoiceSettingsPage_ButtonReDownload" xml:space="preserve">
     <value>Opnieuw downloaden</value>
   </data>
@@ -2952,6 +2973,24 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Weigeren</value>
+  </data>
+  <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
+    <value>Toegestaan</value>
+  </data>
+  <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
+    <value>Geweigerd</value>
+  </data>
+  <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
+    <value>Verlopen</value>
+  </data>
+  <data name="Chat_Permission_Title" xml:space="preserve">
+    <value>Goedkeuring voor uitvoering vereist</value>
+  </data>
+  <data name="Chat_Permission_Subtitle" xml:space="preserve">
+    <value>Goedkeuring is nodig om de onderstaande opdracht uit te voeren op deze Windows-companion. Klik op Toestaan om door te gaan, of Weigeren om te annuleren.</value>
+  </data>
+  <data name="Chat_Permission_Caption" xml:space="preserve">
+    <value>Voor elke opdracht is goedkeuring vereist volgens het actieve beleid. Uw keuze geldt alleen voor deze aanvraag.</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Verbinden met gateway…</value>
@@ -5371,5 +5410,65 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
   </data>
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>Wachten tot de gateway bevestigt dat het kanaal actief is…</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
+    <value>WSL-gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription.Text" xml:space="preserve">
+    <value>Open een shell of beheer de lokale gatewayservice in WSL.</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostTerminalLabel.Text" xml:space="preserve">
+    <value>Terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.Content" xml:space="preserve">
+    <value>Starten</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.Content" xml:space="preserve">
+    <value>Stoppen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.Content" xml:space="preserve">
+    <value>Opnieuw starten</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dashboard openen (in browser)</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Dashboard openen</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Verbinding verbreken / opnieuw verbinden</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Verbinding verbreken of opnieuw verbinden</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>openclaw gateway start uitvoeren in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WSL-gateway starten</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>openclaw gateway stop uitvoeren in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WSL-gateway stoppen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>openclaw gateway restart uitvoeren in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WSL-gateway opnieuw starten</value>
   </data>
 </root>

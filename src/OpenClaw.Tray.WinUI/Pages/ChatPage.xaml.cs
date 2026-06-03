@@ -22,7 +22,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class ChatPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private HubWindow? _hub;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
@@ -276,7 +276,7 @@ public sealed partial class ChatPage : Page
         // If the V hotkey (or another caller) requested auto-start voice,
         // trigger it after the UI thread processes the mount (composer needs
         // to render first so TriggerVoiceRecording is registered).
-        if (_hub.PendingAutoStartVoice)
+        if (_hub?.PendingAutoStartVoice == true)
         {
             _hub.PendingAutoStartVoice = false;
             DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -487,7 +487,7 @@ public sealed partial class ChatPage : Page
             }
 
             Logger.Info("[ChatPage] Operator handshake ready; probing chat HTTP surface");
-            ready = await ProbeChatSurfaceAsync(_chatUrl, TimeSpan.FromSeconds(30), cancellationToken);
+            ready = await ProbeChatSurfaceAsync(_chatUrl!, TimeSpan.FromSeconds(30), cancellationToken);
             if (!ready)
             {
                 ShowChatReadinessFailure(string.Format(LocalizationHelper.GetString("ChatPage_TimedOutChat"), gatewayUrl));
@@ -662,51 +662,33 @@ public sealed partial class ChatPage : Page
 
     private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken, Action? onRecordingStarted)
     {
+        if (CurrentApp.Settings?.NodeSttEnabled != true)
+        {
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
+                NavigateToVoiceSettings);
+            return null;
+        }
+
         var voiceService = _hub?.VoiceServiceInstance;
         var host = _functionalHost;
-        if (voiceService is null) return null;
+        if (voiceService is null)
+        {
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
+                NavigateToVoiceSettings);
+            return null;
+        }
 
         // If the STT model isn't downloaded yet, prompt the user and open voice settings.
         if (!voiceService.IsModelDownloaded)
         {
-            var tcs = new TaskCompletionSource();
-            DispatcherQueue?.TryEnqueue(async () =>
-            {
-                try
-                {
-                    var dialog = new ContentDialog
-                    {
-                        Title = LocalizationHelper.GetString("ChatPage_VoiceModelRequired"),
-                        Content = LocalizationHelper.GetString("ChatPage_VoiceModelInstallMessage"),
-                        PrimaryButtonText = LocalizationHelper.GetString("ChatPage_OpenVoiceSettings"),
-                        CloseButtonText = LocalizationHelper.GetString("ChatPage_Cancel"),
-                        XamlRoot = Content?.XamlRoot
-                    };
-                    // Light-dismiss: close when the user taps the smoke overlay.
-                    dialog.Opened += (s, _) =>
-                    {
-                        if (s is ContentDialog d)
-                        {
-                            foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
-                            {
-                                if (popup.Child is UIElement overlay && overlay != d)
-                                {
-                                    overlay.Tapped += (_, _) => d.Hide();
-                                    break;
-                                }
-                            }
-                        }
-                    };
-                    var result = await dialog.ShowAsync();
-                    if (result == ContentDialogResult.Primary)
-                    {
-                        _hub?.NavigateTo("voice");
-                    }
-                }
-                catch { /* dialog already open or window closing */ }
-                finally { tcs.TrySetResult(); }
-            });
-            await tcs.Task;
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredMessage"),
+                NavigateToVoiceSettings);
             return null;
         }
 
@@ -734,6 +716,64 @@ public sealed partial class ChatPage : Page
             host?.SetVoiceTranscript(null);
             host?.SetVoiceAudioLevel(0f);
         }
+    }
+
+    private async Task ShowVoiceSettingsDialogAsync(string title, string message, Action openVoiceSettings)
+    {
+        var tcs = new TaskCompletionSource();
+        if (DispatcherQueue is null || !DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = title,
+                    Content = message,
+                    PrimaryButtonText = LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
+                    CloseButtonText = LocalizationHelper.GetString("ChatVoiceDialog_Dismiss"),
+                    DefaultButton = ContentDialogButton.Primary,
+                    XamlRoot = Content?.XamlRoot
+                };
+                dialog.Opened += (s, _) =>
+                {
+                    if (s is ContentDialog d)
+                    {
+                        foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
+                        {
+                            if (popup.Child is UIElement overlay && overlay != d)
+                            {
+                                overlay.Tapped += (_, _) => d.Hide();
+                                break;
+                            }
+                        }
+                    }
+                };
+
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                    openVoiceSettings();
+            }
+            catch (InvalidOperationException ex)
+            {
+                Logger.Warn($"Voice settings dialog could not be shown: {ex.Message}");
+            }
+            finally
+            {
+                tcs.TrySetResult();
+            }
+        }))
+        {
+            return;
+        }
+
+        await tcs.Task;
+    }
+
+    private void NavigateToVoiceSettings()
+    {
+        if (_hub is not null)
+            _hub.NavigateTo("voice");
+        else
+            (App.Current as App)?.ShowHub("voice");
     }
 
     private void OnAttachClicked()

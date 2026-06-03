@@ -32,7 +32,7 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class ChannelsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
 
     /// <summary>
@@ -170,7 +170,7 @@ public sealed partial class ChannelsPage : Page
     /// </summary>
     public void Initialize()
     {
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         if (_appState != null)
             _appState.PropertyChanged += OnAppStateChanged;
 
@@ -316,10 +316,11 @@ public sealed partial class ChannelsPage : Page
         return _configSnapshot.HasRoot;
     }
 
-    private async void OnRefreshAll(object sender, RoutedEventArgs e)
-    {
-        await RefreshAsync();
-    }
+    private void OnRefreshAll(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => RefreshAsync(),
+            new OpenClawTray.AppLogger(),
+            nameof(OnRefreshAll));
 
     private async Task RefreshAsync(bool probe = true)
     {

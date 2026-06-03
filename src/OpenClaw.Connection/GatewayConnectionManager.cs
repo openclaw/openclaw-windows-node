@@ -23,6 +23,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
+    private readonly object _disposeLock = new();
 
     private long _generation;
     private CancellationTokenSource? _operationCts;
@@ -30,7 +31,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _activeIdentityPath; // identity directory for the active connection
     private string? _activeGatewayRecordId; // gateway record ID for node credential resolution
     private bool _disposed;
+    private Task? _disposeTask;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
+    private string? _operatorTokenRecoveryAttemptedGatewayId;
     private string? _lastAutoApprovedRequestId; // prevent auto-approve loops
     private string? _autoApproveInFlight; // atomic guard against concurrent approval of same requestId
 
@@ -98,6 +101,30 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
+    public async Task ConnectNodeOnlyAsync(string? gatewayId = null)
+    {
+        ThrowIfDisposed();
+        var prevState = _stateMachine.Current.OverallState;
+        var prepared = false;
+
+        await _transitionSemaphore.WaitAsync();
+        try
+        {
+            prepared = await PrepareNodeOnlyConnectCoreAsync(gatewayId);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+
+        if (!prepared)
+            return;
+
+        var started = await StartNodeConnectionAsync();
+        if (started)
+            EmitStateChanged(prevState);
+    }
+
     /// <summary>Core connect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
     private async Task ConnectCoreAsync(string? gatewayId = null)
     {
@@ -128,7 +155,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             oldCts?.Dispose();
 
             // Dispose old client
-            DisposeActiveClient();
+            await DisposeActiveClientAsync();
 
             // Update snapshot with gateway info
             _stateMachine.Current = _stateMachine.Current with
@@ -147,6 +174,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _diagnostics.RecordCredentialResolution(credential);
             _activeIdentityPath = perGatewayIdentityDir;
             _activeGatewayRecordId = record.Id;
+            _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
 
             if (credential == null)
             {
@@ -239,12 +267,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             };
             lifecycle.DataClient.V2SignatureFallback += (s, _) =>
             {
-                _gatewayNeedsV2Signature = true;
+                if (Interlocked.Read(ref _generation) != gen) return;
+                RememberGatewayNeedsV2Signature(record.Id);
             };
 
             // Local gateways only support v2 signatures — skip the v3 attempt entirely
             // to avoid a spurious "metadata-upgrade" re-pairing triggered by the v3→v2 fallback.
-            if (record.IsLocal)
+            if (record.IsLocal || record.RequiresV2Signature)
                 _gatewayNeedsV2Signature = true;
 
             // If we already know this gateway needs v2, tell the client upfront
@@ -267,13 +296,109 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }, ct);
     }
 
+    /// <summary>
+    /// Starts the node role without requiring an operator credential. This is the
+    /// durable tray restart path for already-paired Windows nodes whose registry
+    /// record only has a persisted NodeDeviceToken.
+    /// </summary>
+    private async Task<bool> PrepareNodeOnlyConnectCoreAsync(string? gatewayId = null)
+    {
+        var id = gatewayId ?? _registry.ActiveGatewayId;
+        if (id == null)
+        {
+            _logger.Warn("[ConnMgr] No gateway ID specified and no active gateway for node-only connect");
+            return false;
+        }
+
+        var record = _registry.GetById(id);
+        if (record == null)
+        {
+            _logger.Warn($"[ConnMgr] Gateway {id} not found in registry for node-only connect");
+            return false;
+        }
+
+        var perGatewayIdentityDir = _registry.GetIdentityDirectory(record.Id);
+        if (!Directory.Exists(perGatewayIdentityDir))
+            Directory.CreateDirectory(perGatewayIdentityDir);
+
+        var nodeCredential = _credentialResolver.ResolveNode(record, perGatewayIdentityDir);
+        if (nodeCredential == null)
+        {
+            _logger.Warn("[ConnMgr] No node credential available for node-only connect");
+            _diagnostics.Record("node", "No node credential available for node-only connect");
+            return false;
+        }
+
+        var gen = Interlocked.Increment(ref _generation);
+        var oldCts = Interlocked.Exchange(ref _operationCts, new CancellationTokenSource());
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+
+        await DisposeActiveClientAsync();
+
+        _activeIdentityPath = perGatewayIdentityDir;
+        _activeGatewayRecordId = record.Id;
+        _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
+        _stateMachine.Current = _stateMachine.Current with
+        {
+            GatewayId = record.Id,
+            GatewayUrl = record.Url,
+            GatewayName = record.FriendlyName
+        };
+
+        _diagnostics.RecordCredentialResolution(nodeCredential);
+        _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
+            $"Credential source: {nodeCredential.Source}");
+
+        if (!await TryStartTunnelForNodeOnlyAsync(record))
+            return false;
+
+        return Interlocked.Read(ref _generation) == gen;
+    }
+
+    private async Task<bool> TryStartTunnelForNodeOnlyAsync(GatewayRecord record)
+    {
+        if (record.SshTunnel == null)
+            return true;
+
+        if (_tunnelManager == null)
+        {
+            _diagnostics.Record("tunnel", "No tunnel manager available; using configured local tunnel URL for node-only connect");
+            return true;
+        }
+
+        var tunnel = record.SshTunnel;
+        if (string.IsNullOrWhiteSpace(tunnel.User) ||
+            string.IsNullOrWhiteSpace(tunnel.Host) ||
+            tunnel.RemotePort is < 1 or > 65535 ||
+            tunnel.LocalPort is < 1 or > 65535)
+        {
+            _logger.Warn("[ConnMgr] SSH tunnel config is incomplete for node-only connect");
+            _diagnostics.Record("tunnel", "SSH tunnel config is incomplete for node-only connect");
+            return false;
+        }
+
+        try
+        {
+            var connectUrl = await _tunnelManager.StartAsync(tunnel, _operationCts!.Token);
+            _diagnostics.Record("tunnel", $"SSH tunnel started for node-only connect → {connectUrl}");
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.Error($"[ConnMgr] SSH tunnel start failed for node-only connect: {ex.Message}");
+            _diagnostics.Record("tunnel", "SSH tunnel start failed for node-only connect", ex.Message);
+            return false;
+        }
+    }
+
     public async Task DisconnectAsync()
     {
         ThrowIfDisposed();
         await _transitionSemaphore.WaitAsync();
         try
         {
-            DisconnectCore();
+            await DisconnectCoreAsync();
         }
         finally
         {
@@ -282,10 +407,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     }
 
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
-    private void DisconnectCore()
+    private async Task DisconnectCoreAsync()
     {
         var prev = _stateMachine.Current.OverallState;
-        DisposeActiveClient();
+        await DisposeActiveClientAsync();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
         _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
         EmitStateChanged(prev);
@@ -297,7 +422,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            DisconnectCore();
+            await DisconnectCoreAsync();
             await ConnectCoreAsync();
         }
         finally
@@ -312,7 +437,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            DisconnectCore();
+            await DisconnectCoreAsync();
             // Stop tunnel when switching gateways — the new one may not need it.
             // Use a bounded timeout to avoid blocking all connection transitions.
             if (_tunnelManager?.IsActive == true)
@@ -486,6 +611,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (Interlocked.Read(ref _generation) != gen) return;
 
+            if (TryScheduleOperatorTokenRecovery(message, gen))
+                return;
+
             var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("error", "Authentication failed", message);
             _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, message);
@@ -496,6 +624,48 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
     }
+
+    private bool TryScheduleOperatorTokenRecovery(string message, long gen)
+    {
+        if (!IsOperatorDeviceTokenMismatch(message) ||
+            _activeGatewayRecordId == null ||
+            _activeIdentityPath == null ||
+            _operatorTokenRecoveryAttemptedGatewayId == _activeGatewayRecordId)
+        {
+            return false;
+        }
+
+        var record = _registry.GetById(_activeGatewayRecordId);
+        if (record == null || string.IsNullOrWhiteSpace(record.BootstrapToken))
+            return false;
+
+        if (!DeviceIdentity.TryClearDeviceToken(_activeIdentityPath, _logger))
+            return false;
+
+        _operatorTokenRecoveryAttemptedGatewayId = _activeGatewayRecordId;
+        _diagnostics.Record("credential", "Cleared stale operator device token; reconnecting with bootstrap token");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _reconnectDelay(TimeSpan.FromMilliseconds(200));
+                if (Interlocked.Read(ref _generation) != gen || _disposed) return;
+                await ReconnectAsync();
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[ConnMgr] Operator token recovery reconnect failed: {ex.Message}");
+            }
+        });
+
+        return true;
+    }
+
+    private static bool IsOperatorDeviceTokenMismatch(string message) =>
+        message.Contains("device token mismatch", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("AUTH_DEVICE_TOKEN_MISMATCH", StringComparison.OrdinalIgnoreCase);
 
     private async Task HandleHandshakeSucceededAsync(long gen)
     {
@@ -508,6 +678,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _diagnostics.Record("state", "Handshake succeeded (hello-ok)");
             _stateMachine.TryTransition(ConnectionTrigger.HandshakeSucceeded);
             _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
+            if (_operatorTokenRecoveryAttemptedGatewayId == _activeGatewayRecordId)
+                _operatorTokenRecoveryAttemptedGatewayId = null;
 
             // Update device ID from client
             if (_activeLifecycle?.DataClient is { } client)
@@ -574,6 +746,25 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _registry.Save();
                 _diagnostics.Record("credential", "Cleared bootstrap token — both roles paired");
             }
+        }
+    }
+
+    private void RememberGatewayNeedsV2Signature(string? gatewayRecordId)
+    {
+        _gatewayNeedsV2Signature = true;
+
+        if (string.IsNullOrWhiteSpace(gatewayRecordId))
+            return;
+
+        try
+        {
+            _registry.Update(gatewayRecordId, r => r.RequiresV2Signature ? r : r with { RequiresV2Signature = true });
+            _registry.Save();
+            _diagnostics.Record("credential", "Remembered gateway v2 signature requirement");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Failed to persist v2 signature requirement: {ex.Message}");
         }
     }
 
@@ -767,7 +958,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         return true;
     }
 
-    private async void OnNodeStatusChanged(object? sender, ConnectionStatus status)
+    private void OnNodeStatusChanged(object? sender, ConnectionStatus status) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnNodeStatusChangedAsync(status),
+            _logger,
+            nameof(OnNodeStatusChanged),
+            ex => _diagnostics.Record("node", "Node status handler failed", ex.Message));
+
+    private async Task OnNodeStatusChangedAsync(ConnectionStatus status)
     {
         _diagnostics.Record("node", $"Node status: {status}");
 
@@ -815,7 +1013,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private async void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e)
+    private void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnNodePairingStatusChangedAsync(e),
+            _logger,
+            nameof(OnNodePairingStatusChanged),
+            ex => _diagnostics.Record("node", "Node pairing handler failed", ex.Message));
+
+    private async Task OnNodePairingStatusChangedAsync(PairingStatusEventArgs e)
     {
         _diagnostics.Record("node", $"Node pairing: {e.Status}");
 
@@ -926,12 +1131,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         StateChanged?.Invoke(this, snapshot);
     }
 
-    private void DisposeActiveClient()
+    private async Task DisposeActiveClientAsync()
     {
-        // Disconnect node first — run on threadpool to avoid sync context deadlocks
+        // Disconnect node first, but do not block the caller thread; shutdown
+        // and reconnect paths await this with a bounded timeout.
         if (_nodeConnector != null)
         {
-            try { Task.Run(() => _nodeConnector.DisconnectAsync()).Wait(TimeSpan.FromSeconds(2)); }
+            try { await WaitWithTimeoutAsync(_nodeConnector.DisconnectAsync(), TimeSpan.FromSeconds(2), "Node disconnect"); }
             catch (Exception ex) { _logger.Warn($"[ConnMgr] Node disconnect error: {ex.Message}"); }
         }
 
@@ -951,42 +1157,116 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
+    private async Task WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
+    {
+        var completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
+        if (completed != task)
+        {
+            _logger.Warn($"[ConnMgr] {operation} timed out after {timeout.TotalSeconds:F1}s");
+            return;
+        }
+
+        await task.ConfigureAwait(false);
+    }
+
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
+    public ValueTask DisposeAsync()
+    {
+        var task = EnsureDisposeTask();
+        return new ValueTask(task);
+    }
+
     public void Dispose()
+    {
+        ObserveBackgroundFault(EnsureDisposeTask(), "[ConnMgr] Dispose error");
+    }
+
+    private Task EnsureDisposeTask()
+    {
+        lock (_disposeLock)
+        {
+            return _disposeTask ??= DisposeCoreAsync();
+        }
+    }
+
+    private async Task DisposeCoreAsync()
     {
         if (_disposed) return;
         _disposed = true;
+        _operationCts?.Cancel();
+
         // Unsubscribe from node events before disposing the semaphore
-        // to prevent async void handlers from crashing via ObjectDisposedException.
+        // to prevent guarded async handlers from racing the disposed semaphore.
         if (_nodeConnector != null)
         {
             _nodeConnector.StatusChanged -= OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged -= OnNodePairingStatusChanged;
         }
         // Acquire semaphore briefly to ensure no in-flight reconnect/switch is mid-transition.
-        // Use a short timeout — if something is stuck, proceed with disposal anyway.
-        try { _transitionSemaphore.Wait(TimeSpan.FromSeconds(2)); } catch { }
+        // Use a short timeout — if something is stuck, proceed with disposal anyway,
+        // but do not dispose the semaphore out from under the holder.
+        var semaphoreEntered = false;
+        try
+        {
+            semaphoreEntered = await _transitionSemaphore.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            if (!semaphoreEntered)
+                _logger.Warn("[ConnMgr] Dispose timed out waiting for transition semaphore");
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
         try
         {
             _stateMachine.TryTransition(ConnectionTrigger.Disposed);
-            DisposeActiveClient();
-            // Stop tunnel on app shutdown — run on threadpool with timeout to avoid stalling exit
+            await DisposeActiveClientAsync();
+            // Stop tunnel on app shutdown with timeout to avoid stalling exit.
             if (_tunnelManager?.IsActive == true)
             {
-                try { Task.Run(() => _tunnelManager.StopAsync()).Wait(TimeSpan.FromSeconds(3)); }
-                catch { /* shutting down — best effort */ }
+                try { await WaitWithTimeoutAsync(_tunnelManager.StopAsync(), TimeSpan.FromSeconds(3), "Tunnel stop"); }
+                catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error during dispose: {ex.Message}"); }
             }
-            _operationCts?.Cancel();
             _operationCts?.Dispose();
+            _operationCts = null;
         }
         finally
         {
-            try { _transitionSemaphore.Release(); } catch { }
-            _transitionSemaphore.Dispose();
+            if (semaphoreEntered)
+            {
+                try { _transitionSemaphore.Release(); } catch { }
+                _transitionSemaphore.Dispose();
+            }
+
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    private void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            _logger.Warn($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            _logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => _logger.Warn($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 }

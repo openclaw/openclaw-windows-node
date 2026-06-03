@@ -20,15 +20,17 @@ namespace OpenClawTray.Services;
 /// <summary>
 /// Windows Node service - manages node connection and capabilities
 /// </summary>
-public sealed class NodeService : IDisposable
+public sealed class NodeService : IDisposable, IAsyncDisposable
 {
     private readonly IOpenClawLogger _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly Func<FrameworkElement?> _rootProvider;
     private readonly SettingsManager? _settings;
     private readonly SemaphoreSlim _consentLock = new(1, 1);
+    private readonly object _disposeLock = new();
     private TaskCompletionSource<bool>? _screenConsentInFlight;
     private TaskCompletionSource<bool>? _cameraConsentInFlight;
+    private Task? _disposeTask;
     private WindowsNodeClient? _nodeClient;
     private CanvasWindow? _canvasWindow;
     // Invariant: _a2uiCanvasWindow is only read/written from the UI dispatcher
@@ -231,9 +233,9 @@ public sealed class NodeService : IDisposable
     /// <see cref="OpenClawTray.Services.Connection.NodeConnector"/>; call
     /// <c>GatewayConnectionManager.DisconnectAsync</c> to actually close the WebSocket.
     /// </summary>
-    public Task DisconnectAsync()
+    public async Task DisconnectAsync()
     {
-        StopMcpServer();
+        await StopMcpServerAsync().ConfigureAwait(false);
 
         WindowsNodeClient? previous;
         lock (_clientLock)
@@ -261,8 +263,6 @@ public sealed class NodeService : IDisposable
             _dispatcherQueue.TryEnqueue(() => _a2uiCanvasWindow.Close());
             _a2uiCanvasWindow = null;
         }
-
-        return Task.CompletedTask;
     }
     
     private void RegisterCapabilities()
@@ -329,7 +329,8 @@ public sealed class NodeService : IDisposable
 
         if (NodeCapabilityGating.ShouldRegisterTts(_settings))
         {
-            _textToSpeechService ??= new TextToSpeechService(_logger, _settings);
+            var settings = _settings ?? throw new InvalidOperationException("Settings are required to register text-to-speech.");
+            _textToSpeechService ??= new TextToSpeechService(_logger, settings);
             _ttsCapability = new TtsCapability(_logger);
             _ttsCapability.SpeakRequested += OnTtsSpeakAsync;
             Register(_ttsCapability);
@@ -344,7 +345,8 @@ public sealed class NodeService : IDisposable
             // builds. When the Whisper model isn't downloaded yet, the
             // handlers return a clear error pointing the caller at the
             // Voice Settings page; there is no automatic fallback.
-            _voiceService ??= new VoiceService(_logger, _settings);
+            var settings = _settings ?? throw new InvalidOperationException("Settings are required to register speech-to-text.");
+            _voiceService ??= new VoiceService(_logger, settings);
             _sttCapability = new SttCapability(_logger);
             _sttCapability.TranscribeRequested += OnSttTranscribeAsync;
             _sttCapability.ListenRequested += OnSttListenAsync;
@@ -655,13 +657,28 @@ public sealed class NodeService : IDisposable
 
     private void StopMcpServer()
     {
-        // McpHttpServer.Dispose drains in-flight handler tasks (CR-005) before
-        // returning, so by the time we tear down capability-backing services
-        // (camera/screen/canvas) on the next lines of Dispose/Disconnect there
-        // is no live handler still using them.
-        try { _mcpServer?.Dispose(); } catch (Exception ex) { _logger.Warn($"[MCP] Dispose error: {ex.Message}"); }
+        ObserveBackgroundFault(StopMcpServerAsync(), "[MCP] Dispose error");
+    }
+
+    private async Task StopMcpServerAsync()
+    {
+        // Awaited shutdown callers depend on this drain finishing before
+        // capability-backing services are torn down.
+        var server = _mcpServer;
         _mcpServer = null;
         _mcpStartupError = null;
+
+        if (server == null)
+            return;
+
+        try
+        {
+            await server.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[MCP] Dispose error: {ex.Message}");
+        }
     }
 
     public string ResetMcpToken()
@@ -1906,9 +1923,28 @@ public sealed class NodeService : IDisposable
 
     #endregion
     
+    public ValueTask DisposeAsync()
+    {
+        var task = EnsureDisposeTask();
+        return new ValueTask(task);
+    }
+
     public void Dispose()
     {
-        StopMcpServer();
+        ObserveBackgroundFault(EnsureDisposeTask(), "[NodeService] Dispose error");
+    }
+
+    private Task EnsureDisposeTask()
+    {
+        lock (_disposeLock)
+        {
+            return _disposeTask ??= DisposeCoreAsync();
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        await StopMcpServerAsync().ConfigureAwait(false);
 
         WindowsNodeClient? client;
         lock (_clientLock)
@@ -1924,7 +1960,12 @@ public sealed class NodeService : IDisposable
         try { _cameraCaptureService?.Dispose(); } catch { /* ignore */ }
         try { _screenRecordingService?.Dispose(); } catch { /* ignore */ }
         try { _textToSpeechService?.Dispose(); } catch { /* ignore */ }
-        try { _voiceService?.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* ignore */ }
+        var voiceService = _voiceService;
+        _voiceService = null;
+        if (voiceService != null)
+        {
+            try { await voiceService.DisposeAsync().ConfigureAwait(false); } catch { /* ignore */ }
+        }
         // MediaResolver owns SocketsHttpHandler + HttpClient (disposeHandler:true);
         // without disposal the connection pool survives node teardown/recreate.
         try { _mediaResolver?.Dispose(); } catch { /* ignore */ }
@@ -1950,6 +1991,32 @@ public sealed class NodeService : IDisposable
             var window = _a2uiCanvasWindow;
             _a2uiCanvasWindow = null;
             _dispatcherQueue.TryEnqueue(() => { try { window?.Close(); } catch { } });
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
+    private void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            _logger.Warn($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            _logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => _logger.Warn($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 }

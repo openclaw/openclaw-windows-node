@@ -26,7 +26,7 @@ public sealed partial class ConfigPage : Page
     private const double JsonPreviewAutoExpandWidth = 1120;
     private const double JsonPreviewMinWidth = 340;
 
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private JsonElement? _lastConfig;
     private JsonElement? _lastSchema;
@@ -104,7 +104,7 @@ public sealed partial class ConfigPage : Page
         if (_appState != null)
             _appState.PropertyChanged -= OnAppStateChanged;
 
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         SubscribePermissionClient(CurrentApp.GatewayClient);
         Logger.Info("[ConfigPage] Initialize");
@@ -467,7 +467,13 @@ public sealed partial class ConfigPage : Page
         UpdateMetaAndButtons();
     }
 
-    private async void OnSave(object sender, RoutedEventArgs e)
+    private void OnSave(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnSaveAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnSave));
+
+    private async Task OnSaveAsync()
     {
         if (_saving) return;
 
@@ -1292,7 +1298,13 @@ public sealed partial class ConfigPage : Page
         return true;
     }
 
-    private async void OnTreeItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    private void OnTreeItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnTreeItemInvokedAsync(args),
+            new OpenClawTray.AppLogger(),
+            nameof(OnTreeItemInvoked));
+
+    private async Task OnTreeItemInvokedAsync(TreeViewItemInvokedEventArgs args)
     {
         if (args.InvokedItem is TreeViewNode node && _nodeMap.TryGetValue(node, out var entry))
         {

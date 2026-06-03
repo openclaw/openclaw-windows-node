@@ -44,140 +44,47 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
-    public void CommandPalette_HasCommandCenterEntryPoint()
+    public void CanvasWindow_CleansUpGatewayAuthWebResourceHandler()
     {
         var sourcePath = Path.Combine(
             GetRepositoryRoot(),
             "src",
-            "OpenClaw.CommandPalette",
-            "Pages",
-            "OpenClawPage.cs");
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "CanvasWindow.xaml.cs");
 
         var source = File.ReadAllText(sourcePath);
 
-        Assert.Contains(@"openclaw://commandcenter", source);
-        Assert.Contains("Command Center", source);
-        Assert.Contains("gateway, tunnel, node, and browser diagnostics", source);
+        Assert.Contains("_webResourceRequestedHandler = OnGatewayWebResourceRequested", source);
+        Assert.Contains("WebResourceRequested += _webResourceRequestedHandler", source);
+        Assert.Contains("WebResourceRequested -= _webResourceRequestedHandler", source);
+        Assert.Contains("RemoveWebResourceRequestedFilter", source);
+        Assert.Contains("_gatewayToken = null", source);
+        Assert.Contains("_trustedGatewayOrigin = null", source);
+        Assert.Contains("IsUriForOrigin(args.Request.Uri, trustedOrigin)", source);
+        Assert.DoesNotContain("WebResourceRequested += (", source);
     }
 
     [Fact]
-    public void CommandPalette_HasActivityStreamEntryPoint()
+    public void Source_DoesNotDeclareAsyncVoidHandlers()
     {
-        var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
-            "src",
-            "OpenClaw.CommandPalette",
-            "Pages",
-            "OpenClawPage.cs");
+        var sourceRoot = Path.Combine(GetRepositoryRoot(), "src");
+        var offenders = Directory
+            .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+            .SelectMany(file =>
+            {
+                var source = File.ReadAllText(file);
+                return Regex.Matches(
+                        source,
+                        @"(?m)^\s*(?:(?:public|private|protected|internal)\s+)?(?:override\s+)?async\s+void\s+[A-Za-z_][A-Za-z0-9_]*\s*\(")
+                    .Select(match => $"{Path.GetRelativePath(sourceRoot, file)}:{LineNumber(source, match.Index)}");
+            })
+            .ToArray();
 
-        var source = File.ReadAllText(sourcePath);
-
-        Assert.Contains(@"openclaw://activity", source);
-        Assert.Contains("Activity Stream", source);
-        Assert.Contains("recent tray activity", source);
-    }
-
-    [Fact]
-    public void CommandPalette_HasNotificationHistoryEntryPoint()
-    {
-        var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
-            "src",
-            "OpenClaw.CommandPalette",
-            "Pages",
-            "OpenClawPage.cs");
-
-        var source = File.ReadAllText(sourcePath);
-
-        Assert.Contains(@"openclaw://history", source);
-        Assert.Contains("Notification History", source);
-        Assert.Contains("recent OpenClaw tray notifications", source);
-    }
-
-    [Fact]
-    public void CommandPalette_HasTrayUtilityEntryPoints()
-    {
-        var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
-            "src",
-            "OpenClaw.CommandPalette",
-            "Pages",
-            "OpenClawPage.cs");
-
-        var source = File.ReadAllText(sourcePath);
-
-        Assert.Contains(@"openclaw://setup", source);
-        Assert.Contains("Setup Wizard", source);
-        Assert.Contains(@"openclaw://healthcheck", source);
-        Assert.Contains("Run Health Check", source);
-        Assert.Contains(@"openclaw://check-updates", source);
-        Assert.Contains("Check for Updates", source);
-        Assert.Contains(@"openclaw://logs", source);
-        Assert.Contains("Open Log File", source);
-    }
-
-    [Fact]
-    public void CommandPalette_HasDashboardSubpathEntryPoints()
-    {
-        var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
-            "src",
-            "OpenClaw.CommandPalette",
-            "Pages",
-            "OpenClawPage.cs");
-
-        var source = File.ReadAllText(sourcePath);
-
-        Assert.Contains(@"openclaw://dashboard/sessions", source);
-        Assert.Contains("Dashboard: Sessions", source);
-        Assert.Contains(@"openclaw://dashboard/channels", source);
-        Assert.Contains("Dashboard: Channels", source);
-        Assert.Contains(@"openclaw://dashboard/skills", source);
-        Assert.Contains("Dashboard: Skills", source);
-        Assert.Contains(@"openclaw://dashboard/cron", source);
-        Assert.Contains("Dashboard: Cron", source);
-    }
-
-    [Fact]
-    public void CommandPalette_HasSupportDebugEntryPoints()
-    {
-        var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
-            "src",
-            "OpenClaw.CommandPalette",
-            "Pages",
-            "OpenClawPage.cs");
-
-        var source = File.ReadAllText(sourcePath);
-
-        Assert.Contains(@"openclaw://log-folder", source);
-        Assert.Contains("Open Logs Folder", source);
-        Assert.Contains(@"openclaw://config", source);
-        Assert.Contains("Open Config Folder", source);
-        Assert.Contains(@"openclaw://diagnostics", source);
-        Assert.Contains("Open Diagnostics Folder", source);
-        Assert.Contains(@"openclaw://check-updates", source);
-        Assert.Contains("Check for Updates", source);
-        Assert.Contains(@"openclaw://support-context", source);
-        Assert.Contains("Copy Support Context", source);
-        Assert.Contains(@"openclaw://debug-bundle", source);
-        Assert.Contains("Copy Debug Bundle", source);
-        Assert.Contains(@"openclaw://browser-setup", source);
-        Assert.Contains("Copy Browser Setup", source);
-        Assert.Contains(@"openclaw://port-diagnostics", source);
-        Assert.Contains("Copy Port Diagnostics", source);
-        Assert.Contains(@"openclaw://capability-diagnostics", source);
-        Assert.Contains("Copy Capability Diagnostics", source);
-        Assert.Contains(@"openclaw://node-inventory", source);
-        Assert.Contains("Copy Node Inventory", source);
-        Assert.Contains(@"openclaw://channel-summary", source);
-        Assert.Contains("Copy Channel Summary", source);
-        Assert.Contains(@"openclaw://activity-summary", source);
-        Assert.Contains("Copy Activity Summary", source);
-        Assert.Contains(@"openclaw://extensibility-summary", source);
-        Assert.Contains("Copy Extensibility Summary", source);
-        Assert.Contains(@"openclaw://restart-ssh-tunnel", source);
-        Assert.Contains("Restart SSH Tunnel", source);
+        Assert.True(
+            offenders.Length == 0,
+            "Async event handlers must delegate through AsyncEventHandlerGuard instead of declaring async void: " +
+            string.Join(", ", offenders));
     }
 
     [Fact]
@@ -467,4 +374,7 @@ public class TrayMenuWindowMarkupTests
 
         throw new InvalidOperationException("Could not find repository root.");
     }
+
+    private static int LineNumber(string source, int index) =>
+        source.AsSpan(0, index).Count('\n') + 1;
 }

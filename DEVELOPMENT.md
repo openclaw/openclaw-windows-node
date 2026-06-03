@@ -27,11 +27,6 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
   - Default gateway URL: `ws://localhost:18789`
   - You'll need a valid authentication token from your OpenClaw instance
 
-### For PowerToys Extension Development
-
-- **PowerToys** (latest version) - Required for testing the Command Palette extension
-  - [Download PowerToys](https://github.com/microsoft/PowerToys)
-
 ## Project Structure
 
 This monorepo contains these main projects:
@@ -58,17 +53,11 @@ openclaw-windows-hub/
 │   │   ├── Dialogs/                  # Modal dialogs
 │   │   └── Helpers/                  # Icon generation, utilities
 │   │
-│   └── OpenClaw.CommandPalette/      # PowerToys Command Palette extension
-│       ├── OpenClaw.cs               # Extension entry point
-│       ├── OpenClawCommandsProvider.cs  # Command provider implementation
-│       └── Pages/                    # XAML pages for command results
-│
 ├── tests/
 │   ├── OpenClaw.Shared.Tests/        # Unit tests for shared library
 │   └── OpenClaw.Tray.Tests/          # Tests for tray helpers (menu, settings, deep links)
 │
 ├── tools/
-│   ├── cmdpal-dev.ps1                # Helper script for Command Palette development
 │   └── icongen/                      # Icon generation tool
 │
 ├── .github/workflows/
@@ -83,7 +72,6 @@ openclaw-windows-hub/
 
 ```
 OpenClaw.Tray.WinUI  ──depends on──▶  OpenClaw.Shared
-OpenClaw.CommandPalette  ──depends on──▶  OpenClaw.Shared
 OpenClaw.Shared.Tests  ──tests──▶  OpenClaw.Shared
 OpenClaw.Tray.Tests  ──tests──▶  OpenClaw.Shared
 ```
@@ -110,7 +98,7 @@ dotnet restore
 dotnet build
 ```
 
-This builds all projects (Shared library, Tray app, Command Palette extension).
+This builds all projects (shared library, tray app, setup engine, and CLI tools).
 
 ### Build Individual Projects
 
@@ -124,13 +112,6 @@ dotnet build src/OpenClaw.Shared
 dotnet build src/OpenClaw.Tray.WinUI
 ```
 
-**Command Palette Extension:**
-```bash
-dotnet build src/OpenClaw.CommandPalette -p:Platform=x64
-```
-
-Note: Command Palette requires explicit platform (`x64` or `arm64`).
-
 ### Platform and Architecture Notes
 
 #### x64 vs ARM64
@@ -143,17 +124,6 @@ The solution supports both Intel/AMD (x64) and ARM (arm64) architectures:
   dotnet build src/OpenClaw.Tray.WinUI -r win-arm64
   ```
 
-- **Command Palette**: Must match your system architecture
-  ```bash
-  # On x64 systems:
-  dotnet build src/OpenClaw.CommandPalette -p:Platform=x64
-  
-  # On ARM64 systems:
-  dotnet build src/OpenClaw.CommandPalette -p:Platform=arm64
-  ```
-
-> **⚠️ Important for ARM64 Users**: Both the Command Palette extension AND the Tray app must be built for ARM64 architecture for WebView2 and deep links to work correctly. Running an x64 build on ARM64 will cause errors.
-
 #### Cross-Platform Building
 
 The Shared library is cross-platform and can be built on Windows, Linux, or macOS:
@@ -163,7 +133,7 @@ cd src/OpenClaw.Shared
 dotnet build
 ```
 
-The WinUI Tray app and Command Palette are Windows-only but can be built on Linux using:
+The WinUI Tray app is Windows-only but can be built on Linux using:
 
 ```bash
 dotnet build -p:EnableWindowsTargeting=true
@@ -189,32 +159,6 @@ For verbose output:
 dotnet run --project src/OpenClaw.Tray.WinUI -c Debug
 ```
 
-#### Command Palette Development
-
-Use the provided helper script for rapid iteration:
-
-```bash
-.\tools\cmdpal-dev.ps1 cycle
-```
-
-This script:
-1. Removes the currently installed extension
-2. Builds the extension for your platform
-3. Deploys it via `Add-AppxPackage -Register`
-4. Reminds you to run "Reload" in Command Palette
-
-Manual steps:
-```powershell
-# Build
-dotnet build src/OpenClaw.CommandPalette -p:Platform=x64
-
-# Deploy (development mode, no MSIX needed)
-$manifest = "src/OpenClaw.CommandPalette/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/AppxManifest.xml"
-Add-AppxPackage -Register $manifest -ForceApplicationShutdown
-
-# Test: Open PowerToys Command Palette (Win+Alt+Space), type "Reload", then "OpenClaw"
-```
-
 ### Publishing (Self-Contained)
 
 For distribution:
@@ -224,6 +168,23 @@ dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained -o
 ```
 
 This creates a standalone executable with all dependencies bundled.
+
+#### Local Inno Installer Iteration
+
+Use the local helper to build unsigned installer EXEs without waiting for CI:
+
+```powershell
+# Fast x64 installer for Windows Sandbox smoke tests
+.\scripts\build-inno-local.ps1 -Arch x64 -Fast
+
+# Recompile Inno only after changing installer.iss
+.\scripts\build-inno-local.ps1 -Arch x64 -Fast -NoPublish
+
+# Build both release-shaped architectures locally
+.\scripts\build-inno-local.ps1 -Arch All
+```
+
+`-Fast` uses ZIP/no-solid compression for quick local iteration. CI release builds keep the default LZMA solid compression and Azure signing.
 
 ## Architecture Overview
 
@@ -500,12 +461,6 @@ You can test the UI and basic functionality without a running gateway:
    - Test auto-start functionality
    - View logs
 
-**Command Palette:**
-1. Deploy the extension: `.\tools\cmdpal-dev.ps1 deploy`
-2. Open PowerToys Command Palette (Win+Alt+Space)
-3. Type "OpenClaw"
-4. Commands will show but most require a connected gateway to function
-
 ### Manual Test Scenarios
 
 #### Tray Icon States
@@ -581,6 +536,14 @@ The repository uses GitHub Actions for continuous integration and release automa
 - Pull requests to `main` or `master`
 - Git tags matching `v*` (e.g., `v1.2.3`) for releases
 
+### Gateway LKG version automation
+
+- The pinned gateway setup version lives in `src/OpenClaw.SetupEngine/GatewayLkgVersion.cs` (`GatewayLkgVersion.LkgVersion`).
+- Setup/E2E consume this as the default source of truth when `Gateway.Version` is not explicitly set.
+- When `Gateway.InstallUrl` points to a custom installer script, SetupEngine does not auto-inject the LKG; set `Gateway.Version` explicitly if your script supports `--version`.
+- The `test` job in `.github/workflows/ci.yml` compares pinned LKG vs npm `openclaw@latest` and emits a **warning** on drift (non-blocking).
+- `.github/workflows/gateway-lkg-update.yml` creates or updates one standing draft PR on branch `automation/gateway-lkg-update` to bump `GatewayLkgVersion.LkgVersion` when upstream latest advances.
+
 ### Build Matrix
 
 The CI builds multiple configurations:
@@ -597,11 +560,6 @@ The CI builds multiple configurations:
 - Publishes self-contained executables
 - Signs with Azure Trusted Signing (on tag releases only)
 
-**Build Job (Command Palette):**
-- Matrix: `x64`, `arm64`
-- Builds Command Palette extension for both platforms
-- Produces MSIX packages for deployment
-
 ### Artifacts
 
 On every build, the following artifacts are uploaded:
@@ -610,8 +568,6 @@ On every build, the following artifacts are uploaded:
 |----------|----------|---------|
 | `openclaw-tray-win-x64` | x64 Tray app binaries | Testing, distribution |
 | `openclaw-tray-win-arm64` | ARM64 Tray app binaries | Testing, distribution |
-| `openclaw-commandpalette-x64` | x64 Command Palette MSIX | Testing, distribution |
-| `openclaw-commandpalette-arm64` | ARM64 Command Palette MSIX | Testing, distribution |
 
 ### Release Process
 
@@ -623,13 +579,12 @@ When a tag is pushed (e.g., `git tag v1.2.3 && git push origin v1.2.3`):
 
 2. **Create Installers:**
    - Inno Setup creates Windows installers
-   - Includes both Tray app and Command Palette extension
    - Separate installers for x64 and ARM64
 
 3. **GitHub Release:**
    - Automatic release created with tag name
    - Includes:
-     - Installers: `OpenClawTray-Setup-x64.exe`, `OpenClawTray-Setup-arm64.exe`
+     - Installers: `OpenClawCompanion-Setup-x64.exe`, `OpenClawCompanion-Setup-arm64.exe`
      - Portable ZIPs: `OpenClawTray-{version}-win-x64.zip`, `OpenClawTray-{version}-win-arm64.zip`
    - Release notes auto-generated from commits
 
@@ -775,22 +730,16 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
    - Install Windows 10 SDK 19041 or later
    - Or build Shared library only: `dotnet build src/OpenClaw.Shared`
 
-2. **Command Palette Extension Not Loading**
-   - Verify correct architecture (x64 on x64, arm64 on ARM64)
-   - Check PowerToys version (latest recommended)
-   - View logs: `%LOCALAPPDATA%\Microsoft\PowerToys\CmdPal\Logs`
-   - Run "Reload" command in Command Palette after deploying
-
-3. **WebView2 Error 0x8007000B on ARM64**
-   - Both Tray app AND Command Palette must be ARM64
+2. **WebView2 Error 0x8007000B on ARM64**
+   - The tray app must be built for ARM64
    - Rebuild: `dotnet build src/OpenClaw.Tray.WinUI -r win-arm64`
 
-4. **Tray Icon Not Appearing**
+3. **Tray Icon Not Appearing**
    - Check Windows notification area settings
    - Verify app is running (Task Manager)
    - Check logs: `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`
 
-5. **Gateway Connection Fails**
+4. **Gateway Connection Fails**
    - Verify gateway is running: `curl http://localhost:18789/health`
    - Check gateway URL in settings
    - Verify authentication token is correct

@@ -114,7 +114,7 @@ public sealed class UpdateDialog : WindowEx
         Logger.Info($"[Update] Update dialog shown for version {version}");
     }
 
-    public new Task<UpdateDialogResult> ShowAsync()
+    public Task<UpdateDialogResult> ShowAsync()
     {
         Activate();
         return _tcs.Task;

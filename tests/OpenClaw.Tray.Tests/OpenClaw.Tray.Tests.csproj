@@ -46,6 +46,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupExistingGatewayClassifier.cs" Link="Services\SetupExistingGatewayClassifier.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayHostAccess.cs" Link="Services\GatewayHostAccess.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayTerminalLauncher.cs" Link="Services\GatewayTerminalLauncher.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslGatewayController.cs" Link="Services\WslGatewayController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslCommandRunner.cs" Link="Services\WslCommandRunner.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslKeepAlivePolicy.cs" Link="Services\WslKeepAlivePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayConnectorInterfaces.cs" Link="Services\GatewayConnectorInterfaces.cs" />
@@ -54,6 +57,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayNavVisibilityDebouncePolicy.cs" Link="Services\GatewayNavVisibilityDebouncePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeInvokeActivityFormatter.cs" Link="Services\NodeInvokeActivityFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeCapabilityGating.cs" Link="Services\NodeCapabilityGating.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ToastActivationRouter.cs" Link="Services\ToastActivationRouter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayDashboardUrlBuilder.cs" Link="Helpers\GatewayDashboardUrlBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayStateSnapshot.cs" Link="Services\TrayStateSnapshot.cs" />

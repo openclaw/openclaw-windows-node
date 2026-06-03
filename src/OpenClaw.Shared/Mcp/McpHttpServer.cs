@@ -42,7 +42,7 @@ namespace OpenClaw.Shared.Mcp;
 ///   - Active handler tasks are tracked so Stop/Dispose can drain in-flight
 ///     work before tearing down the semaphore and capability services.
 /// </summary>
-public sealed class McpHttpServer : IDisposable
+public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 {
     private const long MaxRequestBodyBytes = 4L * 1024 * 1024; // 4 MiB
     // 16 leaves headroom for parallel tool callers (e.g. an editor + Claude
@@ -75,9 +75,12 @@ public sealed class McpHttpServer : IDisposable
     private readonly SemaphoreSlim _handlerLimiter = new(MaxConcurrentHandlers, MaxConcurrentHandlers);
     private readonly object _activeLock = new();
     private readonly HashSet<Task> _activeHandlers = new();
+    private readonly object _shutdownLock = new();
     private Task? _acceptLoop;
+    private Task? _stopTask;
+    private Task? _disposeTask;
     private int _disposed;
-    private int _stopping;
+    private bool _resourcesDisposed;
 
     public int Port => _port;
     public string Endpoint => $"http://127.0.0.1:{_port}/";
@@ -411,11 +414,12 @@ public sealed class McpHttpServer : IDisposable
     /// </summary>
     public Task StopAsync(TimeSpan drainTimeout)
     {
-        // Idempotence is governed by _stopping (not _disposed) so that Dispose
-        // can call the same drain path *after* setting _disposed=1. The previous
-        // code keyed on _disposed and silently skipped the drain in that flow.
-        if (Interlocked.Exchange(ref _stopping, 1) != 0) return Task.CompletedTask;
-        return StopCoreAsync(drainTimeout);
+        lock (_shutdownLock)
+        {
+            // Return the in-flight stop so later callers still wait for the
+            // original drain instead of observing a false "already stopped".
+            return _stopTask ??= StopCoreAsync(drainTimeout);
+        }
     }
 
     private async Task StopCoreAsync(TimeSpan drainTimeout)
@@ -445,35 +449,87 @@ public sealed class McpHttpServer : IDisposable
         }
     }
 
+    public ValueTask DisposeAsync()
+    {
+        var task = EnsureDisposeTask();
+        return new ValueTask(task);
+    }
+
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        // Run the drain unconditionally on dispose. We can't go through the
-        // public StopAsync because a prior caller may already have set
-        // _stopping — we still need to wait for the drain to finish before
-        // tearing down the limiter and CTS.
-        if (Interlocked.Exchange(ref _stopping, 1) == 0)
+        ObserveBackgroundFault(EnsureDisposeTask(), "[MCP] Dispose error");
+    }
+
+    private Task EnsureDisposeTask()
+    {
+        lock (_shutdownLock)
         {
-            try { StopCoreAsync(DrainTimeout).GetAwaiter().GetResult(); }
-            catch (Exception ex) { _logger.Warn($"[MCP] Drain error: {ex.Message}"); }
-        }
-        else
-        {
-            // A prior StopAsync is in flight; wait briefly for it to finish so
-            // we don't dispose the limiter while a handler is still inside it.
-            lock (_activeLock)
+            if (_disposeTask != null)
             {
-                if (_activeHandlers.Count > 0)
-                {
-                    Task[] toAwait = new Task[_activeHandlers.Count];
-                    _activeHandlers.CopyTo(toAwait);
-                    try { Task.WhenAny(Task.WhenAll(toAwait), Task.Delay(DrainTimeout)).GetAwaiter().GetResult(); }
-                    catch { /* swallow — best-effort */ }
-                }
+                return _disposeTask;
             }
+
+            Interlocked.Exchange(ref _disposed, 1);
+            _disposeTask = DisposeCoreAsync();
+            return _disposeTask;
         }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        try
+        {
+            await StopAsync(DrainTimeout).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[MCP] Drain error: {ex.Message}");
+        }
+        finally
+        {
+            DisposeResources();
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    private void DisposeResources()
+    {
+        lock (_shutdownLock)
+        {
+            if (_resourcesDisposed)
+            {
+                return;
+            }
+
+            _resourcesDisposed = true;
+        }
+
         try { _listener.Close(); } catch { /* already closed */ }
         _cts.Dispose();
         _handlerLimiter.Dispose();
+    }
+
+    private void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            _logger.Warn($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            _logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => _logger.Warn($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
 }

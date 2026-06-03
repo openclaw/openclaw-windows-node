@@ -7,7 +7,27 @@ namespace OpenClaw.SetupEngine;
 
 public sealed record CommandResult(int ExitCode, string Stdout, string Stderr, TimeSpan Elapsed, bool TimedOut);
 
-public sealed class CommandRunner
+public interface ICommandRunner
+{
+    Task<CommandResult> RunAsync(
+        string executable,
+        string[] arguments,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment = null,
+        string? workingDirectory = null,
+        string? stdinInput = null,
+        CancellationToken ct = default);
+
+    Task<CommandResult> RunInWslAsync(
+        string distroName,
+        string command,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment = null,
+        CancellationToken ct = default,
+        string? user = null);
+}
+
+public sealed class CommandRunner : ICommandRunner
 {
     private readonly SetupLogger _logger;
     private const int DrainTimeoutMs = 5000; // bounded drain for orphan WSL processes

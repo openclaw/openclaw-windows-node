@@ -161,7 +161,7 @@ public sealed class WelcomeDialog : WindowEx
         Logger.Info("[Welcome] Welcome dialog shown");
     }
 
-    public new Task<ContentDialogResult> ShowAsync()
+    public Task<ContentDialogResult> ShowAsync()
     {
         Activate();
         return _tcs.Task;

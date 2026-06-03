@@ -26,12 +26,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.3" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
+    <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 
   <!-- Reuse Setup assets from the Tray project -->
@@ -47,5 +48,23 @@
              Link="default-config.json"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <OpenClawSetupEngineGeneratedOutputDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\'))</OpenClawSetupEngineGeneratedOutputDirectory>
+  </PropertyGroup>
+
+  <!-- dotnet publish for unpackaged WinUI can omit generated XAML artifacts; copy the
+       generated layout pieces from the build output so installer payloads stay runnable. -->
+  <Target Name="CopyGeneratedWinUiArtifactsToPublish"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != '' and '$(RuntimeIdentifier)' != ''">
+    <ItemGroup>
+      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawSetupEngineGeneratedOutputDirectory)**\*.xbf" />
+      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawSetupEngineGeneratedOutputDirectory)**\*.pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_GeneratedWinUiPublishArtifacts)"
+          DestinationFiles="@(_GeneratedWinUiPublishArtifacts->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

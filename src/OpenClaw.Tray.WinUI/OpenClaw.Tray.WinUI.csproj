@@ -9,7 +9,6 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <ApplicationIcon>Assets\openclaw.ico</ApplicationIcon>
     <RootNamespace>OpenClawTray</RootNamespace>
-    <Version>0.4.7</Version>
     <DefaultLanguage>en-US</DefaultLanguage>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
@@ -56,7 +55,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.3" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
     <PackageReference Include="WinUIEx" Version="2.9.0" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
@@ -88,12 +87,12 @@
   </PropertyGroup>
 
   <!--
-    Single source of truth for the app version is <Version> in this csproj (see docs/VERSIONING.md).
+    Single source of truth for the app version is GitVersion/tag history (see docs/VERSIONING.md).
     Package.appxmanifest carries a sentinel Version="0.0.0.0" in source; the real version is patched
     in only when actually packaging MSIX (WindowsPackageType=MSIX), so unpackaged dev builds leave
     the file untouched and git stays clean. CI's manifest patch step (.github/workflows/ci.yml)
-    only writes Identity/Name and DisplayName; Version is supplied via msbuild /p:Version=... and
-    written by this target.
+    only writes Identity/Name and DisplayName; Version is written by this target from the
+    GitVersion-derived $(Version).
 
     Uses a regex string-replace (not XmlPoke) to preserve the manifest's hand-formatted layout.
     The MSIX Identity/Version must be a 4-part version (X.Y.Z.W) with no pre-release suffix;
@@ -172,7 +171,7 @@
     <!-- Fail loudly if MSIX packaging was requested but no version was supplied; without
          this, the target would silently skip and the sentinel 0.0.0.0 in the source manifest
          would ship in the MSIX package. -->
-    <Error Text="MSIX packaging requested (WindowsPackageType=MSIX) but &lt;Version&gt; is empty. Pass /p:Version=X.Y[.Z] or set &lt;Version&gt; in the csproj." Condition="'$(Version)' == ''" />
+    <Error Text="MSIX packaging requested (WindowsPackageType=MSIX) but Version is empty. Ensure GitVersion can read this repository's tag history or pass /p:Version=X.Y[.Z]." Condition="'$(Version)' == ''" />
     <PropertyGroup>
       <_AppxManifestPath>$(MSBuildThisFileDirectory)Package.appxmanifest</_AppxManifestPath>
       <_StrippedVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '[-+].*$', ''))</_StrippedVersion>

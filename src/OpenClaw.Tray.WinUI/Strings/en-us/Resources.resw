@@ -2688,6 +2688,27 @@ On your gateway host (Mac/Linux), run:
   <data name="VoiceSettingsPage_StatusDownloadRequired" xml:space="preserve">
     <value>⬇️ Download required</value>
   </data>
+  <data name="VoiceSettingsPage_ModelRequirementText.Text" xml:space="preserve">
+    <value>Voice input is not ready until at least one speech model is downloaded.</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffTitle" xml:space="preserve">
+    <value>Voice Input Is Off</value>
+  </data>
+  <data name="ChatVoiceDialog_InputOffMessage" xml:space="preserve">
+    <value>Turn on Speech-to-Text in Voice settings, then download a speech model before using the microphone in chat.</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredTitle" xml:space="preserve">
+    <value>Speech Model Required</value>
+  </data>
+  <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
+    <value>Speech-to-Text is on, but voice input will not work until at least one speech model is downloaded.</value>
+  </data>
+  <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
+    <value>Open Voice &amp; Audio Settings</value>
+  </data>
+  <data name="ChatVoiceDialog_Dismiss" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
   <data name="VoiceSettingsPage_ButtonReDownload" xml:space="preserve">
     <value>Re-download</value>
   </data>
@@ -2999,6 +3020,24 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Deny</value>
+  </data>
+  <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
+    <value>Allowed</value>
+  </data>
+  <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
+    <value>Denied</value>
+  </data>
+  <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
+    <value>Expired</value>
+  </data>
+  <data name="Chat_Permission_Title" xml:space="preserve">
+    <value>Exec approval needed</value>
+  </data>
+  <data name="Chat_Permission_Subtitle" xml:space="preserve">
+    <value>Approval is needed to run the command below on this Windows companion. Allow once to proceed, or Deny to cancel.</value>
+  </data>
+  <data name="Chat_Permission_Caption" xml:space="preserve">
+    <value>Approval is required for every command by the active policy. Your choice applies only to this request.</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Connecting to gateway…</value>
@@ -5418,5 +5457,65 @@ Check your connection settings and try again.</value>
   </data>
   <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
     <value>Waiting for the gateway to confirm the channel is running…</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
+    <value>WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription.Text" xml:space="preserve">
+    <value>Open a shell or manage the local gateway service in WSL.</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostTerminalLabel.Text" xml:space="preserve">
+    <value>Terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.Content" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.Content" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.Content" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open dashboard (in browser)</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open dashboard</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Disconnect / reconnect</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Disconnect or reconnect</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway start in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Start WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway stop in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Stop WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway restart in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Restart WSL gateway</value>
   </data>
 </root>

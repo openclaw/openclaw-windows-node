@@ -16,6 +16,10 @@ public class AppCapabilityTests
     {
         var cap = new AppCapability(NullLogger.Instance);
         Assert.Equal("app", cap.Category);
+        
+        // Verify category classification is consistent with CanHandle behavior
+        Assert.True(cap.CanHandle("app.navigate"));
+        Assert.False(cap.CanHandle("system.run"));
     }
 
     [Fact]
@@ -25,17 +29,30 @@ public class AppCapabilityTests
         var expected = new[] { "app.navigate", "app.status", "app.sessions", "app.agents",
             "app.nodes", "app.config.get", "app.settings.get", "app.settings.set", "app.menu", "app.search" };
         foreach (var cmd in expected)
+        {
             Assert.Contains(cmd, cap.Commands);
+            // Verify Commands list is consistent with CanHandle behavior
+            Assert.True(cap.CanHandle(cmd), $"CanHandle should return true for command '{cmd}' listed in Commands");
+        }
     }
 
     [Fact]
     public void CanHandle_AppCommands()
     {
         var cap = new AppCapability(NullLogger.Instance);
+        
+        // Verify app-prefixed commands are handled
         Assert.True(cap.CanHandle("app.navigate"));
         Assert.True(cap.CanHandle("app.status"));
+        
+        // Verify non-app commands are rejected
         Assert.False(cap.CanHandle("system.run"));
         Assert.False(cap.CanHandle("device.info"));
+        
+        // Verify edge cases
+        Assert.False(cap.CanHandle("app")); // Prefix only
+        Assert.False(cap.CanHandle("APP.NAVIGATE")); // Wrong case
+        Assert.False(cap.CanHandle("application.navigate")); // Wrong prefix
     }
 
     [Fact]

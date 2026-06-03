@@ -30,11 +30,13 @@ namespace OpenClawTray.Pages;
 public sealed partial class ConnectionPage : Page
 {
     // ─── DI / services ───
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private IGatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
     private GatewayDiscoveryService? _discoveryService;
+    private IGatewayTerminalLauncher? _terminalLauncher;
+    private WslGatewayController? _wslGatewayController;
 
     // ─── UI state ───
     private UserIntent _userIntent = UserIntent.None;
@@ -42,6 +44,10 @@ public sealed partial class ConnectionPage : Page
     private bool _suppressNodeModeToggle;
     private bool _suppressConnectionToggle;
     private ConnectionPagePlan _currentPlan = new();
+    private GatewayHostAccessPlan _activeHostAccessPlan = GatewayHostAccessPlan.None();
+    private bool _gatewayHostActionInProgress;
+    private CancellationTokenSource? _gatewayHostActionCts;
+    private string? _gatewayHostStatusGatewayId;
 
     // Tracks which gateway record the Add Gateway form is currently editing
     // (set by OnSavedRowEdit / OnEditTunnelSettings; null = creating a brand
@@ -84,31 +90,32 @@ public sealed partial class ConnectionPage : Page
         InitializeComponent();
     }
 
+    private IGatewayTerminalLauncher TerminalLauncher =>
+        _terminalLauncher ??= new GatewayTerminalLauncher(new OpenClawTray.AppLogger());
+
+    private WslGatewayController WslGatewayController =>
+        _wslGatewayController ??= new WslGatewayController(
+            new WslExeCommandRunner(new OpenClawTray.AppLogger()),
+            new OpenClawTray.AppLogger());
+
     // ─── Initialization ───────────────────────────────────────────────
 
     public void Initialize()
     {
-        _appState = ((App)Application.Current).AppState;
+        _appState = ((App)Application.Current!).AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         _connectionManager = CurrentApp.ConnectionManager;
         _gatewayRegistry = CurrentApp.Registry;
         var settings = CurrentApp.Settings;
         if (settings == null) return;
 
-        // Local-WSL install entry points. The hub only exposes
-        // OpenSetupAction on platforms where WSL tooling is wired up; if
-        // it's null we hide the entry points so the user isn't offered a
-        // button that does nothing.
+        // Local-WSL install entry points are only useful until setup has
+        // created its managed local WSL gateway record.
         //   • WelcomeLocalWslSetupCard — get-started CTA on the empty-state
         //     Welcome screen for first-run users.
         //   • AddLocalWslItem — third method tab inside the Add Gateway
         //     form, alongside Direct and Setup code.
-        var localSetupAvailable = true;
-        var localSetupVisibility = localSetupAvailable
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        WelcomeLocalWslSetupCard.Visibility = localSetupVisibility;
-        AddLocalWslItem.Visibility = localSetupVisibility;
+        UpdateLocalWslSetupVisibility();
 
         if (_connectionManager != null)
             _connectionManager.StateChanged += OnManagerStateChanged;
@@ -166,6 +173,13 @@ public sealed partial class ConnectionPage : Page
             _reconnectMaskTimer.Tick -= OnReconnectMaskTimeout;
             _reconnectMaskTimer = null;
         }
+        _gatewayHostActionCts?.Cancel();
+        if (!_gatewayHostActionInProgress)
+        {
+            _gatewayHostActionCts?.Dispose();
+            _gatewayHostActionCts = null;
+        }
+        _gatewayHostActionInProgress = false;
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
     }
 
@@ -182,9 +196,27 @@ public sealed partial class ConnectionPage : Page
     {
         DispatcherQueue?.TryEnqueue(() =>
         {
+            UpdateLocalWslSetupVisibility();
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);
         });
+    }
+
+    private void UpdateLocalWslSetupVisibility()
+    {
+        var localSetupAvailable = !WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
+        var localSetupVisibility = localSetupAvailable
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        WelcomeLocalWslSetupCard.Visibility = localSetupVisibility;
+        AddLocalWslItem.Visibility = localSetupVisibility;
+
+        if (!localSetupAvailable && AddLocalWslItem.IsSelected)
+        {
+            AddDirectItem.IsSelected = true;
+            ShowAddPane("direct");
+        }
     }
 
     // ─── Plan apply ───────────────────────────────────────────────────
@@ -305,6 +337,7 @@ public sealed partial class ConnectionPage : Page
 
         // ─── Status strip ───
         ApplyStripVisuals(plan);
+        ApplyGatewayHostAccess(plan);
 
         // ─── Cards (only meaningful when we have an operator session
         // and we're not in a focused sub-view) ───
@@ -401,6 +434,71 @@ public sealed partial class ConnectionPage : Page
 
         // Glance chips (presence • channels • $today • topology) — when connected.
         ApplyGlanceChips(plan, hasActive && toggleOn);
+    }
+
+    private void ApplyGatewayHostAccess(ConnectionPagePlan plan)
+    {
+        var activeRecord = _gatewayRegistry?.GetActive();
+        _activeHostAccessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (_gatewayHostStatusGatewayId is not null &&
+            !string.Equals(_gatewayHostStatusGatewayId, _activeHostAccessPlan.GatewayId, StringComparison.Ordinal))
+        {
+            ClearGatewayHostActionStatus();
+        }
+
+        var showInPageMode = plan.Mode is ConnectionPageMode.Cockpit or ConnectionPageMode.Recovery;
+        var showTerminal = showInPageMode &&
+                           _activeHostAccessPlan.CanOpenTerminal &&
+                           !_activeHostAccessPlan.CanControlWslGateway;
+        StripTerminalButton.Visibility = showTerminal ? Visibility.Visible : Visibility.Collapsed;
+        StripTerminalButton.IsEnabled = !_gatewayHostActionInProgress;
+        ToolTipService.SetToolTip(StripTerminalButton, _activeHostAccessPlan.TerminalTooltip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            StripTerminalButton,
+            _activeHostAccessPlan.TerminalLabel);
+
+        var showWslControls = showInPageMode && _activeHostAccessPlan.CanControlWslGateway;
+        GatewayHostControlsSection.Visibility = showWslControls ? Visibility.Visible : Visibility.Collapsed;
+        if (!showWslControls)
+        {
+            ClearGatewayHostActionStatus();
+            return;
+        }
+
+        GatewayHostControlsTitleText.Text = "WSL gateway";
+        GatewayHostControlsDescriptionText.Text =
+            $"Open a shell or manage the local gateway service in {_activeHostAccessPlan.DistroName}.";
+        GatewayHostOpenTerminalButton.IsEnabled = !_gatewayHostActionInProgress && _activeHostAccessPlan.CanOpenTerminal;
+        GatewayHostStartButton.IsEnabled = !_gatewayHostActionInProgress;
+        GatewayHostStopButton.IsEnabled = !_gatewayHostActionInProgress;
+        GatewayHostRestartButton.IsEnabled = !_gatewayHostActionInProgress;
+        GatewayHostActionProgress.IsActive = _gatewayHostActionInProgress;
+        GatewayHostActionProgress.Visibility = _gatewayHostActionInProgress ? Visibility.Visible : Visibility.Collapsed;
+        GatewayHostActionStatusPanel.Visibility = _gatewayHostActionInProgress || !string.IsNullOrWhiteSpace(GatewayHostActionStatusText.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ToolTipService.SetToolTip(GatewayHostOpenTerminalButton, _activeHostAccessPlan.TerminalTooltip);
+    }
+
+    private void SetGatewayHostActionStatus(string message, bool isError = false)
+    {
+        _gatewayHostStatusGatewayId = string.IsNullOrWhiteSpace(message) ? null : _activeHostAccessPlan.GatewayId;
+        GatewayHostActionStatusText.Text = message;
+        GatewayHostActionStatusText.Foreground = isError
+            ? ResolveBrush("SystemFillColorCriticalBrush")
+            : ResolveBrush("TextFillColorSecondaryBrush");
+        GatewayHostActionStatusPanel.Visibility = string.IsNullOrWhiteSpace(message) && !_gatewayHostActionInProgress
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void ClearGatewayHostActionStatus()
+    {
+        _gatewayHostStatusGatewayId = null;
+        GatewayHostActionStatusText.Text = string.Empty;
+        GatewayHostActionStatusPanel.Visibility = _gatewayHostActionInProgress
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     /// <summary>
@@ -993,6 +1091,7 @@ public sealed partial class ConnectionPage : Page
             foreach (var gw in all)
             {
                 var isActive = active != null && active.Id == gw.Id;
+                var hostAccess = GatewayHostAccessClassifier.Classify(gw);
                 items.Add(new SavedGatewayRow
                 {
                     Id = gw.Id,
@@ -1001,6 +1100,9 @@ public sealed partial class ConnectionPage : Page
                     IsActive = isActive,
                     LastConnectedRelative = FormatRelative(gw.LastConnected),
                     HasSshTunnel = gw.SshTunnel != null,
+                    HasWslGateway = hostAccess.IsWslManaged,
+                    HasHostTerminal = hostAccess.CanOpenTerminal,
+                    HostTerminalLabel = hostAccess.TerminalLabel,
                     AuthModeLabel = isActive && !string.IsNullOrEmpty(activeAuthMode)
                         ? activeAuthMode!
                         : InferAuthModeLabel(gw),
@@ -1023,6 +1125,9 @@ public sealed partial class ConnectionPage : Page
               .Append(r.DisplayName).Append('/').Append(r.Url ?? "").Append('/')
               .Append(r.LastConnectedRelative ?? "")
               .Append('/').Append(r.HasSshTunnel ? '1' : '0').Append('/')
+              .Append(r.HasWslGateway ? '1' : '0').Append('/')
+              .Append(r.HasHostTerminal ? '1' : '0').Append('/')
+              .Append(r.HostTerminalLabel ?? "").Append('/')
               .Append(r.AuthModeLabel ?? "").Append(';');
         }
         var fp = sb.ToString();
@@ -1190,6 +1295,15 @@ public sealed partial class ConnectionPage : Page
                 Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
             });
         }
+        if (row.HasWslGateway)
+        {
+            sub.Children.Add(new TextBlock
+            {
+                Text = "• WSL",
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
+            });
+        }
         if (!string.IsNullOrEmpty(row.LastConnectedRelative) && !row.IsActive)
         {
             sub.Children.Add(new TextBlock
@@ -1257,6 +1371,12 @@ public sealed partial class ConnectionPage : Page
         var openDashboard = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_OpenDashboard"), Tag = row.Id };
         openDashboard.Click += OnSavedRowOpenDashboard;
         flyout.Items.Add(openDashboard);
+        if (row.HasHostTerminal)
+        {
+            var openTerminal = new MenuFlyoutItem { Text = row.HostTerminalLabel, Tag = row.Id };
+            openTerminal.Click += OnSavedRowOpenTerminal;
+            flyout.Items.Add(openTerminal);
+        }
         if (hasLiveAffordance)
         {
             // Whenever the row is in a state where Disconnect makes sense
@@ -1314,6 +1434,9 @@ public sealed partial class ConnectionPage : Page
         public bool IsActive { get; init; }
         public string LastConnectedRelative { get; init; } = "";
         public bool HasSshTunnel { get; init; }
+        public bool HasWslGateway { get; init; }
+        public bool HasHostTerminal { get; init; }
+        public string HostTerminalLabel { get; init; } = "";
         public string AuthModeLabel { get; init; } = "";
     }
 
@@ -1432,6 +1555,183 @@ public sealed partial class ConnectionPage : Page
         ((IAppCommands)CurrentApp).OpenDashboard();
     }
 
+    private void OnOpenGatewayTerminal(object sender, RoutedEventArgs e)
+    {
+        OpenGatewayTerminal(_activeHostAccessPlan, showInlineStatus: true);
+    }
+
+    private void OnSavedRowOpenTerminal(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
+        var record = _gatewayRegistry?.GetById(gwId);
+        var accessPlan = GatewayHostAccessClassifier.Classify(record);
+        OpenGatewayTerminal(accessPlan, showInlineStatus: record?.Id == _gatewayRegistry?.GetActive()?.Id);
+    }
+
+    private void OpenGatewayTerminal(GatewayHostAccessPlan accessPlan, bool showInlineStatus)
+    {
+        if (!accessPlan.CanOpenTerminal)
+        {
+            ShowGatewayHostFailure(
+                "Terminal unavailable",
+                accessPlan.DisabledReason ?? "This gateway does not have terminal access.",
+                showInlineStatus);
+            return;
+        }
+
+        try
+        {
+            TerminalLauncher.Open(accessPlan);
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] Failed to open gateway terminal: {ex.Message}");
+            ShowGatewayHostFailure("Terminal failed", ex.Message, showInlineStatus);
+        }
+    }
+
+    private void OnStartGatewayClicked(object sender, RoutedEventArgs e)
+    {
+        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Start);
+    }
+
+    private void OnStopGatewayClicked(object sender, RoutedEventArgs e)
+    {
+        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Stop);
+    }
+
+    private void OnRestartGatewayClicked(object sender, RoutedEventArgs e)
+    {
+        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Restart);
+    }
+
+    private async Task RunWslGatewayControlAsync(WslGatewayControlAction action)
+    {
+        if (_gatewayHostActionInProgress)
+        {
+            return;
+        }
+
+        var activeRecord = _gatewayRegistry?.GetActive();
+        var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (!accessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(accessPlan.DistroName))
+        {
+            SetGatewayHostActionStatus("This gateway is not an app-managed WSL gateway.", isError: true);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _gatewayHostActionCts = cts;
+        var cancellationToken = cts.Token;
+        _gatewayHostActionInProgress = true;
+        ApplyGatewayHostAccess(_currentPlan);
+        var verb = WslGatewayControlCommandBuilder.ToVerb(action);
+        SetGatewayHostActionStatus($"{ActionInProgressLabel(action)} gateway in {accessPlan.DistroName}…");
+
+        try
+        {
+            if (action == WslGatewayControlAction.Stop && _connectionManager != null)
+            {
+                try
+                {
+                    await _connectionManager.DisconnectAsync();
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Services.Logger.Warn($"[ConnectionPage] Disconnect before WSL gateway stop failed; continuing stop: {ex.Message}");
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await WslGatewayController.RunAsync(accessPlan.DistroName!, action, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!result.Success)
+            {
+                var details = string.IsNullOrWhiteSpace(result.OutputSummary)
+                    ? $"wsl.exe exited with code {result.ExitCode}."
+                    : result.OutputSummary;
+                SetGatewayHostActionStatus($"{UppercaseFirst(verb)} failed: {details}", isError: true);
+                return;
+            }
+
+            if (action == WslGatewayControlAction.Stop)
+            {
+                SetGatewayHostActionStatus("Gateway stopped.");
+                RefreshFromSnapshot(_connectionManager?.CurrentSnapshot ?? _lastSnapshot);
+                return;
+            }
+
+            SetGatewayHostActionStatus($"Gateway {PastTense(action)}. Reconnecting…");
+            BeginReconnectMask();
+            ((IAppCommands)CurrentApp).Reconnect();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Services.Logger.Info($"[ConnectionPage] WSL gateway {verb} cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] WSL gateway {verb} failed: {ex.Message}");
+            SetGatewayHostActionStatus($"{UppercaseFirst(verb)} failed: {ex.Message}", isError: true);
+        }
+        finally
+        {
+            _gatewayHostActionInProgress = false;
+            if (ReferenceEquals(_gatewayHostActionCts, cts))
+            {
+                _gatewayHostActionCts = null;
+            }
+            cts.Dispose();
+            if (IsLoaded)
+            {
+                ApplyGatewayHostAccess(_currentPlan);
+            }
+        }
+    }
+
+    private void ShowGatewayHostFailure(string title, string message, bool preferInlineStatus)
+    {
+        if (preferInlineStatus && GatewayHostControlsSection.Visibility == Visibility.Visible)
+        {
+            SetGatewayHostActionStatus(message, isError: true);
+            return;
+        }
+
+        AuthErrorBar.Title = title;
+        AuthErrorBar.Message = message;
+        AuthErrorBar.Severity = InfoBarSeverity.Error;
+        AuthErrorBar.IsOpen = true;
+    }
+
+    private static string UppercaseFirst(string value)
+    {
+        return string.IsNullOrEmpty(value)
+            ? value
+            : char.ToUpperInvariant(value[0]) + value[1..];
+    }
+
+    private static string PastTense(WslGatewayControlAction action)
+    {
+        return action switch
+        {
+            WslGatewayControlAction.Start => "started",
+            WslGatewayControlAction.Restart => "restarted",
+            WslGatewayControlAction.Stop => "stopped",
+            _ => "updated"
+        };
+    }
+
+    private static string ActionInProgressLabel(WslGatewayControlAction action)
+    {
+        return action switch
+        {
+            WslGatewayControlAction.Start => "Starting",
+            WslGatewayControlAction.Stop => "Stopping",
+            WslGatewayControlAction.Restart => "Restarting",
+            _ => "Updating"
+        };
+    }
+
     /// <summary>
     /// Handler for both the Welcome and Cockpit "Install local WSL gateway"
     /// buttons. Hands off to the hub's OpenSetupAction (which the App wires
@@ -1507,7 +1807,13 @@ public sealed partial class ConnectionPage : Page
         RefreshFromSnapshot(_lastSnapshot);
     }
 
-    private async void OnApplyRepairCode(object sender, RoutedEventArgs e)
+    private void OnApplyRepairCode(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnApplyRepairCodeAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnApplyRepairCode));
+
+    private async Task OnApplyRepairCodeAsync()
     {
         var code = RecoveryRepairCodeBox.Text?.Trim();
         if (string.IsNullOrEmpty(code) || _connectionManager == null) return;
@@ -1526,7 +1832,13 @@ public sealed partial class ConnectionPage : Page
 
     // ─── Saved-gateway row actions ───────────────────────────────────
 
-    private async void OnConnectSavedGateway(object sender, RoutedEventArgs e)
+    private void OnConnectSavedGateway(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnConnectSavedGatewayAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnConnectSavedGateway));
+
+    private async Task OnConnectSavedGatewayAsync(object sender)
     {
         if (sender is not Button btn || btn.Tag is not string gwId) return;
         if (_gatewayRegistry == null || _connectionManager == null) return;
@@ -1607,7 +1919,13 @@ public sealed partial class ConnectionPage : Page
         RefreshFromSnapshot(_lastSnapshot);
     }
 
-    private async void OnSavedRowRemove(object sender, RoutedEventArgs e)
+    private void OnSavedRowRemove(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnSavedRowRemoveAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnSavedRowRemove));
+
+    private async Task OnSavedRowRemoveAsync(object sender)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
         var rec = _gatewayRegistry?.GetById(gwId);
@@ -1748,7 +2066,13 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
-    private async void OnAddSave(object sender, RoutedEventArgs e)
+    private void OnAddSave(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnAddSaveAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnAddSave));
+
+    private async Task OnAddSaveAsync()
     {
         var tag = ActiveAddPaneTag();
         AddResultText.Text = "";
@@ -2059,10 +2383,10 @@ public sealed partial class ConnectionPage : Page
 
         if (settings != null)
         {
-            settings.GatewayUrl = prevGatewayUrl;
+            settings.GatewayUrl = prevGatewayUrl ?? string.Empty;
             settings.UseSshTunnel = prevUseSsh;
-            settings.SshTunnelUser = prevSshUser;
-            settings.SshTunnelHost = prevSshHost;
+            settings.SshTunnelUser = prevSshUser ?? string.Empty;
+            settings.SshTunnelHost = prevSshHost ?? string.Empty;
             settings.SshTunnelRemotePort = prevSshRemotePort;
             settings.SshTunnelLocalPort = prevSshLocalPort;
             settings.Save();
@@ -2165,7 +2489,13 @@ public sealed partial class ConnectionPage : Page
     /// Welcome inline Scan button. Toggles scan on/off; on completion
     /// populates whichever discovered-list panel is visible.
     /// </summary>
-    private async void OnScanGatewaysClicked(object sender, RoutedEventArgs e)
+    private void OnScanGatewaysClicked(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnScanGatewaysClickedAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnScanGatewaysClicked));
+
+    private async Task OnScanGatewaysClickedAsync()
     {
         if (_scanInProgress)
         {
@@ -2450,7 +2780,7 @@ public sealed partial class ConnectionPage : Page
             // could act on the wrong one — disable those rows so the user
             // is forced to approve via the gateway-host CLI instead.
             var ambiguousIds = ComputeAmbiguousFallbackIds(
-                data.Pending.Select(r => (r.RequestId, r.DeviceId)));
+                data.Pending.Select(r => (RequestId: (string?)r.RequestId, FallbackId: (string?)r.DeviceId)));
             foreach (var req in data.Pending)
             {
                 bool ambiguous = req.RequestId == null
@@ -2476,7 +2806,7 @@ public sealed partial class ConnectionPage : Page
             // the same NodeId and no RequestId, disable approve/deny on
             // those rows so the user can't pick the wrong target.
             var ambiguousIds = ComputeAmbiguousFallbackIds(
-                data.Pending.Select(r => (r.RequestId, NodeId: r.NodeId)));
+                data.Pending.Select(r => (RequestId: (string?)r.RequestId, FallbackId: (string?)r.NodeId)));
             foreach (var req in data.Pending)
             {
                 bool ambiguous = req.RequestId == null

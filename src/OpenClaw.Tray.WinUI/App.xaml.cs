@@ -32,7 +32,7 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
+    internal static readonly UpdatumManager AppUpdater = new("openclaw", "openclaw-windows-node")
     {
         FetchOnlyLatestRelease = true,
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
@@ -197,21 +197,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
-    private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
+    private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
-    private const string DisableMouseInPointerEnv = "OPENCLAW_DISABLE_MOUSE_IN_POINTER";
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnableMouseInPointer([MarshalAs(UnmanagedType.Bool)] bool fEnable);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsMouseInPointerEnabled();
 
     public App()
     {
-        ConfigureMouseInPointerInput();
+        StartupInputConfigurator.Configure();
 
         // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
         var langOverride = Environment.GetEnvironmentVariable("OPENCLAW_LANGUAGE");
@@ -237,70 +228,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
 
-    private static void ConfigureMouseInPointerInput()
-    {
-        if (IsTruthyEnvVar(Environment.GetEnvironmentVariable(DisableMouseInPointerEnv)))
-        {
-            Logger.Warn($"[Input] Mouse-in-pointer startup configuration disabled by {DisableMouseInPointerEnv}=1.");
-            return;
-        }
-
-        try
-        {
-            var before = IsMouseInPointerEnabled();
-            if (before)
-            {
-                Logger.Info("[Input] Mouse-in-pointer was already enabled before WinUI initialization.");
-                return;
-            }
-
-            var enabled = EnableMouseInPointer(true);
-            var error = enabled ? 0 : Marshal.GetLastWin32Error();
-            var after = IsMouseInPointerEnabled();
-            if (enabled && after)
-            {
-                Logger.Info("[Input] Enabled mouse-in-pointer before WinUI initialization for precision touchpad scrolling.");
-            }
-            else
-            {
-                Logger.Warn($"[Input] EnableMouseInPointer(true) did not enable mouse-in-pointer. Before={before}, After={after}, LastError={error}.");
-            }
-        }
-        catch (DllNotFoundException ex)
-        {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
-        }
-        catch (EntryPointNotFoundException ex)
-        {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
-        }
-        catch (SEHException ex)
-        {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
-        }
-    }
-
-    private static bool IsTruthyEnvVar(string? value) =>
-        value is not null &&
-        (string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "on", StringComparison.OrdinalIgnoreCase));
-
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        LogCrash("UnhandledException", e.Exception);
+        _crashLogger.Log("UnhandledException", e.Exception);
         e.Handled = true; // Try to prevent crash
     }
 
     private void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
-        LogCrash("DomainUnhandledException", e.ExceptionObject as Exception);
+        _crashLogger.Log("DomainUnhandledException", e.ExceptionObject as Exception);
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        LogCrash("UnobservedTaskException", e.Exception);
+        _crashLogger.Log("UnobservedTaskException", e.Exception);
         e.SetObserved(); // Prevent crash
     }
     
@@ -312,33 +253,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
         }
         catch { }
-    }
-
-    private static void LogCrash(string source, Exception? ex)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(CrashLogPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-
-            var message = $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n";
-            File.AppendAllText(CrashLogPath, message);
-        }
-        catch { /* Can't log the crash logger crash */ }
-        
-        try
-        {
-            if (ex != null)
-            {
-                Logger.Error($"CRASH {source}: {ex}");
-            }
-            else
-            {
-                Logger.Error($"CRASH {source}");
-            }
-        }
-        catch { /* Ignore logging failures */ }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -362,7 +276,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return null;
     }
 
-    protected override async void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(LaunchActivatedEventArgs args) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnLaunchedAsync(args),
+            new AppLogger(),
+            nameof(OnLaunched));
+
+    private async Task OnLaunchedAsync(LaunchActivatedEventArgs args)
     {
         _startupArgs = Environment.GetCommandLineArgs();
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
@@ -454,6 +374,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
 
+        // Anchor the WinUI runtime so transient windows (UpdateDialog,
+        // setup wizard, etc.) don't terminate the process when closed.
+        // WinUI 3 Desktop's default DispatcherShutdownMode is
+        // OnLastWindowClose — without this override, closing the
+        // UpdateDialog on the startup path (when it is the only window)
+        // would shut down the WinUI runtime mid-flight and kill the
+        // in-progress download/extraction. We still control shutdown
+        // explicitly via Application.Exit().
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+
         // Check for updates before launching. Skip in test instances — no UI dialogs,
         // no network calls, no startup delay.
         if (DataDirOverride is null &&
@@ -475,9 +405,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Initialize tray icon FIRST (window-less pattern from WinUIEx).
         // The tray is application chrome and must always survive any failure
-        // in the onboarding wizard. OnLaunched is async void, so a synchronous
-        // throw inside the OnboardingWindow constructor would otherwise
-        // propagate through `await ShowOnboardingAsync()` and abort OnLaunched
+        // in the onboarding wizard. OnLaunched delegates through a guarded
+        // async boundary so onboarding failures are logged instead of escaping
         // before the tray ever initializes.
         InitializeTrayIcon();
         // Apply the user's saved default chat preset (if any) before any chat
@@ -612,7 +541,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         StartDeepLinkServer();
 
         // Register global hotkey if enabled
-        if (_settings.GlobalHotkeyEnabled)
+        if (_settings?.GlobalHotkeyEnabled == true)
         {
             _globalHotkey = new GlobalHotkeyService();
             _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
@@ -837,7 +766,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowTrayMenuPopup();
     }
 
-    private async void ShowTrayMenuPopup()
+    private void ShowTrayMenuPopup()
     {
         try
         {
@@ -866,7 +795,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         catch (Exception ex)
         {
-            LogCrash("ShowTrayMenuPopup", ex);
+            _crashLogger.Log("ShowTrayMenuPopup", ex);
             Logger.Error($"Failed to show tray menu: {ex.Message}");
         }
     }
@@ -1185,6 +1114,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Show "Reconfigure" if there's an existing setup, "Setup Guide" if fresh
         var hasExistingConfig = _settings != null
             && !StartupSetupState.RequiresSetup(_settings, IdentityDataPath, _gatewayRegistry);
+        var hasSetupManagedLocalWslGateway = WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
         var setupMenuLabel = hasExistingConfig
             ? LocalizationHelper.GetString("Menu_Reconfigure")
             : LocalizationHelper.GetString("Menu_SetupGuide");
@@ -1209,6 +1139,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             UsageCost = _appState?.UsageCost,
             Settings = _settings,
             SetupMenuLabel = setupMenuLabel,
+            ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
         };
     }
 
@@ -1423,12 +1354,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// </summary>
     private bool TryConnectGatewayIfCredentialAvailable(GatewayRecord record, string context)
     {
-        if (_connectionManager == null)
+        if (_connectionManager == null || _gatewayRegistry == null)
             return false;
 
-        var credential = ResolveStartupOperatorCredential(record);
+        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
+        var credential = ResolveStartupOperatorCredential(record, resolver, identityDir);
         if (credential == null)
         {
+            var nodeCredential = ResolveStartupNodeCredential(record, resolver, identityDir);
+            if (nodeCredential != null && ShouldInitializeNodeService())
+            {
+                Logger.Info(
+                    $"Connecting node-only gateway during {context}: {record.Url} ({nodeCredential.Source})");
+                ObserveBackgroundFault(
+                    _connectionManager.ConnectNodeOnlyAsync(record.Id),
+                    $"[App] Startup node-only gateway connect failed during {context}");
+                return true;
+            }
+
             Logger.Info($"Active gateway has no usable credential — skipping {context} connect");
             return false;
         }
@@ -1437,17 +1381,44 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ? "last successful gateway"
             : "credentialed gateway";
         Logger.Info($"Connecting to {connectionKind} during {context}: {record.Url} ({credential.Source})");
-        _ = _connectionManager.ConnectAsync(record.Id);
+        ObserveBackgroundFault(
+            _connectionManager.ConnectAsync(record.Id),
+            $"[App] Startup gateway connect failed during {context}");
         return true;
     }
 
-    private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(GatewayRecord record)
+    private static void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            Logger.Error($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            Logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => Logger.Error($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+    }
+
+    private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(
+        GatewayRecord record,
+        CredentialResolver resolver,
+        string identityDir)
     {
         if (_gatewayRegistry == null)
             return null;
 
-        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
-        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
         var credential = resolver.ResolveOperator(record, identityDir);
         if (credential != null)
             return credential;
@@ -1462,6 +1433,50 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         return null;
+    }
+
+    private OpenClaw.Connection.GatewayCredential? ResolveStartupNodeCredential(
+        GatewayRecord record,
+        CredentialResolver resolver,
+        string identityDir)
+    {
+        var credential = resolver.ResolveNode(record, identityDir);
+        if (credential != null)
+            return credential;
+
+        var effectiveUrl = _settings?.GetEffectiveGatewayUrl();
+        if (string.IsNullOrWhiteSpace(effectiveUrl) ||
+            !string.Equals(record.Url, effectiveUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        credential = resolver.ResolveNode(record, SettingsManager.SettingsDirectoryPath);
+        if (credential == null)
+            return null;
+
+        TryCopyLegacyIdentityToGateway(record.Id, identityDir);
+        return credential;
+    }
+
+    private static void TryCopyLegacyIdentityToGateway(string gatewayId, string identityDir)
+    {
+        var legacyIdentityPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "device-key-ed25519.json");
+        var newIdentityPath = Path.Combine(identityDir, "device-key-ed25519.json");
+        if (!File.Exists(legacyIdentityPath) || File.Exists(newIdentityPath))
+            return;
+
+        try
+        {
+            if (!Directory.Exists(identityDir))
+                Directory.CreateDirectory(identityDir);
+            File.Copy(legacyIdentityPath, newIdentityPath, overwrite: false);
+            Logger.Info($"[GatewayRegistry] Copied legacy identity into active gateway {gatewayId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to copy legacy identity file for gateway {gatewayId}: {ex.Message}");
+        }
     }
 
     private void TryMigrateLegacyGatewaySettings(string gatewayUrl, IOpenClawLogger logger)
@@ -2437,10 +2452,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _suspendConnectionToggleEvent = true;
         try
         {
-            if (toggle.IsOn != shouldBeOn)
-                toggle.IsOn = shouldBeOn;
-
-            toggle.IsEnabled = canToggle;
+            TrayMenuWindow.SetMenuToggleSwitchState(toggle, shouldBeOn, canToggle);
             ToolTipService.SetToolTip(toggle,
                 shouldBeOn ? "Connected - toggle off to disconnect"
                     : status == ConnectionStatus.Connecting ? "Connecting..."
@@ -3120,7 +3132,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
 
-    private async void ToggleChannel(string channelName)
+    private void ToggleChannel(string channelName) =>
+        AsyncEventHandlerGuard.Run(
+            () => ToggleChannelAsync(channelName),
+            new AppLogger(),
+            nameof(ToggleChannel));
+
+    private async Task ToggleChannelAsync(string channelName)
     {
         var client = _connectionManager?.OperatorClient;
         if (client == null) return;
@@ -3262,7 +3280,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     //    UpdateDialog + download + install. Prevents two parallel installs
     //    without holding a lock across user interaction.
     private readonly System.Threading.SemaphoreSlim _updateCheckGate = new(1, 1);
+#if !DEBUG
     private int _updateInstallInProgress;
+#endif
 
     private async Task<bool> CheckForUpdatesAsync(bool userInitiated = false)
     {
@@ -3944,56 +3964,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    #region Toast Activation
-
-    private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args)
-    {
-        var arguments = ToastArguments.Parse(args.Argument);
-        
-        if (arguments.TryGetValue("action", out var action))
-        {
-            OnUiThread(() =>
-            {
-                switch (action)
-                {
-                    case "open_url" when arguments.TryGetValue("url", out var url):
-                        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-                        catch { }
-                        break;
-                    case "open_dashboard":
-                        OpenDashboard();
-                        break;
-                    case "open_settings":
-                        ShowSettings();
-                        break;
-                    case "open_chat":
-                        ShowWebChat();
-                        break;
-                    case "open_activity":
-                        // ActivityPage removed — redirect to Channels.
-                        ShowHub("channels");
-                        break;
-                    case "copy_pairing_command" when arguments.TryGetValue("command", out var command):
-                        CopyTextToClipboard(command);
-                        _toastService!.ShowToast(new ToastContentBuilder()
-                            .AddText(LocalizationHelper.GetString("Toast_PairingCommandCopied"))
-                            .AddText(command));
-                        break;
-                }
-            });
-        }
-    }
-
-    public static void CopyTextToClipboard(string text)
-    {
-        ClipboardHelper.CopyText(text);
-    }
-
-    #endregion
-
     #region Exit
 
     private void ExitApplication()
+    {
+        _ = ExitApplicationAsync();
+    }
+
+    private async Task ExitApplicationAsync()
     {
         if (_isExiting)
         {
@@ -4019,10 +3997,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         });
 
         // Dispose runtime services
-        SafeShutdownStep("gateway client", () =>
+        var connectionManager = _connectionManager;
+        if (connectionManager != null)
         {
-            _connectionManager?.Dispose();
-        });
+            await SafeShutdownStepAsync("gateway client", async () =>
+            {
+                await connectionManager.DisposeAsync();
+            });
+            _connectionManager = null;
+        }
 
         SafeShutdownStep("chat coordinator", () =>
         {
@@ -4030,17 +4013,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _chatCoordinator = null;
         });
 
-        SafeShutdownStep("node service", () =>
+        var nodeService = _nodeService;
+        if (nodeService != null)
         {
-            _nodeService?.Dispose();
+            await SafeShutdownStepAsync("node service", async () =>
+            {
+                await nodeService.DisposeAsync();
+            });
             _nodeService = null;
-        });
+        }
 
-        SafeShutdownStep("standalone voice service", () =>
+        var standaloneVoiceService = _standaloneVoiceService;
+        if (standaloneVoiceService != null)
         {
-            _standaloneVoiceService?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            await SafeShutdownStepAsync("standalone voice service", async () =>
+            {
+                await standaloneVoiceService.DisposeAsync();
+            });
             _standaloneVoiceService = null;
-        });
+        }
 
         SafeShutdownStep("ssh tunnel service", () =>
         {
@@ -4098,6 +4089,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Info($"Shutdown: disposing {name}");
             action();
+            Logger.Info($"Shutdown: disposed {name}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Shutdown: failed disposing {name}: {ex.Message}");
+        }
+    }
+
+    private static async Task SafeShutdownStepAsync(string name, Func<Task> action)
+    {
+        try
+        {
+            Logger.Info($"Shutdown: disposing {name}");
+            await action();
             Logger.Info($"Shutdown: disposed {name}");
         }
         catch (Exception ex)
@@ -4164,7 +4169,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    private async void OnSshTunnelExited(object? sender, int exitCode)
+    private void OnSshTunnelExited(object? sender, int exitCode) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnSshTunnelExitedAsync(exitCode),
+            new AppLogger(),
+            nameof(OnSshTunnelExited));
+
+    private async Task OnSshTunnelExitedAsync(int exitCode)
     {
         Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
         _sshTunnelService?.MarkRestarting(exitCode);

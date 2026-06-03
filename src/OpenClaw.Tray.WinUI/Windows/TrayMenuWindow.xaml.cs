@@ -147,6 +147,31 @@ public sealed partial class TrayMenuWindow : WindowEx
     private Brush SecondaryTextBrush =>
         _secondaryTextBrush ??= (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
 
+    internal ToggleSwitch CreateMenuToggleSwitch(bool isOn, string automationName, bool isEnabled = true)
+    {
+        var toggle = new ToggleSwitch
+        {
+            IsOn = isOn,
+            OnContent = string.Empty,
+            OffContent = string.Empty,
+            MinWidth = 0,
+            Width = 40,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsEnabled = isEnabled,
+            Style = (Style)RootGrid.Resources["TrayMenuInstantToggleSwitchStyle"]
+        };
+        AutomationProperties.SetName(toggle, automationName);
+        return toggle;
+    }
+
+    internal static void SetMenuToggleSwitchState(ToggleSwitch toggle, bool isOn, bool isEnabled)
+    {
+        toggle.IsEnabled = isEnabled;
+        if (toggle.IsOn != isOn)
+            toggle.IsOn = isOn;
+    }
+
     public TrayMenuWindow() : this(ownerMenu: null)
     {
     }
@@ -378,7 +403,6 @@ public sealed partial class TrayMenuWindow : WindowEx
         {
             button.Background = s_transparentBrush;
         };
-
         MenuPanel.Children.Add(button);
         _itemCount++;
     }
@@ -598,15 +622,7 @@ public sealed partial class TrayMenuWindow : WindowEx
         AutomationProperties.SetAccessibilityView(stateLabel, AccessibilityView.Raw);
         trailing.Children.Add(stateLabel);
 
-        var toggle = new ToggleSwitch
-        {
-            IsOn = isOn,
-            OnContent = null,
-            OffContent = null,
-            MinWidth = 0,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        AutomationProperties.SetName(toggle, title);
+        var toggle = CreateMenuToggleSwitch(isOn, title);
         toggle.Toggled += (s, e) =>
         {
             stateLabel.Text = toggle.IsOn ? "On" : "Off";
@@ -1312,7 +1328,7 @@ public sealed class TrayMenuFlyoutItem
     public bool IsToggle { get; set; }
     public bool IsOn { get; set; }
 
-    // Optional secondary description text shown below the title (for ToggleSwitch rows).
+    // Optional secondary description text shown below the title (for toggle rows).
     public string? Description { get; set; }
 
     // Free-form content: when set, the renderer drops the row in via

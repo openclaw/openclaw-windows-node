@@ -159,7 +159,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     protected override bool ShouldAutoReconnect()
     {
-        return !_pairingRequiredAwaitingApproval && !_authFailed;
+        // PairingRequired must stay visible, but approval only takes effect on a fresh socket.
+        return !_authFailed;
     }
 
     protected override void OnDisconnected()
@@ -244,6 +245,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
         _connectAuthToken = _deviceIdentity.DeviceToken ?? (_tokenIsBootstrapToken ? string.Empty : _token);
+        _useV2Signature |= _tokenIsBootstrapToken && string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
     }
 
     public async Task DisconnectAsync()
@@ -1170,6 +1172,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 role, requestedScopes, signatureToken,
                 OperatorPlatform, OperatorDeviceFamily);
 
+        var appVersion = AppVersionInfo.Version;
+
         // Use "cli" client ID for native apps - no browser security checks
         var msg = new
         {
@@ -1183,7 +1187,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 client = new
                 {
                     id = OperatorClientId,  // Native client ID
-                    version = "1.0.0",
+                    version = appVersion,
                     platform = OperatorPlatform,
                     mode = OperatorClientMode,
                     displayName = OperatorClientDisplayName
@@ -1195,7 +1199,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 permissions = new { },
                 auth = BuildAuthPayload(),
                 locale = "en-US",
-                userAgent = "openclaw-windows-tray/1.0.0",
+                userAgent = $"openclaw-windows-tray/{appVersion}",
                 device = new
                 {
                     id = _deviceIdentity.DeviceId,
@@ -1547,9 +1551,9 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 }
             }
 
-            var newDeviceToken = _bootstrapPairAsNode
-                ? TryGetHandshakeDeviceTokenCore(payload, OperatorRole, allowDirectDeviceTokenFallback: false)
-                : TryGetHandshakeDeviceTokenCore(payload, preferredRole: null);
+            var newDeviceToken = !_bootstrapPairAsNode
+                ? TryGetHandshakeDeviceTokenCore(payload, preferredRole: null)
+                : TryGetHandshakeDeviceTokenCore(payload, OperatorRole, allowDirectDeviceTokenFallback: false);
             if (!string.IsNullOrWhiteSpace(newDeviceToken))
             {
                 var deviceTokenScopes = _bootstrapPairAsNode
@@ -2168,24 +2172,26 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(preferredRole) &&
-            authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
-            deviceTokens.ValueKind == JsonValueKind.Array)
+        if (!string.IsNullOrWhiteSpace(preferredRole))
         {
-            foreach (var entry in deviceTokens.EnumerateArray())
+            if (authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
+                deviceTokens.ValueKind == JsonValueKind.Array)
             {
-                if (entry.ValueKind != JsonValueKind.Object)
-                    continue;
-
-                if (entry.TryGetProperty("role", out var role) &&
-                    role.ValueKind == JsonValueKind.String &&
-                    string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase) &&
-                    entry.TryGetProperty("deviceToken", out var roleToken) &&
-                    roleToken.ValueKind == JsonValueKind.String)
+                foreach (var entry in deviceTokens.EnumerateArray())
                 {
-                    var roleTokenValue = roleToken.GetString();
-                    if (!string.IsNullOrWhiteSpace(roleTokenValue))
-                        return roleTokenValue;
+                    if (entry.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    if (entry.TryGetProperty("role", out var role) &&
+                        role.ValueKind == JsonValueKind.String &&
+                        string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase) &&
+                        entry.TryGetProperty("deviceToken", out var roleToken) &&
+                        roleToken.ValueKind == JsonValueKind.String)
+                    {
+                        var roleTokenValue = roleToken.GetString();
+                        if (!string.IsNullOrWhiteSpace(roleTokenValue))
+                            return roleTokenValue;
+                    }
                 }
             }
 
@@ -2216,22 +2222,24 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(preferredRole) &&
-            authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
-            deviceTokens.ValueKind == JsonValueKind.Array)
+        if (!string.IsNullOrWhiteSpace(preferredRole))
         {
-            foreach (var entry in deviceTokens.EnumerateArray())
+            if (authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
+                deviceTokens.ValueKind == JsonValueKind.Array)
             {
-                if (entry.ValueKind != JsonValueKind.Object)
-                    continue;
-
-                if (entry.TryGetProperty("role", out var role) &&
-                    role.ValueKind == JsonValueKind.String &&
-                    string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase))
+                foreach (var entry in deviceTokens.EnumerateArray())
                 {
-                    return entry.TryGetProperty("scopes", out var roleScopes) && roleScopes.ValueKind == JsonValueKind.Array
-                        ? ReadStringArray(roleScopes)
-                        : [];
+                    if (entry.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    if (entry.TryGetProperty("role", out var role) &&
+                        role.ValueKind == JsonValueKind.String &&
+                        string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return entry.TryGetProperty("scopes", out var roleScopes) && roleScopes.ValueKind == JsonValueKind.Array
+                            ? ReadStringArray(roleScopes)
+                            : [];
+                    }
                 }
             }
 

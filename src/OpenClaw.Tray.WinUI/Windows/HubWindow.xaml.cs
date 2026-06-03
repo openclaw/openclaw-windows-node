@@ -64,7 +64,6 @@ public sealed partial class HubWindow : WindowEx
     public string? LastSkillsAgentId { get; private set; }
     public System.Text.Json.JsonElement? LastAgentFilesList { get; private set; }
     public string? LastAgentFilesListAgentId { get; private set; }
-    private string? _pendingAgentFilesListAgentId;
 
 
     // Event for settings saved (App.xaml.cs subscribes)
@@ -456,7 +455,7 @@ public sealed partial class HubWindow : WindowEx
                 var gatewayTags = new HashSet<string> { "chat", "sessions", "skills", "channels", "instances", "agentevents", "bindings", "config", "usage", "cron", "workspace" };
                 if (currentTag != null && (gatewayTags.Contains(currentTag) || currentTag.StartsWith("agent:")))
                 {
-                    foreach (NavigationViewItem item in NavView.MenuItems.OfType<NavigationViewItem>())
+                    foreach (NavigationViewItem item in NavView!.MenuItems.OfType<NavigationViewItem>())
                     {
                         if (item.Tag as string == "connection")
                         {

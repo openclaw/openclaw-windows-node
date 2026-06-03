@@ -287,7 +287,13 @@ public sealed partial class ConnectionStatusWindow : WindowEx
             SetupCodePreview.Text = $"✗ {decoded.Error}";
     }
 
-    private async void OnConnect(object sender, RoutedEventArgs e)
+    private void OnConnect(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnConnectAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnConnect));
+
+    private async Task OnConnectAsync()
     {
         if (_manager == null) return;
 
@@ -319,7 +325,13 @@ public sealed partial class ConnectionStatusWindow : WindowEx
         }
     }
 
-    private async void OnDisconnectClick(object sender, RoutedEventArgs e)
+    private void OnDisconnectClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnDisconnectClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnDisconnectClick));
+
+    private async Task OnDisconnectClickAsync()
     {
         if (_manager == null) return;
         await _manager.DisconnectAsync();
@@ -331,7 +343,13 @@ public sealed partial class ConnectionStatusWindow : WindowEx
         DiagSshDetailsPanel.Visibility = DiagSshToggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async void OnDirectConnect(object sender, RoutedEventArgs e)
+    private void OnDirectConnect(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnDirectConnectAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnDirectConnect));
+
+    private async Task OnDirectConnectAsync()
     {
         if (_manager == null || _registry == null) return;
 

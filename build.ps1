@@ -6,7 +6,7 @@
     Builds all projects, checks prerequisites, and provides clear guidance.
 
 .PARAMETER Project
-    Which project to build: All, Tray, WinUI, Shared, CommandPalette, Cli
+    Which project to build: All, Tray, WinUI, Shared, Cli
     Default: All
 
 .PARAMETER Configuration
@@ -16,6 +16,11 @@
 .PARAMETER CheckOnly
     Only check prerequisites, don't build
 
+.PARAMETER NoTrustRepository
+    Do not automatically add this checkout to git safe.directory when GitVersion
+    cannot read a repo owned by a different Windows account/group. The script
+    will print the manual command instead.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 -Project WinUI -Configuration Release
@@ -23,16 +28,21 @@
 #>
 
 param(
-    [ValidateSet("All", "Tray", "WinUI", "Shared", "CommandPalette", "Cli", "WinNodeCli", "SetupEngine")]
+    [ValidateSet("All", "Tray", "WinUI", "Shared", "Cli", "WinNodeCli", "SetupEngine")]
     [string]$Project = "All",
     
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
     
-    [switch]$CheckOnly
+    [switch]$CheckOnly,
+
+    [switch]$NoTrustRepository
 )
 
 $ErrorActionPreference = "Stop"
+
+$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $repoRoot
 
 # Colors for output
 function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
@@ -43,6 +53,81 @@ function Write-Info($text) { Write-Host "   $text" -ForegroundColor Gray }
 
 # Track issues
 $issues = @()
+
+function ConvertTo-GitSafeDirectoryPath($path) {
+    return ([System.IO.Path]::GetFullPath($path).TrimEnd("\") -replace "\\", "/")
+}
+
+function Test-GitSafeDirectoryContains($path) {
+    $expected = (ConvertTo-GitSafeDirectoryPath $path).ToLowerInvariant()
+    $safeDirectories = & git config --global --get-all safe.directory 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $safeDirectories) {
+        return $false
+    }
+
+    foreach ($safeDirectory in $safeDirectories) {
+        if ($safeDirectory -eq "*") {
+            return $true
+        }
+
+        $normalized = ($safeDirectory.Trim().TrimEnd("\", "/") -replace "\\", "/").ToLowerInvariant()
+        if ($normalized -eq $expected) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Get-SecurityIdentifierValue($accountName) {
+    try {
+        return ([System.Security.Principal.NTAccount]$accountName).
+            Translate([System.Security.Principal.SecurityIdentifier]).
+            Value
+    } catch {
+        return $null
+    }
+}
+
+function Ensure-GitVersionRepositoryTrust {
+    if (-not (Test-Path (Join-Path $repoRoot ".git"))) {
+        return
+    }
+
+    $owner = (Get-Acl -LiteralPath $repoRoot).Owner
+    $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $ownerSid = Get-SecurityIdentifierValue $owner
+    if ($ownerSid -and $ownerSid -eq $currentIdentity.User.Value) {
+        return
+    }
+
+    if (Test-GitSafeDirectoryContains $repoRoot) {
+        return
+    }
+
+    $safeDirectory = ConvertTo-GitSafeDirectoryPath $repoRoot
+    Write-Warning "Repository owner is '$owner' but the current user is '$($currentIdentity.Name)'. GitVersion/LibGit2Sharp may reject this checkout unless it is trusted."
+
+    if ($NoTrustRepository -or $CheckOnly) {
+        Write-Info "Run this once, then retry:"
+        Write-Info "git config --global --add safe.directory `"$safeDirectory`""
+        $script:issues += "Repository is not trusted for GitVersion"
+        return
+    }
+
+    Write-Info "Adding git safe.directory entry: $safeDirectory"
+
+    & git config --global --add safe.directory $safeDirectory
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Unable to add git safe.directory entry."
+        Write-Info "Run this once, then retry the build:"
+        Write-Info "git config --global --add safe.directory `"$safeDirectory`""
+        $script:issues += "Repository is not trusted for GitVersion"
+        return
+    }
+
+    Write-Success "Repository trusted for GitVersion"
+}
 
 Write-Host @"
 
@@ -87,6 +172,47 @@ if (-not $dotnetVersion) {
         $issues += "Missing .NET 10 SDK"
     } else {
         Write-Success ".NET 10 SDK available"
+    }
+}
+
+# Check Git (GitVersion reads repository metadata during .NET builds)
+$git = Get-Command git -ErrorAction SilentlyContinue
+if (-not $git) {
+    Write-Error "Git not found (required by GitVersion during builds)"
+    Write-Info "Install via: winget install Git.Git"
+    Write-Info "Or download from: https://git-scm.com/download/win"
+    $issues += "Missing Git"
+} else {
+    $gitVersion = & git --version 2>$null
+    if ($LASTEXITCODE -eq 0 -and $gitVersion) {
+        Write-Success "$gitVersion"
+    } else {
+        Write-Success "Git detected"
+    }
+
+    Ensure-GitVersionRepositoryTrust
+}
+
+# Check Node.js + npm (WinUI build runs `npm ci` to restore @microsoft/mxc-sdk
+# so it can copy wxc-exec.exe into the build output)
+$nodeVersion = $null
+try { $nodeVersion = & node --version 2>$null } catch {}
+if (-not $nodeVersion) {
+    Write-Error "Node.js not found (required by WinUI build to restore @microsoft/mxc-sdk)"
+    Write-Info "Install via: winget install OpenJS.NodeJS.LTS"
+    Write-Info "Or download from: https://nodejs.org/"
+    $issues += "Missing Node.js"
+} else {
+    Write-Success "Node.js: $nodeVersion"
+
+    $npmVersion = $null
+    try { $npmVersion = & npm --version 2>$null } catch {}
+    if (-not $npmVersion) {
+        Write-Error "npm not found on PATH (WinUI build invokes `npm ci`)"
+        Write-Info "npm normally ships with Node.js - reinstall Node.js or repair the install"
+        $issues += "Missing npm"
+    } else {
+        Write-Success "npm: $npmVersion"
     }
 }
 
@@ -144,6 +270,11 @@ if ($CheckOnly) {
     exit 0
 }
 
+if ($issues.Count -gt 0) {
+    Write-Host "`nFix the prerequisite issue(s) above, then rerun .\build.ps1.`n" -ForegroundColor Yellow
+    exit 1
+}
+
 # =============================================================================
 # BUILD
 # =============================================================================
@@ -181,6 +312,21 @@ function Build-Project($name, $path, $useRid = $false) {
         $result | Select-String "error" | Select-Object -First 5 | ForEach-Object {
             Write-Info $_.Line
         }
+
+        $lockingProcesses = $result |
+            Select-String 'file is locked by: "(.+) \((\d+)\)"' |
+            ForEach-Object {
+                [PSCustomObject]@{
+                    Name = $_.Matches[0].Groups[1].Value
+                    Id = $_.Matches[0].Groups[2].Value
+                }
+            } |
+            Sort-Object Id -Unique
+
+        foreach ($lockingProcess in $lockingProcesses) {
+            Write-Warning "Build output is locked by $($lockingProcess.Name) (PID $($lockingProcess.Id)). Close the app, or run: Stop-Process -Id $($lockingProcess.Id)"
+        }
+
         return $false
     }
 }
@@ -203,7 +349,6 @@ $projects = @{
     "WinNodeCli" = @{ Path = "src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj"; UseRid = $false }
     "Tray" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
     "WinUI" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
-    "CommandPalette" = @{ Path = "src/OpenClaw.CommandPalette/OpenClaw.CommandPalette.csproj"; UseRid = $false }
     "SetupEngine" = @{ Path = "src/OpenClaw.SetupEngine.UI/OpenClaw.SetupEngine.UI.csproj"; UseRid = $true }
 }
 
@@ -214,10 +359,15 @@ if ($Project -ne "Shared" -and $Project -ne "All" -and $toBuild -notcontains "Sh
     $toBuild = @("Shared") + $toBuild
 }
 
-foreach ($proj in $toBuild) {
+for ($i = 0; $i -lt $toBuild.Count; $i++) {
+    $proj = $toBuild[$i]
     if ($projects.ContainsKey($proj)) {
         $projInfo = $projects[$proj]
         $buildResults[$proj] = Build-Project $proj $projInfo.Path $projInfo.UseRid
+        if ($proj -eq "Shared" -and -not $buildResults[$proj] -and $i -lt ($toBuild.Count - 1)) {
+            Write-Warning "Skipping remaining projects because Shared failed."
+            break
+        }
     }
 }
 
@@ -265,7 +415,12 @@ if ($failCount -eq 0) {
         $winUIProjectDirectory = (Split-Path -Parent $winUIProjectPath).Replace("/", "\")
 
         if ($winUITargetFramework) {
-            Write-Host "  WinUI:    .\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid\OpenClaw.Tray.WinUI.exe" -ForegroundColor White
+            $winUIOutputDirectory = ".\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid"
+            $winUIManifestPath = ".\$winUIProjectDirectory\Package.appxmanifest"
+            Write-Host "  WinUI:    .\run-app-local.ps1 -NoBuild" -ForegroundColor White
+            Write-Host "  Isolated: .\run-app-local.ps1 -NoBuild -Isolated" -ForegroundColor White
+            Write-Host "  WinApp:   .\run-app-local.ps1 -NoBuild -UseWinApp" -ForegroundColor White
+            Write-Host "            Direct launch is default. -UseWinApp runs: winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --executable `"OpenClaw.Tray.WinUI.exe`" --debug-output" -ForegroundColor DarkGray
         } else {
             Write-Warning "Unable to determine WinUI target framework from $winUIProjectPath"
         }

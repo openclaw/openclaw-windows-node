@@ -197,7 +197,7 @@ public sealed class OpenClawChatRoot : Component
                 return null;
 
             return nativeForMeta.GetEntryMetadata(selectedIdForMetadata);
-        }, selectedIdForMetadata ?? string.Empty, snapshot);
+        }, selectedIdForMetadata ?? string.Empty, snapshot is null ? string.Empty : snapshot);
 
         // Preview override (G) — only honored when the chat is bound to a
         // fake provider (i.e. the explorations window). Real production
@@ -250,7 +250,7 @@ public sealed class OpenClawChatRoot : Component
             composeOnlyThread = new ChatThread
             {
                 Id = composeKey,
-                Title = lastState?.ThreadTitle ?? "Main session",
+                Title = lastState?.ThreadTitle ?? "OpenClaw Windows Tray",
                 Model = lastState?.Model,
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.Idle,
@@ -307,12 +307,24 @@ public sealed class OpenClawChatRoot : Component
         // restore the per-agent name here.
         const string assistantSenderLabel = "Assistant";
 
-        // Show inline "thinking" indicator when the turn is active but the
-        // last visible entry is NOT an assistant block yet — i.e. we're between
-        // the user's send and the first assistant delta arriving.
-        var showThinking = timeline.TurnActive
-            && (timeline.Entries.Count == 0
-                || timeline.Entries[timeline.Entries.Count - 1].Kind != ChatTimelineItemKind.Assistant);
+        // Show inline "thinking" indicator only until this turn has an
+        // assistant bubble. Tool calls can arrive before the first assistant
+        // delta; those should nest under the thinking bubble instead of
+        // suppressing it. Once an assistant entry exists in the current turn,
+        // tool calls nest there and the thinking placeholder goes away.
+        var currentTurnHasAssistant = false;
+        for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+        {
+            var kind = timeline.Entries[i].Kind;
+            if (kind == ChatTimelineItemKind.User)
+                break;
+            if (kind == ChatTimelineItemKind.Assistant)
+            {
+                currentTurnHasAssistant = true;
+                break;
+            }
+        }
+        var showThinking = timeline.TurnActive && !currentTurnHasAssistant;
 
         // Apply preview-state overrides for the four data-dependent states.
         // These mutate locals only — real provider data on disk is untouched.
@@ -370,6 +382,20 @@ public sealed class OpenClawChatRoot : Component
                     PermissionKind: "execute",
                     ToolName: "shell",
                     Detail: "Run `git status` in the current repo.");
+                // Approval UI now lives in the timeline (not a composer
+                // banner), so the preview state needs a synthetic
+                // PermissionRequest entry to make the inline bubble visible.
+                entries = new[]
+                {
+                    new ChatTimelineItem(
+                        "preview-perm-entry",
+                        ChatTimelineItemKind.PermissionRequest,
+                        "Run `git status` in the current repo.",
+                        ToolName: "shell",
+                        IntentSummary: "execute",
+                        PermissionRequestId: "preview-perm",
+                        PermissionDecision: ChatPermissionDecision.Pending)
+                };
                 break;
 
             case ChatPreviewState.Reconnecting:
@@ -394,6 +420,12 @@ public sealed class OpenClawChatRoot : Component
         // the welcome screen doesn't flicker on top of an as-yet
         // unloaded timeline. See OpenClawChatDataProvider.HistoryLoaded
         // — set to true only inside LoadHistoryAsync's rebuild.
+        // Note: `pendingPermissionOverride is null` is now redundant for
+        // live data — the reducer's ApplyPermissionRequest pushes a
+        // PermissionRequest timeline entry whenever PendingPermission is
+        // set, so `entries.Count > 0` already covers that case. The guard
+        // remains as a defensive check for preview/explorations paths
+        // that may seed PendingPermission without populating entries.
         var isEmptyConversation = entries.Count == 0
             && !showThinking
             && pendingPermissionOverride is null;
@@ -524,11 +556,13 @@ public sealed class OpenClawChatRoot : Component
                 AssistantSenderLabel: assistantSenderLabel,
                 DefaultModel: effectiveThread.Model,
                 ShowThinkingIndicator: showThinking,
+                EnableExplorationControls: _provider is FakeChatDataProvider,
                 OnReadAloud: _onReadAloud is not null
                     ? (text => _onReadAloud(text))
                     : null,
                 OnStopSpeaking: _onStopSpeaking,
-                ScrollToBottomToken: scrollToBottomToken.Value));
+                ScrollToBottomToken: scrollToBottomToken.Value,
+                OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id!, rid, allow)));
         }
 
         // Session list for the composer dropdown — grouped by agent, keyed by
@@ -547,17 +581,42 @@ public sealed class OpenClawChatRoot : Component
             .OrderBy(g => g.Key.Equals("main", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .Select(g => new ChannelGroup(
-                AgentLabel: g.Key.Length > 0 ? char.ToUpper(g.Key[0]) + g.Key[1..] : "Unknown",
+                AgentLabel: g.Key.Length > 0 ? char.ToUpperInvariant(g.Key[0]) + g.Key[1..] : "Unknown",
                 Sessions: g.Select(t => (Id: t.Id, Title: t.Title!)).ToArray()))
             .ToArray();
+
+        // If the compose-only synthetic thread isn't represented in any group
+        // (e.g. fresh install: the gateway has no real sessions yet), inject a
+        // single-entry "Main" group so the composer's channel combo isn't blank.
+        //
+        // Thread-id format (see OpenClawChatDataProvider): the canonical key
+        // is ``agent:<agentId>:<slot>`` (e.g. ``agent:main:default``). The
+        // first segment is always literal ``agent``; the second is the
+        // agent identifier we use to label the channel group; the third is
+        // the slot/session-instance within that agent. When the key
+        // doesn't match this layout we fall back to a generic "Main"
+        // label rather than mis-parsing some other id shape.
+        if (effectiveThread is not null && !ChannelGroupsContain(channelGroups, effectiveThread.Id))
+        {
+            var parts = (effectiveThread.Id ?? "").Split(':');
+            var agentId = parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "main";
+            var agentLabel = agentId.Length > 0 ? char.ToUpperInvariant(agentId[0]) + agentId[1..] : "Main";
+            var syntheticGroup = new ChannelGroup(
+                AgentLabel: agentLabel,
+                Sessions: new[] { (Id: effectiveThread.Id!, Title: effectiveThread.Title ?? "OpenClaw Windows Tray") });
+
+            var augmented = new ChannelGroup[channelGroups.Length + 1];
+            augmented[0] = syntheticGroup;
+            Array.Copy(channelGroups, 0, augmented, 1, channelGroups.Length);
+            channelGroups = augmented;
+        }
 
         Element composer = (effectiveThread is not null && !suppressComposer)
             ? Component<OpenClawComposer, OpenClawComposerProps>(new(
                 ConnectionState: connState,
                 TurnActive: turnActiveOverride,
-                PendingPermission: pendingPermissionOverride,
-                ChannelLabel: effectiveThread.Title ?? "Main session",
-                ChannelId: effectiveThread.Id,
+                ChannelLabel: effectiveThread.Title ?? "OpenClaw Windows Tray",
+                ChannelId: effectiveThread.Id!,
                 AvailableChannels: channelGroups,
                 AvailableModels: snapshot.AvailableModels,
                 CurrentModel: effectiveThread.Model,
@@ -565,18 +624,17 @@ public sealed class OpenClawChatRoot : Component
                 OnSend: (msg, att) =>
                 {
                     pendingAttachment.Set(null);
-                    OnSend(effectiveThread.Id, msg, att);
+                    OnSend(effectiveThread.Id!, msg, att);
                 },
-                OnStop: () => OnStop(effectiveThread.Id),
-                OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id, rid, allow),
+                OnStop: () => OnStop(effectiveThread.Id!),
                 OnChannelChanged: id =>
                 {
                     selectedIdState.Set(id);
                     selectedIdRef.Current = id;
                 },
-                OnModelChanged: model => RunFireAndForget(ct => _provider.SetModelAsync(effectiveThread.Id, model, ct)),
-                OnThinkingLevelChanged: level => RunFireAndForget(ct => _provider.SetThinkingLevelAsync(effectiveThread.Id, level, ct)),
-                OnPermissionsChanged: allowAll => RunFireAndForget(ct => _provider.SetPermissionModeAsync(effectiveThread.Id, allowAll, ct)),
+                OnModelChanged: model => RunFireAndForget(ct => _provider.SetModelAsync(effectiveThread.Id!, model, ct)),
+                OnThinkingLevelChanged: level => RunFireAndForget(ct => _provider.SetThinkingLevelAsync(effectiveThread.Id!, level, ct)),
+                OnPermissionsChanged: allowAll => RunFireAndForget(ct => _provider.SetPermissionModeAsync(effectiveThread.Id!, allowAll, ct)),
                 OnVoiceRequest: _onVoiceRequest,
                 OnAttachClick: _onAttachClick,
                 PendingAttachment: pendingAttachment.Value,
@@ -605,6 +663,21 @@ public sealed class OpenClawChatRoot : Component
             body.Grid(row: 2, column: 0),
             composer.Grid(row: 3, column: 0)
         );
+    }
+
+    // Cheap allocation-free probe for "does any group contain a session with
+    // the given id?" — avoids the LINQ Any().Any() allocation in the render
+    // hot path.
+    private static bool ChannelGroupsContain(ChannelGroup[] groups, string id)
+    {
+        foreach (var g in groups)
+        {
+            foreach (var s in g.Sessions)
+            {
+                if (s.Id == id) return true;
+            }
+        }
+        return false;
     }
 
     private static ChatThread SynthesizePreviewThread(ChatDataSnapshot snapshot)

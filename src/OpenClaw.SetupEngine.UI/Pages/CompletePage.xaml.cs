@@ -1,14 +1,17 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.SetupEngine;
 using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class CompletePage : Page
 {
+    private static readonly Regex s_urlRegex = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private string? _logPath;
 
     public CompletePage()
@@ -30,26 +33,61 @@ public sealed partial class CompletePage : Page
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
                 ErrorCard.Visibility = Visibility.Collapsed;
+                HelpLink.Visibility = Visibility.Collapsed;
             }
             else
             {
+                var errorMessage = args.ErrorMessage ?? "Unknown error";
+                var helpUrl = ExtractHelpUrl(errorMessage);
+
                 SuccessIcon.Visibility = Visibility.Collapsed;
                 FailureIcon.Visibility = Visibility.Visible;
                 TitleText.Text = "Setup failed";
-                SubtitleText.Text = args.ErrorMessage ?? "An error occurred during setup";
+                SubtitleText.Text = helpUrl is null
+                    ? args.ErrorMessage ?? "An error occurred during setup"
+                    : "Follow the steps below to resolve the setup issue and retry.";
                 NodeModeBanner.Visibility = Visibility.Collapsed;
                 StartupRow.Visibility = Visibility.Collapsed;
                 LaunchButton.Content = "Close";
 
                 // Show error card with details and log link
                 ErrorCard.Visibility = Visibility.Visible;
-                ErrorText.Text = args.ErrorMessage ?? "Unknown error";
+                ErrorText.Text = errorMessage;
+                if (helpUrl != null)
+                {
+                    HelpLink.Content = errorMessage.Contains("WSL", StringComparison.OrdinalIgnoreCase)
+                        ? "Update WSL →"
+                        : "Open help link →";
+                    HelpLink.NavigateUri = helpUrl;
+                    HelpLink.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    HelpLink.Visibility = Visibility.Collapsed;
+                }
                 if (args.LogPath != null)
-                    ViewLogLink.Content = $"View full log → {Path.GetFileName(args.LogPath)}";
+                {
+                    var displayPath = LogFileLauncher.ResolveRealPath(args.LogPath);
+                    ViewLogLink.Content = $"View full log → {displayPath}";
+                    ToolTipService.SetToolTip(ViewLogLink, displayPath);
+                    ViewLogLink.Visibility = Visibility.Visible;
+                }
                 else
                     ViewLogLink.Visibility = Visibility.Collapsed;
             }
         }
+    }
+
+    private static Uri? ExtractHelpUrl(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var match = s_urlRegex.Match(text);
+        if (!match.Success)
+            return null;
+
+        return Uri.TryCreate(match.Value, UriKind.Absolute, out var uri) ? uri : null;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -78,8 +116,7 @@ public sealed partial class CompletePage : Page
 
     private void ViewLog_Click(object sender, RoutedEventArgs e)
     {
-        if (_logPath != null && File.Exists(_logPath))
-            Process.Start(new ProcessStartInfo(_logPath) { UseShellExecute = true });
+        LogFileLauncher.RevealInExplorer(_logPath);
     }
 
     private static void LaunchTray()
@@ -93,21 +130,18 @@ public sealed partial class CompletePage : Page
         // Brief pause for process cleanup
         Thread.Sleep(1000);
 
-        // Launch via protocol deep link — opens tray and navigates to chat
-        Process.Start(new ProcessStartInfo("openclaw://chat") { UseShellExecute = true });
+        var trayPath = TrayExecutableResolver.Resolve();
+        if (trayPath != null)
+            Process.Start(new ProcessStartInfo(trayPath, "openclaw://chat") { UseShellExecute = true });
+        else
+            Process.Start(new ProcessStartInfo("openclaw://chat") { UseShellExecute = true });
     }
 
     private static void RegisterStartup()
     {
         try
         {
-            // Find tray exe path for startup registration
-            var candidates = new[]
-            {
-                Path.Combine(AppContext.BaseDirectory, "..", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.exe"),
-                Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe"),
-            };
-            var trayPath = candidates.FirstOrDefault(File.Exists);
+            var trayPath = TrayExecutableResolver.Resolve();
             if (trayPath == null) return;
 
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(

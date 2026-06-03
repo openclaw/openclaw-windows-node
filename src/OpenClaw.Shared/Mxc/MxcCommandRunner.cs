@@ -52,7 +52,7 @@ public sealed class MxcCommandRunner : ICommandRunner
         var settings = _settingsProvider();
 
         // When MXC sandboxing isn't available on this host (e.g. Windows 10,
-        // build < 26100, or missing wxc-exec.exe), fall back to the host runner
+        // build != 26300, UBR < 8289, or missing wxc-exec.exe), fall back to the host runner
         // so the agent can still execute commands instead of being completely
         // blocked. The Sandbox page is read-only in that state and tells the
         // user their commands are running uncontained.
