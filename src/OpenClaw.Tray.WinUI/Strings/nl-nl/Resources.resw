@@ -4366,6 +4366,15 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Lokale gateway</value>
   </data>
+  <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
+    <value>Lokale gateway instellen of opnieuw configureren</value>
+  </data>
+  <data name="SettingsPage_LocalGatewaySetup_Description.Text" xml:space="preserve">
+    <value>Start de setup om een app-beheerde OpenClawGateway WSL-distributie te installeren, of de provider- en modelsetup opnieuw uit te voeren voor een bestaande gateway. Bestaande lokale gateways worden alleen na bevestiging vervangen.</value>
+  </data>
+  <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
+    <value>Setup openen</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>MSIX-installatie gedetecteerd</value>
   </data>

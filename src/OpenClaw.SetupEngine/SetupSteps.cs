@@ -37,6 +37,12 @@ internal static class WslConstants
 internal static class WslInstallSupport
 {
     private static readonly Version s_minDirectNamedInstallVersion = new(2, 4, 4);
+    private static readonly System.Text.RegularExpressions.Regex s_wslProductTokenRegex = new(
+        @"(?<![A-Za-z0-9])WSL(?![A-Za-z0-9])",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly System.Text.RegularExpressions.Regex s_semanticVersionRegex = new(
+        @"(?<![\d.])(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?![\d.])",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     public const string UpdateUrl = "https://aka.ms/wslstorepage";
 
     public static string UpdateInstructions
@@ -54,27 +60,38 @@ internal static class WslInstallSupport
 
     public static bool TryParseWslVersion(string output, out Version version)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(
-            Normalize(output),
-            @"WSL\s+version:\s*(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        if (!match.Success)
+        // Match the product token and version shape instead of localized label text.
+        // WSL is the stable product acronym; labels around it vary by Windows language
+        // and by UTF-16LE/NUL-stripped output shape.
+        foreach (var rawLine in Normalize(output).Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
-            version = new Version();
-            return false;
+            var line = rawLine.Trim();
+            if (!s_wslProductTokenRegex.IsMatch(line))
+                continue;
+
+            var match = s_semanticVersionRegex.Match(line);
+            if (!match.Success)
+                continue;
+
+            version = ParseVersionMatch(match);
+            return true;
         }
 
+        version = new Version();
+        return false;
+    }
+
+    private static Version ParseVersionMatch(System.Text.RegularExpressions.Match match)
+    {
         var major = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
         var minor = int.Parse(match.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
         var build = int.Parse(match.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
         var revision = match.Groups[4].Success
             ? int.Parse(match.Groups[4].Value, System.Globalization.CultureInfo.InvariantCulture)
             : -1;
-        version = revision >= 0
+        return revision >= 0
             ? new Version(major, minor, build, revision)
             : new Version(major, minor, build);
-        return true;
     }
 
     public static bool SupportsDirectNamedInstall(Version version)

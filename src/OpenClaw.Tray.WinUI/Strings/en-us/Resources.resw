@@ -4413,6 +4413,15 @@ On your gateway host (Mac/Linux), run:
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Local Gateway</value>
   </data>
+  <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
+    <value>Set up or reconfigure Local Gateway</value>
+  </data>
+  <data name="SettingsPage_LocalGatewaySetup_Description.Text" xml:space="preserve">
+    <value>Launches setup to install an app-owned OpenClawGateway WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation.</value>
+  </data>
+  <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
+    <value>Open setup</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>MSIX installation detected</value>
   </data>
