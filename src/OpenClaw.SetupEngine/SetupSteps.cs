@@ -1191,6 +1191,7 @@ public sealed class InstallCliStep : SetupStep
 public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
+    internal static readonly TimeSpan GatewayConfigurationTimeout = TimeSpan.FromSeconds(120);
 
     public override string Id => "configure-gateway";
     public override string DisplayName => "Configure gateway";
@@ -1243,10 +1244,16 @@ public sealed class ConfigureGatewayStep : SetupStep
             echo "GATEWAY_CONFIGURED"
             """;
 
-        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(30), env, ct);
+        var result = await ctx.Commands.RunInWslAsync(distro, script, GatewayConfigurationTimeout, env, ct);
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("GATEWAY_CONFIGURED"))
+        {
+            if (result.TimedOut)
+                return StepResult.Fail(
+                    $"Gateway configuration timed out after {GatewayConfigurationTimeout.TotalSeconds:0}s while running openclaw config inside WSL.");
+
             return StepResult.Fail($"Gateway configuration failed (exit {result.ExitCode}): {result.Stderr}");
+        }
 
         ctx.Logger.StateChange("shared_gateway_token", null, "[SET]");
         return StepResult.Ok("Gateway configured");

@@ -288,10 +288,14 @@ public static class ChatMarkdownRenderer
 
     private const double BulletMarkerMinWidth  = 10.0;
     private const double OrderedMarkerMinWidth = 18.0;
-    private const double ListMarkerSpacing     = 0.0;
 
     private static Element RenderList(MdList list)
     {
+        // Allocated per list (not per row) and not shared across calls, so the
+        // arrays can't be mutated by anyone else between renders.
+        var columns = new[] { GridSize.Auto, GridSize.Star() };
+        var rowDefs = new[] { GridSize.Auto };
+
         var rows = new List<Element?>(list.Items.Count);
         int number = list.Marker == MdListMarker.Ordered ? list.StartNumber : 0;
         bool isOrdered = list.Marker == MdListMarker.Ordered;
@@ -306,13 +310,20 @@ public static class ChatMarkdownRenderer
             };
             if (isOrdered) number++;
 
-            rows.Add(HStack(
-                ListMarkerSpacing,
+            // A Grid is used here (rather than a horizontal StackPanel) so the
+            // content column receives a finite width during measure and the
+            // paragraph TextBlock can wrap. Inside a horizontal StackPanel the
+            // content would be measured with infinite width and long bullets
+            // would render on a single clipped line. See issue #636.
+            rows.Add(Grid(
+                columns,
+                rowDefs,
                 TextBlock(marker)
                     .FontSize(BodyFontSize)
                     .VAlign(VerticalAlignment.Top)
-                    .MinWidth(markerMinWidth),
-                RenderListItemContent(item)));
+                    .MinWidth(markerMinWidth)
+                    .Grid(row: 0, column: 0),
+                RenderListItemContent(item).Grid(row: 0, column: 1)));
         }
         return VStack(4.0, rows.ToArray());
     }

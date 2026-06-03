@@ -8,7 +8,8 @@ Before installing, make sure you have:
 
 - **Windows 10 (20H2 or later)** or **Windows 11**
 - **WebView2 Runtime** — pre-installed on Windows 11 and most up-to-date Windows 10 systems. If missing, download from [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
-- An active **OpenClaw account** with a gateway token — sign up at [openclaw.ai](https://openclaw.ai).
+
+You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway.
 
 ## Step-by-Step Installation
 
@@ -46,20 +47,19 @@ The installer also creates a Start Menu group with shortcuts for **OpenClaw Comp
 
 ### 5. Onboarding Wizard
 
-On first launch, Molty opens a **6-screen onboarding wizard** that walks you through setup:
+On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The default flow installs and configures a dedicated app-owned local WSL gateway:
 
-1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Get Started** to begin.
+1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Install new WSL Gateway** to install a new local WSL gateway.
 
-2. **Connection** — Choose how to connect to your gateway:
-   - **Local** — Select this if the gateway runs on the same machine or in WSL. The URL is pre-filled to `ws://localhost:18789`.
-   - **Remote** — Enter your gateway URL and bootstrap token manually, **or** paste a base64url-encoded **setup code** (a single string containing both URL and token).
-   - **Later** — Skip connection setup for now. You can configure it later from the tray menu → Settings.
+   If you already have a local or remote gateway, choose **Advanced setup** instead. This opens the tray app's Connections tab, where you can connect with an existing gateway URL, token, or setup code without installing a new local WSL gateway.
 
-   After entering your details, click **Test Connection**. The wizard performs a real WebSocket handshake with Ed25519 device authentication and shows real-time status feedback (connecting → connected → pairing).
+2. **Capabilities** — Reviews the Windows node capabilities that can be enabled, such as system commands, canvas, screen capture, camera, location, browser automation, device controls, text-to-speech, and speech-to-text.
 
-3. **Wizard** — If your gateway supports it, this screen walks you through gateway-driven configuration steps (AI provider selection, personality setup, communication channels). The steps are defined by your gateway via RPC. If the gateway doesn't support wizard mode, this screen is skipped automatically.
+3. **Local setup progress** — Installs a fresh app-owned `OpenClawGateway` WSL instance and connects Molty to it. This does not modify an existing user Ubuntu distro.
 
-4. **Permissions** — Reviews Windows system permissions needed for full functionality:
+4. **Gateway setup** — If your gateway supports it, this screen walks you through gateway-driven configuration steps (AI provider selection, personality setup, communication channels). The steps are defined by your gateway via RPC. If the gateway doesn't support wizard mode, this screen is skipped automatically.
+
+5. **Permissions** — Reviews Windows system permissions needed for full functionality:
    - **Notifications** — for toast alerts
    - **Camera** — for camera capture
    - **Microphone** — for voice input
@@ -68,9 +68,7 @@ On first launch, Molty opens a **6-screen onboarding wizard** that walks you thr
 
    Each permission shows its current status. Click **Open Settings** next to any permission to jump directly to the relevant Windows Settings page.
 
-5. **Chat** — Meet your agent! This screen opens a live chat powered by the gateway's web UI. A bootstrap message is sent automatically to kick off your first conversation.
-
-6. **Ready** — A summary of available features (tray menu, channels, voice, canvas, skills). Toggle **Launch at Login** to start Molty with Windows, then click **Finish** to complete setup.
+6. **All set** — A summary of available features (tray menu, channels, voice, canvas, skills). Toggle **Launch at Login** to start Molty with Windows, then click **Finish** to complete setup.
 
 After the wizard, the tray icon turns green when connected. You can re-run the wizard or change settings anytime from the tray menu.
 
