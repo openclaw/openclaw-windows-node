@@ -1,9 +1,9 @@
 {
-  "last_run": "2026-06-03T01:31:52Z",
-  "last_run_id": "26858226726",
+  "last_run": "2026-06-03T14:04:34Z",
+  "last_run_id": "26889848194",
   "backlog_cursor": {
-    "issue_number": 655,
-    "comment_cursor": 655
+    "issue_number": 661,
+    "comment_cursor": 661
   },
   "comments_made": {
     "467": "2026-05-20",
@@ -35,7 +35,8 @@
     "569": "2026-05-30",
     "655": "2026-06-03",
     "639": "2026-06-03",
-    "638": "2026-06-03"
+    "638": "2026-06-03",
+    "661": "2026-06-03"
   },
   "labels_applied": {
     "460": ["enhancement"],
@@ -63,7 +64,8 @@
     "593": {"pr": 609, "branch": "repo-assist/fix-issue-593-arm64-wsl-virt-message", "status": "open", "date": "2026-05-31"},
     "453": {"pr": 615, "branch": "repo-assist/fix-issue-453-attachment-sidecar", "status": "open", "date": "2026-06-01"},
     "458": {"pr": 628, "branch": "repo-assist/fix-issue-458-keyless-diagnostic-reset-on-reconnect", "status": "open", "date": "2026-06-02"},
-    "638": {"pr": "duplicate-of-652", "branch": "repo-assist/fix-issue-638-configure-gateway-timeout", "status": "duplicate", "note": "PR #652 already existed (by ranjeshj, 120s timeout). Repo Assist PR may also be created as draft - check and close if so."}
+    "638": {"pr": "duplicate-of-652", "branch": "repo-assist/fix-issue-638-configure-gateway-timeout", "status": "duplicate", "note": "PR #652 already existed (by ranjeshj, 120s timeout). Repo Assist PR may also be created as draft - check and close if so."},
+    "661": {"pr": "pending", "branch": "repo-assist/fix-issue-661-wsl-localized-version", "status": "open", "date": "2026-06-03", "note": "Fix extends TryParseWslVersion regex to handle WSL-Version: (German/UTF-16) and Versión de WSL: (Spanish). PR number TBD - check GitHub."}
   },
   "improve_attempts": {
     "deep-link-parser-tests": {"pr": 456, "status": "merged"},
@@ -95,5 +97,5 @@
   },
   "open_repo_assist_issues": [],
   "closed_repo_assist_prs": [448, 456, 464, 472, 482, 495, 522, 528, 530, 532, 535, 539],
-  "notes": "2026-06-03 (run 26858226726): Tasks 2+3+11. Task 2: Commented on #655 (embedding headers bug), #639 (misleading prerequisite), #638 (gateway timeout - noted PR #652). Task 3: Tried to fix #638 but PR #652 already exists (ranjeshj, 120s timeout). Repo Assist branch was created (fix-issue-638-configure-gateway-timeout) - draft PR may also be created. If so, maintainer should close it as duplicate of #652. Many new PRs from maintainers in last 24h addressing issues Repo Assist had identified."
+  "notes": "2026-06-03 (run 26889848194): Tasks 3+7+11. Task 3: Fixed #661 (preflight-wsl fails on non-English Windows). Root cause: WSL outputs UTF-16LE; after NUL-stripping becomes WSL-Version: (German) or Versión de WSL: (Spanish). Extended TryParseWslVersion regex. PR submitted (branch: repo-assist/fix-issue-661-wsl-localized-version). Task 7: No stale PRs found. Task 11: Updated monthly activity issue #618."
 }
