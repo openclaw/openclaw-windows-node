@@ -127,5 +127,15 @@
   "Pairing": {
     // Max seconds to wait for pairing handshake
     "TimeoutSeconds": 60
+  },
+
+  // ─── Windows Node Context Injection ───
+  // Inject setup-owned guidance into the OpenClaw runtime workspace AGENTS.md.
+  "WindowsNodeContext": {
+    "Enabled": true,
+    // Optional WSL workspace path override; null = let `openclaw setup` use configured/default workspace.
+    "WorkspacePath": null,
+    // Seconds allowed for OpenClaw workspace seeding and AGENTS.md context injection.
+    "TimeoutSeconds": 180
   }
 }

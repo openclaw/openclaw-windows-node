@@ -934,9 +934,15 @@ public sealed class ValidateWslLockdownStep : SetupStep
         };
 
         // Generate per-directory checks inline (no bash variables).
-        // wsl.exe -- bash -c mangles double-quotes and bash $var references,
-        // so we avoid both: paths have no spaces (safe unquoted) and all
-        // values are C#-interpolated rather than stored in bash variables.
+        // wsl.exe argv variable-expansion pitfall: see docs/WSL_EXE_ARGV_PITFALL.md.
+        // `wsl.exe -- bash -c <script>` performs shell-variable expansion on argv
+        // before bash sees it, so any $var that isn't defined in the Windows env
+        // gets dropped. This step works around the issue by C#-interpolating every
+        // value into the script string (no bash variables) — that pattern is fine
+        // for short scripts with a small fixed value set and no spaces in values.
+        // New multi-line callers should prefer the stdin path:
+        //   ctx.Commands.RunInWslAsync(..., inputViaStdin: true)
+        // which pipes the script via `bash -s` stdin and bypasses the issue entirely.
         var dirChecks = new System.Text.StringBuilder();
         foreach (var d in requiredDirs)
         {
@@ -2296,6 +2302,326 @@ public sealed class PairNodeStep : SetupStep
 
         return Task.CompletedTask;
     }
+}
+
+public sealed class WindowsNodeBootstrapContextStep : SetupStep
+{
+    public override string Id => "windows-node-context";
+    public override string DisplayName => "Inject Windows node context";
+
+    public override bool CanSkip(SetupContext ctx) => !ctx.Config.WindowsNodeContext.Enabled;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var user = ctx.Config.Wsl.User;
+        var timeout = TimeSpan.FromSeconds(Math.Max(1, ctx.Config.WindowsNodeContext.TimeoutSeconds));
+
+        var home = await ResolveLinuxHomeAsync(ctx, distro, user, ct);
+        if (home is null)
+            return StepResult.Fail("Could not resolve Linux home directory for openclaw user");
+
+        // Compute the absolute workspace path BEFORE running `openclaw setup`
+        // so the same path goes to both setup and the apply script. Otherwise
+        // an override like `~/foo` or `relative/foo` could land setup in one
+        // directory and the apply step in another.
+        var workspaceOverride = ctx.Config.WindowsNodeContext.WorkspacePath?.Trim();
+        string workspace;
+        if (!string.IsNullOrWhiteSpace(workspaceOverride))
+        {
+            workspace = ExpandLinuxPath(workspaceOverride, home);
+            var setupResult = await RunOpenclawSetupAsync(ctx, distro, user, workspace, ct);
+            if (!setupResult.IsSuccess)
+                return setupResult;
+        }
+        else
+        {
+            var setupResult = await RunOpenclawSetupAsync(ctx, distro, user, workspaceAbsolute: null, ct);
+            if (!setupResult.IsSuccess)
+                return setupResult;
+
+            var resolved = await ResolveWorkspacePathAsync(ctx, distro, user, home, ct);
+            if (string.IsNullOrWhiteSpace(resolved))
+                return StepResult.Fail("Could not resolve OpenClaw agent workspace path");
+            workspace = resolved;
+        }
+
+        var script = BuildApplyScript(workspace);
+        // Uses stdin to bypass wsl.exe argv variable-expansion (see docs/WSL_EXE_ARGV_PITFALL.md).
+        var result = await ctx.Commands.RunInWslAsync(distro, script, timeout, ct: ct, user: user, inputViaStdin: true);
+
+        if (result.ExitCode != 0 || !result.Stdout.Contains("WINDOWS_NODE_CONTEXT_READY", StringComparison.Ordinal))
+            return StepResult.Fail($"Windows node context injection failed (exit {result.ExitCode}): {FirstNonEmpty(result.Stderr, result.Stdout)}");
+
+        ctx.Logger.Info($"Windows node context injected into workspace: {workspace}");
+        return StepResult.Ok("Windows node context injected");
+    }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (!ctx.Config.WindowsNodeContext.Enabled)
+            return;
+
+        var distro = ctx.DistroName;
+        if (string.IsNullOrWhiteSpace(distro))
+            return;
+
+        var user = ctx.Config.Wsl.User;
+        var timeout = TimeSpan.FromSeconds(Math.Max(1, ctx.Config.WindowsNodeContext.TimeoutSeconds));
+
+        var home = await ResolveLinuxHomeAsync(ctx, distro, user, ct);
+        if (home is null)
+        {
+            ctx.Logger.Warn("Windows node context rollback skipped: could not resolve Linux home directory");
+            return;
+        }
+
+        var workspace = await ResolveWorkspacePathAsync(ctx, distro, user, home, ct);
+        if (string.IsNullOrWhiteSpace(workspace))
+        {
+            ctx.Logger.Warn("Windows node context rollback skipped: could not resolve workspace path");
+            return;
+        }
+
+        // Uses stdin to bypass wsl.exe argv variable-expansion (see docs/WSL_EXE_ARGV_PITFALL.md).
+        var result = await ctx.Commands.RunInWslAsync(distro, BuildRollbackScript(workspace), timeout, ct: ct, user: user, inputViaStdin: true);
+
+        if (result.ExitCode != 0)
+            ctx.Logger.Warn($"Windows node context rollback failed (exit {result.ExitCode}): {FirstNonEmpty(result.Stderr, result.Stdout)}");
+    }
+
+    internal static async Task<string?> ResolveLinuxHomeAsync(SetupContext ctx, string distro, string user, CancellationToken ct)
+    {
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            "getent passwd \"$(id -un)\" | cut -d: -f6",
+            TimeSpan.FromSeconds(15),
+            ct: ct,
+            user: user);
+
+        if (result.ExitCode != 0)
+            return null;
+
+        var home = result.Stdout
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .FirstOrDefault(line => line.Length > 0 && line.StartsWith('/'));
+
+        return string.IsNullOrWhiteSpace(home) ? null : home;
+    }
+
+    internal static async Task<StepResult> RunOpenclawSetupAsync(SetupContext ctx, string distro, string user, string? workspaceAbsolute, CancellationToken ct)
+    {
+        var setupCommand = string.IsNullOrWhiteSpace(workspaceAbsolute)
+            ? "openclaw setup"
+            : $"openclaw setup --workspace {ShellEscape(workspaceAbsolute)}";
+
+        var script = $"set -e\n{ctx.WslPathPrefix}\n{setupCommand} >/dev/null";
+        // Uses stdin to bypass wsl.exe argv variable-expansion (the script's
+        // PATH prefix references $PATH, which would be expanded to the
+        // Windows PATH on the argv path). See docs/WSL_EXE_ARGV_PITFALL.md.
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            script,
+            TimeSpan.FromSeconds(Math.Max(30, ctx.Config.WindowsNodeContext.TimeoutSeconds / 2)),
+            ct: ct,
+            user: user,
+            inputViaStdin: true);
+
+        if (result.ExitCode != 0)
+            return StepResult.Fail($"openclaw setup failed (exit {result.ExitCode}): {FirstNonEmpty(result.Stderr, result.Stdout)}");
+
+        return StepResult.Ok();
+    }
+
+    internal static async Task<string?> ResolveWorkspacePathAsync(SetupContext ctx, string distro, string user, string home, CancellationToken ct)
+    {
+        var workspaceOverride = ctx.Config.WindowsNodeContext.WorkspacePath?.Trim();
+        if (!string.IsNullOrWhiteSpace(workspaceOverride))
+            return ExpandLinuxPath(workspaceOverride, home);
+
+        var script = $"{ctx.WslPathPrefix}\nopenclaw config get agents.defaults.workspace --json 2>/dev/null";
+        // Uses stdin to bypass wsl.exe argv variable-expansion (the script's
+        // PATH prefix references $PATH). See docs/WSL_EXE_ARGV_PITFALL.md.
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            script,
+            TimeSpan.FromSeconds(15),
+            ct: ct,
+            user: user,
+            inputViaStdin: true);
+
+        var raw = ExtractWorkspaceFromConfigOutput(result.Stdout);
+        if (string.IsNullOrWhiteSpace(raw))
+            raw = $"{home.TrimEnd('/')}/.openclaw/workspace";
+
+        return ExpandLinuxPath(raw, home);
+    }
+
+    internal static string? ExtractWorkspaceFromConfigOutput(string stdout)
+    {
+        if (string.IsNullOrWhiteSpace(stdout))
+            return null;
+
+        // openclaw config get --json prints a JSON value; warnings may be on stderr (suppressed)
+        // or as banner lines on stdout. Walk lines from bottom to find a usable value.
+        var lines = stdout
+            .Split(['\r', '\n'], StringSplitOptions.None)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .ToArray();
+
+        for (var i = lines.Length - 1; i >= 0; i--)
+        {
+            var candidate = lines[i];
+            // Try JSON string parse first
+            if (candidate.StartsWith('"') && candidate.EndsWith('"'))
+            {
+                try
+                {
+                    return System.Text.Json.JsonSerializer.Deserialize<string>(candidate);
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    continue;
+                }
+            }
+
+            if (candidate == "null")
+                continue;
+
+            // Plain string (non-JSON output)
+            if (candidate.StartsWith('/') || candidate.StartsWith('~'))
+                return candidate;
+        }
+
+        return null;
+    }
+
+    internal static string ExpandLinuxPath(string path, string home)
+    {
+        var trimmed = path.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed == "null" || trimmed == "undefined")
+            return $"{home.TrimEnd('/')}/.openclaw/workspace";
+
+        if (trimmed == "~")
+            return home;
+        if (trimmed.StartsWith("~/", StringComparison.Ordinal))
+            return $"{home.TrimEnd('/')}/{trimmed[2..]}";
+        if (trimmed.StartsWith('/'))
+            return trimmed;
+        return $"{home.TrimEnd('/')}/{trimmed}";
+    }
+
+    internal static string BuildApplyScript(string absoluteWorkspacePath)
+        => $$"""
+            set -e
+            set -o pipefail
+            workspace={{ShellEscape(absoluteWorkspacePath)}}
+            agents="$workspace/AGENTS.md"
+            block_b64={{ShellEscape(ManagedBlockBase64())}}
+            begin_marker={{ShellEscape(WindowsNodeContextSection.BeginMarker)}}
+            end_marker={{ShellEscape(WindowsNodeContextSection.EndMarker)}}
+            if [ -L "$agents" ]; then
+                echo "AGENTS_SYMLINK:$agents" >&2
+                exit 2
+            fi
+            if [ ! -f "$agents" ]; then
+                mkdir -p "$workspace"
+                : > "$agents"
+                echo "WINDOWS_NODE_CONTEXT_BOOTSTRAP_FALLBACK:$agents"
+            fi
+            begin_count=$(grep -cFx -- "$begin_marker" "$agents" || true)
+            end_count=$(grep -cFx -- "$end_marker" "$agents" || true)
+            if [ "$begin_count" -gt 1 ] || [ "$end_count" -gt 1 ] || [ "$begin_count" != "$end_count" ]; then
+                echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
+                exit 4
+            fi
+            if [ "$begin_count" = 1 ]; then
+                begin_line=$(grep -nFx -- "$begin_marker" "$agents" | head -1 | cut -d: -f1)
+                end_line=$(grep -nFx -- "$end_marker" "$agents" | head -1 | cut -d: -f1)
+                if [ "$end_line" -lt "$begin_line" ]; then
+                    echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
+                    exit 4
+                fi
+            fi
+            tmp="$agents.new.$$"
+            awk -v BEGIN_M="$begin_marker" -v END_M="$end_marker" '
+              BEGIN { in_block = 0 }
+              $0 == BEGIN_M { in_block = 1; next }
+              in_block && $0 == END_M { in_block = 0; next }
+              in_block { next }
+              /^[[:space:]]*$/ { blank = blank "\n"; next }
+              { printf "%s%s\n", blank, $0; blank = "" }
+            ' "$agents" > "$tmp"
+            if [ -s "$tmp" ]; then
+                printf '\n' >> "$tmp"
+            fi
+            printf '%s' "$block_b64" | base64 -d >> "$tmp"
+            printf '\n' >> "$tmp"
+            mv "$tmp" "$agents"
+            echo "WINDOWS_NODE_CONTEXT_WORKSPACE:$workspace"
+            echo "WINDOWS_NODE_CONTEXT_READY"
+            """;
+
+    internal static string BuildRollbackScript(string absoluteWorkspacePath)
+        => $$"""
+            set -e
+            set -o pipefail
+            workspace={{ShellEscape(absoluteWorkspacePath)}}
+            agents="$workspace/AGENTS.md"
+            begin_marker={{ShellEscape(WindowsNodeContextSection.BeginMarker)}}
+            end_marker={{ShellEscape(WindowsNodeContextSection.EndMarker)}}
+            if [ ! -e "$agents" ]; then
+                echo "WINDOWS_NODE_CONTEXT_ABSENT"
+                exit 0
+            fi
+            if [ -L "$agents" ]; then
+                echo "AGENTS_SYMLINK_ROLLBACK_SKIPPED:$agents"
+                exit 0
+            fi
+            begin_count=$(grep -cFx -- "$begin_marker" "$agents" || true)
+            end_count=$(grep -cFx -- "$end_marker" "$agents" || true)
+            if [ "$begin_count" = 0 ] && [ "$end_count" = 0 ]; then
+                echo "WINDOWS_NODE_CONTEXT_REMOVED"
+                exit 0
+            fi
+            if [ "$begin_count" != 1 ] || [ "$end_count" != 1 ]; then
+                echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
+                exit 4
+            fi
+            begin_line=$(grep -nFx -- "$begin_marker" "$agents" | head -1 | cut -d: -f1)
+            end_line=$(grep -nFx -- "$end_marker" "$agents" | head -1 | cut -d: -f1)
+            if [ "$end_line" -lt "$begin_line" ]; then
+                echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
+                exit 4
+            fi
+            tmp="$agents.new.$$"
+            awk -v BEGIN_M="$begin_marker" -v END_M="$end_marker" '
+              BEGIN { in_block = 0 }
+              $0 == BEGIN_M { in_block = 1; next }
+              in_block && $0 == END_M { in_block = 0; next }
+              in_block { next }
+              { print }
+            ' "$agents" > "$tmp"
+            mv "$tmp" "$agents"
+            echo "WINDOWS_NODE_CONTEXT_REMOVED"
+            """;
+
+    private static string ManagedBlockBase64()
+        => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(WindowsNodeContextSection.ManagedBlock));
+
+    private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
+
+    private static string FirstNonEmpty(params string[] values)
+        => values.Select(v => v.Trim()).FirstOrDefault(v => v.Length > 0) ?? "no output";
+
+    private static string? ReadMarkerValue(string output, string marker)
+        => output
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .FirstOrDefault(line => line.StartsWith(marker, StringComparison.Ordinal))
+            ?[marker.Length..];
 }
 
 public sealed class VerifyEndToEndStep : SetupStep
