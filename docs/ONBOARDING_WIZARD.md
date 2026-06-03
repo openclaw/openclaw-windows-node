@@ -4,7 +4,7 @@ The onboarding wizard is now the V2 setup flow for installing a new app-owned lo
 
 ## Overview
 
-On first launch, the wizard appears only when there is no usable saved gateway connection. Users with any existing local or external gateway manage connections from the tray app's Connections tab and can start setup intentionally with **Install new WSL Gateway**.
+On first launch, the wizard appears only when there is no usable saved gateway connection. Users with existing gateways manage connections from the tray app's Connections tab. The local WSL setup affordance in Connections is shown only when setup has not already created an app-owned WSL gateway on this device.
 
 The V2 setup flow walks users through:
 
@@ -23,6 +23,8 @@ Displays the OpenClaw lobster icon, app title, and a brief description. If an ap
 
 ### Local setup progress
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
+
+The managed distro is locked down and is not intended to be a normal interactive Ubuntu profile. For editing `openclaw.json` as the `openclaw` user and using root for protected-file administration, see [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md).
 
 ### Wizard
 Renders server-defined setup steps via RPC (`wizard.start` / `wizard.next`). The gateway controls the flow — steps can be:

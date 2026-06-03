@@ -142,6 +142,10 @@ Download and install WebView2 from [Microsoft](https://developer.microsoft.com/m
 - See the log at `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` for connection errors.
 - For easy-button setup, repair, or remove failures, start with `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt`; Copilot CLI/debugging tools can use `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.jsonl`.
 
+### Need to inspect or edit the managed WSL gateway
+
+Local setup creates a locked-down app-owned `OpenClawGateway` distro rather than a general-purpose user Ubuntu profile. Edit `openclaw.json` from inside WSL as the `openclaw` user, and reserve `wsl.exe -d OpenClawGateway --user root -- ...` for protected-file administration. See [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md) for examples.
+
 ### "Not yet paired" message on reconnect
 
 If the tray shows **Pending approval** after reconnecting, run the approval command shown in the tray or log:

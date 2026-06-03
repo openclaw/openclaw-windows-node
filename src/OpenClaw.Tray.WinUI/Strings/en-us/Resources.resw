@@ -3021,6 +3021,24 @@ On your gateway host (Mac/Linux), run:
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Deny</value>
   </data>
+  <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
+    <value>Allowed</value>
+  </data>
+  <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
+    <value>Denied</value>
+  </data>
+  <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
+    <value>Expired</value>
+  </data>
+  <data name="Chat_Permission_Title" xml:space="preserve">
+    <value>Exec approval needed</value>
+  </data>
+  <data name="Chat_Permission_Subtitle" xml:space="preserve">
+    <value>Approval is needed to run the command below on this Windows companion. Allow once to proceed, or Deny to cancel.</value>
+  </data>
+  <data name="Chat_Permission_Caption" xml:space="preserve">
+    <value>Approval is required for every command by the active policy. Your choice applies only to this request.</value>
+  </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Connecting to gateway…</value>
   </data>

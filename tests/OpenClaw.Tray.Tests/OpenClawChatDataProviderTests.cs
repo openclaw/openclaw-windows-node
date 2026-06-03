@@ -25,6 +25,7 @@ public class OpenClawChatDataProviderTests
 
         public SessionInfo[] GetSessionList() => Sessions;
         public ModelsListInfo? GetCurrentModelsList() => CurrentModels;
+        public void StartProactiveBootstrap() { }
 
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
         {

@@ -2974,6 +2974,24 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Weigeren</value>
   </data>
+  <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
+    <value>Toegestaan</value>
+  </data>
+  <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
+    <value>Geweigerd</value>
+  </data>
+  <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
+    <value>Verlopen</value>
+  </data>
+  <data name="Chat_Permission_Title" xml:space="preserve">
+    <value>Goedkeuring voor uitvoering vereist</value>
+  </data>
+  <data name="Chat_Permission_Subtitle" xml:space="preserve">
+    <value>Goedkeuring is nodig om de onderstaande opdracht uit te voeren op deze Windows-companion. Klik op Toestaan om door te gaan, of Weigeren om te annuleren.</value>
+  </data>
+  <data name="Chat_Permission_Caption" xml:space="preserve">
+    <value>Voor elke opdracht is goedkeuring vereist volgens het actieve beleid. Uw keuze geldt alleen voor deze aanvraag.</value>
+  </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Verbinden met gateway…</value>
   </data>

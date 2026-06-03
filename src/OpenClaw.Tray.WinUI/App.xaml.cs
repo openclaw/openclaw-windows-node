@@ -32,7 +32,7 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
+    internal static readonly UpdatumManager AppUpdater = new("openclaw", "openclaw-windows-node")
     {
         FetchOnlyLatestRelease = true,
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
@@ -197,21 +197,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
-    private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
+    private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
-    private const string DisableMouseInPointerEnv = "OPENCLAW_DISABLE_MOUSE_IN_POINTER";
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnableMouseInPointer([MarshalAs(UnmanagedType.Bool)] bool fEnable);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsMouseInPointerEnabled();
 
     public App()
     {
-        ConfigureMouseInPointerInput();
+        StartupInputConfigurator.Configure();
 
         // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
         var langOverride = Environment.GetEnvironmentVariable("OPENCLAW_LANGUAGE");
@@ -237,70 +228,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
 
-    private static void ConfigureMouseInPointerInput()
-    {
-        if (IsTruthyEnvVar(Environment.GetEnvironmentVariable(DisableMouseInPointerEnv)))
-        {
-            Logger.Warn($"[Input] Mouse-in-pointer startup configuration disabled by {DisableMouseInPointerEnv}=1.");
-            return;
-        }
-
-        try
-        {
-            var before = IsMouseInPointerEnabled();
-            if (before)
-            {
-                Logger.Info("[Input] Mouse-in-pointer was already enabled before WinUI initialization.");
-                return;
-            }
-
-            var enabled = EnableMouseInPointer(true);
-            var error = enabled ? 0 : Marshal.GetLastWin32Error();
-            var after = IsMouseInPointerEnabled();
-            if (enabled && after)
-            {
-                Logger.Info("[Input] Enabled mouse-in-pointer before WinUI initialization for precision touchpad scrolling.");
-            }
-            else
-            {
-                Logger.Warn($"[Input] EnableMouseInPointer(true) did not enable mouse-in-pointer. Before={before}, After={after}, LastError={error}.");
-            }
-        }
-        catch (DllNotFoundException ex)
-        {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
-        }
-        catch (EntryPointNotFoundException ex)
-        {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
-        }
-        catch (SEHException ex)
-        {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
-        }
-    }
-
-    private static bool IsTruthyEnvVar(string? value) =>
-        value is not null &&
-        (string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "on", StringComparison.OrdinalIgnoreCase));
-
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        LogCrash("UnhandledException", e.Exception);
+        _crashLogger.Log("UnhandledException", e.Exception);
         e.Handled = true; // Try to prevent crash
     }
 
     private void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
-        LogCrash("DomainUnhandledException", e.ExceptionObject as Exception);
+        _crashLogger.Log("DomainUnhandledException", e.ExceptionObject as Exception);
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        LogCrash("UnobservedTaskException", e.Exception);
+        _crashLogger.Log("UnobservedTaskException", e.Exception);
         e.SetObserved(); // Prevent crash
     }
     
@@ -312,33 +253,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
         }
         catch { }
-    }
-
-    private static void LogCrash(string source, Exception? ex)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(CrashLogPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-
-            var message = $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n";
-            File.AppendAllText(CrashLogPath, message);
-        }
-        catch { /* Can't log the crash logger crash */ }
-        
-        try
-        {
-            if (ex != null)
-            {
-                Logger.Error($"CRASH {source}: {ex}");
-            }
-            else
-            {
-                Logger.Error($"CRASH {source}");
-            }
-        }
-        catch { /* Ignore logging failures */ }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -459,6 +373,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
+
+        // Anchor the WinUI runtime so transient windows (UpdateDialog,
+        // setup wizard, etc.) don't terminate the process when closed.
+        // WinUI 3 Desktop's default DispatcherShutdownMode is
+        // OnLastWindowClose — without this override, closing the
+        // UpdateDialog on the startup path (when it is the only window)
+        // would shut down the WinUI runtime mid-flight and kill the
+        // in-progress download/extraction. We still control shutdown
+        // explicitly via Application.Exit().
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
 
         // Check for updates before launching. Skip in test instances — no UI dialogs,
         // no network calls, no startup delay.
@@ -871,7 +795,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         catch (Exception ex)
         {
-            LogCrash("ShowTrayMenuPopup", ex);
+            _crashLogger.Log("ShowTrayMenuPopup", ex);
             Logger.Error($"Failed to show tray menu: {ex.Message}");
         }
     }
@@ -1190,6 +1114,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Show "Reconfigure" if there's an existing setup, "Setup Guide" if fresh
         var hasExistingConfig = _settings != null
             && !StartupSetupState.RequiresSetup(_settings, IdentityDataPath, _gatewayRegistry);
+        var hasSetupManagedLocalWslGateway = WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
         var setupMenuLabel = hasExistingConfig
             ? LocalizationHelper.GetString("Menu_Reconfigure")
             : LocalizationHelper.GetString("Menu_SetupGuide");
@@ -1214,6 +1139,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             UsageCost = _appState?.UsageCost,
             Settings = _settings,
             SetupMenuLabel = setupMenuLabel,
+            ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
         };
     }
 
