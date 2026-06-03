@@ -5427,7 +5427,7 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Open een shell of beheer de lokale gatewayservice in WSL.</value>
   </data>
   <data name="ConnectionPage_GatewayHostTerminalLabel.Text" xml:space="preserve">
-    <value>Terminal</value>
+    <value>Terminalvenster</value>
   </data>
   <data name="ConnectionPage_GatewayHostStartButton.Content" xml:space="preserve">
     <value>Starten</value>

@@ -5426,7 +5426,7 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Ouvrez un shell ou gérez le service de passerelle locale dans WSL.</value>
   </data>
   <data name="ConnectionPage_GatewayHostTerminalLabel.Text" xml:space="preserve">
-    <value>Terminal</value>
+    <value>Invite de commandes</value>
   </data>
   <data name="ConnectionPage_GatewayHostStartButton.Content" xml:space="preserve">
     <value>Démarrer</value>
