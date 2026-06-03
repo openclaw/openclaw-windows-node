@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
   </ItemGroup>
 
@@ -23,5 +24,4 @@
   </ItemGroup>
 
 </Project>
-
 

@@ -11,6 +11,8 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class CompletePage : Page
 {
+    private const string StartupRunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    private const string StartupRunValue = "OpenClawTray";
     private static readonly Regex s_urlRegex = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private string? _logPath;
 
@@ -144,9 +146,24 @@ public sealed partial class CompletePage : Page
             var trayPath = TrayExecutableResolver.Resolve();
             if (trayPath == null) return;
 
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", writable: true);
-            key?.SetValue("OpenClawTray", $"\"{Path.GetFullPath(trayPath)}\"");
+            if (StartupTaskRegistration.Register(trayPath))
+            {
+                DeleteLegacyStartupRunValue();
+                return;
+            }
+
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRunKey, writable: true);
+            key?.SetValue(StartupRunValue, $"\"{Path.GetFullPath(trayPath)}\"");
+        }
+        catch { /* best effort */ }
+    }
+
+    private static void DeleteLegacyStartupRunValue()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRunKey, writable: true);
+            key?.DeleteValue(StartupRunValue, throwOnMissingValue: false);
         }
         catch { /* best effort */ }
     }

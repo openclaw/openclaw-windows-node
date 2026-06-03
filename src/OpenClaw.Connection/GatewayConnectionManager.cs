@@ -182,6 +182,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 var prev = _stateMachine.Current.OverallState;
                 // Must go through Connecting → Error since AuthenticationFailed requires Connecting state
                 _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
+                _stateMachine.SetOperatorCredentialSource(null);
                 _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, "No credential available");
                 EmitStateChanged(prev);
                 return;
@@ -190,6 +191,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Transition to Connecting
             var prevState = _stateMachine.Current.OverallState;
             _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
+            _stateMachine.SetOperatorCredentialSource(credential.Source);
             _diagnostics.RecordStateChange(prevState, _stateMachine.Current.OverallState);
             EmitStateChanged(prevState);
 
@@ -347,6 +349,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         };
 
         _diagnostics.RecordCredentialResolution(nodeCredential);
+        _stateMachine.SetOperatorCredentialSource(null);
+        _stateMachine.SetNodeCredentialSource(nodeCredential.Source);
         _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
             $"Credential source: {nodeCredential.Source}");
 
@@ -931,6 +935,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             _stateMachine.SetNodeEnabled(true);
+            _stateMachine.SetNodeCredentialSource(nodeCredential.Source);
         }
         finally
         {
