@@ -70,6 +70,9 @@ public class SetupPipelineTests
         var cliInstallIndex = steps.FindIndex(s => s is InstallCliStep);
         Assert.Equal(cliInstallIndex - 1, caSyncIndex);
         Assert.Contains(steps, s => s is RunGatewayWizardStep);
+        var pairNodeIndex = steps.FindIndex(s => s is PairNodeStep);
+        Assert.IsType<WindowsNodeBootstrapContextStep>(steps[pairNodeIndex + 1]);
+        Assert.IsType<VerifyEndToEndStep>(steps[pairNodeIndex + 2]);
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
     }
 

@@ -58,6 +58,7 @@ public static class SetupStepFactory
             new MintBootstrapTokenStep(),
             new PairOperatorStep(),
             new PairNodeStep(),
+            new WindowsNodeBootstrapContextStep(),
             new VerifyEndToEndStep(),
             new RunGatewayWizardStep(),
             new StartKeepaliveStep(),

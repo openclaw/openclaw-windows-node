@@ -77,6 +77,7 @@ Start with these docs before changing connection, pairing, node, MCP, or tray UX
 - `docs/MCP_MODE.md` - local MCP server mode and the `EnableNodeMode` / `EnableMcpServer` matrix.
 - `docs/WINDOWS_NODE_TESTING.md` - Windows node capabilities, manual smokes, and gateway-dependent behavior.
 - `docs/ONBOARDING_WIZARD.md` - first-run setup flow, setup-code/bootstrap pairing, and test isolation.
+- `docs/WSL_EXE_ARGV_PITFALL.md` - wsl.exe argv variable-expansion pitfall; required reading before adding any multi-line WSL script through `RunInWslAsync`.
 
 ## Architecture Guardrails for Large Refactors
 

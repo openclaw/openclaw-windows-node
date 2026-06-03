@@ -33,6 +33,7 @@ public sealed class SetupConfig
     public CapabilitiesConfig Capabilities { get; set; } = new();
     public TraySettingsConfig Settings { get; set; } = new();
     public PairingConfig Pairing { get; set; } = new();
+    public WindowsNodeContextConfig WindowsNodeContext { get; set; } = new();
 
     public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://localhost:{GatewayPort}";
 
@@ -286,6 +287,15 @@ public sealed class PairingConfig
     // TODO: Wire OperatorScopes/NodeScopes/CliScopes into pairing requests
     // when the gateway protocol supports scoped token issuance.
     public int TimeoutSeconds { get; set; } = 60;
+}
+
+// ─── Windows Node Context Injection ───
+
+public sealed class WindowsNodeContextConfig
+{
+    public bool Enabled { get; set; } = true;
+    public string? WorkspacePath { get; set; }
+    public int TimeoutSeconds { get; set; } = 180;
 }
 
 // ─── Step Result ───
