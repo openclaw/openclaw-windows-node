@@ -711,7 +711,6 @@ public sealed partial class WizardPage : Page
             catch { }
         }
         await DisconnectAsync();
-        await DisconnectAsync();
     }
 
     private int AdvanceOperationGeneration() => unchecked(++_operationGeneration);
