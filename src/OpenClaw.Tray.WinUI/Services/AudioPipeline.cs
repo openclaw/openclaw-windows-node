@@ -211,7 +211,7 @@ public sealed class AudioPipeline : IAsyncDisposable
 
             // Stop capture and give NAudio a moment to flush its last buffer.
             try { _capture?.StopRecording(); }
-            catch (Exception ex) { _logger.Debug($"StopRecording during fixed-capture teardown threw: {ex.Message}"); }
+            catch (Exception ex) { _logger.Debug($"AudioPipeline: StopRecording during fixed-capture teardown threw: {ex.Message}"); }
             await Task.Delay(150).ConfigureAwait(false);
 
             return _fixedCaptureBuffer.ToArray();
@@ -362,7 +362,7 @@ public sealed class AudioPipeline : IAsyncDisposable
                     _silenceChunksCount = 0;
                     _speechChunkCount = 0;
                     try { VoiceActivityChanged?.Invoke(new VadEvent { IsSpeaking = true, Probability = energy }); }
-                    catch (Exception ex) { _logger.Debug($"VoiceActivityChanged(start) handler threw: {ex.Message}"); }
+                    catch (Exception ex) { _logger.Debug($"AudioPipeline: VoiceActivityChanged(start) handler threw: {ex.Message}"); }
                     SafeRaiseDiag("🗣️ Listening...");
 
                     // Prepend the pre-buffer so we don't lose the speech onset
@@ -382,7 +382,7 @@ public sealed class AudioPipeline : IAsyncDisposable
                 {
                     _isSpeaking = false;
                     try { VoiceActivityChanged?.Invoke(new VadEvent { IsSpeaking = false, Probability = energy }); }
-                    catch (Exception ex) { _logger.Debug($"VoiceActivityChanged(stop) handler threw: {ex.Message}"); }
+                    catch (Exception ex) { _logger.Debug($"AudioPipeline: VoiceActivityChanged(stop) handler threw: {ex.Message}"); }
 
                     var samples = _speechBuffer.ToArray();
                     _speechBuffer.Clear();
@@ -696,6 +696,6 @@ public sealed class AudioPipeline : IAsyncDisposable
     private void SafeRaiseDiag(string message)
     {
         try { DiagnosticMessage?.Invoke(message); }
-        catch (Exception ex) { _logger.Debug($"DiagnosticMessage handler threw: {ex.Message}"); }
+        catch (Exception ex) { _logger.Debug($"AudioPipeline: DiagnosticMessage handler threw: {ex.Message}"); }
     }
 }

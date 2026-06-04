@@ -1021,7 +1021,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             catch (Exception toastEx)
             {
                 // Toast surface failed while reporting an outer error — outer error already logged above.
-                Logger.Debug($"Session action failure toast suppressed: {toastEx.Message}");
+                Logger.Debug($"App: Session action failure toast suppressed: {toastEx.Message}");
             }
         }
     }
@@ -1695,7 +1695,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 try { ShowHub(page); tcs.SetResult(new { navigated = true, page }); }
                 catch (Exception ex)
                 {
-                    Logger.Warn($"NavigationHandler ShowHub('{page}') failed: {ex.Message}");
+                    Logger.Warn($"App: NavigationHandler ShowHub('{page}') failed: {ex.Message}");
                     tcs.SetResult(new { navigated = false, error = ex.Message });
                 }
             }) ?? false;
@@ -1807,7 +1807,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             catch (Exception ex)
             {
-                Logger.Warn($"SettingsHandler set '{name}' failed: {ex.Message}");
+                Logger.Warn($"App: SettingsHandler set '{name}' failed: {ex.Message}");
                 return new { error = ex.Message };
             }
         };
@@ -2046,7 +2046,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         catch (Exception ex)
         {
-            Logger.Debug($"GetProcessCommandLine(pid={pid}) failed: {ex.GetType().Name}: {ex.Message}");
+            Logger.Debug($"App: GetProcessCommandLine(pid={pid}) failed: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -2139,7 +2139,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             catch (Exception ex)
             {
-                Logger.Debug($"Node-connected toast suppressed: {ex.Message}");
+                Logger.Warn($"App: Failed to show node-connected toast for device '{DeviceIdForLog(deviceId)}': {ex.Message}");
             }
         }
     }
@@ -2171,7 +2171,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 else
                 {
-                    Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
+                    Logger.Info($"App: Suppressing duplicate Paired toast for device {DeviceIdForLog(deviceKey)}");
                 }
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
@@ -2187,11 +2187,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         catch (ObjectDisposedException ex)
         {
             // Shutdown race: the toast infrastructure is gone. Routine, not a bug.
-            Logger.Debug($"OnPairingStatusChanged handler skipped during shutdown (status={args.Status}): {ex.Message}");
+            Logger.Debug($"App: OnPairingStatusChanged handler skipped during shutdown (status={args.Status}): {ex.Message}");
         }
         catch (Exception ex)
         {
-            Logger.Warn($"OnPairingStatusChanged handler failed (status={args.Status}): {ex.Message}");
+            Logger.Warn($"App: Failed to handle pairing status '{args.Status}' for device '{DeviceIdForLog(args.DeviceId)}': {ex.Message}");
         }
     }
 
@@ -2202,6 +2202,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public static string BuildPairingApprovalCommand(string deviceId) =>
         $"openclaw devices approve {deviceId}";
+
+    private static string DeviceIdForLog(string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return "<none>";
+
+        var sanitized = TokenSanitizer.Sanitize(deviceId.Trim());
+        if (sanitized.Contains("[REDACTED", StringComparison.Ordinal))
+            return sanitized;
+
+        return sanitized.Length <= 8 ? sanitized : $"{sanitized[..8]}...";
+    }
 
     public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
     {
@@ -2731,7 +2743,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             catch (Exception ex)
             {
-                Logger.Debug($"Hub window show/restore failed: {ex.Message}");
+                Logger.Debug($"App: Failed to show hub window without activation before tray menu: {ex.Message}");
             }
         }
     }
@@ -3830,7 +3842,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                         catch (Exception delayEx)
                         {
                             // Defensive: keep the loop resilient even if future code adds awaits that throw other types.
-                            Logger.Debug($"Deep link server delay failed: {delayEx.GetType().Name}: {delayEx.Message}");
+                            Logger.Debug($"App: Deep link server delay failed: {delayEx.GetType().Name}: {delayEx.Message}");
                             break;
                         }
                     }

@@ -788,7 +788,10 @@ public sealed partial class ChatWindow : WindowEx
             (App.Current as App)?.ShowHub("chat");
             this.Hide();
         }
-        catch (Exception ex) { Logger.Warn($"ChatWindow: ShowHub('chat')/Hide failed: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Logger.Warn($"ChatWindow: Failed to pop out chat to hub: {ex.Message}");
+        }
     }
 
     private void RequestChatInputFocus()

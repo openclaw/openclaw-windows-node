@@ -1,3 +1,5 @@
+using OpenClaw.Shared;
+
 namespace OpenClawTray.Services;
 
 /// <summary>
@@ -19,7 +21,7 @@ internal sealed class AppCrashLogger
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            var message = $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n";
+            var message = TokenSanitizer.SanitizeLogMessage($"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n");
             File.AppendAllText(_path, message);
         }
         catch (Exception fileEx)

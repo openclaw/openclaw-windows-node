@@ -2832,7 +2832,11 @@ public sealed class StartKeepaliveStep : SetupStep
             p.WaitForExit(5000);
             return output.Trim();
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            SetupDiagnostics.TryWriteStderrWarning($"Failed to query command line for process {pid}: {ex.Message}");
+            return null;
+        }
     }
 }
 

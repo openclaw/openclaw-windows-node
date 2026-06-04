@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Chat.Explorations;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -489,6 +490,10 @@ public sealed class OpenClawChatRoot : Component
                     await Task.Delay(800);
                     if (cancelled) return;
                     dq?.TryEnqueue(() => { if (!cancelled) welcomeSettledState.Set(true); });
+                }
+                catch (OperationCanceledException)
+                {
+                    // Cancellation is expected when the welcome eligibility signal changes.
                 }
                 catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatRoot: welcome settle race: {ex.Message}"); }
             });

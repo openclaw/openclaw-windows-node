@@ -271,7 +271,7 @@ public abstract class WebSocketClientBase : IDisposable
                 var oldSocket = _webSocket;
                 _webSocket = null;
                 try { oldSocket?.Dispose(); }
-                catch (Exception ex) { _logger.Debug($"Dispose of old WebSocket during reconnect threw: {ex.Message}"); }
+                catch (Exception ex) { _logger.Debug($"WebSocketClientBase: Dispose of old WebSocket during reconnect threw: {ex.Message}"); }
 
                 await ConnectAsync();
 

@@ -160,7 +160,7 @@ public sealed class SetupPipeline
             // Step failed — handle rollback if configured.
             // Note: the exception (if any) was already logged at Error level by
             // StepCompleted above when result.Error is set, so we do not re-log it here.
-            ctx.Logger.Warn($"Step '{step.Id}' failed: {result.Message}");
+            ctx.Logger.Warn($"SetupPipeline: Step '{step.Id}' failed: {result.Message}");
 
             if (ctx.Config.RollbackOnFailure)
             {
