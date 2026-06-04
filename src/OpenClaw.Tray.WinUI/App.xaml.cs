@@ -3069,9 +3069,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task RestartAfterSetupAsync(bool enableAutoStart)
     {
-        if (enableAutoStart)
-            AutoStartManager.SetAutoStart(true);
-
         var exePath = ResolveCurrentExecutablePath();
         if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
         {
@@ -3081,6 +3078,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
+            if (enableAutoStart)
+            {
+                try
+                {
+                    AutoStartManager.SetAutoStart(true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Failed to enable autostart after setup: {ex}");
+                }
+            }
+
             var psi = new ProcessStartInfo(exePath)
             {
                 UseShellExecute = false,
