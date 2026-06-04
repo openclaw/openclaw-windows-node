@@ -805,6 +805,81 @@ public class SetupStepsTests : IDisposable
             commands);
     }
 
+    // Issue #640: device-pair plugin must be enabled, not just configured. Otherwise
+    // OAuth providers (Codex, etc.) hang at scope-upgrade and never emit auth URLs.
+    [Fact]
+    public void ConfigureGateway_EnablesDevicePairPluginForLoopbackGateway()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "loopback" },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_EnablesDevicePairPluginWhenPublicUrlOverridden()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "lan",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.DevicePairPublicUrlKey] = "https://gateway.example.test",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_DoesNotEnableDevicePairWhenNoPublicUrlAvailable()
+    {
+        // LAN bind with no operator-supplied publicUrl: we don't know where the plugin
+        // would be reachable, so don't enable it; preserves the prior behavior.
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "lan" },
+            18789,
+            "'[]'");
+
+        Assert.DoesNotContain(
+            "openclaw config set plugins.entries.device-pair.enabled",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_RespectsExplicitDevicePairEnabledOverride()
+    {
+        // If the operator explicitly sets the enabled flag via ExtraConfig, the
+        // ExtraConfig loop writes it and we don't append a duplicate.
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "loopback",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.DevicePairEnabledKey] = "false",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled 'false'",
+            commands);
+        Assert.DoesNotContain(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
     [Fact]
     public void ConfigureGateway_DoesNotOverrideExplicitDevicePairPublicUrl()
     {

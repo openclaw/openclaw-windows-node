@@ -1208,6 +1208,7 @@ public sealed class InstallCliStep : SetupStep
 public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
+    internal const string DevicePairEnabledKey = "plugins.entries.device-pair.enabled";
     internal static readonly TimeSpan GatewayConfigurationTimeout = TimeSpan.FromSeconds(120);
 
     public override string Id => "configure-gateway";
@@ -1292,6 +1293,23 @@ public sealed class ConfigureGatewayStep : SetupStep
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
             configCommands += $"\n            openclaw config set {DevicePairPublicUrlKey} {ShellEscape(defaultPublicUrl)}";
+        }
+
+        // Issue #640: The gateway ships the `device-pair` plugin bundled but DISABLED by default.
+        // Without it, every scope-upgrade / role-upgrade WS connect (how OAuth providers like
+        // Codex request the broader scopes needed to start their auth flow) hangs in
+        // "pending approval" forever. The provider CLI errors out before ever printing its
+        // verification URL, leaving the wizard stuck. Enable the plugin whenever we know how
+        // to reach it (i.e. we either wrote the default loopback URL above, or the user
+        // supplied their own publicUrl via ExtraConfig).
+        var hasDevicePairPublicUrl =
+            GetDefaultDevicePairPublicUrl(gw, port) is not null ||
+            gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) == true;
+        var devicePairExplicitlyConfigured =
+            gw.ExtraConfig?.ContainsKey(DevicePairEnabledKey) == true;
+        if (hasDevicePairPublicUrl && !devicePairExplicitlyConfigured)
+        {
+            configCommands += $"\n            openclaw config set {DevicePairEnabledKey} true";
         }
 
         // Apply any extra config key/value pairs from config (shell-escape values)
