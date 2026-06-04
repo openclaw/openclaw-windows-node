@@ -31,8 +31,7 @@
                            Text="Sessions"
                            Style="{StaticResource TitleTextBlockStyle}"
                            Margin="0,0,0,2"/>
-                <TextBlock x:Uid="SessionsPage_Subtitle"
-                           Text="Conversations this gateway is currently handling, grouped by channel."
+                <TextBlock x:Uid="SessionsPage_Subtitle" Text="Conversations this gateway is currently handling, grouped by channel."
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap" Margin="0,0,0,4"/>
@@ -49,7 +48,7 @@
                         <SelectorBarItem x:Uid="SessionsPage_All" x:Name="AllTab" Text="All" IsSelected="True"/>
                     </SelectorBar>
 
-                    <Button x:Uid="SessionsPage_RefreshButton" x:Name="RefreshButton" Grid.Column="1"
+                    <Button x:Name="RefreshButton" Grid.Column="1"
                             Click="OnRefresh"
                             ToolTipService.ToolTip="Refresh sessions"
                             AutomationProperties.Name="Refresh sessions">
@@ -101,8 +100,7 @@
                                    Text="No active sessions"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock x:Uid="SessionsPage_EmptyStateDescription"
-                                   Text="Sessions appear here when a channel is connected and traffic is flowing."
+                        <TextBlock x:Uid="SessionsPage_EmptyHint" Text="Sessions appear here when a channel is connected and traffic is flowing."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap" TextAlignment="Center"
@@ -186,11 +184,10 @@
                                         <StackPanel Grid.Row="2" Grid.Column="1"
                                                     Orientation="Horizontal" Spacing="4"
                                                     VerticalAlignment="Center">
-                                            <Button x:Uid="SessionsPage_OpenChatButton"
-                                                    Tag="{Binding Key}"
+                                            <Button Tag="{Binding Key}"
                                                     Click="OnOpenChat"
                                                     Style="{StaticResource AccentButtonStyle}"
-                                                    Content="Open chat"
+                                                    x:Uid="SessionsPage_OpenChatButton" Content="Open chat"
                                                     ToolTipService.ToolTip="Open this session in Chat"
                                                     AutomationProperties.Name="Open in chat"/>
                                             <Button Tag="{Binding Key}"

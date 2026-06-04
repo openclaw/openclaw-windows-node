@@ -21,6 +21,7 @@ public sealed partial class WizardPage : Page
     private string _stepType = "";
     private bool _sensitive;
     private bool _errorState;
+    private int _operationGeneration;
     private int _wizardStepCount;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOption> _options = [];
@@ -45,9 +46,11 @@ public sealed partial class WizardPage : Page
 
     private async Task StartWizardAsync()
     {
+        var generation = AdvanceOperationGeneration();
         try
         {
             _errorState = false;
+            HideRecoveryActions();
             await DisconnectAsync();
             _sessionId = "";
             _wizardStepCount = 0;
@@ -57,10 +60,16 @@ public sealed partial class WizardPage : Page
             _client.StatusChanged += OnWizardClientStatusChanged;
             SetBusy("Starting wizard...");
             var payload = await _client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+            if (generation != _operationGeneration)
+                return;
+
             await ApplyPayloadAsync(payload);
         }
         catch (Exception ex)
         {
+            if (generation != _operationGeneration)
+                return;
+
             await EnterWizardErrorAsync($"Gateway wizard failed: {ex.Message}");
         }
     }
@@ -204,6 +213,7 @@ public sealed partial class WizardPage : Page
         ErrorText.Visibility = Visibility.Collapsed;
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
+        ShowRecoveryActions();
         StatusText.Text = "Answer the gateway setup question";
         PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
         SecondaryButton.IsEnabled = true;
@@ -395,10 +405,32 @@ public sealed partial class WizardPage : Page
         await SendCurrentAnswerAsync(skip: true);
     }
 
+    private void StartOver_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            StartOverAsync,
+            NullLogger.Instance,
+            nameof(StartOver_Click));
+
+    private async Task StartOverAsync()
+    {
+        AdvanceOperationGeneration();
+        HideRecoveryActions();
+        SetBusy("Starting over...");
+        await CancelCurrentSessionAsync();
+        await StartWizardAsync();
+    }
+
+    private void SkipWizard_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            SkipWizardAsync,
+            NullLogger.Instance,
+            nameof(SkipWizard_Click));
+
     private async Task SendCurrentAnswerAsync(bool skip)
     {
         if (_client == null) return;
 
+        var generation = _operationGeneration;
         try
         {
             object? answerValue = null;
@@ -428,10 +460,16 @@ public sealed partial class WizardPage : Page
             }
 
             var payload = await _client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutForCurrentStep());
+            if (generation != _operationGeneration)
+                return;
+
             await ApplyPayloadAsync(payload);
         }
         catch (Exception ex)
         {
+            if (generation != _operationGeneration)
+                return;
+
             await EnterWizardErrorAsync(ex.Message);
         }
     }
@@ -639,6 +677,7 @@ public sealed partial class WizardPage : Page
         SecondaryButton.Content = "Skip wizard";
         SecondaryButton.IsEnabled = true;
         SecondaryButton.Visibility = Visibility.Visible;
+        HideRecoveryActions();
     }
 
     private async Task EnterWizardErrorAsync(string detail)
@@ -653,6 +692,18 @@ public sealed partial class WizardPage : Page
 
     private async Task SkipWizardAsync()
     {
+        AdvanceOperationGeneration();
+        HideRecoveryActions();
+        SetBusy("Skipping wizard...");
+        await CancelCurrentSessionAsync();
+        if (_config!.SkipPermissions)
+            App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
+        else
+            App.MainWindow?.NavigateToPermissions();
+    }
+
+    private async Task CancelCurrentSessionAsync()
+    {
         if (_client != null && !string.IsNullOrWhiteSpace(_sessionId))
         {
             try { await _client.SendWizardRequestAsync("wizard.cancel", new { sessionId = _sessionId }, timeoutMs: 10_000); }
@@ -660,10 +711,25 @@ public sealed partial class WizardPage : Page
         }
 
         await DisconnectAsync();
-        if (_config!.SkipPermissions)
-            App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
-        else
-            App.MainWindow?.NavigateToPermissions();
+    }
+
+    private int AdvanceOperationGeneration() => unchecked(++_operationGeneration);
+
+    private void ShowRecoveryActions()
+    {
+        if (_errorState)
+            return;
+
+        RecoveryActions.Visibility = Visibility.Visible;
+        StartOverButton.IsEnabled = true;
+        SkipWizardButton.IsEnabled = true;
+    }
+
+    private void HideRecoveryActions()
+    {
+        RecoveryActions.Visibility = Visibility.Collapsed;
+        StartOverButton.IsEnabled = false;
+        SkipWizardButton.IsEnabled = false;
     }
 
     private async Task DisconnectAsync()

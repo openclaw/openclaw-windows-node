@@ -496,6 +496,7 @@ public class SetupStepsTests : IDisposable
     public void WslInstallSupport_ParsesVersionAndVerboseDistroList()
     {
         Assert.True(WslInstallSupport.TryParseWslVersion("WSL version: 2.7.3.0", out var version));
+        Assert.Equal(new Version(2, 7, 3, 0), version);
         Assert.True(WslInstallSupport.SupportsDirectNamedInstall(version));
 
         Assert.True(WslInstallSupport.TryGetDistroVersion(
@@ -503,6 +504,93 @@ public class SetupStepsTests : IDisposable
             "OpenClawGateway",
             out var distroVersion));
         Assert.Equal(2, distroVersion);
+    }
+
+    // Regression: wsl.exe emits UTF-16LE on some Windows builds, and localized
+    // Windows changes the human-readable label around the stable WSL product token.
+    [Theory]
+    [InlineData("WSL version: 2.7.3.0", "2.7.3.0")]                       // English
+    [InlineData("WSL-Version: 2.7.7.0", "2.7.7.0")]                       // German / NUL-stripped UTF-16
+    [InlineData("WSL-Version: 2.7.7.0\nKernelversion: 6.18.26.1-1\nWSLg-Version: 1.0.73.2\nWindows-Version: 10.0.26300.8553", "2.7.7.0")]
+    [InlineData("Versión de WSL: 2.7.3.0", "2.7.3.0")]                    // Spanish
+    [InlineData("Versión de WSL: 2.7.3.0\nKernel: 5.15.0.1", "2.7.3.0")]  // Spanish with trailing lines
+    [InlineData("WSL バージョン: 2.7.8.0", "2.7.8.0")]                    // Japanese-style label
+    [InlineData("WSL版本: 2.7.9.0", "2.7.9.0")]                          // No separator after WSL
+    public void WslInstallSupport_TryParseWslVersion_HandlesLocalizedAndHyphenatedLabels(string output, string expectedVersion)
+    {
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version),
+            $"Expected TryParseWslVersion to succeed for: {output}");
+        Assert.Equal(Version.Parse(expectedVersion), version);
+        Assert.True(WslInstallSupport.SupportsDirectNamedInstall(version),
+            $"Expected parsed version {version} to satisfy minimum install requirement");
+    }
+
+    // Mirrors microsoft/WSL localization/strings/*/Resources.resw MessagePackageVersions.
+    [Theory]
+    [InlineData("cs-CZ", "Verze WSL: 2.7.3.0")]
+    [InlineData("da-DK", "WSL-version: 2.7.3.0")]
+    [InlineData("de-DE", "WSL-Version: 2.7.3.0")]
+    [InlineData("en-GB", "WSL version: 2.7.3.0")]
+    [InlineData("en-US", "WSL version: 2.7.3.0")]
+    [InlineData("es-ES", "Versión de WSL: 2.7.3.0")]
+    [InlineData("fi-FI", "WSL-versio: 2.7.3.0")]
+    [InlineData("fr-FR", "Version WSL : 2.7.3.0")]
+    [InlineData("hu-HU", "WSL-verzió: 2.7.3.0")]
+    [InlineData("it-IT", "Versione WSL: 2.7.3.0")]
+    [InlineData("ja-JP", "WSL バージョン: 2.7.3.0")]
+    [InlineData("ko-KR", "WSL 버전: 2.7.3.0")]
+    [InlineData("nb-NO", "WSL-versjon: 2.7.3.0")]
+    [InlineData("nl-NL", "WSL-versie: 2.7.3.0")]
+    [InlineData("pl-PL", "Wersja podsystemu WSL: 2.7.3.0")]
+    [InlineData("pt-BR", "Versão do WSL: 2.7.3.0")]
+    [InlineData("pt-PT", "Versão WSL: 2.7.3.0")]
+    [InlineData("ru-RU", "Версия WSL: 2.7.3.0")]
+    [InlineData("sv-SE", "WSL-version: 2.7.3.0")]
+    [InlineData("tr-TR", "WSL sürümü: 2.7.3.0")]
+    [InlineData("zh-CN", "WSL 版本: 2.7.3.0")]
+    [InlineData("zh-TW", "WSL 版本： 2.7.3.0")]
+    public void WslInstallSupport_TryParseWslVersion_HandlesMicrosoftLocalizedPackageVersionLabels(
+        string locale,
+        string output)
+    {
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version),
+            $"Expected TryParseWslVersion to succeed for {locale}: {output}");
+        Assert.Equal(new Version(2, 7, 3, 0), version);
+    }
+
+    [Theory]
+    [InlineData("WSL-Version: 2.7.7.0", "2.7.7.0")]
+    [InlineData("Versión de WSL: 2.7.3.0", "2.7.3.0")]
+    public void WslInstallSupport_TryParseWslVersion_NulStrippedUtf16_ParsesCorrectVersion(string raw, string expectedVersion)
+    {
+        // Simulate UTF-16LE NUL-byte injection then NUL-stripping.
+        var utf16Encoded = string.Join("\0", raw.ToCharArray()) + "\0";
+        var stripped = utf16Encoded.Replace("\0", "");
+        Assert.True(WslInstallSupport.TryParseWslVersion(stripped, out var version),
+            $"Expected TryParseWslVersion to succeed for NUL-stripped: {raw}");
+        Assert.Equal(Version.Parse(expectedVersion), version);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryParseWslVersion_IgnoresAdjacentWslAndWindowsVersionLines()
+    {
+        var output = "WSLg-Version: 1.0.73.2\n"
+            + "Windows-Version: 10.0.26300.8553\n"
+            + "Kernelversion: 6.18.26.1-1\n"
+            + "WSL-Version: 2.7.7.0\n";
+
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version));
+        Assert.Equal(new Version(2, 7, 7, 0), version);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryParseWslVersion_FailsWhenOnlyAdjacentComponentVersionsArePresent()
+    {
+        var output = "WSLg-Version: 1.0.73.2\n"
+            + "Windows-Version: 10.0.26300.8553\n"
+            + "Kernelversion: 6.18.26.1-1\n";
+
+        Assert.False(WslInstallSupport.TryParseWslVersion(output, out _));
     }
 
     [Fact]
@@ -736,6 +824,37 @@ public class SetupStepsTests : IDisposable
         Assert.Contains(
             "openclaw config set plugins.entries.device-pair.config.publicUrl 'https://gateway.example.test'",
             commands);
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_UsesExtendedTimeoutForWslConfig()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok("GATEWAY_CONFIGURED"));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var wslCall = Assert.Single(commands.WslCalls);
+        Assert.Equal(ConfigureGatewayStep.GatewayConfigurationTimeout, wslCall.Timeout);
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_ReturnsTimeoutSpecificFailure()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, timeout) => new CommandResult(-1, "", "", timeout, TimedOut: true));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        var message = Assert.IsType<string>(result.Message);
+        Assert.Contains("Gateway configuration timed out after 120s", message);
+        Assert.DoesNotContain("exit -1", message);
     }
 
     [Theory]
@@ -972,9 +1091,12 @@ public class SetupStepsTests : IDisposable
     private static CommandResult Fail(string stderr = "")
         => new(1, "", stderr, TimeSpan.Zero, TimedOut: false);
 
-    private sealed class FakeCommandRunner(Func<string[], CommandResult> run) : ICommandRunner
+    private sealed class FakeCommandRunner(
+        Func<string[], CommandResult> run,
+        Func<string, string, TimeSpan, CommandResult>? runInWsl = null) : ICommandRunner
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
+        public List<(string DistroName, string Command, TimeSpan Timeout)> WslCalls { get; } = [];
 
         public Task<CommandResult> RunAsync(
             string executable,
@@ -996,6 +1118,12 @@ public class SetupStepsTests : IDisposable
             IReadOnlyDictionary<string, string>? environment = null,
             CancellationToken ct = default,
             string? user = null)
-            => throw new NotSupportedException("RunInWslAsync is not expected in these tests.");
+        {
+            if (runInWsl == null)
+                throw new NotSupportedException("RunInWslAsync is not expected in these tests.");
+
+            WslCalls.Add((distroName, command, timeout));
+            return Task.FromResult(runInWsl(distroName, command, timeout));
+        }
     }
 }

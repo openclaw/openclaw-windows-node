@@ -165,23 +165,22 @@
                                     Visibility="Collapsed"
                                     Click="OnStripPrimaryClicked"
                                     AutomationProperties.AutomationId="StripPrimaryAction"/>
-                            <!-- StripTerminalButton: tooltip and AutomationProperties.Name are
-                                 set dynamically in code-behind (ApplyHostAccessPlan) from the
-                                 localized GatewayHostAccessPlan, so no x:Uid or static fallback
-                                 is needed here. The button starts Visibility="Collapsed" and is
-                                 only shown after ApplyHostAccessPlan runs. -->
-                            <Button x:Name="StripTerminalButton"
+                            <Button x:Uid="ConnectionPage_StripTerminalButton"
+                                    x:Name="StripTerminalButton"
                                     Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0"
                                     Visibility="Collapsed"
                                     Click="OnOpenGatewayTerminal"
+                                    ToolTipService.ToolTip="Open terminal"
+                                    AutomationProperties.Name="Open terminal"
                                     AutomationProperties.AutomationId="StripTerminalAction">
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Terminal, Mode=OneTime}" FontSize="14"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </Button>
                             <!-- Disconnect/connect toggle. ON = connection is live (or attempting).
                                  Tap OFF → disconnect; tap ON (from off) → reconnect. -->
-                            <Button x:Name="StripDashboardButton"
+                            <Button x:Uid="ConnectionPage_StripDashboardButton"
+                                    x:Name="StripDashboardButton"
                                     Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0"
                                     Visibility="Collapsed"
@@ -192,7 +191,8 @@
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.OpenInBrowser, Mode=OneTime}" FontSize="14"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </Button>
-                            <ToggleSwitch x:Name="ConnectionToggle"
+                            <ToggleSwitch x:Uid="ConnectionPage_ConnectionToggle"
+                                          x:Name="ConnectionToggle"
                                           MinWidth="0" MinHeight="0"
                                           OnContent="" OffContent=""
                                           Visibility="Collapsed"
@@ -225,7 +225,9 @@
                                            Text="WSL gateway"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            AutomationProperties.HeadingLevel="Level2"/>
-                                <TextBlock x:Name="GatewayHostControlsDescriptionText"
+                                <TextBlock x:Uid="ConnectionPage_GatewayHostControlsDescription"
+                                           x:Name="GatewayHostControlsDescriptionText"
+                                           Text="Open a shell or manage the local gateway service in WSL."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap"/>
@@ -252,29 +254,39 @@
                                         Spacing="8"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center">
-                                <Button x:Name="GatewayHostOpenTerminalButton"
+                                <Button x:Uid="ConnectionPage_GatewayHostOpenTerminalButton"
+                                        x:Name="GatewayHostOpenTerminalButton"
                                         Click="OnOpenGatewayTerminal"
+                                        ToolTipService.ToolTip="Open terminal"
+                                        AutomationProperties.Name="Open terminal"
                                         AutomationProperties.AutomationId="GatewayHostOpenTerminalAction">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Terminal, Mode=OneTime}" FontSize="12"
                                                   AutomationProperties.AccessibilityView="Raw"/>
-                                        <TextBlock x:Uid="ConnectionPage_GatewayHostOpenTerminalLabel" Text="Terminal" FontSize="13"/>
+                                        <TextBlock x:Uid="ConnectionPage_GatewayHostTerminalLabel"
+                                                   Text="Terminal" FontSize="13"/>
                                     </StackPanel>
                                 </Button>
-                                <Button x:Uid="ConnectionPage_GatewayHostStart"
+                                <Button x:Uid="ConnectionPage_GatewayHostStartButton"
                                         x:Name="GatewayHostStartButton"
                                         Content="Start"
                                         Click="OnStartGatewayClicked"
+                                        ToolTipService.ToolTip="Run openclaw gateway start in WSL"
+                                        AutomationProperties.Name="Start WSL gateway"
                                         AutomationProperties.AutomationId="GatewayHostStartAction"/>
-                                <Button x:Uid="ConnectionPage_GatewayHostStop"
+                                <Button x:Uid="ConnectionPage_GatewayHostStopButton"
                                         x:Name="GatewayHostStopButton"
                                         Content="Stop"
                                         Click="OnStopGatewayClicked"
+                                        ToolTipService.ToolTip="Run openclaw gateway stop in WSL"
+                                        AutomationProperties.Name="Stop WSL gateway"
                                         AutomationProperties.AutomationId="GatewayHostStopAction"/>
-                                <Button x:Uid="ConnectionPage_GatewayHostRestart"
+                                <Button x:Uid="ConnectionPage_GatewayHostRestartButton"
                                         x:Name="GatewayHostRestartButton"
                                         Content="Restart"
                                         Click="OnRestartGatewayClicked"
+                                        ToolTipService.ToolTip="Run openclaw gateway restart in WSL"
+                                        AutomationProperties.Name="Restart WSL gateway"
                                         AutomationProperties.AutomationId="GatewayHostRestartAction"/>
                             </StackPanel>
                         </Grid>

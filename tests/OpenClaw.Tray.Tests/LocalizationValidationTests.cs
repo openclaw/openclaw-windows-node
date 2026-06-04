@@ -47,6 +47,8 @@ public class LocalizationValidationTests
         // VoiceOverlayWindow window-title key — matches the convention
         // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
+        // Brand name — identical across all locales.
+        "ConnectionPage_TopologyTailscale",
         "PermissionsPage_TtsElevenLabsModel.PlaceholderText",
         "PermissionsPage_TtsProviderElevenLabs.Content",
         // Sample IDs / brand identifiers — same across locales.
@@ -179,26 +181,11 @@ public class LocalizationValidationTests
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
         "SandboxPage_SystemRun.Text",
-        // AgentEventsPage / SkillsPage / SessionsPage strings — seeded
-        // English-only across all 5 locales using the deferred-translation
-        // pattern. Same precedent as the PermissionsPage / InstancesPage
-        // runtime keys and ConfigPage reconnect dialog keys above.
-        "AgentEventsPage_LiveText.Text",
-        "AgentEventsPage_ClearLabel.Text",
-        "AgentEventsPage_Status_Live",
-        "AgentEventsPage_Status_Offline",
-        "SkillsPage_EnabledHeader.Text",
-        "SkillsPage_DisabledHeader.Text",
-        "SkillsPage_EnabledHeaderFormat",
-        "SkillsPage_DisabledHeaderFormat",
-        "SkillsPage_BadgeEnabled",
-        "SkillsPage_BadgeDisabled",
-        "SkillsPage_CountFormat",
-        "SessionsPage_Subtitle.Text",
-        "SessionsPage_EmptyStateDescription.Text",
-        "SessionsPage_RefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
-        "SessionsPage_RefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SessionsPage_OpenChatButton.Content",
+        // SessionsPage runtime accessibility strings — seeded English-only across
+        // all 5 locales using the deferred-translation pattern. These are
+        // tooltip / AutomationProperties.Name overrides on the OpenChat button.
+        // Same precedent as the PermissionsPage / InstancesPage / ConfigPage
+        // runtime keys above.
         "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
         "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         // CronPage / InfoBar / HubWindow nav / CommandCenter runtime strings —
@@ -211,32 +198,12 @@ public class LocalizationValidationTests
         "ConfigPage_CheckingConfigPermissions",
         "ConfigPage_ConfigUnavailable",
         "ConfigPage_ConfigIsReadOnly",
-        "CronPage_NewJobTitle",
-        "CronPage_CreateJobButton",
-        "CronPage_EditJobTitle",
-        "CronPage_SaveChangesButton",
         // ConnectionPage gateway terminal controls — surfaced after PR #597
         // landed in master. Seeded English-only across all 5 locales using the
         // same deferred-translation pattern as the AgentEventsPage / SkillsPage
         // / CronPage entries above. The Description_Format key takes the WSL
         // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
-        "ConnectionPage_GatewayHostControlsTitle.Text",
         "ConnectionPage_GatewayHostControlsDescription_Format",
-        "ConnectionPage_GatewayHostOpenTerminalLabel.Text",
-        "ConnectionPage_GatewayHostStart.Content",
-        "ConnectionPage_GatewayHostStop.Content",
-        "ConnectionPage_GatewayHostRestart.Content",
-        // Button tooltip + AutomationProperties.Name attached-property keys for
-        // the three WSL gateway lifecycle buttons (Start/Stop/Restart). The
-        // OpenTerminal button's tooltip and name are set dynamically in code
-        // from GatewayHostAccessPlan, so they're localized at the source
-        // (GatewayHostAccess_* keys below) rather than via x:Uid on the Button.
-        "ConnectionPage_GatewayHostStart.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
-        "ConnectionPage_GatewayHostStart.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "ConnectionPage_GatewayHostStop.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
-        "ConnectionPage_GatewayHostStop.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "ConnectionPage_GatewayHostRestart.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
-        "ConnectionPage_GatewayHostRestart.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         // GatewayHostAccess plan strings (terminal label / tooltip / disabled
         // reasons). Resolved in the classifier via LocalizationHelper so the
         // OpenTerminal button and any consumers of DisabledReason show
@@ -556,6 +523,8 @@ public class LocalizationValidationTests
     {
         "Update_OK",
         "Onboarding_IncompleteSetup_Close",
+        "ChatPage_OK",
+        "ConnectionPage_ViaSSH",
     };
 
     // Locales whose translations are allowed to remain identical to en-us

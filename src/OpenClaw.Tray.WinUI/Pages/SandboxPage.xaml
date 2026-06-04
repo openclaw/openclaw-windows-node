@@ -108,8 +108,7 @@
                                   Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                   VerticalAlignment="Top"
                                   Margin="0,2,0,0" />
-                        <TextBlock x:Uid="SandboxPage_CommandsTheAgentRuns2"
-                                   Grid.Column="1"
+                        <TextBlock x:Uid="SandboxPage_GatewayCommandsNote" Grid.Column="1"
                                    Text="Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network — check your gateway's configuration."
                                    TextWrapping="Wrap" />
                     </Grid>

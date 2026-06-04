@@ -69,8 +69,9 @@ For the current alpha flow, ship only:
 - Inno setup installers:
   - `OpenClawCompanion-Setup-x64.exe`
   - `OpenClawCompanion-Setup-arm64.exe`
-- Portable ZIP payload for Updatum:
+- Portable ZIP payloads for Updatum:
   - `OpenClawTray-<version>-win-x64.zip`
+  - `OpenClawTray-<version>-win-arm64.zip`
 
 MSIX artifacts are intentionally paused for alpha while we focus on the Inno
 installer path and signed portable update payloads. Re-enable MSIX only when we
@@ -99,15 +100,18 @@ CI enforces this with `scripts\Test-ReleaseExecutableSignatures.ps1`. The
 verifier fails closed on unknown `.exe` files so future payload changes are
 reviewed deliberately.
 
-CI also checks native runtime dependencies before release packaging. The x64
-portable payload must ship `vcruntime140.dll` next to every `libsodium.dll`
-copy. The release job must Authenticode-verify Microsoft's x64 and ARM64 Visual
-C++ Runtime redistributables before passing the architecture-matching
-redistributable to Inno. The installer runs the redistributable before launching
-the tray so clean or stale Windows hosts can repair the runtime before Ed25519
-device keys are generated or loaded, and it skips the post-install tray launch
-if the runtime installer fails. ARM64 portable ZIPs are paused until the release
-pipeline has a trusted app-local ARM64 VC runtime source.
+CI also checks native runtime dependencies before release packaging. Both the
+x64 and ARM64 portable payloads must ship `vcruntime140.dll` next to every
+`libsodium.dll` copy. The x64 build leg sources its loose VC runtime DLLs from
+the `VCRuntime.CefSharp.140` NuGet package; the ARM64 build leg sources its
+DLLs from the Visual Studio install on the `windows-11-arm` runner (resolved
+via `vswhere` in `src\Directory.Build.targets`). The release job must
+Authenticode-verify Microsoft's x64 and ARM64 Visual C++ Runtime
+redistributables before passing the architecture-matching redistributable to
+Inno. The installer runs the redistributable before launching the tray so
+clean or stale Windows hosts can repair the runtime before Ed25519 device keys
+are generated or loaded, and it skips the post-install tray launch if the
+runtime installer fails.
 
 The current Azure Artifact Signing resource is:
 

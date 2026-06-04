@@ -3,6 +3,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -413,7 +414,7 @@ public sealed partial class SchemaConfigEditor : UserControl
                 Children =
                 {
                     new FontIcon { Glyph = "\uE710", FontSize = 12 },
-                    new TextBlock { Text = "Add item" }
+                    new TextBlock { Text = LocalizationHelper.GetString("SchemaConfigEditor_AddItem") }
                 }
             },
             Margin = new Thickness(0, 4, 0, 0)

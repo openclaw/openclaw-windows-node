@@ -129,7 +129,7 @@ public sealed partial class CronPage : Page
         var vm = _jobs.Find(j => j.Id == jobId);
         if (vm != null && !vm.IsEnabled) return;
         _runningJobIds.Add(jobId);
-        btn!.Content = "Running...";
+        btn!.Content = LocalizationHelper.GetString("CronPage_Running");
         btn.IsEnabled = false;
 
         CurrentApp.GatewayClient.RunCronJobAsync(jobId).ContinueWith(t =>
@@ -198,7 +198,7 @@ public sealed partial class CronPage : Page
         RestoreFormFromInline(); // ensure form is back in its home position
         ResetForm();
         FormTitle.Text = LocalizationHelper.GetString("CronPage_NewJobTitle");
-        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_CreateJobButton");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_CreateJobLabel");
         JobFormPanel.Visibility = Visibility.Visible;
     }
 
@@ -212,8 +212,8 @@ public sealed partial class CronPage : Page
         if (vm == null || !vm.IsEnabled) return;
 
         _editingJobId = jobId;
-        FormTitle.Text = LocalizationHelper.GetString("CronPage_EditJobTitle");
-        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_SaveChangesButton");
+        FormTitle.Text = LocalizationHelper.GetString("CronPage_EditJob");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_SaveChanges");
 
         // Populate form fields from VM
         FormName.Text = vm.Name;
