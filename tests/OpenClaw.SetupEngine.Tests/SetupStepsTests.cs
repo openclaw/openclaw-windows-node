@@ -805,7 +805,7 @@ public class SetupStepsTests : IDisposable
             commands);
     }
 
-    // Issue #640: device-pair plugin must be enabled, not just configured. Otherwise
+    // Issue: device-pair plugin must be enabled, not just configured. Otherwise
     // OAuth providers (Codex, etc.) hang at scope-upgrade and never emit auth URLs.
     [Fact]
     public void ConfigureGateway_EnablesDevicePairPluginForLoopbackGateway()

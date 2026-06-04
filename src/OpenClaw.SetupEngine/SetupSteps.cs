@@ -1295,7 +1295,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             configCommands += $"\n            openclaw config set {DevicePairPublicUrlKey} {ShellEscape(defaultPublicUrl)}";
         }
 
-        // Issue #640: The gateway ships the `device-pair` plugin bundled but DISABLED by default.
+        // The gateway ships the `device-pair` plugin bundled but DISABLED by default.
         // Without it, every scope-upgrade / role-upgrade WS connect (how OAuth providers like
         // Codex request the broader scopes needed to start their auth flow) hangs in
         // "pending approval" forever. The provider CLI errors out before ever printing its

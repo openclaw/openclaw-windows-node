@@ -25,6 +25,11 @@ public sealed partial class WizardPage : Page
     private int _wizardStepCount;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOption> _options = [];
+    // Tails the WSL gateway log and surfaces openclaw plugin console.log output
+    // (OAuth URLs, install fallback messages, etc) inline on the active step.
+    // wizard.payload frames don't carry this content.
+    private WizardConsoleTail? _consoleTail;
+    private readonly HashSet<string> _launchedUrls = new(StringComparer.OrdinalIgnoreCase);
 
     public WizardPage()
     {
@@ -52,6 +57,8 @@ public sealed partial class WizardPage : Page
             _errorState = false;
             HideRecoveryActions();
             await DisconnectAsync();
+            ClearConsoleBanner();
+            _launchedUrls.Clear();
             _sessionId = "";
             _wizardStepCount = 0;
             _stepVisits.Clear();
@@ -59,6 +66,7 @@ public sealed partial class WizardPage : Page
             _client = await ConnectClientAsync();
             _client.StatusChanged += OnWizardClientStatusChanged;
             SetBusy("Starting wizard...");
+            StartConsoleTail();
             var payload = await _client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
             if (generation != _operationGeneration)
                 return;
@@ -88,7 +96,7 @@ public sealed partial class WizardPage : Page
             ?? record.BootstrapToken
             ?? throw new InvalidOperationException("No gateway credential found.");
 
-        var client = new OpenClawGatewayClient(config.EffectiveGatewayUrl, token, logger: new UiGatewayLogger(), identityPath: identityPath)
+        var client = new OpenClawGatewayClient(config.EffectiveGatewayUrl, token, logger: NullLogger.Instance, identityPath: identityPath)
         {
             UseV2Signature = true
         };
@@ -181,7 +189,7 @@ public sealed partial class WizardPage : Page
         var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
         _sensitive = step.TryGetProperty("sensitive", out var sensitive) && sensitive.ValueKind == JsonValueKind.True;
         var title = step.TryGetProperty("title", out var titleProp) ? titleProp.ToString() : "";
-        var message = step.TryGetProperty("message", out var msgProp) ? msgProp.ToString() : "";
+        var message = WizardPayloadHelpers.ExtractStepMessage(step);
         var initial = step.TryGetProperty("initialValue", out var initialProp) ? initialProp : default;
 
         if (string.IsNullOrWhiteSpace(_stepId))
@@ -447,6 +455,10 @@ public sealed partial class WizardPage : Page
             }
 
             SetBusy(skip ? "Skipping..." : "Submitting...");
+            // The console banner shows output that arrived between the last payload
+            // render and the user's current click. Once they answer, those messages
+            // are "consumed" — wipe so the next step starts with a clean slate.
+            ClearConsoleBanner();
             object parameters;
             if (skip)
             {
@@ -564,30 +576,107 @@ public sealed partial class WizardPage : Page
             return;
 
         foreach (var line in message.Split('\n'))
+            AppendLineTo(MessagePanel, line, fontSize: 14, opacity: 0.82);
+    }
+
+    // Renders a single line into a target panel, decorating URLs as hyperlinks
+    // and "Code: XXX" patterns as monospace rows with a copy button. Shared by
+    // RenderMessage and AppendConsoleLine.
+    private void AppendLineTo(Panel target, string line, double fontSize, double opacity)
+    {
+        var trimmed = line.TrimEnd('\r');
+
+        var codeMatch = Regex.Match(trimmed, @"^((?:Code|code|user_code|USER_CODE)\s*[:=]\s*)([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b");
+        if (codeMatch.Success)
         {
-            var trimmed = line.TrimEnd('\r');
-            var codeMatch = Regex.Match(trimmed, @"^((?:Code|code|user_code|USER_CODE)\s*[:=]\s*)([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b");
-            if (codeMatch.Success)
-            {
-                MessagePanel.Children.Add(BuildCodeRow(codeMatch.Groups[1].Value, codeMatch.Groups[2].Value));
-                continue;
-            }
+            target.Children.Add(BuildCodeRow(codeMatch.Groups[1].Value, codeMatch.Groups[2].Value));
+            return;
+        }
 
-            var urlMatch = Regex.Match(trimmed, @"https?://[^\s\)\""]+", RegexOptions.IgnoreCase);
-            if (urlMatch.Success && Uri.TryCreate(urlMatch.Value.TrimEnd('.', ','), UriKind.Absolute, out var uri))
-            {
-                MessagePanel.Children.Add(BuildLinkLine(trimmed, urlMatch.Value, uri));
-                continue;
-            }
+        var urlMatch = Regex.Match(trimmed, @"https?://[^\s\)\""]+", RegexOptions.IgnoreCase);
+        if (urlMatch.Success && Uri.TryCreate(urlMatch.Value.TrimEnd('.', ','), UriKind.Absolute, out var uri))
+        {
+            target.Children.Add(BuildLinkLine(trimmed, urlMatch.Value, uri));
+            TryAutoLaunchUrl(uri);
+            return;
+        }
 
-            MessagePanel.Children.Add(new TextBlock
+        target.Children.Add(new TextBlock
+        {
+            Text = trimmed,
+            FontSize = fontSize,
+            Opacity = opacity,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true
+        });
+    }
+
+    private void StartConsoleTail()
+    {
+        StopConsoleTail();
+        var tail = new WizardConsoleTail(logger: NullLogger.Instance);
+        _consoleTail = tail;
+        var dispatcher = DispatcherQueue;
+        tail.Start(message =>
+        {
+            try
             {
-                Text = trimmed,
-                FontSize = 14,
-                Opacity = 0.82,
-                TextWrapping = TextWrapping.Wrap,
-                IsTextSelectionEnabled = true
-            });
+                dispatcher?.TryEnqueue(() =>
+                {
+                    if (!ReferenceEquals(_consoleTail, tail))
+                        return;
+                    AppendConsoleLine(message);
+                });
+            }
+            catch
+            {
+            }
+        });
+    }
+
+    private void StopConsoleTail()
+    {
+        var tail = _consoleTail;
+        _consoleTail = null;
+        try { tail?.Stop(); } catch { }
+        try { tail?.Dispose(); } catch { }
+    }
+
+    private void AppendConsoleLine(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        foreach (var line in message.Split('\n'))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            AppendLineTo(ConsoleBannerLines, line, fontSize: 13, opacity: 0.92);
+        }
+
+        ConsoleBanner.Visibility = Visibility.Visible;
+    }
+
+    private void ClearConsoleBanner()
+    {
+        ConsoleBannerLines.Children.Clear();
+        ConsoleBanner.Visibility = Visibility.Collapsed;
+    }
+
+    private void TryAutoLaunchUrl(Uri uri)
+    {
+        if (!WizardUrlLauncher.ShouldLaunch(_launchedUrls, uri))
+            return;
+
+        try
+        {
+            _ = Windows.System.Launcher.LaunchUriAsync(uri);
+        }
+        catch
+        {
+            // Never block the wizard if the shell launch fails (no default
+            // browser, sandbox restrictions, etc).
         }
     }
 
@@ -734,6 +823,7 @@ public sealed partial class WizardPage : Page
 
     private async Task DisconnectAsync()
     {
+        StopConsoleTail();
         var client = _client;
         if (client == null) return;
         _client = null;
@@ -752,12 +842,4 @@ public sealed partial class WizardPage : Page
     };
 
     private sealed record WizardOption(string Value, string Label, string Hint);
-
-    private sealed class UiGatewayLogger : IOpenClawLogger
-    {
-        public void Info(string message) { }
-        public void Debug(string message) { }
-        public void Warn(string message) { }
-        public void Error(string message, Exception? ex = null) { }
-    }
 }
