@@ -212,17 +212,21 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>
-    /// Returns Visible when a local gateway exists OR an uninstall has been initiated this
-    /// view session (latch). The latch prevents the section from collapsing mid-flight when
+    /// Returns Visible for the installed-gateway management card when a local gateway exists
+    /// OR an uninstall has been initiated this view session (latch). The latch prevents the
+    /// card from collapsing mid-flight when
     /// the engine deletes setup-state.json before the result InfoBar is shown.
-    /// Resets on page navigation — section hides again on clean Settings re-open.
+    /// Resets on page navigation — the card hides again on clean Settings re-open.
     /// </summary>
     private Visibility ComputeLocalGatewaySectionVisibility()
     {
-        var visibility = (_localGatewayInstalled || _uninstallInitiatedThisSession)
+        return (_localGatewayInstalled || _uninstallInitiatedThisSession)
             ? Visibility.Visible : Visibility.Collapsed;
-        LocalGatewaySectionHeader.Visibility = visibility;
-        return visibility;
+    }
+
+    private void OnOpenLocalGatewaySetup(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).ShowOnboarding();
     }
 
     private void OnTestNotification(object sender, RoutedEventArgs e)

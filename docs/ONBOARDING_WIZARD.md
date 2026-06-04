@@ -36,7 +36,7 @@ Renders server-defined setup steps via RPC (`wizard.start` / `wizard.next`). The
 
 If the gateway doesn't support the wizard protocol or is unreachable, this screen shows an "offline" message and can be skipped.
 
-If the gateway restarts or the wizard connection is lost while setup is running, the wizard presents recovery choices to start the wizard again or skip it for now so the user is not trapped retrying a broken session.
+The wizard keeps recovery choices visible while setup steps are running so users can start the wizard again or skip it for now if an auth flow stalls. If the gateway restarts or the wizard connection is lost while setup is running, the same recovery choices are presented in the error state so the user is not trapped retrying a broken session.
 
 ### Permissions
 Checks 5 Windows permissions using native APIs and registry:
