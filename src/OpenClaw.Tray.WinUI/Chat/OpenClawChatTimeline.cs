@@ -2402,12 +2402,40 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // before assistant_delta, but the desired visual flow is
         //   [User] → [Assistant reply / thinking] → [Tool burst]
         // so the assistant message reads first and the tool work hangs below it.
+        // Exception: when any tool call in the turn failed, preserve insertion
+        // order so the error renders before the assistant's acknowledgement —
+        // [User] → [Tool burst (error)] → [Assistant reply]. This places the
+        // final assistant response at the scroll anchor (bottom), matching the
+        // web UI. See issue #672.
         var orderedIdx = new int[Props.Entries.Count];
         {
             int outPos = 0;
             int turnStart = 0;
             void Flush(int endExclusive)
             {
+                // If the turn contains any failed tool call, preserve insertion
+                // order so the error renders before the assistant's acknowledgement.
+                // Visual flow for failures:
+                //   [User] → [Tool burst (error)] → [Assistant reply]
+                // This keeps the causal sequence intact and places the assistant
+                // response at the bottom where auto-scroll lands, matching the
+                // web UI presentation. See issue #672.
+                bool hasError = false;
+                for (int j = turnStart; j < endExclusive; j++)
+                {
+                    if (Props.Entries[j].Kind == ChatTimelineItemKind.ToolCall &&
+                        Props.Entries[j].ToolResult == ChatToolCallStatus.Error)
+                    {
+                        hasError = true;
+                        break;
+                    }
+                }
+                if (hasError)
+                {
+                    for (int j = turnStart; j < endExclusive; j++)
+                        orderedIdx[outPos++] = j;
+                    return;
+                }
                 for (int j = turnStart; j < endExclusive; j++)
                     if (Props.Entries[j].Kind != ChatTimelineItemKind.ToolCall)
                         orderedIdx[outPos++] = j;
