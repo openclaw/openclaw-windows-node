@@ -498,6 +498,62 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectNodeOnlyAsync_UsesNodeCredential_WhenOperatorCredentialMissing()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = null;
+        _resolver.NodeCredential = new GatewayCredential(
+            "node-token",
+            IsBootstrapToken: false,
+            Source: CredentialResolver.SourceNodeDeviceToken);
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectNodeOnlyAsync("gw-1");
+
+        Assert.Empty(_factory.CreatedCredentials);
+        Assert.Equal(1, node.ConnectCount);
+        Assert.Equal("wss://test", node.LastGatewayUrl);
+    }
+
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_StartsSshTunnel_WhenGatewayUsesTunnel()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-ssh",
+            Url = "wss://remote.example",
+            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678)
+        });
+        _registry.SetActive("gw-ssh");
+        _resolver.OperatorCredential = null;
+        _resolver.NodeCredential = new GatewayCredential(
+            "node-token",
+            IsBootstrapToken: false,
+            Source: CredentialResolver.SourceNodeDeviceToken);
+        var node = new CountingNodeConnector();
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node,
+            tunnelManager: tunnel);
+
+        await manager.ConnectNodeOnlyAsync("gw-ssh");
+
+        Assert.Equal(1, tunnel.StartCount);
+        Assert.Equal("host.example", tunnel.LastConfig?.Host);
+        Assert.Equal("ws://localhost:45678", node.LastGatewayUrl);
+    }
+
+    [Fact]
     public async Task EnsureNodeConnectedAsync_HappyPath_ReturnsWhenPaired()
     {
         SetupGateway("gw-1", "wss://test");
@@ -803,6 +859,31 @@ public class GatewayConnectionManagerTests : IDisposable
 
             DisconnectStarted.SetResult(true);
             await AllowDisconnect.Task;
+        }
+
+        public void Dispose() { }
+    }
+
+    private sealed class CountingTunnelManager : ISshTunnelManager
+    {
+        public int StartCount { get; private set; }
+        public SshTunnelConfig? LastConfig { get; private set; }
+        public bool IsActive => StartCount > 0;
+        public string? LocalTunnelUrl { get; private set; }
+
+        public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            StartCount++;
+            LastConfig = config;
+            LocalTunnelUrl = $"ws://localhost:{config.LocalPort}";
+            return Task.FromResult(LocalTunnelUrl);
+        }
+
+        public Task StopAsync()
+        {
+            LocalTunnelUrl = null;
+            return Task.CompletedTask;
         }
 
         public void Dispose() { }

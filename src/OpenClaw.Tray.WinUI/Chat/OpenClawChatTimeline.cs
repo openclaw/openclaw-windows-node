@@ -61,7 +61,8 @@ public record OpenClawChatTimelineProps(
     bool EnableExplorationControls = false,
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
-    int ScrollToBottomToken = 0);
+    int ScrollToBottomToken = 0,
+    Action<string, bool>? OnPermissionResponse = null);
 
 /// <summary>
 /// OpenClaw-skinned variant of <see cref="ChatTimeline"/> from the vendored
@@ -2149,6 +2150,143 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // switch returns Empty() for ToolCall since the outer loop coalesces
         // the burst itself.
 
+        // Inline exec-approval bubble. Lives in the timeline so the
+        // conversation history records "approval was requested for X" in
+        // chronological order — previously this was a banner pinned above
+        // the composer (visible only while pending) and vanished entirely
+        // after the user decided, leaving no trail.
+        Element RenderPermissionEntry(ChatTimelineItem entry)
+        {
+            var requestId = entry.PermissionRequestId ?? string.Empty;
+            var kind = string.IsNullOrWhiteSpace(entry.IntentSummary)
+                ? LocalizationHelper.GetString("Chat_Permission_Title")
+                : entry.IntentSummary!;
+            // For screen-reader names we want a noun phrase that follows
+            // the verb cleanly. The visual fallback "Approval needed" is a
+            // full sentence and reads awkwardly as "Allow Approval needed".
+            // Omit the suffix entirely when no real IntentSummary is set.
+            var automationSuffix = string.IsNullOrWhiteSpace(entry.IntentSummary)
+                ? string.Empty
+                : " " + entry.IntentSummary;
+            var detail = entry.Text;
+            var onResponse = Props.OnPermissionResponse;
+
+            Element body;
+            if (entry.PermissionDecision == ChatPermissionDecision.Pending)
+            {
+                var allowLabel = LocalizationHelper.GetString("Chat_Permission_Allow");
+                var denyLabel = LocalizationHelper.GetString("Chat_Permission_Deny");
+                body = VStack(8,
+                    TextBlock($"⚠ {kind}")
+                        .Set(t => { t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; t.TextWrapping = TextWrapping.Wrap; }),
+                    TextBlock(LocalizationHelper.GetString("Chat_Permission_Subtitle"))
+                        .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.Opacity = 0.85; }),
+                    Border(
+                        TextBlock(detail)
+                            .Set(t =>
+                            {
+                                t.TextWrapping = TextWrapping.Wrap;
+                                t.FontFamily = new FontFamily("Consolas, Cascadia Mono, Menlo, monospace");
+                                t.FontSize = 12;
+                                t.IsTextSelectionEnabled = true;
+                            })
+                            .Padding(10, 8, 10, 8)
+                    ).CornerRadius(6)
+                     .Set(b =>
+                     {
+                         b.Background = themeBrush("SubtleFillColorSecondaryBrush");
+                         b.BorderThickness = new Thickness(1);
+                         b.BorderBrush = themeBrush("CardStrokeColorDefaultBrush");
+                     }),
+                    TextBlock(LocalizationHelper.GetString("Chat_Permission_Caption"))
+                        .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.FontSize = 11; t.Opacity = 0.7; }),
+                    HStack(8,
+                        Button(allowLabel,
+                            () => onResponse?.Invoke(requestId, true))
+                            .Set(b =>
+                            {
+                                b.CornerRadius = new CornerRadius(4);
+                                b.Padding = new Thickness(14, 6, 14, 6);
+                                b.MinWidth = 0; b.MinHeight = 0;
+                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
+                                // Include the operation kind in the screen-reader name so
+                                // users hear "Allow shell.exec" instead of bare "Allow".
+                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{allowLabel}{automationSuffix}");
+                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; } catch { }
+                            }),
+                        Button(denyLabel,
+                            () => onResponse?.Invoke(requestId, false))
+                            .Set(b =>
+                            {
+                                b.CornerRadius = new CornerRadius(4);
+                                b.Padding = new Thickness(14, 6, 14, 6);
+                                b.MinWidth = 0; b.MinHeight = 0;
+                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
+                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{denyLabel}{automationSuffix}");
+                            })
+                    ).HAlign(HorizontalAlignment.Right)
+                );
+            }
+            else
+            {
+                // Decided badge — single-line summary. Glyph + state label
+                // + truncated detail so users can scroll back and see what
+                // was approved/denied without expanding anything.
+                var (glyph, labelKey) = entry.PermissionDecision switch
+                {
+                    ChatPermissionDecision.Allowed => ("✓", "Chat_Permission_DecisionAllowed"),
+                    ChatPermissionDecision.Denied  => ("✕", "Chat_Permission_DecisionDenied"),
+                    _                              => ("⌛", "Chat_Permission_DecisionExpired"),
+                };
+                var label = LocalizationHelper.GetString(labelKey);
+                // Surrogate-safe truncation: if char 119 is a high surrogate,
+                // cut one char earlier to avoid splitting an emoji / supplementary
+                // CJK codepoint into an unpaired surrogate (renders as U+FFFD).
+                string snippet;
+                if (detail.Length <= 120)
+                {
+                    snippet = detail;
+                }
+                else
+                {
+                    var cut = char.IsHighSurrogate(detail[119]) ? 119 : 120;
+                    snippet = detail.Substring(0, cut) + "…";
+                }
+                body = VStack(4,
+                    TextBlock($"{glyph} {kind} — {label}")
+                        .Set(t =>
+                        {
+                            t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+                            t.TextWrapping = TextWrapping.Wrap;
+                            t.Opacity = 0.85;
+                            // Glyphs read poorly via screen readers; provide a clean spoken form.
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(t, $"{kind} {label}");
+                        }),
+                    TextBlock(snippet)
+                        .Set(t =>
+                        {
+                            t.TextWrapping = TextWrapping.Wrap;
+                            t.FontFamily = new FontFamily("Consolas, Cascadia Mono, Menlo, monospace");
+                            t.FontSize = 11;
+                            t.Opacity = 0.6;
+                            t.IsTextSelectionEnabled = true;
+                        })
+                );
+            }
+
+            return Border(
+                Border(body).Padding(14, 14, 14, 14)
+              ).CornerRadius(8).Margin(24, 8, 24, 8)
+               .Set(b =>
+               {
+                   b.MaxWidth = 720;
+                   b.HorizontalAlignment = HorizontalAlignment.Stretch;
+                   b.BorderThickness = new Thickness(1);
+                   b.BorderBrush = themeBrush("CardStrokeColorDefaultBrush");
+                   b.Background = themeBrush("LayerFillColorDefaultBrush");
+               });
+        }
+
         Element RenderEntry(ChatTimelineItem entry, bool startsBurst, bool endsBurst, bool showAvatar) => entry.Kind switch
         {
             ChatTimelineItemKind.User => RenderUserEntry(entry, startsBurst, endsBurst),
@@ -2188,6 +2326,15 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 : TimelineInset(
                     Caption(LocalizationHelper.GetString("Chat_Reasoning_ThinkingEllipsis")).Foreground(TertiaryText)
                         .Set(t => { t.FontStyle = global::Windows.UI.Text.FontStyle.Italic; t.FontSize = 12; })),
+
+            // Permission request — inline approval bubble. Renders Allow/Deny
+            // buttons while the decision is Pending; collapses to a "decided"
+            // badge once the user picks (or the gateway times the prompt out
+            // and the backstop marks it Expired). Replaces the legacy banner
+            // pinned above the composer so multiple approvals over the life
+            // of a conversation are preserved in chronological order.
+            ChatTimelineItemKind.PermissionRequest =>
+                RenderPermissionEntry(entry),
 
             // Filtered status — drop transient connection chatter.
             ChatTimelineItemKind.Status when entry.Text.Contains("Restored") || entry.Text.Contains("Connecting to") || entry.Text.Contains("Connected") || entry.Text.Contains("Resuming") => Empty(),

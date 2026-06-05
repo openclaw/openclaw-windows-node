@@ -4,6 +4,7 @@ using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 
@@ -44,7 +45,7 @@ public sealed partial class AgentEventsPage : Page
     {
         AgentFilterCombo.SelectionChanged -= OnAgentFilterComboChanged;
         AgentFilterCombo.Items.Clear();
-        AgentFilterCombo.Items.Add(new ComboBoxItem { Content = "All Agents", Tag = "" });
+        AgentFilterCombo.Items.Add(new ComboBoxItem { Content = LocalizationHelper.GetString("AgentEventsPage_AllAgents"), Tag = "" });
         foreach (var id in hub.GetAgentIds())
             AgentFilterCombo.Items.Add(new ComboBoxItem { Content = id, Tag = id });
         AgentFilterCombo.SelectedIndex = 0;
@@ -178,7 +179,7 @@ public sealed partial class AgentEventsPage : Page
         EventsList.Visibility = list.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = list.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         CountText.Text = $"({_allEvents.Count})";
-        StatusText.Text = $"{list.Count} of {_allEvents.Count} events";
+        StatusText.Text = string.Format(LocalizationHelper.GetString("AgentEventsPage_EventsStatus"), list.Count, _allEvents.Count);
     }
 
     private void OnClear(object sender, RoutedEventArgs e)

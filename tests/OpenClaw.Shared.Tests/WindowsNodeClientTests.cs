@@ -42,6 +42,42 @@ public class WindowsNodeClientTests
         }
     }
 
+    [Fact]
+    public void Constructor_UsesAppVersionForRegistrationAndConnectMessage()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        AppVersionInfo.TestOverride = "0.6.0-alpha.14";
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+
+            var registrationField = typeof(WindowsNodeClient).GetField(
+                "_registration",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var reg = (NodeRegistration)registrationField!.GetValue(client)!;
+            Assert.Equal("0.6.0-alpha.14", reg.Version);
+
+            using var doc = JsonDocument.Parse(InvokeBuildNodeConnectMessage(client));
+            var parameters = doc.RootElement.GetProperty("params");
+            Assert.Equal(
+                "0.6.0-alpha.14",
+                parameters.GetProperty("client").GetProperty("version").GetString());
+            Assert.Equal(
+                "openclaw-windows-node/0.6.0-alpha.14",
+                parameters.GetProperty("userAgent").GetString());
+        }
+        finally
+        {
+            AppVersionInfo.TestOverride = null;
+            if (Directory.Exists(dataPath))
+            {
+                Directory.Delete(dataPath, true);
+            }
+        }
+    }
+
     /// <summary>
     /// Regression test: when hello-ok includes auth.deviceToken, PairingStatusChanged must
     /// fire exactly once — not twice (once from the token block and again from the DeviceToken

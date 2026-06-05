@@ -35,6 +35,8 @@ public sealed partial class ConnectionPage : Page
     private IGatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
     private GatewayDiscoveryService? _discoveryService;
+    private IGatewayTerminalLauncher? _terminalLauncher;
+    private WslGatewayController? _wslGatewayController;
 
     // ─── UI state ───
     private UserIntent _userIntent = UserIntent.None;
@@ -42,6 +44,10 @@ public sealed partial class ConnectionPage : Page
     private bool _suppressNodeModeToggle;
     private bool _suppressConnectionToggle;
     private ConnectionPagePlan _currentPlan = new();
+    private GatewayHostAccessPlan _activeHostAccessPlan = GatewayHostAccessPlan.None();
+    private bool _gatewayHostActionInProgress;
+    private CancellationTokenSource? _gatewayHostActionCts;
+    private string? _gatewayHostStatusGatewayId;
 
     // Tracks which gateway record the Add Gateway form is currently editing
     // (set by OnSavedRowEdit / OnEditTunnelSettings; null = creating a brand
@@ -84,6 +90,14 @@ public sealed partial class ConnectionPage : Page
         InitializeComponent();
     }
 
+    private IGatewayTerminalLauncher TerminalLauncher =>
+        _terminalLauncher ??= new GatewayTerminalLauncher(new OpenClawTray.AppLogger());
+
+    private WslGatewayController WslGatewayController =>
+        _wslGatewayController ??= new WslGatewayController(
+            new WslExeCommandRunner(new OpenClawTray.AppLogger()),
+            new OpenClawTray.AppLogger());
+
     // ─── Initialization ───────────────────────────────────────────────
 
     public void Initialize()
@@ -95,20 +109,13 @@ public sealed partial class ConnectionPage : Page
         var settings = CurrentApp.Settings;
         if (settings == null) return;
 
-        // Local-WSL install entry points. The hub only exposes
-        // OpenSetupAction on platforms where WSL tooling is wired up; if
-        // it's null we hide the entry points so the user isn't offered a
-        // button that does nothing.
+        // Local-WSL install entry points are only useful until setup has
+        // created its managed local WSL gateway record.
         //   • WelcomeLocalWslSetupCard — get-started CTA on the empty-state
         //     Welcome screen for first-run users.
         //   • AddLocalWslItem — third method tab inside the Add Gateway
         //     form, alongside Direct and Setup code.
-        var localSetupAvailable = true;
-        var localSetupVisibility = localSetupAvailable
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        WelcomeLocalWslSetupCard.Visibility = localSetupVisibility;
-        AddLocalWslItem.Visibility = localSetupVisibility;
+        UpdateLocalWslSetupVisibility();
 
         if (_connectionManager != null)
             _connectionManager.StateChanged += OnManagerStateChanged;
@@ -166,6 +173,13 @@ public sealed partial class ConnectionPage : Page
             _reconnectMaskTimer.Tick -= OnReconnectMaskTimeout;
             _reconnectMaskTimer = null;
         }
+        _gatewayHostActionCts?.Cancel();
+        if (!_gatewayHostActionInProgress)
+        {
+            _gatewayHostActionCts?.Dispose();
+            _gatewayHostActionCts = null;
+        }
+        _gatewayHostActionInProgress = false;
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
     }
 
@@ -182,9 +196,27 @@ public sealed partial class ConnectionPage : Page
     {
         DispatcherQueue?.TryEnqueue(() =>
         {
+            UpdateLocalWslSetupVisibility();
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);
         });
+    }
+
+    private void UpdateLocalWslSetupVisibility()
+    {
+        var localSetupAvailable = !WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
+        var localSetupVisibility = localSetupAvailable
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        WelcomeLocalWslSetupCard.Visibility = localSetupVisibility;
+        AddLocalWslItem.Visibility = localSetupVisibility;
+
+        if (!localSetupAvailable && AddLocalWslItem.IsSelected)
+        {
+            AddDirectItem.IsSelected = true;
+            ShowAddPane("direct");
+        }
     }
 
     // ─── Plan apply ───────────────────────────────────────────────────
@@ -305,6 +337,7 @@ public sealed partial class ConnectionPage : Page
 
         // ─── Status strip ───
         ApplyStripVisuals(plan);
+        ApplyGatewayHostAccess(plan);
 
         // ─── Cards (only meaningful when we have an operator session
         // and we're not in a focused sub-view) ───
@@ -403,6 +436,71 @@ public sealed partial class ConnectionPage : Page
         ApplyGlanceChips(plan, hasActive && toggleOn);
     }
 
+    private void ApplyGatewayHostAccess(ConnectionPagePlan plan)
+    {
+        var activeRecord = _gatewayRegistry?.GetActive();
+        _activeHostAccessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (_gatewayHostStatusGatewayId is not null &&
+            !string.Equals(_gatewayHostStatusGatewayId, _activeHostAccessPlan.GatewayId, StringComparison.Ordinal))
+        {
+            ClearGatewayHostActionStatus();
+        }
+
+        var showInPageMode = plan.Mode is ConnectionPageMode.Cockpit or ConnectionPageMode.Recovery;
+        var showTerminal = showInPageMode &&
+                           _activeHostAccessPlan.CanOpenTerminal &&
+                           !_activeHostAccessPlan.CanControlWslGateway;
+        StripTerminalButton.Visibility = showTerminal ? Visibility.Visible : Visibility.Collapsed;
+        StripTerminalButton.IsEnabled = !_gatewayHostActionInProgress;
+        ToolTipService.SetToolTip(StripTerminalButton, _activeHostAccessPlan.TerminalTooltip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            StripTerminalButton,
+            _activeHostAccessPlan.TerminalLabel);
+
+        var showWslControls = showInPageMode && _activeHostAccessPlan.CanControlWslGateway;
+        GatewayHostControlsSection.Visibility = showWslControls ? Visibility.Visible : Visibility.Collapsed;
+        if (!showWslControls)
+        {
+            ClearGatewayHostActionStatus();
+            return;
+        }
+
+        GatewayHostControlsTitleText.Text = "WSL gateway";
+        GatewayHostControlsDescriptionText.Text =
+            $"Open a shell or manage the local gateway service in {_activeHostAccessPlan.DistroName}.";
+        GatewayHostOpenTerminalButton.IsEnabled = !_gatewayHostActionInProgress && _activeHostAccessPlan.CanOpenTerminal;
+        GatewayHostStartButton.IsEnabled = !_gatewayHostActionInProgress;
+        GatewayHostStopButton.IsEnabled = !_gatewayHostActionInProgress;
+        GatewayHostRestartButton.IsEnabled = !_gatewayHostActionInProgress;
+        GatewayHostActionProgress.IsActive = _gatewayHostActionInProgress;
+        GatewayHostActionProgress.Visibility = _gatewayHostActionInProgress ? Visibility.Visible : Visibility.Collapsed;
+        GatewayHostActionStatusPanel.Visibility = _gatewayHostActionInProgress || !string.IsNullOrWhiteSpace(GatewayHostActionStatusText.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ToolTipService.SetToolTip(GatewayHostOpenTerminalButton, _activeHostAccessPlan.TerminalTooltip);
+    }
+
+    private void SetGatewayHostActionStatus(string message, bool isError = false)
+    {
+        _gatewayHostStatusGatewayId = string.IsNullOrWhiteSpace(message) ? null : _activeHostAccessPlan.GatewayId;
+        GatewayHostActionStatusText.Text = message;
+        GatewayHostActionStatusText.Foreground = isError
+            ? ResolveBrush("SystemFillColorCriticalBrush")
+            : ResolveBrush("TextFillColorSecondaryBrush");
+        GatewayHostActionStatusPanel.Visibility = string.IsNullOrWhiteSpace(message) && !_gatewayHostActionInProgress
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void ClearGatewayHostActionStatus()
+    {
+        _gatewayHostStatusGatewayId = null;
+        GatewayHostActionStatusText.Text = string.Empty;
+        GatewayHostActionStatusPanel.Visibility = _gatewayHostActionInProgress
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
     /// <summary>
     /// Public entry point invoked by HubWindow when sessions / channels /
     /// usage data refresh. Cheaper than re-running the full snapshot pipeline.
@@ -481,14 +579,14 @@ public sealed partial class ConnectionPage : Page
         //    tray (and therefore Operator + Node) runs on. Free signal.
         if (!string.IsNullOrWhiteSpace(hostname))
         {
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Hostname, $"on {hostname}", neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Hostname, string.Format(LocalizationHelper.GetString("ConnectionPage_OnHostname"), hostname), neutral: true));
         }
 
         // 3. Presence count — "1 client" / "3 clients" if the gateway has
         //    multiple operators connected.
         if (presence is int n && n > 0)
         {
-            var label = n == 1 ? "1 client" : $"{n} clients";
+            var label = n == 1 ? LocalizationHelper.GetString("ConnectionPage_ClientSingular") : string.Format(LocalizationHelper.GetString("ConnectionPage_ClientsPlural"), n);
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.People, label, neutral: true));
         }
 
@@ -496,7 +594,9 @@ public sealed partial class ConnectionPage : Page
         //    is configured. Counts linked-and-ok channels.
         if (channelTotal > 0)
         {
-            var label = $"{channelOk}/{channelTotal} channel{(channelTotal == 1 ? "" : "s")}";
+            var label = channelTotal == 1
+                ? string.Format(LocalizationHelper.GetString("ConnectionPage_ChannelsSingular"), channelOk, channelTotal)
+                : string.Format(LocalizationHelper.GetString("ConnectionPage_ChannelsPlural"), channelOk, channelTotal);
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Channels, label, neutral: channelOk == channelTotal));
         }
 
@@ -505,16 +605,16 @@ public sealed partial class ConnectionPage : Page
         if (cost?.Daily is { Count: > 0 })
         {
             var label = todayAmount > 0
-                ? $"${todayAmount:0.00} today"
-                : "$0.00 today";
+                ? string.Format(LocalizationHelper.GetString("ConnectionPage_CostToday"), todayAmount.ToString("0.00"))
+                : LocalizationHelper.GetString("ConnectionPage_CostTodayZero");
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Money, label, neutral: true));
         }
 
         // 6. Shared token — click to copy.
         if (hasSharedToken)
         {
-            var chip = BuildGlanceChip(Helpers.FluentIconCatalog.Lock, "Shared token", neutral: true);
-            ToolTipService.SetToolTip(chip, "Tap to copy shared token");
+            var chip = BuildGlanceChip(Helpers.FluentIconCatalog.Lock, LocalizationHelper.GetString("ConnectionPage_SharedTokenChip"), neutral: true);
+            ToolTipService.SetToolTip(chip, LocalizationHelper.GetString("ConnectionPage_TapToCopySharedToken"));
             chip.Tapped += (_, _) =>
             {
                 ClipboardHelper.CopyText(sharedToken!);
@@ -535,28 +635,28 @@ public sealed partial class ConnectionPage : Page
     private static string? ClassifyTopology(GatewayRecord? rec)
     {
         if (rec == null) return null;
-        if (rec.SshTunnel != null) return "via SSH tunnel";
+        if (rec.SshTunnel != null) return LocalizationHelper.GetString("ConnectionPage_TopologyViaSshTunnel");
         if (string.IsNullOrEmpty(rec.Url)) return null;
         try
         {
             var uri = new Uri(rec.Url);
             var host = uri.Host;
-            if (host == "localhost" || host == "127.0.0.1" || host == "::1") return "Local";
-            if (host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase)) return "Tailscale";
-            if (host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)) return "LAN";
+            if (host == "localhost" || host == "127.0.0.1" || host == "::1") return LocalizationHelper.GetString("ConnectionPage_TopologyLocal");
+            if (host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase)) return LocalizationHelper.GetString("ConnectionPage_TopologyTailscale");
+            if (host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)) return LocalizationHelper.GetString("ConnectionPage_TopologyLAN");
             // RFC1918 private ranges
             if (host.StartsWith("10.") || host.StartsWith("192.168.") ||
                 (host.StartsWith("172.") && IsPrivate172(host)))
-                return "LAN";
+                return LocalizationHelper.GetString("ConnectionPage_TopologyLAN");
             // Tailnet CGNAT range 100.64.0.0/10
             if (host.StartsWith("100."))
             {
                 var parts = host.Split('.');
                 if (parts.Length >= 2 && int.TryParse(parts[1], out var second) &&
                     second >= 64 && second <= 127)
-                    return "Tailscale";
+                    return LocalizationHelper.GetString("ConnectionPage_TopologyTailscale");
             }
-            return "Remote";
+            return LocalizationHelper.GetString("ConnectionPage_TopologyRemote");
         }
         catch
         {
@@ -622,25 +722,25 @@ public sealed partial class ConnectionPage : Page
                 Helpers.FluentIconCatalog.StatusOk,
                 "SystemFillColorSuccessBrush",
                 activeSessions == 1
-                    ? "Active · 1 session"
-                    : $"Active · {activeSessions} sessions"),
+                    ? LocalizationHelper.GetString("ConnectionPage_OperatorActiveOneSession")
+                    : string.Format(LocalizationHelper.GetString("ConnectionPage_OperatorActiveSessions"), activeSessions)),
             OperatorCardState.Active => (
                 Helpers.FluentIconCatalog.StatusOk,
                 "SystemFillColorSuccessBrush",
-                "Active · no current sessions"),
+                LocalizationHelper.GetString("ConnectionPage_OperatorActiveNoSessions")),
             OperatorCardState.Idle => (
                 Helpers.FluentIconCatalog.CapabilityOff,
                 "SystemFillColorNeutralBrush",
-                "Disconnected"),
+                LocalizationHelper.GetString("ConnectionPage_OperatorDisconnected")),
             OperatorCardState.Connecting => (
                 Helpers.FluentIconCatalog.Sync,
                 "SystemFillColorCautionBrush",
-                "Connecting…"),
+                LocalizationHelper.GetString("ConnectionPage_OperatorConnecting")),
             OperatorCardState.Paused => (
                 Helpers.FluentIconCatalog.Sync,
                 "SystemFillColorCautionBrush",
-                "Reconnecting…"),
-            _ => (Helpers.FluentIconCatalog.CapabilityOff, "SystemFillColorNeutralBrush", "Disconnected"),
+                LocalizationHelper.GetString("ConnectionPage_OperatorReconnecting")),
+            _ => (Helpers.FluentIconCatalog.CapabilityOff, "SystemFillColorNeutralBrush", LocalizationHelper.GetString("ConnectionPage_OperatorDisconnected")),
         };
         OperatorStatusIcon.Glyph = statusGlyph;
         OperatorStatusIcon.Foreground = ResolveBrush(statusBrushKey);
@@ -675,11 +775,11 @@ public sealed partial class ConnectionPage : Page
                                        or NodeCardState.OnNodeError;
         var bodyText = plan.NodeCard switch
         {
-            NodeCardState.OnPermissionsIncomplete => "No capabilities enabled. Pick what to share in Permissions.",
-            NodeCardState.OnNodePairingRequired   => "Awaiting approval on the gateway host.",
-            NodeCardState.OnNodeRejected          => "Pairing was rejected. Re-pair from Add Gateway.",
-            NodeCardState.OnNodeRateLimited       => "Rate-limited by the gateway. Will retry after cooldown.",
-            NodeCardState.OnNodeError             => plan.NodeErrorDetail ?? "Node reported an error.",
+            NodeCardState.OnPermissionsIncomplete => LocalizationHelper.GetString("ConnectionPage_NodeBodyNoCapabilities"),
+            NodeCardState.OnNodePairingRequired   => LocalizationHelper.GetString("ConnectionPage_NodeBodyAwaitingApproval"),
+            NodeCardState.OnNodeRejected          => LocalizationHelper.GetString("ConnectionPage_NodeBodyPairingRejected"),
+            NodeCardState.OnNodeRateLimited       => LocalizationHelper.GetString("ConnectionPage_NodeBodyRateLimited"),
+            NodeCardState.OnNodeError             => plan.NodeErrorDetail ?? LocalizationHelper.GetString("ConnectionPage_NodeBodyError"),
             _ => "",
         };
         var bodyBrushKey = plan.NodeCard switch
@@ -697,32 +797,32 @@ public sealed partial class ConnectionPage : Page
             NodeCardState.OnHealthy => (
                 Helpers.FluentIconCatalog.StatusOk,
                 "SystemFillColorSuccessBrush",
-                capCount == 1 ? "Node active · 1 capability" : $"Node active · {capCount} capabilities"),
+                capCount == 1 ? LocalizationHelper.GetString("ConnectionPage_NodeActiveOneCapability") : string.Format(LocalizationHelper.GetString("ConnectionPage_NodeActiveCapabilities"), capCount)),
             NodeCardState.OnPermissionsIncomplete => (
                 Helpers.FluentIconCatalog.StatusWarn,
                 "SystemFillColorCautionBrush",
-                "Node active · no capabilities enabled"),
+                LocalizationHelper.GetString("ConnectionPage_NodeActiveNoCapabilities")),
             NodeCardState.OnNodePairingRequired => (
                 Helpers.FluentIconCatalog.Lock,
                 "SystemFillColorCautionBrush",
-                "Awaiting pairing approval"),
+                LocalizationHelper.GetString("ConnectionPage_NodeAwaitingPairing")),
             NodeCardState.OnNodeRejected => (
                 Helpers.FluentIconCatalog.StatusErr,
                 "SystemFillColorCriticalBrush",
-                "Pairing rejected"),
+                LocalizationHelper.GetString("ConnectionPage_NodePairingRejected")),
             NodeCardState.OnNodeRateLimited => (
                 Helpers.FluentIconCatalog.StatusWarn,
                 "SystemFillColorCautionBrush",
-                "Rate-limited"),
+                LocalizationHelper.GetString("ConnectionPage_NodeRateLimited")),
             NodeCardState.OnNodeError => (
                 Helpers.FluentIconCatalog.StatusErr,
                 "SystemFillColorCriticalBrush",
-                "Node error"),
+                LocalizationHelper.GetString("ConnectionPage_NodeError")),
             NodeCardState.Off => (
                 Helpers.FluentIconCatalog.CapabilityOff,
                 "SystemFillColorCriticalBrush",
-                "Node mode disabled"),
-            _ => (Helpers.FluentIconCatalog.CapabilityOff, "SystemFillColorCriticalBrush", "Node mode disabled"),
+                LocalizationHelper.GetString("ConnectionPage_NodeModeDisabledText")),
+            _ => (Helpers.FluentIconCatalog.CapabilityOff, "SystemFillColorCriticalBrush", LocalizationHelper.GetString("ConnectionPage_NodeModeDisabledText")),
         };
         NodeStatusIcon.Glyph = nodeGlyph;
         NodeStatusIcon.Foreground = ResolveBrush(nodeBrushKey);
@@ -792,41 +892,41 @@ public sealed partial class ConnectionPage : Page
 
         RecoveryHelpHeaderText.Text = plan.Recovery switch
         {
-            RecoveryCategory.Auth => "Re-pair this gateway:",
-            RecoveryCategory.Pairing => "Awaiting approval:",
-            RecoveryCategory.Tunnel => "Help us fix the SSH tunnel:",
-            RecoveryCategory.Server => "Help us fix this connection:",
-            _ => "Help us fix this connection:",
+            RecoveryCategory.Auth => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderAuth"),
+            RecoveryCategory.Pairing => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderPairing"),
+            RecoveryCategory.Tunnel => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderTunnel"),
+            RecoveryCategory.Server => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderServer"),
+            _ => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderServer"),
         };
 
         var bullets = plan.Recovery switch
         {
             RecoveryCategory.Auth => new[]
             {
-                "Get a fresh setup code from the gateway host.",
-                "Or paste a new direct token below.",
+                LocalizationHelper.GetString("ConnectionPage_RecoveryAuthBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryAuthBullet2"),
             },
             RecoveryCategory.Pairing => new[]
             {
-                "Approve this client on the gateway host using the command below.",
-                "Once approved, click Connect to resume.",
+                LocalizationHelper.GetString("ConnectionPage_RecoveryPairingBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryPairingBullet2"),
             },
             RecoveryCategory.Tunnel => new[]
             {
-                "Confirm SSH is reachable on the host.",
-                "Restart the tunnel below if it stopped.",
+                LocalizationHelper.GetString("ConnectionPage_RecoveryTunnelBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryTunnelBullet2"),
             },
             RecoveryCategory.Server => new[]
             {
-                "Check the gateway logs on the host.",
-                "If the gateway is partially up, open its dashboard.",
-                "Edit gateway settings to change URL or token.",
+                LocalizationHelper.GetString("ConnectionPage_RecoveryServerBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryServerBullet2"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryServerBullet3"),
             },
             _ => new[]
             {
-                "Check that the gateway is running on the host.",
-                "Check that you're on the same network or VPN.",
-                "If using SSH tunnel: confirm it's up.",
+                LocalizationHelper.GetString("ConnectionPage_RecoveryDefaultBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryDefaultBullet2"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryDefaultBullet3"),
             },
         };
 
@@ -837,7 +937,7 @@ public sealed partial class ConnectionPage : Page
         if (plan.Recovery == RecoveryCategory.Tunnel)
         {
             RecoveryTunnelBlock.Visibility = Visibility.Visible;
-            RecoveryTunnelDetailText.Text = plan.RecoveryDetail ?? "SSH tunnel is down.";
+            RecoveryTunnelDetailText.Text = plan.RecoveryDetail ?? LocalizationHelper.GetString("ConnectionPage_SshTunnelIsDownText");
         }
         if (plan.Recovery == RecoveryCategory.Auth)
         {
@@ -957,8 +1057,10 @@ public sealed partial class ConnectionPage : Page
     private static string BuildCapabilityListString(IReadOnlyList<string>? capabilities)
     {
         if (capabilities == null || capabilities.Count == 0)
-            return "Providing no capabilities";
-        return $"Providing {capabilities.Count} capabilit{(capabilities.Count == 1 ? "y" : "ies")}: {string.Join(", ", capabilities)}";
+            return LocalizationHelper.GetString("ConnectionPage_ProvidingNoCapabilities");
+        return capabilities.Count == 1
+            ? string.Format(LocalizationHelper.GetString("ConnectionPage_ProvidingCapabilitiesSingular"), string.Join(", ", capabilities))
+            : string.Format(LocalizationHelper.GetString("ConnectionPage_ProvidingCapabilitiesPlural"), capabilities.Count, string.Join(", ", capabilities));
     }
 
 
@@ -989,6 +1091,7 @@ public sealed partial class ConnectionPage : Page
             foreach (var gw in all)
             {
                 var isActive = active != null && active.Id == gw.Id;
+                var hostAccess = GatewayHostAccessClassifier.Classify(gw);
                 items.Add(new SavedGatewayRow
                 {
                     Id = gw.Id,
@@ -997,6 +1100,9 @@ public sealed partial class ConnectionPage : Page
                     IsActive = isActive,
                     LastConnectedRelative = FormatRelative(gw.LastConnected),
                     HasSshTunnel = gw.SshTunnel != null,
+                    HasWslGateway = hostAccess.IsWslManaged,
+                    HasHostTerminal = hostAccess.CanOpenTerminal,
+                    HostTerminalLabel = hostAccess.TerminalLabel,
                     AuthModeLabel = isActive && !string.IsNullOrEmpty(activeAuthMode)
                         ? activeAuthMode!
                         : InferAuthModeLabel(gw),
@@ -1019,6 +1125,9 @@ public sealed partial class ConnectionPage : Page
               .Append(r.DisplayName).Append('/').Append(r.Url ?? "").Append('/')
               .Append(r.LastConnectedRelative ?? "")
               .Append('/').Append(r.HasSshTunnel ? '1' : '0').Append('/')
+              .Append(r.HasWslGateway ? '1' : '0').Append('/')
+              .Append(r.HasHostTerminal ? '1' : '0').Append('/')
+              .Append(r.HostTerminalLabel ?? "").Append('/')
               .Append(r.AuthModeLabel ?? "").Append(';');
         }
         var fp = sb.ToString();
@@ -1028,17 +1137,17 @@ public sealed partial class ConnectionPage : Page
         SavedGatewaysList.ItemsSource = BuildSavedGatewayRowControls(items);
         RecoverySavedList.ItemsSource = BuildSavedGatewayRowControls(items);
         RecoverySavedHeaderText.Text = items.Count == 1
-            ? "Saved gateways (1)"
-            : $"Saved gateways ({items.Count})";
+            ? LocalizationHelper.GetString("ConnectionPage_SavedGatewaysSingular")
+            : string.Format(LocalizationHelper.GetString("ConnectionPage_SavedGatewaysPlural"), items.Count);
     }
 
     private static string InferAuthModeLabel(GatewayRecord rec)
     {
-        if (!string.IsNullOrEmpty(rec.BootstrapToken)) return "bootstrap";
-        if (!string.IsNullOrEmpty(rec.SharedGatewayToken)) return "shared token";
+        if (!string.IsNullOrEmpty(rec.BootstrapToken)) return LocalizationHelper.GetString("ConnectionPage_AuthModeBootstrap");
+        if (!string.IsNullOrEmpty(rec.SharedGatewayToken)) return LocalizationHelper.GetString("ConnectionPage_AuthModeSharedToken");
         // No credential on the record itself → likely paired (device token
         // stored in the DeviceIdentityStore for this gateway's identity dir).
-        return "device token";
+        return LocalizationHelper.GetString("ConnectionPage_AuthModeDeviceToken");
     }
 
     private List<Border> BuildSavedGatewayRowControls(IEnumerable<SavedGatewayRow> rows)
@@ -1078,16 +1187,16 @@ public sealed partial class ConnectionPage : Page
             OverallConnectionState.Connected or
             OverallConnectionState.Ready or
             OverallConnectionState.Degraded =>
-                (Helpers.FluentIconCatalog.StatusOk, "SystemFillColorSuccessBrush", "Connected"),
+                (Helpers.FluentIconCatalog.StatusOk, "SystemFillColorSuccessBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnected")),
 
             OverallConnectionState.Connecting =>
-                (Helpers.FluentIconCatalog.Sync, "SystemFillColorCautionBrush", "Connecting…"),
+                (Helpers.FluentIconCatalog.Sync, "SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnecting")),
 
             OverallConnectionState.PairingRequired =>
-                (Helpers.FluentIconCatalog.Lock, "SystemFillColorCautionBrush", "Awaiting approval"),
+                (Helpers.FluentIconCatalog.Lock, "SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeAwaitingApproval")),
 
             OverallConnectionState.Disconnecting =>
-                (Helpers.FluentIconCatalog.Sync, "TextFillColorSecondaryBrush", "Disconnecting…"),
+                (Helpers.FluentIconCatalog.Sync, "TextFillColorSecondaryBrush", LocalizationHelper.GetString("ConnectionPage_BadgeDisconnecting")),
 
             // Idle and Error → no badge; caller renders [Connect].
             // The status strip up top already carries the "broken / can't
@@ -1181,7 +1290,16 @@ public sealed partial class ConnectionPage : Page
         {
             sub.Children.Add(new TextBlock
             {
-                Text = "• via SSH",
+                Text = "• " + LocalizationHelper.GetString("ConnectionPage_ViaSSH"),
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
+            });
+        }
+        if (row.HasWslGateway)
+        {
+            sub.Children.Add(new TextBlock
+            {
+                Text = "• WSL",
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
             });
@@ -1219,7 +1337,7 @@ public sealed partial class ConnectionPage : Page
         {
             var connectBtn = new Button
             {
-                Content = "Connect",
+                Content = LocalizationHelper.GetString("ConnectionPage_ConnectAction"),
                 Tag = row.Id,
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -1250,9 +1368,15 @@ public sealed partial class ConnectionPage : Page
             Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
         };
         var flyout = new MenuFlyout();
-        var openDashboard = new MenuFlyoutItem { Text = "Open dashboard", Tag = row.Id };
+        var openDashboard = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_OpenDashboard"), Tag = row.Id };
         openDashboard.Click += OnSavedRowOpenDashboard;
         flyout.Items.Add(openDashboard);
+        if (row.HasHostTerminal)
+        {
+            var openTerminal = new MenuFlyoutItem { Text = row.HostTerminalLabel, Tag = row.Id };
+            openTerminal.Click += OnSavedRowOpenTerminal;
+            flyout.Items.Add(openTerminal);
+        }
         if (hasLiveAffordance)
         {
             // Whenever the row is in a state where Disconnect makes sense
@@ -1262,23 +1386,23 @@ public sealed partial class ConnectionPage : Page
             // re-entering would race the connection manager.
             if (CanDisconnectFromBadge(_lastSnapshot.OverallState))
             {
-                var disconnect = new MenuFlyoutItem { Text = "Disconnect", Tag = row.Id };
+                var disconnect = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_DisconnectAction"), Tag = row.Id };
                 disconnect.Click += OnDisconnect;
                 flyout.Items.Add(disconnect);
             }
-            var editActive = new MenuFlyoutItem { Text = "Edit", Tag = row.Id };
+            var editActive = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_Edit"), Tag = row.Id };
             editActive.Click += OnSavedRowEdit;
             flyout.Items.Add(editActive);
         }
         else
         {
-            var edit = new MenuFlyoutItem { Text = "Edit", Tag = row.Id };
+            var edit = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_Edit"), Tag = row.Id };
             edit.Click += OnSavedRowEdit;
             flyout.Items.Add(edit);
             // Removing the active-but-disconnected row just clears the active
             // pointer — safe.
             flyout.Items.Add(new MenuFlyoutSeparator());
-            var remove = new MenuFlyoutItem { Text = "Remove", Tag = row.Id };
+            var remove = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_Remove"), Tag = row.Id };
             remove.Click += OnSavedRowRemove;
             flyout.Items.Add(remove);
         }
@@ -1294,12 +1418,12 @@ public sealed partial class ConnectionPage : Page
     {
         if (when == null) return "";
         var span = DateTime.UtcNow - when.Value.ToUniversalTime();
-        if (span.TotalMinutes < 1) return "just now";
-        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
-        if (span.TotalDays < 30) return $"{(int)span.TotalDays}d ago";
-        if (span.TotalDays < 365) return $"{(int)(span.TotalDays / 30)}mo ago";
-        return $"{(int)(span.TotalDays / 365)}y ago";
+        if (span.TotalMinutes < 1) return LocalizationHelper.GetString("ConnectionPage_JustNow");
+        if (span.TotalMinutes < 60) return string.Format(LocalizationHelper.GetString("ConnectionPage_MinutesAgo"), (int)span.TotalMinutes);
+        if (span.TotalHours < 24) return string.Format(LocalizationHelper.GetString("ConnectionPage_HoursAgo"), (int)span.TotalHours);
+        if (span.TotalDays < 30) return string.Format(LocalizationHelper.GetString("ConnectionPage_DaysAgo"), (int)span.TotalDays);
+        if (span.TotalDays < 365) return string.Format(LocalizationHelper.GetString("ConnectionPage_MonthsAgo"), (int)(span.TotalDays / 30));
+        return string.Format(LocalizationHelper.GetString("ConnectionPage_YearsAgo"), (int)(span.TotalDays / 365));
     }
 
     private sealed class SavedGatewayRow
@@ -1310,6 +1434,9 @@ public sealed partial class ConnectionPage : Page
         public bool IsActive { get; init; }
         public string LastConnectedRelative { get; init; } = "";
         public bool HasSshTunnel { get; init; }
+        public bool HasWslGateway { get; init; }
+        public bool HasHostTerminal { get; init; }
+        public string HostTerminalLabel { get; init; } = "";
         public string AuthModeLabel { get; init; } = "";
     }
 
@@ -1363,7 +1490,7 @@ public sealed partial class ConnectionPage : Page
         AddResultText.Text = "";
         AddSetupCodeBox.Text = "";
         AddSetupCodePreviewPanel.Visibility = Visibility.Collapsed;
-        AddScanStatusText.Text = "Press Start scan to look for gateways on your network.";
+        AddScanStatusText.Text = LocalizationHelper.GetString("ConnectionPage_PressScan");
         AddScanProgressBar.Visibility = Visibility.Collapsed;
         AddScanResultsPanel.Children.Clear();
         RefreshFromSnapshot(_lastSnapshot);
@@ -1428,6 +1555,183 @@ public sealed partial class ConnectionPage : Page
         ((IAppCommands)CurrentApp).OpenDashboard();
     }
 
+    private void OnOpenGatewayTerminal(object sender, RoutedEventArgs e)
+    {
+        OpenGatewayTerminal(_activeHostAccessPlan, showInlineStatus: true);
+    }
+
+    private void OnSavedRowOpenTerminal(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
+        var record = _gatewayRegistry?.GetById(gwId);
+        var accessPlan = GatewayHostAccessClassifier.Classify(record);
+        OpenGatewayTerminal(accessPlan, showInlineStatus: record?.Id == _gatewayRegistry?.GetActive()?.Id);
+    }
+
+    private void OpenGatewayTerminal(GatewayHostAccessPlan accessPlan, bool showInlineStatus)
+    {
+        if (!accessPlan.CanOpenTerminal)
+        {
+            ShowGatewayHostFailure(
+                "Terminal unavailable",
+                accessPlan.DisabledReason ?? "This gateway does not have terminal access.",
+                showInlineStatus);
+            return;
+        }
+
+        try
+        {
+            TerminalLauncher.Open(accessPlan);
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] Failed to open gateway terminal: {ex.Message}");
+            ShowGatewayHostFailure("Terminal failed", ex.Message, showInlineStatus);
+        }
+    }
+
+    private void OnStartGatewayClicked(object sender, RoutedEventArgs e)
+    {
+        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Start);
+    }
+
+    private void OnStopGatewayClicked(object sender, RoutedEventArgs e)
+    {
+        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Stop);
+    }
+
+    private void OnRestartGatewayClicked(object sender, RoutedEventArgs e)
+    {
+        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Restart);
+    }
+
+    private async Task RunWslGatewayControlAsync(WslGatewayControlAction action)
+    {
+        if (_gatewayHostActionInProgress)
+        {
+            return;
+        }
+
+        var activeRecord = _gatewayRegistry?.GetActive();
+        var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (!accessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(accessPlan.DistroName))
+        {
+            SetGatewayHostActionStatus("This gateway is not an app-managed WSL gateway.", isError: true);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _gatewayHostActionCts = cts;
+        var cancellationToken = cts.Token;
+        _gatewayHostActionInProgress = true;
+        ApplyGatewayHostAccess(_currentPlan);
+        var verb = WslGatewayControlCommandBuilder.ToVerb(action);
+        SetGatewayHostActionStatus($"{ActionInProgressLabel(action)} gateway in {accessPlan.DistroName}…");
+
+        try
+        {
+            if (action == WslGatewayControlAction.Stop && _connectionManager != null)
+            {
+                try
+                {
+                    await _connectionManager.DisconnectAsync();
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Services.Logger.Warn($"[ConnectionPage] Disconnect before WSL gateway stop failed; continuing stop: {ex.Message}");
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await WslGatewayController.RunAsync(accessPlan.DistroName!, action, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!result.Success)
+            {
+                var details = string.IsNullOrWhiteSpace(result.OutputSummary)
+                    ? $"wsl.exe exited with code {result.ExitCode}."
+                    : result.OutputSummary;
+                SetGatewayHostActionStatus($"{UppercaseFirst(verb)} failed: {details}", isError: true);
+                return;
+            }
+
+            if (action == WslGatewayControlAction.Stop)
+            {
+                SetGatewayHostActionStatus("Gateway stopped.");
+                RefreshFromSnapshot(_connectionManager?.CurrentSnapshot ?? _lastSnapshot);
+                return;
+            }
+
+            SetGatewayHostActionStatus($"Gateway {PastTense(action)}. Reconnecting…");
+            BeginReconnectMask();
+            ((IAppCommands)CurrentApp).Reconnect();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Services.Logger.Info($"[ConnectionPage] WSL gateway {verb} cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] WSL gateway {verb} failed: {ex.Message}");
+            SetGatewayHostActionStatus($"{UppercaseFirst(verb)} failed: {ex.Message}", isError: true);
+        }
+        finally
+        {
+            _gatewayHostActionInProgress = false;
+            if (ReferenceEquals(_gatewayHostActionCts, cts))
+            {
+                _gatewayHostActionCts = null;
+            }
+            cts.Dispose();
+            if (IsLoaded)
+            {
+                ApplyGatewayHostAccess(_currentPlan);
+            }
+        }
+    }
+
+    private void ShowGatewayHostFailure(string title, string message, bool preferInlineStatus)
+    {
+        if (preferInlineStatus && GatewayHostControlsSection.Visibility == Visibility.Visible)
+        {
+            SetGatewayHostActionStatus(message, isError: true);
+            return;
+        }
+
+        AuthErrorBar.Title = title;
+        AuthErrorBar.Message = message;
+        AuthErrorBar.Severity = InfoBarSeverity.Error;
+        AuthErrorBar.IsOpen = true;
+    }
+
+    private static string UppercaseFirst(string value)
+    {
+        return string.IsNullOrEmpty(value)
+            ? value
+            : char.ToUpperInvariant(value[0]) + value[1..];
+    }
+
+    private static string PastTense(WslGatewayControlAction action)
+    {
+        return action switch
+        {
+            WslGatewayControlAction.Start => "started",
+            WslGatewayControlAction.Restart => "restarted",
+            WslGatewayControlAction.Stop => "stopped",
+            _ => "updated"
+        };
+    }
+
+    private static string ActionInProgressLabel(WslGatewayControlAction action)
+    {
+        return action switch
+        {
+            WslGatewayControlAction.Start => "Starting",
+            WslGatewayControlAction.Stop => "Stopping",
+            WslGatewayControlAction.Restart => "Restarting",
+            _ => "Updating"
+        };
+    }
+
     /// <summary>
     /// Handler for both the Welcome and Cockpit "Install local WSL gateway"
     /// buttons. Hands off to the hub's OpenSetupAction (which the App wires
@@ -1469,11 +1773,11 @@ public sealed partial class ConnectionPage : Page
         {
             var app = (App)Microsoft.UI.Xaml.Application.Current;
             app.EnsureSshTunnelStarted();
-            AddResultText.Text = "Tunnel restart triggered.";
+            AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_TunnelRestartTriggered");
         }
         catch (Exception ex)
         {
-            AddResultText.Text = $"Tunnel restart failed: {ex.Message}";
+            AddResultText.Text = string.Format(LocalizationHelper.GetString("ConnectionPage_TunnelRestartFailed"), ex.Message);
         }
     }
 
@@ -1517,8 +1821,8 @@ public sealed partial class ConnectionPage : Page
         {
             var result = await _connectionManager.ApplySetupCodeAsync(code);
             AddResultText.Text = result.Outcome == SetupCodeOutcome.Success
-                ? "Re-paired. Reconnecting…"
-                : $"✗ {result.ErrorMessage ?? "Could not apply code."}";
+                ? LocalizationHelper.GetString("ConnectionPage_RepairedReconnecting")
+                : $"✗ {result.ErrorMessage ?? LocalizationHelper.GetString("ConnectionPage_CouldNotApplyCode")}";
         }
         catch (Exception ex)
         {
@@ -1558,7 +1862,7 @@ public sealed partial class ConnectionPage : Page
             // gets feedback even if the snapshot is briefly silent.
             try
             {
-                AuthErrorBar.Title = "Connect failed";
+                AuthErrorBar.Title = LocalizationHelper.GetString("ConnectionPage_ConnectFailed");
                 AuthErrorBar.Message = ex.Message;
                 AuthErrorBar.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error;
                 AuthErrorBar.IsOpen = true;
@@ -1628,10 +1932,10 @@ public sealed partial class ConnectionPage : Page
         if (rec == null) return;
         var dialog = new ContentDialog
         {
-            Title = "Remove gateway?",
-            Content = $"This will forget {rec.FriendlyName ?? rec.Url} and its credentials on this machine.",
-            PrimaryButtonText = "Remove",
-            CloseButtonText = "Cancel",
+            Title = LocalizationHelper.GetString("ConnectionPage_RemoveGatewayTitle"),
+            Content = string.Format(LocalizationHelper.GetString("ConnectionPage_RemoveGatewayMessage"), rec.FriendlyName ?? rec.Url),
+            PrimaryButtonText = LocalizationHelper.GetString("ConnectionPage_Remove"),
+            CloseButtonText = LocalizationHelper.GetString("ConnectionPage_CancelAction"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot,
         };
@@ -1711,7 +2015,7 @@ public sealed partial class ConnectionPage : Page
 
         AddTestResultText.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
         AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
-        AddTestResultText.Text = "Testing connection…";
+        AddTestResultText.Text = LocalizationHelper.GetString("ConnectionPage_TestingConnection");
 
         try
         {
@@ -1737,17 +2041,17 @@ public sealed partial class ConnectionPage : Page
 
             if (response != null && response.IsSuccessStatusCode)
             {
-                AddTestResultText.Text = $"✓ Gateway reachable";
+                AddTestResultText.Text = $"✓ {LocalizationHelper.GetString("ConnectionPage_GatewayReachable")}";
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
             }
             else if (response != null)
             {
-                AddTestResultText.Text = $"⚠ Gateway responded with {(int)response.StatusCode}";
+                AddTestResultText.Text = $"⚠ {string.Format(LocalizationHelper.GetString("ConnectionPage_GatewayRespondedWith"), (int)response.StatusCode)}";
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
             }
             else
             {
-                AddTestResultText.Text = $"✗ Cannot reach gateway";
+                AddTestResultText.Text = $"✗ {LocalizationHelper.GetString("ConnectionPage_CannotReachGateway")}";
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
             }
         }
@@ -1778,7 +2082,7 @@ public sealed partial class ConnectionPage : Page
             {
                 case "direct":  await DoDirectConnectFromAddFormAsync(); break;
                 case "setup":   await DoApplySetupCodeFromAddFormAsync(); break;
-                case "scan":    AddResultText.Text = "Pick a discovered gateway above to connect."; break;
+                case "scan":    AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_PickDiscoveredGateway"); break;
             }
         }
         catch (Exception ex)
@@ -1803,7 +2107,7 @@ public sealed partial class ConnectionPage : Page
         var friendly = DirectNameBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(url))
         {
-            AddResultText.Text = "Enter a gateway URL";
+            AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_EnterGatewayUrl");
             return;
         }
 
@@ -1820,19 +2124,19 @@ public sealed partial class ConnectionPage : Page
             var sshHost = AddSshHostBox.Text.Trim();
             if (!int.TryParse(AddSshRemotePortBox.Text, out var remotePort) || remotePort is < 1 or > 65535)
             {
-                AddResultText.Text = "SSH remote port must be 1–65535";
+                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid");
                 return;
             }
             if (!int.TryParse(AddSshLocalPortBox.Text, out var localPort) || localPort is < 1 or > 65535)
             {
-                AddResultText.Text = "SSH local port must be 1–65535";
+                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
                 return;
             }
             sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort);
         }
 
         AddSaveButton.IsEnabled = false;
-        AddResultText.Text = "Connecting…";
+        AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_Connecting");
 
         // Snapshot previous state for rollback (mirrors legacy logic exactly)
         var previousActiveId = _gatewayRegistry.ActiveGatewayId;
@@ -1935,15 +2239,15 @@ public sealed partial class ConnectionPage : Page
 
             if (useSsh)
             {
-                AddResultText.Text = "Starting SSH tunnel…";
+                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_StartingSshTunnel");
                 var app = (App)Microsoft.UI.Xaml.Application.Current;
                 app.EnsureSshTunnelStarted();
             }
 
             var snapshot = await ConnectAndWaitForDirectConnectOutcomeAsync(recordId);
             AddResultText.Text = snapshot.OperatorState == RoleConnectionState.PairingRequired
-                ? $"Pairing approval required for {GatewayUrlHelper.SanitizeForDisplay(url)}."
-                : $"Connected to {GatewayUrlHelper.SanitizeForDisplay(url)}.";
+                ? string.Format(LocalizationHelper.GetString("ConnectionPage_PairingApprovalRequired"), GatewayUrlHelper.SanitizeForDisplay(url))
+                : string.Format(LocalizationHelper.GetString("ConnectionPage_ConnectedTo"), GatewayUrlHelper.SanitizeForDisplay(url));
 
             // Success — leave Add mode and stop tracking the edited record.
             _editingGatewayId = null;
@@ -1998,7 +2302,7 @@ public sealed partial class ConnectionPage : Page
 
             var completed = await Task.WhenAny(completion.Task, Task.Delay(TimeSpan.FromSeconds(15)));
             if (completed != completion.Task)
-                throw new TimeoutException("Timed out waiting for the gateway connection to complete.");
+                throw new TimeoutException(LocalizationHelper.GetString("ConnectionPage_ConnectionTimeout"));
 
             return EnsureDirectConnectSucceeded(await completion.Task);
         }
@@ -2019,7 +2323,7 @@ public sealed partial class ConnectionPage : Page
     {
         if (snapshot.OperatorState == RoleConnectionState.Error)
         {
-            var message = snapshot.OperatorError ?? snapshot.NodeError ?? "Gateway connection failed.";
+            var message = snapshot.OperatorError ?? snapshot.NodeError ?? LocalizationHelper.GetString("ConnectionPage_GatewayConnectionFailed");
             throw new InvalidOperationException(message);
         }
         return snapshot;
@@ -2094,12 +2398,12 @@ public sealed partial class ConnectionPage : Page
         var code = AddSetupCodeBox.Text?.Trim();
         if (string.IsNullOrEmpty(code))
         {
-            AddResultText.Text = "Please paste a setup code.";
+            AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_PleaseEnterSetupCode");
             return;
         }
 
         AddSaveButton.IsEnabled = false;
-        AddResultText.Text = "Applying…";
+        AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_Applying");
         try
         {
             if (_connectionManager != null)
@@ -2107,11 +2411,11 @@ public sealed partial class ConnectionPage : Page
                 var result = await _connectionManager.ApplySetupCodeAsync(code);
                 AddResultText.Text = result.Outcome switch
                 {
-                    SetupCodeOutcome.Success => $"✓ Applied — gateway: {SanitizeUrl(result.GatewayUrl ?? "")}",
-                    SetupCodeOutcome.InvalidCode => $"✗ {result.ErrorMessage ?? "Invalid setup code"}",
-                    SetupCodeOutcome.InvalidUrl => $"✗ {result.ErrorMessage ?? "Invalid URL"}",
-                    SetupCodeOutcome.ConnectionFailed => $"✗ {result.ErrorMessage ?? "Connection failed"}",
-                    _ => $"✗ {result.ErrorMessage ?? "Unknown error"}",
+                    SetupCodeOutcome.Success => $"✓ {string.Format(LocalizationHelper.GetString("ConnectionPage_AppliedGateway"), SanitizeUrl(result.GatewayUrl ?? ""))}",
+                    SetupCodeOutcome.InvalidCode => $"✗ {result.ErrorMessage ?? LocalizationHelper.GetString("ConnectionPage_InvalidSetupCode")}",
+                    SetupCodeOutcome.InvalidUrl => $"✗ {result.ErrorMessage ?? LocalizationHelper.GetString("ConnectionPage_InvalidUrl")}",
+                    SetupCodeOutcome.ConnectionFailed => $"✗ {result.ErrorMessage ?? LocalizationHelper.GetString("ConnectionPage_ConnectionFailed")}",
+                    _ => $"✗ {result.ErrorMessage ?? LocalizationHelper.GetString("ConnectionPage_UnknownError")}",
                 };
                 if (result.Outcome == SetupCodeOutcome.Success)
                 {
@@ -2134,7 +2438,7 @@ public sealed partial class ConnectionPage : Page
                 if (!string.IsNullOrEmpty(decoded.Url))
                     settings.GatewayUrl = decoded.Url;
                 settings.Save();
-                AddResultText.Text = $"✓ Applied — gateway: {SanitizeUrl(decoded.Url ?? settings.GatewayUrl ?? "")}";
+                AddResultText.Text = $"✓ {string.Format(LocalizationHelper.GetString("ConnectionPage_AppliedGateway"), SanitizeUrl(decoded.Url ?? settings.GatewayUrl ?? ""))}";
                 ((IAppCommands)CurrentApp).NotifySettingsSaved();
             }
         }
@@ -2160,11 +2464,11 @@ public sealed partial class ConnectionPage : Page
         var decoded = SetupCodeDecoder.Decode(code);
         if (decoded.Success)
         {
-            AddSetupCodePreviewUrl.Text = $"Gateway: {decoded.Url ?? "(not specified)"}";
+            AddSetupCodePreviewUrl.Text = string.Format(LocalizationHelper.GetString("ConnectionPage_PreviewGateway"), decoded.Url ?? LocalizationHelper.GetString("ConnectionPage_PreviewGatewayNotSpecified"));
             var tokenHint = string.IsNullOrEmpty(decoded.Token)
-                ? "(no token)"
+                ? LocalizationHelper.GetString("ConnectionPage_PreviewNoToken")
                 : decoded.Token!.Substring(0, Math.Min(8, decoded.Token.Length)) + "…";
-            AddSetupCodePreviewToken.Text = $"Token: {tokenHint}";
+            AddSetupCodePreviewToken.Text = string.Format(LocalizationHelper.GetString("ConnectionPage_PreviewToken"), tokenHint);
             AddSetupCodePreviewPanel.Visibility = Visibility.Visible;
             // Auto-test connectivity with the decoded URL
             if (!string.IsNullOrEmpty(decoded.Url))
@@ -2224,10 +2528,10 @@ public sealed partial class ConnectionPage : Page
         _scanInProgress = true;
 
         // Reflect "scanning" state on both buttons + sub-section
-        GatewaysScanButtonText.Text = "Stop";
-        WelcomeScanButtonText.Text = "Stop";
+        GatewaysScanButtonText.Text = LocalizationHelper.GetString("ConnectionPage_Stop");
+        WelcomeScanButtonText.Text = LocalizationHelper.GetString("ConnectionPage_Stop");
         GatewaysDiscoveredSection.Visibility = Visibility.Visible;
-        GatewaysDiscoveredHeader.Text = "Scanning your network…";
+        GatewaysDiscoveredHeader.Text = LocalizationHelper.GetString("ConnectionPage_ScanningNetwork");
         GatewaysDiscoveredProgress.IsActive = true;
         GatewaysDiscoveredProgress.Visibility = Visibility.Visible;
         GatewaysDiscoveredList.Children.Clear();
@@ -2239,8 +2543,8 @@ public sealed partial class ConnectionPage : Page
             await _discoveryService.StartDiscoveryAsync();
             var gateways = _discoveryService.Gateways;
             GatewaysDiscoveredHeader.Text = gateways.Count == 0
-                ? "No gateways found on your network."
-                : $"Discovered on your network ({gateways.Count})";
+                ? LocalizationHelper.GetString("ConnectionPage_NoGatewaysFound")
+                : string.Format(LocalizationHelper.GetString("ConnectionPage_DiscoveredOnNetwork"), gateways.Count);
             GatewaysDiscoveredProgress.IsActive = false;
             GatewaysDiscoveredProgress.Visibility = Visibility.Collapsed;
 
@@ -2252,15 +2556,15 @@ public sealed partial class ConnectionPage : Page
         }
         catch (Exception ex)
         {
-            GatewaysDiscoveredHeader.Text = $"Scan failed: {ex.Message}";
+            GatewaysDiscoveredHeader.Text = string.Format(LocalizationHelper.GetString("ConnectionPage_ScanFailed"), ex.Message);
             GatewaysDiscoveredProgress.IsActive = false;
             GatewaysDiscoveredProgress.Visibility = Visibility.Collapsed;
         }
         finally
         {
             _scanInProgress = false;
-            GatewaysScanButtonText.Text = "Scan";
-            WelcomeScanButtonText.Text = "Scan";
+            GatewaysScanButtonText.Text = LocalizationHelper.GetString("ConnectionPage_ScanAction");
+            WelcomeScanButtonText.Text = LocalizationHelper.GetString("ConnectionPage_ScanAction");
         }
     }
 
@@ -2309,7 +2613,7 @@ public sealed partial class ConnectionPage : Page
         Grid.SetColumn(info, 1);
         grid.Children.Add(info);
 
-        var addBtn = new Button { Content = "Add", Tag = gw.ConnectionUrl, VerticalAlignment = VerticalAlignment.Center };
+        var addBtn = new Button { Content = LocalizationHelper.GetString("ConnectionPage_Add"), Tag = gw.ConnectionUrl, VerticalAlignment = VerticalAlignment.Center };
         addBtn.Click += OnAddDiscoveredGateway;
         Grid.SetColumn(addBtn, 2);
         grid.Children.Add(addBtn);
@@ -2544,8 +2848,8 @@ public sealed partial class ConnectionPage : Page
         }
         PendingApprovalsBanner.Visibility = Visibility.Visible;
         PendingApprovalsHeaderText.Text = total == 1
-            ? "1 approval waiting on you"
-            : $"{total} approvals waiting on you";
+            ? LocalizationHelper.GetString("ConnectionPage_ApprovalsSingular")
+            : string.Format(LocalizationHelper.GetString("ConnectionPage_ApprovalsPlural"), total);
     }
 
     /// <summary>
@@ -2668,10 +2972,10 @@ public sealed partial class ConnectionPage : Page
         var info = new StackPanel { Spacing = 2 };
         info.Children.Add(new TextBlock
         {
-            Text = $"Device · {req.DisplayName ?? req.DeviceId}",
+            Text = string.Format(LocalizationHelper.GetString("ConnectionPage_DeviceLabel"), req.DisplayName ?? req.DeviceId),
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
         });
-        var detail = req.Platform ?? "unknown";
+        var detail = req.Platform ?? LocalizationHelper.GetString("ConnectionPage_UnknownPlatform");
         if (!string.IsNullOrEmpty(req.Role)) detail += $" · {req.Role}";
         info.Children.Add(new TextBlock
         {
@@ -2703,14 +3007,14 @@ public sealed partial class ConnectionPage : Page
             var approveBtn = BuildPairingDecisionButton(
                 glyph: Helpers.FluentIconCatalog.Check,
                 glyphBrushKey: "SystemFillColorSuccessBrush",
-                label: "Approve",
-                automationName: "Approve pairing request",
+                label: LocalizationHelper.GetString("ConnectionPage_Approve"),
+                automationName: LocalizationHelper.GetString("ConnectionPage_ApprovePairingRequest"),
                 automationId: "DevicePairApproveAction");
             var rejectBtn = BuildPairingDecisionButton(
                 glyph: Helpers.FluentIconCatalog.Exit,
                 glyphBrushKey: "SystemFillColorCriticalBrush",
-                label: "Deny",
-                automationName: "Deny pairing request",
+                label: LocalizationHelper.GetString("ConnectionPage_Deny"),
+                automationName: LocalizationHelper.GetString("ConnectionPage_DenyPairingRequest"),
                 automationId: "DevicePairDenyAction");
             if (string.IsNullOrEmpty(capturedId))
             {
@@ -2761,10 +3065,10 @@ public sealed partial class ConnectionPage : Page
         var info = new StackPanel { Spacing = 2 };
         info.Children.Add(new TextBlock
         {
-            Text = $"Node · {req.DisplayName ?? req.NodeId}",
+            Text = string.Format(LocalizationHelper.GetString("ConnectionPage_NodeLabel"), req.DisplayName ?? req.NodeId),
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
         });
-        var detail = req.Platform ?? "unknown";
+        var detail = req.Platform ?? LocalizationHelper.GetString("ConnectionPage_UnknownPlatform");
         if (!string.IsNullOrEmpty(req.RemoteIp)) detail += $" · {req.RemoteIp}";
         info.Children.Add(new TextBlock
         {
@@ -2776,7 +3080,7 @@ public sealed partial class ConnectionPage : Page
         {
             info.Children.Add(new TextBlock
             {
-                Text = "⚠️ Repair request",
+                Text = LocalizationHelper.GetString("ConnectionPage_RepairRequest"),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = ResolveBrush("SystemFillColorCautionBrush"),
             });
@@ -2795,14 +3099,14 @@ public sealed partial class ConnectionPage : Page
             var approveBtn = BuildPairingDecisionButton(
                 glyph: Helpers.FluentIconCatalog.Check,
                 glyphBrushKey: "SystemFillColorSuccessBrush",
-                label: "Approve",
-                automationName: "Approve pairing request",
+                label: LocalizationHelper.GetString("ConnectionPage_Approve"),
+                automationName: LocalizationHelper.GetString("ConnectionPage_ApprovePairingRequest"),
                 automationId: "NodePairApproveAction");
             var rejectBtn = BuildPairingDecisionButton(
                 glyph: Helpers.FluentIconCatalog.Exit,
                 glyphBrushKey: "SystemFillColorCriticalBrush",
-                label: "Deny",
-                automationName: "Deny pairing request",
+                label: LocalizationHelper.GetString("ConnectionPage_Deny"),
+                automationName: LocalizationHelper.GetString("ConnectionPage_DenyPairingRequest"),
                 automationId: "NodePairDenyAction");
             if (string.IsNullOrEmpty(capturedId))
             {
@@ -2847,14 +3151,14 @@ public sealed partial class ConnectionPage : Page
     private static string GetAuthErrorGuidance(string error)
     {
         if (error.Contains("token", StringComparison.OrdinalIgnoreCase))
-            return $"{error}\n\nPaste a new setup code from the Add Gateway flow.";
+            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidanceToken"), error);
         if (error.Contains("pairing", StringComparison.OrdinalIgnoreCase))
-            return $"{error}\n\nYour device needs approval on the gateway host.";
+            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidancePairing"), error);
         if (error.Contains("password", StringComparison.OrdinalIgnoreCase))
-            return $"{error}\n\nThis gateway requires password authentication.";
+            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidancePassword"), error);
         if (error.Contains("signature", StringComparison.OrdinalIgnoreCase))
-            return $"{error}\n\nThe gateway may require a different auth protocol version.";
-        return $"{error}\n\nCheck your connection settings and try again.";
+            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidanceSignature"), error);
+        return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidanceDefault"), error);
     }
 
     private static string SanitizeUrl(string url)

@@ -8,6 +8,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -283,19 +284,19 @@ def choose_target(repo: Path, mode: str, base_ref: str | None) -> tuple[str, str
 
 
 def detect_pr_base(repo: Path) -> str | None:
-    if not shutil_which("gh"):
+    gh_bin = shutil.which("gh")
+    if not gh_bin:
         return None
-    result = run(["gh", "pr", "view", "--json", "baseRefName", "--jq", ".baseRefName"], repo, check=False)
+    result = run([gh_bin, "pr", "view", "--json", "baseRefName", "--jq", ".baseRefName"], repo, check=False)
     base = result.stdout.strip()
     return f"origin/{base}" if result.returncode == 0 and base else None
 
 
-def shutil_which(name: str) -> str | None:
-    for part in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = Path(part) / name
-        if candidate.exists() and os.access(candidate, os.X_OK):
-            return str(candidate)
-    return None
+def resolve_command(name: str) -> str:
+    resolved = shutil.which(name)
+    if resolved:
+        return resolved
+    raise SystemExit(f"review engine executable not found: {name}. Install it or pass the matching --*-bin option.")
 
 
 def bounded(text: str, limit: int = 180_000) -> str:
@@ -585,7 +586,7 @@ def sanitized_workspace(repo: Path, prefix: str = "autoreview") -> tempfile.Temp
 def run_codex(args: argparse.Namespace, repo: Path, prompt: str) -> str:
     if not args.tools:
         raise SystemExit("--no-tools is not supported by the Codex engine; use --engine claude --no-tools for a no-tools run")
-    cmd = [args.codex_bin, "--ask-for-approval", "never"]
+    cmd = [resolve_command(args.codex_bin), "--ask-for-approval", "never"]
     if args.web_search:
         cmd.append("--search")
     if args.model:
@@ -632,7 +633,7 @@ def run_codex(args: argparse.Namespace, repo: Path, prompt: str) -> str:
 
 def run_claude(args: argparse.Namespace, repo: Path, prompt: str) -> str:
     cmd = [
-        args.claude_bin,
+        resolve_command(args.claude_bin),
         "--print",
         "--no-session-persistence",
         "--output-format",
@@ -674,7 +675,7 @@ def run_droid(args: argparse.Namespace, repo: Path, prompt: str) -> str:
         prompt_path = review_cwd / "prompt.txt"
         prompt_path.write_text(prompt)
         cmd = [
-            args.droid_bin,
+            resolve_command(args.droid_bin),
             "exec",
             "--cwd",
             str(review_cwd),
@@ -705,7 +706,7 @@ def run_copilot(args: argparse.Namespace, repo: Path, prompt: str) -> str:
         prompt_path.write_text(prompt)
         os.chmod(prompt_path, 0o600)
         cmd = [
-            args.copilot_bin,
+            resolve_command(args.copilot_bin),
             "-C",
             tempdir,
             "-p",
@@ -1071,9 +1072,23 @@ def print_report(report: dict[str, Any], *, label: str = "autoreview") -> None:
     print(report["overall_explanation"])
 
 
-def start_parallel_tests(command: str, repo: Path) -> tuple[subprocess.Popen, float]:
+def start_parallel_tests(command: str, repo: Path, shell_kind: str) -> tuple[subprocess.Popen, float]:
     print(f"tests: {command}")
-    return subprocess.Popen(command, cwd=repo, shell=True), time.time()
+    if shell_kind == "default" or shell_kind == "cmd":
+        return subprocess.Popen(command, cwd=repo, shell=True), time.time()
+    if shell_kind == "powershell":
+        powershell = shutil.which("powershell") or "powershell"
+        return subprocess.Popen(
+            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+            cwd=repo,
+        ), time.time()
+    if shell_kind == "pwsh":
+        pwsh = shutil.which("pwsh") or "pwsh"
+        return subprocess.Popen(
+            [pwsh, "-NoProfile", "-Command", command],
+            cwd=repo,
+        ), time.time()
+    raise SystemExit(f"invalid --parallel-tests-shell/AUTOREVIEW_PARALLEL_TESTS_SHELL: {shell_kind}")
 
 
 def finish_parallel_tests(proc: subprocess.Popen, started: float) -> int:
@@ -1118,6 +1133,12 @@ def parse_args() -> argparse.Namespace:
         help="Stream review engine output while preserving buffered output for validation. Codex output is filtered to hide tool/file chatter.",
     )
     parser.add_argument("--parallel-tests", help="Run a test command concurrently with review; failure fails the helper.")
+    parser.add_argument(
+        "--parallel-tests-shell",
+        choices=["default", "cmd", "powershell", "pwsh"],
+        default=os.environ.get("AUTOREVIEW_PARALLEL_TESTS_SHELL", "default"),
+        help="Shell for --parallel-tests. Default preserves Python shell=True platform behavior; use powershell or pwsh for PowerShell-specific commands.",
+    )
     parser.add_argument("--require-finding", action="append", default=[], help="Require finding text to contain this substring.")
     parser.add_argument("--expect-findings", action="store_true", help="Treat findings as success; for harness acceptance tests.")
     parser.add_argument("--dry-run", action="store_true")
@@ -1323,7 +1344,7 @@ def main() -> int:
 
     tests_proc: tuple[subprocess.Popen, float] | None = None
     if args.parallel_tests:
-        tests_proc = start_parallel_tests(args.parallel_tests, repo)
+        tests_proc = start_parallel_tests(args.parallel_tests, repo, args.parallel_tests_shell)
     try:
         if len(reviewers) == 1:
             report = run_reviewer(reviewers[0], repo, prompt, changed_paths, args.require_finding)

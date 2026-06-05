@@ -123,7 +123,7 @@ public class WindowsNodeClient : WebSocketClientBase
         _registration = new NodeRegistration
         {
             Id = _deviceIdentity.DeviceId,
-            Version = "1.0.0",
+            Version = AppVersionInfo.Version,
             Platform = WindowsPlatform,
             DeviceFamily = WindowsDeviceFamily,
             DisplayName = $"Windows Node ({Environment.MachineName})"

@@ -396,11 +396,16 @@ public class SystemCapability : NodeCapabilityBase
         if (_approvalPolicy != null)
         {
             var approval = _approvalPolicy.Evaluate(fullCommand, shell);
-            if (!await EnsureApprovedAsync(fullCommand, shell, approval))
+            var approvalCheck = await EnsureApprovedAsync(fullCommand, shell, approval);
+            if (!approvalCheck.Allowed)
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
                 return Error($"Command denied by exec policy: {approval.Reason}");
             }
+
+            var outerApprovalCoversNestedTargets =
+                approvalCheck.PromptDecisionKind != null ||
+                IsExactAllowRuleForCommand(approval, fullCommand);
 
             var parseResult = ExecShellWrapperParser.Expand(fullCommand, shell);
             if (!string.IsNullOrWhiteSpace(parseResult.Error))
@@ -412,7 +417,18 @@ public class SystemCapability : NodeCapabilityBase
             foreach (var target in parseResult.Targets)
             {
                 var innerApproval = _approvalPolicy.Evaluate(target.Command, target.Shell);
-                if (!await EnsureApprovedAsync(target.Command, target.Shell, innerApproval))
+                if (outerApprovalCoversNestedTargets && !IsExplicitDeny(innerApproval))
+                {
+                    if (!innerApproval.Allowed)
+                    {
+                        Logger.Info(
+                            $"system.run nested approval covered by approved wrapper: {target.Command} ({innerApproval.Reason})");
+                    }
+                    continue;
+                }
+
+                var innerApprovalCheck = await EnsureApprovedAsync(target.Command, target.Shell, innerApproval);
+                if (!innerApprovalCheck.Allowed)
                 {
                     Logger.Warn($"system.run DENIED: {target.Command} ({innerApproval.Reason})");
                     return Error($"Command denied by exec policy: {innerApproval.Reason}");
@@ -448,17 +464,17 @@ public class SystemCapability : NodeCapabilityBase
         }
     }
 
-    private async Task<bool> EnsureApprovedAsync(
+    private async Task<ExecApprovalCheckResult> EnsureApprovedAsync(
         string command,
         string? shell,
         ExecApprovalResult approval,
         CancellationToken cancellationToken = default)
     {
         if (approval.Allowed)
-            return true;
+            return new ExecApprovalCheckResult(true, null);
 
         if (approval.Action != ExecApprovalAction.Prompt || _promptHandler == null || _approvalPolicy == null)
-            return false;
+            return new ExecApprovalCheckResult(false, null);
 
         var decision = await _promptHandler.RequestAsync(new ExecApprovalPromptRequest
         {
@@ -471,7 +487,7 @@ public class SystemCapability : NodeCapabilityBase
         if (decision.Kind == ExecApprovalPromptDecisionKind.Deny)
         {
             Logger.Warn($"system.run DENIED by prompt: {command} ({decision.Reason})");
-            return false;
+            return new ExecApprovalCheckResult(false, decision.Kind);
         }
 
         if (decision.Kind == ExecApprovalPromptDecisionKind.AlwaysAllow)
@@ -494,12 +510,28 @@ public class SystemCapability : NodeCapabilityBase
         }
 
         Logger.Info($"system.run APPROVED by prompt: {command} ({decision.Kind})");
-        return true;
+        return new ExecApprovalCheckResult(true, decision.Kind);
     }
 
     private static bool CanPersistExactAllowRule(string command) =>
         !string.IsNullOrWhiteSpace(command) &&
         command.IndexOfAny(['*', '?']) < 0;
+
+    private static bool IsExactAllowRuleForCommand(ExecApprovalResult approval, string command) =>
+        approval.Allowed &&
+        approval.Action == ExecApprovalAction.Allow &&
+        !string.IsNullOrWhiteSpace(approval.MatchedPattern) &&
+        approval.MatchedPattern.IndexOfAny(['*', '?']) < 0 &&
+        string.Equals(approval.MatchedPattern, command, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsExplicitDeny(ExecApprovalResult approval) =>
+        !approval.Allowed &&
+        approval.Action == ExecApprovalAction.Deny &&
+        !string.IsNullOrWhiteSpace(approval.MatchedPattern);
+
+    private readonly record struct ExecApprovalCheckResult(
+        bool Allowed,
+        ExecApprovalPromptDecisionKind? PromptDecisionKind);
     
     private NodeInvokeResponse HandleExecApprovalsGet()
     {
