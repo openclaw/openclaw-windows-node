@@ -63,4 +63,31 @@ public class MxcAvailabilityTests
         Assert.Single(availability.UnsupportedReasons);
         Assert.True(availability.HasAnyBackend);
     }
+
+    [Theory]
+    [InlineData(26299, 9999, "is not MXC supported build 26300")]
+    [InlineData(26300, 8288, "Windows UBR 8288 below MXC minimum 8289")]
+    [InlineData(26301, 9999, "is not MXC supported build 26300")]
+    [InlineData(27999, 9999, "is not MXC supported build 26300")]
+    [InlineData(28000, 9999, "is not MXC supported build 26300")]
+    public void GetWindowsBuildUnsupportedReason_RejectsUnsupportedBuilds(
+        int build,
+        int ubr,
+        string expectedReason)
+    {
+        var reason = MxcAvailability.GetWindowsBuildUnsupportedReason(build, ubr);
+
+        Assert.NotNull(reason);
+        Assert.Contains(expectedReason, reason);
+    }
+
+    [Theory]
+    [InlineData(26300, 8289)]
+    [InlineData(26300, 9999)]
+    public void GetWindowsBuildUnsupportedReason_AllowsSupportedBuilds(int build, int ubr)
+    {
+        var reason = MxcAvailability.GetWindowsBuildUnsupportedReason(build, ubr);
+
+        Assert.Null(reason);
+    }
 }

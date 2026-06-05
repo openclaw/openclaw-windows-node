@@ -172,6 +172,7 @@ public class ChatNavigationReadinessTests
         };
 
         public Task ConnectAsync(string? gatewayId = null) => Task.CompletedTask;
+        public Task ConnectNodeOnlyAsync(string? gatewayId = null) => Task.CompletedTask;
         public Task DisconnectAsync() => Task.CompletedTask;
         public Task ReconnectAsync() => Task.CompletedTask;
         public Task SwitchGatewayAsync(string gatewayId) => Task.CompletedTask;

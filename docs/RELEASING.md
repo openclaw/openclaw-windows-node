@@ -100,6 +100,19 @@ CI enforces this with `scripts\Test-ReleaseExecutableSignatures.ps1`. The
 verifier fails closed on unknown `.exe` files so future payload changes are
 reviewed deliberately.
 
+CI also checks native runtime dependencies before release packaging. Both the
+x64 and ARM64 portable payloads must ship `vcruntime140.dll` next to every
+`libsodium.dll` copy. The x64 build leg sources its loose VC runtime DLLs from
+the `VCRuntime.CefSharp.140` NuGet package; the ARM64 build leg sources its
+DLLs from the Visual Studio install on the `windows-11-arm` runner (resolved
+via `vswhere` in `src\Directory.Build.targets`). The release job must
+Authenticode-verify Microsoft's x64 and ARM64 Visual C++ Runtime
+redistributables before passing the architecture-matching redistributable to
+Inno. The installer runs the redistributable before launching the tray so
+clean or stale Windows hosts can repair the runtime before Ed25519 device keys
+are generated or loaded, and it skips the post-install tray launch if the
+runtime installer fails.
+
 The current Azure Artifact Signing resource is:
 
 - Account: `openclaw`
@@ -150,10 +163,10 @@ The release job should:
 2. Authenticate to Azure with OIDC in the `release-signing` environment.
 3. Sign only the OpenClaw-owned EXEs in both payloads.
 4. Verify executable signing policy.
-5. Create portable ZIPs.
+5. Create the portable x64 ZIP.
 6. Build Inno installers.
 7. Sign installers.
-8. Create a GitHub prerelease with installer and ZIP assets only.
+8. Create a GitHub prerelease with installer and x64 ZIP assets only.
 
 ## Post-release verification
 

@@ -205,7 +205,7 @@ public class DeviceIdentity
         }
         catch (Exception ex)
         {
-            _logger.Error($"Failed to load device key: {ex.Message}");
+            _logger.Error($"Failed to load device key: {DescribeException(ex)}");
             GenerateNew();
         }
     }
@@ -552,6 +552,14 @@ public class DeviceIdentity
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string DescribeException(Exception ex)
+    {
+        var message = $"{ex.GetType().Name}: {ex.Message}";
+        return ex.InnerException == null
+            ? message
+            : $"{message} (inner {ex.InnerException.GetType().Name}: {ex.InnerException.Message})";
     }
     
     private static string Base64UrlEncode(byte[] data)

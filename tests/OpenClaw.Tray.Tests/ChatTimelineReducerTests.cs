@@ -441,7 +441,7 @@ public class ChatTimelineReducerTests
     // ── Permission request events ──
 
     [Fact]
-    public void PermissionRequest_SetsPendingPermission()
+    public void PermissionRequest_SetsPendingPermissionAndPushesEntry()
     {
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
@@ -452,11 +452,20 @@ public class ChatTimelineReducerTests
         Assert.Equal("shell.exec", state.PendingPermission.PermissionKind);
         Assert.Equal("bash", state.PendingPermission.ToolName);
         Assert.Equal("run script.sh", state.PendingPermission.Detail);
-        Assert.Empty(state.Entries); // no timeline entry
+
+        // Inline timeline entry — the in-bubble approval lives in the
+        // conversation now (composer banner removed).
+        var entry = Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.PermissionRequest, entry.Kind);
+        Assert.Equal("req-1", entry.PermissionRequestId);
+        Assert.Equal(ChatPermissionDecision.Pending, entry.PermissionDecision);
+        Assert.Equal("run script.sh", entry.Text);
+        Assert.Equal("bash", entry.ToolName);
+        Assert.Equal("shell.exec", entry.IntentSummary);
     }
 
     [Fact]
-    public void ClearPermission_RemovesPendingPermission()
+    public void ClearPermission_RemovesPendingPermissionAndMarksEntryExpired()
     {
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
@@ -467,18 +476,161 @@ public class ChatTimelineReducerTests
         var updated = ChatTimelineReducer.ClearPermission(state);
 
         Assert.Null(updated.PendingPermission);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Expired, entry.PermissionDecision);
     }
 
     [Fact]
-    public void TurnEnd_ClearsPendingPermission()
+    public void ResolvePermission_Allowed_StampsEntryAndClearsPending()
     {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.ResolvePermission(state, "req-1", ChatPermissionDecision.Allowed);
+
+        Assert.Null(updated.PendingPermission);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void ApplyPermissionRequest_EmptyRequestId_DroppedToAvoidOrphanedEntry()
+    {
+        var initial = ChatTimelineState.Initial();
+        var afterEmpty = ChatTimelineReducer.Apply(
+            initial,
+            new ChatPermissionRequestEvent("", "shell.exec", "bash", "run script.sh"));
+        var afterWhitespace = ChatTimelineReducer.Apply(
+            initial,
+            new ChatPermissionRequestEvent("   ", "shell.exec", "bash", "run script.sh"));
+
+        Assert.Empty(afterEmpty.Entries);
+        Assert.Null(afterEmpty.PendingPermission);
+        Assert.Empty(afterWhitespace.Entries);
+        Assert.Null(afterWhitespace.PendingPermission);
+    }
+
+    [Fact]
+    public void ResolvePermission_Denied_StampsEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.ResolvePermission(state, "req-1", ChatPermissionDecision.Denied);
+
+        Assert.Null(updated.PendingPermission);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Denied, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void ResolvePermission_DoesNotDowngradeAlreadyDecidedEntry()
+    {
+        // Local Allow click stamped the entry Allowed; a subsequent
+        // gateway backstop event with decision=Expired must not overwrite
+        // the user's choice.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+        var allowed = ChatTimelineReducer.ResolvePermission(state, "req-1", ChatPermissionDecision.Allowed);
+
+        var backstop = ChatTimelineReducer.ResolvePermission(allowed, "req-1", ChatPermissionDecision.Expired);
+
+        var entry = Assert.Single(backstop.Entries);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void ResolvePermission_MismatchedRequestId_NoOp()
+    {
+        // A late terminal event for a stale request must not clobber the
+        // current live entry. ResolvePermission walks Entries looking for
+        // the matching PermissionRequestId; finding none is a no-op for
+        // both entries and PendingPermission (so the user can still act
+        // on the live request).
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.ResolvePermission(state, "req-unknown", ChatPermissionDecision.Allowed);
+
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-1", updated.PendingPermission!.RequestId);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Pending, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void TurnEnd_PreservesPendingPermission()
+    {
+        // Exec approvals can outlive the originating turn: the gateway emits
+        // ``exec.approval.resolved`` after the user clicks Allow/Deny in the
+        // dashboard or tray, and that resolution is what should clear the
+        // banner — not turn-end. See OpenClawChatDataProvider's approval
+        // flow and ChatTimelineReducer.ApplyTurnEnd for the rationale.
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
             new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
 
         var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
 
-        Assert.Null(updated.PendingPermission);
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-1", updated.PendingPermission!.RequestId);
+    }
+
+    [Fact]
+    public void ToolOutput_PreservesPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("ok", ToolCallId: null));
+
+        Assert.NotNull(updated.PendingPermission);
+    }
+
+    [Fact]
+    public void ToolError_PreservesPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("boom", ToolCallId: null));
+
+        Assert.NotNull(updated.PendingPermission);
+    }
+
+    [Fact]
+    public void SecondPermissionRequest_ReplacesPriorPendingAndMarksFirstEntryExpired()
+    {
+        // A second exec-approval can arrive before the first is resolved
+        // (the gateway is free to issue them in sequence). The reducer
+        // must surface the newest request so the user is responding to
+        // the live one — and mark the prior inline bubble as Expired so
+        // the timeline never shows two live Allow/Deny prompts at once.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        Assert.Equal("req-1", state.PendingPermission!.RequestId);
+
+        var updated = ChatTimelineReducer.Apply(
+            state,
+            new ChatPermissionRequestEvent("req-2", "shell.exec", "bash", "rm -rf /tmp/x"));
+
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-2", updated.PendingPermission!.RequestId);
+        Assert.Equal("rm -rf /tmp/x", updated.PendingPermission.Detail);
+
+        Assert.Equal(2, updated.Entries.Count);
+        Assert.Equal(ChatPermissionDecision.Expired, updated.Entries[0].PermissionDecision);
+        Assert.Equal("req-1", updated.Entries[0].PermissionRequestId);
+        Assert.Equal(ChatPermissionDecision.Pending, updated.Entries[1].PermissionDecision);
+        Assert.Equal("req-2", updated.Entries[1].PermissionRequestId);
     }
 
     // ── Status and system events ──

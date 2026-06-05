@@ -180,6 +180,7 @@ public class ToolMetaCacheTests
 
         public SessionInfo[] GetSessionList() => Array.Empty<SessionInfo>();
         public ModelsListInfo? GetCurrentModelsList() => null;
+        public void StartProactiveBootstrap() { }
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.CompletedTask;
         public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
         public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;

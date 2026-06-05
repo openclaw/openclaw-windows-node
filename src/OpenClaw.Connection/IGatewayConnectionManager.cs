@@ -20,6 +20,7 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
 
     // ─── Lifecycle ───
     Task ConnectAsync(string? gatewayId = null);
+    Task ConnectNodeOnlyAsync(string? gatewayId = null);
     Task DisconnectAsync();
     Task ReconnectAsync();
     Task SwitchGatewayAsync(string gatewayId);

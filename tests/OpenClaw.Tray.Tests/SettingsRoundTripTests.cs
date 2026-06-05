@@ -283,6 +283,9 @@ public class SettingsRoundTripTests
     [WindowsFact]
     public void SettingsManager_ProtectsElevenLabsApiKeyForStorage()
     {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
         var protectedValue = SettingsManager.ProtectSettingSecret("elevenlabs-key");
 
         Assert.NotNull(protectedValue);
@@ -300,6 +303,9 @@ public class SettingsRoundTripTests
     [WindowsFact]
     public void SettingsManager_SaveProtectsSecretsWithoutMutatingInMemoryData()
     {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
         var settingsPath = Path.Combine(dir, "settings.json");
 

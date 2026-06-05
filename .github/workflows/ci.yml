@@ -394,6 +394,20 @@ jobs:
         mkdir publish\SetupEngine
         copy publish-setup\* publish\SetupEngine\ -Recurse
 
+    - name: Verify x64 Native Runtime Payload
+      if: matrix.rid == 'win-x64'
+      shell: pwsh
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime
+
+    - name: Verify ARM64 Native Runtime Payload
+      if: matrix.rid == 'win-arm64'
+      shell: pwsh
+      # -SkipNativeLoadProbe: an ARM64 runner CAN LoadLibrary ARM64 DLLs, but
+      # libsodium pulls in a long native dependency chain that may not all be
+      # in the payload here (WindowsAppSDK pieces, etc.). The probe is for x64
+      # parity; signature + presence is what we actually care about.
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe
+
     - name: Verify GitVersion assembly metadata
       shell: pwsh
       run: |
@@ -599,10 +613,48 @@ jobs:
       shell: pwsh
       run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireSignedOpenClaw
 
-    # Create ZIP files for Updatum auto-update (needs "win-x64" in filename)
-    - name: Create Release ZIPs
+    - name: Verify x64 Release Native Dependencies
+      shell: pwsh
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-x64 -RequireAppLocalVCRuntime
+
+    - name: Verify ARM64 Release Native Dependencies
+      shell: pwsh
+      # -SkipNativeLoadProbe: this release job runs on the x64 windows-latest
+      # runner and cannot LoadLibrary an ARM64 DLL. The signature and presence
+      # checks still run.
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireAppLocalVCRuntime -SkipNativeLoadProbe
+
+    - name: Download Visual C++ Runtime Redistributables
+      shell: pwsh
+      run: |
+        $redists = @(
+          @{ Uri = "https://aka.ms/vc14/vc_redist.x64.exe"; Path = "vc_redist.x64.exe" },
+          @{ Uri = "https://aka.ms/vc14/vc_redist.arm64.exe"; Path = "vc_redist.arm64.exe" }
+        )
+
+        foreach ($redist in $redists) {
+          Invoke-WebRequest -Uri $redist.Uri -OutFile $redist.Path
+          $signature = Get-AuthenticodeSignature -LiteralPath $redist.Path
+          if ($signature.Status -ne "Valid") {
+            throw "$($redist.Path) Authenticode signature was $($signature.Status)."
+          }
+          $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "" }
+          if ($subject -notmatch "O=Microsoft Corporation") {
+            throw "$($redist.Path) signer was not Microsoft Corporation: $subject"
+          }
+        }
+
+    # Create ZIP files for Updatum auto-update (asset name must contain the RID).
+    # We ship both x64 and arm64 portables now that the build job produces a
+    # libsodium-compatible app-local VC runtime for both architectures (the
+    # arm64 leg sources its loose Microsoft.VC*.CRT DLLs from the VS install
+    # on the windows-11-arm runner; see src/Directory.Build.targets).
+    - name: Create x64 Release ZIP
       run: |
         Compress-Archive -Path artifacts/tray-win-x64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
+
+    - name: Create arm64 Release ZIP
+      run: |
         Compress-Archive -Path artifacts/tray-win-arm64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
 
     # Inno Setup installer for x64
@@ -614,16 +666,21 @@ jobs:
         # Prepare x64 files
         mkdir publish-x64
         copy artifacts/tray-win-x64/* publish-x64/ -Recurse
+        .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-x64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.x64.exe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 /DvcRedist=vc_redist.x64.exe installer.iss
 
     - name: Build arm64 Installer
       run: |
         # Prepare arm64 files
         mkdir publish-arm64
         copy artifacts/tray-win-arm64/* publish-arm64/ -Recurse
+        # -RequireAppLocalVCRuntime: arm64 payload now ships VC runtime DLLs from the build job.
+        # -SkipNativeLoadProbe:      this verifier runs on the x64 release runner and cannot
+        #                             LoadLibrary an arm64 DLL.
+        .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 /DvcRedist=vc_redist.arm64.exe installer.iss
 
     - name: Sign Installers
       uses: azure/artifact-signing-action@v2

@@ -91,6 +91,18 @@ public class ConnectionStateMachineTests
     }
 
     [Fact]
+    public void PairingRequired_HandshakeSucceeded_TransitionsOperatorToConnected()
+    {
+        _sm.TryTransition(ConnectionTrigger.ConnectRequested);
+        _sm.TryTransition(ConnectionTrigger.PairingPending);
+
+        Assert.True(_sm.TryTransition(ConnectionTrigger.HandshakeSucceeded));
+        Assert.Equal(OverallConnectionState.Ready, _sm.Current.OverallState);
+        Assert.Equal(RoleConnectionState.Connected, _sm.Current.OperatorState);
+        Assert.False(_sm.Current.OperatorPairingRequired);
+    }
+
+    [Fact]
     public void PairingRequired_PairingRejected_TransitionsToError()
     {
         _sm.TryTransition(ConnectionTrigger.ConnectRequested);
