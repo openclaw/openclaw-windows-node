@@ -29,7 +29,6 @@ public sealed partial class WizardPage : Page
     // (OAuth URLs, install fallback messages, etc) inline on the active step.
     // wizard.payload frames don't carry this content.
     private WizardConsoleTail? _consoleTail;
-    private readonly HashSet<string> _launchedUrls = new(StringComparer.OrdinalIgnoreCase);
 
     public WizardPage()
     {
@@ -58,7 +57,6 @@ public sealed partial class WizardPage : Page
             HideRecoveryActions();
             await DisconnectAsync();
             ClearConsoleBanner();
-            _launchedUrls.Clear();
             _sessionId = "";
             _wizardStepCount = 0;
             _stepVisits.Clear();
@@ -597,7 +595,6 @@ public sealed partial class WizardPage : Page
         if (urlMatch.Success && Uri.TryCreate(urlMatch.Value.TrimEnd('.', ','), UriKind.Absolute, out var uri))
         {
             target.Children.Add(BuildLinkLine(trimmed, urlMatch.Value, uri));
-            TryAutoLaunchUrl(uri);
             return;
         }
 
@@ -662,22 +659,6 @@ public sealed partial class WizardPage : Page
     {
         ConsoleBannerLines.Children.Clear();
         ConsoleBanner.Visibility = Visibility.Collapsed;
-    }
-
-    private void TryAutoLaunchUrl(Uri uri)
-    {
-        if (!WizardUrlLauncher.ShouldLaunch(_launchedUrls, uri))
-            return;
-
-        try
-        {
-            _ = Windows.System.Launcher.LaunchUriAsync(uri);
-        }
-        catch
-        {
-            // Never block the wizard if the shell launch fails (no default
-            // browser, sandbox restrictions, etc).
-        }
     }
 
     private static FrameworkElement BuildLinkLine(string line, string urlText, Uri uri)
