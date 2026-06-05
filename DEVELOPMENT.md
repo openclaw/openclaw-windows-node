@@ -532,8 +532,8 @@ The repository uses GitHub Actions for continuous integration and release automa
 **Workflow File:** `.github/workflows/ci.yml`
 
 **Trigger Events:**
-- Push to `main` or `master` branch
-- Pull requests to `main` or `master`
+- Push to `main` branch
+- Pull requests to `main`
 - Git tags matching `v*` (e.g., `v1.2.3`) for releases
 
 ### Gateway LKG version automation

@@ -1,17 +1,17 @@
 # Releasing OpenClaw Windows Hub
 
 This repo uses **GitVersion + CI** for release versioning. The canonical release
-flow is **tag-driven**: merge to `master`, tag `master`, and let GitHub Actions
+flow is **tag-driven**: merge to `main`, tag `main`, and let GitHub Actions
 build/sign/publish release artifacts.
 
 ## Release checklist
 
-1. Start clean on current `master`.
+1. Start clean on current `main`.
 
    ```powershell
-   git switch master
-   git fetch origin master --prune
-   git reset --hard origin/master
+   git switch main
+   git fetch origin main --prune
+   git reset --hard origin/main
    git clean -fd
    git status --short --branch
    ```
@@ -26,13 +26,13 @@ build/sign/publish release artifacts.
      "Paused for alpha"
    ```
 
-3. Create a new tag from `origin/master`. Prefer a new alpha tag over moving a
+3. Create a new tag from `origin/main`. Prefer a new alpha tag over moving a
    previously failed tag.
 
    ```powershell
    $tag = "v0.6.0-alpha.4"
-   if ((git rev-parse HEAD) -ne (git rev-parse origin/master)) {
-       throw "HEAD is not origin/master; do not tag."
+   if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) {
+       throw "HEAD is not origin/main; do not tag."
    }
    git tag -a $tag -m "OpenClaw Windows Hub $tag"
    git push origin $tag
@@ -189,14 +189,14 @@ Expected:
 
 Do not keep moving a tag repeatedly from chat unless you are certain GitHub and
 local refs agree. Prefer a fresh alpha tag (`alpha.N+1`) after the fix is merged
-to `master`.
+to `main`.
 
 Use these commands to inspect state:
 
 ```powershell
 git status --short --branch
 git rev-parse HEAD
-git rev-parse origin/master
+git rev-parse origin/main
 git ls-remote --tags origin "refs/tags/v0.6.0-alpha*"
 
 gh run list --repo openclaw/openclaw-windows-node `
@@ -204,7 +204,7 @@ gh run list --repo openclaw/openclaw-windows-node `
   --limit 10
 ```
 
-Only tag when `HEAD == origin/master`.
+Only tag when `HEAD == origin/main`.
 
 ## Versioning rules
 

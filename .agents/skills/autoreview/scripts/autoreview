@@ -255,11 +255,11 @@ def default_branch(repo: Path) -> str:
     ).strip()
     if remote_head.startswith("origin/"):
         return remote_head.removeprefix("origin/")
-    for candidate in ("master", "main"):
+    for candidate in ("main", "master"):
         result = run(["git", "rev-parse", "--verify", f"origin/{candidate}"], repo, check=False)
         if result.returncode == 0:
             return candidate
-    return "master"
+    return "main"
 
 
 def default_base_ref(repo: Path) -> str:
