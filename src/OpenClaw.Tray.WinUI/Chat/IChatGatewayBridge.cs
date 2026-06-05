@@ -39,6 +39,7 @@ public interface IChatGatewayBridge : IDisposable
     Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
+    Task ResolveExecApprovalAsync(string approvalId, string decision);
 
     event EventHandler<ConnectionStatus>? StatusChanged;
     event EventHandler<SessionInfo[]>? SessionsUpdated;
@@ -160,6 +161,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         _client.RequestChatHistoryAsync(sessionKey);
 
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
+
+    public Task ResolveExecApprovalAsync(string approvalId, string decision) =>
+        _client.ResolveExecApprovalAsync(approvalId, decision);
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;

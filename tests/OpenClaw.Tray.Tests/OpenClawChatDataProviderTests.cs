@@ -50,6 +50,15 @@ public class OpenClawChatDataProviderTests
             return AbortBehavior?.Invoke(runId) ?? Task.CompletedTask;
         }
 
+        public List<(string Id, string Decision)> ResolvedApprovals { get; } = new();
+        public Func<string, string, Task>? ResolveApprovalBehavior { get; set; }
+
+        public Task ResolveExecApprovalAsync(string approvalId, string decision)
+        {
+            ResolvedApprovals.Add((approvalId, decision));
+            return ResolveApprovalBehavior?.Invoke(approvalId, decision) ?? Task.CompletedTask;
+        }
+
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<SessionInfo[]>? SessionsUpdated;
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
@@ -2264,6 +2273,100 @@ public class OpenClawChatDataProviderTests
         });
         var snap = await provider.LoadAsync();
         Assert.Equal("agent:main:main", snap.DefaultThreadId);
+    }
+
+    // ─── RespondToPermissionAsync routes through the RPC bridge ────────────
+    // These tests pin the slash-command → RPC behavioral pivot. The old code
+    // sent ``/approve <id> <decision>`` as chat input, which deadlocked
+    // because the agent was blocked on the approval. The new code calls
+    // bridge.ResolveExecApprovalAsync. If a refactor reintroduces a slash
+    // command path here, these tests fail.
+    // ──────────────────────────────────────────────────────────────────────
+
+    private static AgentEventInfo MakeApprovalRequestedEvent(string approvalId, string sessionKey = "main")
+    {
+        var json = $$"""
+            {
+              "phase": "requested",
+              "approvalId": "{{approvalId}}",
+              "approvalSlug": "{{approvalId}}",
+              "host": "gateway",
+              "command": "openclaw nodes invoke --node \"Windows Node\" --command system.run",
+              "title": "Exec approval",
+              "message": "Approve this exec?",
+              "agentId": "main"
+            }
+            """;
+        return MakeAgentEvent("approval", json, sessionKey: sessionKey);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_AllowRoutesAllowOnceThroughRpcAndClearsBanner()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-allow-1"));
+        // Banner must be visible before the response.
+        Assert.NotNull(snapshots[^1].Timelines["main"].PendingPermission);
+
+        await provider.RespondToPermissionAsync("main", "appr-allow-1", allow: true);
+
+        // RPC was called with allow-once (NOT a slash command).
+        Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal("appr-allow-1", bridge.ResolvedApprovals[0].Id);
+        Assert.Equal("allow-once", bridge.ResolvedApprovals[0].Decision);
+
+        // No chat message was sent (would mean a slash-command regression).
+        Assert.Empty(bridge.SentMessages);
+
+        // Banner cleared on success.
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_DenyRoutesDenyThroughRpcAndClearsBanner()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-deny-1"));
+        Assert.NotNull(snapshots[^1].Timelines["main"].PendingPermission);
+
+        await provider.RespondToPermissionAsync("main", "appr-deny-1", allow: false);
+
+        Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal("appr-deny-1", bridge.ResolvedApprovals[0].Id);
+        Assert.Equal("deny", bridge.ResolvedApprovals[0].Decision);
+        Assert.Empty(bridge.SentMessages);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_RpcThrows_BannerPreservedForRetry()
+    {
+        // Critical contract: if ResolveExecApprovalAsync throws (e.g. gateway
+        // disconnected, see OpenClawGatewayClient.ResolveExecApprovalAsync's
+        // explicit IsConnected guard), the banner MUST remain so the user can
+        // retry. Clearing it would silently swallow the failure and leave
+        // the agent waiting on an approval the user has no way to re-issue.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-fail-1"));
+        var before = snapshots[^1].Timelines["main"].PendingPermission;
+        Assert.NotNull(before);
+
+        bridge.ResolveApprovalBehavior = (_, _) =>
+            Task.FromException(new InvalidOperationException("gateway not connected"));
+
+        await provider.RespondToPermissionAsync("main", "appr-fail-1", allow: true);
+
+        Assert.Single(bridge.ResolvedApprovals);
+        // Banner preserved on failure — the matching pending request is still there.
+        var after = snapshots[^1].Timelines["main"].PendingPermission;
+        Assert.NotNull(after);
+        Assert.Equal("appr-fail-1", after!.RequestId);
     }
 
     private sealed class TestLogger : OpenClaw.Shared.IOpenClawLogger

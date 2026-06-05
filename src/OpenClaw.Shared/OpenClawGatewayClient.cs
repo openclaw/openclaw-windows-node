@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -390,6 +391,55 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             sessionKey, Volatile.Read(ref _mainSessionKey), "chat.abort");
         await SendWizardRequestAsync("chat.abort", new { runId, sessionKey = effectiveSessionKey }, timeoutMs);
     }
+
+    /// <summary>
+    /// Resolves a pending exec approval over the operator-approvals gateway RPC
+    /// (<c>exec.approval.resolve</c>). Required scope: <c>operator.approvals</c>.
+    ///
+    /// This is the correct path for native approval-button UI. Do NOT use a
+    /// <c>/approve &lt;id&gt; &lt;decision&gt;</c> chat message: slash commands are
+    /// queued behind the agent's main turn, but the agent is blocked waiting
+    /// on the approval — so the slash command can only be processed after the
+    /// run times out, by which point the approval is moot.
+    /// </summary>
+    /// <param name="approvalId">The exec approval id from <c>exec.approval.requested.payload.id</c>.</param>
+    /// <param name="decision">One of <c>allow-once</c>, <c>allow-always</c>, <c>deny</c>.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="approvalId"/> is empty or <paramref name="decision"/> is not in the allowlist.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the gateway is not connected at the time of the call, or disconnects before delivery can be confirmed. The caller (e.g. the chat approval banner) relies on this to keep the Allow/Deny UI on screen for retry instead of silently dismissing it on a dropped connection. Note: this is a best-effort guarantee — <c>SendRawAsync</c> swallows mid-flight cancellation/dispose, so a disconnect that races with the send may still appear as success. The post-await re-check narrows but does not eliminate this window; idempotent retry on the gateway side covers the remainder.</exception>
+    public async Task ResolveExecApprovalAsync(string approvalId, string decision)
+    {
+        if (string.IsNullOrWhiteSpace(approvalId))
+            throw new ArgumentException("approvalId is required", nameof(approvalId));
+        if (string.IsNullOrWhiteSpace(decision))
+            throw new ArgumentException("decision is required", nameof(decision));
+        if (!IsValidApprovalDecision(decision))
+            throw new ArgumentException($"decision must be one of allow-once, allow-always, deny (got '{decision}')", nameof(decision));
+
+        // SendTrackedRequestAsync silently returns when disconnected. For
+        // approvals that is a correctness bug: the chat provider would clear
+        // the Allow/Deny banner thinking the resolve succeeded, but the
+        // gateway would never have received the request. Surface the
+        // disconnect as an exception so the chat provider's catch block
+        // preserves the banner for retry.
+        if (!IsConnected)
+            throw new InvalidOperationException("Cannot resolve exec approval: gateway is not connected.");
+
+        await SendTrackedRequestAsync("exec.approval.resolve", new { id = approvalId, decision });
+
+        // Post-await re-check: SendRawAsync swallows OperationCanceledException,
+        // ObjectDisposedException, and WebSocketException(InvalidState) without
+        // surfacing them. If the socket dropped between the precheck and the
+        // send completing, we cannot confirm delivery; throw so the caller keeps
+        // the banner up. This is the same banner-preserve contract as the
+        // upfront check, just for the race window during the await.
+        if (!IsConnected)
+            throw new InvalidOperationException("Gateway disconnected during exec.approval.resolve; cannot confirm delivery.");
+    }
+
+    private static bool IsValidApprovalDecision(string decision)
+        => string.Equals(decision, "allow-once", StringComparison.Ordinal)
+        || string.Equals(decision, "allow-always", StringComparison.Ordinal)
+        || string.Equals(decision, "deny", StringComparison.Ordinal);
 
     private static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
     {
@@ -2319,6 +2369,185 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 _ = RequestCronListAsync();
                 _ = RequestCronStatusAsync();
                 break;
+            case "exec.approval.requested":
+            case "exec.approval.resolved":
+                // Gateway broadcasts approval lifecycle as TOP-LEVEL events,
+                // but the chat data provider's approval rendering subscribes
+                // to AgentEventReceived with Stream=="approval" (the only
+                // path that reaches MapApprovalEvent and the terminal-phase
+                // banner-clear fall-through in OnAgentEventReceived). Without
+                // this translation the gateway HTML dashboard sees approvals
+                // and surfaces an Allow/Deny modal, while the native chat
+                // logs the event and silently drops it. Translate here so
+                // every downstream consumer sees a uniform agent-stream
+                // envelope. See OpenClawChatDataProvider.MapApprovalEvent.
+                HandleExecApprovalEvent(root, eventType!);
+                break;
+        }
+    }
+
+    // Translate a top-level exec.approval.{requested,resolved} envelope into
+    // a synthetic AgentEventInfo with Stream="approval" so the existing chat
+    // approval-banner code path lights up unchanged. The wire payload does
+    // not carry a "phase" field — the phase is encoded in the top-level event
+    // name and (for resolved) the decision — so we always derive it here
+    // rather than reading payload.phase. If a future protocol revision adds
+    // an explicit payload.phase, this is the place to honor it.
+    private void HandleExecApprovalEvent(JsonElement root, string topLevelEventType)
+    {
+        if (!root.TryGetProperty("payload", out var payload) ||
+            payload.ValueKind != JsonValueKind.Object)
+        {
+            _logger.Warn($"[Approval] {topLevelEventType} missing/invalid payload — dropping");
+            return;
+        }
+
+        // Wire shape (top-level exec.approval.{requested,resolved}):
+        //   { "id": "<uuid>",
+        //     "request": { "command": "...", "host": "gateway",
+        //                  "sessionKey": "agent:main:main", "agentId": "main", ... },
+        //     ["decision": "allow-once" | "deny", "resolvedBy": "...", "ts": ...],
+        //     ["createdAtMs": ..., "expiresAtMs": ...] }
+        //
+        // The chat data provider's MapApprovalEvent and terminal-phase handler
+        // read flat fields named ``phase``, ``approvalId``, ``approvalSlug``,
+        // ``host``, ``command``, ``title``, ``message``. Project the wire
+        // shape into that flat form so the same code path that handles the
+        // (older, agent-stream) approval format works here too.
+
+        static string SafeStr(JsonElement obj, string name)
+            => obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+                ? (v.GetString() ?? "")
+                : "";
+
+        var approvalId = SafeStr(payload, "id");
+        var decision = SafeStr(payload, "decision");
+
+        string command = "";
+        string host = "";
+        string sessionKey = "";
+        string agentId = "";
+        if (payload.TryGetProperty("request", out var req) && req.ValueKind == JsonValueKind.Object)
+        {
+            command = SafeStr(req, "command");
+            host = SafeStr(req, "host");
+            sessionKey = SafeStr(req, "sessionKey");
+            agentId = SafeStr(req, "agentId");
+        }
+
+        // Derive a chat-provider phase. "requested" stays as-is. For the
+        // resolved envelope, map an exact ``deny`` decision to ``denied``
+        // and any allow-* decision to ``resolved`` — both are accepted by
+        // OpenClawChatDataProvider.IsTerminalApprovalPhase, so the banner
+        // clears for remote allows (e.g. dashboard, plugin auto-approve) as
+        // well as deny. NOTE: ``allowed`` is NOT in the terminal phase
+        // allowlist; emitting it here would leak the banner. Use an
+        // explicit allowlist instead of a loose ``StartsWith("allow")``
+        // heuristic so future decision strings (typos, new variants) fall
+        // through to the catch-all ``resolved`` with a warning, rather
+        // than silently mis-classifying.
+        string phase;
+        if (topLevelEventType == "exec.approval.requested")
+        {
+            phase = "requested";
+        }
+        else if (string.Equals(decision, "deny", StringComparison.OrdinalIgnoreCase))
+        {
+            phase = "denied";
+        }
+        else if (string.Equals(decision, "allow-once", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(decision, "allow-always", StringComparison.OrdinalIgnoreCase))
+        {
+            phase = "resolved";
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(decision))
+                _logger.Warn($"[Approval] {topLevelEventType} carries unknown decision '{decision}' — mapping to terminal phase='resolved'");
+            phase = "resolved";
+        }
+
+        // Build the flat object the chat provider expects.
+        var flat = new JsonObject
+        {
+            ["phase"] = phase,
+            ["approvalId"] = approvalId,
+            ["host"] = host,
+            ["command"] = command,
+            ["agentId"] = agentId,
+        };
+        if (!string.IsNullOrEmpty(decision))
+            flat["decision"] = decision;
+
+        // Clone into a JsonElement that owns its backing memory.
+        JsonElement data;
+        try
+        {
+            using var doc = JsonDocument.Parse(flat.ToJsonString());
+            data = doc.RootElement.Clone();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[Approval] Failed to serialize translated {topLevelEventType}: {ex.Message}");
+            return;
+        }
+
+        var ts = payload.TryGetProperty("ts", out var tsProp) && tsProp.ValueKind == JsonValueKind.Number
+            ? tsProp.GetDouble() : 0;
+
+        // The chat data provider rejects agent events with an empty
+        // sessionKey. Wire payloads normally carry one inside ``request``;
+        // fall back to the handshake-resolved main session key as a safety
+        // net so process-wide approvals are still attributed to the active
+        // chat thread.
+        var fellBackToMain = false;
+        if (string.IsNullOrEmpty(sessionKey))
+        {
+            var mainKey = MainSessionKey;
+            if (!string.IsNullOrEmpty(mainKey))
+            {
+                sessionKey = mainKey!;
+                fellBackToMain = true;
+            }
+            else
+            {
+                _logger.Warn($"[Approval] {topLevelEventType} missing sessionKey (request and MainSessionKey both empty); chat provider will drop the translated event.");
+            }
+        }
+
+        var evt = new AgentEventInfo
+        {
+            RunId = "",
+            Seq = 0,
+            Stream = "approval",
+            Ts = ts,
+            Data = data,
+            SessionKey = sessionKey,
+            Summary = null,
+        };
+
+        _logger.Info($"[Approval] Translated {topLevelEventType} -> agent(stream=approval, phase={phase}, approvalId={approvalId}, sessionKey={(string.IsNullOrEmpty(sessionKey) ? "<empty>" : sessionKey)}{(fellBackToMain ? " [fallback=MainSessionKey]" : "")})");
+
+        // Multicast invoke: snapshot the invocation list and dispatch each
+        // subscriber under its own try/catch so a throwing handler does NOT
+        // short-circuit subsequent ones. A single wrapping try/catch around
+        // ``AgentEventReceived?.Invoke`` would catch the exception but skip
+        // every handler after the throwing one — silently regressing the
+        // very ``HTML dashboard sees it / native chat drops it`` bug this
+        // translation exists to fix.
+        var handler = AgentEventReceived;
+        if (handler is null)
+            return;
+        foreach (var d in handler.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler<AgentEventInfo>)d)(this, evt);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[Approval] Subscriber {d.Method.DeclaringType?.Name}.{d.Method.Name} threw on translated {topLevelEventType}: {ex.Message}");
+            }
         }
     }
 

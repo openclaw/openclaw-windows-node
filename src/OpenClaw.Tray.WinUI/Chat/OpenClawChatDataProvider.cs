@@ -839,40 +839,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (string.IsNullOrEmpty(threadId) || string.IsNullOrEmpty(requestId))
             return;
 
-        // The gateway accepts the same slash-command format the dashboard
-        // emits ("Reply with: `/approve <slug> allow-once`"). We use that
-        // here instead of a bespoke RPC so we don't have to track gateway
-        // protocol versions. The slash command is normal chat input — the
-        // gateway echoes back the resolved approval as an ``exec.approval.resolved``
-        // agent event, which clears the banner via OnAgentEventReceived.
-        // We also clear optimistically so the banner doesn't linger if the
-        // gateway is slow.
-        var slashCommand = allow
-            ? $"/approve {requestId} allow-once"
-            : $"/deny {requestId}";
+        // Use the operator-approvals gateway RPC (``exec.approval.resolve``)
+        // rather than the ``/approve <id> <decision>`` chat slash command.
+        //
+        // Why: slash commands are processed as ordinary chat input on the
+        // agent's main turn — but when an exec approval is pending, the agent
+        // is BLOCKED waiting on that approval. The slash command therefore
+        // sits in the input queue until the run times out, by which point the
+        // approval has already expired and the approve/deny is a no-op. The
+        // RPC bypasses the chat queue and resolves the approval immediately.
+        var decision = allow ? "allow-once" : "deny";
 
-        Logger.Info($"[Approval] user response requestId={requestId} decision={(allow ? "allow-once" : "deny")} thread='{threadId}'");
-
-        // Pre-register the slash command in _localSentTexts so the live
-        // SSE echo path (OnChatMessageReceived) can recognize this as
-        // OUR send and suppress the echo. Slash commands issued by other
-        // clients on the same thread will NOT find a match and will be
-        // rendered as a dim audit-trail status entry instead of dropped
-        // silently.
-        lock (_gate)
-        {
-            if (!_localSentTexts.TryGetValue(threadId, out var sq))
-            {
-                sq = new Queue<LocalSentText>();
-                _localSentTexts[threadId] = sq;
-            }
-            sq.Enqueue(new LocalSentText(slashCommand, DateTimeOffset.UtcNow));
-            while (sq.Count > 20) sq.Dequeue();
-        }
+        Logger.Info($"[Approval] user response requestId={requestId} decision={decision} thread='{threadId}'");
 
         try
         {
-            await _bridge.SendChatMessageAsync(slashCommand, threadId, sessionId: null);
+            await _bridge.ResolveExecApprovalAsync(requestId, decision);
         }
         catch (Exception ex)
         {
@@ -880,17 +862,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // retry. Clearing it on failure would silently swallow the
             // problem and leave the agent waiting on an approval that the
             // user has no way to re-issue.
-            //
-            // Also pull the pre-registered slash entry back out of the
-            // echo-suppression queue on send failure.
-            // If we leave it there, the head-only matcher in
-            // ``TryConsumeLocalEchoLocked`` will block legitimate echoes
-            // for subsequent user prose (duplicate bubbles), and a
-            // successful retry from another client will get its echo
-            // silently consumed as if we'd sent it ourselves — defeating
-            // the round-3 audit-trail rendering. Mirrors the recovery
-            // in ``SendUserMessageAsync``.
-            lock (_gate) { RemovePendingLocalEchoLocked(threadId, slashCommand); }
             Logger.Warn($"[Approval] response send failed requestId={requestId}: {ex.Message} (banner preserved for retry)");
             return;
         }
