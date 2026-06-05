@@ -252,6 +252,35 @@
     <Copy SourceFiles="$(OpenClawSetupDefaultConfig)" DestinationFiles="$(TargetDir)default-config.json" SkipUnchangedFiles="true" Condition="Exists('$(OpenClawSetupDefaultConfig)')" />
   </Target>
 
+  <!--
+    Tray's <Content Include="Assets\**\*"> matches Assets\Setup\*.png, so MSBuild
+    propagates them as copy-to-output items through every transitive consumer
+    (OpenClaw.Tray.UITests, etc.). WinUI's MakePri/Resources pipeline relocates
+    those PNGs under bin\OpenClaw.SetupEngine.UI\Assets\Setup\ to match the
+    ms-appx:///OpenClaw.SetupEngine.UI/... URIs and leaves bin\Assets\Setup\
+    empty, which causes consumer builds to fail with MSB3030 "file not found".
+    Re-copy the source PNGs to bin\Assets\Setup\ so the loose-file copy
+    pipeline that consumers depend on is satisfied. Runtime loads still use the
+    SetupEngine.UI-scoped copies.
+  -->
+  <Target Name="CopySetupAssetsLooseForConsumerCopy" AfterTargets="Build">
+    <ItemGroup>
+      <_SetupAssetSource Include="Assets\Setup\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SetupAssetSource)"
+          DestinationFiles="@(_SetupAssetSource->'$(TargetDir)Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopySetupAssetsLooseForPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_SetupAssetPublishSource Include="Assets\Setup\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SetupAssetPublishSource)"
+          DestinationFiles="@(_SetupAssetPublishSource->'$(PublishDir)Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <Target Name="CopySetupDefaultConfigToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <Copy SourceFiles="$(OpenClawSetupDefaultConfig)" DestinationFiles="$(PublishDir)default-config.json" SkipUnchangedFiles="true" Condition="Exists('$(OpenClawSetupDefaultConfig)')" />
   </Target>
