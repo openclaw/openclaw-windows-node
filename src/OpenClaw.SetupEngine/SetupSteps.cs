@@ -1119,19 +1119,17 @@ public sealed class ImportWindowsCaCertsStep : SetupStep
             return StepResult.Ok("Skipped: no certificates in Windows root store");
         }
 
-        // Base64-encode the PEM bundle so it can be safely embedded in a bash command
-        // without heredoc quoting issues.
-        var pemBase64 = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(pemBundle));
-
-        var script = $"""
+        // Stream the PEM bundle via stdin to avoid exceeding Windows process argument
+        // size limits that would occur if the full bundle were embedded in the bash -c argument.
+        const string script = """
             set -e
             mkdir -p /usr/local/share/ca-certificates
-            printf '%s' '{pemBase64}' | base64 -d > /usr/local/share/ca-certificates/windows-root-ca.crt
+            cat > /usr/local/share/ca-certificates/windows-root-ca.crt
             update-ca-certificates
             echo CA_IMPORT_OK
             """;
 
-        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(60), ct: ct, user: "root");
+        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(60), ct: ct, user: "root", stdinInput: pemBundle);
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("CA_IMPORT_OK", StringComparison.Ordinal))
         {
