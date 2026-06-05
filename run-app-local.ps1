@@ -25,8 +25,6 @@
 .PARAMETER AllowNonMain
     Allow launching from a branch other than main.
 
-    -AllowNonMaster is kept as a deprecated alias for one transition cycle.
-
 .PARAMETER Isolated
     Set OPENCLAW_TRAY_DATA_DIR to a stable temp directory unique to this worktree
     and branch so multiple local launches can run side-by-side.
@@ -74,7 +72,6 @@ param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
 
-    [Alias("AllowNonMaster")]
     [switch]$AllowNonMain,
 
     [switch]$Isolated,
