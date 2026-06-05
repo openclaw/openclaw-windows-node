@@ -1083,6 +1083,87 @@ public sealed class ValidateWslLockdownStep : SetupStep
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// WINDOWS CA CERTIFICATE TRUST STEP
+// ═══════════════════════════════════════════════════════════════════
+
+/// <summary>
+/// Imports trusted root CA certificates from the Windows certificate store into
+/// the WSL distro. This is necessary in corporate environments where HTTPS traffic
+/// is inspected by a proxy that uses a self-signed or enterprise-issued root CA,
+/// causing curl to fail with exit code 60 (SSL certificate problem: self-signed
+/// certificate in certificate chain).
+/// </summary>
+public sealed class ImportWindowsCaCertsStep : SetupStep
+{
+    public override string Id => "import-windows-ca-certs";
+    public override string DisplayName => "Import Windows trusted CA certificates";
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+
+        string pemBundle;
+        try
+        {
+            pemBundle = BuildWindowsCaPemBundle();
+        }
+        catch (Exception ex)
+        {
+            ctx.Logger.Warn($"Could not read Windows certificate store: {ex.Message} — skipping CA import");
+            return StepResult.Ok("Skipped: could not read Windows certificate store");
+        }
+
+        if (string.IsNullOrWhiteSpace(pemBundle))
+        {
+            ctx.Logger.Warn("Windows root CA store returned no certificates — skipping CA import");
+            return StepResult.Ok("Skipped: no certificates in Windows root store");
+        }
+
+        // Base64-encode the PEM bundle so it can be safely embedded in a bash command
+        // without heredoc quoting issues.
+        var pemBase64 = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(pemBundle));
+
+        var script = $"""
+            set -e
+            mkdir -p /usr/local/share/ca-certificates
+            printf '%s' '{pemBase64}' | base64 -d > /usr/local/share/ca-certificates/windows-root-ca.crt
+            update-ca-certificates
+            echo CA_IMPORT_OK
+            """;
+
+        var result = await ctx.Commands.RunInWslAsync(distro, script, TimeSpan.FromSeconds(60), ct: ct, user: "root");
+
+        if (result.ExitCode != 0 || !result.Stdout.Contains("CA_IMPORT_OK", StringComparison.Ordinal))
+        {
+            ctx.Logger.Warn($"CA certificate import failed (exit {result.ExitCode}): {result.Stderr.Trim()} — proceeding anyway");
+            return StepResult.Ok("CA import encountered errors; setup will continue but network calls may fail in corporate environments");
+        }
+
+        ctx.Logger.Info("Windows root CA certificates imported into WSL distro");
+        return StepResult.Ok("Imported Windows root CA certificates into WSL distro");
+    }
+
+    private static string BuildWindowsCaPemBundle()
+    {
+        var sb = new System.Text.StringBuilder();
+        using var store = new System.Security.Cryptography.X509Certificates.X509Store(
+            System.Security.Cryptography.X509Certificates.StoreName.Root,
+            System.Security.Cryptography.X509Certificates.StoreLocation.LocalMachine);
+        store.Open(System.Security.Cryptography.X509Certificates.OpenFlags.ReadOnly);
+
+        foreach (var cert in store.Certificates)
+        {
+            sb.AppendLine("-----BEGIN CERTIFICATE-----");
+            sb.AppendLine(Convert.ToBase64String(cert.RawData, Base64FormattingOptions.InsertLineBreaks));
+            sb.AppendLine("-----END CERTIFICATE-----");
+        }
+
+        return sb.ToString();
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
 // GATEWAY INSTALL STEPS
 // ═══════════════════════════════════════════════════════════════════
 

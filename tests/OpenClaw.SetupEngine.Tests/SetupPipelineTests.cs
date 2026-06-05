@@ -60,14 +60,20 @@ public class SetupPipelineTests
     {
         var steps = SetupStepFactory.BuildDefaultSteps();
 
-        Assert.Equal(18, steps.Count);
+        Assert.Equal(19, steps.Count);
         Assert.IsType<PreflightOsStep>(steps[0]);
         Assert.IsType<PreflightWslStep>(steps[1]);
         Assert.IsType<CleanupStaleDistroStep>(steps[2]);
         Assert.IsType<CleanupStaleGatewayStep>(steps[3]);
         Assert.Contains(steps, s => s is ValidateWslLockdownStep);
+        Assert.Contains(steps, s => s is ImportWindowsCaCertsStep);
+        Assert.Contains(steps, s => s is InstallCliStep);
         Assert.Contains(steps, s => s is RunGatewayWizardStep);
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
+        // ImportWindowsCaCertsStep must come immediately before InstallCliStep
+        var caCertsIdx = steps.FindIndex(s => s is ImportWindowsCaCertsStep);
+        var installCliIdx = steps.FindIndex(s => s is InstallCliStep);
+        Assert.Equal(installCliIdx - 1, caCertsIdx);
     }
 
     [Fact]
