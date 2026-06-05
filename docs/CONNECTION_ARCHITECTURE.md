@@ -232,3 +232,4 @@ Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 - `ConnectionDiagnosticsTests` — ring buffer diagnostics
 
 The heaviest remaining gap is Windows shell UI behavior (tray clicks, tooltip visibility, WinUI menu routing). Cover pure decision logic in unit tests; use manual or integration smoke tests for shell behavior.
+
