@@ -166,7 +166,7 @@ public class GatewayRegistryTests : IDisposable
     {
         var record = MakeRecord("gw-1", "wss://test1") with
         {
-            SshTunnel = new SshTunnelConfig("user", "host.example.com", 18789, 18789)
+            SshTunnel = new SshTunnelConfig("user", "host.example.com", 18789, 18789, SshPort: 2222)
         };
         _registry.AddOrUpdate(record);
         _registry.Save();
@@ -178,7 +178,37 @@ public class GatewayRegistryTests : IDisposable
         Assert.NotNull(loaded.SshTunnel);
         Assert.Equal("user", loaded.SshTunnel.User);
         Assert.Equal("host.example.com", loaded.SshTunnel.Host);
+        Assert.Equal(2222, loaded.SshTunnel.SshPort);
         Assert.Equal(18789, loaded.SshTunnel.RemotePort);
+    }
+
+    [Fact]
+    public void Load_WithLegacySshTunnelConfig_DefaultsSshPort()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "gateways.json"), """
+        {
+          "activeId": "gw-1",
+          "gateways": [
+            {
+              "id": "gw-1",
+              "url": "wss://test1",
+              "sshTunnel": {
+                "user": "user",
+                "host": "host.example.com",
+                "remotePort": 18789,
+                "localPort": 28789,
+                "includeBrowserProxyForward": false
+              }
+            }
+          ]
+        }
+        """);
+
+        _registry.Load();
+
+        var loaded = _registry.GetById("gw-1")!;
+        Assert.NotNull(loaded.SshTunnel);
+        Assert.Equal(22, loaded.SshTunnel.SshPort);
     }
 
     [Fact]

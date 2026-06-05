@@ -194,6 +194,31 @@ public sealed class GatewayRegistry
         int sshRemotePort,
         int sshLocalPort,
         string settingsDir,
+        IOpenClawLogger? logger = null) =>
+        MigrateFromSettings(
+            gatewayUrl,
+            token,
+            bootstrapToken,
+            useSshTunnel,
+            sshUser,
+            sshHost,
+            sshPort: 22,
+            sshRemotePort,
+            sshLocalPort,
+            settingsDir,
+            logger);
+
+    public bool MigrateFromSettings(
+        string? gatewayUrl,
+        string? token,
+        string? bootstrapToken,
+        bool useSshTunnel,
+        string? sshUser,
+        string? sshHost,
+        int sshPort,
+        int sshRemotePort,
+        int sshLocalPort,
+        string settingsDir,
         IOpenClawLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(gatewayUrl))
@@ -215,7 +240,7 @@ public sealed class GatewayRegistry
             SharedGatewayToken = string.IsNullOrWhiteSpace(bootstrapToken) ? token : null,
             BootstrapToken = !string.IsNullOrWhiteSpace(bootstrapToken) ? bootstrapToken : null,
             SshTunnel = useSshTunnel
-                ? new SshTunnelConfig(sshUser ?? "", sshHost ?? "", sshRemotePort, sshLocalPort)
+                ? new SshTunnelConfig(sshUser ?? "", sshHost ?? "", sshRemotePort, sshLocalPort, SshPort: sshPort)
                 : null
         };
 

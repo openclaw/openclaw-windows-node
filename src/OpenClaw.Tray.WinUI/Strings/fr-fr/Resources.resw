@@ -3864,6 +3864,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
   </data>
+  <data name="ConnectionPage_SshServerPort.Header" xml:space="preserve">
+    <value>Port SSH</value>
+  </data>
   <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
     <value>Port distant</value>
   </data>
@@ -4542,6 +4545,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
     <value>192.168.x.x</value>
   </data>
+  <data name="ConnectionStatusWindow_SshServerPort.Header" xml:space="preserve">
+    <value>Port SSH</value>
+  </data>
   <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
     <value>Port distant</value>
   </data>
@@ -4976,6 +4982,9 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="ConnectionPage_ConnectedTo" xml:space="preserve">
     <value>Connecté à {0}.</value>
+  </data>
+  <data name="ConnectionPage_SshServerPortInvalid" xml:space="preserve">
+    <value>Le port SSH doit être compris entre 1 et 65535</value>
   </data>
   <data name="ConnectionPage_SshRemotePortInvalid" xml:space="preserve">
     <value>Le port distant SSH doit être compris entre 1 et 65535</value>

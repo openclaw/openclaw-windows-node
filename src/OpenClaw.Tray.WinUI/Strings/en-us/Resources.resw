@@ -3912,6 +3912,9 @@ On your gateway host (Mac/Linux), run:
   <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
   </data>
+  <data name="ConnectionPage_SshServerPort.Header" xml:space="preserve">
+    <value>SSH port</value>
+  </data>
   <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
     <value>Remote port</value>
   </data>
@@ -4590,6 +4593,9 @@ On your gateway host (Mac/Linux), run:
   <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
     <value>192.168.x.x</value>
   </data>
+  <data name="ConnectionStatusWindow_SshServerPort.Header" xml:space="preserve">
+    <value>SSH Port</value>
+  </data>
   <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
     <value>Remote Port</value>
   </data>
@@ -5024,6 +5030,9 @@ Make sure the gateway is running.</value>
   </data>
   <data name="ConnectionPage_ConnectedTo" xml:space="preserve">
     <value>Connected to {0}.</value>
+  </data>
+  <data name="ConnectionPage_SshServerPortInvalid" xml:space="preserve">
+    <value>SSH port must be 1-65535</value>
   </data>
   <data name="ConnectionPage_SshRemotePortInvalid" xml:space="preserve">
     <value>SSH remote port must be 1–65535</value>

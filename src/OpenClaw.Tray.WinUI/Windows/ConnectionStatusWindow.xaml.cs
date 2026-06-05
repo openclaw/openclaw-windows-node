@@ -370,11 +370,17 @@ public sealed partial class ConnectionStatusWindow : WindowEx
         {
             var sshUser = DiagSshUserBox.Text.Trim();
             var sshHost = DiagSshHostBox.Text.Trim();
+            var sshPortText = string.IsNullOrWhiteSpace(DiagSshServerPortBox.Text) ? "22" : DiagSshServerPortBox.Text;
+            if (!int.TryParse(sshPortText, out var sshPort) || sshPort is < 1 or > 65535)
+            {
+                DirectConnectResult.Text = LocalizationHelper.GetString("ConnectionPage_SshServerPortInvalid");
+                return;
+            }
             int.TryParse(DiagSshRemotePortBox.Text, out var remotePort);
             int.TryParse(DiagSshLocalPortBox.Text, out var localPort);
             if (remotePort <= 0) remotePort = 18789;
             if (localPort <= 0) localPort = 18790;
-            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort);
+            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort, SshPort: sshPort);
         }
 
         DirectConnectResult.Text = useSsh ? LocalizationHelper.GetString("ConnectionStatus_StartingSshTunnel") : LocalizationHelper.GetString("ConnectionStatus_Connecting");
@@ -410,6 +416,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
                 settings.UseSshTunnel = true;
                 settings.SshTunnelUser = sshConfig.User;
                 settings.SshTunnelHost = sshConfig.Host;
+                settings.SshTunnelSshPort = sshConfig.SshPort;
                 settings.SshTunnelRemotePort = sshConfig.RemotePort;
                 settings.SshTunnelLocalPort = sshConfig.LocalPort;
                 settings.Save();

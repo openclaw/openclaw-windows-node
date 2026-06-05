@@ -1799,6 +1799,7 @@ public sealed partial class ConnectionPage : Page
             AddSshExpander.IsExpanded = true;
             AddSshUserBox.Text = rec.SshTunnel.User;
             AddSshHostBox.Text = rec.SshTunnel.Host;
+            AddSshServerPortBox.Text = rec.SshTunnel.SshPort.ToString();
             AddSshRemotePortBox.Text = rec.SshTunnel.RemotePort.ToString();
             AddSshLocalPortBox.Text = rec.SshTunnel.LocalPort.ToString();
         }
@@ -1911,6 +1912,7 @@ public sealed partial class ConnectionPage : Page
             AddSshExpander.IsExpanded = true;
             AddSshUserBox.Text = rec.SshTunnel.User;
             AddSshHostBox.Text = rec.SshTunnel.Host;
+            AddSshServerPortBox.Text = rec.SshTunnel.SshPort.ToString();
             AddSshRemotePortBox.Text = rec.SshTunnel.RemotePort.ToString();
             AddSshLocalPortBox.Text = rec.SshTunnel.LocalPort.ToString();
         }
@@ -2122,6 +2124,12 @@ public sealed partial class ConnectionPage : Page
         {
             var sshUser = AddSshUserBox.Text.Trim();
             var sshHost = AddSshHostBox.Text.Trim();
+            var sshPortText = string.IsNullOrWhiteSpace(AddSshServerPortBox.Text) ? "22" : AddSshServerPortBox.Text;
+            if (!int.TryParse(sshPortText, out var sshPort) || sshPort is < 1 or > 65535)
+            {
+                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshServerPortInvalid");
+                return;
+            }
             if (!int.TryParse(AddSshRemotePortBox.Text, out var remotePort) || remotePort is < 1 or > 65535)
             {
                 AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid");
@@ -2132,7 +2140,7 @@ public sealed partial class ConnectionPage : Page
                 AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
                 return;
             }
-            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort);
+            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort, SshPort: sshPort);
         }
 
         AddSaveButton.IsEnabled = false;
@@ -2145,6 +2153,7 @@ public sealed partial class ConnectionPage : Page
         var prevUseSsh = previousSettings?.UseSshTunnel ?? false;
         var prevSshUser = previousSettings?.SshTunnelUser;
         var prevSshHost = previousSettings?.SshTunnelHost;
+        var prevSshPort = previousSettings?.SshTunnelSshPort ?? 22;
         var prevSshRemotePort = previousSettings?.SshTunnelRemotePort ?? 0;
         var prevSshLocalPort = previousSettings?.SshTunnelLocalPort ?? 0;
 
@@ -2231,6 +2240,7 @@ public sealed partial class ConnectionPage : Page
                 {
                     previousSettings.SshTunnelUser = sshConfig.User;
                     previousSettings.SshTunnelHost = sshConfig.Host;
+                    previousSettings.SshTunnelSshPort = sshConfig.SshPort;
                     previousSettings.SshTunnelRemotePort = sshConfig.RemotePort;
                     previousSettings.SshTunnelLocalPort = sshConfig.LocalPort;
                 }
@@ -2260,7 +2270,7 @@ public sealed partial class ConnectionPage : Page
             AddResultText.Text = $"✗ {ex.Message}";
             RollbackDirectConnect(previousActiveId, isNewRecord, recordId, existingRecordSnapshot,
                 previousSettings, prevGatewayUrl, prevUseSsh, prevSshUser, prevSshHost,
-                prevSshRemotePort, prevSshLocalPort,
+                prevSshPort, prevSshRemotePort, prevSshLocalPort,
                 identityCleared ? identityKeyPath : null,
                 identityCleared ? identityBackup : null,
                 identityCleared ? identityBackupLength : -1,
@@ -2333,7 +2343,7 @@ public sealed partial class ConnectionPage : Page
         string? previousActiveId, bool isNewRecord, string recordId,
         GatewayRecord? existingRecordSnapshot, SettingsManager? settings,
         string? prevGatewayUrl, bool prevUseSsh, string? prevSshUser,
-        string? prevSshHost, int prevSshRemotePort, int prevSshLocalPort,
+        string? prevSshHost, int prevSshPort, int prevSshRemotePort, int prevSshLocalPort,
         string? identityKeyPath = null, string? identityBackup = null,
         long identityBackupLength = -1, DateTime identityBackupMtimeUtc = default)
     {
@@ -2387,6 +2397,7 @@ public sealed partial class ConnectionPage : Page
             settings.UseSshTunnel = prevUseSsh;
             settings.SshTunnelUser = prevSshUser ?? string.Empty;
             settings.SshTunnelHost = prevSshHost ?? string.Empty;
+            settings.SshTunnelSshPort = prevSshPort;
             settings.SshTunnelRemotePort = prevSshRemotePort;
             settings.SshTunnelLocalPort = prevSshLocalPort;
             settings.Save();

@@ -986,11 +986,21 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Uid="ConnectionPage_RemotePort" Grid.Column="0"
+                                <TextBox x:Uid="ConnectionPage_SshServerPort" Grid.Column="0"
+                                         x:Name="AddSshServerPortBox"
+                                         Header="SSH port"
+                                         PlaceholderText="22"/>
+                                <TextBox x:Uid="ConnectionPage_RemotePort" Grid.Column="1"
                                          x:Name="AddSshRemotePortBox"
                                          Header="Remote port"
                                          PlaceholderText="18789"/>
-                                <TextBox x:Uid="ConnectionPage_LocalPort" Grid.Column="1"
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Uid="ConnectionPage_LocalPort" Grid.Column="0"
                                          x:Name="AddSshLocalPortBox"
                                          Header="Local port"
                                          PlaceholderText="18789"/>

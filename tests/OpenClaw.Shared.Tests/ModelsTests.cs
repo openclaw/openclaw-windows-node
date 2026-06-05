@@ -149,6 +149,48 @@ public class SshTunnelCommandLineTests
     }
 
     [Fact]
+    public void BuildArguments_CanUseCustomSshPort()
+    {
+        var args = SshTunnelCommandLine.BuildArguments(
+            "scott",
+            "mac-mini.local",
+            18789,
+            28789,
+            includeBrowserProxyForward: false,
+            sshPort: 2222);
+
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 -p 2222 scott@mac-mini.local", args);
+    }
+
+    [Fact]
+    public void BuildArguments_OmitsDefaultSshPort()
+    {
+        var args = SshTunnelCommandLine.BuildArguments(
+            "scott",
+            "mac-mini.local",
+            18789,
+            28789,
+            includeBrowserProxyForward: false,
+            sshPort: 22);
+
+        Assert.DoesNotContain(" -p 22 ", args);
+        Assert.EndsWith("scott@mac-mini.local", args);
+    }
+
+    [Fact]
+    public void BuildArguments_RejectsInvalidSshPort()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            SshTunnelCommandLine.BuildArguments(
+                "scott",
+                "mac-mini.local",
+                18789,
+                28789,
+                includeBrowserProxyForward: false,
+                sshPort: 0));
+    }
+
+    [Fact]
     public void BuildArguments_RejectsBrowserProxyForwardWhenPortPlusTwoOverflows()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>

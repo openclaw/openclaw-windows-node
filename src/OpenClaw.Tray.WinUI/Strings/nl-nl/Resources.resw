@@ -3865,6 +3865,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
   </data>
+  <data name="ConnectionPage_SshServerPort.Header" xml:space="preserve">
+    <value>SSH-poort</value>
+  </data>
   <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
     <value>Externe poort</value>
   </data>
@@ -4543,6 +4546,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
     <value>192.168.x.x</value>
   </data>
+  <data name="ConnectionStatusWindow_SshServerPort.Header" xml:space="preserve">
+    <value>SSH-poort</value>
+  </data>
   <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
     <value>Externe poort</value>
   </data>
@@ -4977,6 +4983,9 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="ConnectionPage_ConnectedTo" xml:space="preserve">
     <value>Verbonden met {0}.</value>
+  </data>
+  <data name="ConnectionPage_SshServerPortInvalid" xml:space="preserve">
+    <value>SSH-poort moet 1-65535 zijn</value>
   </data>
   <data name="ConnectionPage_SshRemotePortInvalid" xml:space="preserve">
     <value>SSH-externe poort moet 1–65535 zijn</value>

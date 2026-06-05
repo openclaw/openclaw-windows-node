@@ -3864,6 +3864,9 @@
   <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
   </data>
+  <data name="ConnectionPage_SshServerPort.Header" xml:space="preserve">
+    <value>SSH 端口</value>
+  </data>
   <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
     <value>远程端口</value>
   </data>
@@ -4542,6 +4545,9 @@
   <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
     <value>192.168.x.x</value>
   </data>
+  <data name="ConnectionStatusWindow_SshServerPort.Header" xml:space="preserve">
+    <value>SSH 端口</value>
+  </data>
   <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
     <value>远程端口</value>
   </data>
@@ -4977,6 +4983,9 @@
   </data>
   <data name="ConnectionPage_ConnectedTo" xml:space="preserve">
     <value>已连接到 {0}。</value>
+  </data>
+  <data name="ConnectionPage_SshServerPortInvalid" xml:space="preserve">
+    <value>SSH 端口必须在 1-65535 之间</value>
   </data>
   <data name="ConnectionPage_SshRemotePortInvalid" xml:space="preserve">
     <value>SSH 远程端口必须在 1–65535 之间</value>

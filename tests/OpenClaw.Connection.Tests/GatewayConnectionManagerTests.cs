@@ -528,7 +528,7 @@ public class GatewayConnectionManagerTests : IDisposable
         {
             Id = "gw-ssh",
             Url = "wss://remote.example",
-            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678)
+            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678, SshPort: 2222)
         });
         _registry.SetActive("gw-ssh");
         _resolver.OperatorCredential = null;
@@ -550,6 +550,7 @@ public class GatewayConnectionManagerTests : IDisposable
 
         Assert.Equal(1, tunnel.StartCount);
         Assert.Equal("host.example", tunnel.LastConfig?.Host);
+        Assert.Equal(2222, tunnel.LastConfig?.SshPort);
         Assert.Equal("ws://localhost:45678", node.LastGatewayUrl);
     }
 
