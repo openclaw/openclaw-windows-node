@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-06-05T13:25:29Z",
-  "last_run_id": "27017403097",
+  "last_run": "2026-06-06T00:00:00Z",
+  "last_run_id": "27048495350",
   "backlog_cursor": {
     "issue_number": 661,
     "comment_cursor": 688
@@ -40,54 +40,227 @@
     "672": "2026-06-05"
   },
   "labels_applied": {
-    "460": ["enhancement"],
-    "459": ["enhancement"],
-    "458": ["enhancement"],
-    "463": ["bug"],
-    "462": ["bug"],
-    "453": ["bug"],
-    "372": ["enhancement"],
-    "338": ["bug"],
-    "331": ["question"],
-    "252": ["enhancement"],
-    "552": ["bug"],
-    "554": ["refactor"]
+    "460": [
+      "enhancement"
+    ],
+    "459": [
+      "enhancement"
+    ],
+    "458": [
+      "enhancement"
+    ],
+    "463": [
+      "bug"
+    ],
+    "462": [
+      "bug"
+    ],
+    "453": [
+      "bug"
+    ],
+    "372": [
+      "enhancement"
+    ],
+    "338": [
+      "bug"
+    ],
+    "331": [
+      "question"
+    ],
+    "252": [
+      "enhancement"
+    ],
+    "552": [
+      "bug"
+    ],
+    "554": [
+      "refactor"
+    ]
   },
   "fix_attempts": {
-    "351": {"pr": 448, "branch": "repo-assist/fix-mcp-tool-descriptions", "status": "merged", "date": "2026-05-18"},
-    "459": {"pr": 482, "branch": "repo-assist/fix-issue-459-session-key-missing", "status": "merged", "date": "2026-05-21"},
-    "467": {"pr": 472, "branch": "repo-assist/fix-issue-467-wsl-parent-dir-cleanup", "status": "merged", "date": "2026-05-20"},
-    "460": {"pr": 540, "branch": "repo-assist/fix-issue-460-test-determinism", "status": "closed-no-merge", "note": "Fix committed to master (2ca3457). Issue should be closed."},
-    "462": {"pr": 531, "branch": "repo-assist/fix-issue-462-trackpad-scroll", "status": "closed-conflict", "note": "Fix committed to master (51c4b4fd). Issue still open."},
-    "570": {"pr": 571, "branch": "repo-assist/fix-issue-570-bump-version-0.5.0", "status": "open-merge-conflict", "date": "2026-05-28", "note": "Merge conflict in OpenClaw.Tray.WinUI.csproj. PR revised by maintainer. Left for human decision."},
-    "583": {"pr": 585, "branch": "repo-assist/fix-issue-583-mojibake-resources", "status": "open", "date": "2026-05-29"},
-    "590": {"pr": [603, 608], "status": "open-superseded", "note": "Human PR #650 by ranjeshj is better fix with tests. Repo Assist PRs #603/#608 noted as superseded."},
-    "593": {"pr": 609, "branch": "repo-assist/fix-issue-593-arm64-wsl-virt-message", "status": "open", "date": "2026-05-31"},
-    "453": {"pr": 615, "branch": "repo-assist/fix-issue-453-attachment-sidecar", "status": "open", "date": "2026-06-01"},
-    "458": {"pr": 628, "branch": "repo-assist/fix-issue-458-keyless-diagnostic-reset-on-reconnect", "status": "open", "date": "2026-06-02"},
-    "661": {"pr": "superseded-by-666", "branch": "repo-assist/fix-issue-661-wsl-localized-version", "status": "superseded", "note": "Maintainer PR #666 (ranjeshj) merged with better locale-independent approach."},
-    "655": {"pr": 679, "branch": "repo-assist/fix-issue-655-object-field-editor", "status": "open", "date": "2026-06-04"},
-    "672": {"pr": "pending-2026-06-05", "branch": "repo-assist/fix-issue-672-error-toolcall-visual-order", "status": "pending-push", "date": "2026-06-05", "note": "Fix Flush() to preserve insertion order for error turns. Normal success-case reordering unchanged."}
+    "351": {
+      "pr": 448,
+      "branch": "repo-assist/fix-mcp-tool-descriptions",
+      "status": "merged",
+      "date": "2026-05-18"
+    },
+    "459": {
+      "pr": 482,
+      "branch": "repo-assist/fix-issue-459-session-key-missing",
+      "status": "merged",
+      "date": "2026-05-21"
+    },
+    "467": {
+      "pr": 472,
+      "branch": "repo-assist/fix-issue-467-wsl-parent-dir-cleanup",
+      "status": "merged",
+      "date": "2026-05-20"
+    },
+    "460": {
+      "pr": 540,
+      "branch": "repo-assist/fix-issue-460-test-determinism",
+      "status": "closed-no-merge",
+      "note": "Fix committed to master (2ca3457). Issue should be closed."
+    },
+    "462": {
+      "pr": 531,
+      "branch": "repo-assist/fix-issue-462-trackpad-scroll",
+      "status": "closed-conflict",
+      "note": "Fix committed to master (51c4b4fd). Issue still open."
+    },
+    "570": {
+      "pr": 571,
+      "branch": "repo-assist/fix-issue-570-bump-version-0.5.0",
+      "status": "open-merge-conflict",
+      "date": "2026-05-28",
+      "note": "Merge conflict in OpenClaw.Tray.WinUI.csproj. PR revised by maintainer. Left for human decision."
+    },
+    "583": {
+      "pr": 585,
+      "branch": "repo-assist/fix-issue-583-mojibake-resources",
+      "status": "open",
+      "date": "2026-05-29"
+    },
+    "590": {
+      "pr": [
+        603,
+        608
+      ],
+      "status": "open-superseded",
+      "note": "Human PR #650 by ranjeshj is better fix with tests. Repo Assist PRs #603/#608 noted as superseded."
+    },
+    "593": {
+      "pr": 609,
+      "branch": "repo-assist/fix-issue-593-arm64-wsl-virt-message",
+      "status": "open",
+      "date": "2026-05-31"
+    },
+    "453": {
+      "pr": 615,
+      "branch": "repo-assist/fix-issue-453-attachment-sidecar",
+      "status": "open",
+      "date": "2026-06-01"
+    },
+    "458": {
+      "pr": 628,
+      "branch": "repo-assist/fix-issue-458-keyless-diagnostic-reset-on-reconnect",
+      "status": "open",
+      "date": "2026-06-02"
+    },
+    "661": {
+      "pr": "superseded-by-666",
+      "branch": "repo-assist/fix-issue-661-wsl-localized-version",
+      "status": "superseded",
+      "note": "Maintainer PR #666 (ranjeshj) merged with better locale-independent approach."
+    },
+    "655": {
+      "pr": 679,
+      "branch": "repo-assist/fix-issue-655-object-field-editor",
+      "status": "open",
+      "date": "2026-06-04"
+    },
+    "672": {
+      "pr": "pending-2026-06-05",
+      "branch": "repo-assist/fix-issue-672-error-toolcall-visual-order",
+      "status": "pending-push",
+      "date": "2026-06-05",
+      "note": "Fix Flush() to preserve insertion order for error turns. Normal success-case reordering unchanged."
+    }
   },
   "improve_attempts": {
-    "deep-link-parser-tests": {"pr": 456, "status": "merged"},
-    "node-capability-gating-tests": {"pr": 495, "status": "merged"},
-    "menuhelpers-tests": {"pr": 522, "status": "merged"},
-    "channel-result-tests": {"pr": 528, "status": "merged"},
-    "operatorscopehelper-tests": {"pr": 530, "status": "merged"},
-    "activitystreamservice-tests": {"pr": 535, "status": "merged"},
-    "execcmdtoken-tests": {"pr": 548, "status": "open", "date": "2026-05-27"},
-    "json-options-cache": {"pr": 566, "status": "open", "date": "2026-05-28"},
-    "deriveoverall-tests": {"pr": 595, "status": "open", "date": "2026-05-30"},
-    "device-token-handoff-tests": {"pr": 612, "status": "open", "date": "2026-05-31"},
-    "async-event-handler-guard-tests": {"pr": 635, "status": "open", "date": "2026-06-02"},
-    "chat-tool-error-regression-tests": {"pr": 692, "status": "open", "date": "2026-06-05", "note": "5 regression tests for ChatTimelineReducer: ToolError+FinalAssistant state sequence (baseline for #672 rendering fix)"}
+    "deep-link-parser-tests": {
+      "pr": 456,
+      "status": "merged"
+    },
+    "node-capability-gating-tests": {
+      "pr": 495,
+      "status": "merged"
+    },
+    "menuhelpers-tests": {
+      "pr": 522,
+      "status": "merged"
+    },
+    "channel-result-tests": {
+      "pr": 528,
+      "status": "merged"
+    },
+    "operatorscopehelper-tests": {
+      "pr": 530,
+      "status": "merged"
+    },
+    "activitystreamservice-tests": {
+      "pr": 535,
+      "status": "merged"
+    },
+    "execcmdtoken-tests": {
+      "pr": 548,
+      "status": "open",
+      "date": "2026-05-27"
+    },
+    "json-options-cache": {
+      "pr": 566,
+      "status": "open",
+      "date": "2026-05-28"
+    },
+    "deriveoverall-tests": {
+      "pr": 595,
+      "status": "open",
+      "date": "2026-05-30"
+    },
+    "device-token-handoff-tests": {
+      "pr": 612,
+      "status": "open",
+      "date": "2026-05-31"
+    },
+    "async-event-handler-guard-tests": {
+      "pr": 635,
+      "status": "open",
+      "date": "2026-06-02"
+    },
+    "chat-tool-error-regression-tests": {
+      "pr": 692,
+      "status": "open",
+      "date": "2026-06-05",
+      "note": "5 regression tests for ChatTimelineReducer: ToolError+FinalAssistant state sequence (baseline for #672 rendering fix)"
+    },
+    "searchvalues-seam-perf-seam-edge-tests": {
+      "pr": "pending",
+      "status": "open",
+      "date": "2026-06-06",
+      "note": "Task 8+9: SearchValues<char> fast-path alloc fix + 4 fence-path edge-case tests in ContentBlockSeamRepairTests.cs"
+    }
   },
   "engineering_attempts": {
-    "treat-warnings-as-errors": {"pr": 527, "status": "closed-no-merge"},
-    "nuget-audit-tests": {"pr": 539, "status": "merged"},
-    "bump-nuget-packages-2026-05-29": {"pr": 578, "status": "open-merge-conflict", "note": "Superseded by bundle PR 2026-06-05"},
-    "bundle-nuget-updates-2026-06-05": {"pr": "pending-2026-06-05", "branch": "repo-assist/eng-bundle-nuget-updates-2026-06-05", "status": "pending-push", "date": "2026-06-05", "note": "GitVersion 6.4.0→6.7.0 + Whisper.net.Runtime 1.9.0→1.9.1. Supersedes #621, #622, #623."}
+    "treat-warnings-as-errors": {
+      "pr": 527,
+      "status": "closed-no-merge"
+    },
+    "nuget-audit-tests": {
+      "pr": 539,
+      "status": "merged"
+    },
+    "bump-nuget-packages-2026-05-29": {
+      "pr": 578,
+      "status": "open-merge-conflict",
+      "note": "Superseded by bundle PR 2026-06-05"
+    },
+    "bundle-nuget-updates-2026-06-05": {
+      "pr": "pending-2026-06-05",
+      "branch": "repo-assist/eng-bundle-nuget-updates-2026-06-05",
+      "status": "pending-push",
+      "date": "2026-06-05",
+      "note": "GitVersion 6.4.0\u21926.7.0 + Whisper.net.Runtime 1.9.0\u21921.9.1. Supersedes #621, #622, #623."
+    },
+    "fix-issue-672": {
+      "pr": 699,
+      "status": "open",
+      "date": "2026-06-05"
+    },
+    "nuget-bundle-2026-06-05": {
+      "status": "failed-push",
+      "date": "2026-06-05",
+      "note": "Dependabot PRs #621/#622/#623 now closed"
+    }
   },
   "monthly_activity_issue": 618,
   "monthly_activity_may_closed": 435,
@@ -99,6 +272,19 @@
     "nuget_audit_tests": "2026-05-25"
   },
   "open_repo_assist_issues": [],
-  "closed_repo_assist_prs": [448, 456, 464, 472, 482, 495, 522, 528, 530, 532, 535, 539],
-  "notes": "Run 2026-06-05 (13:25): Task 4+5. Created fix PR for #672 (preserve insertion order in Flush() for error turns, branch: repo-assist/fix-issue-672-error-toolcall-visual-order). Created bundle NuGet PR (GitVersion 6.4→6.7, Whisper.net.Runtime 1.9→1.9.1, branch: repo-assist/eng-bundle-nuget-updates-2026-06-05, supersedes #621/#622/#623). PR #692 (tool-error regression tests) confirmed open. Both new PRs pending push."
+  "closed_repo_assist_prs": [
+    448,
+    456,
+    464,
+    472,
+    482,
+    495,
+    522,
+    528,
+    530,
+    532,
+    535,
+    539
+  ],
+  "notes": "Run 2026-06-06: Task 8 (perf: SearchValues<char> in RepairContentBlockSeams fast-path) + Task 9 (4 fence-path edge-case tests in ContentBlockSeamRepairTests.cs). PR pending push. DeviceIdentityStore tests deferred to open PR #628. Last run PR #699 (fix #672) is open. NuGet bundle from last run failed push; Dependabot PRs #621/#622/#623 appear closed."
 }
