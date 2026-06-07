@@ -66,6 +66,67 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
+    public void CanvasWindow_RewritesOnlyGatewayUrls()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "CanvasWindow.xaml.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("_configuredGatewayOrigin", source);
+        Assert.Contains("CanvasGatewayUrlRewriter.Rewrite(url", source);
+        Assert.DoesNotContain("if (!urlOrigin.Equals(_gatewayOriginForRewrite", source);
+    }
+
+    [Fact]
+    public void CanvasNavigate_UsesCanvasWindow()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("request inside the WebView canvas", source);
+        Assert.Contains("HttpUrlRiskEvaluator.Evaluate(canonical!)", source);
+        Assert.Contains("EnrichWithDnsRiskAsync", source);
+        Assert.Contains("ShouldLaunchAfterPromptAsync(risk)", source);
+        Assert.Contains("_canvasWindow.Navigate(canonical!)", source);
+        Assert.Contains("tcs.TrySetResult(\"canvas\")", source);
+        Assert.Contains("Canvas navigate -> canvas", source);
+    }
+
+    [Fact]
+    public void CanvasGatewayOrigin_ComesFromActiveGatewayRecord()
+    {
+        var appSourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "App.xaml.cs");
+        var nodeServiceSourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs");
+
+        var appSource = File.ReadAllText(appSourcePath);
+        var nodeServiceSource = File.ReadAllText(nodeServiceSourcePath);
+
+        Assert.Contains("configuredGatewayUrlProvider: () => _gatewayRegistry?.GetActive()?.Url", appSource);
+        Assert.Contains("private string? GetConfiguredGatewayUrl() => _configuredGatewayUrlProvider?.Invoke();", nodeServiceSource);
+        Assert.DoesNotContain("private string? GetConfiguredGatewayUrl() => _settings?.UseSshTunnel", nodeServiceSource);
+    }
+
+    [Fact]
     public void Source_DoesNotDeclareAsyncVoidHandlers()
     {
         var sourceRoot = Path.Combine(GetRepositoryRoot(), "src");

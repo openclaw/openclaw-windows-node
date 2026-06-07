@@ -1431,6 +1431,26 @@ public class CanvasCapabilityTests
         Assert.Contains("\"url\":\"https://example.com/Path\"", json);
     }
 
+    [Fact]
+    public async Task Navigate_DeniedByHandler_ReturnsNotNavigated()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        cap.NavigateRequested += _ => Task.FromResult("denied");
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c12b-denied",
+            Command = "canvas.navigate",
+            Args = Parse("""{"url":"http://127.0.0.1:9/"}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"opener\":\"denied\"", json);
+        Assert.Contains("\"navigated\":false", json);
+    }
+
     [Theory]
     [InlineData("javascript:alert(1)")]
     [InlineData("file:///C:/Windows/System32/calc.exe")]
