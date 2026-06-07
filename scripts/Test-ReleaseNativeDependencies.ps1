@@ -161,57 +161,97 @@ function Add-TtsNativeStackProbeErrors {
         return
     }
 
-    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
-    if (-not $pwsh) {
-        $errors.Add("Cannot run isolated TTS native stack probe because pwsh was not found.")
+    $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if (-not $dotnet) {
+        $errors.Add("Cannot run isolated TTS native stack probe because dotnet was not found.")
         return
     }
 
-    $probeScript = @'
-param(
-    [Parameter(Mandatory = $true)]
-    [string]$PayloadRoot
-)
-
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
-Set-Location $PayloadRoot
-
-$sherpaAsm = [System.Reflection.Assembly]::LoadFrom((Join-Path $PayloadRoot "sherpa-onnx.dll"))
-$versionType = $sherpaAsm.GetType("SherpaOnnx.VersionInfo", $true)
-$version = $versionType.GetProperty("Version").GetValue($null)
-if ([string]::IsNullOrWhiteSpace($version)) {
-    throw "SherpaOnnx.VersionInfo.Version returned an empty version."
-}
-
-$onnxAsm = [System.Reflection.Assembly]::LoadFrom((Join-Path $PayloadRoot "Microsoft.ML.OnnxRuntime.dll"))
-$ortType = $onnxAsm.GetType("Microsoft.ML.OnnxRuntime.OrtEnv", $true)
-$instanceMethod = $ortType.GetMethod(
-    "Instance",
-    [System.Reflection.BindingFlags]::Public -bor [System.Reflection.BindingFlags]::Static,
-    $null,
-    [Type[]]@(),
-    $null)
-if ($instanceMethod) {
-    $env = $instanceMethod.Invoke($null, @())
-} else {
-    $env = $ortType.GetProperty("Instance").GetValue($null)
-}
-
-if ($null -eq $env) {
-    throw "Microsoft.ML.OnnxRuntime.OrtEnv did not initialize."
-}
-
-Write-Host "TTS native stack probe passed (Sherpa $version, ONNX Runtime initialized)."
+    $probeProject = @'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>
 '@
 
-    $probePath = Join-Path ([System.IO.Path]::GetTempPath()) ("openclaw-tts-native-probe-{0}.ps1" -f [Guid]::NewGuid().ToString("N"))
+    $probeProgram = @'
+using System.Reflection;
+
+if (args.Length != 1)
+{
+    Console.Error.WriteLine("Expected payload root argument.");
+    return 2;
+}
+
+var payloadRoot = Path.GetFullPath(args[0]);
+Directory.SetCurrentDirectory(payloadRoot);
+
+AppDomain.CurrentDomain.AssemblyResolve += (_, eventArgs) =>
+{
+    var assemblyName = new AssemblyName(eventArgs.Name).Name;
+    if (string.IsNullOrWhiteSpace(assemblyName))
+    {
+        return null;
+    }
+
+    var candidate = Path.Combine(payloadRoot, assemblyName + ".dll");
+    return File.Exists(candidate) ? Assembly.LoadFrom(candidate) : null;
+};
+
+var sherpaAsm = Assembly.LoadFrom(Path.Combine(payloadRoot, "sherpa-onnx.dll"));
+var versionType = sherpaAsm.GetType("SherpaOnnx.VersionInfo", true)!;
+var version = versionType.GetProperty("Version")!.GetValue(null)?.ToString();
+if (string.IsNullOrWhiteSpace(version))
+{
+    throw new InvalidOperationException("SherpaOnnx.VersionInfo.Version returned an empty version.");
+}
+
+var onnxAsm = Assembly.LoadFrom(Path.Combine(payloadRoot, "Microsoft.ML.OnnxRuntime.dll"));
+var ortType = onnxAsm.GetType("Microsoft.ML.OnnxRuntime.OrtEnv", true)!;
+var instanceMethod = ortType.GetMethod(
+    "Instance",
+    BindingFlags.Public | BindingFlags.Static,
+    binder: null,
+    types: Type.EmptyTypes,
+    modifiers: null);
+var env = instanceMethod is not null
+    ? instanceMethod.Invoke(null, null)
+    : ortType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+
+if (env is null)
+{
+    throw new InvalidOperationException("Microsoft.ML.OnnxRuntime.OrtEnv did not initialize.");
+}
+
+Console.WriteLine($"TTS native stack probe passed (Sherpa {version}, ONNX Runtime initialized).");
+return 0;
+'@
+
+    $probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("openclaw-tts-native-probe-{0}" -f [Guid]::NewGuid().ToString("N"))
     try {
-        Set-Content -LiteralPath $probePath -Value $probeScript -Encoding UTF8
-        $output = & $pwsh.Source -NoProfile -ExecutionPolicy Bypass -File $probePath -PayloadRoot $payloadRoot 2>&1
+        New-Item -ItemType Directory -Path $probeDir | Out-Null
+        $projectPath = Join-Path $probeDir "OpenClaw.TtsNativeProbe.csproj"
+        $programPath = Join-Path $probeDir "Program.cs"
+        Set-Content -LiteralPath $projectPath -Value $probeProject -Encoding UTF8
+        Set-Content -LiteralPath $programPath -Value $probeProgram -Encoding UTF8
+
+        $buildOutput = & $dotnet.Source build $projectPath -c Release -v:q 2>&1
+        $buildExitCode = $LASTEXITCODE
+        if ($buildExitCode -ne 0) {
+            $tail = @($buildOutput | Select-Object -Last 12) -join " "
+            $errors.Add("TTS native stack probe build failed with exit code $buildExitCode. $tail")
+            return
+        }
+
+        $probeDll = Join-Path $probeDir "bin\Release\net10.0\OpenClaw.TtsNativeProbe.dll"
+        $output = & $dotnet.Source $probeDll $payloadRoot 2>&1
         $exitCode = $LASTEXITCODE
     } finally {
-        try { if (Test-Path -LiteralPath $probePath) { Remove-Item -LiteralPath $probePath -Force } } catch { }
+        try { if (Test-Path -LiteralPath $probeDir) { Remove-Item -LiteralPath $probeDir -Recurse -Force } } catch { }
     }
 
     if ($exitCode -ne 0) {
