@@ -133,6 +133,7 @@ public sealed partial class CanvasWindow : WindowEx
     
     public bool IsClosed { get; private set; }
     private string? _trustedGatewayOrigin;
+    private string? _configuredGatewayOrigin;
     private string? _gatewayOriginForRewrite;
     private string? _gatewayToken;
 
@@ -142,17 +143,18 @@ public sealed partial class CanvasWindow : WindowEx
     /// Also rewrites gateway URLs to use the node's effective connection
     /// (e.g., localhost when connected via SSH tunnel).
     /// </summary>
-    public void SetTrustedGatewayOrigin(string? gatewayUrl, string? token = null)
+    public void SetTrustedGatewayOrigin(string? gatewayUrl, string? token = null, string? configuredGatewayUrl = null)
     {
         if (string.IsNullOrEmpty(gatewayUrl)) return;
         _gatewayToken = token;
         try
         {
-            var uri = new Uri(GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl));
-            var httpScheme = uri.Scheme == "wss" ? "https" : "http";
-            _trustedGatewayOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
+            _trustedGatewayOrigin = CanvasGatewayUrlRewriter.ToHttpOrigin(gatewayUrl);
+            _configuredGatewayOrigin = string.IsNullOrWhiteSpace(configuredGatewayUrl)
+                ? _trustedGatewayOrigin
+                : CanvasGatewayUrlRewriter.ToHttpOrigin(configuredGatewayUrl);
             _gatewayOriginForRewrite = _trustedGatewayOrigin;
-            Logger.Info($"[Canvas] Trusted gateway origin: {_trustedGatewayOrigin}");
+            Logger.Info($"[Canvas] Trusted gateway origin: {_trustedGatewayOrigin}; configured gateway origin: {_configuredGatewayOrigin}");
             ConfigureGatewayAuthHeaderInjection();
         }
         catch (Exception ex)
@@ -172,24 +174,13 @@ public sealed partial class CanvasWindow : WindowEx
         try
         {
             // Handle relative paths — prepend the gateway origin
-            if (url.StartsWith("/"))
+            var rewritten = CanvasGatewayUrlRewriter.Rewrite(url, _gatewayOriginForRewrite, _configuredGatewayOrigin);
+            if (!string.Equals(url, rewritten, StringComparison.Ordinal))
             {
-                var rewritten = _gatewayOriginForRewrite + url;
                 rewritten = AppendGatewayToken(rewritten);
-                Logger.Info($"[Canvas] Resolved relative URL to gateway origin");
-                return rewritten;
-            }
-
-            var uri = new Uri(url);
-            var httpScheme = uri.Scheme;
-            var urlOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
-
-            // If the URL's origin differs from our effective gateway origin, rewrite it
-            if (!urlOrigin.Equals(_gatewayOriginForRewrite, StringComparison.OrdinalIgnoreCase))
-            {
-                var rewritten = _gatewayOriginForRewrite + uri.PathAndQuery;
-                rewritten = AppendGatewayToken(rewritten);
-                Logger.Info($"[Canvas] Rewrote URL to effective gateway origin");
+                Logger.Info(url.StartsWith("/", StringComparison.Ordinal)
+                    ? "[Canvas] Resolved relative URL to gateway origin"
+                    : "[Canvas] Rewrote URL to effective gateway origin");
                 return rewritten;
             }
 
@@ -548,6 +539,7 @@ public sealed partial class CanvasWindow : WindowEx
         _canvasWatcher?.Dispose();
         _canvasWatcher = null;
         _trustedGatewayOrigin = null;
+        _configuredGatewayOrigin = null;
         _gatewayOriginForRewrite = null;
     }
     

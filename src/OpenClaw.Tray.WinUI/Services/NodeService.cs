@@ -1061,7 +1061,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 if (_canvasWindow == null || _canvasWindow.IsClosed)
                 {
                     _canvasWindow = new CanvasWindow();
-                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
+                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token, GetConfiguredGatewayUrl());
                 }
 
                 // Configure window
@@ -1134,24 +1134,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     }
     
     /// <summary>
-    /// Service a <c>canvas.navigate</c> request by launching the URL in the
-    /// OS default browser. Always — even if a WebView2 canvas window is open.
-    /// Rationale: "open this link" on Windows means the default browser, and
-    /// the embedded WebView2 canvas runs URL-rewriting (gateway-origin pinning,
-    /// CSP, etc.) that mangles arbitrary external URLs. Agents that want to
-    /// load a page inside an embedded surface should use <c>canvas.present</c>.
-    ///
-    /// Open canvas windows are NOT closed after navigate. A2UI surfaces are
-    /// control panels / dashboards / launchers, not browser frames; clicking a
-    /// link inside one shouldn't dismiss it any more than clicking a link in
-    /// the Start Menu would. Agents that want explicit teardown should call
-    /// <c>canvas.hide</c> or emit <c>deleteSurface</c>.
-    ///
-    /// CanvasCapability has already validated the URL with HttpUrlValidator;
-    /// we re-validate here as defense-in-depth so the OS-level shell-execute
-    /// can never see an unvetted string.
+    /// Service a <c>canvas.navigate</c> request inside the WebView canvas.
+    /// CanvasCapability has already validated the URL; re-validate here before
+    /// handing it to WebView2.
     /// </summary>
-    private Task<string> OnCanvasNavigate(string url)
+    private async Task<string> OnCanvasNavigate(string url)
     {
         if (!HttpUrlValidator.TryParse(url, out var canonical, out var validationError))
         {
@@ -1159,37 +1146,38 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             throw new InvalidOperationException($"Invalid url: {validationError}");
         }
 
-        var initialRisk = HttpUrlRiskEvaluator.Evaluate(canonical!);
+        var risk = await EnrichWithDnsRiskAsync(HttpUrlRiskEvaluator.Evaluate(canonical!)).ConfigureAwait(false);
+        if (risk.RequiresConfirmation)
+        {
+            _logger.Warn($"Canvas navigate unsupported in canvas: {OpenClaw.Shared.UrlLogSanitizer.Sanitize(risk.CanonicalOrigin)}");
+            return "unsupported_in_canvas";
+        }
 
-        // Move the entire decision off the request thread so the agent's
-        // response latency carries no signal about the user's decision (see
-        // long comment retained below). DNS resolution + prompt + launch all
-        // run from the worker.
-        _ = Task.Run(async () =>
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcherQueue.TryEnqueue(() =>
         {
             try
             {
-                // Best-effort triage: resolve DNS now so a hostname pointing at
-                // an internal IP raises the prompt. This is NOT a pin on the
-                // launched request — the OS browser performs its own DNS
-                // resolution when handed the URL, so the actual trust boundary
-                // is the user's browser zone/proxy config. A second resolve
-                // immediately before ShellExecute would not change that.
-                var pinnedRisk = await EnrichWithDnsRiskAsync(initialRisk).ConfigureAwait(false);
-                if (await ShouldLaunchAfterPromptAsync(pinnedRisk).ConfigureAwait(false))
-                    LaunchInDefaultBrowser(canonical!);
+                CloseA2UICanvasWindow();
+                EnsureCanvasWindow();
+                if (_canvasWindow == null)
+                    throw new InvalidOperationException("Canvas window unavailable");
+
+                _canvasWindow.Navigate(canonical!);
+                _canvasWindow.BringToFront(false);
+                _logger.Info($"Canvas navigate -> canvas: {OpenClaw.Shared.UrlLogSanitizer.Sanitize(canonical)}");
+                tcs.TrySetResult("canvas");
             }
             catch (Exception ex)
             {
-                _logger.Error("Canvas navigate (deferred) failed", ex);
+                tcs.TrySetException(ex);
             }
-        });
+        }))
+        {
+            tcs.TrySetException(new InvalidOperationException("Failed to dispatch canvas.navigate to UI thread"));
+        }
 
-        // The agent gets the same response shape and the same response time
-        // whether or not a confirmation prompt is needed. If we awaited the
-        // prompt here, response latency would leak the user's decision time
-        // (or even the existence of a prompt).
-        return Task.FromResult("browser");
+        return await tcs.Task.ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1263,7 +1251,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 if (decision.Kind == UrlNavigationApprovalDecisionKind.Deny)
                 {
                     _navigationDenyCooldown[pinnedRisk.HostKey] = DateTimeOffset.UtcNow + NavigationDenyCooldownDuration;
-                    _logger.Warn($"Canvas navigate denied: {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)} ({decision.Reason ?? "user denied"}); already reported success to agent");
+                    _logger.Warn($"Canvas navigate denied before WebView navigation: {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)} ({decision.Reason ?? "user denied"})");
                     return false;
                 }
                 // AllowHost (session-allowlist) is currently unreachable from
@@ -1567,10 +1555,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         if (_canvasWindow == null || _canvasWindow.IsClosed)
         {
             _canvasWindow = new CanvasWindow();
-            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
+            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token, GetConfiguredGatewayUrl());
         }
         _canvasWindow?.Activate();
     }
+
+    private string? GetConfiguredGatewayUrl() => _activeGatewayUrlResolver?.Invoke();
 
     // Mutable context shared with GatewayActionTransport. SessionKey is updated
     // from push props (when the agent supplies one); host/instance stay tied to

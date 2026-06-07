@@ -1689,6 +1689,28 @@ public class CanvasCapabilityTests
     }
 
     [Theory]
+    [InlineData("denied")]
+    [InlineData("unsupported_in_canvas")]
+    public async Task Navigate_NotOpenedByHandler_ReturnsNotNavigated(string opener)
+    {
+        var cap = new CanvasCapability(NullLogger.Instance);
+        cap.NavigateRequested += _ => Task.FromResult(opener);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "c12b-denied",
+            Command = "canvas.navigate",
+            Args = Parse("""{"url":"http://127.0.0.1:9/"}""")
+        };
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(res.Payload);
+        Assert.Contains($"\"opener\":\"{opener}\"", json);
+        Assert.Contains("\"navigated\":false", json);
+    }
+
+    [Theory]
     [InlineData("javascript:alert(1)")]
     [InlineData("file:///C:/Windows/System32/calc.exe")]
     [InlineData("ms-settings:network")]

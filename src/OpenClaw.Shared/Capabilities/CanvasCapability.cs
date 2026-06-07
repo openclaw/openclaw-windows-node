@@ -212,6 +212,10 @@ public class CanvasCapability : NodeCapabilityBase
             // opener is the subscriber's word for how it serviced the request:
             // "canvas" (existing WebView2 frame), "browser" (default browser),
             // or anything else the subscriber wants to surface back to the agent.
+            if (string.Equals(opener, "denied", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(opener, "unsupported_in_canvas", StringComparison.OrdinalIgnoreCase))
+                return Success(new { navigated = false, opener, url = canonical });
+
             return Success(new { navigated = true, opener, url = canonical });
         }
         catch (Exception ex)
