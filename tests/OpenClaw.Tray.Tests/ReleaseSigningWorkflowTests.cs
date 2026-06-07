@@ -84,6 +84,10 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("vcruntime140.dll", verifier);
         Assert.Contains("libsodium.dll", verifier);
         Assert.Contains("OpenClawNativeDependencyProbe", verifier);
+        Assert.Contains("Microsoft.ML.OnnxRuntime.dll", verifier);
+        Assert.Contains("onnxruntime.dll", verifier);
+        Assert.Contains("sherpa-onnx-c-api.dll", verifier);
+        Assert.Contains("TTS native stack probe", verifier);
         Assert.Contains("SkipNativeLoadProbe", verifier);
         Assert.Contains("CopyOpenClawVCRuntimeToPublish", targets);
         Assert.Contains("ResolveOpenClawVCRuntimeFromVSInstall", targets);

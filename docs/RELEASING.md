@@ -105,8 +105,11 @@ the Visual Studio install on the CI runner (resolved via `vswhere` in
 `onnxruntime` — the `VCRuntime.CefSharp.140` NuGet is only used as a dev-time
 convenience for local `dotnet build` (not publish). The release validation
 script enforces a minimum VC++ runtime version floor (currently 14.38) to
-prevent regressions. The release job must Authenticode-verify Microsoft's x64
-and ARM64 Visual C++ Runtime redistributables before passing the
+prevent regressions, and the x64 verifier load-probes the native TTS stack
+(`onnxruntime.dll`, `sherpa-onnx.dll`, and `sherpa-onnx-c-api.dll`) from the
+published payload so app-local runtime mismatches are caught before release.
+The release job must Authenticode-verify Microsoft's x64 and ARM64 Visual C++
+Runtime redistributables before passing the
 architecture-matching redistributable to Inno. The installer runs the
 redistributable before launching the tray so clean or stale Windows hosts can
 repair the runtime before Ed25519 device keys are generated or loaded, and it
