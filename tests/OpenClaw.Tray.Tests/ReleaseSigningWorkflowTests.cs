@@ -109,6 +109,20 @@ public sealed class ReleaseSigningWorkflowTests
         return workflow[start..];
     }
 
+    [Fact]
+    public void ReleaseWorkflow_VCRuntimeMinimumVersionIsEnforced()
+    {
+        // Regression gate for issue #703: VCRuntime.CefSharp.140 1.0.5 ships VC++ 14.29
+        // (VS 2019), but OnnxRuntime 1.26 / sherpa-onnx 1.13 are compiled with VS 2022
+        // and need 14.40+. The verifier must catch this before a bad runtime reaches users.
+        var verifier = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "scripts", "Test-ReleaseNativeDependencies.ps1"));
+
+        Assert.Contains("MinVCRuntimeVersion", verifier);
+        Assert.Contains("14.40.0.0", verifier);
+        Assert.Contains("FileVersionInfo", verifier);
+        Assert.Contains("703", verifier);
+    }
+
     private static string GetRepositoryRoot()
     {
         var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");

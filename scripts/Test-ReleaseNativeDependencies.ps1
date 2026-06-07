@@ -3,10 +3,17 @@
     Verifies native release payload dependencies needed on clean Windows hosts.
 
 .DESCRIPTION
-    The Windows node uses NSec.Cryptography, which loads libsodium.dll. The
-    NuGet-provided Windows libsodium binary imports the Visual C++ runtime, so
-    app-local/installer payloads must make that runtime available before the
-    tray can generate or load device keys.
+    The Windows node uses NSec.Cryptography, which loads libsodium.dll, and
+    SherpaOnnx + OnnxRuntime for Piper TTS. These native binaries import the
+    Visual C++ runtime, so app-local/installer payloads must include a runtime
+    DLL version that satisfies every bundled native library's requirements.
+
+    VC++ runtime version compatibility:
+    - VCRuntime.CefSharp.140 1.0.5 ships 14.29 (VS 2019 16.11).
+    - OnnxRuntime 1.26 and sherpa-onnx 1.13 are compiled with VS 2022 and
+      require a VC++ runtime >= 14.40. Bundling 14.29 causes sherpa-onnx-c-api
+      to fail DLL initialisation (0x8007045A), crash-looping the tray on
+      startup. See issue #703.
 #>
 [CmdletBinding()]
 param(
@@ -24,6 +31,11 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Minimum VC++ runtime file version required by the bundled native stack.
+# OnnxRuntime 1.26 and sherpa-onnx 1.13 are compiled with VS 2022 (MSVC 14.40+).
+# VCRuntime.CefSharp.140 1.0.5 ships 14.29 (VS 2019) which is too old; see issue #703.
+$Script:MinVCRuntimeVersion = [Version]"14.40.0.0"
 
 $payloadRoot = (Resolve-Path -LiteralPath $PayloadPath).Path
 $errors = New-Object System.Collections.Generic.List[string]
@@ -108,6 +120,21 @@ foreach ($libsodium in $libsodiumFiles) {
     if ($RequireAppLocalVCRuntime) {
         foreach ($runtimeFile in Get-VCRuntimeFiles -Directory $libsodium.DirectoryName) {
             Add-MicrosoftSignatureErrors -File $runtimeFile
+
+            # Enforce minimum VC++ runtime version required by OnnxRuntime/sherpa-onnx.
+            # FileVersionInfo reads Windows PE metadata; skip when not on Windows.
+            if ($runningOnWindows -and $runtimeFile.Name -eq "vcruntime140.dll") {
+                $fvi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($runtimeFile.FullName)
+                $actual = [Version]"$($fvi.FileMajorPart).$($fvi.FileMinorPart).$($fvi.FileBuildPart).$($fvi.FilePrivatePart)"
+                if ($actual -lt $Script:MinVCRuntimeVersion) {
+                    $errors.Add(
+                        "$(Get-RelativePath -Root $payloadRoot -Path $runtimeFile.FullName) " +
+                        "file version $actual is below minimum $Script:MinVCRuntimeVersion " +
+                        "required by OnnxRuntime/sherpa-onnx (issue #703). " +
+                        "Update VCRuntime.CefSharp.140 to a package version that ships $Script:MinVCRuntimeVersion+ DLLs."
+                    )
+                }
+            }
         }
     }
 
