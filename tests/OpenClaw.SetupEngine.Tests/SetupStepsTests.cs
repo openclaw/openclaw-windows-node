@@ -935,7 +935,10 @@ public class SetupStepsTests : IDisposable
 
         Assert.True(result.IsSuccess);
         var wslCall = Assert.Single(commands.WslCalls);
-        Assert.Equal(ConfigureGatewayStep.GatewayConfigurationTimeout, wslCall.Timeout);
+        Assert.Equal(
+            ConfigureGatewayStep.ComputeConfigurationTimeout(wslCall.Command),
+            wslCall.Timeout);
+        Assert.True(wslCall.Timeout >= ConfigureGatewayStep.MinConfigurationTimeout);
     }
 
     [Fact]
@@ -950,8 +953,51 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         var message = Assert.IsType<string>(result.Message);
-        Assert.Contains("Gateway configuration timed out after 120s", message);
+        Assert.Contains("Gateway configuration timed out after", message);
         Assert.DoesNotContain("exit -1", message);
+    }
+
+    [Fact]
+    public void ComputeConfigurationTimeout_ScalesWithConfigCommandCount()
+    {
+        // Each `openclaw config set` pays a cold Node start inside WSL. As more keys are
+        // configured the budget must grow, otherwise the step silently regresses toward a
+        // timeout (the failure mode the fixed 120s cap only partially closed).
+        var fewCommands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "lan" },
+            18789,
+            "'[]'");
+        var manyCommands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "loopback",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.extra.one"] = "1",
+                    ["gateway.extra.two"] = "2",
+                    ["gateway.extra.three"] = "3",
+                    ["gateway.extra.four"] = "4",
+                },
+            },
+            18789,
+            "'[]'");
+
+        var fewTimeout = ConfigureGatewayStep.ComputeConfigurationTimeout(fewCommands);
+        var manyTimeout = ConfigureGatewayStep.ComputeConfigurationTimeout(manyCommands);
+
+        Assert.True(
+            manyTimeout > fewTimeout,
+            $"Timeout should grow with config command count; few={fewTimeout}, many={manyTimeout}");
+    }
+
+    [Fact]
+    public void ComputeConfigurationTimeout_NeverBelowFloor()
+    {
+        // A minimal config set must still receive the safety floor, never base + one.
+        var timeout = ConfigureGatewayStep.ComputeConfigurationTimeout(
+            "openclaw config set gateway.mode local");
+
+        Assert.True(timeout >= ConfigureGatewayStep.MinConfigurationTimeout);
     }
 
     [Theory]

@@ -1224,7 +1224,14 @@ public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
     internal const string DevicePairEnabledKey = "plugins.entries.device-pair.enabled";
-    internal static readonly TimeSpan GatewayConfigurationTimeout = TimeSpan.FromSeconds(120);
+    // Each `openclaw config set` emitted below spawns the Node CLI fresh inside WSL; on a
+    // newly created distro with a cold cache that is ~4-5s apiece. Budget the step by how
+    // many config commands we actually emit -- BuildConfigCommands grows with the
+    // device-pair keys and every Gateway.ExtraConfig entry -- with a floor so the minimal
+    // path keeps generous headroom. A fixed cap silently regresses as the list grows.
+    internal static readonly TimeSpan ConfigBaseBudget = TimeSpan.FromSeconds(45);
+    internal static readonly TimeSpan PerConfigCommandBudget = TimeSpan.FromSeconds(15);
+    internal static readonly TimeSpan MinConfigurationTimeout = TimeSpan.FromSeconds(180);
 
     public override string Id => "configure-gateway";
     public override string DisplayName => "Configure gateway";
@@ -1277,13 +1284,14 @@ public sealed class ConfigureGatewayStep : SetupStep
             echo "GATEWAY_CONFIGURED"
             """;
 
-        var result = await ctx.Commands.RunInWslAsync(distro, script, GatewayConfigurationTimeout, env, ct);
+        var timeout = ComputeConfigurationTimeout(configCommands);
+        var result = await ctx.Commands.RunInWslAsync(distro, script, timeout, env, ct);
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("GATEWAY_CONFIGURED"))
         {
             if (result.TimedOut)
                 return StepResult.Fail(
-                    $"Gateway configuration timed out after {GatewayConfigurationTimeout.TotalSeconds:0}s while running openclaw config inside WSL.");
+                    $"Gateway configuration timed out after {timeout.TotalSeconds:0}s while running openclaw config inside WSL.");
 
             return StepResult.Fail($"Gateway configuration failed (exit {result.ExitCode}): {result.Stderr}");
         }
@@ -1341,6 +1349,27 @@ public sealed class ConfigureGatewayStep : SetupStep
         }
 
         return configCommands;
+    }
+
+    // Budget = base + per-command, floored. Scales the WSL timeout with the number of
+    // `openclaw config set` invocations the step emits so it cannot silently regress as
+    // BuildConfigCommands grows.
+    internal static TimeSpan ComputeConfigurationTimeout(string configCommands)
+    {
+        var budget = ConfigBaseBudget + PerConfigCommandBudget * CountConfigSetCommands(configCommands);
+        return budget > MinConfigurationTimeout ? budget : MinConfigurationTimeout;
+    }
+
+    private static int CountConfigSetCommands(string configCommands)
+    {
+        var count = 0;
+        foreach (var line in configCommands.Split('\n'))
+        {
+            if (line.Contains("openclaw config set", StringComparison.Ordinal))
+                count++;
+        }
+
+        return count;
     }
 
     internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port) =>
