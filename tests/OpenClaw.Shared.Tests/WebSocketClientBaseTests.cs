@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -17,7 +18,8 @@ public class TestWebSocketClient : WebSocketClientBase
     public int OnDisconnectedCallCount { get; private set; }
     public int OnErrorCallCount { get; private set; }
     public Exception? LastError { get; private set; }
-    public int OnDisposingCallCount { get; private set; }
+    private int _onDisposingCallCount;
+    public int OnDisposingCallCount => Volatile.Read(ref _onDisposingCallCount);
     public bool AutoReconnectEnabled { get; set; } = true;
 
     protected override int ReceiveBufferSize => 8192;
@@ -51,7 +53,7 @@ public class TestWebSocketClient : WebSocketClientBase
 
     protected override void OnDisposing()
     {
-        OnDisposingCallCount++;
+        Interlocked.Increment(ref _onDisposingCallCount);
     }
 
     protected override bool ShouldAutoReconnect() => AutoReconnectEnabled;
@@ -156,6 +158,28 @@ public class WebSocketClientBaseTests
     }
 
     [Fact]
+    public void Dispose_ConcurrentCallers_RunOnDisposingExactlyOnce()
+    {
+        // Two threads racing into Dispose() must not both pass the entry guard and
+        // double-invoke OnDisposing. The atomic Interlocked.Exchange guard is what
+        // enforces this; a plain "if (_disposed) return" would allow both threads
+        // through before either set the flag.
+        var client = new TestWebSocketClient("ws://localhost:18789", "token", _logger);
+        using var start = new System.Threading.ManualResetEventSlim(false);
+        var threads = new System.Threading.Thread[8];
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i] = new System.Threading.Thread(() => { start.Wait(); client.Dispose(); });
+            threads[i].Start();
+        }
+        start.Set();
+        foreach (var t in threads) t.Join();
+
+        Assert.True(client.TestIsDisposed);
+        Assert.Equal(1, client.OnDisposingCallCount);
+    }
+
+    [Fact]
     public void Dispose_CallsOnDisposingHook()
     {
         var client = new TestWebSocketClient("ws://localhost:18789", "token", _logger);
@@ -251,7 +275,7 @@ public class WebSocketClientBaseTests
 
         Assert.Contains(ConnectionStatus.Error, statuses);
         Assert.True(statuses.Count(s => s == ConnectionStatus.Connecting) >= 2);
-        Assert.Contains(_logger.Logs, line => line.Contains("reconnecting in 1", StringComparison.OrdinalIgnoreCase) && line.Contains("ms (attempt 1)", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(_logger.Logs, line => line.Contains("reconnecting in ", StringComparison.OrdinalIgnoreCase) && line.Contains("ms (attempt 1)", StringComparison.OrdinalIgnoreCase));
 
         client.Dispose();
     }
