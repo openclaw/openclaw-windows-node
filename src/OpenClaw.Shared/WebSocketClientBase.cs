@@ -187,8 +187,21 @@ public abstract class WebSocketClientBase : IDisposable
                     }
                     else
                     {
-                        // Multi-frame path: accumulate until EndOfMessage
-                        sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                        // Multi-frame path: decode into a pooled char buffer and append to the
+                        // StringBuilder directly, avoiding the intermediate string allocation that
+                        // Encoding.UTF8.GetString would produce.
+                        var maxCharCount = Encoding.UTF8.GetMaxCharCount(result.Count);
+                        var charBuffer = ArrayPool<char>.Shared.Rent(maxCharCount);
+                        try
+                        {
+                            var charCount = Encoding.UTF8.GetChars(buffer, 0, result.Count, charBuffer, 0);
+                            sb.Append(charBuffer, 0, charCount);
+                        }
+                        finally
+                        {
+                            ArrayPool<char>.Shared.Return(charBuffer);
+                        }
+
                         if (result.EndOfMessage)
                         {
                             await ProcessMessageAsync(sb.ToString());

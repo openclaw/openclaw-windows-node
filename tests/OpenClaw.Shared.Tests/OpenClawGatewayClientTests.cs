@@ -1040,6 +1040,30 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ShortenPath_ReturnsFilename_ForLeadingSlash()
+    {
+        // "/file.txt" splits as ["", "file.txt"] — only 2 parts so show just filename.
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("file.txt", helper.ShortenPath("/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_ReturnsLastTwoComponents_ForLeadingSlashThreeParts()
+    {
+        // "/folder/file.txt" splits as ["", "folder", "file.txt"] — 3 parts so show "…/folder/file.txt".
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("…/folder/file.txt", helper.ShortenPath("/folder/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_HandlesMixedSeparators()
+    {
+        // Mixed \ and / in same path (e.g. a WSL path reconstructed on Windows).
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("…/src/main.cs", helper.ShortenPath(@"C:\repos/project\src/main.cs"));
+    }
+
+    [Fact]
     public void TruncateLabel_ReturnsUnchanged_WhenShorterThanMax()
     {
         var helper = new GatewayClientTestHelper();
