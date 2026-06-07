@@ -90,6 +90,34 @@ function Get-VCRuntimeFiles {
     ) | Sort-Object FullName -Unique
 }
 
+# onnxruntime >= 1.20 is built with a VS 2022 toolchain that requires
+# VC++ runtime 14.38+. Shipping older DLLs app-locally shadows the system
+# runtime and causes 0x8007045A DllNotFoundException at startup.
+# Floor: 14.38.33130.0 (VS 17.8, the first 14.38 release).
+$script:VCRuntimeMinVersion = [version]"14.38.33130.0"
+
+function Add-VCRuntimeVersionFloorErrors {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File
+    )
+
+    if (-not $runningOnWindows) {
+        return
+    }
+
+    $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($File.FullName)
+    if (-not $vi -or -not $vi.FileVersion) {
+        $errors.Add("Cannot read file version from $(Get-RelativePath -Root $payloadRoot -Path $File.FullName).")
+        return
+    }
+
+    $fileVer = [version]::new($vi.FileMajorPart, $vi.FileMinorPart, $vi.FileBuildPart, $vi.FilePrivatePart)
+    if ($fileVer -lt $script:VCRuntimeMinVersion) {
+        $errors.Add("VC++ runtime $(Get-RelativePath -Root $payloadRoot -Path $File.FullName) is version $fileVer, which is older than the minimum $($script:VCRuntimeMinVersion) required by onnxruntime. Update the VC++ Redistributable or Visual Studio install.")
+    }
+}
+
 $libsodiumFiles = @(
     Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Filter libsodium.dll |
         Sort-Object FullName
@@ -108,6 +136,7 @@ foreach ($libsodium in $libsodiumFiles) {
     if ($RequireAppLocalVCRuntime) {
         foreach ($runtimeFile in Get-VCRuntimeFiles -Directory $libsodium.DirectoryName) {
             Add-MicrosoftSignatureErrors -File $runtimeFile
+            Add-VCRuntimeVersionFloorErrors -File $runtimeFile
         }
     }
 

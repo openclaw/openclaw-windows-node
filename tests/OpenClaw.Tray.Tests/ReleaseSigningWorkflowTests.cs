@@ -86,7 +86,9 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("OpenClawNativeDependencyProbe", verifier);
         Assert.Contains("SkipNativeLoadProbe", verifier);
         Assert.Contains("CopyOpenClawVCRuntimeToPublish", targets);
+        Assert.Contains("ResolveOpenClawVCRuntimeFromVSInstall", targets);
         Assert.Contains("ResolveOpenClawVCRuntimeArm64FromVSInstall", targets);
+        Assert.Contains("VCRuntimeMinVersion", verifier);
     }
 
     [Fact]

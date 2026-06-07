@@ -99,16 +99,18 @@ reviewed deliberately.
 
 CI also checks native runtime dependencies before release packaging. Both the
 x64 and ARM64 portable payloads must ship `vcruntime140.dll` next to every
-`libsodium.dll` copy. The x64 build leg sources its loose VC runtime DLLs from
-the `VCRuntime.CefSharp.140` NuGet package; the ARM64 build leg sources its
-DLLs from the Visual Studio install on the `windows-11-arm` runner (resolved
-via `vswhere` in `src\Directory.Build.targets`). The release job must
-Authenticode-verify Microsoft's x64 and ARM64 Visual C++ Runtime
-redistributables before passing the architecture-matching redistributable to
-Inno. The installer runs the redistributable before launching the tray so
-clean or stale Windows hosts can repair the runtime before Ed25519 device keys
-are generated or loaded, and it skips the post-install tray launch if the
-runtime installer fails.
+`libsodium.dll` copy. Both build legs source their loose VC runtime DLLs from
+the Visual Studio install on the CI runner (resolved via `vswhere` in
+`src\Directory.Build.targets`). This ensures the bundled CRT is new enough for
+`onnxruntime` — the `VCRuntime.CefSharp.140` NuGet is only used as a dev-time
+convenience for local `dotnet build` (not publish). The release validation
+script enforces a minimum VC++ runtime version floor (currently 14.38) to
+prevent regressions. The release job must Authenticode-verify Microsoft's x64
+and ARM64 Visual C++ Runtime redistributables before passing the
+architecture-matching redistributable to Inno. The installer runs the
+redistributable before launching the tray so clean or stale Windows hosts can
+repair the runtime before Ed25519 device keys are generated or loaded, and it
+skips the post-install tray launch if the runtime installer fails.
 
 The current Azure Artifact Signing resource is:
 
