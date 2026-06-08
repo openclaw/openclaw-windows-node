@@ -124,6 +124,7 @@ public sealed class RecordingCountdownWindow : WindowEx
                     SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
             }
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* best-effort */ }
 
         _timer.Start();

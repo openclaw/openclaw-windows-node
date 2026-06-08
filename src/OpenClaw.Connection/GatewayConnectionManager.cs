@@ -201,6 +201,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 var tunnel = record.SshTunnel;
                 if (string.IsNullOrWhiteSpace(tunnel.User) || string.IsNullOrWhiteSpace(tunnel.Host) ||
+                    tunnel.SshPort is < 1 or > 65535 ||
                     tunnel.RemotePort is < 1 or > 65535 || tunnel.LocalPort is < 1 or > 65535)
                 {
                     _logger.Warn("[ConnMgr] SSH tunnel config is incomplete");

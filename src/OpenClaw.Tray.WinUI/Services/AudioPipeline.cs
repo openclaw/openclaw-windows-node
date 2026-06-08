@@ -204,6 +204,7 @@ public sealed class AudioPipeline : IAsyncDisposable
             {
                 await Task.Delay(durationMs, _cts.Token).ConfigureAwait(false);
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (TaskCanceledException)
             {
                 // External cancellation: return whatever we have so far.

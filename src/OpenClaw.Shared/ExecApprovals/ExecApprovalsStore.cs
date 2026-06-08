@@ -152,6 +152,7 @@ public sealed class ExecApprovalsStore
         catch (Exception ex)
         {
             _logger.Error($"[EXEC-APPROVALS] Failed to save {_filePath} ({ex.Message})");
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
             throw;
         }

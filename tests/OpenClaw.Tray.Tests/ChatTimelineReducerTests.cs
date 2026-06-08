@@ -260,6 +260,86 @@ public class ChatTimelineReducerTests
         Assert.Equal(ChatToolCallStatus.Interrupted, updated.Entries[0].ToolResult);
     }
 
+    // ── Failed tool followed by final assistant response (regression coverage for issue #672) ──
+    // When a tool call fails and the assistant then sends a final reply, both
+    // entries should be present in state, the turn should end cleanly, and the
+    // ToolCall entry should precede the Assistant entry in the insertion order
+    // (the rendering layer in OpenClawChatTimeline reorders them for display).
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_ProducesToolAndAssistantEntries()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("tool failed", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("I'm sorry, the tool failed.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Equal(2, state.Entries.Count);
+        Assert.Contains(state.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall && e.ToolResult == ChatToolCallStatus.Error);
+        Assert.Contains(state.Entries, e => e.Kind == ChatTimelineItemKind.Assistant && !e.IsStreaming);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_AssistantHasFinalText()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("timeout", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Here is my fallback answer.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        var assistant = Assert.Single(state.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal("Here is my fallback answer.", assistant.Text);
+        Assert.False(assistant.IsStreaming);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_TurnIsEnded()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("timeout", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Fallback response.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.False(state.TurnActive);
+        Assert.Null(state.ActiveAssistantId);
+        Assert.Null(state.ActiveToolCallId);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_ToolEntryPrecedesAssistantInState()
+    {
+        // Pins the state insertion order: ToolCall is added first, then Assistant.
+        // The rendering layer (OpenClawChatTimeline) reorders ToolCall entries to
+        // appear AFTER non-ToolCall entries within a turn, so the failed tool event
+        // ends up at the visual bottom instead of the assistant reply — see #672.
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("failed", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Recovery response.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Equal(2, state.Entries.Count);
+        Assert.Equal(ChatTimelineItemKind.ToolCall, state.Entries[0].Kind);
+        Assert.Equal(ChatTimelineItemKind.Assistant, state.Entries[1].Kind);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_ToolOutputContainsErrorText()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("connection refused", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Unable to list nodes.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        var tool = Assert.Single(state.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal("connection refused", tool.ToolOutput);
+        Assert.Equal(ChatToolCallStatus.Error, tool.ToolResult);
+    }
+
     [Fact]
     public void TurnEnd_WithNoActiveTool_IsNoOpForToolState()
     {

@@ -15,6 +15,22 @@ imports GitVersion through `src\Directory.Build.props`, so normal `dotnet build`
 `.\build.ps1`, `.\run-app-local.ps1`, and CI builds all derive assembly metadata
 from the same tag history.
 
+## Tagged and untagged builds
+
+Tagged releases must resolve to the exact tag SemVer:
+
+- `vX.Y.Z` -> `X.Y.Z`
+- `vX.Y.Z-alpha.N` -> `X.Y.Z-alpha.N`
+
+Untagged `master` checkouts are still prerelease builds. After an alpha tag,
+GitVersion advances to the next alpha prerelease until another tag pins the
+version. For example, after `v0.6.0-alpha.5`, an untagged commit on `master`
+may resolve to `0.6.0-alpha.6`.
+
+`GitVersion.yml` intentionally gives the `master`/`main` branch the `alpha`
+label so alpha tags are treated as exact version sources. Do not remove that
+label unless the release train stops using alpha tags.
+
 ## Assembly metadata
 
 GitVersion-derived builds set:
@@ -46,6 +62,11 @@ value that could hide drift.
 Release build jobs must check out full git history (`fetch-depth: 0`) so
 GitVersion can see tags.
 
+Tagged CI runs verify that `github.ref_name` and GitVersion's `SemVer` output
+match before build artifacts are published. If a release tag is
+`v0.6.0-alpha.5`, CI must produce `0.6.0-alpha.5`; a derived value such as
+`0.6.0-alpha.6` or `0.6.0-712` is a release-blocking error.
+
 ## Local scripts
 
 `scripts\Get-OpenClawVersion.ps1` uses the repository-local
@@ -68,6 +89,8 @@ For example:
 - Do not hardcode user-visible version strings like `vX.Y.Z` in active code or
   tests; use `AppVersionInfo`.
 - Keep release tags and `GitVersion.yml` as the versioning contract.
+- Keep `GitVersion.yml` configured so exact alpha tags resolve to their tag
+  SemVer, and keep CI's tag/version verification enabled.
 
 ## References
 

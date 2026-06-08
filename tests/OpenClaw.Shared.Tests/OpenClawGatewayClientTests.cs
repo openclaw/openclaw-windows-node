@@ -246,6 +246,24 @@ public class OpenClawGatewayClientTests
             InvokePrivatePayloadParser("ParseSessions", payloadJson);
         }
 
+        public ModelsListInfo ParseModelsListPayload(string payloadJson)
+        {
+            ModelsListInfo? parsed = null;
+            EventHandler<ModelsListInfo> handler = (_, models) => parsed = models;
+            _client.ModelsListUpdated += handler;
+
+            try
+            {
+                InvokePrivatePayloadParser("ParseModelsList", payloadJson);
+            }
+            finally
+            {
+                _client.ModelsListUpdated -= handler;
+            }
+
+            return parsed ?? new ModelsListInfo();
+        }
+
         private void InvokePrivatePayloadParser(string methodName, string payloadJson)
         {
             using var doc = JsonDocument.Parse(payloadJson);
@@ -461,8 +479,9 @@ public class OpenClawGatewayClientTests
     [Fact]
     public void OperatorConnect_FreshBootstrapDevice_StartsWithV2Signature()
     {
-        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true);
-        helper.SetDeviceTokenForTest(null);
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"oca-gw-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true, identityPath: tmpDir);
 
         Assert.True(helper.Client.UseV2Signature);
     }
@@ -470,8 +489,9 @@ public class OpenClawGatewayClientTests
     [Fact]
     public void OperatorConnect_SharedTokenDevice_StartsWithV3Signature()
     {
-        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: false);
-        helper.SetDeviceTokenForTest(null);
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"oca-gw-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: false, identityPath: tmpDir);
 
         Assert.False(helper.Client.UseV2Signature);
     }
@@ -709,6 +729,43 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseModelsList_PreservesConfiguredFlagPresence()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var models = helper.ParseModelsListPayload("""
+        {
+          "models": [
+            { "id": "gpt-5.4", "configured": true },
+            { "id": "gpt-5.5", "configured": false },
+            { "id": "legacy-gateway-model" }
+          ]
+        }
+        """);
+
+        Assert.Collection(
+            models.Models,
+            model =>
+            {
+                Assert.Equal("gpt-5.4", model.Id);
+                Assert.True(model.HasConfiguredFlag);
+                Assert.True(model.IsConfigured);
+            },
+            model =>
+            {
+                Assert.Equal("gpt-5.5", model.Id);
+                Assert.True(model.HasConfiguredFlag);
+                Assert.False(model.IsConfigured);
+            },
+            model =>
+            {
+                Assert.Equal("legacy-gateway-model", model.Id);
+                Assert.False(model.HasConfiguredFlag);
+                Assert.False(model.IsConfigured);
+            });
+    }
+
+    [Fact]
     public void ClassifyNotification_DetectsHealthAlerts()
     {
         var helper = new GatewayClientTestHelper();
@@ -902,6 +959,7 @@ public class OpenClawGatewayClientTests
 
         helper.OnDisconnected();
 
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         var completed = await Task.WhenAny(task, Task.Delay(250));
         Assert.Same(task, completed);
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await task);
@@ -1037,6 +1095,30 @@ public class OpenClawGatewayClientTests
     {
         var helper = new GatewayClientTestHelper();
         Assert.Equal("file.txt", helper.ShortenPath("folder/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_ReturnsFilename_ForLeadingSlash()
+    {
+        // "/file.txt" splits as ["", "file.txt"] — only 2 parts so show just filename.
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("file.txt", helper.ShortenPath("/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_ReturnsLastTwoComponents_ForLeadingSlashThreeParts()
+    {
+        // "/folder/file.txt" splits as ["", "folder", "file.txt"] — 3 parts so show "…/folder/file.txt".
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("…/folder/file.txt", helper.ShortenPath("/folder/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_HandlesMixedSeparators()
+    {
+        // Mixed \ and / in same path (e.g. a WSL path reconstructed on Windows).
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("…/src/main.cs", helper.ShortenPath(@"C:\repos/project\src/main.cs"));
     }
 
     [Fact]

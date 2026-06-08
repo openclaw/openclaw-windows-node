@@ -172,7 +172,7 @@ Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `Set
 
 `SshTunnelService` manages an SSH local port-forward process. `SshTunnelManager` wraps it behind `ISshTunnelManager` for the connection manager.
 
-When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`.
+When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`. The config stores the SSH daemon port (`sshPort`, default `22`) separately from the remote gateway port forwarded by `-L`.
 
 `SshTunnelSnapshot` provides a read-only point-in-time view of tunnel state for UI consumption (avoids coupling UI to the mutable service).
 
@@ -232,3 +232,4 @@ Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 - `ConnectionDiagnosticsTests` — ring buffer diagnostics
 
 The heaviest remaining gap is Windows shell UI behavior (tray clicks, tooltip visibility, WinUI menu routing). Cover pure decision logic in unit tests; use manual or integration smoke tests for shell behavior.
+

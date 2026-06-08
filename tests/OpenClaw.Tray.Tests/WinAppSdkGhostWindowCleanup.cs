@@ -100,6 +100,7 @@ internal static class WinAppSdkGhostWindowCleanup
         while (System.DateTime.UtcNow < deadline)
         {
             CleanupBlankFrames();
+            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             System.Threading.Thread.Sleep(250);
         }
     }

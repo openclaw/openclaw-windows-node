@@ -49,4 +49,5 @@ public sealed record SshTunnelConfig(
     string Host,
     int RemotePort,
     int LocalPort,
-    bool IncludeBrowserProxyForward = false);
+    bool IncludeBrowserProxyForward = false,
+    int SshPort = 22);

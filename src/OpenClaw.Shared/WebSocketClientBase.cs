@@ -187,8 +187,21 @@ public abstract class WebSocketClientBase : IDisposable
                     }
                     else
                     {
-                        // Multi-frame path: accumulate until EndOfMessage
-                        sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                        // Multi-frame path: decode into a pooled char buffer and append to the
+                        // StringBuilder directly, avoiding the intermediate string allocation that
+                        // Encoding.UTF8.GetString would produce.
+                        var maxCharCount = Encoding.UTF8.GetMaxCharCount(result.Count);
+                        var charBuffer = ArrayPool<char>.Shared.Rent(maxCharCount);
+                        try
+                        {
+                            var charCount = Encoding.UTF8.GetChars(buffer, 0, result.Count, charBuffer, 0);
+                            sb.Append(charBuffer, 0, charCount);
+                        }
+                        finally
+                        {
+                            ArrayPool<char>.Shared.Return(charBuffer);
+                        }
+
                         if (result.EndOfMessage)
                         {
                             await ProcessMessageAsync(sb.ToString());
@@ -236,6 +249,7 @@ public abstract class WebSocketClientBase : IDisposable
                     await ReconnectWithBackoffAsync();
                 }
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (ObjectDisposedException) { /* CTS disposed during check */ }
         }
     }
@@ -335,10 +349,12 @@ public abstract class WebSocketClientBase : IDisposable
                     ArrayPool<byte>.Shared.Return(buffer);
                 }
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) when (_cts.Token.IsCancellationRequested)
             {
                 // Shutdown/reconnect canceled an in-flight send.
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (ObjectDisposedException)
             {
                 // WebSocket was disposed between state check and send.

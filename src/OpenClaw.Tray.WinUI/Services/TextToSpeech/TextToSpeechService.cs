@@ -170,6 +170,7 @@ public sealed class TextToSpeechService : IDisposable
 
             // Voice changed (or first call) — dispose the old client before
             // loading the new model so we don't double the memory footprint.
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _piperClient?.Dispose(); } catch { /* swallow */ }
             _piperClient = new PiperTextToSpeechClient(_logger, _piperVoices, voiceId);
             return _piperClient;
@@ -269,6 +270,7 @@ public sealed class TextToSpeechService : IDisposable
         _elevenLabsClient.Dispose();
         lock (_piperLock)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _piperClient?.Dispose(); } catch { /* swallow */ }
             _piperClient = null;
         }

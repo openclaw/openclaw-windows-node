@@ -282,6 +282,7 @@ public sealed class SurfaceHost : IDisposable
     {
         foreach (var s in _subscriptions.Values)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { s.Dispose(); } catch { }
         }
         _subscriptions.Clear();

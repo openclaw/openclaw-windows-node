@@ -259,6 +259,7 @@ public sealed partial class SandboxPage : Page
             if (uri != null)
                 await global::Windows.System.Launcher.LaunchUriAsync(uri);
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch
         {
             // Best-effort — if the URI handler isn't available we just no-op.

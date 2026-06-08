@@ -10,7 +10,7 @@
         <!-- Top: Logo + Title + Description -->
         <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="12">
             <Image x:Name="LobsterHero"
-                   Source="ms-appx:///Assets/Setup/Lobster.png"
+                   Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png"
                    Width="170" Height="170"
                    HorizontalAlignment="Center" />
             <TextBlock Text="Get started with OpenClaw"

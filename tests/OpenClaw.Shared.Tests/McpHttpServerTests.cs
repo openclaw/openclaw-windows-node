@@ -234,6 +234,7 @@ public class McpHttpServerTests
                 var resp = await http.PostAsync("/", content);
                 Assert.Equal(HttpStatusCode.RequestEntityTooLarge, resp.StatusCode);
             }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             catch (HttpRequestException ex) when (HasSocketException(ex))
             {
                 // On Linux the server closes the connection after sending 413
@@ -315,9 +316,11 @@ public class McpHttpServerTests
                         @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""gate.wait""}}",
                         Encoding.UTF8, "application/json"));
                 }
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                 catch { /* socket may close on shutdown; not what we're testing */ }
             });
 
+            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             var entered = await Task.WhenAny(cap.Entered, Task.Delay(2000));
             Assert.Equal(cap.Entered, entered);
 
@@ -372,9 +375,11 @@ public class McpHttpServerTests
                         @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""gate.wait""}}",
                         Encoding.UTF8, "application/json"));
                 }
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                 catch { /* socket may close on shutdown; not what we're testing */ }
             });
 
+            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             var entered = await Task.WhenAny(cap.Entered, Task.Delay(2000));
             Assert.Equal(cap.Entered, entered);
 
@@ -426,6 +431,7 @@ public class McpHttpServerTests
             // Send a few bytes then close — server should release its slot.
             await stream.WriteAsync(Encoding.ASCII.GetBytes("{\"a\":"));
             await stream.FlushAsync();
+            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             await Task.Delay(50);
             tcp.Close();
 

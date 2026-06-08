@@ -228,6 +228,11 @@ public sealed partial class SchemaConfigEditor : UserControl
             control = RenderArrayField(path, headerText, description, itemsSchema, effectiveConfig, errorBlock,
                 value => StageValue(path, value, schema, required, errorBlock));
         }
+        else if (type == "object")
+        {
+            control = RenderJsonObjectField(path, headerText, description, effectiveConfig, errorBlock,
+                value => StageValue(path, value, schema, required, errorBlock));
+        }
         else // string (default)
         {
             control = isSensitive
@@ -474,6 +479,69 @@ public sealed partial class SchemaConfigEditor : UserControl
                 {
                     _changes[path] = RemovePendingValue;
                     SetValidationError(path, "Must be a JSON array.", errorBlock);
+                }
+                else
+                {
+                    onChanged(document.RootElement.Clone());
+                    return;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _changes[path] = RemovePendingValue;
+                SetValidationError(path, $"Invalid JSON: {ex.Message}", errorBlock);
+            }
+            ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+        };
+        panel.Children.Add(textBox);
+        return panel;
+    }
+
+    private UIElement RenderJsonObjectField(string path, string label, string? description,
+        JsonElement config, TextBlock errorBlock, Action<object?> onChanged)
+    {
+        var panel = new StackPanel { Spacing = 6 };
+        panel.Children.Add(new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = InfoBarSeverity.Informational,
+            Title = label,
+            Message = "Enter a JSON object, e.g. {\"key\": \"value\"}. Changes are validated before Save is enabled."
+        });
+
+        if (!string.IsNullOrEmpty(description))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = description,
+                FontSize = 11,
+                Foreground = SecondaryBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var textBox = new TextBox
+        {
+            Text = config.ValueKind == JsonValueKind.Object
+                ? JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true })
+                : "{}",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new FontFamily("Consolas"),
+            MinHeight = 80,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        textBox.TextChanged += (s, e) =>
+        {
+            if (_loading) return;
+            try
+            {
+                using var document = JsonDocument.Parse(textBox.Text);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    _changes[path] = RemovePendingValue;
+                    SetValidationError(path, "Must be a JSON object.", errorBlock);
                 }
                 else
                 {

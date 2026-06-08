@@ -516,6 +516,7 @@ public sealed partial class ChatPage : Page
             Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
             WebView.CoreWebView2.Navigate(_chatUrl);
         }
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException)
         {
         }

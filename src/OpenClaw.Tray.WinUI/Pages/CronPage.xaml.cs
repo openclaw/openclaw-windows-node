@@ -517,8 +517,8 @@ public sealed partial class CronPage : Page
         _infoDismissCts = new CancellationTokenSource();
         var cts = _infoDismissCts;
 
-        JobCompletedInfoBar.Title = "Job completed";
-        JobCompletedInfoBar.Message = $"\"{jobName}\" ran successfully and was removed.";
+        JobCompletedInfoBar.Title = LocalizationHelper.GetString("CronPage_JobCompleted");
+        JobCompletedInfoBar.Message = LocalizationHelper.Format("CronPage_JobCompletedRanSuccessfully", jobName);
         JobCompletedInfoBar.IsOpen = true;
         DispatcherQueue?.TryEnqueue(async () =>
         {
@@ -863,8 +863,8 @@ public sealed partial class CronPage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load cron jobs.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("CronPage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("CronPage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
     }

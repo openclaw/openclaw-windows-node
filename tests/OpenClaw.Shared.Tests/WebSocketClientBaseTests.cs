@@ -267,6 +267,7 @@ public class WebSocketClientBaseTests
         client.StatusChanged += (_, s) => statuses.Add(s);
 
         await client.ConnectAsync();
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(250);
 
         Assert.Contains(ConnectionStatus.Error, statuses);
@@ -284,6 +285,7 @@ public class WebSocketClientBaseTests
             if (DateTime.UtcNow - start > timeout)
                 throw new TimeoutException("Condition was not met before the timeout.");
 
+            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             await Task.Delay(25);
         }
     }

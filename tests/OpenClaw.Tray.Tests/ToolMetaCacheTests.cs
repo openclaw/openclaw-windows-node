@@ -215,6 +215,7 @@ public class ToolMetaCacheTests
                 if (Directory.Exists(DirectoryPath))
                     Directory.Delete(DirectoryPath, recursive: true);
             }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             catch
             {
                 // Test cleanup is best-effort.

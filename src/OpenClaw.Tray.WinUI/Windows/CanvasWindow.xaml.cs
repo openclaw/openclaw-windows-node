@@ -652,6 +652,7 @@ public sealed partial class CanvasWindow : WindowEx
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             }
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch
         {
             // Best-effort focus behavior only.

@@ -38,6 +38,7 @@ public static class SettingsChangeClassifier
         if (prev.UseSshTunnel != next.UseSshTunnel ||
             prev.SshTunnelUser != next.SshTunnelUser ||
             prev.SshTunnelHost != next.SshTunnelHost ||
+            prev.SshTunnelSshPort != next.SshTunnelSshPort ||
             prev.SshTunnelRemotePort != next.SshTunnelRemotePort ||
             prev.SshTunnelLocalPort != next.SshTunnelLocalPort)
             return SettingsChangeImpact.OperatorReconnectRequired;

@@ -40,9 +40,9 @@ internal static class StartupSetupState
                     return true;
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Best-effort scan
+            Logger.Debug($"Stored device token scan skipped a gateway directory: {ex.Message}");
         }
 
         return false;

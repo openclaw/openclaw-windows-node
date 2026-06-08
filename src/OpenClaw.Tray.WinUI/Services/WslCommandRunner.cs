@@ -156,10 +156,12 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             timedOut = true;
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             try { process.Kill(entireProcessTree: true); } catch { }
         }
         catch (OperationCanceledException)
         {
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             try { process.Kill(entireProcessTree: true); } catch { }
             throw;
         }

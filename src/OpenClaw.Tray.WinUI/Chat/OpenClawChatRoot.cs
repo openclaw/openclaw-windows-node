@@ -963,6 +963,7 @@ public sealed class OpenClawChatRoot : Component
         _ = Task.Run(async () =>
         {
             try { await op(CancellationToken.None); }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) { /* expected */ }
             catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[chat] op failed: {ex}"); }
         });

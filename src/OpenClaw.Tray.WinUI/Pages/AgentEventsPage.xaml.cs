@@ -96,7 +96,7 @@ public sealed partial class AgentEventsPage : Page
             {
                 LiveDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 255, 68, 68));
-                LiveText.Text = "Live";
+                LiveText.Text = LocalizationHelper.GetString("AgentEventsPage_Status_Live");
                 LiveText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 255, 68, 68));
                 LiveBadge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
@@ -106,7 +106,7 @@ public sealed partial class AgentEventsPage : Page
             {
                 LiveDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 128, 128, 128));
-                LiveText.Text = "Offline";
+                LiveText.Text = LocalizationHelper.GetString("AgentEventsPage_Status_Offline");
                 LiveText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 128, 128, 128));
                 LiveBadge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(

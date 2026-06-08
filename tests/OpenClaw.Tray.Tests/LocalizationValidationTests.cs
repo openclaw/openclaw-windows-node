@@ -181,6 +181,97 @@ public class LocalizationValidationTests
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
         "SandboxPage_SystemRun.Text",
+        // SessionsPage runtime accessibility strings — seeded English-only across
+        // all 5 locales using the deferred-translation pattern. These are
+        // tooltip / AutomationProperties.Name overrides on the OpenChat button.
+        // Same precedent as the PermissionsPage / InstancesPage / ConfigPage
+        // runtime keys above.
+        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
+        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        // CronPage / InfoBar / HubWindow nav / CommandCenter runtime strings —
+        // seeded English-only across all 5 locales using the deferred-translation
+        // pattern. Fetched at runtime via LocalizationHelper. Same precedent as
+        // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
+        "CronPage_JobCompleted",
+        "CronPage_JobCompletedRanSuccessfully",
+        "BindingsPage_CouldNotLoadBindings",
+        "ConfigPage_CheckingConfigPermissions",
+        "ConfigPage_ConfigUnavailable",
+        "ConfigPage_ConfigIsReadOnly",
+        // ConnectionPage gateway terminal controls — surfaced after PR #597
+        // landed in master. Seeded English-only across all 5 locales using the
+        // same deferred-translation pattern as the AgentEventsPage / SkillsPage
+        // / CronPage entries above. The Description_Format key takes the WSL
+        // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
+        "ConnectionPage_GatewayHostControlsDescription_Format",
+        // GatewayHostAccess plan strings (terminal label / tooltip / disabled
+        // reasons). Resolved in the classifier via LocalizationHelper so the
+        // OpenTerminal button and any consumers of DisabledReason show
+        // localized text.
+        "GatewayHostAccess_OpenTerminalLabel",
+        "GatewayHostAccess_OpenSshTerminalLabel",
+        "GatewayHostAccess_OpenTerminalInWslTooltip_Format",
+        "GatewayHostAccess_OpenSshTerminalTooltip_Format",
+        "GatewayHostAccess_NoTerminalAccess",
+        "GatewayHostAccess_NoWslOrSshDisabled",
+        "Command_GoToConnection_Title",
+        "Command_GoToConnection_Subtitle",
+        "Command_GoToChat_Title",
+        "Command_GoToChat_Subtitle",
+        "Command_GoToSessions_Title",
+        "Command_GoToSessions_Subtitle",
+        "Command_GoToAgentEvents_Title",
+        "Command_GoToAgentEvents_Subtitle",
+        "Command_GoToSkills_Title",
+        "Command_GoToSkills_Subtitle",
+        "Command_GoToCron_Title",
+        "Command_GoToCron_Subtitle",
+        "Command_GoToWorkspace_Title",
+        "Command_GoToWorkspace_Subtitle",
+        "Command_GoToChannels_Title",
+        "Command_GoToChannels_Subtitle",
+        "Command_GoToInstances_Title",
+        "Command_GoToInstances_Subtitle",
+        "Command_GoToConfig_Title",
+        "Command_GoToConfig_Subtitle",
+        "Command_GoToUsage_Title",
+        "Command_GoToUsage_Subtitle",
+        "Command_GoToBindings_Title",
+        "Command_GoToBindings_Subtitle",
+        "Command_GoToPermissions_Title",
+        "Command_GoToPermissions_Subtitle",
+        "Command_GoToSettings_Title",
+        "Command_GoToSettings_Subtitle",
+        "Command_GoToDiagnostics_Title",
+        "Command_GoToDiagnostics_Subtitle",
+        "Command_GoToInfo_Title",
+        "Command_GoToInfo_Subtitle",
+        "Command_OpenChatWindow_Title",
+        "Command_OpenChatWindow_Subtitle",
+        "Command_OpenDashboard_Title",
+        "Command_OpenDashboard_Subtitle",
+        "Command_ToggleNodeMode_Title",
+        "Command_ToggleCamera_Title",
+        "Command_ToggleCanvas_Title",
+        "Command_ToggleScreenCapture_Title",
+        "Command_ToggleBrowserControl_Title",
+        "Command_Subtitle_CurrentlyOn",
+        "Command_Subtitle_CurrentlyOff",
+        "CommandCenter_AuthFailed",
+        "CommandCenter_NodePendingApproval",
+        "CommandCenter_GatewayConnectionError",
+        "CommandCenter_GatewayNotConnected",
+        "CommandCenter_GatewayHealthStale",
+        "CommandCenter_NoChannelsReported",
+        "CommandCenter_WaitingForGatewayHealth",
+        "CommandCenter_NoChannelsRunning",
+        "CommandCenter_NoNodesReported",
+        "CommandCenter_UsageCostsMissing",
+        "CommandCenter_BrowserProxyAuthMayNeed",
+        "CommandCenter_SshTunnelPortNotListening",
+        "CommandCenter_NoLocalGatewayListener",
+        "CommandCenter_BrowserProxySshForwardNotListening",
+        "CommandCenter_BrowserProxyHostNotDetected",
     };
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =

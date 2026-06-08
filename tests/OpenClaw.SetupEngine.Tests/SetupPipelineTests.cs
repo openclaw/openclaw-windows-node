@@ -175,6 +175,7 @@ public class SetupPipelineTests
                 async (_, ct) =>
                 {
                     rollbackCalled = true;
+                    // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
                     await Task.Delay(Timeout.InfiniteTimeSpan, ct);
                 }),
             new MockStep("s2", (_, _) => Task.FromResult(StepResult.Fail("fail"))),
@@ -376,6 +377,7 @@ public class SetupPipelineTests
                 async (_, ct) =>
                 {
                     order.Add("s2");
+                    // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
                     await Task.Delay(Timeout.InfiniteTimeSpan, ct);
                 }),
             new MockStep("s3", (_, _) => Task.FromResult(StepResult.Ok()),

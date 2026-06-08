@@ -1,17 +1,17 @@
 # Releasing OpenClaw Windows Hub
 
 This repo uses **GitVersion + CI** for release versioning. The canonical release
-flow is **tag-driven**: merge to `master`, tag `master`, and let GitHub Actions
+flow is **tag-driven**: merge to `main`, tag `main`, and let GitHub Actions
 build/sign/publish release artifacts.
 
 ## Release checklist
 
-1. Start clean on current `master`.
+1. Start clean on current `main`.
 
    ```powershell
-   git switch master
-   git fetch origin master --prune
-   git reset --hard origin/master
+   git switch main
+   git fetch origin main --prune
+   git reset --hard origin/main
    git clean -fd
    git status --short --branch
    ```
@@ -21,18 +21,18 @@ build/sign/publish release artifacts.
    ```powershell
    Select-String .\.github\workflows\ci.yml -Pattern `
      "Verify Release Executable Signing Policy", `
-     "OpenClaw.SetupEngine.exe", `
+     "OpenClaw.Tray.WinUI.exe", `
      "build-msix:", `
      "Paused for alpha"
    ```
 
-3. Create a new tag from `origin/master`. Prefer a new alpha tag over moving a
+3. Create a new tag from `origin/main`. Prefer a new alpha tag over moving a
    previously failed tag.
 
    ```powershell
    $tag = "v0.6.0-alpha.4"
-   if ((git rev-parse HEAD) -ne (git rev-parse origin/master)) {
-       throw "HEAD is not origin/master; do not tag."
+   if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) {
+       throw "HEAD is not origin/main; do not tag."
    }
    git tag -a $tag -m "OpenClaw Windows Hub $tag"
    git push origin $tag
@@ -46,7 +46,16 @@ build/sign/publish release artifacts.
      --limit 10
    ```
 
-5. Confirm the GitHub release is a prerelease and not latest for alpha tags.
+5. Confirm the workflow used the exact tag SemVer. Tagged builds fail before
+   publishing if GitVersion disagrees with the tag name.
+
+   ```powershell
+   $version = $tag -replace '^v', ''
+   .\scripts\Get-OpenClawVersion.ps1 -Variable SemVer
+   # Expected: $version
+   ```
+
+6. Confirm the GitHub release is a prerelease and not latest for alpha tags.
 
    ```powershell
    gh release view $tag --repo openclaw/openclaw-windows-node `
@@ -85,14 +94,11 @@ identity.
 OpenClaw-owned executables:
 
 - `OpenClaw.Tray.WinUI.exe`
-- `SetupEngine\OpenClaw.SetupEngine.exe`
-- `SetupEngine\OpenClaw.SetupEngine.UI.exe`
 
 Third-party/runtime executables that must not be OpenClaw-signed:
 
 - `tools\mxc\<arch>\wxc-exec.exe`
 - `createdump.exe`
-- `SetupEngine\createdump.exe`
 - `RestartAgent.exe`
 - `SetupEngine\RestartAgent.exe`
 
@@ -102,16 +108,21 @@ reviewed deliberately.
 
 CI also checks native runtime dependencies before release packaging. Both the
 x64 and ARM64 portable payloads must ship `vcruntime140.dll` next to every
-`libsodium.dll` copy. The x64 build leg sources its loose VC runtime DLLs from
-the `VCRuntime.CefSharp.140` NuGet package; the ARM64 build leg sources its
-DLLs from the Visual Studio install on the `windows-11-arm` runner (resolved
-via `vswhere` in `src\Directory.Build.targets`). The release job must
-Authenticode-verify Microsoft's x64 and ARM64 Visual C++ Runtime
-redistributables before passing the architecture-matching redistributable to
-Inno. The installer runs the redistributable before launching the tray so
-clean or stale Windows hosts can repair the runtime before Ed25519 device keys
-are generated or loaded, and it skips the post-install tray launch if the
-runtime installer fails.
+`libsodium.dll` copy. Both build legs source their loose VC runtime DLLs from
+the Visual Studio install on the CI runner (resolved via `vswhere` in
+`src\Directory.Build.targets`). This ensures the bundled CRT is new enough for
+`onnxruntime` — the `VCRuntime.CefSharp.140` NuGet is only used as a dev-time
+convenience for local `dotnet build` (not publish). The release validation
+script enforces a minimum VC++ runtime version floor (currently 14.38) to
+prevent regressions, and the x64 verifier load-probes the native TTS stack
+(`onnxruntime.dll`, `sherpa-onnx.dll`, and `sherpa-onnx-c-api.dll`) from the
+published payload so app-local runtime mismatches are caught before release.
+The release job must Authenticode-verify Microsoft's x64 and ARM64 Visual C++
+Runtime redistributables before passing the
+architecture-matching redistributable to Inno. The installer runs the
+redistributable before launching the tray so clean or stale Windows hosts can
+repair the runtime before Ed25519 device keys are generated or loaded, and it
+skips the post-install tray launch if the runtime installer fails.
 
 The current Azure Artifact Signing resource is:
 
@@ -185,8 +196,6 @@ Expected:
 - Installer EXEs are signed.
 - In ZIP payload:
   - `OpenClaw.Tray.WinUI.exe` is OpenClaw-signed.
-  - `SetupEngine\OpenClaw.SetupEngine.exe` is OpenClaw-signed.
-  - `SetupEngine\OpenClaw.SetupEngine.UI.exe` is OpenClaw-signed.
   - `wxc-exec.exe`, `createdump.exe`, and `RestartAgent.exe` are not
     OpenClaw-signed.
 
@@ -194,14 +203,14 @@ Expected:
 
 Do not keep moving a tag repeatedly from chat unless you are certain GitHub and
 local refs agree. Prefer a fresh alpha tag (`alpha.N+1`) after the fix is merged
-to `master`.
+to `main`.
 
 Use these commands to inspect state:
 
 ```powershell
 git status --short --branch
 git rev-parse HEAD
-git rev-parse origin/master
+git rev-parse origin/main
 git ls-remote --tags origin "refs/tags/v0.6.0-alpha*"
 
 gh run list --repo openclaw/openclaw-windows-node `
@@ -209,7 +218,7 @@ gh run list --repo openclaw/openclaw-windows-node `
   --limit 10
 ```
 
-Only tag when `HEAD == origin/master`.
+Only tag when `HEAD == origin/main`.
 
 ## Versioning rules
 
@@ -217,5 +226,8 @@ Only tag when `HEAD == origin/master`.
 - Do not add csproj `<Version>` release fallbacks; product versions come from
   GitVersion/tag history.
 - Release versions come from the tag (`vX.Y.Z` or `vX.Y.Z-alpha.N`).
+- Untagged `master` builds are prerelease builds. After `vX.Y.Z-alpha.N`, an
+  untagged commit may resolve to the next alpha prerelease, for example
+  `X.Y.Z-alpha.(N+1)`.
 - CI computes GitVersion outputs for artifact naming, while product builds use
   GitVersion-backed assembly metadata.

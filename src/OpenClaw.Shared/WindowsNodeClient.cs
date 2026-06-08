@@ -515,6 +515,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 stopwatch.Stop();
                 RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Client is shutting down; response is no longer needed
@@ -1064,6 +1065,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 stopwatch.Stop();
                 RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Client is shutting down; response is no longer needed
