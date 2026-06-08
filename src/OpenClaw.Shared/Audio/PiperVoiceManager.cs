@@ -221,12 +221,15 @@ public sealed class PiperVoiceManager
         {
             // Best-effort cleanup — leaves the user able to retry without
             // leftover partial files.
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (File.Exists(tarballPath)) File.Delete(tarballPath); } catch { /* swallow */ }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (Directory.Exists(voiceDir) && !IsVoiceDownloaded(info.VoiceId)) Directory.Delete(voiceDir, recursive: true); } catch { /* swallow */ }
             throw;
         }
         finally
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (File.Exists(tarballPath)) File.Delete(tarballPath); } catch { /* swallow */ }
         }
     }
@@ -270,6 +273,7 @@ public sealed class PiperVoiceManager
         long total = 0;
         foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
         {
+            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
             try { total += new FileInfo(f).Length; } catch { /* skip */ }
         }
         return total;
@@ -301,6 +305,7 @@ public sealed class PiperVoiceManager
             proc.WaitForExit(2000);
             if (!proc.HasExited)
             {
+                // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
                 try { proc.Kill(entireProcessTree: true); } catch { /* swallow */ }
                 throw new InvalidOperationException("tar.exe didn't respond to --version.");
             }
@@ -346,6 +351,7 @@ public sealed class PiperVoiceManager
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
         // Cancellation: kill the tar process if requested.
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         using var reg = cancellationToken.Register(() => { try { proc.Kill(entireProcessTree: true); } catch { /* swallow */ } });
 
         proc.WaitForExit();

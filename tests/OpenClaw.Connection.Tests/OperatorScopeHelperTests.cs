@@ -115,14 +115,10 @@ public class ChatNavigationReadinessTests
     {
         var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
 
-        // Fire the Connected state event after a short delay
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(20);
-            mgr.SimulateConnected();
-        });
+        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, TimeSpan.FromMilliseconds(500));
+        mgr.SimulateConnected();
 
-        var result = await ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, TimeSpan.FromMilliseconds(500));
+        var result = await waitTask;
         Assert.True(result);
     }
 

@@ -14,7 +14,7 @@ Useful reports include:
 
 - affected version or commit SHA,
 - impacted component or file path,
-- reproduction steps or a proof of concept against latest `master`,
+- reproduction steps or a proof of concept against latest `main`,
 - actual impact and the OpenClaw trust boundary crossed,
 - Windows version and architecture,
 - suggested remediation when practical.

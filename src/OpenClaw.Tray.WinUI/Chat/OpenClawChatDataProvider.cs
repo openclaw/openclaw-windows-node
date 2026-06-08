@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
@@ -74,7 +75,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly Action<Action>? _post;
     private readonly object _gate = new();
     private readonly object _toolMetaSaveGate = new();
+    private readonly object _attachmentMetaSaveGate = new();
     private readonly string _toolMetaCacheFilePath;
+    private readonly string _attachmentMetaCacheFilePath;
     private System.Threading.Timer? _toolMetaSaveTimer; // debounce cache writes
     private long _toolMetaSaveVersion;
     private readonly Dictionary<string, ChatTimelineState> _timelines = new();
@@ -95,6 +98,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // Keyed by gateway sessionId (immutable UUID).  Persisted to disk
     // so that history reconstruction on restart can recover tool names.
     private Dictionary<string, List<CachedToolMeta>> _toolMetaCache;
+    private Dictionary<string, List<CachedAttachmentMeta>> _attachmentMetaCache;
     // Track recently-sent local user message texts so we can suppress
     // SSE echoes while still displaying messages from other clients.
     private readonly Dictionary<string, Queue<LocalSentText>> _localSentTexts = new();
@@ -149,16 +153,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
     }
 
-    internal OpenClawChatDataProvider(IChatGatewayBridge bridge, Action<Action>? post, string toolMetaCacheFilePath)
+    internal OpenClawChatDataProvider(
+        IChatGatewayBridge bridge,
+        Action<Action>? post,
+        string toolMetaCacheFilePath,
+        string? attachmentMetaCacheFilePath = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _post = post;
         _toolMetaCacheFilePath = !string.IsNullOrWhiteSpace(toolMetaCacheFilePath)
             ? toolMetaCacheFilePath
             : throw new ArgumentException("Tool metadata cache path is required.", nameof(toolMetaCacheFilePath));
+        _attachmentMetaCacheFilePath = !string.IsNullOrWhiteSpace(attachmentMetaCacheFilePath)
+            ? attachmentMetaCacheFilePath
+            : DefaultAttachmentMetaCacheFilePath(_toolMetaCacheFilePath);
         _status = bridge.CurrentStatus;
         _persistedAbortedIds = LoadAbortedIds();
         _toolMetaCache = LoadToolMetaCache(_toolMetaCacheFilePath);
+        _attachmentMetaCache = LoadAttachmentMetaCache(_attachmentMetaCacheFilePath);
         _lastChatState = LoadLastChatState();
 
         // Seed models from whatever the bridge already knows about (a connect
@@ -226,7 +238,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (a.Type == "image" && !string.IsNullOrEmpty(a.FileName) && !string.IsNullOrEmpty(a.Content))
                 {
                     try { ImagePreviewCache[a.FileName] = Convert.FromBase64String(a.Content); }
-                    catch { /* skip un-decodable bytes */ }
+                    catch (FormatException ex)
+                    {
+                        Logger.Debug($"Image preview cache skipped invalid Base64 attachment content: {ex.Message}");
+                    }
                 }
             }
         }
@@ -236,16 +251,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // blank even if the typed message was empty. Uses a unique prefix
         // ("\u200B📎 " / "\u200B🖼️ ") with a zero-width space to prevent
         // false positives from normal user text.
-        var displayText = trimmed;
+        var safeUserText = EscapeUntrustedAttachmentMarkerLines(trimmed);
+        var displayText = safeUserText;
         if (hasAttachments)
         {
-            var chips = string.Join("\n", attachments!.Select(a =>
-                a.Type == "image"
-                    ? $"\u200B🖼️ {a.FileName}"
-                    : $"\u200B📎 {a.FileName}"));
-            displayText = string.IsNullOrEmpty(trimmed)
+            var chips = BuildAttachmentMarkerLines(attachments!);
+            displayText = string.IsNullOrEmpty(safeUserText)
                 ? chips
-                : $"{trimmed}\n{chips}";
+                : $"{safeUserText}\n{chips}";
         }
 
         // 1. Optimistically add the user message + flag turn active.
@@ -288,6 +301,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         try
         {
             await _bridge.SendChatMessageAsync(trimmed, threadId, sessionId, attachments);
+            if (hasAttachments)
+                CacheAttachmentMeta(sessionId, threadId, trimmed, attachments!, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         }
         catch (Exception ex)
         {
@@ -451,21 +466,25 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     Logger.Info($"[ChatHistory] Found {cachedTools.Count} cached tool metadata entries for session");
 
                 bool nextAssistantIsAborted = false;
+                var attachmentMatcher = CreateAttachmentMetaMatcher(history.SessionId, threadId);
 
                 foreach (var msg in ordered)
                 {
-                    if (string.IsNullOrEmpty(msg.Text)) continue;
-
+                    var roleLower = msg.Role?.ToLowerInvariant() ?? "";
+                    var rawText = msg.Text ?? string.Empty;
                     var ts = msg.Ts > 0
                         ? DateTimeOffset.FromUnixTimeMilliseconds(msg.Ts).ToLocalTime()
                         : (DateTimeOffset?)null;
                     var msgMeta = new ChatEntryMetadata(ts, modelAtLoad);
 
-                    var roleLower = msg.Role?.ToLowerInvariant() ?? "";
                     // Cap per-message text up front so heuristics, logging,
                     // and the reducer all see the same bounded value
                     // (chat rubber-duck MEDIUM 4).
-                    var text = TruncateForChatEntry(msg.Text);
+                    var text = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(rawText));
+                    if (roleLower == "user")
+                        text = RehydrateAttachmentMarkers(attachmentMatcher, text, msg.Ts);
+
+                    if (string.IsNullOrEmpty(text)) continue;
 
                     // Check if this user message was aborted (persisted __openclaw.id match)
                     if (roleLower == "user")
@@ -999,6 +1018,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 _locallyInitiatedThreads.Clear();
                 _localSentTexts.Clear();
                 _historyRetryCount.Clear();
+                // Reset keyless-event diagnostic so a fresh reconnect to a
+                // still-broken gateway surfaces the notification again.
+                System.Threading.Interlocked.Exchange(ref _keylessEventDiagnosticRaised, 0);
             }
             else
             {
@@ -1102,6 +1124,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var list = new List<string>(info.Models.Count);
         foreach (var m in info.Models)
         {
+            if (m.HasConfiguredFlag && !m.IsConfigured) continue;
             var id = m.Id;
             if (string.IsNullOrEmpty(id)) continue;
             if (seen.Add(id)) list.Add(id);
@@ -1228,7 +1251,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 ChatEntryMetadata? userMeta;
                 lock (_gate) { userMeta = BuildLiveMetaLocked(msgThreadId, message.Ts); }
                 ApplyEventAndPublish(msgThreadId,
-                    new ChatUserMessageEvent(TruncateForChatEntry(message.Text)),
+                    new ChatUserMessageEvent(TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(message.Text))),
                     userMeta);
             }
             return;
@@ -2387,6 +2410,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         new(@"(?<=[a-z0-9][.!?:])(?=[A-Z][a-z]+[\s,;:!?])",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    // SearchValues gives SIMD-accelerated scan without a per-call heap allocation.
+    private static readonly SearchValues<char> s_seamPunctChars = SearchValues.Create(".!?:");
+
     /// <summary>
     /// Re-insert paragraph breaks at gateway-glued content-block seams in
     /// an assistant message. Safe to call on any text — short text, text
@@ -2401,7 +2427,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         // Fast path: if neither marker is present we can skip entirely.
         if (!text.Contains("**", System.StringComparison.Ordinal) &&
-            text.IndexOfAny(new[] { '.', '!', '?', ':' }) < 0)
+            text.AsSpan().IndexOfAny(s_seamPunctChars) < 0)
         {
             return text;
         }
@@ -2417,7 +2443,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             int fenceStart = text.IndexOf("```", i, System.StringComparison.Ordinal);
             if (fenceStart < 0)
             {
-                sb.Append(RepairProseSegment(text.AsSpan(i).ToString()));
+                sb.Append(RepairProseSegment(text[i..]));
                 break;
             }
 
@@ -2985,15 +3011,20 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private LastChatState? _lastChatState;
 
-    internal static LastChatState? LoadLastChatState()
+    internal static LastChatState? LoadLastChatState(string? pathOverride = null)
     {
+        var path = pathOverride ?? LastChatStateFilePath;
         try
         {
-            if (!File.Exists(LastChatStateFilePath)) return null;
-            var json = File.ReadAllText(LastChatStateFilePath);
+            if (!File.Exists(path)) return null;
+            var json = File.ReadAllText(path);
             return System.Text.Json.JsonSerializer.Deserialize<LastChatState>(json);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to load last chat state from '{path}': {ex.Message}");
+            return null;
+        }
     }
 
     private void DebounceSaveLastChatState(ChatDataSnapshot snapshot)
@@ -3032,7 +3063,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             File.WriteAllText(tmp, json);
             File.Move(tmp, LastChatStateFilePath, overwrite: true);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Last chat state could not be saved: {ex.Message}");
+        }
     }
 
     private void RaiseNotification(ChatProviderNotification notification)
@@ -3066,8 +3100,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 result[k] = new HashSet<string>(v);
             return result;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Debug($"Aborted message IDs could not be loaded: {ex.Message}");
             return new();
         }
     }
@@ -3091,7 +3126,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(AbortedIdsFilePath, json);
         }
-        catch { /* best-effort persistence */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Aborted message IDs could not be saved: {ex.Message}");
+        }
     }
 
     // ── Tool metadata persistence ─────────────────────────────────────
@@ -3102,6 +3140,20 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         public long Ts { get; set; }
         public string ToolName { get; set; } = "";
         public string Label { get; set; } = "";
+    }
+
+    /// <summary>Attachment display metadata persisted without attachment bytes.</summary>
+    internal sealed class CachedAttachmentMeta
+    {
+        public long Ts { get; set; }
+        public string Text { get; set; } = "";
+        public List<CachedAttachmentItem> Attachments { get; set; } = new();
+    }
+
+    internal sealed class CachedAttachmentItem
+    {
+        public string FileName { get; set; } = "";
+        public bool IsImage { get; set; }
     }
 
     private static string DefaultToolMetaCacheFilePath
@@ -3117,11 +3169,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
     }
 
+    private static string DefaultAttachmentMetaCacheFilePath(string toolMetaCacheFilePath)
+    {
+        var dir = Path.GetDirectoryName(toolMetaCacheFilePath);
+        return Path.Combine(
+            string.IsNullOrEmpty(dir)
+                ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+                : dir,
+            "attachment-metadata.json");
+    }
+
     /// <summary>Max sessions to keep in the tool metadata cache.</summary>
     internal const int MaxCachedSessions = 20;
 
     /// <summary>Max tool entries per session in the cache.</summary>
     internal const int MaxToolEntriesPerSession = 500;
+
+    /// <summary>Max attachment-bearing user messages per session in the cache.</summary>
+    internal const int MaxAttachmentEntriesPerSession = 500;
 
     private static Dictionary<string, List<CachedToolMeta>> LoadToolMetaCache(string cacheFilePath)
     {
@@ -3133,10 +3198,253 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<CachedToolMeta>>>(json);
             return dict ?? new();
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Debug($"Tool metadata cache could not be loaded: {ex.Message}");
             return new();
         }
+    }
+
+    private static Dictionary<string, List<CachedAttachmentMeta>> LoadAttachmentMetaCache(string cacheFilePath)
+    {
+        try
+        {
+            if (!File.Exists(cacheFilePath))
+                return new();
+            var json = File.ReadAllText(cacheFilePath);
+            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<CachedAttachmentMeta>>>(json);
+            return dict ?? new();
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Attachment metadata cache could not be loaded: {ex.Message}");
+            return new();
+        }
+    }
+
+    private void SaveAttachmentMetaCache()
+    {
+        try
+        {
+            Dictionary<string, List<CachedAttachmentMeta>> snapshot;
+            lock (_gate)
+            {
+                snapshot = _attachmentMetaCache.ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value.Select(e => new CachedAttachmentMeta
+                    {
+                        Ts = e.Ts,
+                        Text = e.Text,
+                        Attachments = e.Attachments.Select(a => new CachedAttachmentItem
+                        {
+                            FileName = a.FileName,
+                            IsImage = a.IsImage
+                        }).ToList()
+                    }).ToList(),
+                    StringComparer.Ordinal);
+            }
+
+            if (snapshot.Count > MaxCachedSessions)
+            {
+                var toRemove = snapshot
+                    .OrderBy(kv => kv.Value.Count > 0 ? kv.Value[^1].Ts : 0)
+                    .Take(snapshot.Count - MaxCachedSessions)
+                    .Select(kv => kv.Key)
+                    .ToList();
+                foreach (var k in toRemove) snapshot.Remove(k);
+            }
+
+            var json = System.Text.Json.JsonSerializer.Serialize(snapshot,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+            lock (_attachmentMetaSaveGate)
+            {
+                var dir = Path.GetDirectoryName(_attachmentMetaCacheFilePath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+                var tempPath = _attachmentMetaCacheFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.WriteAllText(tempPath, json);
+                    File.Move(tempPath, _attachmentMetaCacheFilePath, overwrite: true);
+                }
+                finally
+                {
+                    try
+                    {
+                        if (File.Exists(tempPath))
+                            File.Delete(tempPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Debug($"Attachment metadata temp file cleanup failed: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Attachment metadata cache could not be saved: {ex.Message}");
+        }
+    }
+
+    private void CacheAttachmentMeta(
+        string? sessionId,
+        string threadId,
+        string text,
+        IReadOnlyList<ChatAttachment> attachments,
+        long tsMs)
+    {
+        if (attachments.Count == 0)
+            return;
+
+        var items = attachments
+            .Where(a => !string.IsNullOrWhiteSpace(a.FileName))
+            .Select(a => new CachedAttachmentItem
+            {
+                FileName = a.FileName,
+                IsImage = string.Equals(a.Type, "image", StringComparison.OrdinalIgnoreCase)
+            })
+            .ToList();
+        if (items.Count == 0)
+            return;
+
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+
+            var key = !string.IsNullOrEmpty(sessionId) ? sessionId! : threadId;
+            if (!_attachmentMetaCache.TryGetValue(key, out var list))
+            {
+                list = new List<CachedAttachmentMeta>();
+                _attachmentMetaCache[key] = list;
+            }
+
+            list.Add(new CachedAttachmentMeta
+            {
+                Ts = tsMs,
+                Text = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(text)),
+                Attachments = items
+            });
+
+            if (list.Count > MaxAttachmentEntriesPerSession)
+                list.RemoveRange(0, list.Count - MaxAttachmentEntriesPerSession);
+        }
+
+        SaveAttachmentMetaCache();
+    }
+
+    private AttachmentMetaMatcher CreateAttachmentMetaMatcher(string? sessionId, string threadId)
+    {
+        var entries = new List<CachedAttachmentMeta>();
+        lock (_gate)
+        {
+            if (!string.IsNullOrEmpty(sessionId) &&
+                _attachmentMetaCache.TryGetValue(sessionId!, out var sessionEntries))
+                entries.AddRange(CloneAttachmentMeta(sessionEntries));
+
+            if (!string.IsNullOrEmpty(threadId) &&
+                (string.IsNullOrEmpty(sessionId) || !string.Equals(sessionId, threadId, StringComparison.Ordinal)) &&
+                _attachmentMetaCache.TryGetValue(threadId, out var threadEntries))
+                entries.AddRange(CloneAttachmentMeta(threadEntries));
+        }
+
+        return new AttachmentMetaMatcher(entries.OrderBy(e => e.Ts).ToList());
+    }
+
+    private static List<CachedAttachmentMeta> CloneAttachmentMeta(List<CachedAttachmentMeta> entries) =>
+        entries.Select(e => new CachedAttachmentMeta
+        {
+            Ts = e.Ts,
+            Text = e.Text,
+            Attachments = e.Attachments.Select(a => new CachedAttachmentItem
+            {
+                FileName = a.FileName,
+                IsImage = a.IsImage
+            }).ToList()
+        }).ToList();
+
+    private sealed class AttachmentMetaMatcher
+    {
+        private static readonly TimeSpan MatchWindow = TimeSpan.FromHours(24);
+        private readonly List<CachedAttachmentMeta> _entries;
+        private readonly bool[] _used;
+
+        public AttachmentMetaMatcher(List<CachedAttachmentMeta> entries)
+        {
+            _entries = entries;
+            _used = new bool[entries.Count];
+        }
+
+        public CachedAttachmentMeta? TryMatch(string text, long historyTsMs)
+        {
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                if (_used[i])
+                    continue;
+
+                var entry = _entries[i];
+                if (!string.Equals(entry.Text, text, StringComparison.Ordinal))
+                    continue;
+
+                if (historyTsMs > 0 && entry.Ts > 0 &&
+                    Math.Abs(historyTsMs - entry.Ts) > MatchWindow.TotalMilliseconds)
+                    continue;
+
+                _used[i] = true;
+                return entry;
+            }
+
+            return null;
+        }
+    }
+
+    private static string RehydrateAttachmentMarkers(AttachmentMetaMatcher matcher, string text, long historyTsMs)
+    {
+        var match = matcher.TryMatch(text, historyTsMs);
+        if (match is null || match.Attachments.Count == 0)
+            return text;
+
+        var markerLines = BuildAttachmentMarkerLines(match.Attachments);
+        return string.IsNullOrEmpty(text)
+            ? markerLines
+            : $"{text}\n{markerLines}";
+    }
+
+    private static string BuildAttachmentMarkerLines(IEnumerable<ChatAttachment> attachments) =>
+        string.Join("\n", attachments.Select(a =>
+            string.Equals(a.Type, "image", StringComparison.OrdinalIgnoreCase)
+                ? $"\u200B🖼️ {a.FileName}"
+                : $"\u200B📎 {a.FileName}"));
+
+    private static string BuildAttachmentMarkerLines(IEnumerable<CachedAttachmentItem> attachments) =>
+        string.Join("\n", attachments.Select(a =>
+            a.IsImage
+                ? $"\u200B🖼️ {a.FileName}"
+                : $"\u200B📎 {a.FileName}"));
+
+    internal static string EscapeUntrustedAttachmentMarkerLines(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text ?? string.Empty;
+
+        var lines = text.Split('\n');
+        var changed = false;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var trimmedStart = line.TrimStart();
+            if (trimmedStart.StartsWith("\u200B🖼️ ", StringComparison.Ordinal) ||
+                trimmedStart.StartsWith("\u200B📎 ", StringComparison.Ordinal))
+            {
+                var prefixLength = line.Length - trimmedStart.Length;
+                lines[i] = string.Concat(line.AsSpan(0, prefixLength), trimmedStart.AsSpan(1));
+                changed = true;
+            }
+        }
+
+        return changed ? string.Join('\n', lines) : text;
     }
 
     private void SaveToolMetaCache(long? expectedVersion = null)
@@ -3202,14 +3510,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         if (File.Exists(tempPath))
                             File.Delete(tempPath);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Best-effort cleanup; persistence remains best-effort.
+                        Logger.Debug($"Tool metadata temp file cleanup failed: {ex.Message}");
                     }
                 }
             }
         }
-        catch { /* best-effort persistence */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Tool metadata cache could not be saved: {ex.Message}");
+        }
     }
 
     /// <summary>

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenClawTray.Services;
 using Windows.UI;
 
 namespace OpenClawTray.Chat.Explorations;
@@ -112,7 +113,11 @@ public static class ChatExplorationPresetStore
             var arr = JsonSerializer.Deserialize<List<ChatExplorationPreset>>(json, JsonOpts);
             return arr ?? new List<ChatExplorationPreset>();
         }
-        catch { return new List<ChatExplorationPreset>(); }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Chat exploration presets could not be loaded: {ex.Message}");
+            return new List<ChatExplorationPreset>();
+        }
     }
 
     public static void SaveAll(IEnumerable<ChatExplorationPreset> presets)
@@ -122,7 +127,10 @@ public static class ChatExplorationPresetStore
             var json = JsonSerializer.Serialize(presets.ToList(), JsonOpts);
             File.WriteAllText(FilePath, json);
         }
-        catch { /* best-effort */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Chat exploration presets could not be saved: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -150,7 +158,10 @@ public static class ChatExplorationPresetStore
             var def = LoadAll().FirstOrDefault(p => p.IsDefault);
             if (def is not null) Apply(def);
         }
-        catch { /* best-effort */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Default chat exploration preset could not be applied: {ex.Message}");
+        }
     }
 
     public static ChatExplorationPreset Capture(string name) => new()

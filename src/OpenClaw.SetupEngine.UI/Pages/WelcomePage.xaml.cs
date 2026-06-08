@@ -5,8 +5,8 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
+using OpenClaw.SetupEngine.UI;
 using OpenClaw.Shared;
-using System.Diagnostics;
 using System.Numerics;
 using Windows.UI;
 
@@ -86,22 +86,11 @@ public sealed partial class WelcomePage : Page
 
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
-            App.MainWindow?.NavigateToCapabilities();
+            SetupWindow.Active?.NavigateToCapabilities();
     }
 
     private void AdvancedSetup_Click(object sender, RoutedEventArgs e)
     {
-        var trayPath = TrayExecutableResolver.Resolve();
-        var args = "openclaw://commandcenter";
-
-        if (trayPath != null)
-            Process.Start(new ProcessStartInfo(trayPath, args) { UseShellExecute = true });
-        else
-        {
-            try { Process.Start(new ProcessStartInfo(args) { UseShellExecute = true }); }
-            catch { /* best effort */ }
-        }
-
-        App.MainWindow?.Close();
+        SetupWindow.Active?.RequestAdvancedSetup();
     }
 }

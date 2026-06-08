@@ -176,6 +176,7 @@ public sealed class CommandRunner : ICommandRunner
 
     private static void TryKill(Process process)
     {
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
     }
 

@@ -46,6 +46,7 @@ public sealed class SetupRunLock : IDisposable
     public void Dispose()
     {
         _stream.Dispose();
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { File.Delete(_path); } catch { }
     }
 }

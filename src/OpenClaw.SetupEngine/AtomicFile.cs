@@ -51,8 +51,9 @@ internal static class AtomicFile
             if (File.Exists(tempPath))
                 File.Delete(tempPath);
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Failed to delete temporary file '{tempPath}': {ex.Message}");
         }
     }
 }

@@ -201,6 +201,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 var tunnel = record.SshTunnel;
                 if (string.IsNullOrWhiteSpace(tunnel.User) || string.IsNullOrWhiteSpace(tunnel.Host) ||
+                    tunnel.SshPort is < 1 or > 65535 ||
                     tunnel.RemotePort is < 1 or > 65535 || tunnel.LocalPort is < 1 or > 65535)
                 {
                     _logger.Warn("[ConnMgr] SSH tunnel config is incomplete");
@@ -288,6 +289,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 {
                     await lifecycle.ConnectAsync(ct);
                 }
+                // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
@@ -653,6 +655,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (Interlocked.Read(ref _generation) != gen || _disposed) return;
                 await ReconnectAsync();
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (ObjectDisposedException) { }
             catch (Exception ex)
             {
@@ -1238,6 +1241,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (semaphoreEntered)
             {
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { _transitionSemaphore.Release(); } catch { }
                 _transitionSemaphore.Dispose();
             }

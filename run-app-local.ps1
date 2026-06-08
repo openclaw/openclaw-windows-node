@@ -12,8 +12,8 @@
     Use -Isolated (or -DataDir) to run multiple worktrees side-by-side without
     sharing settings, logs, run markers, device identities, or mutex names.
 
-    By default this helper refuses to run outside `master` to avoid accidentally
-    launching a stale or experimental worktree. Use -AllowNonMaster when you
+    By default this helper refuses to run outside `main` to avoid accidentally
+    launching a stale or experimental worktree. Use -AllowNonMain when you
     intentionally want to preview a PR or feature branch.
 
 .PARAMETER NoBuild
@@ -22,8 +22,8 @@
 .PARAMETER Configuration
     Build/output configuration to use. Defaults to Debug.
 
-.PARAMETER AllowNonMaster
-    Allow launching from a branch other than master.
+.PARAMETER AllowNonMain
+    Allow launching from a branch other than main.
 
 .PARAMETER Isolated
     Set OPENCLAW_TRAY_DATA_DIR to a stable temp directory unique to this worktree
@@ -60,7 +60,7 @@
     .\run-app-local.ps1 -Isolated
 
 .EXAMPLE
-    .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha -AllowNonMaster
+    .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha -AllowNonMain
 
 .EXAMPLE
     .\run-app-local.ps1 -UseWinApp -NoBuild
@@ -72,7 +72,7 @@ param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
 
-    [switch]$AllowNonMaster,
+    [switch]$AllowNonMain,
 
     [switch]$Isolated,
 
@@ -127,8 +127,8 @@ function Get-ShortHash {
 }
 
 $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD).Trim()
-if ($branch -ne "master" -and -not $AllowNonMaster) {
-    throw "Refusing to run: current branch is '$branch', expected 'master'. Use -AllowNonMaster to preview this branch intentionally."
+if ($branch -ne "main" -and -not $AllowNonMain) {
+    throw "Refusing to run: current branch is '$branch', expected 'main'. Use -AllowNonMain to preview this branch intentionally."
 }
 
 if (-not $NoBuild) {

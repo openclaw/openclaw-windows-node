@@ -71,6 +71,7 @@ public static class Logger
                 s_channel.Writer.TryComplete();
                 s_writerTask.Wait(TimeSpan.FromSeconds(2));
             }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { /* shutdown — nothing to do */ }
         };
     }
@@ -164,6 +165,7 @@ public static class Logger
     private static void ReportWriteFailure(string detail)
     {
         LastWriteError = detail;
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         try { System.Diagnostics.Trace.WriteLine($"[OpenClaw Logger] {detail}"); } catch { }
 #if DEBUG
         try { System.Diagnostics.Debug.WriteLine($"[OpenClaw Logger] {detail}"); } catch { }

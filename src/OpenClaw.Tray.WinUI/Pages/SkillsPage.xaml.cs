@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -204,12 +205,12 @@ public sealed partial class SkillsPage : Page
         foreach (var s in disabled)
             DisabledPanel.Children.Add(BuildCard(s));
 
-        EnabledHeaderText.Text = $"Enabled ({enabled.Count})";
-        DisabledHeaderText.Text = $"Disabled ({disabled.Count})";
+        EnabledHeaderText.Text = LocalizationHelper.Format("SkillsPage_EnabledHeaderFormat", enabled.Count);
+        DisabledHeaderText.Text = LocalizationHelper.Format("SkillsPage_DisabledHeaderFormat", disabled.Count);
         DisabledExpander.Visibility = disabled.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var total = _allSkills.Count;
-        CountText.Text = total > 0 ? $"({enabled.Count}/{total} enabled)" : "";
+        CountText.Text = total > 0 ? LocalizationHelper.Format("SkillsPage_CountFormat", enabled.Count, total) : "";
 
         if (total > 0)
         {
@@ -256,7 +257,7 @@ public sealed partial class SkillsPage : Page
         };
         badge.Child = new TextBlock
         {
-            Text = s.IsEnabled ? "Enabled" : "Disabled",
+            Text = LocalizationHelper.GetString(s.IsEnabled ? "SkillsPage_BadgeEnabled" : "SkillsPage_BadgeDisabled"),
             FontSize = 11,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = (Brush)Application.Current.Resources[badgeFgKey],

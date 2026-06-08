@@ -3912,6 +3912,9 @@ On your gateway host (Mac/Linux), run:
   <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
   </data>
+  <data name="ConnectionPage_SshServerPort.Header" xml:space="preserve">
+    <value>SSH port</value>
+  </data>
   <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
     <value>Remote port</value>
   </data>
@@ -3954,13 +3957,13 @@ On your gateway host (Mac/Linux), run:
   <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
     <value>SCHEDULE</value>
   </data>
-  <data name="CronPage_Every.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleEveryOption.Content" xml:space="preserve">
     <value>Every</value>
   </data>
-  <data name="CronPage_At.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleAtOption.Content" xml:space="preserve">
     <value>At</value>
   </data>
-  <data name="CronPage_Cron.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleCronOption.Content" xml:space="preserve">
     <value>Cron</value>
   </data>
   <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
@@ -4590,6 +4593,9 @@ On your gateway host (Mac/Linux), run:
   <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
     <value>192.168.x.x</value>
   </data>
+  <data name="ConnectionStatusWindow_SshServerPort.Header" xml:space="preserve">
+    <value>SSH Port</value>
+  </data>
   <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
     <value>Remote Port</value>
   </data>
@@ -4625,4 +4631,1149 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Advanced</value>
-  </data></root>
+  </data>
+  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
+    <value>Conversations this gateway is currently handling, grouped by channel.</value>
+  </data>
+  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
+    <value>Sessions appear here when a channel is connected and traffic is flowing.</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoice.Text" xml:space="preserve">
+    <value>Preview Voice</value>
+  </data>
+  <data name="HubWindow_TitleStatus.Text" xml:space="preserve">
+    <value>Disconnected</value>
+  </data>
+  <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
+    <value>Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network — check your gateway's configuration.</value>
+  </data>  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
+    <value>All Agents</value>
+  </data>
+  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
+    <value>{0} of {1} events</value>
+  </data>
+  <data name="CronPage_CreateJobLabel" xml:space="preserve">
+    <value>Create Job</value>
+  </data>
+  <data name="CronPage_EditJob" xml:space="preserve">
+    <value>Edit Job</value>
+  </data>
+  <data name="CronPage_NewJobTitle" xml:space="preserve">
+    <value>New Job</value>
+  </data>
+  <data name="CronPage_Running" xml:space="preserve">
+    <value>Running...</value>
+  </data>
+  <data name="CronPage_SaveChanges" xml:space="preserve">
+    <value>Save Changes</value>
+  </data>
+  <data name="SchemaConfigEditor_AddItem" xml:space="preserve">
+    <value>Add item</value>
+  </data>
+  <data name="ChatPage_AttachFile" xml:space="preserve">
+    <value>Attach file</value>
+  </data>
+  <data name="ChatPage_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ChatPage_CannotAttachFile" xml:space="preserve">
+    <value>Cannot attach file</value>
+  </data>
+  <data name="ChatPage_CannotConnectToGateway" xml:space="preserve">
+    <value>Cannot connect to gateway at {0}
+
+Make sure the gateway is running.</value>
+  </data>
+  <data name="ChatPage_ChatFailedToStart" xml:space="preserve">
+    <value>Chat failed to start:
+{0}</value>
+  </data>
+  <data name="ChatPage_ChatReady" xml:space="preserve">
+    <value>Chat is ready; starting your first hatching conversation…</value>
+  </data>
+  <data name="ChatPage_ChatSurfaceComingOnline" xml:space="preserve">
+    <value>The gateway is connected; the chat surface is still coming online.</value>
+  </data>
+  <data name="ChatPage_GatewayPairingIncomplete" xml:space="preserve">
+    <value>Gateway pairing is not complete. Open Connection settings to finish pairing.</value>
+  </data>
+  <data name="ChatPage_InvalidGatewayUrl" xml:space="preserve">
+    <value>Invalid gateway URL: {0}</value>
+  </data>
+  <data name="ChatPage_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ChatPage_OpenConnectionSettings" xml:space="preserve">
+    <value>Open Connection settings to finish pairing with a gateway.</value>
+  </data>
+  <data name="ChatPage_OpenVoiceSettings" xml:space="preserve">
+    <value>Open Voice Settings</value>
+  </data>
+  <data name="ChatPage_TimedOutChat" xml:space="preserve">
+    <value>Timed out waiting for chat at {0}. Retry once the gateway is ready.</value>
+  </data>
+  <data name="ChatPage_TimedOutHandshake" xml:space="preserve">
+    <value>Timed out waiting for the gateway operator handshake. Retry once the gateway is ready.</value>
+  </data>
+  <data name="ChatPage_VoiceModelInstallMessage" xml:space="preserve">
+    <value>The speech-to-text model needs to be installed before you can use voice input. Would you like to open Voice settings to install it?</value>
+  </data>
+  <data name="ChatPage_VoiceModelRequired" xml:space="preserve">
+    <value>Voice Model Required</value>
+  </data>
+  <data name="ChatPage_WebView2InitFailed" xml:space="preserve">
+    <value>WebView2 failed to initialize:
+{0}</value>
+  </data>
+  <data name="ConnectionStatus_Applying" xml:space="preserve">
+    <value>Applying…</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApproval" xml:space="preserve">
+    <value>Awaiting approval</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApprovalApproveThenConnect" xml:space="preserve">
+    <value>🔐 Awaiting approval — approve then click Connect</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApprovalFromGateway" xml:space="preserve">
+    <value>🔐 Awaiting approval from gateway</value>
+  </data>
+  <data name="ConnectionStatus_Connect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionStatus_Connected" xml:space="preserve">
+    <value>✓ Connected</value>
+  </data>
+  <data name="ConnectionStatus_ConnectedTo" xml:space="preserve">
+    <value>✓ Connected to {0}</value>
+  </data>
+  <data name="ConnectionStatus_Connecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="ConnectionStatus_ConnectOnceApproved" xml:space="preserve">
+    <value>Connect (once approved)</value>
+  </data>
+  <data name="ConnectionStatus_Disabled" xml:space="preserve">
+    <value>disabled</value>
+  </data>
+  <data name="ConnectionStatus_Disconnected" xml:space="preserve">
+    <value>Disconnected</value>
+  </data>
+  <data name="ConnectionStatus_EnterGatewayUrl" xml:space="preserve">
+    <value>Enter a gateway URL</value>
+  </data>
+  <data name="ConnectionStatus_NoGateways" xml:space="preserve">
+    <value>No gateways</value>
+  </data>
+  <data name="ConnectionStatus_Reconnecting" xml:space="preserve">
+    <value>Reconnecting…</value>
+  </data>
+  <data name="ConnectionStatus_Rejected" xml:space="preserve">
+    <value>rejected</value>
+  </data>
+  <data name="ConnectionStatus_StartingSshTunnel" xml:space="preserve">
+    <value>Starting SSH tunnel…</value>
+  </data>
+  <data name="ConnectionPage_OnHostname" xml:space="preserve">
+    <value>on {0}</value>
+  </data>
+  <data name="ConnectionPage_ClientSingular" xml:space="preserve">
+    <value>1 client</value>
+  </data>
+  <data name="ConnectionPage_ClientsPlural" xml:space="preserve">
+    <value>{0} clients</value>
+  </data>
+  <data name="ConnectionPage_ChannelsSingular" xml:space="preserve">
+    <value>{0}/{1} channel</value>
+  </data>
+  <data name="ConnectionPage_ChannelsPlural" xml:space="preserve">
+    <value>{0}/{1} channels</value>
+  </data>
+  <data name="ConnectionPage_CostToday" xml:space="preserve">
+    <value>${0} today</value>
+  </data>
+  <data name="ConnectionPage_CostTodayZero" xml:space="preserve">
+    <value>$0.00 today</value>
+  </data>
+  <data name="ConnectionPage_SharedTokenChip" xml:space="preserve">
+    <value>Shared token</value>
+  </data>
+  <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
+    <value>Tap to copy shared token</value>
+  </data>
+  <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
+    <value>via SSH tunnel</value>
+  </data>
+  <data name="ConnectionPage_TopologyLocal" xml:space="preserve">
+    <value>Local</value>
+  </data>
+  <data name="ConnectionPage_TopologyTailscale" xml:space="preserve">
+    <value>Tailscale</value>
+  </data>
+  <data name="ConnectionPage_TopologyLAN" xml:space="preserve">
+    <value>LAN</value>
+  </data>
+  <data name="ConnectionPage_TopologyRemote" xml:space="preserve">
+    <value>Remote</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveSessions" xml:space="preserve">
+    <value>Active · {0} sessions</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveOneSession" xml:space="preserve">
+    <value>Active · 1 session</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveNoSessions" xml:space="preserve">
+    <value>Active · no current sessions</value>
+  </data>
+  <data name="ConnectionPage_OperatorDisconnected" xml:space="preserve">
+    <value>Disconnected</value>
+  </data>
+  <data name="ConnectionPage_OperatorConnecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="ConnectionPage_OperatorReconnecting" xml:space="preserve">
+    <value>Reconnecting…</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveCapabilities" xml:space="preserve">
+    <value>Node active · {0} capabilities</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveOneCapability" xml:space="preserve">
+    <value>Node active · 1 capability</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveNoCapabilities" xml:space="preserve">
+    <value>Node active · no capabilities enabled</value>
+  </data>
+  <data name="ConnectionPage_NodeAwaitingPairing" xml:space="preserve">
+    <value>Awaiting pairing approval</value>
+  </data>
+  <data name="ConnectionPage_NodePairingRejected" xml:space="preserve">
+    <value>Pairing rejected</value>
+  </data>
+  <data name="ConnectionPage_NodeRateLimited" xml:space="preserve">
+    <value>Rate-limited</value>
+  </data>
+  <data name="ConnectionPage_NodeError" xml:space="preserve">
+    <value>Node error</value>
+  </data>
+  <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
+    <value>Node mode disabled</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
+    <value>No capabilities enabled. Pick what to share in Permissions.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyAwaitingApproval" xml:space="preserve">
+    <value>Awaiting approval on the gateway host.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyPairingRejected" xml:space="preserve">
+    <value>Pairing was rejected. Re-pair from Add Gateway.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyRateLimited" xml:space="preserve">
+    <value>Rate-limited by the gateway. Will retry after cooldown.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyError" xml:space="preserve">
+    <value>Node reported an error.</value>
+  </data>
+  <data name="ConnectionPage_ProvidingNoCapabilities" xml:space="preserve">
+    <value>Providing no capabilities</value>
+  </data>
+  <data name="ConnectionPage_ProvidingCapabilitiesSingular" xml:space="preserve">
+    <value>Providing 1 capability: {0}</value>
+  </data>
+  <data name="ConnectionPage_ProvidingCapabilitiesPlural" xml:space="preserve">
+    <value>Providing {0} capabilities: {1}</value>
+  </data>
+  <data name="ConnectionPage_BadgeConnected" xml:space="preserve">
+    <value>Connected</value>
+  </data>
+  <data name="ConnectionPage_BadgeConnecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="ConnectionPage_BadgeAwaitingApproval" xml:space="preserve">
+    <value>Awaiting approval</value>
+  </data>
+  <data name="ConnectionPage_BadgeDisconnecting" xml:space="preserve">
+    <value>Disconnecting…</value>
+  </data>
+  <data name="ConnectionPage_ConnectAction" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
+    <value>Open dashboard</value>
+  </data>
+  <data name="ConnectionPage_DisconnectAction" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="ConnectionPage_Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="ConnectionPage_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="ConnectionPage_ViaSSH" xml:space="preserve">
+    <value>via SSH</value>
+  </data>
+  <data name="ConnectionPage_SavedGatewaysSingular" xml:space="preserve">
+    <value>Saved gateways (1)</value>
+  </data>
+  <data name="ConnectionPage_SavedGatewaysPlural" xml:space="preserve">
+    <value>Saved gateways ({0})</value>
+  </data>
+  <data name="ConnectionPage_JustNow" xml:space="preserve">
+    <value>just now</value>
+  </data>
+  <data name="ConnectionPage_MinutesAgo" xml:space="preserve">
+    <value>{0}m ago</value>
+  </data>
+  <data name="ConnectionPage_HoursAgo" xml:space="preserve">
+    <value>{0}h ago</value>
+  </data>
+  <data name="ConnectionPage_DaysAgo" xml:space="preserve">
+    <value>{0}d ago</value>
+  </data>
+  <data name="ConnectionPage_MonthsAgo" xml:space="preserve">
+    <value>{0}mo ago</value>
+  </data>
+  <data name="ConnectionPage_YearsAgo" xml:space="preserve">
+    <value>{0}y ago</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderAuth" xml:space="preserve">
+    <value>Re-pair this gateway:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderPairing" xml:space="preserve">
+    <value>Awaiting approval:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTunnel" xml:space="preserve">
+    <value>Help us fix the SSH tunnel:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderServer" xml:space="preserve">
+    <value>Help us fix this connection:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryAuthBullet1" xml:space="preserve">
+    <value>Get a fresh setup code from the gateway host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryAuthBullet2" xml:space="preserve">
+    <value>Or paste a new direct token below.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryPairingBullet1" xml:space="preserve">
+    <value>Approve this client on the gateway host using the command below.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryPairingBullet2" xml:space="preserve">
+    <value>Once approved, click Connect to resume.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTunnelBullet1" xml:space="preserve">
+    <value>Confirm SSH is reachable on the host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTunnelBullet2" xml:space="preserve">
+    <value>Restart the tunnel below if it stopped.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet1" xml:space="preserve">
+    <value>Check the gateway logs on the host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet2" xml:space="preserve">
+    <value>If the gateway is partially up, open its dashboard.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet3" xml:space="preserve">
+    <value>Edit gateway settings to change URL or token.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet1" xml:space="preserve">
+    <value>Check that the gateway is running on the host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet2" xml:space="preserve">
+    <value>Check that you're on the same network or VPN.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet3" xml:space="preserve">
+    <value>If using SSH tunnel: confirm it's up.</value>
+  </data>
+  <data name="ConnectionPage_SshTunnelIsDownText" xml:space="preserve">
+    <value>SSH tunnel is down.</value>
+  </data>
+  <data name="ConnectionPage_TestingConnection" xml:space="preserve">
+    <value>Testing connection…</value>
+  </data>
+  <data name="ConnectionPage_GatewayReachable" xml:space="preserve">
+    <value>Gateway reachable</value>
+  </data>
+  <data name="ConnectionPage_GatewayRespondedWith" xml:space="preserve">
+    <value>Gateway responded with {0}</value>
+  </data>
+  <data name="ConnectionPage_CannotReachGateway" xml:space="preserve">
+    <value>Cannot reach gateway</value>
+  </data>
+  <data name="ConnectionPage_EnterGatewayUrl" xml:space="preserve">
+    <value>Enter a gateway URL</value>
+  </data>
+  <data name="ConnectionPage_Connecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="ConnectionPage_StartingSshTunnel" xml:space="preserve">
+    <value>Starting SSH tunnel…</value>
+  </data>
+  <data name="ConnectionPage_PairingApprovalRequired" xml:space="preserve">
+    <value>Pairing approval required for {0}.</value>
+  </data>
+  <data name="ConnectionPage_ConnectedTo" xml:space="preserve">
+    <value>Connected to {0}.</value>
+  </data>
+  <data name="ConnectionPage_SshServerPortInvalid" xml:space="preserve">
+    <value>SSH port must be 1-65535</value>
+  </data>
+  <data name="ConnectionPage_SshRemotePortInvalid" xml:space="preserve">
+    <value>SSH remote port must be 1–65535</value>
+  </data>
+  <data name="ConnectionPage_SshLocalPortInvalid" xml:space="preserve">
+    <value>SSH local port must be 1–65535</value>
+  </data>
+  <data name="ConnectionPage_TunnelRestartTriggered" xml:space="preserve">
+    <value>Tunnel restart triggered.</value>
+  </data>
+  <data name="ConnectionPage_TunnelRestartFailed" xml:space="preserve">
+    <value>Tunnel restart failed: {0}</value>
+  </data>
+  <data name="ConnectionPage_RepairedReconnecting" xml:space="preserve">
+    <value>Re-paired. Reconnecting…</value>
+  </data>
+  <data name="ConnectionPage_CouldNotApplyCode" xml:space="preserve">
+    <value>Could not apply code.</value>
+  </data>
+  <data name="ConnectionPage_PleaseEnterSetupCode" xml:space="preserve">
+    <value>Please paste a setup code.</value>
+  </data>
+  <data name="ConnectionPage_Applying" xml:space="preserve">
+    <value>Applying…</value>
+  </data>
+  <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
+    <value>Applied — gateway: {0}</value>
+  </data>
+  <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
+    <value>Invalid setup code</value>
+  </data>
+  <data name="ConnectionPage_InvalidUrl" xml:space="preserve">
+    <value>Invalid URL</value>
+  </data>
+  <data name="ConnectionPage_ConnectionFailed" xml:space="preserve">
+    <value>Connection failed</value>
+  </data>
+  <data name="ConnectionPage_UnknownError" xml:space="preserve">
+    <value>Unknown error</value>
+  </data>
+  <data name="ConnectionPage_PreviewGateway" xml:space="preserve">
+    <value>Gateway: {0}</value>
+  </data>
+  <data name="ConnectionPage_PreviewGatewayNotSpecified" xml:space="preserve">
+    <value>(not specified)</value>
+  </data>
+  <data name="ConnectionPage_PreviewNoToken" xml:space="preserve">
+    <value>(no token)</value>
+  </data>
+  <data name="ConnectionPage_PreviewToken" xml:space="preserve">
+    <value>Token: {0}</value>
+  </data>
+  <data name="ConnectionPage_PressScan" xml:space="preserve">
+    <value>Press Start scan to look for gateways on your network.</value>
+  </data>
+  <data name="ConnectionPage_ScanningNetwork" xml:space="preserve">
+    <value>Scanning your network…</value>
+  </data>
+  <data name="ConnectionPage_NoGatewaysFound" xml:space="preserve">
+    <value>No gateways found on your network.</value>
+  </data>
+  <data name="ConnectionPage_DiscoveredOnNetwork" xml:space="preserve">
+    <value>Discovered on your network ({0})</value>
+  </data>
+  <data name="ConnectionPage_ScanFailed" xml:space="preserve">
+    <value>Scan failed: {0}</value>
+  </data>
+  <data name="ConnectionPage_Stop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="ConnectionPage_ScanAction" xml:space="preserve">
+    <value>Scan</value>
+  </data>
+  <data name="ConnectionPage_Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="ConnectionPage_PickDiscoveredGateway" xml:space="preserve">
+    <value>Pick a discovered gateway above to connect.</value>
+  </data>
+  <data name="ConnectionPage_RemoveGatewayTitle" xml:space="preserve">
+    <value>Remove gateway?</value>
+  </data>
+  <data name="ConnectionPage_RemoveGatewayMessage" xml:space="preserve">
+    <value>This will forget {0} and its credentials on this machine.</value>
+  </data>
+  <data name="ConnectionPage_CancelAction" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
+    <value>Connect failed</value>
+  </data>
+  <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
+    <value>Gateway connection failed.</value>
+  </data>
+  <data name="ConnectionPage_ApprovalsSingular" xml:space="preserve">
+    <value>1 approval waiting on you</value>
+  </data>
+  <data name="ConnectionPage_ApprovalsPlural" xml:space="preserve">
+    <value>{0} approvals waiting on you</value>
+  </data>
+  <data name="ConnectionPage_DeviceLabel" xml:space="preserve">
+    <value>Device · {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeLabel" xml:space="preserve">
+    <value>Node · {0}</value>
+  </data>
+  <data name="ConnectionPage_RepairRequest" xml:space="preserve">
+    <value>⚠️ Repair request</value>
+  </data>
+  <data name="ConnectionPage_Approve" xml:space="preserve">
+    <value>Approve</value>
+  </data>
+  <data name="ConnectionPage_Deny" xml:space="preserve">
+    <value>Deny</value>
+  </data>
+  <data name="ConnectionPage_ApprovePairingRequest" xml:space="preserve">
+    <value>Approve pairing request</value>
+  </data>
+  <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
+    <value>Deny pairing request</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
+    <value>{0}
+
+Paste a new setup code from the Add Gateway flow.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
+    <value>{0}
+
+Your device needs approval on the gateway host.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
+    <value>{0}
+
+This gateway requires password authentication.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
+    <value>{0}
+
+The gateway may require a different auth protocol version.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
+    <value>{0}
+
+Check your connection settings and try again.</value>
+  </data>
+  <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
+    <value>bootstrap</value>
+  </data>
+  <data name="ConnectionPage_AuthModeSharedToken" xml:space="preserve">
+    <value>shared token</value>
+  </data>
+  <data name="ConnectionPage_AuthModeDeviceToken" xml:space="preserve">
+    <value>device token</value>
+  </data>
+  <data name="ConnectionPage_UnknownPlatform" xml:space="preserve">
+    <value>unknown</value>
+  </data>
+  <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
+    <value>Timed out waiting for the gateway connection to complete.</value>
+  </data>
+  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
+    <value>This channel requires a macOS host. It can’t be configured from a Windows machine.</value>
+  </data>
+  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
+    <value>Replace credentials</value>
+  </data>
+  <data name="ChannelsPage_Configuration" xml:space="preserve">
+    <value>Configuration</value>
+  </data>
+  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
+    <value>Unlink this device from the channel. Scan a fresh QR to reconnect — your account stays paired on your phone.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
+    <value>Pause the channel temporarily — credentials are kept so you can start it again. Or disconnect entirely to clear them.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
+    <value>Start the channel — it’ll begin handling messages with the stored credentials. Or disconnect entirely to clear them.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
+    <value>Pause the channel — credentials are kept so you can start it again.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
+    <value>Start the channel — it’ll begin handling messages with the stored credentials.</value>
+  </data>
+  <data name="ChannelsPage_Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="ChannelsPage_Stop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="ChannelsPage_Logout" xml:space="preserve">
+    <value>Logout</value>
+  </data>
+  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
+    <value>Disconnect and forget credentials</value>
+  </data>
+  <data name="ChannelsPage_Controls" xml:space="preserve">
+    <value>Controls</value>
+  </data>
+  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
+    <value>WhatsApp Linked devices help →</value>
+  </data>
+  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
+    <value>Signal Linked devices help →</value>
+  </data>
+  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
+    <value>How to create a Telegram bot →</value>
+  </data>
+  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
+    <value>How to create a Discord webhook →</value>
+  </data>
+  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
+    <value>How to add a Google Chat webhook →</value>
+  </data>
+  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
+    <value>Slack app dashboard →</value>
+  </data>
+  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
+    <value>About Nostr →</value>
+  </data>
+  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
+    <value>About macOS Messages →</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
+    <value>Link your WhatsApp phone</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
+    <value>Click &quot;Show QR&quot; in the Linking section below.</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
+    <value>On your phone: WhatsApp → Settings → Linked devices → Link a device.</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
+    <value>Scan the QR code that appears here.</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
+    <value>Link your Signal phone</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
+    <value>Click &quot;Show QR&quot; in the Linking section below.</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
+    <value>On your phone: Signal → Settings → Linked devices → Link new device.</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
+    <value>Scan the QR code that appears here.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
+    <value>Connect Telegram via a bot</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
+    <value>Open Telegram and send a message to @BotFather.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
+    <value>Send /newbot and follow the prompts. Copy the bot token at the end.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
+    <value>Paste the token into the Configuration form below.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
+    <value>Click &quot;Save and start&quot;. The channel will start automatically.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
+    <value>Connect Discord via a webhook</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
+    <value>Open your Discord server settings → Integrations → Webhooks.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
+    <value>Click &quot;New Webhook&quot;, give it a name, and copy the webhook URL.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
+    <value>Paste the URL into the Configuration form below.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
+    <value>Click &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
+    <value>Connect Google Chat via a webhook</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
+    <value>In Google Chat, open the space → Manage webhooks → Add webhook.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
+    <value>Copy the webhook URL.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
+    <value>Paste the URL into the Configuration form below.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
+    <value>Click &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
+    <value>Connect Slack via an app</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
+    <value>Create a Slack app at api.slack.com/apps and install it to your workspace.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
+    <value>Copy the bot token (xoxb-…) and the signing secret.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
+    <value>Paste both into the Configuration form below.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
+    <value>Click &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
+    <value>Connect Nostr via relays</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
+    <value>Generate or paste a private key (nsec).</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
+    <value>Pick one or more relay URLs (e.g. wss://relay.damus.io).</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
+    <value>Paste both into the Configuration form below.</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
+    <value>Click &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
+    <value>iMessage is macOS-only</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
+    <value>iMessage reads the local Messages.app database, which only exists on macOS.</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
+    <value>To use iMessage with OpenClaw, run the gateway on a Mac instead of this Windows host.</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
+    <value>All other channels in this list work fine from a Windows-hosted gateway.</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
+    <value>Connect this channel</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
+    <value>&quot;{0}&quot; is a plugin channel. Refer to its documentation for the fields it needs.</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
+    <value>Use &quot;Open Config page&quot; in the Configuration section below to add settings under channels.{0}.</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
+    <value>Save the config; OpenClaw will start the channel automatically.</value>
+  </data>
+  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
+    <value>Bot token</value>
+  </data>
+  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
+    <value>Webhook URL</value>
+  </data>
+  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
+    <value>Signing secret</value>
+  </data>
+  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
+    <value>Private key (nsec)</value>
+  </data>
+  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
+    <value>Relay URLs</value>
+  </data>
+  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
+    <value>Get from @BotFather (/newbot).</value>
+  </data>
+  <data name="ChannelsPage_HelpWebhookDiscord" xml:space="preserve">
+    <value>Server Settings → Integrations → Webhooks → New Webhook.</value>
+  </data>
+  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
+    <value>Open a space → Manage webhooks → Add webhook.</value>
+  </data>
+  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
+    <value>OAuth tokens from your Slack app.</value>
+  </data>
+  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
+    <value>Basic Information → App Credentials.</value>
+  </data>
+  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
+    <value>One per line.</value>
+  </data>
+  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
+    <value>Save changes</value>
+  </data>
+  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
+    <value>Save and start</value>
+  </data>
+  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
+    <value>Open Config page</value>
+  </data>
+  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
+    <value>Edit this channel's settings in the gateway Config page.</value>
+  </data>
+  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
+    <value>After following the steps above, save the config to start the channel.</value>
+  </data>
+  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
+    <value>Connect to a gateway before saving channel config.</value>
+  </data>
+  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
+    <value>Missing field</value>
+  </data>
+  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
+    <value>{0} is required.</value>
+  </data>
+  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
+    <value>Saving {0}…</value>
+  </data>
+  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
+    <value>Writing {0} field(s) and enabling the channel.</value>
+  </data>
+  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
+    <value>Couldn’t load gateway config</value>
+  </data>
+  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
+    <value>The gateway didn’t return its current config — can’t safely save without it. Try Refresh and save again.</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
+    <value>The gateway’s config was cleared mid-save. Try Refresh and save again.</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
+    <value>Save blocked for {0}</value>
+  </data>
+  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+    <value>The gateway didn’t respond.</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
+    <value>Save failed for {0}</value>
+  </data>
+  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
+    <value>Your gateway config changed elsewhere (e.g., from the Config page). We refreshed the cache — try Save again. Details: {0}</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
+    <value>{0} If this looks like a wire-format mismatch, open the Config page for direct JSON editing.</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
+    <value>{0} config saved</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
+    <value>Waiting for the gateway to confirm the channel is running…</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
+    <value>WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription.Text" xml:space="preserve">
+    <value>Open a shell or manage the local gateway service in WSL.</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostTerminalLabel.Text" xml:space="preserve">
+    <value>Terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.Content" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.Content" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.Content" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open dashboard (in browser)</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open dashboard</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Disconnect / reconnect</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Disconnect or reconnect</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway start in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Start WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway stop in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Stop WSL gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run openclaw gateway restart in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Restart WSL gateway</value>
+  </data>
+  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
+    <value>Could not load bindings</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
+    <value>Agent event log</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
+    <value>Go to Agent Events</value>
+  </data>
+  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
+    <value>Gateway bindings</value>
+  </data>
+  <data name="Command_GoToBindings_Title" xml:space="preserve">
+    <value>Go to Bindings</value>
+  </data>
+  <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
+    <value>Gateway channels</value>
+  </data>
+  <data name="Command_GoToChannels_Title" xml:space="preserve">
+    <value>Go to Channels</value>
+  </data>
+  <data name="Command_GoToChat_Subtitle" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="Command_GoToChat_Title" xml:space="preserve">
+    <value>Go to Chat</value>
+  </data>
+  <data name="Command_GoToConfig_Subtitle" xml:space="preserve">
+    <value>Gateway configuration</value>
+  </data>
+  <data name="Command_GoToConfig_Title" xml:space="preserve">
+    <value>Go to Config</value>
+  </data>
+  <data name="Command_GoToConnection_Subtitle" xml:space="preserve">
+    <value>Gateway, node, saved gateways</value>
+  </data>
+  <data name="Command_GoToConnection_Title" xml:space="preserve">
+    <value>Go to Connection</value>
+  </data>
+  <data name="Command_GoToCron_Subtitle" xml:space="preserve">
+    <value>Scheduled tasks</value>
+  </data>
+  <data name="Command_GoToCron_Title" xml:space="preserve">
+    <value>Go to Cron ({0})</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Subtitle" xml:space="preserve">
+    <value>Logs, support bundle, device identity, developer tools</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
+    <value>Go to Diagnostics</value>
+  </data>
+  <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
+    <value>About this app</value>
+  </data>
+  <data name="Command_GoToInfo_Title" xml:space="preserve">
+    <value>Go to Info</value>
+  </data>
+  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
+    <value>Gateway instances</value>
+  </data>
+  <data name="Command_GoToInstances_Title" xml:space="preserve">
+    <value>Go to Instances</value>
+  </data>
+  <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
+    <value>Capabilities, exec policy &amp; allowlists</value>
+  </data>
+  <data name="Command_GoToPermissions_Title" xml:space="preserve">
+    <value>Go to Permissions</value>
+  </data>
+  <data name="Command_GoToSessions_Subtitle" xml:space="preserve">
+    <value>All sessions</value>
+  </data>
+  <data name="Command_GoToSessions_Title" xml:space="preserve">
+    <value>Go to Sessions</value>
+  </data>
+  <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
+    <value>Application settings</value>
+  </data>
+  <data name="Command_GoToSettings_Title" xml:space="preserve">
+    <value>Go to Settings</value>
+  </data>
+  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
+    <value>Registered skills</value>
+  </data>
+  <data name="Command_GoToSkills_Title" xml:space="preserve">
+    <value>Go to Skills</value>
+  </data>
+  <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
+    <value>Usage statistics</value>
+  </data>
+  <data name="Command_GoToUsage_Title" xml:space="preserve">
+    <value>Go to Usage</value>
+  </data>
+  <data name="Command_GoToWorkspace_Subtitle" xml:space="preserve">
+    <value>Workspace files</value>
+  </data>
+  <data name="Command_GoToWorkspace_Title" xml:space="preserve">
+    <value>Go to Workspace ({0})</value>
+  </data>
+  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
+    <value>Open standalone chat</value>
+  </data>
+  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
+    <value>Open Chat Window</value>
+  </data>
+  <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
+    <value>Open web dashboard</value>
+  </data>
+  <data name="Command_OpenDashboard_Title" xml:space="preserve">
+    <value>Open Dashboard</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOff" xml:space="preserve">
+    <value>Currently OFF</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOn" xml:space="preserve">
+    <value>Currently ON</value>
+  </data>
+  <data name="Command_ToggleBrowserControl_Title" xml:space="preserve">
+    <value>Toggle Browser Control</value>
+  </data>
+  <data name="Command_ToggleCamera_Title" xml:space="preserve">
+    <value>Toggle Camera</value>
+  </data>
+  <data name="Command_ToggleCanvas_Title" xml:space="preserve">
+    <value>Toggle Canvas</value>
+  </data>
+  <data name="Command_ToggleNodeMode_Title" xml:space="preserve">
+    <value>Toggle Node Mode</value>
+  </data>
+  <data name="Command_ToggleScreenCapture_Title" xml:space="preserve">
+    <value>Toggle Screen Capture</value>
+  </data>
+  <data name="CommandCenter_AuthFailed" xml:space="preserve">
+    <value>Gateway authentication failed</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyAuthMayNeed" xml:space="preserve">
+    <value>Browser proxy auth may need a gateway token</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyHostNotDetected" xml:space="preserve">
+    <value>Browser proxy host not detected</value>
+  </data>
+  <data name="CommandCenter_BrowserProxySshForwardNotListening" xml:space="preserve">
+    <value>Browser proxy SSH forward is not listening</value>
+  </data>
+  <data name="CommandCenter_GatewayConnectionError" xml:space="preserve">
+    <value>Gateway connection error</value>
+  </data>
+  <data name="CommandCenter_GatewayHealthStale" xml:space="preserve">
+    <value>Gateway health is stale</value>
+  </data>
+  <data name="CommandCenter_GatewayNotConnected" xml:space="preserve">
+    <value>Gateway is not connected</value>
+  </data>
+  <data name="CommandCenter_NoChannelsReported" xml:space="preserve">
+    <value>No channels reported</value>
+  </data>
+  <data name="CommandCenter_NoChannelsRunning" xml:space="preserve">
+    <value>No channels are currently running</value>
+  </data>
+  <data name="CommandCenter_NodePendingApproval" xml:space="preserve">
+    <value>Node is waiting for approval</value>
+  </data>
+  <data name="CommandCenter_NoLocalGatewayListener" xml:space="preserve">
+    <value>No local gateway listener detected</value>
+  </data>
+  <data name="CommandCenter_NoNodesReported" xml:space="preserve">
+    <value>No nodes reported</value>
+  </data>
+  <data name="CommandCenter_SshTunnelPortNotListening" xml:space="preserve">
+    <value>SSH tunnel port is not listening</value>
+  </data>
+  <data name="CommandCenter_UsageCostsMissing" xml:space="preserve">
+    <value>Some usage costs are missing</value>
+  </data>
+  <data name="CommandCenter_WaitingForGatewayHealth" xml:space="preserve">
+    <value>Waiting for gateway health</value>
+  </data>
+  <data name="ConfigPage_CheckingConfigPermissions" xml:space="preserve">
+    <value>Checking config permissions</value>
+  </data>
+  <data name="ConfigPage_ConfigIsReadOnly" xml:space="preserve">
+    <value>Config is read-only</value>
+  </data>
+  <data name="ConfigPage_ConfigUnavailable" xml:space="preserve">
+    <value>Config unavailable</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
+    <value>Open a shell or manage the local gateway service in {0}.</value>
+  </data>
+  <data name="CronPage_JobCompleted" xml:space="preserve">
+    <value>Job completed</value>
+  </data>
+  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
+    <value>&quot;{0}&quot; ran successfully and was removed.</value>
+  </data>
+  <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
+    <value>This gateway does not have WSL or SSH terminal access.</value>
+  </data>
+  <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
+    <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
+    <value>Open SSH terminal</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalTooltip_Format" xml:space="preserve">
+    <value>Open an SSH terminal to {0}@{1}.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalInWslTooltip_Format" xml:space="preserve">
+    <value>Open a terminal in the {0} WSL gateway.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open in chat</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open this session in Chat</value>
+  </data>
+  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="SkillsPage_CountFormat" xml:space="preserve">
+    <value>({0}/{1} enabled)</value>
+  </data>
+  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
+    <value>Disabled ({0})</value>
+  </data>
+  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
+    <value>Enabled ({0})</value>
+  </data>
+</root>

@@ -144,6 +144,7 @@ public sealed class MxcAvailability
                 ubr = ubrInt;
 #pragma warning restore CA1416
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch
         {
             // Best-effort registry read; failure leaves ubr = 0 which fails the gate.

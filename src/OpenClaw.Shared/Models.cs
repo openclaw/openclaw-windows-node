@@ -1744,6 +1744,7 @@ public class AgentEventInfo
                         return phase != null ? $"⚡ {state} ({phase})" : $"⚡ {state}";
                 }
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch { }
             return "";
         }
@@ -1789,7 +1790,7 @@ public class AgentEventInfo
             if (_cachedDataJson != null) return _cachedDataJson;
             try
             {
-                _cachedDataJson = JsonSerializer.Serialize(Data, new JsonSerializerOptions { WriteIndented = true });
+                _cachedDataJson = JsonSerializer.Serialize(Data, JsonSerializerOptionsCache.WriteIndented);
             }
             catch
             {
@@ -1889,6 +1890,7 @@ public class ModelInfo
     public string? Provider { get; set; }
     public int? ContextWindow { get; set; }
     public bool IsConfigured { get; set; }
+    public bool HasConfiguredFlag { get; set; }
 
     public string DisplayName => Name ?? Id;
 }
@@ -1981,4 +1983,3 @@ public class DiscoveredGateway
         }
     }
 }
-

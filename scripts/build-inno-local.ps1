@@ -3,8 +3,8 @@
     Build local OpenClaw Companion Inno installers for quick validation.
 
 .DESCRIPTION
-    Publishes the tray app and SetupEngine.UI into a production-style layout,
-    then runs ISCC to create local unsigned installers.
+    Publishes the tray app into a production-style layout, then runs ISCC to
+    create local unsigned installers.
 
     Use -NoPublish after changing only installer.iss or docs/tests; it reuses
     the existing publish-local-* payloads and only recompiles Inno.
@@ -89,10 +89,9 @@ function Publish-ArchitecturePayload {
     )
 
     $publishDir = Join-Path $repoRoot "publish-local-$Architecture"
-    $setupPublishDir = Join-Path $repoRoot "publish-local-setup-$Architecture"
 
     Write-Step "Publishing $Architecture payload"
-    Remove-Item -LiteralPath $publishDir, $setupPublishDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $publishDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path $publishDir | Out-Null
 
     $trayPublishArgs = @(
@@ -111,27 +110,6 @@ function Publish-ArchitecturePayload {
     if ($LASTEXITCODE -ne 0) {
         throw "Tray publish failed for $Architecture."
     }
-
-    $setupPublishArgs = @(
-        ".\src\OpenClaw.SetupEngine.UI\OpenClaw.SetupEngine.UI.csproj",
-        "-c", $Configuration,
-        "-r", $RuntimeIdentifier,
-        "--self-contained",
-        "-o", $setupPublishDir,
-        "-v:minimal"
-    )
-    if ($PublishVersion) {
-        $setupPublishArgs += "-p:Version=$PublishVersion"
-    }
-
-    dotnet publish @setupPublishArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "SetupEngine.UI publish failed for $Architecture."
-    }
-
-    $setupDest = Join-Path $publishDir "SetupEngine"
-    New-Item -ItemType Directory -Path $setupDest -Force | Out-Null
-    Copy-Item -Path (Join-Path $setupPublishDir "*") -Destination $setupDest -Recurse -Force
 }
 
 function Assert-PayloadReady {
@@ -139,14 +117,14 @@ function Assert-PayloadReady {
 
     $publishDir = Join-Path $repoRoot "publish-local-$Architecture"
     $trayExe = Join-Path $publishDir "OpenClaw.Tray.WinUI.exe"
-    $setupExe = Join-Path $publishDir "SetupEngine\OpenClaw.SetupEngine.UI.exe"
 
     if (-not (Test-Path -LiteralPath $trayExe)) {
         throw "Missing tray payload at $trayExe. Rerun without -NoPublish."
     }
 
-    if (-not (Test-Path -LiteralPath $setupExe)) {
-        throw "Missing setup payload at $setupExe. Rerun without -NoPublish."
+    $setupExe = Get-ChildItem -LiteralPath $publishDir -Recurse -File -Filter "OpenClaw.SetupEngine.UI.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($setupExe) {
+        throw "SetupEngine.UI.exe should not be present in the installer payload: $($setupExe.FullName)"
     }
 
     return $publishDir

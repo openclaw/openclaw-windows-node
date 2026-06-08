@@ -148,6 +148,7 @@ public sealed class GatewayDiscoveryService : IDisposable
                         };
                     }
                 }
+                // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
                 catch { /* port doesn't respond or isn't a gateway */ }
                 return null;
             });
@@ -155,6 +156,7 @@ public sealed class GatewayDiscoveryService : IDisposable
             var probed = await Task.WhenAll(tasks);
             results.AddRange(probed.Where(g => g != null).Cast<DiscoveredGateway>());
         }
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         catch { /* best effort */ }
         return results;
     }

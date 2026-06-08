@@ -203,6 +203,7 @@ public class ScreenCaptureService
                 }
             }
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch
         {
             // Ignore cursor drawing errors

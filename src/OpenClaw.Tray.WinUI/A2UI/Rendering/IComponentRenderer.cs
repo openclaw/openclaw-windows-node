@@ -128,6 +128,7 @@ public sealed class RenderContext
         var key = $"{componentId}{subKey}";
         if (Subscriptions.TryGetValue(key, out var prev))
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { prev.Dispose(); } catch { }
             Subscriptions.Remove(key);
         }

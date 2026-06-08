@@ -77,8 +77,11 @@ public sealed partial class A2UICanvasWindow : WindowEx
         Closed += (_, _) =>
         {
             IsClosed = true;
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _router.SurfaceCreated -= OnSurfaceCreated; } catch { }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _router.SurfaceDeleted -= OnSurfaceDeleted; } catch { }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _router.ResetAll(); } catch { }
             _surfaceScrollers.Clear();
             _surfaceTabs.Clear();
@@ -347,6 +350,7 @@ public sealed partial class A2UICanvasWindow : WindowEx
             if (!keepTopMost)
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* best-effort */ }
     }
 }

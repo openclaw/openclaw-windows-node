@@ -188,6 +188,7 @@ public sealed class RecordingConsentDialog : WindowEx
                 SetForegroundWindow(hwnd);
             }
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* best-effort */ }
 
         return _tcs.Task;

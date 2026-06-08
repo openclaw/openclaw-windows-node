@@ -75,10 +75,16 @@ public class OpenClawChatDataProviderTests
     }
 
     private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots, List<ChatProviderNotification> notifications)
-        CreateProvider(SessionInfo[]? initial = null)
+        CreateProvider(SessionInfo[]? initial = null, string? toolMetaCachePath = null, string? attachmentMetaCachePath = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
-        var provider = new OpenClawChatDataProvider(bridge);
+        var provider = toolMetaCachePath is null && attachmentMetaCachePath is null
+            ? new OpenClawChatDataProvider(bridge)
+            : new OpenClawChatDataProvider(
+                bridge,
+                post: null,
+                toolMetaCacheFilePath: toolMetaCachePath ?? Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "tool-metadata.json"),
+                attachmentMetaCacheFilePath: attachmentMetaCachePath);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
@@ -1161,7 +1167,14 @@ public class OpenClawChatDataProviderTests
     {
         var historyCalls = 0;
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
-        bridge.HistoryBehavior = _ => { historyCalls++; return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" }); };
+        var reloadObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = _ =>
+        {
+            historyCalls++;
+            if (historyCalls >= 2)
+                reloadObserved.TrySetResult();
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" });
+        };
 
         await provider.LoadAsync();
         await provider.LoadHistoryAsync("main");
@@ -1171,9 +1184,7 @@ public class OpenClawChatDataProviderTests
         bridge.RaiseStatus(ConnectionStatus.Disconnected);
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        // Give the fire-and-forget reload a moment to dispatch.
-        for (int i = 0; i < 50 && historyCalls < 2; i++)
-            await Task.Delay(20);
+        await reloadObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(2, historyCalls);
     }
@@ -1194,6 +1205,7 @@ public class OpenClawChatDataProviderTests
 
         // Already Connected → setting Connected again is a no-op.
         bridge.RaiseStatus(ConnectionStatus.Connected);
+        // slopwatch-ignore: SW004 Negative async assertion needs a brief quiescence window to prove no reload fired.
         for (int i = 0; i < 10; i++) await Task.Delay(10);
 
         Assert.Equal(1, historyCalls);
@@ -1218,6 +1230,28 @@ public class OpenClawChatDataProviderTests
 
         Assert.Equal(
             new[] { "gpt-5.4", "claude-sonnet-4.6", "ollama-only-id" },
+            snapshots[^1].AvailableModels);
+    }
+
+    [Fact]
+    public async Task ModelsListUpdated_FiltersExplicitlyUnconfiguredModels()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = new List<ModelInfo>
+            {
+                new() { Id = "gpt-5.4", IsConfigured = true, HasConfiguredFlag = true },
+                new() { Id = "gpt-5.5", IsConfigured = false, HasConfiguredFlag = true },
+                new() { Id = "legacy-gateway-model" }
+            }
+        });
+
+        Assert.Equal(
+            new[] { "gpt-5.4", "legacy-gateway-model" },
             snapshots[^1].AvailableModels);
     }
 
@@ -1893,6 +1927,120 @@ public class OpenClawChatDataProviderTests
         Assert.Contains("test.txt", userEntry.Text);
     }
 
+    [Fact]
+    public async Task AttachmentMetadata_PersistsAndRehydratesFromHistory()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "Check this", default, new[]
+        {
+            new ChatAttachment
+            {
+                Type = "file",
+                MimeType = "text/plain",
+                FileName = "test.txt",
+                Content = Convert.ToBase64String(new byte[] { 72, 105 }),
+                SizeBytes = 2
+            }
+        });
+
+        var (bridge2, provider2, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "Check this", State = "final", Ts = sentTs }
+            }
+        });
+
+        await provider2.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Check this\n\u200B📎 test.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_RehydratesAttachmentOnlyHistoryMessage()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "", default, new[]
+        {
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "screenshot.png",
+                Content = Convert.ToBase64String(new byte[] { 1, 2, 3 }),
+                SizeBytes = 3
+            }
+        });
+
+        var (bridge2, provider2, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "", State = "final", Ts = sentTs }
+            }
+        });
+
+        await provider2.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("\u200B🖼️ screenshot.png", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_DoesNotRehydratePastedMarkerTextWithoutSidecar()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "\u200B📎 spoof.txt", State = "final", Ts = 1 }
+            }
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("📎 spoof.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithoutAttachment_EscapesPastedMarkerText()
+    {
+        var (_, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        await provider.SendMessageAsync("main", "\u200B📎 spoof.txt");
+
+        var userEntry = snapshots[0].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("📎 spoof.txt", userEntry.Text);
+    }
+
     // ── Auto-reload on connect: OnSessionsUpdated eager history load ──
 
     [Fact]
@@ -1924,8 +2072,7 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseSessions(new[] { MainSession() });
 
-        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
-        Assert.Same(historyLoaded.Task, completed);
+        await historyLoaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Contains("main", historyRequested);
     }
@@ -1945,6 +2092,7 @@ public class OpenClawChatDataProviderTests
         // Status stays Disconnected, sessions arrive.
         bridge.RaiseSessions(new[] { MainSession() });
 
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(100);
 
         Assert.Empty(historyRequested);
@@ -1977,8 +2125,7 @@ public class OpenClawChatDataProviderTests
         };
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
-        Assert.Same(historyLoaded.Task, completed);
+        await historyLoaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Contains("main", historyRequested);
     }
@@ -1989,6 +2136,7 @@ public class OpenClawChatDataProviderTests
     public async Task LoadHistoryAsync_WhenConnected_RetriesAfterFailure()
     {
         var calls = 0;
+        var retrySucceeded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
         bridge.HistoryBehavior = _ =>
         {
@@ -1996,6 +2144,7 @@ public class OpenClawChatDataProviderTests
             if (calls == 1)
                 throw new InvalidOperationException("gateway not ready");
 
+            retrySucceeded.TrySetResult();
             return Task.FromResult(new ChatHistoryInfo
             {
                 SessionKey = "main",
@@ -2018,8 +2167,7 @@ public class OpenClawChatDataProviderTests
             n.Kind == ChatProviderNotificationKind.Error &&
             n.Message?.Contains("gateway not ready") == true);
 
-        // Wait for the 2-second retry.
-        await Task.Delay(3000);
+        await retrySucceeded.Task.WaitAsync(TimeSpan.FromSeconds(4));
 
         // Retry should have succeeded.
         Assert.True(calls >= 2, $"Expected retry, got {calls} calls");
@@ -2190,6 +2338,36 @@ public class OpenClawChatDataProviderTests
         Assert.DoesNotContain(notifications, n =>
             (n.Title?.Contains("dropped payload") ?? false) ||
             (n.Message?.Contains("dropped payload") ?? false));
+    }
+
+    [Fact]
+    public async Task KeylessEvents_DiagnosticResetsOnReconnect()
+    {
+        // The one-shot guard should be reset when the gateway reconnects so
+        // that a still-broken gateway surfaces the notification again in the
+        // new session instead of staying silent forever.
+        var (bridge, provider, _, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
+        await provider.LoadAsync();
+
+        // First keyless event — diagnostic fires once.
+        bridge.RaiseChat(new ChatMessageInfo { SessionKey = "", Role = "assistant", Text = "pre-reconnect drop" });
+        Assert.Single(notifications, n => n.Title == "Chat_Notification_KeylessEventDropped");
+
+        // Simulate gateway disconnect + reconnect.
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+
+        // After reconnect, the same keyless-event drop should fire the diagnostic again.
+        bridge.RaiseChat(new ChatMessageInfo { SessionKey = "", Role = "assistant", Text = "post-reconnect drop" });
+        Assert.Equal(2, notifications.Count(n => n.Title == "Chat_Notification_KeylessEventDropped"));
+        Assert.DoesNotContain(notifications, n =>
+            (n.Title?.Contains("pre-reconnect drop") ?? false) ||
+            (n.Message?.Contains("pre-reconnect drop") ?? false) ||
+            (n.Title?.Contains("post-reconnect drop") ?? false) ||
+            (n.Message?.Contains("post-reconnect drop") ?? false));
     }
 
     [Fact]
@@ -2369,11 +2547,47 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("appr-fail-1", after!.RequestId);
     }
 
+    [Fact]
+    public void LoadLastChatState_WithCorruptedJson_ReturnsNull()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        File.WriteAllText(path, "{not json");
+
+        var state = OpenClawChatDataProvider.LoadLastChatState(path);
+
+        Assert.Null(state);
+    }
+
     private sealed class TestLogger : OpenClaw.Shared.IOpenClawLogger
     {
         public void Debug(string message) { }
         public void Info(string message) { }
         public void Warn(string message) { }
         public void Error(string message, Exception? ex = null) { }
+    }
+
+    private sealed class TempDirectory : IDisposable
+    {
+        public string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), "openclaw-chat-attachments-" + Guid.NewGuid().ToString("N"));
+
+        public TempDirectory()
+        {
+            Directory.CreateDirectory(DirectoryPath);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(DirectoryPath))
+                    Directory.Delete(DirectoryPath, recursive: true);
+            }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            catch
+            {
+                // Test cleanup is best-effort.
+            }
+        }
     }
 }

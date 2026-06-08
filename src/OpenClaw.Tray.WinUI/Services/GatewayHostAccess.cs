@@ -1,3 +1,4 @@
+using System;
 using OpenClaw.Connection;
 
 namespace OpenClawTray.Services;
@@ -7,6 +8,18 @@ internal enum GatewayTerminalTarget
     None,
     Wsl,
     Ssh
+}
+
+/// <summary>
+/// Localization indirection for <see cref="GatewayHostAccessPlan"/> / <see cref="GatewayHostAccessClassifier"/>.
+/// Defaults are identity (return the resource key unchanged) so the file is unit-testable
+/// without a WinUI runtime. <c>App.xaml.cs</c> wires these up to <c>LocalizationHelper</c>
+/// at startup so the running app sees real localized strings.
+/// </summary>
+internal static class GatewayHostAccessLocalization
+{
+    public static Func<string, string> GetString { get; set; } = key => key;
+    public static Func<string, object?[], string> Format { get; set; } = (key, _) => key;
 }
 
 internal sealed record GatewayHostAccessPlan(
@@ -26,6 +39,7 @@ internal sealed record GatewayHostAccessPlan(
 
     public static GatewayHostAccessPlan None(string? gatewayId = null, string? disabledReason = null)
     {
+        var defaultReason = disabledReason ?? GatewayHostAccessLocalization.GetString("GatewayHostAccess_NoTerminalAccess");
         return new GatewayHostAccessPlan(
             gatewayId,
             GatewayTerminalTarget.None,
@@ -33,9 +47,9 @@ internal sealed record GatewayHostAccessPlan(
             null,
             null,
             false,
-            "Open terminal",
-            disabledReason ?? "This gateway does not have WSL or SSH terminal access.",
-            disabledReason ?? "This gateway does not have WSL or SSH terminal access.");
+            GatewayHostAccessLocalization.GetString("GatewayHostAccess_OpenTerminalLabel"),
+            defaultReason,
+            defaultReason);
     }
 }
 
@@ -61,8 +75,8 @@ internal static class GatewayHostAccessClassifier
                 sshUser,
                 sshHost,
                 true,
-                "Open terminal",
-                $"Open a terminal in the {distroName} WSL gateway.",
+                GatewayHostAccessLocalization.GetString("GatewayHostAccess_OpenTerminalLabel"),
+                GatewayHostAccessLocalization.Format("GatewayHostAccess_OpenTerminalInWslTooltip_Format", new object?[] { distroName }),
                 null);
         }
 
@@ -75,14 +89,14 @@ internal static class GatewayHostAccessClassifier
                 sshUser,
                 sshHost,
                 false,
-                "Open SSH terminal",
-                $"Open an SSH terminal to {sshUser}@{sshHost}.",
+                GatewayHostAccessLocalization.GetString("GatewayHostAccess_OpenSshTerminalLabel"),
+                GatewayHostAccessLocalization.Format("GatewayHostAccess_OpenSshTerminalTooltip_Format", new object?[] { sshUser, sshHost }),
                 null);
         }
 
         return GatewayHostAccessPlan.None(
             record.Id,
-            "This gateway was not created with WSL and does not have an SSH tunnel.");
+            GatewayHostAccessLocalization.GetString("GatewayHostAccess_NoWslOrSshDisabled"));
     }
 
     private static string? Normalize(string? value)

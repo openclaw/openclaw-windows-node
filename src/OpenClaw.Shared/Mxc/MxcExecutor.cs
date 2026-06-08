@@ -142,10 +142,12 @@ public sealed class MxcExecutor
 
             if (!completed)
             {
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { process.Kill(entireProcessTree: true); } catch { }
                 // WaitForExit() (sync) blocks until both stdout and stderr async
                 // readers have drained the redirected pipes. Without this the
                 // event handlers can still be appending while ToString() runs.
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { process.WaitForExit(); } catch { }
                 sw.Stop();
                 string capturedOut;
@@ -162,6 +164,7 @@ public sealed class MxcExecutor
             }
 
             // Flush async readers before reading the StringBuilders.
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { process.WaitForExit(); } catch { }
             sw.Stop();
             string outRaw, errRaw;

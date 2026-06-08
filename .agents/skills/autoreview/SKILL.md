@@ -17,7 +17,7 @@ Use when:
 
 OpenClaw Windows Node specifics:
 
-- The release/default branch is `master`; the helper resolves `origin/HEAD` so do not hardcode `origin/main`.
+- The release/default branch is `main`; the helper resolves `origin/HEAD` so do not hardcode `origin/master`.
 - After review-triggered code changes, run the repo-required validation: `./build.ps1`, `dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --no-restore`, and `dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore`.
 - If the checkout is on macOS/Linux or lacks .NET/PowerShell/Windows SDK prerequisites, report the validation blocker clearly instead of pretending the Windows validation ran.
 - Do not send absolute local checkout paths, home-directory names, or private temp/worktree paths to review engines; use repo-relative labels or the repo name.
@@ -66,13 +66,13 @@ only proves there is no local patch.
 Branch/PR work:
 
 ```bash
-<autoreview-helper> --mode branch --base origin/master
+<autoreview-helper> --mode branch --base origin/main
 ```
 
 Optional review context is first-class:
 
 ```bash
-<autoreview-helper> --mode branch --base origin/master --prompt-file /tmp/review-notes.md --dataset /tmp/evidence.json
+<autoreview-helper> --mode branch --base origin/main --prompt-file /tmp/review-notes.md --dataset /tmp/evidence.json
 ```
 
 If an open PR exists, use its actual base:
@@ -91,7 +91,7 @@ Committed single change:
 or with the helper:
 
 Use commit review for already-landed or already-pushed work on the default
-branch. Reviewing clean `master` against `origin/master` is usually an empty
+branch. Reviewing clean `main` against `origin/main` is usually an empty
 diff after push. For a small stack, review each commit explicitly or review the
 branch before merging with `--base`.
 

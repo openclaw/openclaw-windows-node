@@ -165,7 +165,8 @@
                                     Visibility="Collapsed"
                                     Click="OnStripPrimaryClicked"
                                     AutomationProperties.AutomationId="StripPrimaryAction"/>
-                            <Button x:Name="StripTerminalButton"
+                            <Button x:Uid="ConnectionPage_StripTerminalButton"
+                                    x:Name="StripTerminalButton"
                                     Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0"
                                     Visibility="Collapsed"
@@ -178,7 +179,8 @@
                             </Button>
                             <!-- Disconnect/connect toggle. ON = connection is live (or attempting).
                                  Tap OFF → disconnect; tap ON (from off) → reconnect. -->
-                            <Button x:Name="StripDashboardButton"
+                            <Button x:Uid="ConnectionPage_StripDashboardButton"
+                                    x:Name="StripDashboardButton"
                                     Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0"
                                     Visibility="Collapsed"
@@ -189,7 +191,8 @@
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.OpenInBrowser, Mode=OneTime}" FontSize="14"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </Button>
-                            <ToggleSwitch x:Name="ConnectionToggle"
+                            <ToggleSwitch x:Uid="ConnectionPage_ConnectionToggle"
+                                          x:Name="ConnectionToggle"
                                           MinWidth="0" MinHeight="0"
                                           OnContent="" OffContent=""
                                           Visibility="Collapsed"
@@ -217,11 +220,13 @@
                                       VerticalAlignment="Center" HorizontalAlignment="Center"
                                       AutomationProperties.AccessibilityView="Raw"/>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock x:Name="GatewayHostControlsTitleText"
+                                <TextBlock x:Uid="ConnectionPage_GatewayHostControlsTitle"
+                                           x:Name="GatewayHostControlsTitleText"
                                            Text="WSL gateway"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            AutomationProperties.HeadingLevel="Level2"/>
-                                <TextBlock x:Name="GatewayHostControlsDescriptionText"
+                                <TextBlock x:Uid="ConnectionPage_GatewayHostControlsDescription"
+                                           x:Name="GatewayHostControlsDescriptionText"
                                            Text="Open a shell or manage the local gateway service in WSL."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -249,7 +254,8 @@
                                         Spacing="8"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center">
-                                <Button x:Name="GatewayHostOpenTerminalButton"
+                                <Button x:Uid="ConnectionPage_GatewayHostOpenTerminalButton"
+                                        x:Name="GatewayHostOpenTerminalButton"
                                         Click="OnOpenGatewayTerminal"
                                         ToolTipService.ToolTip="Open terminal"
                                         AutomationProperties.Name="Open terminal"
@@ -257,22 +263,26 @@
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Terminal, Mode=OneTime}" FontSize="12"
                                                   AutomationProperties.AccessibilityView="Raw"/>
-                                        <TextBlock Text="Terminal" FontSize="13"/>
+                                        <TextBlock x:Uid="ConnectionPage_GatewayHostTerminalLabel"
+                                                   Text="Terminal" FontSize="13"/>
                                     </StackPanel>
                                 </Button>
-                                <Button x:Name="GatewayHostStartButton"
+                                <Button x:Uid="ConnectionPage_GatewayHostStartButton"
+                                        x:Name="GatewayHostStartButton"
                                         Content="Start"
                                         Click="OnStartGatewayClicked"
                                         ToolTipService.ToolTip="Run openclaw gateway start in WSL"
                                         AutomationProperties.Name="Start WSL gateway"
                                         AutomationProperties.AutomationId="GatewayHostStartAction"/>
-                                <Button x:Name="GatewayHostStopButton"
+                                <Button x:Uid="ConnectionPage_GatewayHostStopButton"
+                                        x:Name="GatewayHostStopButton"
                                         Content="Stop"
                                         Click="OnStopGatewayClicked"
                                         ToolTipService.ToolTip="Run openclaw gateway stop in WSL"
                                         AutomationProperties.Name="Stop WSL gateway"
                                         AutomationProperties.AutomationId="GatewayHostStopAction"/>
-                                <Button x:Name="GatewayHostRestartButton"
+                                <Button x:Uid="ConnectionPage_GatewayHostRestartButton"
+                                        x:Name="GatewayHostRestartButton"
                                         Content="Restart"
                                         Click="OnRestartGatewayClicked"
                                         ToolTipService.ToolTip="Run openclaw gateway restart in WSL"
@@ -976,11 +986,21 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Uid="ConnectionPage_RemotePort" Grid.Column="0"
+                                <TextBox x:Uid="ConnectionPage_SshServerPort" Grid.Column="0"
+                                         x:Name="AddSshServerPortBox"
+                                         Header="SSH port"
+                                         PlaceholderText="22"/>
+                                <TextBox x:Uid="ConnectionPage_RemotePort" Grid.Column="1"
                                          x:Name="AddSshRemotePortBox"
                                          Header="Remote port"
                                          PlaceholderText="18789"/>
-                                <TextBox x:Uid="ConnectionPage_LocalPort" Grid.Column="1"
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Uid="ConnectionPage_LocalPort" Grid.Column="0"
                                          x:Name="AddSshLocalPortBox"
                                          Header="Local port"
                                          PlaceholderText="18789"/>

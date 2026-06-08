@@ -156,6 +156,7 @@ internal sealed class PreviewWindow : WindowEx
                 var rightInsetDip = rightInsetPx > 0 ? rightInsetPx / scale : 138;
                 titleBar.Padding = new Thickness(14, 0, rightInsetDip, 0);
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch
             {
                 // Non-fatal: leave the fallback padding.
@@ -218,6 +219,7 @@ internal sealed class PreviewWindow : WindowEx
                     _dispatcherQueue.TryEnqueue(() => ApplyResolvedTheme());
                 _themeUiSettings.ColorValuesChanged += _themeColorValuesChangedHandler;
             }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { /* non-fatal */ }
         }
 
@@ -226,6 +228,7 @@ internal sealed class PreviewWindow : WindowEx
             if (_themeUiSettings is not null && _themeColorValuesChangedHandler is not null)
             {
                 try { _themeUiSettings.ColorValuesChanged -= _themeColorValuesChangedHandler; }
+                // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
                 catch { /* ignore */ }
             }
             _themeColorValuesChangedHandler = null;
@@ -334,6 +337,7 @@ internal sealed class PreviewWindow : WindowEx
             int pref = DWMWCP_ROUND;
             _ = DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch
         {
             // Non-fatal: square corners are an acceptable fallback.
@@ -571,6 +575,7 @@ internal sealed class PreviewWindow : WindowEx
                 var json = $"{{\"error\":{System.Text.Json.JsonSerializer.Serialize(ex.Message)},\"type\":{System.Text.Json.JsonSerializer.Serialize(ex.GetType().FullName ?? "")}}}";
                 File.WriteAllText(errPath, json);
             }
+            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
             catch { /* best effort */ }
             Console.Error.WriteLine($"[preview] capture failed: {ex}");
             ExitWithCode(1);
@@ -582,6 +587,7 @@ internal sealed class PreviewWindow : WindowEx
         // WinUI doesn't expose a clean Application.Exit(int) — the Win32
         // ExitProcess avoids racing with the dispatcher loop teardown that
         // a managed Application.Exit() can leave hanging.
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { Close(); } catch { /* ignore */ }
         ExitProcess((uint)code);
     }

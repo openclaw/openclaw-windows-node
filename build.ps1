@@ -349,7 +349,7 @@ $projects = @{
     "WinNodeCli" = @{ Path = "src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj"; UseRid = $false }
     "Tray" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
     "WinUI" = @{ Path = "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj"; UseRid = $true }
-    "SetupEngine" = @{ Path = "src/OpenClaw.SetupEngine.UI/OpenClaw.SetupEngine.UI.csproj"; UseRid = $true }
+    "SetupEngine" = @{ Path = "src/OpenClaw.SetupEngine/OpenClaw.SetupEngine.csproj"; UseRid = $false }
 }
 
 $toBuild = if ($Project -eq "All") { @("Shared", "Cli", "WinNodeCli", "SetupEngine", "WinUI") } else { @($Project) }
@@ -370,26 +370,6 @@ for ($i = 0; $i -lt $toBuild.Count; $i++) {
         }
     }
 }
-
-# =============================================================================
-# POST-BUILD: Copy SetupEngine.UI into WinUI output so the tray can find it
-# =============================================================================
-if (($buildResults.ContainsKey("SetupEngine") -and $buildResults["SetupEngine"]) -and
-    (($buildResults.ContainsKey("WinUI") -and $buildResults["WinUI"]) -or ($buildResults.ContainsKey("Tray") -and $buildResults["Tray"]))) {
-    $setupTfm = Get-ProjectTargetFramework $projects["SetupEngine"].Path
-    $winUITfm = Get-ProjectTargetFramework $projects["WinUI"].Path
-    if ($setupTfm -and $winUITfm) {
-        $setupOutDir = "src\OpenClaw.SetupEngine.UI\bin\$Configuration\$setupTfm\$rid"
-        $winUIOutDir = "src\OpenClaw.Tray.WinUI\bin\$Configuration\$winUITfm\$rid"
-        $destDir = Join-Path $winUIOutDir "SetupEngine"
-        if (Test-Path $setupOutDir) {
-            if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
-            Copy-Item "$setupOutDir\*" $destDir -Recurse -Force
-            Write-Info "Copied SetupEngine.UI output → $destDir"
-        }
-    }
-}
-# =============================================================================
 
 Write-Header "Build Summary"
 

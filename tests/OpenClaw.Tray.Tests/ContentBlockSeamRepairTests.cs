@@ -127,4 +127,66 @@ public class ContentBlockSeamRepairTests
         const string expected = "Step one done.\n\nStep two done.\n\nStep three done.\n\nAll finished!";
         Assert.Equal(expected, OpenClawChatDataProvider.RepairContentBlockSeams(input));
     }
+
+    // ─── Edge cases for the fence-splitting / range-indexer path ───
+
+    [Fact]
+    public void FenceAtStartOfInput_NoProseBeforeFence()
+    {
+        // fenceStart == 0: the Substring(0, 0) call returns empty string,
+        // and RepairProseSegment receives "" — must not crash or inject breaks.
+        const string input = "```bash\necho hello\n```";
+        Assert.Equal(input, OpenClawChatDataProvider.RepairContentBlockSeams(input));
+    }
+
+    [Fact]
+    public void ProseAfterFence_UsesRangeIndexer()
+    {
+        // After the closing fence the remaining prose starts at offset > 0.
+        // Exercises the text[i..] path (was text.AsSpan(i).ToString()).
+        const string input =
+            "```\ncode\n```\n" +
+            "Now let's continue.Next action is here.";
+
+        const string expected =
+            "```\ncode\n```\n" +
+            "Now let's continue.\n\nNext action is here.";
+
+        Assert.Equal(expected, OpenClawChatDataProvider.RepairContentBlockSeams(input));
+    }
+
+    [Fact]
+    public void AdjacentFences_EmptyProseSegmentsBetweenFences()
+    {
+        // Two fences with no prose between them: ensures no spurious newlines
+        // are injected into the empty inter-fence segment.
+        const string input =
+            "Preamble.Next step:\n" +
+            "```\nfirst block\n```\n" +
+            "```\nsecond block\n```\n" +
+            "All done.Ready to proceed.";
+
+        const string expected =
+            "Preamble.\n\nNext step:\n" +
+            "```\nfirst block\n```\n" +
+            "```\nsecond block\n```\n" +
+            "All done.\n\nReady to proceed.";
+
+        Assert.Equal(expected, OpenClawChatDataProvider.RepairContentBlockSeams(input));
+    }
+
+    [Fact]
+    public void SeamImmediatelyBeforeFence_RepairsProseAndPreservesFence()
+    {
+        // Seam falls in prose that immediately precedes a code fence.
+        const string input =
+            "Step one done.Step two:\n" +
+            "```\ncode here\n```";
+
+        const string expected =
+            "Step one done.\n\nStep two:\n" +
+            "```\ncode here\n```";
+
+        Assert.Equal(expected, OpenClawChatDataProvider.RepairContentBlockSeams(input));
+    }
 }

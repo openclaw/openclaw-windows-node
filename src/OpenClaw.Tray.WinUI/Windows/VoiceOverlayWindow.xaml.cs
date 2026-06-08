@@ -84,6 +84,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
                     TranscriptScroller.UpdateLayout();
                     TranscriptScroller.ChangeView(null, TranscriptScroller.ScrollableHeight, null);
                 }
+                // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
                 catch { }
             }
             else

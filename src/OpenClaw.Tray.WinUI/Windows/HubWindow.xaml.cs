@@ -18,10 +18,17 @@ public sealed partial class HubWindow : WindowEx
     public bool IsClosed { get; private set; }
 
     private static App CurrentApp => (App)Application.Current;
+    private static TaskCompletionSource<bool> CreateCompletedContentReady()
+    {
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ready.SetResult(true);
+        return ready;
+    }
 
     internal AppState? AppModel { get; set; }
     private string _currentAgentId = "main";
     public string CurrentAgentId => _currentAgentId;
+    private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
 
     // Legacy compatibility alias
     public string SelectedAgentId => _currentAgentId;
@@ -80,6 +87,7 @@ public sealed partial class HubWindow : WindowEx
         Closed += (s, e) =>
         {
             IsClosed = true;
+            _contentReady.TrySetResult(true);
             _gatewayNavHideTimer?.Stop();
             if (AppModel != null)
                 AppModel.PropertyChanged -= OnAppModelChanged;
@@ -285,6 +293,7 @@ public sealed partial class HubWindow : WindowEx
         // re-invokes the current page.
         if (ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
+            _contentReady = CreateCompletedContentReady();
             // Same as above: Frame.Navigate is skipped, so
             // OnContentFrameNavigated won't run to consume the origin. If the
             // caller changed origin context, refresh the active page so inline
@@ -312,7 +321,20 @@ public sealed partial class HubWindow : WindowEx
 
         // Pass the tag as the navigation parameter so OnContentFrameNavigated
         // can recover the canonical destination on Back/Forward.
-        ContentFrame.Navigate(pageType, tag);
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _contentReady = ready;
+        if (!ContentFrame.Navigate(pageType, tag))
+            CompleteContentReady(ready);
+    }
+
+    public async Task WaitForCurrentContentReadyAsync()
+    {
+        var ready = _contentReady;
+        var completed = await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        if (completed == ready.Task)
+            await ready.Task;
+        else
+            ready.TrySetResult(true);
     }
 
     private static NavigationViewItem? FindNavItemForTag(IList<object> items, string tag)
@@ -339,12 +361,12 @@ public sealed partial class HubWindow : WindowEx
 
     private void UpdateTitleBarStatus(ConnectionStatus status)
     {
-        var (color, text) = status switch
+        var color = status switch
         {
-            ConnectionStatus.Connected => (Microsoft.UI.Colors.LimeGreen, "Connected"),
-            ConnectionStatus.Connecting => (Microsoft.UI.Colors.Orange, "Connecting…"),
-            ConnectionStatus.Error => (Microsoft.UI.Colors.Red, "Error"),
-            _ => (Microsoft.UI.Colors.Gray, "Disconnected")
+            ConnectionStatus.Connected => Microsoft.UI.Colors.LimeGreen,
+            ConnectionStatus.Connecting => Microsoft.UI.Colors.Orange,
+            ConnectionStatus.Error => Microsoft.UI.Colors.Red,
+            _ => Microsoft.UI.Colors.Gray
         };
 
         TitleStatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
@@ -353,7 +375,7 @@ public sealed partial class HubWindow : WindowEx
         if (status == ConnectionStatus.Connected && LastGatewaySelf is { ServerVersion: { Length: > 0 } ver })
             TitleStatusText.Text = $"v{ver}";
         else
-            TitleStatusText.Text = text;
+            TitleStatusText.Text = LocalizationHelper.GetConnectionStatusText(status);
 
         // Update role indicator dots
         var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
@@ -544,6 +566,41 @@ public sealed partial class HubWindow : WindowEx
         }
 
         InitializeCurrentPage();
+        ArmContentReady(e.Content as FrameworkElement);
+    }
+
+    private void OnContentFrameNavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+    {
+        _contentReady.TrySetResult(true);
+    }
+
+    private void ArmContentReady(FrameworkElement? element)
+    {
+        var ready = _contentReady;
+        if (element == null || element.IsLoaded)
+        {
+            CompleteContentReady(ready);
+            return;
+        }
+
+        RoutedEventHandler? loaded = null;
+        loaded = (_, _) =>
+        {
+            element.Loaded -= loaded;
+            CompleteContentReady(ready);
+        };
+        element.Loaded += loaded;
+    }
+
+    private void CompleteContentReady(TaskCompletionSource<bool> ready)
+    {
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (ReferenceEquals(_contentReady, ready))
+                    ready.TrySetResult(true);
+            });
     }
 
     /// <summary>
@@ -561,6 +618,7 @@ public sealed partial class HubWindow : WindowEx
         var newState = args is NavigationViewPaneClosingEventArgs ? false : true;
         if (settings.HubNavPaneOpen == newState) return;
         settings.HubNavPaneOpen = newState;
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         try { settings.Save(); } catch { /* swallow — don't block UI */ }
     }
 
@@ -751,60 +809,62 @@ public sealed partial class HubWindow : WindowEx
         var commands = new List<CommandItem>
         {
             // Navigation
-            new() { Icon = "🔌", Title = "Go to Connection", Subtitle = "Gateway, node, saved gateways", Tag = "connection" },
-            new() { Icon = "💬", Title = "Go to Chat", Subtitle = "Open chat", Tag = "chat" },
-            new() { Icon = "🧠", Title = "Go to Sessions", Subtitle = "All sessions", Tag = "sessions" },
-            new() { Icon = "🧠", Title = "Go to Agent Events", Subtitle = "Agent event log", Tag = "agentevents" },
-            new() { Icon = "🧠", Title = "Go to Skills", Subtitle = "Registered skills", Tag = "skills" },
-            new() { Icon = "🧠", Title = $"Go to Cron ({agentId})", Subtitle = "Scheduled tasks", Tag = $"agent:{agentId}:cron" },
-            new() { Icon = "🧠", Title = $"Go to Workspace ({agentId})", Subtitle = "Workspace files", Tag = $"agent:{agentId}" },
-            new() { Icon = "📡", Title = "Go to Channels", Subtitle = "Gateway channels", Tag = "channels" },
-            new() { Icon = "📡", Title = "Go to Instances", Subtitle = "Gateway instances", Tag = "instances" },
-            new() { Icon = "📡", Title = "Go to Config", Subtitle = "Gateway configuration", Tag = "config" },
-            new() { Icon = "📡", Title = "Go to Usage", Subtitle = "Usage statistics", Tag = "usage" },
-            new() { Icon = "📡", Title = "Go to Bindings", Subtitle = "Gateway bindings", Tag = "bindings" },
-            new() { Icon = "🛡️", Title = "Go to Permissions", Subtitle = "Capabilities, exec policy & allowlists", Tag = "permissions" },
-            new() { Icon = "⚙️", Title = "Go to Settings", Subtitle = "Application settings", Tag = "settings" },
-            new() { Icon = "🐛", Title = "Go to Diagnostics", Subtitle = "Logs, support bundle, device identity, developer tools", Tag = "debug" },
-            new() { Icon = "ℹ️", Title = "Go to Info", Subtitle = "About this app", Tag = "info" },
+            new() { Icon = "🔌", Title = LocalizationHelper.GetString("Command_GoToConnection_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToConnection_Subtitle"), Tag = "connection" },
+            new() { Icon = "💬", Title = LocalizationHelper.GetString("Command_GoToChat_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToChat_Subtitle"), Tag = "chat" },
+            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToSessions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSessions_Subtitle"), Tag = "sessions" },
+            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToAgentEvents_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToAgentEvents_Subtitle"), Tag = "agentevents" },
+            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToSkills_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSkills_Subtitle"), Tag = "skills" },
+            new() { Icon = "🧠", Title = LocalizationHelper.Format("Command_GoToCron_Title", agentId), Subtitle = LocalizationHelper.GetString("Command_GoToCron_Subtitle"), Tag = $"agent:{agentId}:cron" },
+            new() { Icon = "🧠", Title = LocalizationHelper.Format("Command_GoToWorkspace_Title", agentId), Subtitle = LocalizationHelper.GetString("Command_GoToWorkspace_Subtitle"), Tag = $"agent:{agentId}" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToChannels_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToChannels_Subtitle"), Tag = "channels" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToInstances_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToInstances_Subtitle"), Tag = "instances" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToConfig_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToConfig_Subtitle"), Tag = "config" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToUsage_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToUsage_Subtitle"), Tag = "usage" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToBindings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToBindings_Subtitle"), Tag = "bindings" },
+            new() { Icon = "🛡️", Title = LocalizationHelper.GetString("Command_GoToPermissions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToPermissions_Subtitle"), Tag = "permissions" },
+            new() { Icon = "⚙️", Title = LocalizationHelper.GetString("Command_GoToSettings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSettings_Subtitle"), Tag = "settings" },
+            new() { Icon = "🐛", Title = LocalizationHelper.GetString("Command_GoToDiagnostics_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToDiagnostics_Subtitle"), Tag = "debug" },
+            new() { Icon = "ℹ️", Title = LocalizationHelper.GetString("Command_GoToInfo_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToInfo_Subtitle"), Tag = "info" },
 
             // Actions
-            new() { Icon = "💬", Title = "Open Chat Window", Subtitle = "Open standalone chat", Tag = "chat" },
-            new() { Icon = "🌐", Title = "Open Dashboard", Subtitle = "Open web dashboard", Execute = () => ((IAppCommands)Application.Current).OpenDashboard(null) },
+            new() { Icon = "💬", Title = LocalizationHelper.GetString("Command_OpenChatWindow_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenChatWindow_Subtitle"), Tag = "chat" },
+            new() { Icon = "🌐", Title = LocalizationHelper.GetString("Command_OpenDashboard_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenDashboard_Subtitle"), Execute = () => ((IAppCommands)Application.Current).OpenDashboard(null) },
         };
 
         // Toggle commands
         var settings = CurrentApp.Settings;
         if (settings != null)
         {
+            var on = LocalizationHelper.GetString("Command_Subtitle_CurrentlyOn");
+            var off = LocalizationHelper.GetString("Command_Subtitle_CurrentlyOff");
             commands.Add(new CommandItem
             {
-                Icon = "🔌", Title = "Toggle Node Mode",
-                Subtitle = settings.EnableNodeMode ? "Currently ON" : "Currently OFF",
+                Icon = "🔌", Title = LocalizationHelper.GetString("Command_ToggleNodeMode_Title"),
+                Subtitle = settings.EnableNodeMode ? on : off,
                 Execute = () => { settings.EnableNodeMode = !settings.EnableNodeMode; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "📷", Title = "Toggle Camera",
-                Subtitle = settings.NodeCameraEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "📷", Title = LocalizationHelper.GetString("Command_ToggleCamera_Title"),
+                Subtitle = settings.NodeCameraEnabled ? on : off,
                 Execute = () => { settings.NodeCameraEnabled = !settings.NodeCameraEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "🎨", Title = "Toggle Canvas",
-                Subtitle = settings.NodeCanvasEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "🎨", Title = LocalizationHelper.GetString("Command_ToggleCanvas_Title"),
+                Subtitle = settings.NodeCanvasEnabled ? on : off,
                 Execute = () => { settings.NodeCanvasEnabled = !settings.NodeCanvasEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "🖥️", Title = "Toggle Screen Capture",
-                Subtitle = settings.NodeScreenEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "🖥️", Title = LocalizationHelper.GetString("Command_ToggleScreenCapture_Title"),
+                Subtitle = settings.NodeScreenEnabled ? on : off,
                 Execute = () => { settings.NodeScreenEnabled = !settings.NodeScreenEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "🌐", Title = "Toggle Browser Control",
-                Subtitle = settings.NodeBrowserProxyEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "🌐", Title = LocalizationHelper.GetString("Command_ToggleBrowserControl_Title"),
+                Subtitle = settings.NodeBrowserProxyEnabled ? on : off,
                 Execute = () => { settings.NodeBrowserProxyEnabled = !settings.NodeBrowserProxyEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
         }

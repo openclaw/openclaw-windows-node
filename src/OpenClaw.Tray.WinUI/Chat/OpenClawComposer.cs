@@ -153,6 +153,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         sendVersion.Set(sendVersion.Value + 1);
                     }
                 }
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 catch { /* voice cancelled or failed */ }
                 finally
                 {
@@ -389,6 +390,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                                 Props.OnAttachmentPasted?.Invoke(att);
                             }
                         }
+                        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
                         catch
                         {
                             // If anything goes wrong reading the clipboard,

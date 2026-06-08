@@ -3292,6 +3292,7 @@ public class SttCapabilityTests
         var cap = new SttCapability(NullLogger.Instance);
         cap.TranscribeRequested += async (_, ct) =>
         {
+            // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
             await Task.Delay(Timeout.Infinite, ct);
             return new SttTranscribeResult();
         };
@@ -3497,6 +3498,7 @@ public class SttCapabilityTests
         var cap = new SttCapability(NullLogger.Instance);
         cap.ListenRequested += async (_, ct) =>
         {
+            // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
             await Task.Delay(Timeout.Infinite, ct);
             return new SttListenResult();
         };

@@ -1133,20 +1133,20 @@ public sealed partial class ConfigPage : Page
         switch (GetConfigPermissionState())
         {
             case ConfigPermissionState.Checking:
-                PermissionInfoBar.Title = "Checking config permissions";
+                PermissionInfoBar.Title = LocalizationHelper.GetString("ConfigPage_CheckingConfigPermissions");
                 PermissionInfoBar.Message = "Waiting for the gateway to report this operator's permissions.";
                 PermissionInfoBar.Severity = InfoBarSeverity.Informational;
                 SetInfoBarOpen(PermissionInfoBar, true);
                 break;
             case ConfigPermissionState.NoRead:
                 ClearConfigViewForNoRead();
-                PermissionInfoBar.Title = "Config unavailable";
+                PermissionInfoBar.Title = LocalizationHelper.GetString("ConfigPage_ConfigUnavailable");
                 PermissionInfoBar.Message = "This operator token lacks operator.read permission, so the gateway config cannot be loaded here.";
                 PermissionInfoBar.Severity = InfoBarSeverity.Error;
                 SetInfoBarOpen(PermissionInfoBar, true);
                 break;
             case ConfigPermissionState.ReadOnly:
-                PermissionInfoBar.Title = "Config is read-only";
+                PermissionInfoBar.Title = LocalizationHelper.GetString("ConfigPage_ConfigIsReadOnly");
                 PermissionInfoBar.Message = "This operator token can read config but lacks operator.write permission. You can inspect and validate drafts, but Save is disabled.";
                 PermissionInfoBar.Severity = InfoBarSeverity.Warning;
                 SetInfoBarOpen(PermissionInfoBar, true);

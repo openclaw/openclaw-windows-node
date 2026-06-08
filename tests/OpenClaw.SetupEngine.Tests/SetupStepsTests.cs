@@ -1,6 +1,7 @@
 using OpenClaw.Connection;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -28,7 +29,9 @@ public class SetupStepsTests : IDisposable
     {
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", _prevDataDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", _prevLocalDataDir);
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_localTempDir, recursive: true); } catch { }
     }
 
@@ -600,9 +603,29 @@ public class SetupStepsTests : IDisposable
             "WSL2 is unable to start since virtualization is not enabled on this machine. "
             + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
             + "and virtualization is turned on in your computer's firmware settings.",
+            Architecture.X64,
             out var message));
         Assert.Contains("BIOS", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("VT-x", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_UsesArm64WordingOnArm64()
+    {
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(
+            "WSL2 is unable to start since virtualization is not enabled on this machine. "
+            + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
+            + "and virtualization is turned on in your computer's firmware settings.",
+            Architecture.Arm64,
+            out var message));
+        Assert.Contains("ARM64", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UEFI", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+        // Must not name x86-specific extensions on ARM64.
+        Assert.DoesNotContain("VT-x", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AMD-V", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SVM", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -649,7 +672,8 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("BIOS", result.Message, StringComparison.OrdinalIgnoreCase);
+        // Don't assert on "BIOS" / "UEFI" here -- the wording flexes by host
+        // CPU architecture (this test runs on either x64 or Arm64 dev boxes).
     }
 
     [Fact]
@@ -805,6 +829,81 @@ public class SetupStepsTests : IDisposable
             commands);
     }
 
+    // Issue: device-pair plugin must be enabled, not just configured. Otherwise
+    // OAuth providers (Codex, etc.) hang at scope-upgrade and never emit auth URLs.
+    [Fact]
+    public void ConfigureGateway_EnablesDevicePairPluginForLoopbackGateway()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "loopback" },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_EnablesDevicePairPluginWhenPublicUrlOverridden()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "lan",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.DevicePairPublicUrlKey] = "https://gateway.example.test",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_DoesNotEnableDevicePairWhenNoPublicUrlAvailable()
+    {
+        // LAN bind with no operator-supplied publicUrl: we don't know where the plugin
+        // would be reachable, so don't enable it; preserves the prior behavior.
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "lan" },
+            18789,
+            "'[]'");
+
+        Assert.DoesNotContain(
+            "openclaw config set plugins.entries.device-pair.enabled",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_RespectsExplicitDevicePairEnabledOverride()
+    {
+        // If the operator explicitly sets the enabled flag via ExtraConfig, the
+        // ExtraConfig loop writes it and we don't append a duplicate.
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "loopback",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.DevicePairEnabledKey] = "false",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled 'false'",
+            commands);
+        Assert.DoesNotContain(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
     [Fact]
     public void ConfigureGateway_DoesNotOverrideExplicitDevicePairPublicUrl()
     {
@@ -838,7 +937,10 @@ public class SetupStepsTests : IDisposable
 
         Assert.True(result.IsSuccess);
         var wslCall = Assert.Single(commands.WslCalls);
-        Assert.Equal(ConfigureGatewayStep.GatewayConfigurationTimeout, wslCall.Timeout);
+        Assert.Equal(
+            ConfigureGatewayStep.ComputeConfigurationTimeout(wslCall.Command),
+            wslCall.Timeout);
+        Assert.True(wslCall.Timeout >= ConfigureGatewayStep.MinConfigurationTimeout);
     }
 
     [Fact]
@@ -853,8 +955,51 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         var message = Assert.IsType<string>(result.Message);
-        Assert.Contains("Gateway configuration timed out after 120s", message);
+        Assert.Contains("Gateway configuration timed out after", message);
         Assert.DoesNotContain("exit -1", message);
+    }
+
+    [Fact]
+    public void ComputeConfigurationTimeout_ScalesWithConfigCommandCount()
+    {
+        // Each `openclaw config set` pays a cold Node start inside WSL. As more keys are
+        // configured the budget must grow, otherwise the step silently regresses toward a
+        // timeout (the failure mode the fixed 120s cap only partially closed).
+        var fewCommands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "lan" },
+            18789,
+            "'[]'");
+        var manyCommands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "loopback",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.extra.one"] = "1",
+                    ["gateway.extra.two"] = "2",
+                    ["gateway.extra.three"] = "3",
+                    ["gateway.extra.four"] = "4",
+                },
+            },
+            18789,
+            "'[]'");
+
+        var fewTimeout = ConfigureGatewayStep.ComputeConfigurationTimeout(fewCommands);
+        var manyTimeout = ConfigureGatewayStep.ComputeConfigurationTimeout(manyCommands);
+
+        Assert.True(
+            manyTimeout > fewTimeout,
+            $"Timeout should grow with config command count; few={fewTimeout}, many={manyTimeout}");
+    }
+
+    [Fact]
+    public void ComputeConfigurationTimeout_NeverBelowFloor()
+    {
+        // A minimal config set must still receive the safety floor, never base + one.
+        var timeout = ConfigureGatewayStep.ComputeConfigurationTimeout(
+            "openclaw config set gateway.mode local");
+
+        Assert.True(timeout >= ConfigureGatewayStep.MinConfigurationTimeout);
     }
 
     [Theory]

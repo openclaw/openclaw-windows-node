@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.SetupEngine.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
@@ -111,6 +112,6 @@ public sealed partial class CapabilitiesPage : Page
             }
         }
 
-        App.MainWindow?.NavigateToProgress();
+        SetupWindow.Active?.NavigateToProgress();
     }
 }
