@@ -368,6 +368,102 @@ public class TokenSanitizerTests
         Assert.Contains("[email protected]", sanitized);
     }
 
+    // ── URL tail redaction ──────────────────────────────────────────────────
+    //
+    // SanitizeLogMessage must drop credential-bearing URL tails — query strings, fragments,
+    // and path segments past the first — because disk-backed logs effectively live forever and
+    // tokens/codes/signatures/PII routinely appear after the host. Mirrors the UrlLogSanitizer
+    // contract.
+
+    [Theory]
+    [InlineData("Reset link: https://login.example.com/reset?token=abc123 end", "token=abc123")]
+    [InlineData("OAuth callback: https://example.com/oauth/callback?code=xyz789 done", "code=xyz789")]
+    [InlineData("Signed url: https://api.example.com/v1/items?sig=deadbeef list", "sig=deadbeef")]
+    [InlineData("Magic link: https://app.example.com/m/[email protected] go", "alice")]
+    [InlineData("Fragment: https://example.com/a#access_token=secretval done", "access_token=secretval")]
+    [InlineData("Deep path: https://example.com/a/b/c/d/secret end", "secret")]
+    public void SanitizeLogMessage_DropsCredentialBearingUrlTails(string input, string forbiddenFragment)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        Assert.DoesNotContain(forbiddenFragment, sanitized);
+        Assert.Contains("<host>", sanitized);
+    }
+
+    [Theory]
+    [InlineData("Connect to http://gateway.example.com/path now", "Connect to http://<host>/path now")]
+    [InlineData("Reset: https://login.example.com/reset?token=abc123 end", "Reset: https://<host>/reset end")]
+    [InlineData("OAuth: https://example.com/oauth/callback?code=xyz789 done", "OAuth: https://<host>/oauth/… done")]
+    [InlineData("Deep: https://example.com/a/b/c/d/secret end", "Deep: https://<host>/a/… end")]
+    [InlineData("Bare host: https://example.com end", "Bare host: https://<host>/ end")]
+    [InlineData("Trailing period: see https://example.com/api.", "Trailing period: see https://<host>/api.")]
+    [InlineData("Non-default port: ws://[::1]:19001/socket open", "Non-default port: ws://<host>:19001/socket open")]
+    public void SanitizeLogMessage_CollapsesUrlsToFirstSegment(string input, string expected)
+    {
+        Assert.Equal(expected, TokenSanitizer.SanitizeLogMessage(input));
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_UnparseableUrl_FallsBackToSchemeAndHostPlaceholder()
+    {
+        // Inputs that match the URL regex but cannot be parsed by Uri.TryCreate must still
+        // be redacted, not echoed back verbatim. (e.g., empty-host pseudo-URLs.)
+        const string input = "Saw https://[ malformed";
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        Assert.DoesNotContain("https://[", sanitized);
+        Assert.Contains("https://<host>", sanitized);
+    }
+
+    [Theory]
+    [InlineData("Encoded slash: https://example.com/path%2Fsecret%2Ftoken end", "secret")]
+    [InlineData("Lowercase: https://example.com/a%2fb%2ftoken123 end", "token123")]
+    public void SanitizeLogMessage_PercentEncodedSlashes_DoNotBypassFirstSegmentTruncation(
+        string input, string forbiddenFragment)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        Assert.DoesNotContain(forbiddenFragment, sanitized);
+        Assert.DoesNotContain("%2F", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<host>", sanitized);
+    }
+
+    [Theory]
+    [InlineData("Backslash URL: https://example.com\\reset?token=abc123 end", "token=abc123")]
+    [InlineData("Mixed: https://host.example\\path\\secret end", "secret")]
+    public void SanitizeLogMessage_BackslashInUrl_DoesNotLeakTail(string input, string forbiddenFragment)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        Assert.DoesNotContain(forbiddenFragment, sanitized);
+        Assert.Contains("<host>", sanitized);
+    }
+
+    // ── URL log-injection defense ───────────────────────────────────────────
+    //
+    // Uri.UnescapeDataString (used inside RedactUrlMatch to expand %2F into real path
+    // boundaries) also decodes %0A/%0D/%00/%09/%1B into raw control bytes. Those bytes,
+    // if written into the log line, would forge new log entries, corrupt JSONL framing,
+    // or smuggle ANSI escapes into terminal log viewers. RedactUrlMatch must strip
+    // C0 control chars and DEL from the unescaped path before composing its output.
+
+    [Theory]
+    [InlineData("URL: https://host.example/path%0AFAKE-LINE end")]
+    [InlineData("URL: https://host.example/api%0D%0AInjected end")]
+    [InlineData("URL: https://host.example/ok%00secret end")]
+    [InlineData("URL: https://host.example/log%1B%5B31mRED end")]
+    [InlineData("URL: https://host.example/col%09umn end")]
+    [InlineData("URL: https://host.example/nel%C2%85injected end")]
+    [InlineData("URL: https://host.example/lsep%E2%80%A8injected end")]
+    [InlineData("URL: https://host.example/psep%E2%80%A9injected end")]
+    public void SanitizeLogMessage_PercentEncodedControlChars_DoNotAppearInOutput(string input)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        Assert.DoesNotMatch(@"[\x00-\x1F\x7F\u0085\u2028\u2029]", sanitized);
+        Assert.Contains("<host>", sanitized);
+    }
+
     [Theory]
     [InlineData("[1:2:3:4:5]")]
     [InlineData("[a:b:c:d:e]")]
