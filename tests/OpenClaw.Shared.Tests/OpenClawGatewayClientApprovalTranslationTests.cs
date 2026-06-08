@@ -274,4 +274,103 @@ public class OpenClawGatewayClientApprovalTranslationTests
         Assert.True(firstInvoked, "first subscriber should have been invoked");
         Assert.True(secondInvoked, "second subscriber must be invoked even when first throws");
     }
+
+    // ─── Approval-resolve response routing (PR #676 ClawSweeper P1) ────────
+    // Drives HandleResponse via reflection against a pre-registered TCS in
+    // _pendingApprovalResolves. This pins the contract that an ok:false
+    // gateway response surfaces as an exception on the awaiting caller — so
+    // the chat approval banner is preserved for retry. Without this routing,
+    // ResolveExecApprovalAsync would hang until the 5s timeout (best case)
+    // or, before this fix, return success and silently dismiss the banner.
+    // ──────────────────────────────────────────────────────────────────────
+
+    private static TaskCompletionSource<bool> RegisterPendingApprovalResolve(OpenClawGatewayClient client, string requestId)
+    {
+        var fieldInfo = typeof(OpenClawGatewayClient).GetField(
+            "_pendingApprovalResolves",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(fieldInfo);
+        var dict = (System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<bool>>)fieldInfo!.GetValue(client)!;
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        dict[requestId] = tcs;
+
+        // Also seed the request-method tracker so HandleResponse's id lookup
+        // mirrors what TrackPendingRequest would have done in production.
+        var trackMethod = typeof(OpenClawGatewayClient).GetMethod(
+            "TrackPendingRequest",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(trackMethod);
+        trackMethod!.Invoke(client, new object[] { requestId, "exec.approval.resolve" });
+        return tcs;
+    }
+
+    private static void InvokeHandleResponse(OpenClawGatewayClient client, string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var method = typeof(OpenClawGatewayClient).GetMethod(
+            "HandleResponse",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        method!.Invoke(client, new object[] { doc.RootElement });
+    }
+
+    [Fact]
+    public async Task ResolveExecApproval_OkFalseResponse_SurfacesAsException()
+    {
+        // Regression: before the response-await fix, ResolveExecApprovalAsync
+        // returned the moment the send completed, so an ok:false rejection
+        // by the gateway was logged and dropped while the chat provider
+        // happily cleared the banner. This test pins the new contract.
+        var client = NewClient();
+        var tcs = RegisterPendingApprovalResolve(client, "req-rejected-1");
+
+        const string json = """
+            {
+              "type": "res",
+              "id": "req-rejected-1",
+              "ok": false,
+              "error": { "message": "approval not found" }
+            }
+            """;
+
+        InvokeHandleResponse(client, json);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => tcs.Task);
+        Assert.Contains("approval not found", ex.Message);
+    }
+
+    [Fact]
+    public async Task ResolveExecApproval_OkTrueResponse_CompletesCaller()
+    {
+        var client = NewClient();
+        var tcs = RegisterPendingApprovalResolve(client, "req-ok-1");
+
+        const string json = """
+            { "type": "res", "id": "req-ok-1", "ok": true }
+            """;
+
+        InvokeHandleResponse(client, json);
+
+        Assert.True(tcs.Task.IsCompletedSuccessfully);
+        await tcs.Task;
+    }
+
+    [Fact]
+    public async Task ResolveExecApproval_OkFalseWithoutErrorMessage_UsesFallback()
+    {
+        // The gateway is not contractually required to include an error
+        // message body. Verify we still surface a useful exception so the
+        // chat provider's catch branch fires and preserves the banner.
+        var client = NewClient();
+        var tcs = RegisterPendingApprovalResolve(client, "req-rejected-2");
+
+        const string json = """
+            { "type": "res", "id": "req-rejected-2", "ok": false }
+            """;
+
+        InvokeHandleResponse(client, json);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => tcs.Task);
+        Assert.False(string.IsNullOrWhiteSpace(ex.Message));
+    }
 }

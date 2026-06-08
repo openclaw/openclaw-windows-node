@@ -112,6 +112,13 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     private bool _preferStructuredCategories = true;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pendingWizardResponses = new();
 
+    // Pending exec.approval.resolve requests awaiting an ok:true / ok:false
+    // response. Without this, ResolveExecApprovalAsync would clear the chat
+    // approval banner immediately after the send completes, even if the
+    // gateway later rejects the resolve (ok:false). See ClawSweeper review
+    // on PR #676.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingApprovalResolves = new();
+
     /// <summary>
     /// Controls whether structured notification metadata (Intent, Channel) takes priority
     /// over keyword-based classification. Call after construction and whenever settings change.
@@ -405,7 +412,9 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     /// <param name="approvalId">The exec approval id from <c>exec.approval.requested.payload.id</c>.</param>
     /// <param name="decision">One of <c>allow-once</c>, <c>allow-always</c>, <c>deny</c>.</param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="approvalId"/> is empty or <paramref name="decision"/> is not in the allowlist.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the gateway is not connected at the time of the call, or disconnects before delivery can be confirmed. The caller (e.g. the chat approval banner) relies on this to keep the Allow/Deny UI on screen for retry instead of silently dismissing it on a dropped connection. Note: this is a best-effort guarantee — <c>SendRawAsync</c> swallows mid-flight cancellation/dispose, so a disconnect that races with the send may still appear as success. The post-await re-check narrows but does not eliminate this window; idempotent retry on the gateway side covers the remainder.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the gateway is not connected at call time, or returns an <c>ok:false</c> response. The caller (e.g. the chat approval banner) relies on this to keep the Allow/Deny UI on screen for retry instead of silently dismissing it when the resolve was actually rejected.</exception>
+    /// <exception cref="OperationCanceledException">Thrown when the gateway connection is lost while the resolve is in flight. Same banner-preserve contract.</exception>
+    /// <exception cref="TimeoutException">Thrown when no response arrives within the resolve timeout window. Preserves the banner for retry.</exception>
     public async Task ResolveExecApprovalAsync(string approvalId, string decision)
     {
         if (string.IsNullOrWhiteSpace(approvalId))
@@ -415,25 +424,75 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         if (!IsValidApprovalDecision(decision))
             throw new ArgumentException($"decision must be one of allow-once, allow-always, deny (got '{decision}')", nameof(decision));
 
-        // SendTrackedRequestAsync silently returns when disconnected. For
-        // approvals that is a correctness bug: the chat provider would clear
-        // the Allow/Deny banner thinking the resolve succeeded, but the
-        // gateway would never have received the request. Surface the
-        // disconnect as an exception so the chat provider's catch block
-        // preserves the banner for retry.
+        // Up-front disconnect guard: avoid registering a pending request that
+        // can never complete. The post-await re-check below handles the
+        // race window where the socket drops mid-send.
         if (!IsConnected)
             throw new InvalidOperationException("Cannot resolve exec approval: gateway is not connected.");
 
-        await SendTrackedRequestAsync("exec.approval.resolve", new { id = approvalId, decision });
+        // Register a TaskCompletionSource keyed on the requestId so we can
+        // observe ok:true / ok:false from the gateway's response, instead of
+        // returning the moment the frame leaves the socket. Without this, a
+        // rejected resolve would silently clear the chat approval banner and
+        // leave the agent blocked with no retry path. See ClawSweeper review
+        // on PR #676.
+        var requestId = Guid.NewGuid().ToString();
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingApprovalResolves[requestId] = completion;
+        TrackPendingRequest(requestId, "exec.approval.resolve");
 
-        // Post-await re-check: SendRawAsync swallows OperationCanceledException,
-        // ObjectDisposedException, and WebSocketException(InvalidState) without
-        // surfacing them. If the socket dropped between the precheck and the
-        // send completing, we cannot confirm delivery; throw so the caller keeps
-        // the banner up. This is the same banner-preserve contract as the
-        // upfront check, just for the race window during the await.
-        if (!IsConnected)
-            throw new InvalidOperationException("Gateway disconnected during exec.approval.resolve; cannot confirm delivery.");
+        try
+        {
+            await SendRawAsync(SerializeRequest(requestId, "exec.approval.resolve", new { id = approvalId, decision }));
+        }
+        catch
+        {
+            _pendingApprovalResolves.TryRemove(requestId, out _);
+            RemovePendingRequest(requestId);
+            throw;
+        }
+
+        // Post-send disconnect re-check. Closes a race where the WebSocket
+        // dies between the up-front IsConnected guard and TCS registration:
+        // ClearPendingRequests can fire on an empty _pendingApprovalResolves
+        // snapshot (before our entry was added), then SendRawAsync silently
+        // succeeds against the now-dead socket, leaving the TCS stranded
+        // until the 15s timeout instead of failing fast for retry.
+        //
+        // TryRemove-first idiom: if we win the race and pull our TCS out of
+        // the dict, throw immediately — no exception is ever set on the
+        // discarded TCS, so it can never be unobserved by
+        // TaskScheduler.UnobservedTaskException. If TryRemove returns false,
+        // ClearPendingRequests already claimed (and faulted) our entry; fall
+        // through to the WhenAny/await path so the OperationCanceledException
+        // it set is observed by the caller.
+        if (!IsConnected && _pendingApprovalResolves.TryRemove(requestId, out _))
+        {
+            RemovePendingRequest(requestId);
+            throw new InvalidOperationException("Gateway disconnected before exec.approval.resolve was sent.");
+        }
+
+        // Bounded wait. Approval-resolve is interactive and the response may
+        // traverse gateway → operator → optional UI confirm → ack, so we give
+        // it a larger budget than the chat.send sibling's 5s. A timeout keeps
+        // the banner visible for the user to retry rather than hanging the UI.
+        var delayTask = Task.Delay(15000, CancellationToken);
+        await Task.WhenAny(completion.Task, delayTask);
+
+        // Use IsCompleted directly rather than Task.WhenAny's return identity:
+        // when both tasks complete in the same scheduling tick, WhenAny may
+        // return the delay task even though the TCS is already complete, which
+        // would otherwise surface as a spurious TimeoutException and discard a
+        // real ok:true / ok:false response.
+        if (!completion.Task.IsCompleted)
+        {
+            _pendingApprovalResolves.TryRemove(requestId, out _);
+            RemovePendingRequest(requestId);
+            throw new TimeoutException("Timed out waiting for exec.approval.resolve response from gateway");
+        }
+
+        // Propagate any exception (ok:false, disconnect) stored on the TCS.
+        await completion.Task.ConfigureAwait(false);
     }
 
     private static bool IsValidApprovalDecision(string decision)
@@ -1437,6 +1496,32 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
 
         _pendingWizardResponses.Clear();
+
+        // Fail any in-flight approval resolves so the chat banner is
+        // preserved for retry instead of hanging on the 15s timeout.
+        // Use OperationCanceledException to match the _pendingWizardResponses
+        // cleanup taxonomy: this is a connection-lifecycle cancellation, not a
+        // protocol-level error. The public ResolveExecApprovalAsync still
+        // throws InvalidOperationException from its synchronous IsConnected
+        // pre-check; the cancellation case here only surfaces when reset
+        // races an in-flight request.
+        //
+        // CONTRACT FOR CALLERS: callers of ResolveExecApprovalAsync MUST catch
+        // System.Exception (not just InvalidOperationException/TimeoutException)
+        // to preserve the chat approval banner on disconnect-mid-flight. The
+        // OperationCanceledException thrown here is intentionally a connection
+        // lifecycle signal, NOT a benign cancel. RunFireAndForget in the tray
+        // (OpenClawChatRoot) silently swallows OperationCanceledException —
+        // if a caller forwards the OCE up to RunFireAndForget instead of
+        // catching it locally, the banner will be cleared with no UI feedback.
+        // Today OpenClawChatDataProvider.RespondToPermissionAsync correctly
+        // catches Exception ex; do not narrow that catch.
+        foreach (var completion in _pendingApprovalResolves.Values)
+        {
+            completion.TrySetException(new OperationCanceledException("Gateway connection lost before exec.approval.resolve response"));
+        }
+
+        _pendingApprovalResolves.Clear();
     }
 
     private void TrackPendingChatSend(string requestId, TaskCompletionSource<ChatSendResult> completion)
@@ -1553,6 +1638,25 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             else
             {
                 wizardCompletion.TrySetResult(root.Clone());
+            }
+            return;
+        }
+
+        // Approval-resolve completion path. Must run before the generic
+        // HandleRequestError branch below; otherwise an ok:false from the
+        // gateway would only get logged and the awaiting caller would hang
+        // until the 5s timeout. See ClawSweeper review on PR #676.
+        if (requestId != null && _pendingApprovalResolves.TryRemove(requestId, out var approvalCompletion))
+        {
+            if (root.TryGetProperty("ok", out var okAppr) && okAppr.ValueKind == JsonValueKind.False)
+            {
+                var message = TryGetErrorMessage(root) ?? "exec.approval.resolve rejected";
+                _logger.Warn($"exec.approval.resolve rejected by gateway: {message}");
+                approvalCompletion.TrySetException(new InvalidOperationException(message));
+            }
+            else
+            {
+                approvalCompletion.TrySetResult(true);
             }
             return;
         }
