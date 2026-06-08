@@ -210,7 +210,14 @@ public sealed class AudioPipeline : IAsyncDisposable
             }
 
             // Stop capture and give NAudio a moment to flush its last buffer.
-            try { _capture?.StopRecording(); } catch { /* swallow */ }
+            try
+            {
+                _capture?.StopRecording();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Failed to stop fixed-duration audio capture cleanly: {ex.Message}");
+            }
             await Task.Delay(150).ConfigureAwait(false);
 
             return _fixedCaptureBuffer.ToArray();

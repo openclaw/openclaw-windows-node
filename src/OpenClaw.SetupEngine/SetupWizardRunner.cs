@@ -19,7 +19,7 @@ public sealed class SetupWizardRunner
 
     public async Task<StepResult> RunAsync(CancellationToken ct)
     {
-        var registry = new GatewayRegistry(_ctx.DataDir);
+        var registry = new GatewayRegistry(_ctx.DataDir, logger: new SetupOpenClawLogger(_ctx.Logger));
         registry.Load();
 
         var record = !string.IsNullOrWhiteSpace(_ctx.GatewayRecordId)

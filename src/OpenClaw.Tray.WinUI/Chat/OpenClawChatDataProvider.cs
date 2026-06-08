@@ -3007,15 +3007,20 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private LastChatState? _lastChatState;
 
-    internal static LastChatState? LoadLastChatState()
+    internal static LastChatState? LoadLastChatState(string? pathOverride = null)
     {
+        var path = pathOverride ?? LastChatStateFilePath;
         try
         {
-            if (!File.Exists(LastChatStateFilePath)) return null;
-            var json = File.ReadAllText(LastChatStateFilePath);
+            if (!File.Exists(path)) return null;
+            var json = File.ReadAllText(path);
             return System.Text.Json.JsonSerializer.Deserialize<LastChatState>(json);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to load last chat state from '{path}': {ex.Message}");
+            return null;
+        }
     }
 
     private void DebounceSaveLastChatState(ChatDataSnapshot snapshot)

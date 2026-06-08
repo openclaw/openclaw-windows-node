@@ -2394,6 +2394,18 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("agent:main:main", snap.DefaultThreadId);
     }
 
+    [Fact]
+    public void LoadLastChatState_WithCorruptedJson_ReturnsNull()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        File.WriteAllText(path, "{not json");
+
+        var state = OpenClawChatDataProvider.LoadLastChatState(path);
+
+        Assert.Null(state);
+    }
+
     private sealed class TestLogger : OpenClaw.Shared.IOpenClawLogger
     {
         public void Debug(string message) { }

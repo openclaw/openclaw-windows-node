@@ -105,6 +105,19 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Load_WithCorruptedJson_LogsWarningAndStartsEmpty()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "gateways.json"), "{not json");
+        var logger = new CapturingLogger();
+        var registry = new GatewayRegistry(_tempDir, logger: logger);
+
+        registry.Load();
+
+        Assert.Empty(registry.GetAll());
+        Assert.Contains(logger.Warnings, warning => warning.Contains("not valid JSON", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void GetIdentityDirectory_ReturnsGatewayIdSubdir()
     {
         var path = _registry.GetIdentityDirectory("gw-1");
@@ -263,4 +276,14 @@ public class GatewayRegistryTests : IDisposable
         Id = id,
         Url = url
     };
+
+    private sealed class CapturingLogger : IOpenClawLogger
+    {
+        public List<string> Warnings { get; } = [];
+
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
+    }
 }

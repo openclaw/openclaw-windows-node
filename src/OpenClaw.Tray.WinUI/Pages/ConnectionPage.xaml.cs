@@ -2031,15 +2031,22 @@ public sealed partial class ConnectionPage : Page
             System.Net.Http.HttpResponseMessage? response = null;
             try { response = await httpClient.GetAsync(httpUrl, ct); }
             catch (OperationCanceledException) { throw; }
-            catch { }
+            catch (Exception ex)
+            {
+                Services.Logger.Debug($"[ConnectionPage] Connectivity test failed for {httpUrl}: {ex.Message}");
+            }
 
             if (ct.IsCancellationRequested) return;
 
             if (response == null || !response.IsSuccessStatusCode)
             {
-                try { response = await httpClient.GetAsync($"{httpUrl}/health", ct); }
+                var healthUrl = $"{httpUrl}/health";
+                try { response = await httpClient.GetAsync(healthUrl, ct); }
                 catch (OperationCanceledException) { throw; }
-                catch { }
+                catch (Exception ex)
+                {
+                    Services.Logger.Debug($"[ConnectionPage] Connectivity health test failed for {healthUrl}: {ex.Message}");
+                }
             }
 
             if (ct.IsCancellationRequested) return;

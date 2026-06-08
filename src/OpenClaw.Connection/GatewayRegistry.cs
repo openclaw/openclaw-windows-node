@@ -13,6 +13,7 @@ public sealed class GatewayRegistry
     private readonly string _filePath;
     private readonly string _gatewaysDir;
     private readonly IFileSystem _fs;
+    private readonly IOpenClawLogger _logger;
     private List<GatewayRecord> _records = [];
     private string? _activeId;
 
@@ -29,9 +30,11 @@ public sealed class GatewayRegistry
     /// </summary>
     /// <param name="dataDir">Root data directory (e.g. %APPDATA%/OpenClawTray).</param>
     /// <param name="fs">Filesystem abstraction for testability.</param>
-    public GatewayRegistry(string dataDir, IFileSystem? fs = null)
+    /// <param name="logger">Optional diagnostics sink for persistence problems.</param>
+    public GatewayRegistry(string dataDir, IFileSystem? fs = null, IOpenClawLogger? logger = null)
     {
         _fs = fs ?? RealFileSystem.Instance;
+        _logger = logger ?? NullLogger.Instance;
         _filePath = Path.Combine(dataDir, "gateways.json");
         _gatewaysDir = Path.Combine(dataDir, "gateways");
     }
@@ -164,9 +167,9 @@ public sealed class GatewayRegistry
                 }
             }
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            // Corrupted file — start fresh
+            _logger.Warn($"Gateway registry file '{_filePath}' is not valid JSON; starting with an empty registry. {ex.Message}");
         }
     }
 

@@ -503,7 +503,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowSurfaceImprovementsTipIfNeeded();
 
         // Initialize connection manager before setup flow.
-        _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath);
+        _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath, logger: new AppLogger());
         _gatewayRegistry.Load();
         var credentialResolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
         var clientFactory = new GatewayClientFactory();
