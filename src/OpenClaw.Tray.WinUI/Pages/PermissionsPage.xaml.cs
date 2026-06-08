@@ -595,6 +595,11 @@ public sealed partial class PermissionsPage : Page
                 if (root.TryGetProperty("defaultAction", out var da))
                 {
                     var action = da.GetString() ?? "deny";
+                    // Migrate legacy "ask" tag (pre-fix files) to the canonical "prompt"
+                    // value used by ExecApprovalAction.Prompt. Without this, files written
+                    // by older builds fail to deserialize and silently reset to Deny.
+                    if (string.Equals(action, "ask", StringComparison.OrdinalIgnoreCase))
+                        action = "prompt";
                     for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
                     {
                         if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
@@ -706,7 +711,14 @@ public sealed partial class PermissionsPage : Page
 
             var json = JsonSerializer.Serialize(policy, new JsonSerializerOptions { WriteIndented = true });
             Directory.CreateDirectory(Path.GetDirectoryName(policyPath)!);
-            File.WriteAllText(policyPath, json);
+
+            // Atomic write: serialize to a sibling .tmp first, then replace.
+            // The engine hot-reloads exec-policy.json on mtime/length change;
+            // a non-atomic write could expose a partial file to a concurrent
+            // Evaluate() and the engine would skip the (broken) update.
+            var tmpPath = policyPath + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, policyPath, overwrite: true);
 
             // Brief inline "Saved" pill in the rules-card header. Reuses a single
             // DispatcherQueueTimer instance so rapid saves don't orphan timers.

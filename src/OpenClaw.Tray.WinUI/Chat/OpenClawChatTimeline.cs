@@ -2400,19 +2400,30 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // ToolCall bursts render AFTER the assistant reply (or the thinking
         // indicator if no reply has streamed yet). Gateway emits tool_start
         // before assistant_delta, but the desired visual flow is
-        //   [User] → [Assistant reply / thinking] → [Tool burst]
-        // so the assistant message reads first and the tool work hangs below it.
+        //   [User] → [Assistant reply / thinking] → [Tool burst] → [Denied permission]
+        // so the assistant message reads first, tool work hangs below it, and any
+        // locally-denied permission (e.g. Windows-node policy denial) appears
+        // last as the outcome. Approved permission badges (gateway-issued)
+        // keep their natural pre-tool position so they read as "user accepted
+        // → tool ran".
         var orderedIdx = new int[Props.Entries.Count];
         {
             int outPos = 0;
             int turnStart = 0;
+            static bool IsDeniedPermission(ChatTimelineItem e) =>
+                e.Kind == ChatTimelineItemKind.PermissionRequest
+                && e.PermissionDecision == ChatPermissionDecision.Denied;
             void Flush(int endExclusive)
             {
                 for (int j = turnStart; j < endExclusive; j++)
-                    if (Props.Entries[j].Kind != ChatTimelineItemKind.ToolCall)
+                    if (Props.Entries[j].Kind != ChatTimelineItemKind.ToolCall
+                        && !IsDeniedPermission(Props.Entries[j]))
                         orderedIdx[outPos++] = j;
                 for (int j = turnStart; j < endExclusive; j++)
                     if (Props.Entries[j].Kind == ChatTimelineItemKind.ToolCall)
+                        orderedIdx[outPos++] = j;
+                for (int j = turnStart; j < endExclusive; j++)
+                    if (IsDeniedPermission(Props.Entries[j]))
                         orderedIdx[outPos++] = j;
             }
             for (int i = 0; i < Props.Entries.Count; i++)

@@ -62,6 +62,16 @@ public class SystemCapability : NodeCapabilityBase
 
     // Event to let UI handle the actual notification display
     public event EventHandler<SystemNotifyArgs>? NotifyRequested;
+
+    /// <summary>
+    /// Fired when policy denies an exec request non-interactively (no native
+    /// prompt is shown — e.g. default action is Deny, or matched rule action
+    /// is Deny). Lets UI surfaces (chat) render a denial card that would
+    /// otherwise be invisible to the user. Not raised when the user clicks
+    /// Deny in the native prompt — that path already raises
+    /// <see cref="ExecApprovalPromptService.Decided"/>.
+    /// </summary>
+    public event EventHandler<ExecApprovalPromptDecidedEventArgs>? PolicyAutoDecided;
     
     // Command runner for system.run (swappable: local, docker, wsl)
     private ICommandRunner? _commandRunner;
@@ -474,7 +484,10 @@ public class SystemCapability : NodeCapabilityBase
             return new ExecApprovalCheckResult(true, null);
 
         if (approval.Action != ExecApprovalAction.Prompt || _promptHandler == null || _approvalPolicy == null)
+        {
+            RaisePolicyAutoDenied(command, shell, approval);
             return new ExecApprovalCheckResult(false, null);
+        }
 
         var decision = await _promptHandler.RequestAsync(new ExecApprovalPromptRequest
         {
@@ -532,6 +545,31 @@ public class SystemCapability : NodeCapabilityBase
     private readonly record struct ExecApprovalCheckResult(
         bool Allowed,
         ExecApprovalPromptDecisionKind? PromptDecisionKind);
+
+    private void RaisePolicyAutoDenied(string command, string? shell, ExecApprovalResult approval)
+    {
+        var handler = PolicyAutoDecided;
+        if (handler == null) return;
+        try
+        {
+            var request = new ExecApprovalPromptRequest
+            {
+                Command = command,
+                Shell = shell,
+                MatchedPattern = approval.MatchedPattern,
+                Reason = approval.Reason ?? "Command denied by policy"
+            };
+            var decision = ExecApprovalPromptDecision.Deny(approval.Reason ?? "Command denied by policy");
+            handler(this, new ExecApprovalPromptDecidedEventArgs(
+                request,
+                decision,
+                ExecApprovalPromptDecisionSource.PolicyAutoDeny));
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"PolicyAutoDecided handler threw: {ex.Message}");
+        }
+    }
     
     private NodeInvokeResponse HandleExecApprovalsGet()
     {
@@ -616,7 +654,7 @@ public class SystemCapability : NodeCapabilityBase
                         rule.Action = actStr.ToLowerInvariant() switch
                         {
                             "allow" => ExecApprovalAction.Allow,
-                            "prompt" => ExecApprovalAction.Prompt,
+                            "prompt" or "ask" => ExecApprovalAction.Prompt,
                             _ => ExecApprovalAction.Deny
                         };
                     }
@@ -650,7 +688,7 @@ public class SystemCapability : NodeCapabilityBase
                 defaultAction = defStr.ToLowerInvariant() switch
                 {
                     "allow" => ExecApprovalAction.Allow,
-                    "prompt" => ExecApprovalAction.Prompt,
+                    "prompt" or "ask" => ExecApprovalAction.Prompt,
                     _ => ExecApprovalAction.Deny
                 };
             }

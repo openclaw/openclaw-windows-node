@@ -55,6 +55,38 @@ public static class ChatTimelineReducer
     public static ChatTimelineState AddSystem(ChatTimelineState state, string text, ChatTone tone = ChatTone.Info)
         => PushEntry(state, ChatTimelineItemKind.Status, text, tone);
 
+    /// <summary>
+    /// Push a PermissionRequest entry that is already in a decided state.
+    /// Used for synthetic cards that originate locally (e.g. node-side
+    /// exec-approval prompt) where there was never a Pending bubble — the
+    /// decision was made outside the gateway approval stream. Does not
+    /// touch <see cref="ChatTimelineState.PendingPermission"/>; the synthetic
+    /// RequestId is a fresh GUID that won't collide with gateway-issued ids.
+    /// </summary>
+    public static ChatTimelineState AddDecidedPermission(
+        ChatTimelineState state,
+        string permissionKind,
+        string toolName,
+        string detail,
+        ChatPermissionDecision decision)
+    {
+        var id = $"e{state.NextId}";
+        var entry = new ChatTimelineItem(
+            id,
+            ChatTimelineItemKind.PermissionRequest,
+            detail,
+            ToolName: toolName,
+            IntentSummary: permissionKind,
+            PermissionRequestId: System.Guid.NewGuid().ToString("N"),
+            PermissionDecision: decision);
+
+        return state with
+        {
+            Entries = state.Entries.Add(entry),
+            NextId = state.NextId + 1
+        };
+    }
+
     public static ChatTimelineState ClearPermission(ChatTimelineState state)
         => ResolvePermission(state, requestId: state.PendingPermission?.RequestId, decision: ChatPermissionDecision.Expired);
 

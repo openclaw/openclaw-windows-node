@@ -3030,6 +3030,18 @@ On your gateway host (Mac/Linux), run:
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>Expired</value>
   </data>
+  <data name="Chat_Permission_LocalDeniedTitle" xml:space="preserve">
+    <value>Local command request</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_ReasonLabel" xml:space="preserve">
+    <value>Reason:</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_PatternLabel" xml:space="preserve">
+    <value>Pattern:</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_Provenance" xml:space="preserve">
+    <value>(denied locally on this Windows companion)</value>
+  </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Exec approval needed</value>
   </data>

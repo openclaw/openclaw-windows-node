@@ -2982,6 +2982,18 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>Expiré</value>
   </data>
+  <data name="Chat_Permission_LocalDeniedTitle" xml:space="preserve">
+    <value>Demande de commande locale</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_ReasonLabel" xml:space="preserve">
+    <value>Motif :</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_PatternLabel" xml:space="preserve">
+    <value>Motif correspondant :</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_Provenance" xml:space="preserve">
+    <value>(refusé localement sur ce compagnon Windows)</value>
+  </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Approbation d'exécution requise</value>
   </data>

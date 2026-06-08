@@ -252,7 +252,7 @@
                               SelectionChanged="OnDefaultActionChanged">
                         <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_23" Content="Deny" Tag="deny"/>
                         <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_24" Content="Allow" Tag="allow"/>
-                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="ask"/>
+                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="prompt"/>
                     </ComboBox>
                 </Grid>
             </Border>

@@ -2982,6 +2982,18 @@
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>已過期</value>
   </data>
+  <data name="Chat_Permission_LocalDeniedTitle" xml:space="preserve">
+    <value>本機命令要求</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_ReasonLabel" xml:space="preserve">
+    <value>原因：</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_PatternLabel" xml:space="preserve">
+    <value>比對模式：</value>
+  </data>
+  <data name="Chat_Permission_LocalDenied_Provenance" xml:space="preserve">
+    <value>（已於此 Windows 伴侶上本機拒絕）</value>
+  </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>需要執行核准</value>
   </data>

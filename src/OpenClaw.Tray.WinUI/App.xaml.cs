@@ -1650,6 +1650,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _nodeService.ChannelHealthUpdated += _gatewayService.OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
             _nodeService.GatewaySelfUpdated += _gatewayService.OnGatewaySelfUpdated;
+            _nodeService.LocalExecApprovalDecided += OnLocalExecApprovalDecided;
             return _nodeService;
         }
         catch (Exception ex)
@@ -2197,6 +2198,47 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private void OnNodeToastRequested(object? sender, Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder builder)
         => OnUiThread(() =>
             NonFatalAction.Run(() => _toastService!.ShowToast(builder), msg => Logger.Warn($"Failed to show node toast: {msg}")));
+
+    private void OnLocalExecApprovalDecided(object? sender, ExecApprovalPromptDecidedEventArgs args)
+    {
+        if (args.Source is not (ExecApprovalPromptDecisionSource.UserDeny
+            or ExecApprovalPromptDecisionSource.PolicyAutoDeny))
+            return;
+        try
+        {
+            ChatProvider?.AddLocalDeniedPermissionEntry(
+                permissionKind: LocalizationHelper.GetString("Chat_Permission_LocalDeniedTitle"),
+                detail: BuildLocalDenyDetail(args.Request));
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to post local-deny chat card: {ex.Message}");
+        }
+    }
+
+    private static string BuildLocalDenyDetail(ExecApprovalPromptRequest request)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(request.Command))
+            sb.Append(request.Command);
+        if (!string.IsNullOrWhiteSpace(request.Reason))
+        {
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append(LocalizationHelper.GetString("Chat_Permission_LocalDenied_ReasonLabel"))
+              .Append(' ')
+              .Append(request.Reason);
+        }
+        if (!string.IsNullOrWhiteSpace(request.MatchedPattern))
+        {
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append(LocalizationHelper.GetString("Chat_Permission_LocalDenied_PatternLabel"))
+              .Append(' ')
+              .Append(request.MatchedPattern);
+        }
+        if (sb.Length > 0) sb.Append('\n');
+        sb.Append(LocalizationHelper.GetString("Chat_Permission_LocalDenied_Provenance"));
+        return sb.ToString();
+    }
 
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
     {

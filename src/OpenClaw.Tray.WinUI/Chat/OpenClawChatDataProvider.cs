@@ -935,6 +935,45 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Publish(snapshot);
     }
 
+    /// <summary>
+    /// Synthesize a decided "Denied" permission card in the active chat thread
+    /// for a denial that originated locally — i.e. the user clicked Deny on
+    /// the native ExecApproval prompt rather than the gateway's inline
+    /// Allow/Deny bubble. Without this, a node-side deny would only surface
+    /// to the gateway as a generic tool-call error string with no visible
+    /// indication that the user's click did anything.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort attribution: posts to the gateway's main session resolved
+    /// by <see cref="ResolveDefaultThreadIdLocked"/>. In MCP-only mode (no
+    /// gateway sessions) this no-ops; the native dialog already provided
+    /// immediate feedback in that case.
+    /// </remarks>
+    public void AddLocalDeniedPermissionEntry(string permissionKind, string detail)
+    {
+        ChatDataSnapshot snapshot;
+        lock (_gate)
+        {
+            var threadId = ResolveDefaultThreadIdLocked();
+            if (string.IsNullOrEmpty(threadId))
+            {
+                Logger.Info("[Approval] local deny — no default thread, skipping chat card");
+                return;
+            }
+
+            var current = GetOrCreateTimelineLocked(threadId);
+            _timelines[threadId] = ChatTimelineReducer.AddDecidedPermission(
+                current,
+                permissionKind: permissionKind,
+                toolName: "process.exec",
+                detail: detail ?? string.Empty,
+                decision: ChatPermissionDecision.Denied);
+            Logger.Info($"[Approval] local deny card posted to thread='{threadId}'");
+            snapshot = BuildSnapshotLocked();
+        }
+        Publish(snapshot);
+    }
+
     public ValueTask DisposeAsync()
     {
         if (_disposed) return ValueTask.CompletedTask;

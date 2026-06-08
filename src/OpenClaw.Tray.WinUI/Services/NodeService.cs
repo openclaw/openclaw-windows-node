@@ -162,6 +162,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
     public event EventHandler<ToastContentBuilder>? ToastRequested;
+    public event EventHandler<ExecApprovalPromptDecidedEventArgs>? LocalExecApprovalDecided;
     
     public bool IsScreenRecording { get; private set; }
     public bool IsCameraRecording { get; private set; }
@@ -283,9 +284,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _logger,
             includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
+        _systemCapability.PolicyAutoDecided += OnLocalExecApprovalDecided;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
-        _systemCapability.SetPromptHandler(new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger));
+        var execPrompt = new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger);
+        execPrompt.Decided += OnLocalExecApprovalDecided;
+        _systemCapability.SetPromptHandler(execPrompt);
         Register(_systemCapability);
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
@@ -839,6 +843,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _dispatcherQueue.TryEnqueue(() =>
         {
             NotificationRequested?.Invoke(this, args);
+        });
+    }
+
+    private void OnLocalExecApprovalDecided(object? sender, ExecApprovalPromptDecidedEventArgs args)
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            LocalExecApprovalDecided?.Invoke(this, args);
         });
     }
     
