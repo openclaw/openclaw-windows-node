@@ -246,6 +246,24 @@ public class OpenClawGatewayClientTests
             InvokePrivatePayloadParser("ParseSessions", payloadJson);
         }
 
+        public ModelsListInfo ParseModelsListPayload(string payloadJson)
+        {
+            ModelsListInfo? parsed = null;
+            EventHandler<ModelsListInfo> handler = (_, models) => parsed = models;
+            _client.ModelsListUpdated += handler;
+
+            try
+            {
+                InvokePrivatePayloadParser("ParseModelsList", payloadJson);
+            }
+            finally
+            {
+                _client.ModelsListUpdated -= handler;
+            }
+
+            return parsed ?? new ModelsListInfo();
+        }
+
         private void InvokePrivatePayloadParser(string methodName, string payloadJson)
         {
             using var doc = JsonDocument.Parse(payloadJson);
@@ -706,6 +724,43 @@ public class OpenClawGatewayClientTests
 
         Assert.Contains(logger.Logs, log => log == $"DEBUG: Agent event received: stream=tool len={rawMessage.Length}");
         Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ParseModelsList_PreservesConfiguredFlagPresence()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var models = helper.ParseModelsListPayload("""
+        {
+          "models": [
+            { "id": "gpt-5.4", "configured": true },
+            { "id": "gpt-5.5", "configured": false },
+            { "id": "legacy-gateway-model" }
+          ]
+        }
+        """);
+
+        Assert.Collection(
+            models.Models,
+            model =>
+            {
+                Assert.Equal("gpt-5.4", model.Id);
+                Assert.True(model.HasConfiguredFlag);
+                Assert.True(model.IsConfigured);
+            },
+            model =>
+            {
+                Assert.Equal("gpt-5.5", model.Id);
+                Assert.True(model.HasConfiguredFlag);
+                Assert.False(model.IsConfigured);
+            },
+            model =>
+            {
+                Assert.Equal("legacy-gateway-model", model.Id);
+                Assert.False(model.HasConfiguredFlag);
+                Assert.False(model.IsConfigured);
+            });
     }
 
     [Fact]

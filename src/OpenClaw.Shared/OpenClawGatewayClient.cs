@@ -3560,13 +3560,16 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             {
                 foreach (var item in modelsArray.EnumerateArray())
                 {
+                    var hasConfiguredFlag = item.TryGetProperty("configured", out var cfg)
+                                            && (cfg.ValueKind == JsonValueKind.True || cfg.ValueKind == JsonValueKind.False);
                     var model = new ModelInfo
                     {
                         Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
                         Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
                         Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
                         ContextWindow = item.TryGetProperty("contextWindow", out var cw) && cw.ValueKind == JsonValueKind.Number ? cw.GetInt32() : null,
-                        IsConfigured = item.TryGetProperty("configured", out var cfg) && cfg.ValueKind == JsonValueKind.True
+                        IsConfigured = hasConfiguredFlag && cfg.ValueKind == JsonValueKind.True,
+                        HasConfiguredFlag = hasConfiguredFlag
                     };
                     if (!string.IsNullOrEmpty(model.Id))
                         info.Models.Add(model);

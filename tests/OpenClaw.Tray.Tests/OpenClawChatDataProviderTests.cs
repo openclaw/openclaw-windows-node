@@ -1175,6 +1175,28 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ModelsListUpdated_FiltersExplicitlyUnconfiguredModels()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = new List<ModelInfo>
+            {
+                new() { Id = "gpt-5.4", IsConfigured = true, HasConfiguredFlag = true },
+                new() { Id = "gpt-5.5", IsConfigured = false, HasConfiguredFlag = true },
+                new() { Id = "legacy-gateway-model" }
+            }
+        });
+
+        Assert.Equal(
+            new[] { "gpt-5.4", "legacy-gateway-model" },
+            snapshots[^1].AvailableModels);
+    }
+
+    [Fact]
     public async Task ModelsListUpdated_DedupesDisplayNames()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });

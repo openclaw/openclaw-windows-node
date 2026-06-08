@@ -1889,6 +1889,7 @@ public class ModelInfo
     public string? Provider { get; set; }
     public int? ContextWindow { get; set; }
     public bool IsConfigured { get; set; }
+    public bool HasConfiguredFlag { get; set; }
 
     public string DisplayName => Name ?? Id;
 }
@@ -1981,4 +1982,3 @@ public class DiscoveredGateway
         }
     }
 }
-

@@ -1150,6 +1150,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var list = new List<string>(info.Models.Count);
         foreach (var m in info.Models)
         {
+            if (m.HasConfiguredFlag && !m.IsConfigured) continue;
             var id = m.Id;
             if (string.IsNullOrEmpty(id)) continue;
             if (seen.Add(id)) list.Add(id);
