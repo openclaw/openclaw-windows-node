@@ -32,8 +32,13 @@ public static class TokenSanitizer
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
         RegexTimeout);
 
+    // Allows 1, 2, or 4 consecutive backslashes between segments so the pattern matches raw
+    // `C:\Users\alice\…`, JSON-escaped `C:\\Users\\alice\\…` (DiagnosticsJsonlService writes after
+    // JsonSerializer.Serialize doubles every backslash), and nested-serialized
+    // `C:\\\\Users\\\\alice\\\\…` (record-of-pre-serialized-JSON, where backslashes quadruple).
+    // Without this, local usernames could leak into disk-backed JSONL in either escape scenario.
     private static readonly Regex PathWindowsUserPattern = new(
-        @"\b[A-Za-z]:\\Users\\[^\\\s]+",
+        @"\b[A-Za-z]:\\{1,4}Users\\{1,4}[^\\\s]+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         RegexTimeout);
 
@@ -234,6 +239,19 @@ public static class TokenSanitizer
                      .OrderByDescending(pair => pair.Folder.Length))
         {
             redacted = redacted.Replace(folder, replacement, StringComparison.OrdinalIgnoreCase);
+            // Also redact JSON-escaped variants so well-known folder paths serialized into JSONL
+            // get redacted alongside raw text. JsonSerializer doubles each backslash on serialize;
+            // nested-serialized payloads (record-of-pre-serialized-JSON) double them again.
+            var jsonEscaped = folder.Replace("\\", "\\\\");
+            if (!string.Equals(jsonEscaped, folder, StringComparison.Ordinal))
+            {
+                redacted = redacted.Replace(jsonEscaped, replacement, StringComparison.OrdinalIgnoreCase);
+                var doubleJsonEscaped = jsonEscaped.Replace("\\", "\\\\");
+                if (!string.Equals(doubleJsonEscaped, jsonEscaped, StringComparison.Ordinal))
+                {
+                    redacted = redacted.Replace(doubleJsonEscaped, replacement, StringComparison.OrdinalIgnoreCase);
+                }
+            }
         }
 
         redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");

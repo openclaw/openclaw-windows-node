@@ -465,6 +465,51 @@ public class TokenSanitizerTests
     }
 
     [Theory]
+    // Raw single-backslash form (already covered) plus JSON-escaped double-backslash form (what
+    // DiagnosticsJsonlService writes after JsonSerializer.Serialize doubles every backslash) plus
+    // nested-serialized quadruple-backslash form (record-of-pre-serialized-JSON).
+    [InlineData(@"opened file C:\Users\alice\Documents\report.txt now",
+                @"opened file %USERPROFILE%\Documents\report.txt now")]
+    [InlineData(@"opened file C:\\Users\\alice\\Documents\\report.txt now",
+                @"opened file %USERPROFILE%\\Documents\\report.txt now")]
+    [InlineData(@"json: {""path"":""C:\\Users\\bob\\AppData\\Local\\foo""} end",
+                @"json: {""path"":""%USERPROFILE%\\AppData\\Local\\foo""} end")]
+    [InlineData(@"nested: C:\\\\Users\\\\carol\\\\AppData\\\\Local\\\\foo end",
+                @"nested: %USERPROFILE%\\\\AppData\\\\Local\\\\foo end")]
+    public void SanitizeLogMessage_RedactsJsonEscapedWindowsUserPaths(string input, string expectedSubstring)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        Assert.DoesNotContain("alice", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("bob", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("carol", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(expectedSubstring, sanitized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsUsernameInJsonSerializedDiagnosticsRecord()
+    {
+        // End-to-end shape that DiagnosticsJsonlService.Write produces: a record with metadata
+        // serialized via JsonSerializer (which doubles every backslash) before SanitizeLogMessage
+        // sees the line. The local username must not survive into the redacted output.
+        var userProfile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(userProfile) || !userProfile.Contains('\\'))
+        {
+            return; // Non-Windows or atypical profile path; raw substring assertion below would not apply.
+        }
+
+        var username = System.IO.Path.GetFileName(userProfile);
+        var metadataPath = System.IO.Path.Combine(userProfile, "smoke_dir_xyz", "diag.txt");
+        var record = new { ts = "2026-06-08T00:00:00Z", @event = "smoke", metadata = new { path = metadataPath } };
+        var serialized = System.Text.Json.JsonSerializer.Serialize(record);
+
+        var sanitized = TokenSanitizer.SanitizeLogMessage(serialized);
+
+        Assert.DoesNotContain(username, sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("%USERPROFILE%", sanitized, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("[1:2:3:4:5]")]
     [InlineData("[a:b:c:d:e]")]
     [InlineData("[::::]")]
