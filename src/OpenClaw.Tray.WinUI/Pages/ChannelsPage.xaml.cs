@@ -151,8 +151,10 @@ public sealed partial class ChannelsPage : Page
         // Cancel + dispose all per-page tokens. Re-enabling the Refresh button
         // here covers the back-to-back-cancel race where neither call reaches
         // its finally block in the !cts.IsCancellationRequested branch.
+        // slopwatch-ignore: SW003 Page unload token cleanup is best-effort; controls continue shutting down.
         try { _refreshCts?.Cancel(); _refreshCts?.Dispose(); } catch { }
         _refreshCts = null;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _linkingCts?.Cancel(); _linkingCts?.Dispose(); } catch { }
         _linkingCts = null;
         SetRefreshBusy(false);
@@ -339,6 +341,7 @@ public sealed partial class ChannelsPage : Page
         var cts = _refreshCts;
         if (oldCts != null)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { oldCts.Cancel(); oldCts.Dispose(); } catch { }
         }
 
@@ -1781,6 +1784,7 @@ public sealed partial class ChannelsPage : Page
         var ct = _linkingCts.Token;
         if (oldLinking != null)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { oldLinking.Cancel(); oldLinking.Dispose(); } catch { }
         }
 

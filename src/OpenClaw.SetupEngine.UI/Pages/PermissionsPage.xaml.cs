@@ -106,6 +106,7 @@ public sealed partial class PermissionsPage : Page
             btn.Click += async (_, _) =>
             {
                 try { await Windows.System.Launcher.LaunchUriAsync(new Uri(uri)); }
+                // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
                 catch { /* best effort */ }
             };
             actionCol = btn;

@@ -451,12 +451,14 @@ internal sealed class UpdateCoordinator(
         {
             dialog.Close();
         }
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (COMException)
         {
             // Window already closed — closing a closed WinUI window throws
             // COMException 0x80070578. Swallow so a real exception in the
             // outer catch isn't masked by this cleanup failure.
         }
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (InvalidOperationException)
         {
             // Same as above for other "already-disposed" race variants.

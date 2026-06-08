@@ -225,7 +225,9 @@ public sealed class VoiceService : IAsyncDisposable
     {
         if (_pipeline != null)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { await _pipeline.StopAsync(); } catch { }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { await _pipeline.DisposeAsync(); } catch { }
             _pipeline = null;
         }
@@ -308,6 +310,7 @@ public sealed class VoiceService : IAsyncDisposable
             // Timeout / external cancellation. Stop the pipeline (which
             // flushes any buffered speech) and give UtteranceTranscribed
             // up to 2 s to fire before reporting timeout.
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { await pipeline.StopAsync().ConfigureAwait(false); } catch { /* swallow */ }
             await Task.WhenAny(tcs.Task, Task.Delay(2000)).ConfigureAwait(false);
             if (tcs.Task.IsCompletedSuccessfully)
@@ -319,6 +322,7 @@ public sealed class VoiceService : IAsyncDisposable
         }
         finally
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { await pipeline.StopAsync(); } catch { /* idempotent — already stopped above on timeout */ }
             await pipeline.DisposeAsync();
         }

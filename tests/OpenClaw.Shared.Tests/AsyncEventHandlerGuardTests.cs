@@ -49,6 +49,8 @@ public class AsyncEventHandlerGuardTests
     {
         var onErrorInvoked = false;
         var finished = new TaskCompletionSource<bool>();
+        var cancellationLogged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new CapturingLogger(debug: _ => cancellationLogged.TrySetResult());
 
         AsyncEventHandlerGuard.Run(
             async () =>
@@ -57,11 +59,11 @@ public class AsyncEventHandlerGuardTests
                 finished.SetResult(true);
                 throw new OperationCanceledException("test cancel");
             },
+            logger: logger,
             onError: _ => { onErrorInvoked = true; });
 
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        // Brief yield to let RunCoreAsync complete its catch block.
-        await Task.Delay(50);
+        await cancellationLogged.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(onErrorInvoked, "OperationCanceledException should be swallowed, not forwarded to onError");
     }
@@ -71,7 +73,12 @@ public class AsyncEventHandlerGuardTests
     {
         string? debugMessage = null;
         var finished = new TaskCompletionSource<bool>();
-        var logger = new CapturingLogger(debug: m => debugMessage = m);
+        var cancellationLogged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new CapturingLogger(debug: m =>
+        {
+            debugMessage = m;
+            cancellationLogged.TrySetResult();
+        });
 
         AsyncEventHandlerGuard.Run(
             async () =>
@@ -83,7 +90,7 @@ public class AsyncEventHandlerGuardTests
             logger: logger);
 
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(50);
+        await cancellationLogged.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.NotNull(debugMessage);
         Assert.Contains("user cancel", debugMessage, StringComparison.OrdinalIgnoreCase);
@@ -187,7 +194,9 @@ public class AsyncEventHandlerGuardTests
         });
 
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // slopwatch-ignore: SW004 This verifies fire-and-forget exception isolation with no callbacks to await.
         // Give the async continuation time to reach the catch block.
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
         // If we got here the unobserved exception did not tear down the process.
     }

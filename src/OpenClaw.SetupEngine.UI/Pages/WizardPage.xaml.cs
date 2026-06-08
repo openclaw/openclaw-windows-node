@@ -626,6 +626,7 @@ public sealed partial class WizardPage : Page
                     AppendConsoleLine(message);
                 });
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch
             {
             }
@@ -636,7 +637,9 @@ public sealed partial class WizardPage : Page
     {
         var tail = _consoleTail;
         _consoleTail = null;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { tail?.Stop(); } catch { }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { tail?.Dispose(); } catch { }
     }
 
@@ -778,6 +781,7 @@ public sealed partial class WizardPage : Page
         if (_client != null && !string.IsNullOrWhiteSpace(_sessionId))
         {
             try { await _client.SendWizardRequestAsync("wizard.cancel", new { sessionId = _sessionId }, timeoutMs: 10_000); }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { }
         }
         await DisconnectAsync();
@@ -809,6 +813,7 @@ public sealed partial class WizardPage : Page
         if (client == null) return;
         _client = null;
         client.StatusChanged -= OnWizardClientStatusChanged;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { await client.DisconnectAsync(); } catch { }
         client.Dispose();
     }

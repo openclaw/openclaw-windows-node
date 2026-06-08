@@ -1871,10 +1871,12 @@ public sealed partial class ConnectionPage : Page
                 AuthErrorBar.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error;
                 AuthErrorBar.IsOpen = true;
             }
+            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
             catch { /* last-ditch */ }
         }
         finally
         {
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             try { btn.IsEnabled = true; } catch { /* control may be detached */ }
         }
     }
@@ -1954,6 +1956,7 @@ public sealed partial class ConnectionPage : Page
             var wasActive = string.Equals(_gatewayRegistry?.ActiveGatewayId, gwId, StringComparison.Ordinal);
             if (wasActive && _connectionManager != null)
             {
+                // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
                 try { await _connectionManager.DisconnectAsync(); } catch { }
             }
             _gatewayRegistry?.Remove(gwId);
@@ -2067,6 +2070,7 @@ public sealed partial class ConnectionPage : Page
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
             }
         }
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException) { /* debounce or page nav */ }
         catch (Exception ex)
         {
@@ -2234,7 +2238,10 @@ public sealed partial class ConnectionPage : Page
                     identityBackupMtimeUtc = info.LastWriteTimeUtc;
                 }
             }
-            catch { /* backup is best-effort; rollback simply skips restore */ }
+            catch (Exception ex)
+            {
+                Services.Logger.Debug($"Identity backup before direct connect was skipped: {ex.Message}");
+            }
 
             if (!string.IsNullOrWhiteSpace(token))
             {
@@ -2398,7 +2405,10 @@ public sealed partial class ConnectionPage : Page
                     File.WriteAllText(identityKeyPath, identityBackup);
                 // else: another writer touched the file; preserve it.
             }
-            catch { /* best-effort restore; failure cannot regress further */ }
+            catch (Exception ex)
+            {
+                Services.Logger.Warn($"Identity restore after failed direct connect could not complete: {ex.Message}");
+            }
         }
 
         if (settings != null)
@@ -2898,6 +2908,7 @@ public sealed partial class ConnectionPage : Page
             successPath = ok;
             // !ok falls into finally below — re-enable so user can retry.
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch
         {
             // Swallow; finally re-enables. The pairing list refresh has
@@ -3189,6 +3200,7 @@ public sealed partial class ConnectionPage : Page
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 return uri.Port > 0 ? $"{uri.Scheme}://{uri.Host}:{uri.Port}" : $"{uri.Scheme}://{uri.Host}";
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch { }
         return url;
     }

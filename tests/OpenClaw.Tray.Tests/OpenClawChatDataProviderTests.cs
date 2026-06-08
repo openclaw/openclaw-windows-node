@@ -1114,7 +1114,14 @@ public class OpenClawChatDataProviderTests
     {
         var historyCalls = 0;
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
-        bridge.HistoryBehavior = _ => { historyCalls++; return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" }); };
+        var reloadObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = _ =>
+        {
+            historyCalls++;
+            if (historyCalls >= 2)
+                reloadObserved.TrySetResult();
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" });
+        };
 
         await provider.LoadAsync();
         await provider.LoadHistoryAsync("main");
@@ -1124,9 +1131,7 @@ public class OpenClawChatDataProviderTests
         bridge.RaiseStatus(ConnectionStatus.Disconnected);
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        // Give the fire-and-forget reload a moment to dispatch.
-        for (int i = 0; i < 50 && historyCalls < 2; i++)
-            await Task.Delay(20);
+        await reloadObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(2, historyCalls);
     }
@@ -1147,6 +1152,7 @@ public class OpenClawChatDataProviderTests
 
         // Already Connected → setting Connected again is a no-op.
         bridge.RaiseStatus(ConnectionStatus.Connected);
+        // slopwatch-ignore: SW004 Negative async assertion needs a brief quiescence window to prove no reload fired.
         for (int i = 0; i < 10; i++) await Task.Delay(10);
 
         Assert.Equal(1, historyCalls);
@@ -2013,8 +2019,7 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseSessions(new[] { MainSession() });
 
-        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
-        Assert.Same(historyLoaded.Task, completed);
+        await historyLoaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Contains("main", historyRequested);
     }
@@ -2034,6 +2039,7 @@ public class OpenClawChatDataProviderTests
         // Status stays Disconnected, sessions arrive.
         bridge.RaiseSessions(new[] { MainSession() });
 
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(100);
 
         Assert.Empty(historyRequested);
@@ -2066,8 +2072,7 @@ public class OpenClawChatDataProviderTests
         };
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
-        Assert.Same(historyLoaded.Task, completed);
+        await historyLoaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Contains("main", historyRequested);
     }
@@ -2078,6 +2083,7 @@ public class OpenClawChatDataProviderTests
     public async Task LoadHistoryAsync_WhenConnected_RetriesAfterFailure()
     {
         var calls = 0;
+        var retrySucceeded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
         bridge.HistoryBehavior = _ =>
         {
@@ -2085,6 +2091,7 @@ public class OpenClawChatDataProviderTests
             if (calls == 1)
                 throw new InvalidOperationException("gateway not ready");
 
+            retrySucceeded.TrySetResult();
             return Task.FromResult(new ChatHistoryInfo
             {
                 SessionKey = "main",
@@ -2107,8 +2114,7 @@ public class OpenClawChatDataProviderTests
             n.Kind == ChatProviderNotificationKind.Error &&
             n.Message?.Contains("gateway not ready") == true);
 
-        // Wait for the 2-second retry.
-        await Task.Delay(3000);
+        await retrySucceeded.Task.WaitAsync(TimeSpan.FromSeconds(4));
 
         // Retry should have succeeded.
         Assert.True(calls >= 2, $"Expected retry, got {calls} calls");
@@ -2430,6 +2436,7 @@ public class OpenClawChatDataProviderTests
                 if (Directory.Exists(DirectoryPath))
                     Directory.Delete(DirectoryPath, recursive: true);
             }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             catch
             {
                 // Test cleanup is best-effort.

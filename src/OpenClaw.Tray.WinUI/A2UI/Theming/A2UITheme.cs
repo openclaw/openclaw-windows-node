@@ -93,6 +93,7 @@ public sealed class A2UITheme
                 return Color.FromArgb(a, r, g, b);
             }
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch { }
         return null;
     }

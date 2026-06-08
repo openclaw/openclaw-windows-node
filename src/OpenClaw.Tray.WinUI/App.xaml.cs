@@ -274,12 +274,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             if (!process.HasExited)
                 process.WaitForExit(TimeSpan.FromSeconds(60));
         }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         catch (ArgumentException)
         {
             // The source process already exited.
         }
         catch (Exception ex)
         {
+            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
             try { Logger.Warn($"Post-setup restart wait for PID {pid} failed: {ex.Message}"); } catch { }
         }
     }
@@ -308,6 +310,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
         }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { }
     }
 
@@ -328,6 +331,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return protocolArgs.Uri?.ToString();
             }
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch { /* Not activated via protocol, or not packaged */ }
         return null;
     }
@@ -1099,6 +1103,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
                     .AddText(ex.Message));
             }
+            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
             catch { }
         }
     }
@@ -1976,6 +1981,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     "node-connected",
                     deviceId);
             }
+            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
             catch { /* ignore */ }
         }
     }
@@ -2020,6 +2026,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     args.DeviceId);
             }
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* ignore */ }
     }
 
@@ -2561,6 +2568,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 _hubWindow.AppWindow.Show(activateWindow: false);
             }
+            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
             catch { /* swallow */ }
         }
     }

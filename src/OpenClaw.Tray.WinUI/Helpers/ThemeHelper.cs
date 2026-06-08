@@ -46,6 +46,7 @@ public static class ThemeHelper
                 return Color.FromArgb(255, r, g, b);
             }
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch { }
         return Color.FromArgb(255, 0, 120, 212); // #0078D4 — WinUI default accent
     }

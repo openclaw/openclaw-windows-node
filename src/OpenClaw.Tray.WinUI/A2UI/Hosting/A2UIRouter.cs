@@ -86,6 +86,7 @@ public sealed class A2UIRouter
         {
             foreach (var s in _surfaces.Values)
             {
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { s.Dispose(); } catch { }
                 SurfaceDeleted?.Invoke(this, s.SurfaceId);
             }

@@ -239,6 +239,7 @@ public sealed partial class SettingsPage : Page
                 .AddText("This is a test notification from OpenClaw settings.")
                 .Show();
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { }
     }
 
@@ -344,13 +345,20 @@ public sealed partial class SettingsPage : Page
                         if (doc.RootElement.TryGetProperty("message", out var msg) && msg.GetString() is { Length: > 0 } m)
                             errorMsg = m;
                     }
-                    catch { /* best effort */ }
+                    catch (Exception ex)
+                    {
+                        Services.Logger.Debug($"Could not read uninstall error details: {ex.Message}");
+                    }
                 }
                 ShowUninstallError(errorMsg);
             }
 
             // Clean up temp file
-            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex)
+            {
+                Services.Logger.Debug($"Could not delete uninstall status file: {ex.Message}");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -362,7 +370,10 @@ public sealed partial class SettingsPage : Page
                     await proc.WaitForExitAsync(CancellationToken.None);
                 }
             }
-            catch { /* best effort cancellation cleanup */ }
+            catch (Exception cleanupEx)
+            {
+                Services.Logger.Debug($"Could not stop cancelled uninstall process: {cleanupEx.Message}");
+            }
 
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
@@ -379,7 +390,11 @@ public sealed partial class SettingsPage : Page
         finally
         {
             proc?.Dispose();
-            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex)
+            {
+                Services.Logger.Debug($"Could not delete uninstall status file during cleanup: {ex.Message}");
+            }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
         }
@@ -409,6 +424,7 @@ public sealed partial class SettingsPage : Page
         var viewLogsButton = new Button { Content = "View Logs" };
         viewLogsButton.Click += (_, _) =>
         {
+            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
             try { System.Diagnostics.Process.Start("explorer.exe", logsPath); } catch { }
         };
 

@@ -126,6 +126,7 @@ public sealed class SingleFlightDownloadTests
                 return;
             }
 
+            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             await Task.Delay(10);
         }
 

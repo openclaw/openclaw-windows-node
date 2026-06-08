@@ -106,6 +106,7 @@ public sealed class SshTunnelService : ISshTunnelManager
         }
         finally
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _process.Dispose(); } catch { }
             _process = null;
             _lastSpec = null;
@@ -172,6 +173,7 @@ public sealed class SshTunnelService : ISshTunnelManager
                 LastError = $"SSH tunnel exited unexpectedly with code {exitCode}.";
                 StartedAtUtc = null;
                 Status = TunnelStatus.Failed;
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { process.Dispose(); } catch { }
                 _process = null;
                 _lastSpec = null;

@@ -2367,6 +2367,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             var streamHint = payload.TryGetProperty("stream", out var sh) ? sh.GetString() ?? "" : "";
             _logger.Debug($"Agent event received: stream={streamHint} len={rawMessageLength}");
         }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { }
 
         // sessionKey is inside payload, not root. We deliberately do NOT

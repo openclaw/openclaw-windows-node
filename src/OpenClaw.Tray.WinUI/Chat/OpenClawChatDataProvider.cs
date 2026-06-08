@@ -238,7 +238,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (a.Type == "image" && !string.IsNullOrEmpty(a.FileName) && !string.IsNullOrEmpty(a.Content))
                 {
                     try { ImagePreviewCache[a.FileName] = Convert.FromBase64String(a.Content); }
-                    catch { /* skip un-decodable bytes */ }
+                    catch (FormatException ex)
+                    {
+                        Logger.Debug($"Image preview cache skipped invalid Base64 attachment content: {ex.Message}");
+                    }
                 }
             }
         }
@@ -3059,7 +3062,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             File.WriteAllText(tmp, json);
             File.Move(tmp, LastChatStateFilePath, overwrite: true);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Last chat state could not be saved: {ex.Message}");
+        }
     }
 
     private void RaiseNotification(ChatProviderNotification notification)
@@ -3093,8 +3099,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 result[k] = new HashSet<string>(v);
             return result;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Debug($"Aborted message IDs could not be loaded: {ex.Message}");
             return new();
         }
     }
@@ -3118,7 +3125,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(AbortedIdsFilePath, json);
         }
-        catch { /* best-effort persistence */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Aborted message IDs could not be saved: {ex.Message}");
+        }
     }
 
     // ── Tool metadata persistence ─────────────────────────────────────
@@ -3187,8 +3197,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<CachedToolMeta>>>(json);
             return dict ?? new();
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Debug($"Tool metadata cache could not be loaded: {ex.Message}");
             return new();
         }
     }
@@ -3203,8 +3214,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<CachedAttachmentMeta>>>(json);
             return dict ?? new();
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Debug($"Attachment metadata cache could not be loaded: {ex.Message}");
             return new();
         }
     }
@@ -3262,14 +3274,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         if (File.Exists(tempPath))
                             File.Delete(tempPath);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Best-effort cleanup; persistence remains best-effort.
+                        Logger.Debug($"Attachment metadata temp file cleanup failed: {ex.Message}");
                     }
                 }
             }
         }
-        catch { /* best-effort persistence */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Attachment metadata cache could not be saved: {ex.Message}");
+        }
     }
 
     private void CacheAttachmentMeta(
@@ -3494,14 +3509,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         if (File.Exists(tempPath))
                             File.Delete(tempPath);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Best-effort cleanup; persistence remains best-effort.
+                        Logger.Debug($"Tool metadata temp file cleanup failed: {ex.Message}");
                     }
                 }
             }
         }
-        catch { /* best-effort persistence */ }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Tool metadata cache could not be saved: {ex.Message}");
+        }
     }
 
     /// <summary>

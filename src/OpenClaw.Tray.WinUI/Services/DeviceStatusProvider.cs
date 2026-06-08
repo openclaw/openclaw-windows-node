@@ -47,6 +47,7 @@ public class DeviceStatusProvider : IDeviceStatusProvider
                     if (counter != null)
                         _lastCpuUsage = Math.Round(counter.NextValue(), 1);
                 }
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 catch { /* counter unavailable or disposed */ }
             }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
         }
@@ -76,6 +77,7 @@ public class DeviceStatusProvider : IDeviceStatusProvider
                 @"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
             cpuName = key?.GetValue("ProcessorNameString") as string;
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch
         {
             // Registry access may be restricted

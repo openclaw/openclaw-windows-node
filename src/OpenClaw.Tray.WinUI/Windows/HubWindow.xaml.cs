@@ -618,6 +618,7 @@ public sealed partial class HubWindow : WindowEx
         var newState = args is NavigationViewPaneClosingEventArgs ? false : true;
         if (settings.HubNavPaneOpen == newState) return;
         settings.HubNavPaneOpen = newState;
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         try { settings.Save(); } catch { /* swallow — don't block UI */ }
     }
 

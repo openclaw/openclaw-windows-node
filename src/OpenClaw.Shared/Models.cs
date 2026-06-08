@@ -1744,6 +1744,7 @@ public class AgentEventInfo
                         return phase != null ? $"⚡ {state} ({phase})" : $"⚡ {state}";
                 }
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch { }
             return "";
         }

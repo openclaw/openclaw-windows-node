@@ -957,6 +957,7 @@ public class OpenClawGatewayClientTests
 
         helper.OnDisconnected();
 
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         var completed = await Task.WhenAny(task, Task.Delay(250));
         Assert.Same(task, completed);
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await task);

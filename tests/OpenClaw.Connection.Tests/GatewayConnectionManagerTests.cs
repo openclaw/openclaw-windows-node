@@ -25,6 +25,7 @@ public class GatewayConnectionManagerTests : IDisposable
     public void Dispose()
     {
         _manager.Dispose();
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 
@@ -430,6 +431,7 @@ public class GatewayConnectionManagerTests : IDisposable
             if (DateTime.UtcNow >= deadline)
                 throw new TimeoutException("Condition was not met before the timeout.");
 
+            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
             await Task.Delay(20);
         }
     }
@@ -785,8 +787,7 @@ public class GatewayConnectionManagerTests : IDisposable
         var lifecycle = _factory.CreatedClients[0];
         lifecycle.SimulateHandshake();
 
-        // Allow async handler to complete
-        await Task.Delay(100);
+        await WaitUntilAsync(() => _registry.GetById("gw-1")?.LastConnected is not null);
 
         var record = _registry.GetById("gw-1");
         Assert.NotNull(record?.LastConnected);
@@ -809,7 +810,7 @@ public class GatewayConnectionManagerTests : IDisposable
 
         var lifecycle = _factory.CreatedClients[0];
         lifecycle.SimulateHandshake();
-        await Task.Delay(100);
+        await WaitUntilAsync(() => _registry.GetById("gw-1")?.LastConnected is not null);
 
         var record = _registry.GetById("gw-1")!;
         Assert.True(record.LastConnected.HasValue);
@@ -834,7 +835,6 @@ public class GatewayConnectionManagerTests : IDisposable
         await _manager.ConnectAsync("gw-1");
         var lifecycle = _factory.CreatedClients[0];
         lifecycle.SimulateDeviceTokenReceived("node-device-token", "node");
-        await Task.Delay(50);
 
         var updated = _registry.GetById("gw-1");
         Assert.Null(updated?.BootstrapToken);
@@ -855,7 +855,6 @@ public class GatewayConnectionManagerTests : IDisposable
         await _manager.ConnectAsync("gw-1");
         var lifecycle = _factory.CreatedClients[0];
         lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator");
-        await Task.Delay(50);
 
         var record = _registry.GetById("gw-1");
         Assert.Equal("bs-secret", record?.BootstrapToken);
@@ -873,7 +872,6 @@ public class GatewayConnectionManagerTests : IDisposable
 
         // Should not throw even when bootstrap is already null
         lifecycle.SimulateDeviceTokenReceived("node-device-token", "node");
-        await Task.Delay(50);
 
         var record = _registry.GetById("gw-1");
         Assert.Null(record?.BootstrapToken);
@@ -895,7 +893,6 @@ public class GatewayConnectionManagerTests : IDisposable
         await manager.ConnectAsync("gw-1");
         var lifecycle = _factory.CreatedClients[0];
         lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator");
-        await Task.Delay(50);
 
         Assert.Single(capturedTokens, t => t.token == "op-device-token" && t.role == "operator");
     }

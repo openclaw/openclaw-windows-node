@@ -278,6 +278,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (v is SolidColorBrush brush) return brush.Color;
             }
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch { /* resource lookup can throw in unpackaged/test hosts */ }
         return fallback;
     }
@@ -905,6 +906,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             {
                 ClipboardHelper.CopyText(text, flush: true);
             }
+            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
             catch { /* clipboard contention — silently ignore */ }
         }
 
@@ -2294,6 +2296,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                 // Include the operation kind in the screen-reader name so
                                 // users hear "Allow shell.exec" instead of bare "Allow".
                                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{allowLabel}{automationSuffix}");
+                                // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
                                 try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; } catch { }
                             }),
                         Button(denyLabel,

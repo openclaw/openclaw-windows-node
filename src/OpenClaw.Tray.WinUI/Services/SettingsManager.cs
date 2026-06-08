@@ -341,6 +341,7 @@ public class SettingsManager
             LegacyToken = ReadLegacyString(document.RootElement, "Token");
             LegacyBootstrapToken = ReadLegacyString(document.RootElement, "BootstrapToken");
         }
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         catch (JsonException)
         {
             // SettingsData.FromJson handles invalid settings by falling back to defaults.

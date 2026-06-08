@@ -265,6 +265,7 @@ public class ChatExplorationsPanel : Component
                     (App.Current as App)?.ShowChatWindow();
                     rev.Set(rev.Value + 1);
                 }
+                // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
                 catch { /* ignore */ }
             });
 

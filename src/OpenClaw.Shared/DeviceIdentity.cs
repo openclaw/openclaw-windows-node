@@ -535,6 +535,7 @@ public class DeviceIdentity
         }
         catch
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort cleanup */ }
             throw;
         }

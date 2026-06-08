@@ -146,6 +146,7 @@ internal sealed class WslGatewayKeepAliveService(
                     Logger.Info($"[WslKeepAlive] Stopped stale keepalive for {distroName} (PID {proc.Id}).");
                 }
             }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch
             {
                 // Process may have exited while being inspected.
@@ -173,6 +174,7 @@ internal sealed class WslGatewayKeepAliveService(
                     Logger.Info($"[WslKeepAlive] Deleted stale keepalive marker for {distroName}.");
                 }
             }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch
             {
                 // Best-effort cleanup; stale/corrupt markers are not fatal.

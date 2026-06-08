@@ -289,6 +289,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 {
                     await lifecycle.ConnectAsync(ct);
                 }
+                // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
@@ -654,6 +655,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (Interlocked.Read(ref _generation) != gen || _disposed) return;
                 await ReconnectAsync();
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (ObjectDisposedException) { }
             catch (Exception ex)
             {
@@ -1239,6 +1241,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (semaphoreEntered)
             {
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { _transitionSemaphore.Release(); } catch { }
                 _transitionSemaphore.Dispose();
             }

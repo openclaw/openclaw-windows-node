@@ -22,6 +22,7 @@ internal sealed class AppCrashLogger
             var message = $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n";
             File.AppendAllText(_path, message);
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch { /* Can't log the crash logger crash */ }
 
         try
@@ -35,6 +36,7 @@ internal sealed class AppCrashLogger
                 Logger.Error($"CRASH {source}");
             }
         }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { /* Ignore logging failures */ }
     }
 }

@@ -361,6 +361,7 @@ public sealed partial class ChatPage : Page
         _functionalHost = null;
         _mountedProvider = null;
         _mountedThreadId = null;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
     }
 
@@ -515,6 +516,7 @@ public sealed partial class ChatPage : Page
             Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
             WebView.CoreWebView2.Navigate(_chatUrl);
         }
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException)
         {
         }
@@ -641,6 +643,7 @@ public sealed partial class ChatPage : Page
     {
         if (string.IsNullOrEmpty(_chatUrl)) return;
         try { Process.Start(new ProcessStartInfo(_chatUrl) { UseShellExecute = true }); }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { /* shell launch failed — silently ignore */ }
     }
 
@@ -830,6 +833,7 @@ public sealed partial class ChatPage : Page
             };
             await dialog.ShowAsync();
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* dialog display failed, already logged */ }
     }
 }

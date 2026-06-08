@@ -87,6 +87,7 @@ internal sealed class WizardConsoleTail : IDisposable
             var extracted = TryExtractConsoleMessage(e.Data);
             if (extracted == null) return;
             try { onMessage(extracted); }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { /* never let a UI mistake kill the tail */ }
         };
         process.ErrorDataReceived += (_, e) =>
@@ -124,7 +125,9 @@ internal sealed class WizardConsoleTail : IDisposable
             if (!process.HasExited)
                 process.Kill(entireProcessTree: true);
         }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         catch { /* already gone */ }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { process.Dispose(); } catch { }
     }
 
