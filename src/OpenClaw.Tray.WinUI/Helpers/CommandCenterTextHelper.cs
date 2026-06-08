@@ -356,11 +356,11 @@ internal static class CommandCenterTextHelper
         }
         catch (IOException ex)
         {
-            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {ex.Message}";
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
         }
         catch (UnauthorizedAccessException ex)
         {
-            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {ex.Message}";
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
         }
 
         if (lines.Count == 0)
