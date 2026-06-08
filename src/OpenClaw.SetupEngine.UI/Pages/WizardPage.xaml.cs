@@ -56,7 +56,10 @@ public sealed partial class WizardPage : Page
         {
             _errorState = false;
             HideRecoveryActions();
-            await DisconnectAsync();
+            // Cancel any in-progress server-side wizard session before starting a
+            // fresh one, so the gateway doesn't reject wizard.start with "wizard
+            // already running" when recovering from a previous error.
+            await CancelCurrentSessionAsync();
             ClearConsoleBanner();
             _sessionId = "";
             _wizardStepCount = 0;
@@ -757,7 +760,10 @@ public sealed partial class WizardPage : Page
             return;
 
         _errorState = true;
-        await DisconnectAsync();
+        // Cancel the server-side wizard session before disconnecting so that
+        // subsequent retries (Start wizard again / Skip wizard) don't hit a
+        // "wizard already running" error from a lingering gateway session.
+        await CancelCurrentSessionAsync();
         ShowError(detail);
     }
 
