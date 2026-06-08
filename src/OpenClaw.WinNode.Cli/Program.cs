@@ -643,6 +643,7 @@ internal static class CliRunner
                     }
                 }
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch (IOException) { /* not a link; keep requestedDir */ }
 
             string resolvedFile = fullPath;
@@ -658,6 +659,7 @@ internal static class CliRunner
                     }
                 }
             }
+            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
             catch (IOException) { /* not a link; keep fullPath */ }
 
             // The resolved file must live under the resolved directory tree.

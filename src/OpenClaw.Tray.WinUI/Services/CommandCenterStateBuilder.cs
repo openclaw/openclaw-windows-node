@@ -46,7 +46,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Critical,
                 Category = "auth",
-                Title = "Gateway authentication failed",
+                Title = LocalizationHelper.GetString("CommandCenter_AuthFailed"),
                 Detail = _snapshot.AuthFailureMessage
             });
         }
@@ -58,7 +58,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "pairing",
-                Title = "Node is waiting for approval",
+                Title = LocalizationHelper.GetString("CommandCenter_NodePendingApproval"),
                 Detail = $"Approve device {_snapshot.NodeService.ShortDeviceId} from the gateway CLI, then re-open the command center after reconnect.",
                 RepairAction = "Copy approval command",
                 CopyText = approvalCommand
@@ -71,7 +71,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Critical,
                 Category = "gateway",
-                Title = "Gateway connection error",
+                Title = LocalizationHelper.GetString("CommandCenter_GatewayConnectionError"),
                 Detail = "The tray is not currently connected to the gateway."
             });
         }
@@ -81,7 +81,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "gateway",
-                Title = "Gateway is not connected",
+                Title = LocalizationHelper.GetString("CommandCenter_GatewayNotConnected"),
                 Detail = $"Current connection state is {_snapshot.Status}."
             });
         }
@@ -93,7 +93,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "gateway",
-                Title = "Gateway health is stale",
+                Title = LocalizationHelper.GetString("CommandCenter_GatewayHealthStale"),
                 Detail = $"Last health check was {_snapshot.LastCheckTime:t}. Run a health check or verify the localhost tunnel."
             });
         }
@@ -104,7 +104,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "channel",
-                Title = "No channels reported",
+                Title = LocalizationHelper.GetString("CommandCenter_NoChannelsReported"),
                 Detail = "The gateway health payload did not report any channels."
             });
         }
@@ -114,7 +114,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "gateway",
-                Title = "Waiting for gateway health",
+                Title = LocalizationHelper.GetString("CommandCenter_WaitingForGatewayHealth"),
                 Detail = "Node mode is connected. Channel/session inventories are filled from gateway health events when available."
             });
         }
@@ -124,7 +124,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "channel",
-                Title = "No channels are currently running",
+                Title = LocalizationHelper.GetString("CommandCenter_NoChannelsRunning"),
                 Detail = "Channels are configured but none are reporting a running/ready state."
             });
         }
@@ -135,7 +135,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "node",
-                Title = "No nodes reported",
+                Title = LocalizationHelper.GetString("CommandCenter_NoNodesReported"),
                 Detail = "node.list did not report any connected nodes. Pair a Windows node or verify the operator token has node inventory access."
             });
         }
@@ -146,7 +146,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "usage",
-                Title = "Some usage costs are missing",
+                Title = LocalizationHelper.GetString("CommandCenter_UsageCostsMissing"),
                 Detail = $"{_snapshot.UsageCost.Totals.MissingCostEntries} usage entr{(_snapshot.UsageCost.Totals.MissingCostEntries == 1 ? "y is" : "ies are")} missing cost data."
             });
         }
@@ -196,7 +196,7 @@ internal sealed class CommandCenterStateBuilder
         {
             Severity = GatewayDiagnosticSeverity.Info,
             Category = "browser",
-            Title = "Browser proxy auth may need a gateway token",
+            Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyAuthMayNeed"),
             Detail = "This Windows node is advertising browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
             RepairAction = "Copy browser proxy auth guidance",
             CopyText = "If browser.proxy returns an auth error, enter the gateway shared token in Settings > Gateway Token, or configure the browser-control host to use auth compatible with the Windows node. Do not paste QR bootstrap tokens into the normal gateway token field."
@@ -218,7 +218,7 @@ internal sealed class CommandCenterStateBuilder
                 {
                     Severity = GatewayDiagnosticSeverity.Warning,
                     Category = "port",
-                    Title = "SSH tunnel port is not listening",
+                    Title = LocalizationHelper.GetString("CommandCenter_SshTunnelPortNotListening"),
                     Detail = port.Detail
                 };
             }
@@ -231,7 +231,7 @@ internal sealed class CommandCenterStateBuilder
                 {
                     Severity = GatewayDiagnosticSeverity.Info,
                     Category = "port",
-                    Title = "No local gateway listener detected",
+                    Title = LocalizationHelper.GetString("CommandCenter_NoLocalGatewayListener"),
                     Detail = port.Detail
                 };
             }
@@ -245,7 +245,7 @@ internal sealed class CommandCenterStateBuilder
                     {
                         Severity = GatewayDiagnosticSeverity.Info,
                         Category = "browser",
-                        Title = "Browser proxy SSH forward is not listening",
+                        Title = LocalizationHelper.GetString("CommandCenter_BrowserProxySshForwardNotListening"),
                         Detail = $"browser.proxy over SSH needs a companion local forward for port {port.Port}. Add the browser-control forward to the same tunnel, or enable the managed SSH tunnel so Windows starts both forwards.",
                         RepairAction = "Copy browser proxy SSH forward",
                         CopyText = BuildBrowserProxySshForwardHint(port.Port, tunnel)
@@ -257,7 +257,7 @@ internal sealed class CommandCenterStateBuilder
                 {
                     Severity = GatewayDiagnosticSeverity.Info,
                     Category = "browser",
-                    Title = "Browser proxy host not detected",
+                    Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyHostNotDetected"),
                     Detail = "browser.proxy needs a compatible browser-control host listening on the gateway port + 2.",
                     RepairAction = "Copy browser setup guidance",
                     // string formatter — no UI

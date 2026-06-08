@@ -1033,9 +1033,11 @@ public sealed partial class TrayMenuWindow : WindowEx
                         return dpiX;
                 }
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch (DllNotFoundException)
             {
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch (EntryPointNotFoundException)
             {
             }

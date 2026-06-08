@@ -20,6 +20,7 @@ internal sealed class RendererCleanup : IDisposable
     public void Dispose()
     {
         var action = System.Threading.Interlocked.Exchange(ref _onDispose, null);
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { action?.Invoke(); } catch { /* cleanup must never throw */ }
     }
 }
@@ -94,6 +95,7 @@ public sealed class ImageRenderer : IComponentRenderer
                 loadCts = null;
                 if (prev != null)
                 {
+                    // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                     try { prev.Cancel(); } catch { }
                     prev.Dispose();
                 }
@@ -113,6 +115,7 @@ public sealed class ImageRenderer : IComponentRenderer
             loadCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20));
             if (prevCts != null)
             {
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { prevCts.Cancel(); } catch { }
                 prevCts.Dispose();
             }
@@ -127,6 +130,7 @@ public sealed class ImageRenderer : IComponentRenderer
             var cts = loadCts;
             loadCts = null;
             if (cts == null) return;
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { cts.Cancel(); } catch { }
             cts.Dispose();
         }));

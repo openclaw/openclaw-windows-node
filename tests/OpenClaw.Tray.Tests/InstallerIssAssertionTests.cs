@@ -37,6 +37,9 @@ public sealed class InstallerIssAssertionTests
     {
         var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
         Assert.Contains("AppMutex=OpenClawTray", iss);
+        Assert.Contains("Inno requires \"{{\" to emit a literal opening brace in AppId.", iss);
+        Assert.Contains("AppId={{M0LTB0T-TRAY-4PP1-D3N7}", iss);
+        Assert.DoesNotContain("AppId={{M0LTB0T-TRAY-4PP1-D3N7}}", iss);
 
         // The matching tray-side mutex name must be present in App.xaml.cs.
         var appXamlCs = File.ReadAllText(Path.Combine(
@@ -65,10 +68,63 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"#define MySolidCompression ""yes""", iss);
         Assert.Contains("OutputBaseFilename=OpenClawCompanion-Setup-{#MyAppArch}", iss);
         Assert.Contains(@"Name: ""{group}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""", iss);
-        Assert.Contains(@"Name: ""{group}\OpenClaw Gateway Setup""; Filename: ""{app}\SetupEngine\OpenClaw.SetupEngine.UI.exe""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Gateway Setup""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://setup""", iss);
         Assert.Contains(@"Name: ""{group}\OpenClaw Companion Settings""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://commandcenter""", iss);
         Assert.Contains(@"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://chat""", iss);
         Assert.Contains(@"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://check-updates""", iss);
+    }
+
+    [Fact]
+    public void Installer_RemovesGeneratedAppStateOnlyAfterGatewayCleanup()
+    {
+        var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
+
+        Assert.DoesNotContain("[UninstallRun]", iss);
+        Assert.Contains("[Code]", iss);
+        Assert.Contains("Uninstall-LocalGateway.ps1", iss);
+        Assert.Contains("UninstallSilent()", iss);
+        Assert.Contains("LocalGatewayCleanupRequested := True", iss);
+        Assert.Contains("OpenClawGateway WSL distro", iss);
+        Assert.Contains("MB_YESNO", iss);
+        Assert.Contains("ExpandConstant('{sys}\\WindowsPowerShell\\v1.0\\powershell.exe')", iss);
+        Assert.Contains("ewWaitUntilTerminated", iss);
+        Assert.Contains("MB_RETRYCANCEL", iss);
+        Assert.Contains("DeleteGeneratedAppState", iss);
+        Assert.Contains("CurUninstallStep = usPostUninstall", iss);
+        Assert.Contains("DelTree(ExpandConstant('{app}'), True, True, True)", iss);
+        Assert.DoesNotContain("Start-Sleep -Seconds 3", iss);
+        Assert.DoesNotContain("--uninstall --confirm-destructive", iss);
+        Assert.DoesNotContain("[UninstallDelete]", iss);
+    }
+
+    [Fact]
+    public void UninstallLocalGatewayScript_DirectlyUnregistersWslDistro()
+    {
+        var script = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "scripts", "Uninstall-LocalGateway.ps1"));
+
+        Assert.Contains("$DistroName = 'OpenClawGateway'", script);
+        Assert.Contains("'--list', '--quiet'", script);
+        Assert.Contains("'--terminate', $DistroName", script);
+        Assert.Contains("'--shutdown'", script);
+        Assert.Contains("'--unregister', $DistroName", script);
+        Assert.Contains("Start-Sleep -Seconds 2", script);
+        Assert.Contains("Remove-GatewayDirectory", script);
+        Assert.Contains("Remove-WindowsGatewayArtifacts", script);
+        Assert.Contains("gateways.json", script);
+        Assert.Contains("device-key-ed25519.json", script);
+        Assert.Contains("OpenClawTray", script);
+        Assert.Contains("setup-state.json", script);
+        Assert.Contains("wsl-keepalive", script);
+        Assert.Contains("Test-DistroListed", script);
+        Assert.Contains("Test-DistroNotFound", script);
+        Assert.Contains("FileAttributes]::ReparsePoint", script);
+        Assert.Contains("Refusing to recursively delete reparse point", script);
+        Assert.Contains("for ($attempt = 1; $attempt -le 6; $attempt++)", script);
+        Assert.Contains("exit $unregisterResult.ExitCode", script);
+        Assert.DoesNotContain("OpenClaw.Tray.WinUI.exe", script);
+        Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", script);
+        Assert.DoesNotContain("--headless", script);
+        Assert.DoesNotContain("--confirm-destructive", script);
     }
 
     [Fact]
@@ -84,16 +140,19 @@ public sealed class InstallerIssAssertionTests
     }
 
     [Fact]
-    public void ReleaseBuildCopiesSetupEngineIntoInstallerPayload()
+    public void ReleaseBuildDoesNotShipSeparateSetupUiExecutable()
     {
         var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
         var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
 
+        Assert.Contains(@"FileExists(publish + ""\OpenClaw.Tray.WinUI.exe"")", iss);
         Assert.Contains(@"FileExists(publish + ""\SetupEngine\OpenClaw.SetupEngine.UI.exe"")", iss);
-        Assert.Contains("Publish SetupEngine.UI", ci);
-        Assert.Contains(@"dotnet publish src/OpenClaw.SetupEngine.UI", ci);
-        Assert.Contains(@"mkdir publish\SetupEngine", ci);
-        Assert.Contains(@"copy publish-setup\* publish\SetupEngine\ -Recurse", ci);
+        Assert.Contains("SetupEngine.UI.exe should not be shipped", iss);
+        Assert.DoesNotContain("Publish SetupEngine.UI", ci);
+        Assert.DoesNotContain(@"dotnet publish src/OpenClaw.SetupEngine.UI", ci);
+        Assert.DoesNotContain("publish-setup", ci);
+        Assert.DoesNotContain(@"mkdir publish\SetupEngine", ci);
+        Assert.DoesNotContain(@"copy publish-setup\* publish\SetupEngine\ -Recurse", ci);
     }
 
     [Fact]

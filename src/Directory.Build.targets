@@ -1,0 +1,108 @@
+<Project>
+
+  <PropertyGroup>
+    <OpenClawVCRuntimePackageVersion>1.0.5</OpenClawVCRuntimePackageVersion>
+    <OpenClawVCRuntimePackageRoot>$(NuGetPackageRoot)vcruntime.cefsharp.140\$(OpenClawVCRuntimePackageVersion)\vc_redist\</OpenClawVCRuntimePackageRoot>
+    <OpenClawVCRuntimeArch Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</OpenClawVCRuntimeArch>
+    <OpenClawVCRuntimeArch Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</OpenClawVCRuntimeArch>
+  </PropertyGroup>
+
+  <!--
+    Both x64 and ARM64 resolve loose VC++ runtime DLLs from the local Visual
+    Studio install at publish time (via ResolveOpenClawVCRuntimeFromVSInstall).
+    This ensures onnxruntime and other native dependencies always get a current
+    CRT — the VCRuntime.CefSharp.140 NuGet ships 14.29 DLLs that are too old
+    for onnxruntime ≥ 1.20.
+
+    For local x64 *builds* (not publish), the NuGet DLLs are still copied to
+    the output directory as a convenience so devs without VS can iterate.
+    Local 'dotnet build -r win-arm64' intentionally does NOT require a VS
+    install (so cross-compile sanity checks keep working on x64 dev boxes).
+    The VS-install requirement only kicks in at publish time, which is what
+    the release pipeline actually runs.
+  -->
+  <ItemGroup Condition="'$(OpenClawVCRuntimeArch)' == 'x64'">
+    <OpenClawVCRuntimeFiles Include="$(OpenClawVCRuntimePackageRoot)x64\*.dll" />
+  </ItemGroup>
+
+  <Target Name="ResolveOpenClawVCRuntimeFromVSInstall"
+          Condition="'$(OpenClawVCRuntimeArch)' != ''">
+
+    <PropertyGroup>
+      <_OpenClawVsWherePath>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_OpenClawVsWherePath>
+    </PropertyGroup>
+
+    <Error Condition="!Exists('$(_OpenClawVsWherePath)')"
+           Text="vswhere.exe not found at '$(_OpenClawVsWherePath)'. Publishing requires a Visual Studio install with the C++ Redistributable (Microsoft.VisualStudio.Component.VC.Redist.14.Latest) component." />
+
+    <Exec Command="&quot;$(_OpenClawVsWherePath)&quot; -latest -products * -requires Microsoft.VisualStudio.Component.VC.Redist.14.Latest -property installationPath"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_OpenClawVsInstallRoot" />
+    </Exec>
+
+    <Error Condition="'$(_OpenClawVsInstallRoot)' == '' or !Exists('$(_OpenClawVsInstallRoot)')"
+           Text="vswhere did not find a Visual Studio install with the C++ Redistributable (Microsoft.VisualStudio.Component.VC.Redist.14.Latest) component (got '$(_OpenClawVsInstallRoot)'). Install that component via the Visual Studio Installer (Individual Components tab)." />
+
+    <!--
+      Glob the loose CRT DLLs. The Microsoft.VC*.CRT folder name carries the VS
+      major version (Microsoft.VC143.CRT for VS 2022, Microsoft.VC145.CRT for
+      VS 18). There is at most one Microsoft.VC*.CRT subdir per arch per redist
+      version, so the * collapses to a single match. We limit to
+      vcruntime140*.dll + msvcp140*.dll to match the file set the x64 NuGet
+      ships (concrt140/vccorlib140/vcruntime140_threads aren't needed by
+      libsodium and aren't in the x64 payload either).
+
+      For x64 this replaces the stale NuGet-sourced items so publish always
+      ships current DLLs from the VS install.
+    -->
+    <ItemGroup Condition="'$(OpenClawVCRuntimeArch)' == 'x64'">
+      <OpenClawVCRuntimeFiles Remove="@(OpenClawVCRuntimeFiles)" />
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\vcruntime140*.dll" />
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\msvcp140*.dll" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(OpenClawVCRuntimeArch)' == 'arm64'">
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\arm64\Microsoft.VC*.CRT\vcruntime140*.dll" />
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\arm64\Microsoft.VC*.CRT\msvcp140*.dll" />
+    </ItemGroup>
+
+    <Error Condition="'@(OpenClawVCRuntimeFiles)' == ''"
+           Text="No $(OpenClawVCRuntimeArch) VC++ Runtime DLLs were found under '$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\$(OpenClawVCRuntimeArch)\Microsoft.VC*.CRT\'. Install the C++ Redistributable Update Visual Studio component." />
+  </Target>
+
+  <!-- Legacy alias so existing CI log searches and docs still find the target. -->
+  <Target Name="ResolveOpenClawVCRuntimeArm64FromVSInstall"
+          DependsOnTargets="ResolveOpenClawVCRuntimeFromVSInstall" />
+
+  <Target Name="CopyOpenClawVCRuntimeToOutput"
+          AfterTargets="Build"
+          Condition="'$(OpenClawVCRuntimeArch)' == 'x64' and '@(OpenClawVCRuntimeFiles)' != ''">
+    <!--
+      x64-only on purpose. ARM64 publishes its runtime through the publish-only
+      target below so that local 'dotnet build -r win-arm64' does not require
+      a Visual Studio install.
+      Uses the NuGet-sourced DLLs (the VS resolution only runs at publish).
+    -->
+    <Copy SourceFiles="@(OpenClawVCRuntimeFiles)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyOpenClawVCRuntimeToPublish"
+          AfterTargets="Publish"
+          DependsOnTargets="ResolveOpenClawVCRuntimeFromVSInstall"
+          Condition="'$(PublishDir)' != '' and '$(OpenClawVCRuntimeArch)' != ''">
+    <Copy SourceFiles="@(OpenClawVCRuntimeFiles)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="ValidateOpenClawVCRuntimePublished"
+          AfterTargets="CopyOpenClawVCRuntimeToPublish"
+          Condition="'$(PublishDir)' != '' and '$(OpenClawVCRuntimeArch)' != ''">
+    <Error Condition="!Exists('$(PublishDir)vcruntime140.dll')"
+           Text="vcruntime140.dll missing from $(PublishDir). Clean Windows installs cannot load libsodium.dll without the VC runtime." />
+  </Target>
+
+</Project>

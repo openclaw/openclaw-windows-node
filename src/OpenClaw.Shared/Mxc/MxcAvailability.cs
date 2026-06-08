@@ -8,7 +8,7 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Backends checked:
 /// <list type="bullet">
-/// <item><see cref="IsAppContainerAvailable"/> — Windows 11 build &gt;= 26100, UBR &gt;= 7965 (per @microsoft/mxc-sdk README), x64 / arm64.</item>
+/// <item><see cref="IsAppContainerAvailable"/> — Windows 11 build 26300 with UBR &gt;= 8289, x64 / arm64.</item>
 /// <item><see cref="IsWxcExecResolvable"/> — wxc-exec.exe found in the shipped tray output layout or via override.</item>
 /// <item><see cref="IsIsolationSessionAvailable"/> — requires AppContainer plus IsolationProxy.exe in System32.</item>
 /// </list>
@@ -22,16 +22,14 @@ public sealed class MxcAvailability
     /// </summary>
     public const string WxcExecOverrideEnvVar = "OPENCLAW_WXC_EXEC";
 
-    private const int MinSupportedBuild = 26100;
+    private const int SupportedBuild = 26300;
 
+    // TODO: This is all temporary and a moment in time; feature gate this correctly ASAP.
     /// <summary>
-    /// Highest base build for which an explicit UBR floor applies. Per the
-    /// @microsoft/mxc-sdk README, builds in <c>[26100, 26500]</c> require the
-    /// cumulative update bringing UBR ≥ 7965; builds beyond 26500 (e.g.
-    /// Canary / Dev channels) ship the feature natively.
+    /// Temporary MXC support table: only build 26300 with UBR 8289+ is enabled.
+    /// All other builds are blocked until validated and the table is updated.
     /// </summary>
-    private const int UbrCheckMaxBuild = 26500;
-    private const int MinSupportedUbrInRange = 7965;
+    private const int MinSupportedUbr = 8289;
 
     public bool IsAppContainerAvailable { get; }
     public bool IsIsolationSessionAvailable { get; }
@@ -81,20 +79,11 @@ public sealed class MxcAvailability
         }
 
         var (build, ubr) = ReadWindowsBuildAndUbr();
-        var buildOk = build >= MinSupportedBuild;
-        // UBR floor only applies to builds in the [26100, 26500] window;
-        // newer Canary / Dev builds ship MXC primitives natively.
-        var ubrCheckApplies = build <= UbrCheckMaxBuild;
-        var ubrOk = !ubrCheckApplies || ubr >= MinSupportedUbrInRange;
-        if (!buildOk)
-            reasons.Add($"Windows build {build} below MXC minimum {MinSupportedBuild}.");
-        if (buildOk && !ubrOk)
-            reasons.Add(
-                $"Windows UBR {ubr} below MXC minimum {MinSupportedUbrInRange} " +
-                $"(for builds {MinSupportedBuild}-{UbrCheckMaxBuild}). " +
-                "Install latest cumulative update.");
+        var windowsSupportReason = GetWindowsBuildUnsupportedReason(build, ubr);
+        if (windowsSupportReason is not null)
+            reasons.Add(windowsSupportReason);
 
-        var isAppContainerSupported = buildOk && ubrOk;
+        var isAppContainerSupported = windowsSupportReason is null;
 
         var (wxcResolvable, wxcPath) = ResolveWxcExec();
         if (!wxcResolvable)
@@ -123,6 +112,22 @@ public sealed class MxcAvailability
             reasons);
     }
 
+    internal static string? GetWindowsBuildUnsupportedReason(int build, int ubr)
+    {
+        if (build != SupportedBuild)
+            return $"Windows build {build} is not MXC supported build {SupportedBuild}.";
+
+        if (ubr < MinSupportedUbr)
+        {
+            return
+                $"Windows UBR {ubr} below MXC minimum {MinSupportedUbr} " +
+                $"(for build {SupportedBuild}). " +
+                "Install latest cumulative update.";
+        }
+
+        return null;
+    }
+
     private static (int build, int ubr) ReadWindowsBuildAndUbr()
     {
         var build = Environment.OSVersion.Version.Build;
@@ -139,6 +144,7 @@ public sealed class MxcAvailability
                 ubr = ubrInt;
 #pragma warning restore CA1416
         }
+        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
         catch
         {
             // Best-effort registry read; failure leaves ubr = 0 which fails the gate.

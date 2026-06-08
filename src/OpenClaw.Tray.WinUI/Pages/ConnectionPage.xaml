@@ -165,9 +165,22 @@
                                     Visibility="Collapsed"
                                     Click="OnStripPrimaryClicked"
                                     AutomationProperties.AutomationId="StripPrimaryAction"/>
+                            <Button x:Uid="ConnectionPage_StripTerminalButton"
+                                    x:Name="StripTerminalButton"
+                                    Width="32" Height="32" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    Visibility="Collapsed"
+                                    Click="OnOpenGatewayTerminal"
+                                    ToolTipService.ToolTip="Open terminal"
+                                    AutomationProperties.Name="Open terminal"
+                                    AutomationProperties.AutomationId="StripTerminalAction">
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Terminal, Mode=OneTime}" FontSize="14"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Button>
                             <!-- Disconnect/connect toggle. ON = connection is live (or attempting).
                                  Tap OFF → disconnect; tap ON (from off) → reconnect. -->
-                            <Button x:Name="StripDashboardButton"
+                            <Button x:Uid="ConnectionPage_StripDashboardButton"
+                                    x:Name="StripDashboardButton"
                                     Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0"
                                     Visibility="Collapsed"
@@ -178,7 +191,8 @@
                                 <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.OpenInBrowser, Mode=OneTime}" FontSize="14"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </Button>
-                            <ToggleSwitch x:Name="ConnectionToggle"
+                            <ToggleSwitch x:Uid="ConnectionPage_ConnectionToggle"
+                                          x:Name="ConnectionToggle"
                                           MinWidth="0" MinHeight="0"
                                           OnContent="" OffContent=""
                                           Visibility="Collapsed"
@@ -188,6 +202,95 @@
                                           AutomationProperties.AutomationId="ConnectionToggle"/>
                         </StackPanel>
                     </Grid>
+
+                    <!-- Host access controls — only for setup-managed WSL gateways.
+                         SSH gateways keep the top-right terminal affordance but
+                         do not expose lifecycle buttons. -->
+                    <StackPanel x:Name="GatewayHostControlsSection" Spacing="8" Visibility="Collapsed">
+                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,0,0,4"/>
+                        <Grid ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="36"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="{x:Bind helpers:FluentIconCatalog.Terminal, Mode=OneTime}"
+                                      FontSize="22"
+                                      VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock x:Uid="ConnectionPage_GatewayHostControlsTitle"
+                                           x:Name="GatewayHostControlsTitleText"
+                                           Text="WSL gateway"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           AutomationProperties.HeadingLevel="Level2"/>
+                                <TextBlock x:Uid="ConnectionPage_GatewayHostControlsDescription"
+                                           x:Name="GatewayHostControlsDescriptionText"
+                                           Text="Open a shell or manage the local gateway service in WSL."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                                <StackPanel x:Name="GatewayHostActionStatusPanel"
+                                            Orientation="Horizontal"
+                                            Spacing="6"
+                                            Margin="0,4,0,0"
+                                            Visibility="Collapsed">
+                                    <ProgressRing x:Name="GatewayHostActionProgress"
+                                                  Width="14" Height="14"
+                                                  IsActive="False"
+                                                  VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="GatewayHostActionStatusText"
+                                               Text=""
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
+                                               AutomationProperties.LiveSetting="Polite"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2"
+                                        Orientation="Horizontal"
+                                        Spacing="8"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center">
+                                <Button x:Uid="ConnectionPage_GatewayHostOpenTerminalButton"
+                                        x:Name="GatewayHostOpenTerminalButton"
+                                        Click="OnOpenGatewayTerminal"
+                                        ToolTipService.ToolTip="Open terminal"
+                                        AutomationProperties.Name="Open terminal"
+                                        AutomationProperties.AutomationId="GatewayHostOpenTerminalAction">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Terminal, Mode=OneTime}" FontSize="12"
+                                                  AutomationProperties.AccessibilityView="Raw"/>
+                                        <TextBlock x:Uid="ConnectionPage_GatewayHostTerminalLabel"
+                                                   Text="Terminal" FontSize="13"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Uid="ConnectionPage_GatewayHostStartButton"
+                                        x:Name="GatewayHostStartButton"
+                                        Content="Start"
+                                        Click="OnStartGatewayClicked"
+                                        ToolTipService.ToolTip="Run openclaw gateway start in WSL"
+                                        AutomationProperties.Name="Start WSL gateway"
+                                        AutomationProperties.AutomationId="GatewayHostStartAction"/>
+                                <Button x:Uid="ConnectionPage_GatewayHostStopButton"
+                                        x:Name="GatewayHostStopButton"
+                                        Content="Stop"
+                                        Click="OnStopGatewayClicked"
+                                        ToolTipService.ToolTip="Run openclaw gateway stop in WSL"
+                                        AutomationProperties.Name="Stop WSL gateway"
+                                        AutomationProperties.AutomationId="GatewayHostStopAction"/>
+                                <Button x:Uid="ConnectionPage_GatewayHostRestartButton"
+                                        x:Name="GatewayHostRestartButton"
+                                        Content="Restart"
+                                        Click="OnRestartGatewayClicked"
+                                        ToolTipService.ToolTip="Run openclaw gateway restart in WSL"
+                                        AutomationProperties.Name="Restart WSL gateway"
+                                        AutomationProperties.AutomationId="GatewayHostRestartAction"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
 
                     <!-- Operator section — visible only when there's an active operator session.
                          Mirrors the Permissions Node card pattern: 22-px icon
@@ -883,11 +986,21 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Uid="ConnectionPage_RemotePort" Grid.Column="0"
+                                <TextBox x:Uid="ConnectionPage_SshServerPort" Grid.Column="0"
+                                         x:Name="AddSshServerPortBox"
+                                         Header="SSH port"
+                                         PlaceholderText="22"/>
+                                <TextBox x:Uid="ConnectionPage_RemotePort" Grid.Column="1"
                                          x:Name="AddSshRemotePortBox"
                                          Header="Remote port"
                                          PlaceholderText="18789"/>
-                                <TextBox x:Uid="ConnectionPage_LocalPort" Grid.Column="1"
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Uid="ConnectionPage_LocalPort" Grid.Column="0"
                                          x:Name="AddSshLocalPortBox"
                                          Header="Local port"
                                          PlaceholderText="18789"/>

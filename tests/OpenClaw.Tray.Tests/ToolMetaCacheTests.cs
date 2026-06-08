@@ -180,6 +180,7 @@ public class ToolMetaCacheTests
 
         public SessionInfo[] GetSessionList() => Array.Empty<SessionInfo>();
         public ModelsListInfo? GetCurrentModelsList() => null;
+        public void StartProactiveBootstrap() { }
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.CompletedTask;
         public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
         public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
@@ -214,6 +215,7 @@ public class ToolMetaCacheTests
                 if (Directory.Exists(DirectoryPath))
                     Directory.Delete(DirectoryPath, recursive: true);
             }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             catch
             {
                 // Test cleanup is best-effort.

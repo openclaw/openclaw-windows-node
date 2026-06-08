@@ -20,7 +20,10 @@ public partial class App
                 OpenUrl = url =>
                 {
                     try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Toast URL activation failed: {ex.Message}");
+                    }
                 },
                 OpenDashboard = () => OpenDashboard(),
                 OpenSettings = ShowSettings,

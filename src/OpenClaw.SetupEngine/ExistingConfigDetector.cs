@@ -52,9 +52,9 @@ public sealed class ExistingConfigDetector
                 hasDistro = distros.Any(d => d.Equals(targetDistroName, StringComparison.OrdinalIgnoreCase));
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // WSL not available.
+            System.Diagnostics.Debug.WriteLine($"WSL distro detection failed: {ex.Message}");
         }
 
         var hasIdentity = false;

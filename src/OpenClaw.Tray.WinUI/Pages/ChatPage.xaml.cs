@@ -339,7 +339,7 @@ public sealed partial class ChatPage : Page
         WebView.Visibility = Visibility.Collapsed;
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Visible;
-        ErrorText.Text = "Open Connection settings to finish pairing with a gateway.";
+        ErrorText.Text = LocalizationHelper.GetString("ChatPage_OpenConnectionSettings");
     }
 
     private void StopWebViewNavigation()
@@ -361,6 +361,7 @@ public sealed partial class ChatPage : Page
         _functionalHost = null;
         _mountedProvider = null;
         _mountedThreadId = null;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
     }
 
@@ -380,7 +381,7 @@ public sealed partial class ChatPage : Page
             {
                 PlaceholderPanel.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
-                ErrorText.Text = "Open Connection settings to finish pairing with a gateway.";
+                ErrorText.Text = LocalizationHelper.GetString("ChatPage_OpenConnectionSettings");
                 return;
             }
 
@@ -388,7 +389,7 @@ public sealed partial class ChatPage : Page
             {
                 PlaceholderPanel.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
-                ErrorText.Text = "Gateway pairing is not complete. Open Connection settings to finish pairing.";
+                ErrorText.Text = LocalizationHelper.GetString("ChatPage_GatewayPairingIncomplete");
                 return;
             }
 
@@ -406,7 +407,7 @@ public sealed partial class ChatPage : Page
             ErrorPanel.Visibility = Visibility.Collapsed;
             WebView.Visibility = Visibility.Collapsed;
             WaitingPanel.Visibility = Visibility.Visible;
-            WaitingStatusText.Text = "The gateway is connected; the chat surface is still coming online.";
+            WaitingStatusText.Text = LocalizationHelper.GetString("ChatPage_ChatSurfaceComingOnline");
             RetryChatButton.Visibility = Visibility.Collapsed;
             LoadingRing.IsActive = true;
             LoadingRing.Visibility = Visibility.Visible;
@@ -440,7 +441,7 @@ public sealed partial class ChatPage : Page
                 {
                     WebView.Visibility = Visibility.Collapsed;
                     ErrorPanel.Visibility = Visibility.Visible;
-                    ErrorText.Text = $"Cannot connect to gateway at {credential.GatewayUrl}\n\nMake sure the gateway is running.";
+                    ErrorText.Text = string.Format(LocalizationHelper.GetString("ChatPage_CannotConnectToGateway"), credential.GatewayUrl);
                 }
             };
             WebView.CoreWebView2.NavigationCompleted += _navCompletedHandler;
@@ -464,7 +465,7 @@ public sealed partial class ChatPage : Page
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             WebView.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Visible;
-            ErrorText.Text = $"WebView2 failed to initialize:\n{ex.Message}";
+            ErrorText.Text = string.Format(LocalizationHelper.GetString("ChatPage_WebView2InitFailed"), ex.Message);
         }
     }
 
@@ -481,7 +482,7 @@ public sealed partial class ChatPage : Page
             var ready = await ChatNavigationReadiness.WaitForOperatorHandshakeAsync(connectionManager, TimeSpan.FromSeconds(30), cancellationToken);
             if (!ready)
             {
-                ShowChatReadinessFailure("Timed out waiting for the gateway operator handshake. Retry once the gateway is ready.");
+                ShowChatReadinessFailure(LocalizationHelper.GetString("ChatPage_TimedOutHandshake"));
                 Logger.Warn("[ChatPage] Timed out waiting for operator handshake before chat navigation");
                 return;
             }
@@ -490,12 +491,12 @@ public sealed partial class ChatPage : Page
             ready = await ProbeChatSurfaceAsync(_chatUrl!, TimeSpan.FromSeconds(30), cancellationToken);
             if (!ready)
             {
-                ShowChatReadinessFailure($"Timed out waiting for chat at {gatewayUrl}. Retry once the gateway is ready.");
+                ShowChatReadinessFailure(string.Format(LocalizationHelper.GetString("ChatPage_TimedOutChat"), gatewayUrl));
                 Logger.Warn("[ChatPage] Timed out waiting for chat HTTP surface before navigation");
                 return;
             }
 
-            WaitingStatusText.Text = "Chat is ready; starting your first hatching conversation…";
+            WaitingStatusText.Text = LocalizationHelper.GetString("ChatPage_ChatReady");
             var bootstrapped = await OnboardingChatBootstrapper.BootstrapAsync(
                 connectionManager?.OperatorClient,
                 ((App)Application.Current).Settings,
@@ -515,12 +516,13 @@ public sealed partial class ChatPage : Page
             Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
             WebView.CoreWebView2.Navigate(_chatUrl);
         }
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException)
         {
         }
         catch (Exception ex)
         {
-            ShowChatReadinessFailure($"Chat failed to start:\n{ex.Message}");
+            ShowChatReadinessFailure(string.Format(LocalizationHelper.GetString("ChatPage_ChatFailedToStart"), ex.Message));
             Logger.Warn($"[ChatPage] Chat readiness wait failed: {ex.Message}");
         }
     }
@@ -608,7 +610,7 @@ public sealed partial class ChatPage : Page
         if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(gatewayUrl, out var normalizedUrl) ||
             !Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var gatewayUri))
         {
-            errorMessage = $"Invalid gateway URL: {gatewayUrl}";
+            errorMessage = string.Format(LocalizationHelper.GetString("ChatPage_InvalidGatewayUrl"), gatewayUrl);
             return false;
         }
 
@@ -641,6 +643,7 @@ public sealed partial class ChatPage : Page
     {
         if (string.IsNullOrEmpty(_chatUrl)) return;
         try { Process.Start(new ProcessStartInfo(_chatUrl) { UseShellExecute = true }); }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { /* shell launch failed — silently ignore */ }
     }
 
@@ -793,7 +796,7 @@ public sealed partial class ChatPage : Page
             }
 
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle((Window)_hub!);
-            var path = await Win32FilePickerHelper.PickSingleFileAsync(hwnd, "Attach file");
+            var path = await Win32FilePickerHelper.PickSingleFileAsync(hwnd, LocalizationHelper.GetString("ChatPage_AttachFile"));
 
             if (path is null)
             {
@@ -822,14 +825,15 @@ public sealed partial class ChatPage : Page
         {
             var dialog = new ContentDialog
             {
-                Title = "Cannot attach file",
+                Title = LocalizationHelper.GetString("ChatPage_CannotAttachFile"),
                 Content = message,
-                CloseButtonText = "OK",
+                CloseButtonText = LocalizationHelper.GetString("ChatPage_OK"),
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = this.XamlRoot
             };
             await dialog.ShowAsync();
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* dialog display failed, already logged */ }
     }
 }

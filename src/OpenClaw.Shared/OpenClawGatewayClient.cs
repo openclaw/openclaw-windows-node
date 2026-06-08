@@ -159,7 +159,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     protected override bool ShouldAutoReconnect()
     {
-        return !_pairingRequiredAwaitingApproval && !_authFailed;
+        // PairingRequired must stay visible, but approval only takes effect on a fresh socket.
+        return !_authFailed;
     }
 
     protected override void OnDisconnected()
@@ -244,6 +245,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
         _connectAuthToken = _deviceIdentity.DeviceToken ?? (_tokenIsBootstrapToken ? string.Empty : _token);
+        _useV2Signature |= _tokenIsBootstrapToken && string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
     }
 
     public async Task DisconnectAsync()
@@ -1175,6 +1177,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 role, requestedScopes, signatureToken,
                 OperatorPlatform, OperatorDeviceFamily);
 
+        var appVersion = AppVersionInfo.Version;
+
         // Use "cli" client ID for native apps - no browser security checks
         var msg = new
         {
@@ -1188,7 +1192,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 client = new
                 {
                     id = OperatorClientId,  // Native client ID
-                    version = "1.0.0",
+                    version = appVersion,
                     platform = OperatorPlatform,
                     mode = OperatorClientMode,
                     displayName = OperatorClientDisplayName
@@ -1200,7 +1204,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 permissions = new { },
                 auth = BuildAuthPayload(),
                 locale = "en-US",
-                userAgent = "openclaw-windows-tray/1.0.0",
+                userAgent = $"openclaw-windows-tray/{appVersion}",
                 device = new
                 {
                     id = _deviceIdentity.DeviceId,
@@ -1552,9 +1556,9 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 }
             }
 
-            var newDeviceToken = _bootstrapPairAsNode
-                ? TryGetHandshakeDeviceTokenCore(payload, OperatorRole, allowDirectDeviceTokenFallback: false)
-                : TryGetHandshakeDeviceTokenCore(payload, preferredRole: null);
+            var newDeviceToken = !_bootstrapPairAsNode
+                ? TryGetHandshakeDeviceTokenCore(payload, preferredRole: null)
+                : TryGetHandshakeDeviceTokenCore(payload, OperatorRole, allowDirectDeviceTokenFallback: false);
             if (!string.IsNullOrWhiteSpace(newDeviceToken))
             {
                 var deviceTokenScopes = _bootstrapPairAsNode
@@ -2173,24 +2177,26 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(preferredRole) &&
-            authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
-            deviceTokens.ValueKind == JsonValueKind.Array)
+        if (!string.IsNullOrWhiteSpace(preferredRole))
         {
-            foreach (var entry in deviceTokens.EnumerateArray())
+            if (authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
+                deviceTokens.ValueKind == JsonValueKind.Array)
             {
-                if (entry.ValueKind != JsonValueKind.Object)
-                    continue;
-
-                if (entry.TryGetProperty("role", out var role) &&
-                    role.ValueKind == JsonValueKind.String &&
-                    string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase) &&
-                    entry.TryGetProperty("deviceToken", out var roleToken) &&
-                    roleToken.ValueKind == JsonValueKind.String)
+                foreach (var entry in deviceTokens.EnumerateArray())
                 {
-                    var roleTokenValue = roleToken.GetString();
-                    if (!string.IsNullOrWhiteSpace(roleTokenValue))
-                        return roleTokenValue;
+                    if (entry.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    if (entry.TryGetProperty("role", out var role) &&
+                        role.ValueKind == JsonValueKind.String &&
+                        string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase) &&
+                        entry.TryGetProperty("deviceToken", out var roleToken) &&
+                        roleToken.ValueKind == JsonValueKind.String)
+                    {
+                        var roleTokenValue = roleToken.GetString();
+                        if (!string.IsNullOrWhiteSpace(roleTokenValue))
+                            return roleTokenValue;
+                    }
                 }
             }
 
@@ -2221,22 +2227,24 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(preferredRole) &&
-            authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
-            deviceTokens.ValueKind == JsonValueKind.Array)
+        if (!string.IsNullOrWhiteSpace(preferredRole))
         {
-            foreach (var entry in deviceTokens.EnumerateArray())
+            if (authPayload.TryGetProperty("deviceTokens", out var deviceTokens) &&
+                deviceTokens.ValueKind == JsonValueKind.Array)
             {
-                if (entry.ValueKind != JsonValueKind.Object)
-                    continue;
-
-                if (entry.TryGetProperty("role", out var role) &&
-                    role.ValueKind == JsonValueKind.String &&
-                    string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase))
+                foreach (var entry in deviceTokens.EnumerateArray())
                 {
-                    return entry.TryGetProperty("scopes", out var roleScopes) && roleScopes.ValueKind == JsonValueKind.Array
-                        ? ReadStringArray(roleScopes)
-                        : [];
+                    if (entry.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    if (entry.TryGetProperty("role", out var role) &&
+                        role.ValueKind == JsonValueKind.String &&
+                        string.Equals(role.GetString(), preferredRole, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return entry.TryGetProperty("scopes", out var roleScopes) && roleScopes.ValueKind == JsonValueKind.Array
+                            ? ReadStringArray(roleScopes)
+                            : [];
+                    }
                 }
             }
 
@@ -2364,6 +2372,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             var streamHint = payload.TryGetProperty("stream", out var sh) ? sh.GetString() ?? "" : "";
             _logger.Debug($"Agent event received: stream={streamHint} len={rawMessageLength}");
         }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { }
 
         // sessionKey is inside payload, not root. We deliberately do NOT
@@ -2467,7 +2476,16 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             if (data.TryGetProperty("args", out var args))
             {
                 if (args.TryGetProperty("command", out var cmd))
-                    label = MenuDisplayHelper.TruncateText(cmd.GetString()?.Split('\n')[0], 60);
+                {
+                    // Avoid string[] allocation: find the first newline directly, then
+                    // pass only that first-line slice (or the whole string) to TruncateText.
+                    var cmdStr = cmd.GetString();
+                    if (cmdStr != null)
+                    {
+                        var nl = cmdStr.IndexOf('\n');
+                        label = MenuDisplayHelper.TruncateText(nl >= 0 ? cmdStr[..nl] : cmdStr, 60);
+                    }
+                }
                 else if (args.TryGetProperty("path", out var path))
                     label = ShortenPath(path.GetString() ?? "");
                 else if (args.TryGetProperty("file_path", out var filePath))
@@ -3508,10 +3526,28 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     private static string ShortenPath(string path)
     {
         if (string.IsNullOrEmpty(path)) return path;
-        var parts = path.Replace('\\', '/').Split('/');
-        return parts.Length > 2
-            ? $"…/{parts[^2]}/{parts[^1]}"
-            : parts[^1];
+
+        // Walk from the end to find the last two path separators without
+        // allocating an intermediate Replace'd string or a Split array.
+        var span = path.AsSpan();
+        int lastSep = span.LastIndexOfAny('/', '\\');
+        if (lastSep < 0) return path; // single component — no separator
+
+        var lastName = span[(lastSep + 1)..];
+
+        // Check for a second-to-last separator in the prefix.
+        int secondLastSep = span[..lastSep].LastIndexOfAny('/', '\\');
+
+        if (secondLastSep < 0 || lastSep == 0)
+        {
+            // Two components or a leading-slash-only prefix (e.g. "folder/file" or "/file")
+            // → return just the filename.
+            return lastName.ToString();
+        }
+
+        // Three or more components → "…/parent/last"
+        var parentName = span[(secondLastSep + 1)..lastSep];
+        return string.Concat("…/".AsSpan(), parentName, "/".AsSpan(), lastName);
     }
 
     // ── Parse methods for new features ──
@@ -3530,13 +3566,16 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             {
                 foreach (var item in modelsArray.EnumerateArray())
                 {
+                    var hasConfiguredFlag = item.TryGetProperty("configured", out var cfg)
+                                            && (cfg.ValueKind == JsonValueKind.True || cfg.ValueKind == JsonValueKind.False);
                     var model = new ModelInfo
                     {
                         Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
                         Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
                         Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
                         ContextWindow = item.TryGetProperty("contextWindow", out var cw) && cw.ValueKind == JsonValueKind.Number ? cw.GetInt32() : null,
-                        IsConfigured = item.TryGetProperty("configured", out var cfg) && cfg.ValueKind == JsonValueKind.True
+                        IsConfigured = hasConfiguredFlag && cfg.ValueKind == JsonValueKind.True,
+                        HasConfiguredFlag = hasConfiguredFlag
                     };
                     if (!string.IsNullOrEmpty(model.Id))
                         info.Models.Add(model);

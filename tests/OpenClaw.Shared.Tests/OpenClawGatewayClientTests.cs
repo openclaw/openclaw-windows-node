@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Xunit;
@@ -16,14 +17,19 @@ public class OpenClawGatewayClientTests
 
         public OpenClawGatewayClient Client => _client;
 
-        public GatewayClientTestHelper(bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string gatewayUrl = "ws://localhost:18789")
+        public GatewayClientTestHelper(
+            bool tokenIsBootstrapToken = false,
+            bool bootstrapPairAsNode = false,
+            string gatewayUrl = "ws://localhost:18789",
+            string? identityPath = null)
         {
             _client = new OpenClawGatewayClient(
                 gatewayUrl,
                 "test-token",
                 new TestLogger(),
                 tokenIsBootstrapToken,
-                bootstrapPairAsNode);
+                bootstrapPairAsNode,
+                identityPath);
         }
 
         public GatewayClientTestHelper(IOpenClawLogger logger)
@@ -240,6 +246,24 @@ public class OpenClawGatewayClientTests
             InvokePrivatePayloadParser("ParseSessions", payloadJson);
         }
 
+        public ModelsListInfo ParseModelsListPayload(string payloadJson)
+        {
+            ModelsListInfo? parsed = null;
+            EventHandler<ModelsListInfo> handler = (_, models) => parsed = models;
+            _client.ModelsListUpdated += handler;
+
+            try
+            {
+                InvokePrivatePayloadParser("ParseModelsList", payloadJson);
+            }
+            finally
+            {
+                _client.ModelsListUpdated -= handler;
+            }
+
+            return parsed ?? new ModelsListInfo();
+        }
+
         private void InvokePrivatePayloadParser(string methodName, string payloadJson)
         {
             using var doc = JsonDocument.Parse(payloadJson);
@@ -343,6 +367,24 @@ public class OpenClawGatewayClientTests
             SetPrivateField("_connectAuthToken", token ?? "test-token");
         }
 
+        public string? GetStoredOperatorDeviceToken()
+        {
+            var identityField = typeof(OpenClawGatewayClient).GetField(
+                "_deviceIdentity",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var identity = identityField!.GetValue(_client)!;
+            return (string?)identity.GetType().GetProperty("DeviceToken")!.GetValue(identity);
+        }
+
+        public string? GetStoredNodeDeviceToken()
+        {
+            var identityField = typeof(OpenClawGatewayClient).GetField(
+                "_deviceIdentity",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var identity = identityField!.GetValue(_client)!;
+            return (string?)identity.GetType().GetProperty("NodeDeviceToken")!.GetValue(identity);
+        }
+
         public string GetFallbackDeviceId()
         {
             var identityField = typeof(OpenClawGatewayClient).GetField(
@@ -366,6 +408,14 @@ public class OpenClawGatewayClientTests
             GetPrivateField<bool>("_pairingRequiredAwaitingApproval");
 
         public string? GetPairingRequiredRequestId() => _client.PairingRequiredRequestId;
+
+        public bool ShouldAutoReconnectForTest()
+        {
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "ShouldAutoReconnect",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return (bool)method!.Invoke(_client, null)!;
+        }
 
         public string GetSignatureTokenMode()
         {
@@ -404,6 +454,9 @@ public class OpenClawGatewayClientTests
         }
     }
 
+    private static string CreateTempIdentityPath() =>
+        Path.Combine(Path.GetTempPath(), "OpenClawGatewayClientTests", Guid.NewGuid().ToString("N"));
+
     [Fact]
     public void OperatorConnect_FreshDevice_RequestsBootstrapHandoffScopes()
     {
@@ -421,6 +474,26 @@ public class OpenClawGatewayClientTests
         Assert.Equal("test-token", auth["bootstrapToken"]);
         Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_FreshBootstrapDevice_StartsWithV2Signature()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"oca-gw-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true, identityPath: tmpDir);
+
+        Assert.True(helper.Client.UseV2Signature);
+    }
+
+    [Fact]
+    public void OperatorConnect_SharedTokenDevice_StartsWithV3Signature()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"oca-gw-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: false, identityPath: tmpDir);
+
+        Assert.False(helper.Client.UseV2Signature);
     }
 
     [Fact]
@@ -510,7 +583,10 @@ public class OpenClawGatewayClientTests
     [Fact]
     public void BootstrapNodeHandoff_FreshDevice_RequestsNodeRoleWithoutScopes()
     {
-        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true, bootstrapPairAsNode: true);
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true,
+            bootstrapPairAsNode: true,
+            identityPath: CreateTempIdentityPath());
         helper.SetDeviceTokenForTest(null);
 
         var auth = helper.BuildAuthPayload();
@@ -520,6 +596,69 @@ public class OpenClawGatewayClientTests
         Assert.Equal("test-token", auth["bootstrapToken"]);
         Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void BootstrapNodeHandoff_HelloOkWithNodeRole_DoesNotStorePrimaryNodeTokenAsOperator()
+    {
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true,
+            bootstrapPairAsNode: true,
+            identityPath: CreateTempIdentityPath());
+        helper.SetDeviceTokenForTest(null);
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "req-hello-node",
+          "payload": {
+            "type": "hello-ok",
+            "auth": {
+              "deviceToken": "node-token",
+              "role": "node",
+              "scopes": []
+            }
+          }
+        }
+        """);
+
+        Assert.Equal("node-token", helper.GetStoredNodeDeviceToken());
+        Assert.Null(helper.GetStoredOperatorDeviceToken());
+    }
+
+    [Fact]
+    public void BootstrapNodeHandoff_HelloOkWithOperatorHandoffToken_StoresOperatorToken()
+    {
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true,
+            bootstrapPairAsNode: true,
+            identityPath: CreateTempIdentityPath());
+        helper.SetDeviceTokenForTest(null);
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "req-hello-node",
+          "payload": {
+            "type": "hello-ok",
+            "auth": {
+              "deviceToken": "node-token",
+              "role": "node",
+              "scopes": [],
+              "deviceTokens": [
+                {
+                  "deviceToken": "operator-token",
+                  "role": "operator",
+                  "scopes": ["operator.read"]
+                }
+              ]
+            }
+          }
+        }
+        """);
+
+        Assert.Equal("node-token", helper.GetStoredNodeDeviceToken());
+        Assert.Equal("operator-token", helper.GetStoredOperatorDeviceToken());
     }
 
     [Fact]
@@ -587,6 +726,43 @@ public class OpenClawGatewayClientTests
 
         Assert.Contains(logger.Logs, log => log == $"DEBUG: Agent event received: stream=tool len={rawMessage.Length}");
         Assert.DoesNotContain(logger.Logs, log => log.Contains("super-secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ParseModelsList_PreservesConfiguredFlagPresence()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var models = helper.ParseModelsListPayload("""
+        {
+          "models": [
+            { "id": "gpt-5.4", "configured": true },
+            { "id": "gpt-5.5", "configured": false },
+            { "id": "legacy-gateway-model" }
+          ]
+        }
+        """);
+
+        Assert.Collection(
+            models.Models,
+            model =>
+            {
+                Assert.Equal("gpt-5.4", model.Id);
+                Assert.True(model.HasConfiguredFlag);
+                Assert.True(model.IsConfigured);
+            },
+            model =>
+            {
+                Assert.Equal("gpt-5.5", model.Id);
+                Assert.True(model.HasConfiguredFlag);
+                Assert.False(model.IsConfigured);
+            },
+            model =>
+            {
+                Assert.Equal("legacy-gateway-model", model.Id);
+                Assert.False(model.HasConfiguredFlag);
+                Assert.False(model.IsConfigured);
+            });
     }
 
     [Fact]
@@ -783,6 +959,7 @@ public class OpenClawGatewayClientTests
 
         helper.OnDisconnected();
 
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         var completed = await Task.WhenAny(task, Task.Delay(250));
         Assert.Same(task, completed);
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await task);
@@ -918,6 +1095,30 @@ public class OpenClawGatewayClientTests
     {
         var helper = new GatewayClientTestHelper();
         Assert.Equal("file.txt", helper.ShortenPath("folder/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_ReturnsFilename_ForLeadingSlash()
+    {
+        // "/file.txt" splits as ["", "file.txt"] — only 2 parts so show just filename.
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("file.txt", helper.ShortenPath("/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_ReturnsLastTwoComponents_ForLeadingSlashThreeParts()
+    {
+        // "/folder/file.txt" splits as ["", "folder", "file.txt"] — 3 parts so show "…/folder/file.txt".
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("…/folder/file.txt", helper.ShortenPath("/folder/file.txt"));
+    }
+
+    [Fact]
+    public void ShortenPath_HandlesMixedSeparators()
+    {
+        // Mixed \ and / in same path (e.g. a WSL path reconstructed on Windows).
+        var helper = new GatewayClientTestHelper();
+        Assert.Equal("…/src/main.cs", helper.ShortenPath(@"C:\repos/project\src/main.cs"));
     }
 
     [Fact]
@@ -1810,6 +2011,31 @@ public class OpenClawGatewayClientTests
         """);
 
         Assert.True(helper.GetPairingRequiredFlag());
+    }
+
+    [Fact]
+    public void HandleRequestError_PairingRequired_KeepsAutoReconnectEnabled()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-retry", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-retry",
+            "ok": false,
+            "error": {
+                "message": "pairing required for this device",
+                "details": {
+                    "code": "PAIRING_REQUIRED",
+                    "requestId": "abc-123"
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+        Assert.True(helper.ShouldAutoReconnectForTest());
     }
 
     [Fact]

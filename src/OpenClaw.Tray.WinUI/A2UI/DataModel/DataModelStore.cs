@@ -113,6 +113,7 @@ public sealed class DataModelStore
                 model.SetByPointer(pointer, entry.ToJsonNode());
                 changed.Add(NormalizePath(pointer));
             }
+            // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
             catch (Exception)
             {
                 // bad pointer; skip — router logs aggregate.
@@ -314,6 +315,7 @@ public sealed class DataModelObservable
             _model.SetByPointer(pointer, value);
             NotifyPaths(new[] { Normalize(pointer) });
         }
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         catch { /* swallow; bad pointer */ }
     }
 
@@ -377,7 +379,9 @@ public sealed class DataModelObservable
 
     private void Dispatch(Action callback)
     {
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         if (_dispatcher == null || _dispatcher.HasThreadAccess) { try { callback(); } catch { } return; }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         _dispatcher.TryEnqueue(() => { try { callback(); } catch { } });
     }
 

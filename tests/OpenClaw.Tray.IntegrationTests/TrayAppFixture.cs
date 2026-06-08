@@ -78,6 +78,7 @@ public sealed class TrayAppFixture : IAsyncLifetime
                 {
                     if (!File.Exists(tokenPath))
                     {
+                        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
                         await Task.Delay(500).ConfigureAwait(false);
                         continue;
                     }
@@ -88,6 +89,7 @@ public sealed class TrayAppFixture : IAsyncLifetime
                         // tray writes to a sibling temp and renames, but file
                         // systems are funny). Re-read on the next tick.
                         token = null;
+                        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
                         await Task.Delay(500).ConfigureAwait(false);
                         continue;
                     }
@@ -107,6 +109,7 @@ public sealed class TrayAppFixture : IAsyncLifetime
             {
                 lastEx = ex;
             }
+            // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
             await Task.Delay(500).ConfigureAwait(false);
         }
         throw new TimeoutException(
@@ -131,12 +134,14 @@ public sealed class TrayAppFixture : IAsyncLifetime
                 _process.WaitForExit(5_000);
             }
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch { /* best effort */ }
         finally
         {
             _process.Dispose();
         }
 
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(DataDir, recursive: true); } catch { /* best effort */ }
         return Task.CompletedTask;
     }

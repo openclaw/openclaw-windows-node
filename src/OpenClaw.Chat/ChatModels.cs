@@ -23,7 +23,32 @@ public enum ChatTimelineItemKind
     ToolCall,
     Reasoning,
     Status,
-    Raw
+    Raw,
+    PermissionRequest
+}
+
+/// <summary>
+/// Outcome of an exec-approval prompt, attached to a
+/// <see cref="ChatTimelineItemKind.PermissionRequest"/> timeline entry.
+/// </summary>
+/// <remarks>
+/// <para><see cref="Pending"/> is the initial state — Allow/Deny buttons
+/// render and the matching <see cref="ChatTimelineState.PendingPermission"/>
+/// slot is non-null.</para>
+/// <para><see cref="Allowed"/> / <see cref="Denied"/> are set locally as
+/// soon as the user clicks a button, so the inline bubble collapses to a
+/// "decided" badge without waiting for the gateway round-trip.</para>
+/// <para><see cref="Expired"/> is the backstop set when the gateway emits
+/// a terminal approval phase (resolved / cancelled / timed-out) before the
+/// user picked an option — e.g. another client decided, or the gateway
+/// timed the prompt out. Visually distinguishes it from a user choice.</para>
+/// </remarks>
+public enum ChatPermissionDecision
+{
+    Pending,
+    Allowed,
+    Denied,
+    Expired
 }
 
 public enum ChatToolCallStatus
@@ -80,7 +105,9 @@ public record ChatTimelineItem(
     string? IntentSummary = null,
     JsonObject? ToolArgs = null,
     ChatTone? Tone = null,
-    string? ToolCallId = null);
+    string? ToolCallId = null,
+    string? PermissionRequestId = null,
+    ChatPermissionDecision PermissionDecision = ChatPermissionDecision.Pending);
 
 public record ChatPermissionRequest(string RequestId, string PermissionKind, string ToolName, string Detail);
 

@@ -68,6 +68,24 @@ public sealed record MdTableRow(IReadOnlyList<MdTableCell> Cells);
 
 public sealed record MdTableCell(IReadOnlyList<MdInline> Inlines);
 
+/// <summary>
+/// Base type for all inline AST nodes.
+/// <para>
+/// IMPORTANT — cache invariant: <c>ChatMarkdownRenderer</c> uses
+/// <c>IReadOnlyList&lt;MdInline&gt;.SequenceEqual</c> (record value-equality)
+/// to short-circuit rebuilding <c>TextBlock.Inlines</c> on re-render, which
+/// is what keeps a user's text selection alive across pointer-enter/leave
+/// and streaming token updates. That short-circuit is sound ONLY while every
+/// concrete <c>MdInline</c> subtype contains exclusively value-comparable
+/// members (primitives, <c>string</c>, enums). If a future subtype adds a
+/// reference-typed member (e.g. <c>IReadOnlyList&lt;MdInline&gt; Children</c>
+/// for links), the auto-generated record <c>Equals</c> will compare those
+/// members BY REFERENCE — silently breaking cache correctness and wiping
+/// selection again on every re-render. Update the renderer's equality
+/// strategy (and <c>MdInlineEqualityTests</c>) before introducing such a
+/// member.
+/// </para>
+/// </summary>
 public abstract record MdInline;
 
 /// <summary>

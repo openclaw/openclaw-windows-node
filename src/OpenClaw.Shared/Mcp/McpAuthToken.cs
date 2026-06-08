@@ -101,6 +101,7 @@ public static class McpAuthToken
         }
         catch
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
             throw;
         }
@@ -132,6 +133,7 @@ public static class McpAuthToken
         }
         catch
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
             throw;
         }
@@ -180,6 +182,7 @@ public static class McpAuthToken
         if (string.IsNullOrEmpty(dir)) return;
         if (!OperatingSystem.IsWindows()) return;
         try { RestrictDirectoryAclWindows(dir); }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* best-effort; acl restriction is defense-in-depth, not load-bearing */ }
     }
 
@@ -188,6 +191,7 @@ public static class McpAuthToken
         if (string.IsNullOrEmpty(path)) return;
         if (!OperatingSystem.IsWindows()) return;
         try { RestrictFileAclWindows(path); }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* see above */ }
     }
 

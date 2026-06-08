@@ -47,6 +47,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupExistingGatewayClassifier.cs" Link="Services\SetupExistingGatewayClassifier.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayHostAccess.cs" Link="Services\GatewayHostAccess.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayTerminalLauncher.cs" Link="Services\GatewayTerminalLauncher.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslGatewayController.cs" Link="Services\WslGatewayController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslCommandRunner.cs" Link="Services\WslCommandRunner.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslKeepAlivePolicy.cs" Link="Services\WslKeepAlivePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayConnectorInterfaces.cs" Link="Services\GatewayConnectorInterfaces.cs" />
@@ -71,6 +74,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageChannelMetrics.cs" Link="Imported\ConnectionPageChannelMetrics.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageRowState.cs" Link="Imported\ConnectionPageRowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionManagerWindowsNodeConnector.cs" Link="Services\ConnectionManagerWindowsNodeConnector.cs" />
+    <!-- Pulled in for console-log tail tests. Pure logic, no WinUI deps. -->
+    <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardConsoleTail.cs" Link="WizardConsoleTail.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardPayloadHelpers.cs" Link="WizardPayloadHelpers.cs" />
   </ItemGroup>
 
 </Project>

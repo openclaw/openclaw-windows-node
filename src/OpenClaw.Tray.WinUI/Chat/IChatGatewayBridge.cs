@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using OpenClawTray.Services;
 
 namespace OpenClawTray.Chat;
 
@@ -17,6 +18,21 @@ public interface IChatGatewayBridge : IDisposable
     bool HasHandshakeSnapshot { get; }
     SessionInfo[] GetSessionList();
     ModelsListInfo? GetCurrentModelsList();
+
+    /// <summary>
+    /// If the underlying gateway client was already Connected by the time
+    /// the bridge was constructed (so the bridge missed the
+    /// <see cref="StatusChanged"/> → Connected edge), proactively re-request
+    /// the models list and sessions snapshot so the chat composer's
+    /// dropdowns populate without waiting for the user to send a message.
+    ///
+    /// Callers should invoke this AFTER subscribing to
+    /// <see cref="ModelsListUpdated"/> and <see cref="SessionsUpdated"/> so
+    /// they actually receive the resulting frames — firing the request
+    /// before subscription leaves the response handler unset and the
+    /// dropdowns stale until the next gateway-driven update.
+    /// </summary>
+    void StartProactiveBootstrap();
 
     Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null);
     Task PatchSessionModelAsync(string sessionKey, string model);
@@ -42,7 +58,16 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     private readonly EventHandler<ChatMessageInfo> _chatMessageReceivedHandler;
     private readonly EventHandler<AgentEventInfo> _agentEventReceivedHandler;
     private readonly EventHandler<ModelsListInfo> _modelsListUpdatedHandler;
-    private ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
+    // _currentStatus is written from the gateway client's StatusChanged
+    // callback (arbitrary thread) and read from CurrentStatus on the UI
+    // thread. ``volatile`` gives us a memory barrier so the reader can't
+    // observe a torn or stale value after the writer fires. Atomicity for
+    // ConnectionStatus (4-byte enum) is guaranteed by the CLR.
+    //
+    // Seeded from the client's current state *before* the StatusChanged
+    // handler is subscribed (see ctor) so a real StatusChanged edge that
+    // fires during construction can't be stomped back by a stale seed.
+    private volatile ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
     private ModelsListInfo? _currentModels;
     private bool _disposed;
 
@@ -58,6 +83,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
             // the Hub's SessionsPage first.
             if (e == ConnectionStatus.Connected)
             {
+                Logger.Info("[ChatBridge] StatusChanged→Connected: requesting models.list");
                 _ = _client.RequestModelsListAsync();
             }
         };
@@ -70,11 +96,48 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
             ModelsListUpdated?.Invoke(s, e);
         };
 
+        // Subscribe StatusChanged BEFORE reading the seed so any
+        // ``StatusChanged → X`` edge that fires during construction is
+        // captured by our handler. We then read the live property and
+        // reconcile ``_currentStatus`` so callers that hit
+        // ``CurrentStatus`` immediately (before any further edge) see
+        // truth rather than the default ``Disconnected``.
+        //
+        // The seed only writes if ``_currentStatus`` is still
+        // ``Disconnected`` (its default). If a handler edge fired in
+        // the subscribe→read window — including intermediate states
+        // like ``Connecting`` — the handler's write is preserved
+        // rather than collapsed by the 2-state read of
+        // ``IsConnectedToGateway``. ``volatile`` covers atomic reads.
         _client.StatusChanged += _statusChangedHandler;
         _client.SessionsUpdated += _sessionsUpdatedHandler;
         _client.ChatMessageReceived += _chatMessageReceivedHandler;
         _client.AgentEventReceived += _agentEventReceivedHandler;
         _client.ModelsListUpdated += _modelsListUpdatedHandler;
+
+        if (_currentStatus == ConnectionStatus.Disconnected)
+        {
+            _currentStatus = _client.IsConnectedToGateway
+                ? ConnectionStatus.Connected
+                : ConnectionStatus.Disconnected;
+        }
+
+        Logger.Info($"[ChatBridge] ctor: IsConnectedToGateway={_client.IsConnectedToGateway}");
+        // The actual proactive models.list/sessions.list request is
+        // deferred to StartProactiveBootstrap() — kicking it off here
+        // would race the provider's subscription to ModelsListUpdated:
+        // the response can arrive before the provider has wired its
+        // handler, leaving the composer dropdowns empty until the next
+        // gateway-driven update.
+    }
+
+    public void StartProactiveBootstrap()
+    {
+        if (_disposed) return;
+        if (!_client.IsConnectedToGateway) return;
+        Logger.Info("[ChatBridge] proactive: requesting models.list and sessions.list");
+        try { _ = _client.RequestModelsListAsync(); } catch (Exception ex) { Logger.Warn($"[ChatBridge] proactive models.list failed: {ex.Message}"); }
+        try { _ = _client.RequestSessionsAsync(); } catch (Exception ex) { Logger.Warn($"[ChatBridge] proactive sessions.list failed: {ex.Message}"); }
     }
 
     public bool IsConnected => _client.IsConnectedToGateway;
@@ -122,3 +185,4 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         ModelsListUpdated = null;
     }
 }
+

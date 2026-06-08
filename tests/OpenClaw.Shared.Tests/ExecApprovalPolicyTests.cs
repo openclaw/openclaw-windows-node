@@ -21,6 +21,7 @@ public class ExecApprovalPolicyTests : IDisposable
     
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
     
@@ -433,6 +434,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -463,6 +465,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -497,6 +500,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -528,6 +532,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -570,6 +575,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -617,6 +623,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -650,6 +657,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -696,6 +704,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -738,6 +747,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -798,6 +808,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -842,6 +853,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -890,6 +902,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }

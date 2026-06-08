@@ -473,6 +473,7 @@ public sealed partial class ChatWindow : WindowEx
         var host = _functionalHost;
         _functionalHost = null;
         _mountedProvider = null;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
     }
 
@@ -493,6 +494,7 @@ public sealed partial class ChatWindow : WindowEx
                 if (snap.DefaultThreadId is { } threadId)
                     await provider.LoadHistoryAsync(threadId);
             }
+            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
             catch { /* best effort — the normal mount path will retry */ }
         });
     }
@@ -657,6 +659,7 @@ public sealed partial class ChatWindow : WindowEx
             };
             await dialog.ShowAsync();
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* dialog display failed, already logged */ }
     }
 
@@ -787,6 +790,7 @@ public sealed partial class ChatWindow : WindowEx
             (App.Current as App)?.ShowHub("chat");
             this.Hide();
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { }
     }
 

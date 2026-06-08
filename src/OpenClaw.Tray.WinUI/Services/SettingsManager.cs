@@ -34,6 +34,7 @@ public class SettingsManager
     public bool UseSshTunnel { get => _data.UseSshTunnel; set => _data = _data with { UseSshTunnel = value }; }
     public string SshTunnelUser { get => _data.SshTunnelUser ?? ""; set => _data = _data with { SshTunnelUser = value }; }
     public string SshTunnelHost { get => _data.SshTunnelHost ?? ""; set => _data = _data with { SshTunnelHost = value }; }
+    public int SshTunnelSshPort { get => IsValidPort(_data.SshTunnelSshPort) ? _data.SshTunnelSshPort : 22; set => _data = _data with { SshTunnelSshPort = value }; }
     public int SshTunnelRemotePort { get => _data.SshTunnelRemotePort <= 0 ? 18789 : _data.SshTunnelRemotePort; set => _data = _data with { SshTunnelRemotePort = value }; }
     public int SshTunnelLocalPort { get => _data.SshTunnelLocalPort <= 0 ? 18789 : _data.SshTunnelLocalPort; set => _data = _data with { SshTunnelLocalPort = value }; }
     public string? LegacyToken { get; private set; }
@@ -211,6 +212,7 @@ public class SettingsManager
         UseSshTunnel = false,
         SshTunnelUser = "",
         SshTunnelHost = "",
+        SshTunnelSshPort = 22,
         SshTunnelRemotePort = 18789,
         SshTunnelLocalPort = 18789,
         AutoStart = true,
@@ -277,6 +279,7 @@ public class SettingsManager
             GatewayUrl = loaded.GatewayUrl ?? defaults.GatewayUrl,
             SshTunnelUser = loaded.SshTunnelUser ?? defaults.SshTunnelUser,
             SshTunnelHost = loaded.SshTunnelHost ?? defaults.SshTunnelHost,
+            SshTunnelSshPort = IsValidPort(loaded.SshTunnelSshPort) ? loaded.SshTunnelSshPort : defaults.SshTunnelSshPort,
             SshTunnelRemotePort = loaded.SshTunnelRemotePort <= 0 ? defaults.SshTunnelRemotePort : loaded.SshTunnelRemotePort,
             SshTunnelLocalPort = loaded.SshTunnelLocalPort <= 0 ? defaults.SshTunnelLocalPort : loaded.SshTunnelLocalPort,
             NotificationSound = loaded.NotificationSound ?? defaults.NotificationSound,
@@ -314,6 +317,8 @@ public class SettingsManager
         return data;
     }
 
+    private static bool IsValidPort(int port) => port is >= 1 and <= 65535;
+
     private static List<SandboxCustomFolder> CloneSandboxCustomFolders(IEnumerable<SandboxCustomFolder>? folders) =>
         folders is null
             ? new List<SandboxCustomFolder>()
@@ -336,6 +341,7 @@ public class SettingsManager
             LegacyToken = ReadLegacyString(document.RootElement, "Token");
             LegacyBootstrapToken = ReadLegacyString(document.RootElement, "BootstrapToken");
         }
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         catch (JsonException)
         {
             // SettingsData.FromJson handles invalid settings by falling back to defaults.
@@ -422,6 +428,28 @@ public class SettingsManager
         var bytes = Encoding.UTF8.GetBytes(value);
         var protectedBytes = ProtectedData.Protect(bytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
         return ProtectedSecretPrefix + Convert.ToBase64String(protectedBytes);
+    }
+
+    internal static bool CanProtectSettingSecretsForCurrentUser()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes("openclaw-dpapi-probe");
+            var protectedBytes = ProtectedData.Protect(bytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
+            var unprotectedBytes = ProtectedData.Unprotect(protectedBytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
+            return bytes.SequenceEqual(unprotectedBytes);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
     }
 
     internal static string? UnprotectSettingSecret(string? value)

@@ -31,6 +31,7 @@ public class StaleEventGuardTests : IDisposable
     public void Dispose()
     {
         _manager.Dispose();
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 
@@ -79,6 +80,7 @@ public class StaleEventGuardTests : IDisposable
         staleLifecycle.SimulateStatusChanged(ConnectionStatus.Error);
 
         // Give any async handler a moment to run
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
 
         // The manager should still be in Connecting (from the reconnect),
@@ -134,6 +136,7 @@ public class StaleEventGuardTests : IDisposable
         // Fire Error on stale lifecycles — should be ignored by generation guard
         first.SimulateStatusChanged(ConnectionStatus.Error);
         second.SimulateStatusChanged(ConnectionStatus.Error);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
 
         Assert.Equal(OverallConnectionState.Connecting, _manager.CurrentSnapshot.OverallState);
@@ -141,6 +144,7 @@ public class StaleEventGuardTests : IDisposable
 
         // Fire Error on the current (third) lifecycle — should be processed
         third.SimulateStatusChanged(ConnectionStatus.Error);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
 
         Assert.Equal(OverallConnectionState.Error, _manager.CurrentSnapshot.OverallState);
@@ -166,6 +170,7 @@ public class StaleEventGuardTests : IDisposable
 
         // Fire error on the old lifecycle — should be ignored by generation guard
         oldLifecycle.SimulateStatusChanged(ConnectionStatus.Error);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
 
         // Manager should still be Connecting from the new connect, not Error
@@ -174,6 +179,7 @@ public class StaleEventGuardTests : IDisposable
 
         // Current lifecycle's Error event should be processed
         newLifecycle.SimulateStatusChanged(ConnectionStatus.Error);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
 
         Assert.Equal(OverallConnectionState.Error, _manager.CurrentSnapshot.OverallState);

@@ -15,6 +15,7 @@ public class SettingsRoundTripTests
             UseSshTunnel= true,
             SshTunnelUser = "user1",
             SshTunnelHost = "remote-host",
+            SshTunnelSshPort = 2222,
             SshTunnelRemotePort = 18789,
             SshTunnelLocalPort = 28789,
             AutoStart = true,
@@ -69,6 +70,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.UseSshTunnel, restored.UseSshTunnel);
         Assert.Equal(original.SshTunnelUser, restored.SshTunnelUser);
         Assert.Equal(original.SshTunnelHost, restored.SshTunnelHost);
+        Assert.Equal(original.SshTunnelSshPort, restored.SshTunnelSshPort);
         Assert.Equal(original.SshTunnelRemotePort, restored.SshTunnelRemotePort);
         Assert.Equal(original.SshTunnelLocalPort, restored.SshTunnelLocalPort);
         Assert.Equal(original.AutoStart, restored.AutoStart);
@@ -140,6 +142,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
+        Assert.Equal(22, settings.SshTunnelSshPort);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
         Assert.True(settings.AutoStart);
@@ -220,6 +223,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
+        Assert.Equal(22, settings.SshTunnelSshPort);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
         // New fields should have sensible defaults
@@ -255,6 +259,31 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
+    public void SettingsManager_DefaultsInvalidSshPort()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+              "SshTunnelSshPort": 70000
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.Equal(22, settings.SshTunnelSshPort);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SettingsManager_PersistsRecordingConsentFlags()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
@@ -283,6 +312,9 @@ public class SettingsRoundTripTests
     [WindowsFact]
     public void SettingsManager_ProtectsElevenLabsApiKeyForStorage()
     {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
         var protectedValue = SettingsManager.ProtectSettingSecret("elevenlabs-key");
 
         Assert.NotNull(protectedValue);
@@ -300,6 +332,9 @@ public class SettingsRoundTripTests
     [WindowsFact]
     public void SettingsManager_SaveProtectsSecretsWithoutMutatingInMemoryData()
     {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
         var settingsPath = Path.Combine(dir, "settings.json");
 

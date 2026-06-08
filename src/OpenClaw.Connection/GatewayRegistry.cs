@@ -13,6 +13,7 @@ public sealed class GatewayRegistry
     private readonly string _filePath;
     private readonly string _gatewaysDir;
     private readonly IFileSystem _fs;
+    private readonly IOpenClawLogger _logger;
     private List<GatewayRecord> _records = [];
     private string? _activeId;
 
@@ -29,9 +30,11 @@ public sealed class GatewayRegistry
     /// </summary>
     /// <param name="dataDir">Root data directory (e.g. %APPDATA%/OpenClawTray).</param>
     /// <param name="fs">Filesystem abstraction for testability.</param>
-    public GatewayRegistry(string dataDir, IFileSystem? fs = null)
+    /// <param name="logger">Optional diagnostics sink for persistence problems.</param>
+    public GatewayRegistry(string dataDir, IFileSystem? fs = null, IOpenClawLogger? logger = null)
     {
         _fs = fs ?? RealFileSystem.Instance;
+        _logger = logger ?? NullLogger.Instance;
         _filePath = Path.Combine(dataDir, "gateways.json");
         _gatewaysDir = Path.Combine(dataDir, "gateways");
     }
@@ -164,9 +167,9 @@ public sealed class GatewayRegistry
                 }
             }
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            // Corrupted file — start fresh
+            _logger.Warn($"Gateway registry file '{_filePath}' is not valid JSON; starting with an empty registry. {ex.Message}");
         }
     }
 
@@ -194,6 +197,31 @@ public sealed class GatewayRegistry
         int sshRemotePort,
         int sshLocalPort,
         string settingsDir,
+        IOpenClawLogger? logger = null) =>
+        MigrateFromSettings(
+            gatewayUrl,
+            token,
+            bootstrapToken,
+            useSshTunnel,
+            sshUser,
+            sshHost,
+            sshPort: 22,
+            sshRemotePort,
+            sshLocalPort,
+            settingsDir,
+            logger);
+
+    public bool MigrateFromSettings(
+        string? gatewayUrl,
+        string? token,
+        string? bootstrapToken,
+        bool useSshTunnel,
+        string? sshUser,
+        string? sshHost,
+        int sshPort,
+        int sshRemotePort,
+        int sshLocalPort,
+        string settingsDir,
         IOpenClawLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(gatewayUrl))
@@ -215,7 +243,7 @@ public sealed class GatewayRegistry
             SharedGatewayToken = string.IsNullOrWhiteSpace(bootstrapToken) ? token : null,
             BootstrapToken = !string.IsNullOrWhiteSpace(bootstrapToken) ? bootstrapToken : null,
             SshTunnel = useSshTunnel
-                ? new SshTunnelConfig(sshUser ?? "", sshHost ?? "", sshRemotePort, sshLocalPort)
+                ? new SshTunnelConfig(sshUser ?? "", sshHost ?? "", sshRemotePort, sshLocalPort, SshPort: sshPort)
                 : null
         };
 

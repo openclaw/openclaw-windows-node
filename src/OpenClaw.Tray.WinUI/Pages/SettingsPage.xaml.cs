@@ -5,6 +5,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 
@@ -212,17 +213,21 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>
-    /// Returns Visible when a local gateway exists OR an uninstall has been initiated this
-    /// view session (latch). The latch prevents the section from collapsing mid-flight when
+    /// Returns Visible for the installed-gateway management card when a local gateway exists
+    /// OR an uninstall has been initiated this view session (latch). The latch prevents the
+    /// card from collapsing mid-flight when
     /// the engine deletes setup-state.json before the result InfoBar is shown.
-    /// Resets on page navigation — section hides again on clean Settings re-open.
+    /// Resets on page navigation — the card hides again on clean Settings re-open.
     /// </summary>
     private Visibility ComputeLocalGatewaySectionVisibility()
     {
-        var visibility = (_localGatewayInstalled || _uninstallInitiatedThisSession)
+        return (_localGatewayInstalled || _uninstallInitiatedThisSession)
             ? Visibility.Visible : Visibility.Collapsed;
-        LocalGatewaySectionHeader.Visibility = visibility;
-        return visibility;
+    }
+
+    private void OnOpenLocalGatewaySetup(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).ShowOnboarding();
     }
 
     private void OnTestNotification(object sender, RoutedEventArgs e)
@@ -234,6 +239,7 @@ public sealed partial class SettingsPage : Page
                 .AddText("This is a test notification from OpenClaw settings.")
                 .Show();
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { }
     }
 
@@ -295,27 +301,26 @@ public sealed partial class SettingsPage : Page
         UninstallResultBar.IsOpen = false;
 
         _uninstallCts = new CancellationTokenSource();
-        System.Diagnostics.Process? proc = null;
+        Process? proc = null;
         string? jsonOutput = null;
         try
         {
-            var setupExe = App.ResolveSetupEngineUiPath()
-                ?? throw new FileNotFoundException("SetupEngine.UI not found (searched app dir and sibling project output)");
+            var exePath = ResolveCurrentExecutablePath()
+                ?? throw new FileNotFoundException("OpenClaw tray executable could not be resolved for local gateway removal.");
 
             jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-uninstall-{Guid.NewGuid():N}.json");
 
-            var psi = new System.Diagnostics.ProcessStartInfo(setupExe)
+            var psi = new ProcessStartInfo(exePath)
             {
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
             };
-            psi.ArgumentList.Add("--headless");
             psi.ArgumentList.Add("--uninstall");
             psi.ArgumentList.Add("--confirm-destructive");
             psi.ArgumentList.Add("--json-output");
             psi.ArgumentList.Add(jsonOutput);
 
-            proc = System.Diagnostics.Process.Start(psi)!;
+            proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenClaw uninstall process.");
             await proc.WaitForExitAsync(_uninstallCts.Token);
 
             if (proc.ExitCode == 0)
@@ -340,13 +345,20 @@ public sealed partial class SettingsPage : Page
                         if (doc.RootElement.TryGetProperty("message", out var msg) && msg.GetString() is { Length: > 0 } m)
                             errorMsg = m;
                     }
-                    catch { /* best effort */ }
+                    catch (Exception ex)
+                    {
+                        Services.Logger.Debug($"Could not read uninstall error details: {ex.Message}");
+                    }
                 }
                 ShowUninstallError(errorMsg);
             }
 
             // Clean up temp file
-            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex)
+            {
+                Services.Logger.Debug($"Could not delete uninstall status file: {ex.Message}");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -358,7 +370,10 @@ public sealed partial class SettingsPage : Page
                     await proc.WaitForExitAsync(CancellationToken.None);
                 }
             }
-            catch { /* best effort cancellation cleanup */ }
+            catch (Exception cleanupEx)
+            {
+                Services.Logger.Debug($"Could not stop cancelled uninstall process: {cleanupEx.Message}");
+            }
 
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
@@ -375,9 +390,28 @@ public sealed partial class SettingsPage : Page
         finally
         {
             proc?.Dispose();
-            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex)
+            {
+                Services.Logger.Debug($"Could not delete uninstall status file during cleanup: {ex.Message}");
+            }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
+        }
+    }
+
+    private static string? ResolveCurrentExecutablePath()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
+            return Environment.ProcessPath;
+
+        try
+        {
+            return Process.GetCurrentProcess().MainModule?.FileName;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -390,6 +424,7 @@ public sealed partial class SettingsPage : Page
         var viewLogsButton = new Button { Content = "View Logs" };
         viewLogsButton.Click += (_, _) =>
         {
+            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
             try { System.Diagnostics.Process.Start("explorer.exe", logsPath); } catch { }
         };
 

@@ -22,6 +22,7 @@ public sealed class GatewayConnectionManagerConnectTests : IDisposable
     public void Dispose()
     {
         _manager.Dispose();
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 

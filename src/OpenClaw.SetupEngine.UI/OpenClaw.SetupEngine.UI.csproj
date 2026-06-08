@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
     <UseWinUI>true</UseWinUI>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -9,20 +8,7 @@
     <RootNamespace>OpenClaw.SetupEngine.UI</RootNamespace>
     <AssemblyName>OpenClaw.SetupEngine.UI</AssemblyName>
     <Platforms>x64;ARM64</Platforms>
-    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>..\OpenClaw.Tray.WinUI\Assets\openclaw.ico</ApplicationIcon>
     <DefaultLanguage>en-US</DefaultLanguage>
-    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">
-    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
@@ -48,23 +34,5 @@
              Link="default-config.json"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-
-  <PropertyGroup>
-    <OpenClawSetupEngineGeneratedOutputDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\'))</OpenClawSetupEngineGeneratedOutputDirectory>
-  </PropertyGroup>
-
-  <!-- dotnet publish for unpackaged WinUI can omit generated XAML artifacts; copy the
-       generated layout pieces from the build output so installer payloads stay runnable. -->
-  <Target Name="CopyGeneratedWinUiArtifactsToPublish"
-          AfterTargets="Publish"
-          Condition="'$(PublishDir)' != '' and '$(RuntimeIdentifier)' != ''">
-    <ItemGroup>
-      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawSetupEngineGeneratedOutputDirectory)**\*.xbf" />
-      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawSetupEngineGeneratedOutputDirectory)**\*.pri" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_GeneratedWinUiPublishArtifacts)"
-          DestinationFiles="@(_GeneratedWinUiPublishArtifacts->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>

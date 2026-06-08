@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -288,10 +290,14 @@ public static class ChatMarkdownRenderer
 
     private const double BulletMarkerMinWidth  = 10.0;
     private const double OrderedMarkerMinWidth = 18.0;
-    private const double ListMarkerSpacing     = 0.0;
 
     private static Element RenderList(MdList list)
     {
+        // Allocated per list (not per row) and not shared across calls, so the
+        // arrays can't be mutated by anyone else between renders.
+        var columns = new[] { GridSize.Auto, GridSize.Star() };
+        var rowDefs = new[] { GridSize.Auto };
+
         var rows = new List<Element?>(list.Items.Count);
         int number = list.Marker == MdListMarker.Ordered ? list.StartNumber : 0;
         bool isOrdered = list.Marker == MdListMarker.Ordered;
@@ -306,13 +312,20 @@ public static class ChatMarkdownRenderer
             };
             if (isOrdered) number++;
 
-            rows.Add(HStack(
-                ListMarkerSpacing,
+            // A Grid is used here (rather than a horizontal StackPanel) so the
+            // content column receives a finite width during measure and the
+            // paragraph TextBlock can wrap. Inside a horizontal StackPanel the
+            // content would be measured with infinite width and long bullets
+            // would render on a single clipped line. See issue #636.
+            rows.Add(Grid(
+                columns,
+                rowDefs,
                 TextBlock(marker)
                     .FontSize(BodyFontSize)
                     .VAlign(VerticalAlignment.Top)
-                    .MinWidth(markerMinWidth),
-                RenderListItemContent(item)));
+                    .MinWidth(markerMinWidth)
+                    .Grid(row: 0, column: 0),
+                RenderListItemContent(item).Grid(row: 0, column: 1)));
         }
         return VStack(4.0, rows.ToArray());
     }
@@ -468,14 +481,42 @@ public static class ChatMarkdownRenderer
     //  Inline → TextBlock.Inlines
     // ────────────────────────────────────────────────────────────────────
 
+    // Cache the inline list applied to each TextBlock so that re-renders
+    // with identical content can skip the Clear()+AppendInlines() round
+    // trip. FunctionalUI pools TextBlocks by tree path and re-runs every
+    // setter on each render (see FunctionalUI.ConfigureTextBlock); clearing
+    // the Inlines collection while the user has an active text selection
+    // wipes that selection (bug: selection disappears when the pointer
+    // leaves the bubble, because hover-state changes trigger a full
+    // subtree re-render). MdInline subtypes are records with value
+    // equality, so SequenceEqual is a sound structural comparison.
+    private static readonly ConditionalWeakTable<TextBlock, IReadOnlyList<MdInline>>
+        s_inlinesCache = new();
+
     private static TextBlockElement InlinesTextBlock(IReadOnlyList<MdInline> inlines) =>
         TextBlock(string.Empty).Set(tb =>
         {
             tb.TextWrapping = TextWrapping.Wrap;
             tb.IsTextSelectionEnabled = true;
-            tb.Inlines.Clear();
-            AppendInlines(tb.Inlines, inlines);
+            ApplyInlines(tb, inlines);
         });
+
+    private static void ApplyInlines(TextBlock tb, IReadOnlyList<MdInline> inlines)
+    {
+        // Only honour the cache when the previously-built inlines are still
+        // present. ConfigureTextBlock may set Text="" before this setter
+        // runs, which clears the Inlines collection out from under us; in
+        // that case we must rebuild even if the source list is unchanged.
+        if (tb.Inlines.Count > 0
+            && s_inlinesCache.TryGetValue(tb, out var cached)
+            && (ReferenceEquals(cached, inlines) || cached.SequenceEqual(inlines)))
+        {
+            return;
+        }
+        s_inlinesCache.AddOrUpdate(tb, inlines);
+        tb.Inlines.Clear();
+        AppendInlines(tb.Inlines, inlines);
+    }
 
     private static void AppendInlines(InlineCollection sink, IReadOnlyList<MdInline> inlines)
     {

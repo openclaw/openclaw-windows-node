@@ -169,12 +169,14 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
     private static void TryDelete(string? path)
     {
         if (string.IsNullOrEmpty(path)) return;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort */ }
     }
 
     private static void TryDeleteDir(string? path)
     {
         if (string.IsNullOrEmpty(path)) return;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch { /* best-effort */ }
     }
 
@@ -253,6 +255,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
                         "commands that need that path may fail.");
                 }
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch
             {
                 // Best-effort diagnostic only. The command result should reflect

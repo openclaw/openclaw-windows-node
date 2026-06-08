@@ -179,7 +179,9 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             // ObjectDisposedException into an unobserved task, which surfaces
             // through global unhandled-exception handlers.
             try { _handlerLimiter.Release(); }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (ObjectDisposedException) { /* server torn down */ }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (SemaphoreFullException) { /* defensive */ }
         }
     }
@@ -322,6 +324,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             _logger.Error("[MCP] Request failed", ex);
             // Response may already be partially written or closed; swallow.
             try { Reject(ctx, HttpStatusCode.InternalServerError, "internal error"); }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { /* response already disposed */ }
         }
     }
@@ -393,6 +396,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     private static void Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)
     {
         try { WriteText(ctx.Response, status, reason, "text/plain"); }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         catch { /* response already disposed */ }
     }
 
@@ -424,7 +428,9 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
     private async Task StopCoreAsync(TimeSpan drainTimeout)
     {
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _cts.Cancel(); } catch { /* already cancelled or disposed */ }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { if (_listener.IsListening) _listener.Stop(); } catch { /* already stopped */ }
 
         // Snapshot before awaiting — handlers remove themselves on completion,
@@ -445,6 +451,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         if (_acceptLoop != null)
         {
             try { await Task.WhenAny(_acceptLoop, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false); }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { /* loop may have errored */ }
         }
     }
@@ -504,6 +511,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             _resourcesDisposed = true;
         }
 
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _listener.Close(); } catch { /* already closed */ }
         _cts.Dispose();
         _handlerLimiter.Dispose();

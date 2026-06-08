@@ -2285,7 +2285,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Gebruik</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Cron</value>
+    <value>Planning</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>Deze computer</value>
@@ -2973,6 +2973,24 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Weigeren</value>
+  </data>
+  <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
+    <value>Toegestaan</value>
+  </data>
+  <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
+    <value>Geweigerd</value>
+  </data>
+  <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
+    <value>Verlopen</value>
+  </data>
+  <data name="Chat_Permission_Title" xml:space="preserve">
+    <value>Goedkeuring voor uitvoering vereist</value>
+  </data>
+  <data name="Chat_Permission_Subtitle" xml:space="preserve">
+    <value>Goedkeuring is nodig om de onderstaande opdracht uit te voeren op deze Windows-companion. Klik op Toestaan om door te gaan, of Weigeren om te annuleren.</value>
+  </data>
+  <data name="Chat_Permission_Caption" xml:space="preserve">
+    <value>Voor elke opdracht is goedkeuring vereist volgens het actieve beleid. Uw keuze geldt alleen voor deze aanvraag.</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Verbinden met gateway…</value>
@@ -3847,6 +3865,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
   </data>
+  <data name="ConnectionPage_SshServerPort.Header" xml:space="preserve">
+    <value>SSH-poort</value>
+  </data>
   <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
     <value>Externe poort</value>
   </data>
@@ -3889,13 +3910,13 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
     <value>PLANNING</value>
   </data>
-  <data name="CronPage_Every.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleEveryOption.Content" xml:space="preserve">
     <value>Elke</value>
   </data>
-  <data name="CronPage_At.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleAtOption.Content" xml:space="preserve">
     <value>Om</value>
   </data>
-  <data name="CronPage_Cron.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleCronOption.Content" xml:space="preserve">
     <value>Cron</value>
   </data>
   <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
@@ -4348,6 +4369,15 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Lokale gateway</value>
   </data>
+  <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
+    <value>Lokale gateway instellen of opnieuw configureren</value>
+  </data>
+  <data name="SettingsPage_LocalGatewaySetup_Description.Text" xml:space="preserve">
+    <value>Start de setup om een app-beheerde OpenClawGateway WSL-distributie te installeren, of de provider- en modelsetup opnieuw uit te voeren voor een bestaande gateway. Bestaande lokale gateways worden alleen na bevestiging vervangen.</value>
+  </data>
+  <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
+    <value>Setup openen</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>MSIX-installatie gedetecteerd</value>
   </data>
@@ -4516,6 +4546,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
     <value>192.168.x.x</value>
   </data>
+  <data name="ConnectionStatusWindow_SshServerPort.Header" xml:space="preserve">
+    <value>SSH-poort</value>
+  </data>
   <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
     <value>Externe poort</value>
   </data>
@@ -4551,4 +4584,1149 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Geavanceerd</value>
-  </data></root>
+  </data>
+  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
+    <value>Actueel</value>
+  </data>
+  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
+    <value>Wissen</value>
+  </data>
+  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
+    <value>Gesprekken die deze gateway momenteel afhandelt, gegroepeerd per kanaal.</value>
+  </data>
+  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
+    <value>Sessies verschijnen hier wanneer een kanaal is verbonden en er verkeer loopt.</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
+    <value>Chat openen</value>
+  </data>
+  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
+    <value>Ingeschakeld</value>
+  </data>
+  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
+    <value>Uitgeschakeld</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
+    <value>Voorbeeld</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoice.Text" xml:space="preserve">
+    <value>Stemvoorbeeld</value>
+  </data>
+  <data name="HubWindow_TitleStatus.Text" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
+    <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert, vallen hier niet onder. Als de gateway op deze pc staat, hebben ze mogelijk nog steeds toegang tot uw Windows-bestanden, klembord en netwerk — controleer de configuratie van uw gateway.</value>
+  </data>  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
+    <value>Alle agenten</value>
+  </data>
+  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
+    <value>{0} van {1} gebeurtenissen</value>
+  </data>
+  <data name="CronPage_CreateJobLabel" xml:space="preserve">
+    <value>Taak aanmaken</value>
+  </data>
+  <data name="CronPage_EditJob" xml:space="preserve">
+    <value>Taak bewerken</value>
+  </data>
+  <data name="CronPage_NewJobTitle" xml:space="preserve">
+    <value>Nieuwe taak</value>
+  </data>
+  <data name="CronPage_Running" xml:space="preserve">
+    <value>Uitvoeren...</value>
+  </data>
+  <data name="CronPage_SaveChanges" xml:space="preserve">
+    <value>Wijzigingen opslaan</value>
+  </data>
+  <data name="SchemaConfigEditor_AddItem" xml:space="preserve">
+    <value>Item toevoegen</value>
+  </data>
+  <data name="ChatPage_AttachFile" xml:space="preserve">
+    <value>Bestand bijvoegen</value>
+  </data>
+  <data name="ChatPage_Cancel" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
+  <data name="ChatPage_CannotAttachFile" xml:space="preserve">
+    <value>Kan bestand niet bijvoegen</value>
+  </data>
+  <data name="ChatPage_CannotConnectToGateway" xml:space="preserve">
+    <value>Kan geen verbinding maken met de gateway op {0}
+
+Controleer of de gateway actief is.</value>
+  </data>
+  <data name="ChatPage_ChatFailedToStart" xml:space="preserve">
+    <value>Chat kon niet worden gestart:
+{0}</value>
+  </data>
+  <data name="ChatPage_ChatReady" xml:space="preserve">
+    <value>Chat is gereed; uw eerste gesprek wordt gestart…</value>
+  </data>
+  <data name="ChatPage_ChatSurfaceComingOnline" xml:space="preserve">
+    <value>De gateway is verbonden; de chatinterface wordt nog geladen.</value>
+  </data>
+  <data name="ChatPage_GatewayPairingIncomplete" xml:space="preserve">
+    <value>Het koppelen met de gateway is niet voltooid. Open de verbindingsinstellingen om het koppelen te voltooien.</value>
+  </data>
+  <data name="ChatPage_InvalidGatewayUrl" xml:space="preserve">
+    <value>Ongeldige gateway-URL: {0}</value>
+  </data>
+  <data name="ChatPage_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ChatPage_OpenConnectionSettings" xml:space="preserve">
+    <value>Open de verbindingsinstellingen om het koppelen met een gateway te voltooien.</value>
+  </data>
+  <data name="ChatPage_OpenVoiceSettings" xml:space="preserve">
+    <value>Spraakinstellingen openen</value>
+  </data>
+  <data name="ChatPage_TimedOutChat" xml:space="preserve">
+    <value>Time-out bij het wachten op chat op {0}. Probeer het opnieuw wanneer de gateway gereed is.</value>
+  </data>
+  <data name="ChatPage_TimedOutHandshake" xml:space="preserve">
+    <value>Time-out bij het wachten op de gateway-operatorhandshake. Probeer het opnieuw wanneer de gateway gereed is.</value>
+  </data>
+  <data name="ChatPage_VoiceModelInstallMessage" xml:space="preserve">
+    <value>Het spraak-naar-tekstmodel moet worden geïnstalleerd voordat u spraakinvoer kunt gebruiken. Wilt u de spraakinstellingen openen om het te installeren?</value>
+  </data>
+  <data name="ChatPage_VoiceModelRequired" xml:space="preserve">
+    <value>Spraakmodel vereist</value>
+  </data>
+  <data name="ChatPage_WebView2InitFailed" xml:space="preserve">
+    <value>WebView2 kon niet worden geïnitialiseerd:
+{0}</value>
+  </data>
+  <data name="ConnectionStatus_Applying" xml:space="preserve">
+    <value>Toepassen…</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApproval" xml:space="preserve">
+    <value>Wacht op goedkeuring</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApprovalApproveThenConnect" xml:space="preserve">
+    <value>🔐 Wacht op goedkeuring — keur goed en klik op Verbinden</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApprovalFromGateway" xml:space="preserve">
+    <value>🔐 Wacht op goedkeuring van de gateway</value>
+  </data>
+  <data name="ConnectionStatus_Connect" xml:space="preserve">
+    <value>Verbinden</value>
+  </data>
+  <data name="ConnectionStatus_Connected" xml:space="preserve">
+    <value>✓ Verbonden</value>
+  </data>
+  <data name="ConnectionStatus_ConnectedTo" xml:space="preserve">
+    <value>✓ Verbonden met {0}</value>
+  </data>
+  <data name="ConnectionStatus_Connecting" xml:space="preserve">
+    <value>Verbinden…</value>
+  </data>
+  <data name="ConnectionStatus_ConnectOnceApproved" xml:space="preserve">
+    <value>Verbinden (na goedkeuring)</value>
+  </data>
+  <data name="ConnectionStatus_Disabled" xml:space="preserve">
+    <value>uitgeschakeld</value>
+  </data>
+  <data name="ConnectionStatus_Disconnected" xml:space="preserve">
+    <value>Verbinding verbroken</value>
+  </data>
+  <data name="ConnectionStatus_EnterGatewayUrl" xml:space="preserve">
+    <value>Voer een gateway-URL in</value>
+  </data>
+  <data name="ConnectionStatus_NoGateways" xml:space="preserve">
+    <value>Geen gateways</value>
+  </data>
+  <data name="ConnectionStatus_Reconnecting" xml:space="preserve">
+    <value>Opnieuw verbinden…</value>
+  </data>
+  <data name="ConnectionStatus_Rejected" xml:space="preserve">
+    <value>afgewezen</value>
+  </data>
+  <data name="ConnectionStatus_StartingSshTunnel" xml:space="preserve">
+    <value>SSH-tunnel starten…</value>
+  </data>
+  <data name="ConnectionPage_OnHostname" xml:space="preserve">
+    <value>op {0}</value>
+  </data>
+  <data name="ConnectionPage_ClientSingular" xml:space="preserve">
+    <value>1 verbonden client</value>
+  </data>
+  <data name="ConnectionPage_ClientsPlural" xml:space="preserve">
+    <value>{0} verbonden clients</value>
+  </data>
+  <data name="ConnectionPage_ChannelsSingular" xml:space="preserve">
+    <value>{0}/{1} kanaal</value>
+  </data>
+  <data name="ConnectionPage_ChannelsPlural" xml:space="preserve">
+    <value>{0}/{1} kanalen</value>
+  </data>
+  <data name="ConnectionPage_CostToday" xml:space="preserve">
+    <value>${0} vandaag</value>
+  </data>
+  <data name="ConnectionPage_CostTodayZero" xml:space="preserve">
+    <value>$0,00 vandaag</value>
+  </data>
+  <data name="ConnectionPage_SharedTokenChip" xml:space="preserve">
+    <value>Gedeeld token</value>
+  </data>
+  <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
+    <value>Tik om gedeeld token te kopiëren</value>
+  </data>
+  <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
+    <value>via SSH-tunnel</value>
+  </data>
+  <data name="ConnectionPage_TopologyLocal" xml:space="preserve">
+    <value>Lokaal</value>
+  </data>
+  <data name="ConnectionPage_TopologyTailscale" xml:space="preserve">
+    <value>Tailscale</value>
+  </data>
+  <data name="ConnectionPage_TopologyLAN" xml:space="preserve">
+    <value>Lokaal netwerk</value>
+  </data>
+  <data name="ConnectionPage_TopologyRemote" xml:space="preserve">
+    <value>Extern</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveSessions" xml:space="preserve">
+    <value>Actief · {0} sessies</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveOneSession" xml:space="preserve">
+    <value>Actief · 1 sessie</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveNoSessions" xml:space="preserve">
+    <value>Actief · geen actieve sessies</value>
+  </data>
+  <data name="ConnectionPage_OperatorDisconnected" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="ConnectionPage_OperatorConnecting" xml:space="preserve">
+    <value>Verbinden…</value>
+  </data>
+  <data name="ConnectionPage_OperatorReconnecting" xml:space="preserve">
+    <value>Opnieuw verbinden…</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveCapabilities" xml:space="preserve">
+    <value>Node actief · {0} mogelijkheden</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveOneCapability" xml:space="preserve">
+    <value>Node actief · 1 mogelijkheid</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveNoCapabilities" xml:space="preserve">
+    <value>Node actief · geen mogelijkheden ingeschakeld</value>
+  </data>
+  <data name="ConnectionPage_NodeAwaitingPairing" xml:space="preserve">
+    <value>Wacht op goedkeuring van koppeling</value>
+  </data>
+  <data name="ConnectionPage_NodePairingRejected" xml:space="preserve">
+    <value>Koppeling geweigerd</value>
+  </data>
+  <data name="ConnectionPage_NodeRateLimited" xml:space="preserve">
+    <value>Snelheidsbeperkt</value>
+  </data>
+  <data name="ConnectionPage_NodeError" xml:space="preserve">
+    <value>Nodefout</value>
+  </data>
+  <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
+    <value>Nodemodus uitgeschakeld</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
+    <value>Geen mogelijkheden ingeschakeld. Kies wat u wilt delen bij Machtigingen.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyAwaitingApproval" xml:space="preserve">
+    <value>Wacht op goedkeuring van de gatewayhost.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyPairingRejected" xml:space="preserve">
+    <value>Koppeling is geweigerd. Koppel opnieuw via Gateway toevoegen.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyRateLimited" xml:space="preserve">
+    <value>Snelheidsbeperkt door de gateway. Wordt opnieuw geprobeerd na afkoeling.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyError" xml:space="preserve">
+    <value>De node heeft een fout gemeld.</value>
+  </data>
+  <data name="ConnectionPage_ProvidingNoCapabilities" xml:space="preserve">
+    <value>Geen mogelijkheden aangeboden</value>
+  </data>
+  <data name="ConnectionPage_ProvidingCapabilitiesSingular" xml:space="preserve">
+    <value>1 mogelijkheid aangeboden: {0}</value>
+  </data>
+  <data name="ConnectionPage_ProvidingCapabilitiesPlural" xml:space="preserve">
+    <value>{0} mogelijkheden aangeboden: {1}</value>
+  </data>
+  <data name="ConnectionPage_BadgeConnected" xml:space="preserve">
+    <value>Verbonden</value>
+  </data>
+  <data name="ConnectionPage_BadgeConnecting" xml:space="preserve">
+    <value>Verbinden…</value>
+  </data>
+  <data name="ConnectionPage_BadgeAwaitingApproval" xml:space="preserve">
+    <value>Wacht op goedkeuring</value>
+  </data>
+  <data name="ConnectionPage_BadgeDisconnecting" xml:space="preserve">
+    <value>Verbinding verbreken…</value>
+  </data>
+  <data name="ConnectionPage_ConnectAction" xml:space="preserve">
+    <value>Verbinden</value>
+  </data>
+  <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
+    <value>Dashboard openen</value>
+  </data>
+  <data name="ConnectionPage_DisconnectAction" xml:space="preserve">
+    <value>Verbinding verbreken</value>
+  </data>
+  <data name="ConnectionPage_Edit" xml:space="preserve">
+    <value>Bewerken</value>
+  </data>
+  <data name="ConnectionPage_Remove" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="ConnectionPage_ViaSSH" xml:space="preserve">
+    <value>via SSH</value>
+  </data>
+  <data name="ConnectionPage_SavedGatewaysSingular" xml:space="preserve">
+    <value>Opgeslagen gateways (1)</value>
+  </data>
+  <data name="ConnectionPage_SavedGatewaysPlural" xml:space="preserve">
+    <value>Opgeslagen gateways ({0})</value>
+  </data>
+  <data name="ConnectionPage_JustNow" xml:space="preserve">
+    <value>zojuist</value>
+  </data>
+  <data name="ConnectionPage_MinutesAgo" xml:space="preserve">
+    <value>{0} min. geleden</value>
+  </data>
+  <data name="ConnectionPage_HoursAgo" xml:space="preserve">
+    <value>{0} uur geleden</value>
+  </data>
+  <data name="ConnectionPage_DaysAgo" xml:space="preserve">
+    <value>{0} dagen geleden</value>
+  </data>
+  <data name="ConnectionPage_MonthsAgo" xml:space="preserve">
+    <value>{0} mnd. geleden</value>
+  </data>
+  <data name="ConnectionPage_YearsAgo" xml:space="preserve">
+    <value>{0} jaar geleden</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderAuth" xml:space="preserve">
+    <value>Deze gateway opnieuw koppelen:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderPairing" xml:space="preserve">
+    <value>Wacht op goedkeuring:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTunnel" xml:space="preserve">
+    <value>Help ons de SSH-tunnel te herstellen:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderServer" xml:space="preserve">
+    <value>Help ons deze verbinding te herstellen:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryAuthBullet1" xml:space="preserve">
+    <value>Vraag een nieuwe installatiecode aan bij de gatewayhost.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryAuthBullet2" xml:space="preserve">
+    <value>Of plak hieronder een nieuw direct token.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryPairingBullet1" xml:space="preserve">
+    <value>Keur deze client goed op de gatewayhost met het onderstaande commando.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryPairingBullet2" xml:space="preserve">
+    <value>Zodra goedgekeurd, klik op Verbinden om door te gaan.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTunnelBullet1" xml:space="preserve">
+    <value>Bevestig dat SSH bereikbaar is op de host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTunnelBullet2" xml:space="preserve">
+    <value>Herstart de tunnel hieronder als deze is gestopt.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet1" xml:space="preserve">
+    <value>Controleer de gatewaylogs op de host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet2" xml:space="preserve">
+    <value>Als de gateway gedeeltelijk actief is, open het dashboard.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet3" xml:space="preserve">
+    <value>Bewerk de gatewayinstellingen om de URL of het token te wijzigen.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet1" xml:space="preserve">
+    <value>Controleer of de gateway draait op de host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet2" xml:space="preserve">
+    <value>Controleer of u zich op hetzelfde netwerk of VPN bevindt.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet3" xml:space="preserve">
+    <value>Als u een SSH-tunnel gebruikt: bevestig dat deze actief is.</value>
+  </data>
+  <data name="ConnectionPage_SshTunnelIsDownText" xml:space="preserve">
+    <value>SSH-tunnel is uitgevallen.</value>
+  </data>
+  <data name="ConnectionPage_TestingConnection" xml:space="preserve">
+    <value>Verbinding testen…</value>
+  </data>
+  <data name="ConnectionPage_GatewayReachable" xml:space="preserve">
+    <value>Gateway bereikbaar</value>
+  </data>
+  <data name="ConnectionPage_GatewayRespondedWith" xml:space="preserve">
+    <value>Gateway antwoordde met {0}</value>
+  </data>
+  <data name="ConnectionPage_CannotReachGateway" xml:space="preserve">
+    <value>Kan de gateway niet bereiken</value>
+  </data>
+  <data name="ConnectionPage_EnterGatewayUrl" xml:space="preserve">
+    <value>Voer een gateway-URL in</value>
+  </data>
+  <data name="ConnectionPage_Connecting" xml:space="preserve">
+    <value>Verbinden…</value>
+  </data>
+  <data name="ConnectionPage_StartingSshTunnel" xml:space="preserve">
+    <value>SSH-tunnel starten…</value>
+  </data>
+  <data name="ConnectionPage_PairingApprovalRequired" xml:space="preserve">
+    <value>Koppelinggoedkeuring vereist voor {0}.</value>
+  </data>
+  <data name="ConnectionPage_ConnectedTo" xml:space="preserve">
+    <value>Verbonden met {0}.</value>
+  </data>
+  <data name="ConnectionPage_SshServerPortInvalid" xml:space="preserve">
+    <value>SSH-poort moet 1-65535 zijn</value>
+  </data>
+  <data name="ConnectionPage_SshRemotePortInvalid" xml:space="preserve">
+    <value>SSH-externe poort moet 1–65535 zijn</value>
+  </data>
+  <data name="ConnectionPage_SshLocalPortInvalid" xml:space="preserve">
+    <value>SSH-lokale poort moet 1–65535 zijn</value>
+  </data>
+  <data name="ConnectionPage_TunnelRestartTriggered" xml:space="preserve">
+    <value>Herstart van tunnel geactiveerd.</value>
+  </data>
+  <data name="ConnectionPage_TunnelRestartFailed" xml:space="preserve">
+    <value>Herstart van tunnel mislukt: {0}</value>
+  </data>
+  <data name="ConnectionPage_RepairedReconnecting" xml:space="preserve">
+    <value>Opnieuw gekoppeld. Opnieuw verbinden…</value>
+  </data>
+  <data name="ConnectionPage_CouldNotApplyCode" xml:space="preserve">
+    <value>Kan de code niet toepassen.</value>
+  </data>
+  <data name="ConnectionPage_PleaseEnterSetupCode" xml:space="preserve">
+    <value>Plak een installatiecode.</value>
+  </data>
+  <data name="ConnectionPage_Applying" xml:space="preserve">
+    <value>Toepassen…</value>
+  </data>
+  <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
+    <value>Toegepast — gateway: {0}</value>
+  </data>
+  <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
+    <value>Ongeldige installatiecode</value>
+  </data>
+  <data name="ConnectionPage_InvalidUrl" xml:space="preserve">
+    <value>Ongeldige URL</value>
+  </data>
+  <data name="ConnectionPage_ConnectionFailed" xml:space="preserve">
+    <value>Verbinding mislukt</value>
+  </data>
+  <data name="ConnectionPage_UnknownError" xml:space="preserve">
+    <value>Onbekende fout</value>
+  </data>
+  <data name="ConnectionPage_PreviewGateway" xml:space="preserve">
+    <value>Gateway-adres: {0}</value>
+  </data>
+  <data name="ConnectionPage_PreviewGatewayNotSpecified" xml:space="preserve">
+    <value>(niet opgegeven)</value>
+  </data>
+  <data name="ConnectionPage_PreviewNoToken" xml:space="preserve">
+    <value>(geen token)</value>
+  </data>
+  <data name="ConnectionPage_PreviewToken" xml:space="preserve">
+    <value>Toegangstoken: {0}</value>
+  </data>
+  <data name="ConnectionPage_PressScan" xml:space="preserve">
+    <value>Druk op Scan starten om gateways op uw netwerk te zoeken.</value>
+  </data>
+  <data name="ConnectionPage_ScanningNetwork" xml:space="preserve">
+    <value>Uw netwerk scannen…</value>
+  </data>
+  <data name="ConnectionPage_NoGatewaysFound" xml:space="preserve">
+    <value>Geen gateways gevonden op uw netwerk.</value>
+  </data>
+  <data name="ConnectionPage_DiscoveredOnNetwork" xml:space="preserve">
+    <value>Gevonden op uw netwerk ({0})</value>
+  </data>
+  <data name="ConnectionPage_ScanFailed" xml:space="preserve">
+    <value>Scan mislukt: {0}</value>
+  </data>
+  <data name="ConnectionPage_Stop" xml:space="preserve">
+    <value>Stoppen</value>
+  </data>
+  <data name="ConnectionPage_ScanAction" xml:space="preserve">
+    <value>Scannen</value>
+  </data>
+  <data name="ConnectionPage_Add" xml:space="preserve">
+    <value>Toevoegen</value>
+  </data>
+  <data name="ConnectionPage_PickDiscoveredGateway" xml:space="preserve">
+    <value>Kies een gevonden gateway hierboven om te verbinden.</value>
+  </data>
+  <data name="ConnectionPage_RemoveGatewayTitle" xml:space="preserve">
+    <value>Gateway verwijderen?</value>
+  </data>
+  <data name="ConnectionPage_RemoveGatewayMessage" xml:space="preserve">
+    <value>Hiermee worden {0} en de bijbehorende referenties op deze machine vergeten.</value>
+  </data>
+  <data name="ConnectionPage_CancelAction" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
+  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
+    <value>Verbinding mislukt</value>
+  </data>
+  <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
+    <value>Gatewayverbinding mislukt.</value>
+  </data>
+  <data name="ConnectionPage_ApprovalsSingular" xml:space="preserve">
+    <value>1 goedkeuring wacht op u</value>
+  </data>
+  <data name="ConnectionPage_ApprovalsPlural" xml:space="preserve">
+    <value>{0} goedkeuringen wachten op u</value>
+  </data>
+  <data name="ConnectionPage_DeviceLabel" xml:space="preserve">
+    <value>Apparaat · {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeLabel" xml:space="preserve">
+    <value>Knooppunt · {0}</value>
+  </data>
+  <data name="ConnectionPage_RepairRequest" xml:space="preserve">
+    <value>⚠️ Reparatieverzoek</value>
+  </data>
+  <data name="ConnectionPage_Approve" xml:space="preserve">
+    <value>Goedkeuren</value>
+  </data>
+  <data name="ConnectionPage_Deny" xml:space="preserve">
+    <value>Weigeren</value>
+  </data>
+  <data name="ConnectionPage_ApprovePairingRequest" xml:space="preserve">
+    <value>Koppelingverzoek goedkeuren</value>
+  </data>
+  <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
+    <value>Koppelingverzoek weigeren</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
+    <value>{0}
+
+Plak een nieuwe installatiecode vanuit het Gateway toevoegen-proces.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
+    <value>{0}
+
+Uw apparaat moet worden goedgekeurd op de gatewayhost.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
+    <value>{0}
+
+Deze gateway vereist wachtwoordverificatie.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
+    <value>{0}
+
+De gateway vereist mogelijk een andere versie van het verificatieprotocol.</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
+    <value>{0}
+
+Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
+  </data>
+  <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
+    <value>bootstrap-modus</value>
+  </data>
+  <data name="ConnectionPage_AuthModeSharedToken" xml:space="preserve">
+    <value>gedeeld token</value>
+  </data>
+  <data name="ConnectionPage_AuthModeDeviceToken" xml:space="preserve">
+    <value>apparaattoken</value>
+  </data>
+  <data name="ConnectionPage_UnknownPlatform" xml:space="preserve">
+    <value>onbekend</value>
+  </data>
+  <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
+    <value>Time-out bij het wachten op de gatewayverbinding.</value>
+  </data>
+  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
+    <value>Dit kanaal vereist een macOS-host. Het kan niet worden geconfigureerd vanaf een Windows-machine.</value>
+  </data>
+  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
+    <value>Inloggegevens vervangen</value>
+  </data>
+  <data name="ChannelsPage_Configuration" xml:space="preserve">
+    <value>Configuratie</value>
+  </data>
+  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
+    <value>Ontkoppel dit apparaat van het kanaal. Scan een nieuwe QR om opnieuw te verbinden — uw account blijft gekoppeld op uw telefoon.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
+    <value>Pauzeer het kanaal tijdelijk — inloggegevens worden bewaard zodat u het opnieuw kunt starten. Of verbreek de verbinding volledig om ze te wissen.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
+    <value>Start het kanaal — het begint berichten te verwerken met de opgeslagen inloggegevens. Of verbreek de verbinding volledig om ze te wissen.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
+    <value>Pauzeer het kanaal — inloggegevens worden bewaard zodat u het opnieuw kunt starten.</value>
+  </data>
+  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
+    <value>Start het kanaal — het begint berichten te verwerken met de opgeslagen inloggegevens.</value>
+  </data>
+  <data name="ChannelsPage_Start" xml:space="preserve">
+    <value>Starten</value>
+  </data>
+  <data name="ChannelsPage_Stop" xml:space="preserve">
+    <value>Stoppen</value>
+  </data>
+  <data name="ChannelsPage_Logout" xml:space="preserve">
+    <value>Afmelden</value>
+  </data>
+  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
+    <value>Verbinding verbreken en inloggegevens vergeten</value>
+  </data>
+  <data name="ChannelsPage_Controls" xml:space="preserve">
+    <value>Besturing</value>
+  </data>
+  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
+    <value>WhatsApp gekoppelde apparaten hulp →</value>
+  </data>
+  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
+    <value>Signal gekoppelde apparaten hulp →</value>
+  </data>
+  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
+    <value>Een Telegram-bot aanmaken →</value>
+  </data>
+  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
+    <value>Een Discord-webhook aanmaken →</value>
+  </data>
+  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
+    <value>Een Google Chat-webhook toevoegen →</value>
+  </data>
+  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
+    <value>Slack-app-dashboard →</value>
+  </data>
+  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
+    <value>Over Nostr →</value>
+  </data>
+  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
+    <value>Over Berichten op macOS →</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
+    <value>Koppel uw WhatsApp-telefoon</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
+    <value>Klik op &quot;Show QR&quot; in het gedeelte Koppelen hieronder.</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
+    <value>Op uw telefoon: WhatsApp → Instellingen → Gekoppelde apparaten → Apparaat koppelen.</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
+    <value>Scan de QR-code die hier verschijnt.</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
+    <value>Koppel uw Signal-telefoon</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
+    <value>Klik op &quot;Show QR&quot; in het gedeelte Koppelen hieronder.</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
+    <value>Op uw telefoon: Signal → Instellingen → Gekoppelde apparaten → Nieuw apparaat koppelen.</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
+    <value>Scan de QR-code die hier verschijnt.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
+    <value>Telegram verbinden via een bot</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
+    <value>Open Telegram en stuur een bericht naar @BotFather.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
+    <value>Stuur /newbot en volg de aanwijzingen. Kopieer het bot-token aan het einde.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
+    <value>Plak het token in het configuratieformulier hieronder.</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
+    <value>Klik op &quot;Save and start&quot;. Het kanaal start automatisch.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
+    <value>Discord verbinden via een webhook</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
+    <value>Open uw Discord-serverinstellingen → Integraties → Webhooks.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
+    <value>Klik op &quot;New Webhook&quot;, geef het een naam en kopieer de webhook-URL.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
+    <value>Plak de URL in het configuratieformulier hieronder.</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
+    <value>Klik op &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
+    <value>Google Chat verbinden via een webhook</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
+    <value>Open in Google Chat de ruimte → Webhooks beheren → Webhook toevoegen.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
+    <value>Kopieer de webhook-URL.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
+    <value>Plak de URL in het configuratieformulier hieronder.</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
+    <value>Klik op &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
+    <value>Slack verbinden via een app</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
+    <value>Maak een Slack-app aan op api.slack.com/apps en installeer deze in uw werkruimte.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
+    <value>Kopieer het bot-token (xoxb-…) en het ondertekeningsgeheim.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
+    <value>Plak beide in het configuratieformulier hieronder.</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
+    <value>Klik op &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
+    <value>Nostr verbinden via relays</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
+    <value>Genereer of plak een privésleutel (nsec).</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
+    <value>Kies een of meer relay-URL's (bijv. wss://relay.damus.io).</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
+    <value>Plak beide in het configuratieformulier hieronder.</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
+    <value>Klik op &quot;Save and start&quot;.</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
+    <value>iMessage is alleen beschikbaar op macOS</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
+    <value>iMessage leest de lokale Messages.app-database, die alleen op macOS bestaat.</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
+    <value>Om iMessage met OpenClaw te gebruiken, voert u de gateway uit op een Mac in plaats van deze Windows-host.</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
+    <value>Alle andere kanalen in deze lijst werken prima vanaf een Windows-gehoste gateway.</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
+    <value>Dit kanaal verbinden</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
+    <value>&quot;{0}&quot; is een pluginkanaal. Raadpleeg de documentatie voor de vereiste velden.</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
+    <value>Gebruik &quot;Open Config page&quot; in het gedeelte Configuratie hieronder om instellingen toe te voegen onder channels.{0}.</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
+    <value>Sla de configuratie op; OpenClaw start het kanaal automatisch.</value>
+  </data>
+  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
+    <value>Bot-token</value>
+  </data>
+  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
+    <value>Webhook-URL</value>
+  </data>
+  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
+    <value>Ondertekeningsgeheim</value>
+  </data>
+  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
+    <value>Privésleutel (nsec)</value>
+  </data>
+  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
+    <value>Relay-URL's</value>
+  </data>
+  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
+    <value>Verkrijg het via @BotFather (/newbot).</value>
+  </data>
+  <data name="ChannelsPage_HelpWebhookDiscord" xml:space="preserve">
+    <value>Serverinstellingen → Integraties → Webhooks → New Webhook.</value>
+  </data>
+  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
+    <value>Open een ruimte → Webhooks beheren → Webhook toevoegen.</value>
+  </data>
+  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
+    <value>OAuth-tokens van uw Slack-app.</value>
+  </data>
+  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
+    <value>Basisinformatie → App-referenties.</value>
+  </data>
+  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
+    <value>Eén per regel.</value>
+  </data>
+  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
+    <value>Wijzigingen opslaan</value>
+  </data>
+  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
+    <value>Opslaan en starten</value>
+  </data>
+  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
+    <value>Configuratiepagina openen</value>
+  </data>
+  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
+    <value>Bewerk de instellingen van dit kanaal op de configuratiepagina van de gateway.</value>
+  </data>
+  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
+    <value>Sla na het volgen van de bovenstaande stappen de configuratie op om het kanaal te starten.</value>
+  </data>
+  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
+    <value>Maak verbinding met een gateway voordat u de kanaalconfiguratie opslaat.</value>
+  </data>
+  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
+    <value>Ontbrekend veld</value>
+  </data>
+  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
+    <value>{0} is vereist.</value>
+  </data>
+  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
+    <value>{0} opslaan…</value>
+  </data>
+  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
+    <value>{0} veld(en) schrijven en het kanaal inschakelen.</value>
+  </data>
+  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
+    <value>Kan gatewayconfiguratie niet laden</value>
+  </data>
+  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
+    <value>De gateway heeft de huidige configuratie niet geretourneerd — kan niet veilig opslaan zonder deze. Probeer te vernieuwen en opnieuw op te slaan.</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
+    <value>De configuratie van de gateway is tijdens het opslaan gewist. Probeer te vernieuwen en opnieuw op te slaan.</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
+    <value>Opslaan geblokkeerd voor {0}</value>
+  </data>
+  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+    <value>De gateway heeft niet gereageerd.</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
+    <value>Opslaan mislukt voor {0}</value>
+  </data>
+  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
+    <value>Uw gatewayconfiguratie is elders gewijzigd (bijv. vanaf de configuratiepagina). We hebben de cache vernieuwd — probeer opnieuw op te slaan. Details: {0}</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
+    <value>{0} Als dit lijkt op een mismatch in het draadformaat, open dan de configuratiepagina voor directe JSON-bewerking.</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
+    <value>Configuratie van {0} opgeslagen</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
+    <value>Wachten tot de gateway bevestigt dat het kanaal actief is…</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
+    <value>WSL-gateway</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription.Text" xml:space="preserve">
+    <value>Open een shell of beheer de lokale gatewayservice in WSL.</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostTerminalLabel.Text" xml:space="preserve">
+    <value>Terminalvenster</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.Content" xml:space="preserve">
+    <value>Starten</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.Content" xml:space="preserve">
+    <value>Stoppen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.Content" xml:space="preserve">
+    <value>Opnieuw starten</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Dashboard openen (in browser)</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Dashboard openen</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Verbinding verbreken / opnieuw verbinden</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Verbinding verbreken of opnieuw verbinden</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Terminal openen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>openclaw gateway start uitvoeren in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WSL-gateway starten</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>openclaw gateway stop uitvoeren in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WSL-gateway stoppen</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>openclaw gateway restart uitvoeren in WSL</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>WSL-gateway opnieuw starten</value>
+  </data>
+  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
+    <value>Actueel</value>
+  </data>
+  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
+    <value>Could not load bindings</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
+    <value>Agent event log</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
+    <value>Go to Agent Events</value>
+  </data>
+  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
+    <value>Gateway bindings</value>
+  </data>
+  <data name="Command_GoToBindings_Title" xml:space="preserve">
+    <value>Go to Bindings</value>
+  </data>
+  <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
+    <value>Gateway channels</value>
+  </data>
+  <data name="Command_GoToChannels_Title" xml:space="preserve">
+    <value>Go to Channels</value>
+  </data>
+  <data name="Command_GoToChat_Subtitle" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="Command_GoToChat_Title" xml:space="preserve">
+    <value>Go to Chat</value>
+  </data>
+  <data name="Command_GoToConfig_Subtitle" xml:space="preserve">
+    <value>Gateway configuration</value>
+  </data>
+  <data name="Command_GoToConfig_Title" xml:space="preserve">
+    <value>Go to Config</value>
+  </data>
+  <data name="Command_GoToConnection_Subtitle" xml:space="preserve">
+    <value>Gateway, node, saved gateways</value>
+  </data>
+  <data name="Command_GoToConnection_Title" xml:space="preserve">
+    <value>Go to Connection</value>
+  </data>
+  <data name="Command_GoToCron_Subtitle" xml:space="preserve">
+    <value>Scheduled tasks</value>
+  </data>
+  <data name="Command_GoToCron_Title" xml:space="preserve">
+    <value>Go to Cron ({0})</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Subtitle" xml:space="preserve">
+    <value>Logs, support bundle, device identity, developer tools</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
+    <value>Go to Diagnostics</value>
+  </data>
+  <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
+    <value>About this app</value>
+  </data>
+  <data name="Command_GoToInfo_Title" xml:space="preserve">
+    <value>Go to Info</value>
+  </data>
+  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
+    <value>Gateway instances</value>
+  </data>
+  <data name="Command_GoToInstances_Title" xml:space="preserve">
+    <value>Go to Instances</value>
+  </data>
+  <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
+    <value>Capabilities, exec policy &amp; allowlists</value>
+  </data>
+  <data name="Command_GoToPermissions_Title" xml:space="preserve">
+    <value>Go to Permissions</value>
+  </data>
+  <data name="Command_GoToSessions_Subtitle" xml:space="preserve">
+    <value>All sessions</value>
+  </data>
+  <data name="Command_GoToSessions_Title" xml:space="preserve">
+    <value>Go to Sessions</value>
+  </data>
+  <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
+    <value>Application settings</value>
+  </data>
+  <data name="Command_GoToSettings_Title" xml:space="preserve">
+    <value>Go to Settings</value>
+  </data>
+  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
+    <value>Registered skills</value>
+  </data>
+  <data name="Command_GoToSkills_Title" xml:space="preserve">
+    <value>Go to Skills</value>
+  </data>
+  <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
+    <value>Usage statistics</value>
+  </data>
+  <data name="Command_GoToUsage_Title" xml:space="preserve">
+    <value>Go to Usage</value>
+  </data>
+  <data name="Command_GoToWorkspace_Subtitle" xml:space="preserve">
+    <value>Workspace files</value>
+  </data>
+  <data name="Command_GoToWorkspace_Title" xml:space="preserve">
+    <value>Go to Workspace ({0})</value>
+  </data>
+  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
+    <value>Open standalone chat</value>
+  </data>
+  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
+    <value>Open Chat Window</value>
+  </data>
+  <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
+    <value>Open web dashboard</value>
+  </data>
+  <data name="Command_OpenDashboard_Title" xml:space="preserve">
+    <value>Open Dashboard</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOff" xml:space="preserve">
+    <value>Currently OFF</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOn" xml:space="preserve">
+    <value>Currently ON</value>
+  </data>
+  <data name="Command_ToggleBrowserControl_Title" xml:space="preserve">
+    <value>Toggle Browser Control</value>
+  </data>
+  <data name="Command_ToggleCamera_Title" xml:space="preserve">
+    <value>Toggle Camera</value>
+  </data>
+  <data name="Command_ToggleCanvas_Title" xml:space="preserve">
+    <value>Toggle Canvas</value>
+  </data>
+  <data name="Command_ToggleNodeMode_Title" xml:space="preserve">
+    <value>Toggle Node Mode</value>
+  </data>
+  <data name="Command_ToggleScreenCapture_Title" xml:space="preserve">
+    <value>Toggle Screen Capture</value>
+  </data>
+  <data name="CommandCenter_AuthFailed" xml:space="preserve">
+    <value>Gateway authentication failed</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyAuthMayNeed" xml:space="preserve">
+    <value>Browser proxy auth may need a gateway token</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyHostNotDetected" xml:space="preserve">
+    <value>Browser proxy host not detected</value>
+  </data>
+  <data name="CommandCenter_BrowserProxySshForwardNotListening" xml:space="preserve">
+    <value>Browser proxy SSH forward is not listening</value>
+  </data>
+  <data name="CommandCenter_GatewayConnectionError" xml:space="preserve">
+    <value>Gateway connection error</value>
+  </data>
+  <data name="CommandCenter_GatewayHealthStale" xml:space="preserve">
+    <value>Gateway health is stale</value>
+  </data>
+  <data name="CommandCenter_GatewayNotConnected" xml:space="preserve">
+    <value>Gateway is not connected</value>
+  </data>
+  <data name="CommandCenter_NoChannelsReported" xml:space="preserve">
+    <value>No channels reported</value>
+  </data>
+  <data name="CommandCenter_NoChannelsRunning" xml:space="preserve">
+    <value>No channels are currently running</value>
+  </data>
+  <data name="CommandCenter_NodePendingApproval" xml:space="preserve">
+    <value>Node is waiting for approval</value>
+  </data>
+  <data name="CommandCenter_NoLocalGatewayListener" xml:space="preserve">
+    <value>No local gateway listener detected</value>
+  </data>
+  <data name="CommandCenter_NoNodesReported" xml:space="preserve">
+    <value>No nodes reported</value>
+  </data>
+  <data name="CommandCenter_SshTunnelPortNotListening" xml:space="preserve">
+    <value>SSH tunnel port is not listening</value>
+  </data>
+  <data name="CommandCenter_UsageCostsMissing" xml:space="preserve">
+    <value>Some usage costs are missing</value>
+  </data>
+  <data name="CommandCenter_WaitingForGatewayHealth" xml:space="preserve">
+    <value>Waiting for gateway health</value>
+  </data>
+  <data name="ConfigPage_CheckingConfigPermissions" xml:space="preserve">
+    <value>Checking config permissions</value>
+  </data>
+  <data name="ConfigPage_ConfigIsReadOnly" xml:space="preserve">
+    <value>Config is read-only</value>
+  </data>
+  <data name="ConfigPage_ConfigUnavailable" xml:space="preserve">
+    <value>Config unavailable</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
+    <value>Open a shell or manage the local gateway service in {0}.</value>
+  </data>
+  <data name="CronPage_JobCompleted" xml:space="preserve">
+    <value>Job completed</value>
+  </data>
+  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
+    <value>&quot;{0}&quot; ran successfully and was removed.</value>
+  </data>
+  <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
+    <value>This gateway does not have WSL or SSH terminal access.</value>
+  </data>
+  <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
+    <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
+    <value>Open SSH terminal</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalTooltip_Format" xml:space="preserve">
+    <value>Open an SSH terminal to {0}@{1}.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalInWslTooltip_Format" xml:space="preserve">
+    <value>Open a terminal in the {0} WSL gateway.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open in chat</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open this session in Chat</value>
+  </data>
+  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
+    <value>Uitgeschakeld</value>
+  </data>
+  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
+    <value>Ingeschakeld</value>
+  </data>
+  <data name="SkillsPage_CountFormat" xml:space="preserve">
+    <value>({0}/{1} ingeschakeld)</value>
+  </data>
+  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
+    <value>Uitgeschakeld ({0})</value>
+  </data>
+  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
+    <value>Ingeschakeld ({0})</value>
+  </data>
+</root>

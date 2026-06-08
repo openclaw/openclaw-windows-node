@@ -150,27 +150,27 @@ public sealed partial class DebugPage : Page
         {
             case ConnectionStatus.Connected:
                 StatusInfoBar.Severity = InfoBarSeverity.Success;
-                StatusInfoBar.Title = "Connected";
+                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
                 StatusInfoBar.Message = $"OpenClaw is connected to {gatewayDisplay}.";
                 break;
             case ConnectionStatus.Connecting:
                 StatusInfoBar.Severity = InfoBarSeverity.Informational;
-                StatusInfoBar.Title = "Connecting";
+                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
                 StatusInfoBar.Message = $"Connecting to {gatewayDisplay}…";
                 break;
             case ConnectionStatus.Disconnected:
                 StatusInfoBar.Severity = InfoBarSeverity.Warning;
-                StatusInfoBar.Title = "Disconnected";
+                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
                 StatusInfoBar.Message = $"Not connected. Gateway: {gatewayDisplay}.";
                 break;
             case ConnectionStatus.Error:
                 StatusInfoBar.Severity = InfoBarSeverity.Error;
-                StatusInfoBar.Title = "Connection error";
+                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
                 StatusInfoBar.Message = $"Last gateway: {gatewayDisplay}. See the event timeline.";
                 break;
             default:
                 StatusInfoBar.Severity = InfoBarSeverity.Informational;
-                StatusInfoBar.Title = "Status unknown";
+                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
                 StatusInfoBar.Message = $"Gateway: {gatewayDisplay}.";
                 break;
         }

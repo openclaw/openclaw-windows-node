@@ -12,13 +12,23 @@ public sealed partial class SetupWindow : Window
 {
     private SetupConfig _config = null!;
     private SetupRunLock? _setupLock;
+    private readonly TaskCompletionSource<bool> _initialContentReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool _isClosed;
+
+    public static SetupWindow? Active { get; private set; }
+
+    public event EventHandler? AdvancedSetupRequested;
+    public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
+    public bool IsClosed => _isClosed;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
-    public SetupWindow()
+    public SetupWindow(string? configPath = null)
     {
         InitializeComponent();
+        Active = this;
 
         // Size window accounting for DPI
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -35,20 +45,25 @@ public sealed partial class SetupWindow : Window
 
         // Load config: explicit --config arg, or bundled default-config.json (required)
         var args = Environment.GetCommandLineArgs();
-        var configPath = GetArg(args, "--config");
+        configPath ??= GetArg(args, "--config");
         if (configPath == null)
         {
             var defaultPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
             if (File.Exists(defaultPath))
                 configPath = defaultPath;
+            else
+            {
+                var libraryDefaultPath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.SetupEngine.UI", "default-config.json");
+                if (File.Exists(libraryDefaultPath))
+                    configPath = libraryDefaultPath;
+            }
         }
 
         if (configPath == null || !File.Exists(configPath))
         {
-            // Cannot run without config
-            Console.Error.WriteLine("ERROR: No config file found. Place default-config.json next to the exe or pass --config <path>.");
-            Environment.Exit(1);
-            return;
+            throw new FileNotFoundException(
+                "No config file found. Place default-config.json next to the executable or pass --config <path>.",
+                configPath ?? Path.Combine(AppContext.BaseDirectory, "default-config.json"));
         }
 
         _config = SetupConfig.LoadFromFile(configPath);
@@ -58,8 +73,12 @@ public sealed partial class SetupWindow : Window
 
         Closed += (_, _) =>
         {
+            _isClosed = true;
+            _initialContentReady.TrySetResult(true);
             _setupLock?.Dispose();
             _setupLock = null;
+            if (ReferenceEquals(Active, this))
+                Active = null;
         };
 
         if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out _setupLock, out var lockMessage))
@@ -77,6 +96,30 @@ public sealed partial class SetupWindow : Window
     public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
+
+    public void RequestAdvancedSetup()
+    {
+        AdvancedSetupRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool RequestSetupCompleted(bool enableAutoStart)
+    {
+        var handler = SetupCompleted;
+        if (handler == null)
+            return false;
+
+        handler.Invoke(this, new SetupCompletedEventArgs(enableAutoStart));
+        return true;
+    }
+
+    public async Task WaitForInitialContentReadyAsync()
+    {
+        var completed = await Task.WhenAny(_initialContentReady.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        if (completed == _initialContentReady.Task)
+            await _initialContentReady.Task;
+        else
+            _initialContentReady.TrySetResult(true);
+    }
 
     public void BringToFrontForSetupLaunch()
     {
@@ -103,6 +146,42 @@ public sealed partial class SetupWindow : Window
         timer.Start();
     }
 
+    private void RootFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        if (e.Content is FrameworkElement element)
+        {
+            if (element.IsLoaded)
+            {
+                CompleteInitialContentReady();
+                return;
+            }
+
+            RoutedEventHandler? loaded = null;
+            loaded = (_, _) =>
+            {
+                element.Loaded -= loaded;
+                CompleteInitialContentReady();
+            };
+            element.Loaded += loaded;
+            return;
+        }
+
+        CompleteInitialContentReady();
+    }
+
+    private void RootFrame_NavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+    {
+        _initialContentReady.TrySetResult(true);
+    }
+
+    private void CompleteInitialContentReady()
+    {
+        RootFrame.Navigated -= RootFrame_Navigated;
+        DispatcherQueue.TryEnqueue(
+            DispatcherQueuePriority.Low,
+            () => _initialContentReady.TrySetResult(true));
+    }
+
     private static string? GetArg(string[] args, string name)
     {
         for (int i = 0; i < args.Length - 1; i++)
@@ -116,3 +195,4 @@ public sealed partial class SetupWindow : Window
 }
 
 public sealed record CompletePageArgs(bool Success, TimeSpan Elapsed, string? LogPath, string? ErrorMessage = null);
+public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

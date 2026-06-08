@@ -260,6 +260,86 @@ public class ChatTimelineReducerTests
         Assert.Equal(ChatToolCallStatus.Interrupted, updated.Entries[0].ToolResult);
     }
 
+    // ── Failed tool followed by final assistant response (regression coverage for issue #672) ──
+    // When a tool call fails and the assistant then sends a final reply, both
+    // entries should be present in state, the turn should end cleanly, and the
+    // ToolCall entry should precede the Assistant entry in the insertion order
+    // (the rendering layer in OpenClawChatTimeline reorders them for display).
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_ProducesToolAndAssistantEntries()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("tool failed", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("I'm sorry, the tool failed.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Equal(2, state.Entries.Count);
+        Assert.Contains(state.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall && e.ToolResult == ChatToolCallStatus.Error);
+        Assert.Contains(state.Entries, e => e.Kind == ChatTimelineItemKind.Assistant && !e.IsStreaming);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_AssistantHasFinalText()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("timeout", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Here is my fallback answer.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        var assistant = Assert.Single(state.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal("Here is my fallback answer.", assistant.Text);
+        Assert.False(assistant.IsStreaming);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_TurnIsEnded()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("timeout", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Fallback response.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.False(state.TurnActive);
+        Assert.Null(state.ActiveAssistantId);
+        Assert.Null(state.ActiveToolCallId);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_ToolEntryPrecedesAssistantInState()
+    {
+        // Pins the state insertion order: ToolCall is added first, then Assistant.
+        // The rendering layer (OpenClawChatTimeline) reorders ToolCall entries to
+        // appear AFTER non-ToolCall entries within a turn, so the failed tool event
+        // ends up at the visual bottom instead of the assistant reply — see #672.
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("failed", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Recovery response.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Equal(2, state.Entries.Count);
+        Assert.Equal(ChatTimelineItemKind.ToolCall, state.Entries[0].Kind);
+        Assert.Equal(ChatTimelineItemKind.Assistant, state.Entries[1].Kind);
+    }
+
+    [Fact]
+    public void ToolError_ThenFinalAssistant_ToolOutputContainsErrorText()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("run nodes", "openclaw", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("connection refused", ToolCallId: "tc1"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Unable to list nodes.", ReconcilePrevious: true));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        var tool = Assert.Single(state.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal("connection refused", tool.ToolOutput);
+        Assert.Equal(ChatToolCallStatus.Error, tool.ToolResult);
+    }
+
     [Fact]
     public void TurnEnd_WithNoActiveTool_IsNoOpForToolState()
     {
@@ -441,7 +521,7 @@ public class ChatTimelineReducerTests
     // ── Permission request events ──
 
     [Fact]
-    public void PermissionRequest_SetsPendingPermission()
+    public void PermissionRequest_SetsPendingPermissionAndPushesEntry()
     {
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
@@ -452,11 +532,20 @@ public class ChatTimelineReducerTests
         Assert.Equal("shell.exec", state.PendingPermission.PermissionKind);
         Assert.Equal("bash", state.PendingPermission.ToolName);
         Assert.Equal("run script.sh", state.PendingPermission.Detail);
-        Assert.Empty(state.Entries); // no timeline entry
+
+        // Inline timeline entry — the in-bubble approval lives in the
+        // conversation now (composer banner removed).
+        var entry = Assert.Single(state.Entries);
+        Assert.Equal(ChatTimelineItemKind.PermissionRequest, entry.Kind);
+        Assert.Equal("req-1", entry.PermissionRequestId);
+        Assert.Equal(ChatPermissionDecision.Pending, entry.PermissionDecision);
+        Assert.Equal("run script.sh", entry.Text);
+        Assert.Equal("bash", entry.ToolName);
+        Assert.Equal("shell.exec", entry.IntentSummary);
     }
 
     [Fact]
-    public void ClearPermission_RemovesPendingPermission()
+    public void ClearPermission_RemovesPendingPermissionAndMarksEntryExpired()
     {
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
@@ -467,18 +556,161 @@ public class ChatTimelineReducerTests
         var updated = ChatTimelineReducer.ClearPermission(state);
 
         Assert.Null(updated.PendingPermission);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Expired, entry.PermissionDecision);
     }
 
     [Fact]
-    public void TurnEnd_ClearsPendingPermission()
+    public void ResolvePermission_Allowed_StampsEntryAndClearsPending()
     {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.ResolvePermission(state, "req-1", ChatPermissionDecision.Allowed);
+
+        Assert.Null(updated.PendingPermission);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void ApplyPermissionRequest_EmptyRequestId_DroppedToAvoidOrphanedEntry()
+    {
+        var initial = ChatTimelineState.Initial();
+        var afterEmpty = ChatTimelineReducer.Apply(
+            initial,
+            new ChatPermissionRequestEvent("", "shell.exec", "bash", "run script.sh"));
+        var afterWhitespace = ChatTimelineReducer.Apply(
+            initial,
+            new ChatPermissionRequestEvent("   ", "shell.exec", "bash", "run script.sh"));
+
+        Assert.Empty(afterEmpty.Entries);
+        Assert.Null(afterEmpty.PendingPermission);
+        Assert.Empty(afterWhitespace.Entries);
+        Assert.Null(afterWhitespace.PendingPermission);
+    }
+
+    [Fact]
+    public void ResolvePermission_Denied_StampsEntry()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.ResolvePermission(state, "req-1", ChatPermissionDecision.Denied);
+
+        Assert.Null(updated.PendingPermission);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Denied, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void ResolvePermission_DoesNotDowngradeAlreadyDecidedEntry()
+    {
+        // Local Allow click stamped the entry Allowed; a subsequent
+        // gateway backstop event with decision=Expired must not overwrite
+        // the user's choice.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+        var allowed = ChatTimelineReducer.ResolvePermission(state, "req-1", ChatPermissionDecision.Allowed);
+
+        var backstop = ChatTimelineReducer.ResolvePermission(allowed, "req-1", ChatPermissionDecision.Expired);
+
+        var entry = Assert.Single(backstop.Entries);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void ResolvePermission_MismatchedRequestId_NoOp()
+    {
+        // A late terminal event for a stale request must not clobber the
+        // current live entry. ResolvePermission walks Entries looking for
+        // the matching PermissionRequestId; finding none is a no-op for
+        // both entries and PendingPermission (so the user can still act
+        // on the live request).
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.ResolvePermission(state, "req-unknown", ChatPermissionDecision.Allowed);
+
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-1", updated.PendingPermission!.RequestId);
+        var entry = Assert.Single(updated.Entries);
+        Assert.Equal(ChatPermissionDecision.Pending, entry.PermissionDecision);
+    }
+
+    [Fact]
+    public void TurnEnd_PreservesPendingPermission()
+    {
+        // Exec approvals can outlive the originating turn: the gateway emits
+        // ``exec.approval.resolved`` after the user clicks Allow/Deny in the
+        // dashboard or tray, and that resolution is what should clear the
+        // banner — not turn-end. See OpenClawChatDataProvider's approval
+        // flow and ChatTimelineReducer.ApplyTurnEnd for the rationale.
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
             new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
 
         var updated = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
 
-        Assert.Null(updated.PendingPermission);
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-1", updated.PendingPermission!.RequestId);
+    }
+
+    [Fact]
+    public void ToolOutput_PreservesPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("ok", ToolCallId: null));
+
+        Assert.NotNull(updated.PendingPermission);
+    }
+
+    [Fact]
+    public void ToolError_PreservesPendingPermission()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        var updated = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("boom", ToolCallId: null));
+
+        Assert.NotNull(updated.PendingPermission);
+    }
+
+    [Fact]
+    public void SecondPermissionRequest_ReplacesPriorPendingAndMarksFirstEntryExpired()
+    {
+        // A second exec-approval can arrive before the first is resolved
+        // (the gateway is free to issue them in sequence). The reducer
+        // must surface the newest request so the user is responding to
+        // the live one — and mark the prior inline bubble as Expired so
+        // the timeline never shows two live Allow/Deny prompts at once.
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatPermissionRequestEvent("req-1", "shell.exec", "bash", "run script.sh"));
+
+        Assert.Equal("req-1", state.PendingPermission!.RequestId);
+
+        var updated = ChatTimelineReducer.Apply(
+            state,
+            new ChatPermissionRequestEvent("req-2", "shell.exec", "bash", "rm -rf /tmp/x"));
+
+        Assert.NotNull(updated.PendingPermission);
+        Assert.Equal("req-2", updated.PendingPermission!.RequestId);
+        Assert.Equal("rm -rf /tmp/x", updated.PendingPermission.Detail);
+
+        Assert.Equal(2, updated.Entries.Count);
+        Assert.Equal(ChatPermissionDecision.Expired, updated.Entries[0].PermissionDecision);
+        Assert.Equal("req-1", updated.Entries[0].PermissionRequestId);
+        Assert.Equal(ChatPermissionDecision.Pending, updated.Entries[1].PermissionDecision);
+        Assert.Equal("req-2", updated.Entries[1].PermissionRequestId);
     }
 
     // ── Status and system events ──

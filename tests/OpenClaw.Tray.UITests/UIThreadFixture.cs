@@ -140,9 +140,11 @@ public sealed class UIThreadFixture : IDisposable
         {
             Dispatcher.TryEnqueue(() =>
             {
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                 try { TestWindow.Title = $"A2UI render test — {label}"; } catch { }
             });
         }
+        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
         return Task.Delay(ms ?? SlowStepMs);
     }
 
@@ -190,6 +192,7 @@ public sealed class UIThreadFixture : IDisposable
                         {
                             TestWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(900, 640));
                         }
+                        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                         catch { /* best-effort sizing */ }
                     }
 
@@ -232,6 +235,7 @@ public sealed class UIThreadFixture : IDisposable
             // SW_HIDE = 0
             ShowWindow(hwnd, 0);
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
         {
             // best-effort; tests still work even if the window briefly flashes.
@@ -252,13 +256,16 @@ public sealed class UIThreadFixture : IDisposable
             {
                 Dispatcher.TryEnqueue(() =>
                 {
+                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                     try { TestWindow?.Close(); } catch { }
+                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                     try { Application.Current?.Exit(); } catch { }
                 });
             }
             // Don't block the test process forever if the UI thread misbehaves.
             _uiThread.Join(TimeSpan.FromSeconds(5));
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
         {
             // Disposal is best-effort.

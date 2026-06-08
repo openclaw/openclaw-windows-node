@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using OpenClaw.Shared;
 using static OpenClaw.Tray.UITests.A2UI;
 using static OpenClaw.Tray.UITests.TestSupport;
 
@@ -320,7 +321,7 @@ public sealed class A2UIDashboardScaleTest
 
         // ── Footer row ────────────────────────────────────────────────────
         components.Add(Component("ftr", "Row", new() { ["children"] = Children("ftrVer", "ftrDiv", "ftrConn") }));
-        components.Add(Component("ftrVer",  "Text", new() { ["text"] = Lit("v0.4.7"),   ["usageHint"] = "caption" }));
+        components.Add(Component("ftrVer",  "Text", new() { ["text"] = Lit(AppVersionInfo.DisplayVersion),   ["usageHint"] = "caption" }));
         components.Add(Component("ftrDiv",  "Divider", new() { ["axis"] = "vertical" }));
         components.Add(Component("ftrConn", "Text", new() { ["text"] = Lit("Connected"), ["usageHint"] = "caption" }));
 

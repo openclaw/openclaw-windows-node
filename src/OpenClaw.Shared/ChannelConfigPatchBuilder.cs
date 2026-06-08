@@ -131,7 +131,7 @@ public static class ChannelConfigPatchBuilder
 
         // Reserialize → re-parse → clone so the returned JsonElement isn't
         // tied to a JsonDocument that goes out of scope on caller side.
-        var json = JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(root, JsonSerializerOptionsCache.WriteIndented);
         using var doc = JsonDocument.Parse(json);
         return new ChannelPatchBuildResult { Patch = doc.RootElement.Clone() };
     }

@@ -72,6 +72,19 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void Startup_NodeOnlyReconnect_UsesNodeCredentialAndLegacyIdentityFallback()
+    {
+        var source = ReadAppSources();
+        var connectMethod = ExtractMethod(source, "TryConnectGatewayIfCredentialAvailable");
+        var nodeCredentialMethod = ExtractMethod(source, "ResolveStartupNodeCredential");
+
+        Assert.Contains("ResolveStartupNodeCredential(record, resolver, identityDir)", connectMethod);
+        Assert.Contains("_connectionManager.ConnectNodeOnlyAsync(record.Id)", connectMethod);
+        Assert.Contains("resolver.ResolveNode(record, SettingsManager.SettingsDirectoryPath)", nodeCredentialMethod);
+        Assert.Contains("TryCopyLegacyIdentityToGateway(record.Id, identityDir)", nodeCredentialMethod);
+    }
+
+    [Fact]
     public void ToastActivation_RoutesOnUiThread()
     {
         var source = ReadAppSources();
@@ -111,6 +124,81 @@ public sealed class AppRefactorContractTests
             "Exit();");
     }
 
+    [Fact]
+    public void Setup_IsHostedInTrayAndUsesSelfRestartAfterCompletion()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("new SetupWindow()", source);
+        Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
+        Assert.Contains("RestartAfterSetupAsync", source);
+        Assert.Contains("\"--post-setup-restart\"", source);
+        Assert.Contains("\"--wait-for-pid\"", source);
+        Assert.Contains("\"--post-setup-launch\"", source);
+        Assert.Contains("? \"openclaw://chat\" : null", source);
+        Assert.Contains("WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", source);
+        AssertInOrder(source, "WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", "_mutex = new Mutex");
+        Assert.DoesNotContain("ResolveSetupEngineUiPath", source);
+        Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);
+        Assert.DoesNotContain("Process.GetProcessesByName(\"OpenClaw.SetupEngine.UI\")", source);
+    }
+
+    [Fact]
+    public void SetupUiPages_DoNotOwnTrayProcessHandoff()
+    {
+        var root = GetRepositoryRoot();
+        var setupUiDir = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI");
+        var source = string.Join(
+            "\n",
+            Directory
+                .EnumerateFiles(setupUiDir, "*.cs", SearchOption.AllDirectories)
+                .OrderBy(Path.GetFileName)
+                .Select(File.ReadAllText));
+
+        Assert.Contains("SetupWindow.Active", source);
+        Assert.Contains("RequestSetupCompleted", source);
+        Assert.Contains("RequestAdvancedSetup", source);
+        Assert.DoesNotContain("App.MainWindow", source);
+        Assert.DoesNotContain("GetProcessesByName", source);
+        Assert.DoesNotContain("Process.Kill", source);
+        Assert.DoesNotContain("Environment.Exit", source);
+        Assert.DoesNotContain("TrayExecutableResolver", source);
+        Assert.DoesNotContain("OpenClaw.Tray.WinUI", source);
+    }
+
+    [Fact]
+    public void SettingsLocalGatewayRemoval_UsesCancelableTrayChildProcess()
+    {
+        var root = GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+
+        Assert.Contains("ResolveCurrentExecutablePath()", source);
+        Assert.Contains("psi.ArgumentList.Add(\"--uninstall\")", source);
+        Assert.Contains("proc.WaitForExitAsync(_uninstallCts.Token)", source);
+        Assert.Contains("proc.Kill(entireProcessTree: true)", source);
+        Assert.DoesNotContain("OpenClaw.SetupEngine.Program.Main(setupArgs)", source);
+        Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);
+    }
+
+    [Fact]
+    public void SetupUiImages_UseLibraryQualifiedAssetUris()
+    {
+        var root = GetRepositoryRoot();
+        var setupUiDir = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI");
+        var xaml = string.Join(
+            "\n",
+            Directory
+                .EnumerateFiles(setupUiDir, "*.xaml", SearchOption.AllDirectories)
+                .Where(path =>
+                    !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) &&
+                    !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(Path.GetFileName)
+                .Select(File.ReadAllText));
+
+        Assert.Contains("ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png", xaml);
+        Assert.DoesNotContain("ms-appx:///Assets/Setup/", xaml);
+    }
+
     private static string ReadAppSources()
     {
         var root = GetRepositoryRoot();
@@ -127,7 +215,7 @@ public sealed class AppRefactorContractTests
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|void|bool|string\??|IntPtr)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|void|bool|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);

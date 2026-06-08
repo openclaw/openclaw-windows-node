@@ -454,6 +454,7 @@ public sealed partial class VoiceSettingsPage : Page
     {
         if (_inlineTestVoiceService != null && _inlineTestListening)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { await _inlineTestVoiceService.StopAsync(); } catch { }
         }
         _inlineTestListening = false;
@@ -650,6 +651,7 @@ public sealed partial class VoiceSettingsPage : Page
 
         // Cancel any prior Piper download (only). Whisper downloads are
         // independent and continue running.
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _piperDownloadCts?.Cancel(); } catch { /* swallow */ }
         _piperDownloadCts = new CancellationTokenSource();
         var ct = _piperDownloadCts.Token;

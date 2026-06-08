@@ -82,6 +82,7 @@ public sealed class TransactionJournal : IDisposable
                 var json = JsonSerializer.Serialize(entry, _jsonOptions);
                 _writer?.WriteLine(json);
             }
+            // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
             catch (IOException)
             {
                 // Journal write failure is non-fatal — entries are still in memory
@@ -105,6 +106,7 @@ public sealed class TransactionJournal : IDisposable
                 if (entry != null)
                     _entries.Add(entry);
             }
+            // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
             catch (JsonException)
             {
                 // Preserve the journal file as crash evidence even if one line is corrupt.

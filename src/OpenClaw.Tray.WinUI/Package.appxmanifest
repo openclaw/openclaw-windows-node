@@ -6,20 +6,20 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap rescap">
 
-  <!-- IMPORTANT: Publisher must exactly match Azure Trusted Signing certificate subject.
-       Check your certificate profile at: Azure Portal > Trusted Signing > hanselman > WindowsEdgeLight
+  <!-- IMPORTANT: Publisher must exactly match the Azure Artifact Signing certificate subject.
+       Check your certificate profile at: Azure Portal > Artifact Signing > openclaw > openclaw
        Update the Publisher= value below to match. -->
   <!-- Version is patched at build time by the SyncAppxManifestVersionTarget in
        OpenClaw.Tray.WinUI.csproj from $(Version) (see docs/VERSIONING.md).
        The 0.0.0.0 below is a sentinel and is never shipped. -->
   <Identity
     Name="OpenClaw.Companion"
-    Publisher="CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
+    Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
     Version="0.0.0.0" />
 
   <Properties>
     <DisplayName>OpenClaw Companion</DisplayName>
-    <PublisherDisplayName>Scott Hanselman</PublisherDisplayName>
+    <PublisherDisplayName>OpenClaw Foundation</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 

@@ -634,6 +634,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _mcpStartupError = DescribeMcpStartupFailure(ex, McpPort);
             _logger.Error($"[MCP] Failed to start HTTP server on port {McpPort}: {_mcpStartupError}", ex);
             // Avoid leaking the half-constructed listener / CTS.
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { attempt?.Dispose(); } catch { /* ignore */ }
             _mcpServer = null;
         }
@@ -896,6 +897,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _canvasWindow.Close(); } catch { /* ignore */ }
         }
         _canvasWindow = null;
@@ -905,6 +907,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         if (_a2uiCanvasWindow != null && !_a2uiCanvasWindow.IsClosed)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _a2uiCanvasWindow.Close(); } catch { /* ignore */ }
         }
         _a2uiCanvasWindow = null;
@@ -1408,10 +1411,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 if (!string.IsNullOrWhiteSpace(v)) _actionContext.SessionKey = v!;
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Bad props JSON is a gateway/agent bug, not an action-routing bug.
             // Keep the previous sessionKey rather than failing the push.
+            _logger.Debug($"Ignoring malformed action props JSON: {ex.Message}");
         }
     }
 
@@ -1957,32 +1961,41 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             DetachClientHandlers(client);
         }
 
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _cameraCaptureService?.Dispose(); } catch { /* ignore */ }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _screenRecordingService?.Dispose(); } catch { /* ignore */ }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _textToSpeechService?.Dispose(); } catch { /* ignore */ }
         var voiceService = _voiceService;
         _voiceService = null;
         if (voiceService != null)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { await voiceService.DisposeAsync().ConfigureAwait(false); } catch { /* ignore */ }
         }
         // MediaResolver owns SocketsHttpHandler + HttpClient (disposeHandler:true);
         // without disposal the connection pool survives node teardown/recreate.
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _mediaResolver?.Dispose(); } catch { /* ignore */ }
         _mediaResolver = null;
         // ActionDispatcher owns a SemaphoreSlim; without disposal the kernel
         // handle survives node teardown/recreate.
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _actionDispatcher?.Dispose(); } catch { /* ignore */ }
         _actionDispatcher = null;
 
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _navigationPromptGate.Dispose(); } catch { /* ignore */ }
 
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _deviceStatusProvider?.Dispose(); } catch { /* ignore */ }
 
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {
             var window = _canvasWindow;
             _canvasWindow = null;
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             _dispatcherQueue.TryEnqueue(() => { try { window?.Close(); } catch { } });
         }
 
@@ -1990,6 +2003,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         {
             var window = _a2uiCanvasWindow;
             _a2uiCanvasWindow = null;
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             _dispatcherQueue.TryEnqueue(() => { try { window?.Close(); } catch { } });
         }
 

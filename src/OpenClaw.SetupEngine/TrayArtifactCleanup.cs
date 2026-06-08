@@ -153,8 +153,7 @@ public static class TrayArtifactCleanup
 
             if (changed)
             {
-                var updatedJson = System.Text.Json.JsonSerializer.Serialize(dict,
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                var updatedJson = System.Text.Json.JsonSerializer.Serialize(dict, SetupConfig.JsonWriteOptions);
                 AtomicFile.WriteAllText(settingsPath, updatedJson);
                 logger.Info(preserveNodeSettings
                     ? "[Uninstall] Reset onboarding settings (GatewayUrl)"
