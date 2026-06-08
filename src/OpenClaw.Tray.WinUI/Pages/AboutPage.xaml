@@ -21,7 +21,8 @@
                         <TextBlock x:Name="VersionText"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Uid="AboutPage_TextBlock_23" Text=".NET 10 / WinUI 3 / WinAppSDK 1.8"
+                        <TextBlock x:Uid="AboutPage_TextBlock_23" x:Name="RuntimeStackText"
+                                   Text=".NET / WinUI / Windows App SDK"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </StackPanel>
@@ -50,9 +51,9 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         <TextBlock x:Name="GatewayVersionText" Grid.Row="0" Grid.Column="1" Text="—"/>
 
-                        <TextBlock x:Uid="AboutPage_TextBlock_52" Grid.Row="1" Grid.Column="0" Text="Model:"
+                        <TextBlock x:Uid="AboutPage_TextBlock_52" Grid.Row="1" Grid.Column="0" Text="Protocol:"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="GatewayModelText" Grid.Row="1" Grid.Column="1" Text="—"/>
+                        <TextBlock x:Name="GatewayProtocolText" Grid.Row="1" Grid.Column="1" Text="—"/>
 
                         <TextBlock x:Uid="AboutPage_TextBlock_56" Grid.Row="2" Grid.Column="0" Text="Auth mode:"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -94,7 +95,7 @@
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="AboutPage_TextBlock_91" Text="Links" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <HyperlinkButton x:Uid="AboutPage_HyperlinkButton_92" Content="Documentation → openclaw.ai/docs"
+                    <HyperlinkButton x:Uid="AboutPage_HyperlinkButton_92" Content="Documentation → docs.openclaw.ai/platforms/windows"
                                      Click="OnDocumentationClick"/>
                     <HyperlinkButton x:Uid="AboutPage_HyperlinkButton_94" Content="GitHub → github.com/openclaw/openclaw-windows-node"
                                      Click="OnGitHubClick"/>
