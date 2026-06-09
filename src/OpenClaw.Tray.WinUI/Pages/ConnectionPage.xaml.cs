@@ -661,8 +661,9 @@ public sealed partial class ConnectionPage : Page
             }
             return LocalizationHelper.GetString("ConnectionPage_TopologyRemote");
         }
-        catch
+        catch (Exception ex)
         {
+            Services.Logger.Debug($"[ConnectionPage] ClassifyTopology failed for url '{rec.Url}': {ex.Message}");
             return null;
         }
     }
@@ -1871,13 +1872,15 @@ public sealed partial class ConnectionPage : Page
                 AuthErrorBar.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error;
                 AuthErrorBar.IsOpen = true;
             }
-            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-            catch { /* last-ditch */ }
+            catch (Exception uiEx)
+            {
+                Logger.Warn($"ConnectionPage: Failed to surface connect failure in auth error bar: {uiEx.Message}");
+            }
         }
         finally
         {
-            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-            try { btn.IsEnabled = true; } catch { /* control may be detached */ }
+            try { btn.IsEnabled = true; }
+            catch (Exception uiEx) { Logger.Debug($"ConnectionPage: Failed to re-enable connect button; control may be detached: {uiEx.Message}"); }
         }
     }
 
@@ -1956,8 +1959,8 @@ public sealed partial class ConnectionPage : Page
             var wasActive = string.Equals(_gatewayRegistry?.ActiveGatewayId, gwId, StringComparison.Ordinal);
             if (wasActive && _connectionManager != null)
             {
-                // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-                try { await _connectionManager.DisconnectAsync(); } catch { }
+                try { await _connectionManager.DisconnectAsync(); }
+                catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway before removal: {ex.Message}"); }
             }
             _gatewayRegistry?.Remove(gwId);
             _gatewayRegistry?.Save();
@@ -2032,11 +2035,13 @@ public sealed partial class ConnectionPage : Page
 
             using var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             System.Net.Http.HttpResponseMessage? response = null;
+            Exception? firstProbeError = null;
             try { response = await httpClient.GetAsync(httpUrl, ct); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                Services.Logger.Debug($"[ConnectionPage] Connectivity test failed for {httpUrl}: {ex.Message}");
+                firstProbeError = ex;
+                Logger.Warn($"ConnectionPage: Gateway connectivity probe failed for {GatewayUrlHelper.SanitizeForDisplay(httpUrl)}: {ex.Message}");
             }
 
             if (ct.IsCancellationRequested) return;
@@ -2048,7 +2053,8 @@ public sealed partial class ConnectionPage : Page
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    Services.Logger.Debug($"[ConnectionPage] Connectivity health test failed for {healthUrl}: {ex.Message}");
+                    Logger.Warn($"ConnectionPage: Gateway /health connectivity probe failed for {GatewayUrlHelper.SanitizeForDisplay(httpUrl)}: {ex.Message}");
+                    firstProbeError ??= ex;
                 }
             }
 
@@ -2076,7 +2082,8 @@ public sealed partial class ConnectionPage : Page
         {
             if (!ct.IsCancellationRequested)
             {
-                AddTestResultText.Text = $"✗ {ex.Message}";
+                Logger.Warn($"ConnectionPage: Gateway connectivity test failed for {GatewayUrlHelper.SanitizeForDisplay(rawUrl)}: {ex.Message}");
+                AddTestResultText.Text = "✗ Unable to test gateway connection. Check the URL and try again.";
                 AddTestResultText.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
             }
         }
@@ -2240,7 +2247,7 @@ public sealed partial class ConnectionPage : Page
             }
             catch (Exception ex)
             {
-                Services.Logger.Debug($"Identity backup before direct connect was skipped: {ex.Message}");
+                Logger.Warn($"ConnectionPage: Failed to snapshot gateway identity before direct connect; rollback will skip restore: {ex.Message}");
             }
 
             if (!string.IsNullOrWhiteSpace(token))
@@ -2407,7 +2414,7 @@ public sealed partial class ConnectionPage : Page
             }
             catch (Exception ex)
             {
-                Services.Logger.Warn($"Identity restore after failed direct connect could not complete: {ex.Message}");
+                Logger.Warn($"ConnectionPage: Failed to restore gateway identity after direct connect rollback: {ex.Message}");
             }
         }
 
@@ -2908,12 +2915,12 @@ public sealed partial class ConnectionPage : Page
             successPath = ok;
             // !ok falls into finally below — re-enable so user can retry.
         }
-        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-        catch
+        catch (Exception ex)
         {
-            // Swallow; finally re-enables. The pairing list refresh has
-            // its own observable surface (gateway list-updated event), so
-            // there's no clean place to surface a per-row error here.
+            // Finally re-enables. The pairing list refresh has its own
+            // observable surface (gateway list-updated event), so there's
+            // no clean place to surface a per-row error here — but log it.
+            Services.Logger.Warn($"[ConnectionPage] Pairing row action failed: {ex.Message}");
         }
         finally
         {
@@ -3200,8 +3207,10 @@ public sealed partial class ConnectionPage : Page
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 return uri.Port > 0 ? $"{uri.Scheme}://{uri.Host}:{uri.Port}" : $"{uri.Scheme}://{uri.Host}";
         }
-        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Debug($"ConnectionPage: Failed to sanitize gateway URL '{url}': {ex.Message}");
+        }
         return url;
     }
 }

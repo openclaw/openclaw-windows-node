@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Dispatching;
+using OpenClawTray.Services;
 
 namespace OpenClawTray.A2UI.DataModel;
 
@@ -95,6 +96,7 @@ public sealed class DataModelStore
         var changed = new List<string>(entries.Count);
         var prefix = NormalizePath(basePath ?? "/");
         if (prefix == "/") prefix = "";
+        var droppedEntries = 0;
 
         foreach (var entry in entries)
         {
@@ -113,12 +115,16 @@ public sealed class DataModelStore
                 model.SetByPointer(pointer, entry.ToJsonNode());
                 changed.Add(NormalizePath(pointer));
             }
-            // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-            catch (Exception)
+            catch (Exception ex)
             {
-                // bad pointer; skip — router logs aggregate.
+                droppedEntries++;
+                if (droppedEntries == 1)
+                    Logger.Warn($"DataModelStore: Dropped data model entry for surface '{surfaceId}' at key '{entry.Key}': {ex.Message}");
             }
         }
+
+        if (droppedEntries > 1)
+            Logger.Warn($"DataModelStore: Dropped {droppedEntries} data model entries for surface '{surfaceId}'.");
 
         if (changed.Count > 0)
             new DataModelObservable(model, _dispatcher).NotifyPaths(changed);
@@ -315,8 +321,10 @@ public sealed class DataModelObservable
             _model.SetByPointer(pointer, value);
             NotifyPaths(new[] { Normalize(pointer) });
         }
-        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-        catch { /* swallow; bad pointer */ }
+        catch (Exception ex)
+        {
+            Logger.Warn($"DataModelStore: Failed to write data model pointer '{pointer}': {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -379,10 +387,26 @@ public sealed class DataModelObservable
 
     private void Dispatch(Action callback)
     {
-        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-        if (_dispatcher == null || _dispatcher.HasThreadAccess) { try { callback(); } catch { } return; }
-        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-        _dispatcher.TryEnqueue(() => { try { callback(); } catch { } });
+        if (_dispatcher == null || _dispatcher.HasThreadAccess)
+        {
+            InvokeSubscriber(callback);
+            return;
+        }
+
+        if (!_dispatcher.TryEnqueue(() => InvokeSubscriber(callback)))
+            Logger.Warn("DataModelStore: Data model subscriber callback could not be queued because the dispatcher rejected the work item");
+    }
+
+    private static void InvokeSubscriber(Action callback)
+    {
+        try
+        {
+            callback();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"DataModelStore: Data model subscriber callback failed: {ex.Message}");
+        }
     }
 
     private static string Normalize(string p) =>

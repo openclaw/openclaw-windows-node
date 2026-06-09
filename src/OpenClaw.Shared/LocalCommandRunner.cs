@@ -132,8 +132,7 @@ public class LocalCommandRunner : ICommandRunner
         var drainTask = Task.Run(() =>
         {
             try { process.WaitForExit(); }
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            catch { /* process may already be gone */ }
+            catch (Exception drainEx) { _logger.Debug($"LocalCommandRunner: WaitForExit during output drain threw: {drainEx.Message}"); }
         });
         if (await Task.WhenAny(drainTask, Task.Delay(OutputDrainTimeoutMs, CancellationToken.None)) != drainTask)
         {

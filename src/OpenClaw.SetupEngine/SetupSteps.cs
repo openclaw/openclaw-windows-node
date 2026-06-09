@@ -2729,14 +2729,8 @@ public sealed class StartKeepaliveStep : SetupStep
 
         if (File.Exists(markerPath))
         {
-            try
-            {
-                File.Delete(markerPath);
-            }
-            catch (Exception ex)
-            {
-                ctx.Logger.Debug($"Could not delete stale keepalive marker '{markerPath}': {ex.Message}");
-            }
+            try { File.Delete(markerPath); }
+            catch (Exception ex) { ctx.Logger.Debug($"[Keepalive] Stale marker delete failed: {ex.Message}"); }
         }
 
         // Launch detached keepalive process — keeps the distro alive so port forwarding
@@ -2809,7 +2803,10 @@ public sealed class StartKeepaliveStep : SetupStep
         }
         catch (Exception ex)
         {
-            logger?.Debug($"Could not validate existing keepalive marker '{markerPath}': {ex.Message}");
+            // TryGetExistingKeepalive returns false on any failure (file/process
+            // missing or unreadable). Static method — no ctx.Logger available.
+            // Debug-level via Trace so the failure is visible in dev diagnostics.
+            System.Diagnostics.Trace.WriteLine($"[Keepalive] TryGetExistingKeepalive failed: {ex.Message}");
             pid = 0;
             return false;
         }
@@ -2844,10 +2841,7 @@ public sealed class StartKeepaliveStep : SetupStep
                         ctx.Logger.Info($"[Uninstall] Killed keepalive process tree PID {proc.Id}");
                     }
                 }
-                catch (Exception ex)
-                {
-                    ctx.Logger.Debug($"[Uninstall] Skipping keepalive process PID {proc.Id}: {ex.Message}");
-                }
+                catch (Exception ex) { ctx.Logger.Debug($"[Uninstall] Keepalive proc {proc.Id} cleanup skipped (may have exited): {ex.Message}"); }
                 finally { proc.Dispose(); }
             }
         }
@@ -2907,7 +2901,7 @@ public sealed class StartKeepaliveStep : SetupStep
         }
         catch (Exception ex)
         {
-            logger?.Debug($"Could not read command line for process PID {pid}: {ex.Message}");
+            SetupDiagnostics.TryWriteStderrWarning($"Failed to query command line for process {pid}: {ex.Message}");
             return null;
         }
     }

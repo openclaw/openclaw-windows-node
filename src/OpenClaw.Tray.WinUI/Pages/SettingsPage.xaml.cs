@@ -239,8 +239,10 @@ public sealed partial class SettingsPage : Page
                 .AddText("This is a test notification from OpenClaw settings.")
                 .Show();
         }
-        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Warn($"SettingsPage: Test notification failed: {ex.Message}");
+        }
     }
 
     private void OnRemoveGateway(object sender, RoutedEventArgs e) =>
@@ -347,7 +349,7 @@ public sealed partial class SettingsPage : Page
                     }
                     catch (Exception ex)
                     {
-                        Services.Logger.Debug($"Could not read uninstall error details: {ex.Message}");
+                        Logger.Warn($"SettingsPage: Failed to parse uninstall result JSON '{jsonOutput}': {ex.Message}");
                     }
                 }
                 ShowUninstallError(errorMsg);
@@ -355,10 +357,7 @@ public sealed partial class SettingsPage : Page
 
             // Clean up temp file
             try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); }
-            catch (Exception ex)
-            {
-                Services.Logger.Debug($"Could not delete uninstall status file: {ex.Message}");
-            }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to delete uninstall result file '{jsonOutput}': {ex.Message}"); }
         }
         catch (OperationCanceledException)
         {
@@ -370,9 +369,9 @@ public sealed partial class SettingsPage : Page
                     await proc.WaitForExitAsync(CancellationToken.None);
                 }
             }
-            catch (Exception cleanupEx)
+            catch (Exception ex)
             {
-                Services.Logger.Debug($"Could not stop cancelled uninstall process: {cleanupEx.Message}");
+                Logger.Warn($"SettingsPage: Failed to stop uninstall process during cancellation: {ex.Message}");
             }
 
             ApplyUninstallUiState(UninstallUiState.Failure);
@@ -384,6 +383,7 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
+            Logger.Warn($"SettingsPage: gateway uninstall failed: {ex}");
             ApplyUninstallUiState(UninstallUiState.Failure);
             ShowUninstallError(ex.Message);
         }
@@ -391,10 +391,7 @@ public sealed partial class SettingsPage : Page
         {
             proc?.Dispose();
             try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); }
-            catch (Exception ex)
-            {
-                Services.Logger.Debug($"Could not delete uninstall status file during cleanup: {ex.Message}");
-            }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to delete uninstall result file '{jsonOutput}': {ex.Message}"); }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
         }
@@ -424,8 +421,8 @@ public sealed partial class SettingsPage : Page
         var viewLogsButton = new Button { Content = "View Logs" };
         viewLogsButton.Click += (_, _) =>
         {
-            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); } catch { }
+            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to open logs folder '{logsPath}': {ex.Message}"); }
         };
 
         UninstallResultBar.Severity = InfoBarSeverity.Error;

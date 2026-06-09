@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using Microsoft.Windows.ApplicationModel.Resources;
 using OpenClaw.Shared;
+using OpenClawTray.Services;
 
 namespace OpenClawTray.Helpers;
 
@@ -8,6 +10,9 @@ public static class LocalizationHelper
     private static ResourceManager? _resourceManager;
     private static ResourceContext? _overrideContext;
     private static string? _languageOverride;
+    private static readonly ConcurrentDictionary<string, byte> s_loggedLookupFailures = new();
+    private const int MaxLoggedLookupFailures = 1024;
+    private static int s_lookupFailureLimitLogged;
 
     /// <summary>
     /// Force a specific language for testing (e.g. "zh-CN").
@@ -42,8 +47,20 @@ public static class LocalizationHelper
             var value = candidate?.ValueAsString;
             return string.IsNullOrEmpty(value) ? resourceKey : value;
         }
-        catch
+        catch (Exception ex)
         {
+            var logKey = $"{_languageOverride ?? "<default>"}:{resourceKey}:{ex.GetType().FullName}";
+            if (s_loggedLookupFailures.ContainsKey(logKey))
+                return resourceKey;
+
+            if (s_loggedLookupFailures.Count < MaxLoggedLookupFailures && s_loggedLookupFailures.TryAdd(logKey, 0))
+            {
+                Logger.Warn($"LocalizationHelper: Resource lookup failed for '{resourceKey}' (language='{_languageOverride ?? "<default>"}'): {ex.Message}");
+            }
+            else if (System.Threading.Interlocked.Exchange(ref s_lookupFailureLimitLogged, 1) == 0)
+            {
+                Logger.Warn("LocalizationHelper: Resource lookup failure log limit reached; suppressing additional unique resource lookup failures");
+            }
             return resourceKey;
         }
     }
@@ -65,6 +82,7 @@ public static class LocalizationHelper
         {
             // Surface the unformatted template instead of crashing. The raw "{0}"
             // is still useful debugging signal but doesn't kill the page.
+            Logger.Warn($"LocalizationHelper: Resource format failed for '{resourceKey}': template='{template}'");
             return template;
         }
     }

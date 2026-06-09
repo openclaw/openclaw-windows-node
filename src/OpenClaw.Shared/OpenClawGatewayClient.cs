@@ -2712,8 +2712,13 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 _logger.Trace($"Agent event item: kind={k} phase={ph}");
             }
         }
-        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-        catch { }
+        catch (Exception ex)
+        {
+            // Shape extraction is best-effort diagnostic only; payload still
+            // continues to downstream handlers. Log at Debug so a malformed
+            // event shape is visible without escalating to user-visible.
+            _logger.Debug($"[GatewayClient] Agent event shape extraction failed: {ex.GetType().Name}: {ex.Message}");
+        }
 
         // sessionKey is inside payload, not root. We deliberately do NOT
         // substitute a fallback like "unknown" or "main" — empty must

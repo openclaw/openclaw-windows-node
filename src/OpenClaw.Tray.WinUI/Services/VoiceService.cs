@@ -225,10 +225,10 @@ public sealed class VoiceService : IAsyncDisposable
     {
         if (_pipeline != null)
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { await _pipeline.StopAsync(); } catch { }
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { await _pipeline.DisposeAsync(); } catch { }
+            try { await _pipeline.StopAsync(); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop during cleanup failed: {ex.Message}"); }
+            try { await _pipeline.DisposeAsync(); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline dispose during cleanup failed: {ex.Message}"); }
             _pipeline = null;
         }
 
@@ -310,8 +310,8 @@ public sealed class VoiceService : IAsyncDisposable
             // Timeout / external cancellation. Stop the pipeline (which
             // flushes any buffered speech) and give UtteranceTranscribed
             // up to 2 s to fire before reporting timeout.
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { await pipeline.StopAsync().ConfigureAwait(false); } catch { /* swallow */ }
+            try { await pipeline.StopAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop on timeout path failed: {ex.Message}"); }
             await Task.WhenAny(tcs.Task, Task.Delay(2000)).ConfigureAwait(false);
             if (tcs.Task.IsCompletedSuccessfully)
             {
@@ -322,8 +322,8 @@ public sealed class VoiceService : IAsyncDisposable
         }
         finally
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { await pipeline.StopAsync(); } catch { /* idempotent — already stopped above on timeout */ }
+            try { await pipeline.StopAsync(); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop in finally (idempotent) failed: {ex.Message}"); }
             await pipeline.DisposeAsync();
         }
     }

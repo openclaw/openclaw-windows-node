@@ -153,8 +153,13 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         sendVersion.Set(sendVersion.Value + 1);
                     }
                 }
-                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-                catch { /* voice cancelled or failed */ }
+                catch (Exception ex)
+                {
+                    // Voice recording cancelled mid-transcription or pipeline
+                    // unavailable. The UI already reflects the cancel; surface
+                    // the cause at Debug for diagnostics.
+                    OpenClawTray.Services.Logger.Debug($"OpenClawComposer: voice transcription failed/cancelled: {ex.Message}");
+                }
                 finally
                 {
                     voiceCtsRef.Current = null;
@@ -390,11 +395,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                                 Props.OnAttachmentPasted?.Invoke(att);
                             }
                         }
-                        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-                        catch
+                        catch (Exception ex)
                         {
                             // If anything goes wrong reading the clipboard,
                             // fall through to the default text paste behavior.
+                            OpenClawTray.Services.Logger.Debug($"OpenClawComposer: clipboard image paste failed, falling back to text: {ex.Message}");
                         }
                     };
                 }

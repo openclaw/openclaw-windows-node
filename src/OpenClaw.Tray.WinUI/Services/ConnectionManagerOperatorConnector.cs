@@ -109,10 +109,7 @@ public sealed class ConnectionManagerOperatorConnector : IGatewayOperatorConnect
             {
                 // Timeout — disconnect to clean up the manager's in-flight connection
                 try { await _manager.DisconnectAsync(); }
-                catch (Exception cleanupEx)
-                {
-                    _logger.Debug($"[SetupConnector] Disconnect after handshake timeout failed: {cleanupEx.Message}");
-                }
+                catch (Exception ex) { _logger.Debug($"ConnectionManagerOperatorConnector: cleanup disconnect after operator-handshake timeout failed: {ex.GetType().Name}: {ex.Message}"); }
                 return new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Timeout, "Timed out waiting for operator handshake.");
             }
         }
@@ -163,10 +160,7 @@ public sealed class ConnectionManagerOperatorConnector : IGatewayOperatorConnect
             {
                 // Timeout — disconnect to clean up the manager's in-flight connection
                 try { await _manager.DisconnectAsync(); }
-                catch (Exception cleanupEx)
-                {
-                    _logger.Debug($"[SetupConnector] Disconnect after reconnect timeout failed: {cleanupEx.Message}");
-                }
+                catch (Exception ex) { _logger.Debug($"ConnectionManagerOperatorConnector: cleanup disconnect after operator-reconnect timeout failed: {ex.GetType().Name}: {ex.Message}"); }
                 return new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Timeout, "Timed out waiting for operator reconnect.");
             }
         }

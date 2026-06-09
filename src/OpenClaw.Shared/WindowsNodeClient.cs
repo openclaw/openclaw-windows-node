@@ -524,14 +524,8 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _logger.Error($"[NODE] Command execution failed: {command}", ex);
                 stopwatch.Stop();
-                try
-                {
-                    await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed");
-                }
-                catch (Exception sendEx)
-                {
-                    _logger.Warn($"[NODE] Failed to send failure result for request {requestId} ({command}): {sendEx.Message}");
-                }
+                try { await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed"); }
+                catch (Exception sendEx) { _logger.Debug($"[NODE] Failed to send error response for {requestId}: {sendEx.Message}"); }
                 RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
             }
             finally
@@ -1080,14 +1074,8 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _logger.Error($"Command execution failed: {command}", ex);
                 stopwatch.Stop();
-                try
-                {
-                    await SendErrorResponseAsync(requestId, "Command execution failed");
-                }
-                catch (Exception sendEx)
-                {
-                    _logger.Warn($"Failed to send command error response for request {requestId} ({command}): {sendEx.Message}");
-                }
+                try { await SendErrorResponseAsync(requestId, "Command execution failed"); }
+                catch (Exception sendEx) { _logger.Debug($"[NODE] Failed to send error response for {requestId}: {sendEx.Message}"); }
                 RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
             }
             finally

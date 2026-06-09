@@ -1501,7 +1501,7 @@ On your gateway host (Mac/Linux), run:
     <value>OpenClaw Hub</value>
   </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+    <value>.NET / WinUI / Windows App SDK</value>
   </data>
   <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
     <value>Gateway Info</value>
@@ -1510,7 +1510,7 @@ On your gateway host (Mac/Linux), run:
     <value>Version:</value>
   </data>
   <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>Model:</value>
+    <value>Protocol:</value>
   </data>
   <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
     <value>Auth mode:</value>
@@ -1537,7 +1537,7 @@ On your gateway host (Mac/Linux), run:
     <value>Links</value>
   </data>
   <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → openclaw.ai/docs</value>
+    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
   </data>
   <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
     <value>GitHub → github.com/openclaw/openclaw-windows-node</value>

@@ -151,11 +151,11 @@ public sealed partial class ChannelsPage : Page
         // Cancel + dispose all per-page tokens. Re-enabling the Refresh button
         // here covers the back-to-back-cancel race where neither call reaches
         // its finally block in the !cts.IsCancellationRequested branch.
-        // slopwatch-ignore: SW003 Page unload token cleanup is best-effort; controls continue shutting down.
-        try { _refreshCts?.Cancel(); _refreshCts?.Dispose(); } catch { }
+        try { _refreshCts?.Cancel(); _refreshCts?.Dispose(); }
+        catch (Exception ex) { Logger.Debug($"ChannelsPage: refreshCts dispose failed: {ex.Message}"); }
         _refreshCts = null;
-        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-        try { _linkingCts?.Cancel(); _linkingCts?.Dispose(); } catch { }
+        try { _linkingCts?.Cancel(); _linkingCts?.Dispose(); }
+        catch (Exception ex) { Logger.Debug($"ChannelsPage: linkingCts dispose failed: {ex.Message}"); }
         _linkingCts = null;
         SetRefreshBusy(false);
 
@@ -341,8 +341,8 @@ public sealed partial class ChannelsPage : Page
         var cts = _refreshCts;
         if (oldCts != null)
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { oldCts.Cancel(); oldCts.Dispose(); } catch { }
+            try { oldCts.Cancel(); oldCts.Dispose(); }
+            catch (Exception ex) { Logger.Debug($"ChannelsPage: prior refresh cts cancel/dispose failed: {ex.Message}"); }
         }
 
         // Coalesce concurrent calls (user clicks + push deltas) — only one
@@ -1784,8 +1784,8 @@ public sealed partial class ChannelsPage : Page
         var ct = _linkingCts.Token;
         if (oldLinking != null)
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { oldLinking.Cancel(); oldLinking.Dispose(); } catch { }
+            try { oldLinking.Cancel(); oldLinking.Dispose(); }
+            catch (Exception ex) { Logger.Debug($"ChannelsPage: prior linking cts cancel/dispose failed: {ex.Message}"); }
         }
 
         messageBlock.Text = "Requesting QR code from the gateway…";

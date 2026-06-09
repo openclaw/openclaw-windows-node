@@ -77,12 +77,12 @@ public sealed partial class A2UICanvasWindow : WindowEx
         Closed += (_, _) =>
         {
             IsClosed = true;
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { _router.SurfaceCreated -= OnSurfaceCreated; } catch { }
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { _router.SurfaceDeleted -= OnSurfaceDeleted; } catch { }
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { _router.ResetAll(); } catch { }
+            try { _router.SurfaceCreated -= OnSurfaceCreated; }
+            catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: unsubscribe SurfaceCreated failed: {ex.Message}"); }
+            try { _router.SurfaceDeleted -= OnSurfaceDeleted; }
+            catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: unsubscribe SurfaceDeleted failed: {ex.Message}"); }
+            try { _router.ResetAll(); }
+            catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: router ResetAll on close failed: {ex.Message}"); }
             _surfaceScrollers.Clear();
             _surfaceTabs.Clear();
         };
@@ -350,7 +350,6 @@ public sealed partial class A2UICanvasWindow : WindowEx
             if (!keepTopMost)
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         }
-        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-        catch { /* best-effort */ }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: best-effort foreground/topmost adjust failed: {ex.Message}"); }
     }
 }
