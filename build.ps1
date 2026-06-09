@@ -404,10 +404,6 @@ if ($PackageMsix) {
     } else {
         Write-Error "Dev MSIX signing cert not found at $devPfx"
         Write-Host ""
-        Write-Host "An unsigned .msix cannot be installed on stock Windows" -ForegroundColor Yellow
-        Write-Host "(Add-AppxPackage -AllowUnsigned only works under narrow" -ForegroundColor Yellow
-        Write-Host "developer-mode conditions that do not cover this package)." -ForegroundColor Yellow
-        Write-Host ""
         Write-Host "To create the dev signing cert, run (elevated):" -ForegroundColor Cyan
         Write-Host "  .\scripts\setup-dev-msix-cert.ps1" -ForegroundColor White
         exit 1
