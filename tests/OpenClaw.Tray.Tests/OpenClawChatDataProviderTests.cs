@@ -2462,15 +2462,22 @@ public class OpenClawChatDataProviderTests
     // ──────────────────────────────────────────────────────────────────────
 
     private static AgentEventInfo MakeApprovalRequestedEvent(string approvalId, string sessionKey = "main")
+        => MakeApprovalRequestedEventWithIds(approvalId, approvalId, sessionKey);
+
+    private static AgentEventInfo MakeApprovalRequestedEventWithIds(
+        string approvalId,
+        string? approvalSlug,
+        string sessionKey = "main",
+        string title = "Exec approval")
     {
         var json = $$"""
             {
               "phase": "requested",
               "approvalId": "{{approvalId}}",
-              "approvalSlug": "{{approvalId}}",
+              "approvalSlug": "{{approvalSlug ?? ""}}",
               "host": "gateway",
               "command": "openclaw nodes invoke --node \"Windows Node\" --command system.run",
-              "title": "Exec approval",
+              "title": "{{title}}",
               "message": "Approve this exec?",
               "agentId": "main"
             }
@@ -2545,6 +2552,138 @@ public class OpenClawChatDataProviderTests
         var after = snapshots[^1].Timelines["main"].PendingPermission;
         Assert.NotNull(after);
         Assert.Equal("appr-fail-1", after!.RequestId);
+    }
+
+    [Fact]
+    public async Task ResolvedEcho_WithAllowDecision_MarksEntryAllowedNotExpired()
+    {
+        // Regression for the "approvals always render Expired" race: the
+        // gateway broadcasts exec.approval.resolved on the same WebSocket the
+        // RPC response travels on, and the echo typically wins the race. The
+        // terminal-phase handler must honor the gateway's actual decision
+        // (phase="resolved" → Allowed) rather than the legacy default Expired,
+        // otherwise ResolvePermission's no-overwrite guard then blocks the
+        // user-click stamp from ever landing.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-allow"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent("appr-echo-allow", phase: "resolved"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ResolvedEcho_WithDenyDecision_MarksEntryDeniedNotExpired()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-deny"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent("appr-echo-deny", phase: "denied"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Denied, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ResolvedEcho_WithNonDecidedTerminalPhase_StaysExpired()
+    {
+        // Phases that aren't allow/deny (aborted, canceled, expired, timeout,
+        // error) collapse to Expired — the "decided elsewhere or never
+        // decided" badge. Spot-check one of them.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-expired"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent("appr-echo-expired", phase: "expired"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Expired, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ApprovalRequested_DedupesUuidFirstSlugTwin_AndSlugOnlyResolvedClearsBanner()
+    {
+        // Regression for the second "one Expired, one Allowed" root cause:
+        // the top-level translator can emit a UUID-only requested event before
+        // the agent-stream slug+UUID twin. Suppressing that twin must still
+        // record slug<->UUID linkage so a later slug-only terminal echo clears
+        // the original UUID-keyed banner.
+        const string uuid = "8653b04d-fa8f-4188-9f22-c1c4f08fe6b8";
+        const string slug = "8653b04d";
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: ""));
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: slug, title: "Command approval requested"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(uuid, entry.PermissionRequestId);
+        Assert.Equal(uuid, snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        bridge.RaiseAgent(MakeApprovalResolvedEvent(approvalId: "", phase: "resolved", approvalSlug: slug));
+
+        entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ApprovalRequested_DedupesSlugFirstUuidTwin_AndUuidOnlyResolvedClearsBanner()
+    {
+        // Covers the reverse ordering: if the slug+UUID stream wins first,
+        // the UUID-only top-level twin must not render a duplicate, and a
+        // UUID-only terminal echo must still resolve the slug-keyed banner.
+        const string uuid = "b4fd7109-4b8f-4706-8d47-ec7963e65d8d";
+        const string slug = "b4fd7109";
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: slug, title: "Command approval requested"));
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: ""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(slug, entry.PermissionRequestId);
+        Assert.Equal(slug, snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        bridge.RaiseAgent(MakeApprovalResolvedEvent(approvalId: uuid, phase: "resolved", approvalSlug: ""));
+
+        entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    private static AgentEventInfo MakeApprovalResolvedEvent(
+        string approvalId,
+        string phase,
+        string sessionKey = "main",
+        string? approvalSlug = null)
+    {
+        // Mirrors the flat envelope that OpenClawGatewayClient.HandleExecApprovalEvent
+        // synthesizes from a top-level exec.approval.resolved broadcast.
+        var json = $$"""
+            {
+              "phase": "{{phase}}",
+              "approvalId": "{{approvalId}}",
+              "approvalSlug": "{{approvalSlug ?? approvalId}}",
+              "host": "gateway",
+              "command": "openclaw nodes invoke --node \"Windows Node\" --command system.run",
+              "agentId": "main"
+            }
+            """;
+        return MakeAgentEvent("approval", json, sessionKey: sessionKey);
     }
 
     [Fact]

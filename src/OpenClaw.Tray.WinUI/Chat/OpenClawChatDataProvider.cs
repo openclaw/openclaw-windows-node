@@ -1424,7 +1424,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     }
                     else if (ApprovalIdMatches(pendingId!, evtSlug, evtApprovalId))
                     {
-                        ClearPendingPermissionAndPublish(threadId, expectedRequestId: pendingId);
+                        // Honor the gateway's actual decision instead of always
+                        // stamping Expired. The resolved echo races the local
+                        // RPC response on the same WebSocket — if Expired wins
+                        // here, ResolvePermission's no-overwrite guard then
+                        // blocks the user's Allow/Denied stamp from landing.
+                        // Phase already passed IsTerminalApprovalPhase; map
+                        // resolved → Allowed, denied → Denied, and treat the
+                        // remaining non-decided terminal phases (aborted,
+                        // canceled, expired, timeout, error) as Expired.
+                        var resolvedDecision = MapTerminalPhaseToDecision(phase);
+                        ClearPendingPermissionAndPublish(threadId, expectedRequestId: pendingId, decision: resolvedDecision);
                     }
                     else
                     {
@@ -1720,6 +1730,21 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             || string.Equals(phase, "error", System.StringComparison.OrdinalIgnoreCase);
     }
 
+    // Map a terminal approval phase (already validated by IsTerminalApprovalPhase)
+    // to the timeline decision badge. ``resolved`` carries an allow-* decision
+    // upstream (see OpenClawGatewayClient.HandleExecApprovalEvent), so it maps to
+    // Allowed. ``denied`` maps to Denied. Every other terminal phase (aborted,
+    // canceled/cancelled, expired, timeout, error) collapses to Expired — the
+    // "decided elsewhere or never decided" badge.
+    private static ChatPermissionDecision MapTerminalPhaseToDecision(string phase)
+    {
+        if (string.Equals(phase, "resolved", System.StringComparison.OrdinalIgnoreCase))
+            return ChatPermissionDecision.Allowed;
+        if (string.Equals(phase, "denied", System.StringComparison.OrdinalIgnoreCase))
+            return ChatPermissionDecision.Denied;
+        return ChatPermissionDecision.Expired;
+    }
+
     // Approval dedupe: gateway can resend ``requested`` on reconnect/replay.
     // Bounded LRU to keep this from growing unbounded across a long session.
     //
@@ -1734,7 +1759,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly System.Collections.Generic.LinkedList<string> _approvalSeenOrder = new();
     private readonly System.Collections.Generic.HashSet<string> _approvalSeen
         = new(System.StringComparer.Ordinal);
-    private const int ApprovalSeenCap = 64;
+    // Capacity is counted by id, not by logical approval. Paired slug/UUID
+    // approvals consume two entries, so 128 preserves the prior ~64-approval
+    // dedupe window.
+    private const int ApprovalSeenCap = 128;
 
     // Approval id-asymmetry tracking.
     // The gateway sometimes emits ``approvalSlug`` only on ``requested``
@@ -1742,24 +1770,97 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // We prefer slug on both sides for matching (see ``MapApprovalEvent``)
     // but record the alternate identifier here so a terminal event that
     // carries only the "other" id can still resolve back to the live
-    // pending banner. Bounded by ApprovalSeenCap via the same trim loop.
+    // pending banner. Stored bidirectionally and bounded by ApprovalSeenCap
+    // via the same trim loop.
     private readonly Dictionary<string, string> _approvalAltIds = new(System.StringComparer.Ordinal);
 
-    private bool MarkApprovalSeen(string approvalId)
+    // Dedupe accepts both id forms (slug and full approvalId) so the same
+    // approval doesn't render twice when two upstream paths surface it with
+    // different ids — e.g. the top-level ``exec.approval.requested``
+    // translator emits with the UUID while the agent-stream variant emits
+    // with the shorter slug. If either form has been seen (or is already
+    // linked to a seen form), suppress; when both forms are known, record the
+    // link before suppressing so terminal events in either form can resolve.
+    private bool MarkApprovalSeen(string requestId, string? altId = null)
     {
-        if (string.IsNullOrEmpty(approvalId)) return true; // can't dedupe — render
+        if (string.IsNullOrEmpty(requestId)) return true; // can't dedupe — render
         lock (_approvalSeenLock)
         {
-            if (!_approvalSeen.Add(approvalId)) return false;
-            _approvalSeenOrder.AddLast(approvalId);
+            RecordApprovalAltIdLocked(requestId, altId);
+
+            if (ApprovalIdSeenLocked(requestId)) return false;
+            if (IsDistinctApprovalId(requestId, altId) && ApprovalIdSeenLocked(altId!))
+            {
+                return false;
+            }
+
+            if (_approvalSeen.Add(requestId))
+            {
+                _approvalSeenOrder.AddLast(requestId);
+            }
+
+            if (IsDistinctApprovalId(requestId, altId) && _approvalSeen.Add(altId!))
+            {
+                _approvalSeenOrder.AddLast(altId!);
+            }
+
             while (_approvalSeenOrder.Count > ApprovalSeenCap)
             {
                 var oldest = _approvalSeenOrder.First!.Value;
                 _approvalSeenOrder.RemoveFirst();
-                _approvalSeen.Remove(oldest);
-                _approvalAltIds.Remove(oldest);
+                EvictApprovalSeenIdLocked(oldest);
             }
             return true;
+        }
+    }
+
+    private static bool IsDistinctApprovalId(string requestId, string? altId)
+        => !string.IsNullOrEmpty(altId)
+            && !string.Equals(altId, requestId, System.StringComparison.Ordinal);
+
+    private bool ApprovalIdSeenLocked(string approvalId)
+    {
+        if (_approvalSeen.Contains(approvalId)) return true;
+        return _approvalAltIds.TryGetValue(approvalId, out var altId)
+            && _approvalSeen.Contains(altId);
+    }
+
+    private void RecordApprovalAltIdLocked(string requestId, string? altId)
+    {
+        if (!IsDistinctApprovalId(requestId, altId)) return;
+
+        _approvalAltIds[requestId] = altId!;
+        _approvalAltIds[altId!] = requestId;
+    }
+
+    private void EvictApprovalSeenIdLocked(string approvalId)
+    {
+        _approvalSeen.Remove(approvalId);
+        if (!_approvalAltIds.TryGetValue(approvalId, out var altId))
+            return;
+
+        _approvalAltIds.Remove(approvalId);
+        if (_approvalAltIds.TryGetValue(altId, out var reverse)
+            && string.Equals(reverse, approvalId, System.StringComparison.Ordinal))
+        {
+            _approvalAltIds.Remove(altId);
+        }
+
+        if (_approvalSeen.Remove(altId))
+        {
+            RemoveApprovalSeenOrderValueLocked(altId);
+        }
+    }
+
+    private void RemoveApprovalSeenOrderValueLocked(string approvalId)
+    {
+        for (var node = _approvalSeenOrder.First; node is not null; node = node.Next)
+        {
+            if (!string.Equals(node.Value, approvalId, System.StringComparison.Ordinal))
+                continue;
+
+            _approvalSeenOrder.Remove(node);
+            return;
         }
     }
 
@@ -1829,25 +1930,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var requestId = !string.IsNullOrEmpty(slug) ? slug : approvalId;
         if (string.IsNullOrEmpty(requestId)) return null;
 
-        if (!MarkApprovalSeen(requestId))
+        // The alternate id (the one we didn't pick as requestId). Pass it
+        // to MarkApprovalSeen so a duplicate emission from the sibling
+        // upstream path (slug-form vs UUID-form for the same approval) is
+        // suppressed instead of creating a second timeline entry, which
+        // would mark the first as Expired via ApplyPermissionRequest.
+        var altId = !string.IsNullOrEmpty(slug) ? approvalId : slug;
+
+        if (!MarkApprovalSeen(requestId, altId))
         {
-            Logger.Info($"[Approval] suppressed duplicate requestId={requestId}");
+            Logger.Info($"[Approval] suppressed duplicate requestId={requestId} altId={altId}");
             return null;
         }
 
-        // Record the alternate id (the one we didn't pick as requestId) so
-        // a later terminal event that carries ONLY the alternate can still
-        // resolve back to this pending banner. See ``ApprovalIdMatches``.
-        // Recorded AFTER MarkApprovalSeen so a duplicate-replay can't
-        // overwrite the mapping after the dedup short-circuit.
-        var altId = !string.IsNullOrEmpty(slug) ? approvalId : slug;
-        if (!string.IsNullOrEmpty(altId) && !string.Equals(altId, requestId, System.StringComparison.Ordinal))
-        {
-            lock (_approvalSeenLock)
-            {
-                _approvalAltIds[requestId] = altId;
-            }
-        }
+        // MarkApprovalSeen also records the alternate id, including on the
+        // duplicate-suppression path, so terminal events in either id form
+        // can resolve back to this pending banner.
 
         // PermissionKind is the short tool/category label the composer shows;
         // ToolName is the contextual subtitle (host); Detail is the body
