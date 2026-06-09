@@ -1,9 +1,9 @@
 {
   "last_run": "2026-06-09",
-  "last_run_id": "27177560094",
+  "last_run_id": "27208827734",
   "backlog_cursor": {
-    "issue_number": 727,
-    "comment_cursor": 728
+    "issue_number": 730,
+    "comment_cursor": 731
   },
   "comments_made": {
     "467": "2026-05-20",
@@ -38,13 +38,15 @@
     "638": "2026-06-03",
     "661": "2026-06-03",
     "672": "2026-06-05",
-    "697": {"date": "2026-06-06", "note": "Pointed to PR #701 for SSH custom port fix. Issue now closed."},
-    "694": {"date": "2026-06-06", "note": "Confirmed WSL locale fix. Issue now closed."},
-    "703": {"date": "2026-06-07", "note": "Root cause confirmed, fix PR #712 submitted. Superseded by maintainer PR #713. Issue now closed."},
-    "709": {"date": "2026-06-08", "note": "Root cause: EnterWizardErrorAsync disconnects before cancel, leaving stale server session. Fix PRs #717 and #718 submitted (duplicates)."},
-    "688": {"date": "2026-06-08", "note": "Explained Back button architecture constraint: requires gateway wizard.back RPC or client-side state replay."},
-    "720": {"date": "2026-06-08", "note": "Root cause confirmed: GatewayClientFactory.Create() passed bootstrapPairAsNode: credential.IsBootstrapToken, causing operator client to connect as node role with bootstrap tokens. Fix PR #721 submitted."},
-    "727": {"date": "2026-06-09", "note": "Welcomed first-time reporter, asked for version/repro details. Labelled bug+needs triage."}
+    "697": {"date": "2026-06-06", "note": "Pointed to PR #701 for SSH custom port fix."},
+    "694": {"date": "2026-06-06", "note": "Confirmed WSL locale fix."},
+    "703": {"date": "2026-06-07", "note": "Root cause confirmed, fix PR #712 submitted. Superseded by maintainer PR #713."},
+    "709": {"date": "2026-06-08", "note": "Root cause: EnterWizardErrorAsync disconnects before cancel, leaving stale server session. Fix PRs #717 and #718 submitted."},
+    "688": {"date": "2026-06-08", "note": "Explained Back button architecture constraint."},
+    "720": {"date": "2026-06-08", "note": "Root cause confirmed: GatewayClientFactory.Create() bootstrapPairAsNode issue. Fix PR #721 submitted."},
+    "727": {"date": "2026-06-09", "note": "Welcomed first-time reporter, asked for version/repro details. Labelled bug+needs triage."},
+    "729": {"date": "2026-06-09", "note": "Confirmed root cause: ShouldBootstrap() only checks HasInjectedFirstRunBootstrap; no configured-workspace guard. Suggested fix via SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection()."},
+    "730": {"date": "2026-06-09", "note": "Confirmed root cause: WaitingPanel not collapsed in NavigateWebViewToCurrentChatUrl() and _navCompletedHandler success branch. Suggested 2-line fix."}
   },
   "labels_applied": {
     "460": ["enhancement"],
@@ -73,15 +75,15 @@
     "570": {"pr": 571, "status": "closed-conflict"},
     "583": {"pr": 585, "status": "closed-no-merge"},
     "590": {"pr": [603, 608], "status": "closed-superseded"},
-    "593": {"pr": 609, "status": "closed-superseded", "note": "Fix merged via PR #594."},
-    "453": {"pr": 615, "status": "closed-superseded", "note": "Human PR #647 merged."},
-    "458": {"pr": 628, "status": "closed-superseded", "note": "Human PR #646 merged."},
-    "661": {"pr": "superseded-by-666", "status": "superseded", "note": "Maintainer PR #666 merged."},
-    "655": {"pr": 679, "status": "merged", "date": "2026-06-04", "note": "Issue closed 2026-06-07."},
-    "672": {"pr": 699, "status": "merged", "date": "2026-06-05", "note": "Issue closed."},
-    "703": {"pr": 712, "status": "closed-superseded", "date": "2026-06-07", "note": "Maintainer PR #713 fixed root cause. Issue closed 2026-06-07."},
-    "709": {"branch": "repo-assist/fix-issue-709-wizard-stale-session", "prs": ["#717", "#718"], "status": "open", "date": "2026-06-08", "note": "Two duplicate PRs created. #718 is the more complete description; maintainer should close #717."},
-    "720": {"branch": "repo-assist/fix-issue-720-operator-qr-pair-role", "pr": 721, "status": "open", "date": "2026-06-08", "note": "bootstrapPairAsNode: false for operator client factory. Tests: Shared 2123 pass, Tray 974 pass, Connection 297 pass."}
+    "593": {"pr": 609, "status": "closed-superseded"},
+    "453": {"pr": 615, "status": "closed-superseded"},
+    "458": {"pr": 628, "status": "closed-superseded"},
+    "661": {"pr": "superseded-by-666", "status": "superseded"},
+    "655": {"pr": 679, "status": "merged", "date": "2026-06-04"},
+    "672": {"pr": 699, "status": "merged", "date": "2026-06-05"},
+    "703": {"pr": 712, "status": "closed-superseded", "date": "2026-06-07"},
+    "709": {"branch": "repo-assist/fix-issue-709-wizard-stale-session", "prs": ["#717", "#718"], "status": "open", "date": "2026-06-08", "note": "Two duplicate PRs. #718 is preferred; #717 should be closed."},
+    "720": {"branch": "repo-assist/fix-issue-720-operator-qr-pair-role", "pr": 721, "status": "open", "date": "2026-06-08"}
   },
   "improve_attempts": {
     "deep-link-parser-tests": {"pr": 456, "status": "merged"},
@@ -90,36 +92,28 @@
     "channel-result-tests": {"pr": 528, "status": "merged"},
     "operatorscopehelper-tests": {"pr": 530, "status": "merged"},
     "activitystreamservice-tests": {"pr": 535, "status": "merged"},
-    "execcmdtoken-tests": {"pr": 548, "status": "closed-no-merge", "date": "2026-05-27"},
-    "json-options-cache": {"pr": 566, "status": "closed-no-merge", "date": "2026-05-28"},
-    "deriveoverall-tests": {"pr": 595, "status": "closed-no-merge", "date": "2026-05-30"},
-    "device-token-handoff-tests": {"pr": 612, "status": "closed-no-merge", "date": "2026-05-31"},
-    "async-event-handler-guard-tests": {"pr": 635, "status": "closed-no-merge", "date": "2026-06-02"},
-    "chat-tool-error-regression-tests": {"pr": 692, "status": "merged", "date": "2026-06-05"},
-    "searchvalues-seam-perf-seam-edge-tests": {"pr": 704, "status": "merged", "date": "2026-06-06"},
-    "test-ssh-tunnel-state-machine-2026-06-06": {"pr": 706, "status": "merged", "date": "2026-06-06"},
-    "perf-shorten-path-and-websocket-decode": {"pr": 708, "status": "merged", "date": "2026-06-07"},
-    "perf-single-pass-dict-remove": {"pr": 722, "status": "open", "date": "2026-06-08", "note": "TakePendingRequestMethod and TakePendingChatSend: TryGetValue+Remove -> Remove(key,out value)."},
-    "weblogin-result-consolidation": {"branch": "repo-assist/improve-weblogin-result-consolidation", "status": "open", "date": "2026-06-09", "note": "Merged WebLoginStartResult+WebLoginWaitResult into single WebLoginResult. Tray 974 pass, Shared 2122 pass (8 pre-existing failures). PR queued."}
+    "execcmdtoken-tests": {"pr": 548, "status": "closed-no-merge"},
+    "json-options-cache": {"pr": 566, "status": "closed-no-merge"},
+    "deriveoverall-tests": {"pr": 595, "status": "closed-no-merge"},
+    "device-token-handoff-tests": {"pr": 612, "status": "closed-no-merge"},
+    "async-event-handler-guard-tests": {"pr": 635, "status": "closed-no-merge"},
+    "chat-tool-error-regression-tests": {"pr": 692, "status": "merged"},
+    "searchvalues-seam-perf-seam-edge-tests": {"pr": 704, "status": "merged"},
+    "test-ssh-tunnel-state-machine-2026-06-06": {"pr": 706, "status": "merged"},
+    "perf-shorten-path-and-websocket-decode": {"pr": 708, "status": "merged"},
+    "perf-single-pass-dict-remove": {"pr": 722, "status": "open", "date": "2026-06-08"},
+    "weblogin-result-consolidation": {"pr": 728, "status": "open", "date": "2026-06-09"}
   },
   "engineering_attempts": {
     "treat-warnings-as-errors": {"pr": 527, "status": "closed-no-merge"},
     "nuget-audit-tests": {"pr": 539, "status": "merged"},
     "bump-nuget-packages-2026-05-29": {"pr": 578, "status": "closed-conflict"},
-    "vc-runtime-version-check-703": {"pr": 712, "status": "closed-superseded", "date": "2026-06-07", "note": "Superseded by maintainer PR #713"}
-  },
-  "engineering_checks": {
-    "test_coverage_doc": "2026-05-22",
-    "dependency_audit": "2026-06-05",
-    "ci_pipeline_check": "2026-05-23",
-    "treat_warnings_as_errors": "2026-05-23",
-    "nuget_audit_tests": "2026-05-25",
-    "vc_runtime_version_check": "2026-06-07"
+    "vc-runtime-version-check-703": {"pr": 712, "status": "closed-superseded"}
   },
   "monthly_activity_issue": 618,
   "monthly_activity_may_closed": 435,
   "monthly_activity_month": "2026-06",
   "open_repo_assist_issues": [],
   "closed_repo_assist_prs": [448, 456, 464, 472, 482, 495, 522, 528, 530, 532, 535, 539, 548, 566, 571, 578, 585, 595, 603, 608, 609, 612, 615, 628, 635, 679, 685, 692, 699, 704, 706, 708, 712],
-  "notes": "Run 2026-06-09 (27177560094): Task 5 (refactor: consolidate WebLoginStartResult+WebLoginWaitResult into WebLoginResult; branch repo-assist/improve-weblogin-result-consolidation; PR queued). Task 3 (Labelled #727 bug+needs triage; commented on #727 welcoming first-time reporter). Task 11 (Updated monthly activity issue #618). Note: PRs #717 and #718 are duplicates for fix #709 — maintainer should close #717 (less complete description)."
+  "notes": "Run 2026-06-09 (27208827734): Task 2 (commented #729: ShouldBootstrap missing configured-workspace guard; commented #730: WaitingPanel not collapsed in 2 paths). Task 6 (commented PR #717: duplicate of #718, recommend close; all other Repo Assist PRs #718/#721/#722/#728 clean, no CI failures). Task 11 (updated monthly activity issue #618). Next: attempt fix for #730 (WaitingPanel 2-line fix) and #729 (bootstrap guard) in future runs."
 }
