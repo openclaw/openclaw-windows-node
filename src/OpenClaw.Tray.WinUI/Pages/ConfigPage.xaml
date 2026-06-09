@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:helpers="using:OpenClawTray.Helpers"
     xmlns:local="using:OpenClawTray.Controls">
 
     <Grid Padding="24,20,24,16">
@@ -25,7 +26,7 @@
                                  Visibility="Collapsed"
                                  AutomationProperties.AutomationId="BackOriginLink">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE72B;" FontSize="12"/>
+                        <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Back, Mode=OneTime}" FontSize="12"/>
                         <TextBlock x:Uid="BackToOriginGeneric" x:Name="BackOriginText" Text="Back"/>
                     </StackPanel>
                 </HyperlinkButton>
