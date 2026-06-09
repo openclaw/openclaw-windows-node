@@ -396,6 +396,15 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v3
 
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v4
+      with:
+        versionSpec: '6.4.x'
+
+    - name: Determine Version
+      id: gitversion
+      uses: gittools/actions/gitversion/execute@v4
+
     - name: Restore
       run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
 
