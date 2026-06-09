@@ -35,6 +35,8 @@ public sealed partial class ChatPage : Page
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navCompletedHandler;
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationStartingEventArgs>? _navStartingHandler;
     private IGatewayConnectionManager? _connectionManager;
+    private IChatPagePanelHost? _panelHost;
+    private IChatPagePanelHost PanelHost => _panelHost ??= new ChatPagePanelHost(this);
     private static readonly HttpClient s_httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(3)
@@ -325,8 +327,7 @@ public sealed partial class ChatPage : Page
         if (string.IsNullOrEmpty(_chatUrl) || WebView.CoreWebView2 is null)
             return false;
 
-        ErrorPanel.Visibility = Visibility.Collapsed;
-        WebView.Visibility = Visibility.Visible;
+        ChatPagePanelStates.ApplyShowingWebView(PanelHost);
         WebView.CoreWebView2.Navigate(_chatUrl);
         return true;
     }
@@ -430,8 +431,7 @@ public sealed partial class ChatPage : Page
                             document.head.appendChild(style);
                         })();
                     ");
-                    ErrorPanel.Visibility = Visibility.Collapsed;
-                    WebView.Visibility = Visibility.Visible;
+                    ChatPagePanelStates.ApplyShowingWebView(PanelHost);
                     _ = CaptureVisualTestChatAsync();
                 }
                 else if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
@@ -439,8 +439,7 @@ public sealed partial class ChatPage : Page
                          e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionReset ||
                          e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable)
                 {
-                    WebView.Visibility = Visibility.Collapsed;
-                    ErrorPanel.Visibility = Visibility.Visible;
+                    ChatPagePanelStates.ApplyShowingError(PanelHost);
                     ErrorText.Text = string.Format(LocalizationHelper.GetString("ChatPage_CannotConnectToGateway"), credential.GatewayUrl);
                 }
             };
@@ -510,9 +509,7 @@ public sealed partial class ChatPage : Page
             if (cancellationToken.IsCancellationRequested || _navigationStarted) return;
 
             _navigationStarted = true;
-            WaitingPanel.Visibility = Visibility.Collapsed;
-            RetryChatButton.Visibility = Visibility.Collapsed;
-            WebView.Visibility = Visibility.Visible;
+            ChatPagePanelStates.ApplyShowingWebView(PanelHost);
             Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
             WebView.CoreWebView2.Navigate(_chatUrl);
         }
@@ -564,13 +561,8 @@ public sealed partial class ChatPage : Page
     private void ShowChatReadinessFailure(string message)
     {
         LoadingRing.IsActive = false;
-        LoadingRing.Visibility = Visibility.Collapsed;
-        WebView.Visibility = Visibility.Collapsed;
-        PlaceholderPanel.Visibility = Visibility.Collapsed;
-        WaitingPanel.Visibility = Visibility.Visible;
+        ChatPagePanelStates.ApplyShowingReadinessFailure(PanelHost);
         WaitingStatusText.Text = message;
-        RetryChatButton.Visibility = Visibility.Visible;
-        ErrorPanel.Visibility = Visibility.Collapsed;
     }
 
     private async Task CaptureVisualTestChatAsync()
@@ -655,11 +647,8 @@ public sealed partial class ChatPage : Page
         _navigationStarted = false;
         _navigationCts?.Cancel();
         _navigationCts = new CancellationTokenSource();
-        ErrorPanel.Visibility = Visibility.Collapsed;
-        WaitingPanel.Visibility = Visibility.Visible;
-        RetryChatButton.Visibility = Visibility.Collapsed;
+        ChatPagePanelStates.ApplyShowingRetryInProgress(PanelHost);
         LoadingRing.IsActive = true;
-        LoadingRing.Visibility = Visibility.Visible;
         _ = NavigateWhenChatReadyAsync(_connectionManager, CurrentApp.Registry?.GetById(CurrentApp.Registry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
     }
 
@@ -835,5 +824,71 @@ public sealed partial class ChatPage : Page
         }
         // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* dialog display failed, already logged */ }
+    }
+
+    // WinUI adapter for ChatPagePanelStates. Maps the pure ChatPanelVisibility
+    // enum onto Microsoft.UI.Xaml.Visibility on the named ChatPage panels so
+    // panel-transition logic can be unit-tested without a WinUI runtime.
+    //
+    // All setters mutate UIElement.Visibility and therefore must run on the
+    // UI thread; Debug.Assert enforces this in debug builds. The owning
+    // ChatPage's PanelHost lazy init is also UI-thread-only by construction
+    // (only called from event handlers and UI flows that already dispatch).
+    private sealed class ChatPagePanelHost : IChatPagePanelHost
+    {
+        private readonly ChatPage _page;
+        public ChatPagePanelHost(ChatPage page) => _page = page;
+
+        public ChatPanelVisibility WebView
+        {
+            get => From(_page.WebView.Visibility);
+            set { AssertUiThread(); _page.WebView.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility ErrorPanel
+        {
+            get => From(_page.ErrorPanel.Visibility);
+            set { AssertUiThread(); _page.ErrorPanel.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility WaitingPanel
+        {
+            get => From(_page.WaitingPanel.Visibility);
+            set { AssertUiThread(); _page.WaitingPanel.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility RetryChatButton
+        {
+            get => From(_page.RetryChatButton.Visibility);
+            set { AssertUiThread(); _page.RetryChatButton.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility LoadingRing
+        {
+            get => From(_page.LoadingRing.Visibility);
+            set { AssertUiThread(); _page.LoadingRing.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility PlaceholderPanel
+        {
+            get => From(_page.PlaceholderPanel.Visibility);
+            set { AssertUiThread(); _page.PlaceholderPanel.Visibility = To(value); }
+        }
+
+        private void AssertUiThread()
+        {
+            // Null DispatcherQueue is itself an anomaly during a setter call
+            // (means the page is detached or torn down) -- default to false
+            // so the assert fires loudly instead of silently passing.
+            System.Diagnostics.Debug.Assert(
+                _page.DispatcherQueue?.HasThreadAccess ?? false,
+                "ChatPagePanelHost mutated off the UI thread (or DispatcherQueue is null)");
+        }
+
+        private static ChatPanelVisibility From(Visibility v) =>
+            v == Visibility.Visible ? ChatPanelVisibility.Visible : ChatPanelVisibility.Collapsed;
+
+        private static Visibility To(ChatPanelVisibility v) =>
+            v == ChatPanelVisibility.Visible ? Visibility.Visible : Visibility.Collapsed;
     }
 }
