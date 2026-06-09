@@ -1069,7 +1069,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     }
 
     /// <summary>Begin a web/QR linking flow for the current default linking channel.</summary>
-    public async Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000)
+    public async Task<WebLoginResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000)
     {
         if (!IsConnected) return null;
         try
@@ -1078,7 +1078,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 "web.login.start",
                 new { force, timeoutMs },
                 timeoutMs + 5000);
-            return new WebLoginStartResult
+            return new WebLoginResult
             {
                 Message = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
                 QrDataUrl = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("qrDataUrl", out var q) && q.ValueKind == JsonValueKind.String ? q.GetString() : null,
@@ -1092,7 +1092,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             // Return a populated result with the error so the UI can surface
             // it in the diagnostic disclosure. Returning null would lose the
             // gateway's actual reason for failing.
-            return new WebLoginStartResult
+            return new WebLoginResult
             {
                 Error = ex.Message,
                 RawResponse = ex.ToString(),
@@ -1101,7 +1101,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     }
 
     /// <summary>Long-poll for QR linking completion.</summary>
-    public async Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000)
+    public async Task<WebLoginResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000)
     {
         if (!IsConnected) return null;
         try
@@ -1110,7 +1110,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 "web.login.wait",
                 new { currentQrDataUrl, timeoutMs },
                 timeoutMs + 5000);
-            return new WebLoginWaitResult
+            return new WebLoginResult
             {
                 Message = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null,
                 QrDataUrl = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("qrDataUrl", out var q) && q.ValueKind == JsonValueKind.String ? q.GetString() : null,
@@ -1121,7 +1121,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         catch (Exception ex)
         {
             _logger.Warn($"web.login.wait failed: {ex.Message}");
-            return new WebLoginWaitResult
+            return new WebLoginResult
             {
                 Error = ex.Message,
                 RawResponse = ex.ToString(),
