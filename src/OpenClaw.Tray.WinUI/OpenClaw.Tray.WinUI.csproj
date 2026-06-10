@@ -193,7 +193,17 @@
     </Task>
   </UsingTask>
 
-  <Target Name="SyncAppxManifestVersionTarget" BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest" Condition="'$(PackageMsix)' == 'true'">
+  <Target Name="SyncAppxManifestVersionTarget" BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest" DependsOnTargets="GetVersion" Condition="'$(PackageMsix)' == 'true'">
+    <!-- DependsOnTargets="GetVersion" is critical. GitVersion.MsBuild exposes
+         its GetVersion target via BeforeTargets="$(GitVersionTargetsBefore)",
+         which is empty by default in this repo, so without an explicit
+         dependency GetVersion does not run before BeforeBuild. That leaves
+         $(Version) at the .NET SDK default "1.0.0" and the manifest gets
+         stamped as 1.0.0.0 even though the assembly's AssemblyInformationalVersion
+         (populated later in the build) is correct. Setting
+         UpdateVersionProperties=true (src/Directory.Build.props) makes the
+         GetVersion task populate $(Version) from GitVersion's SemVer once it
+         runs. -->
     <!-- Fail loudly if MSIX packaging was requested but no version was supplied; without
          this, the target would silently skip and the baseline version in the source
          manifest would ship in the .msix package. -->

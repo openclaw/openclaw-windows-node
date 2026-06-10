@@ -10,6 +10,18 @@
     <!-- Audit all package dependencies (direct + transitive) for known CVEs during restore.
          Defaults to "direct" in the SDK; "all" provides broader security coverage. -->
     <NuGetAuditMode>all</NuGetAuditMode>
+
+    <!--
+      Opt GitVersion.MsBuild into populating $(Version), $(VersionPrefix), and
+      $(PackageVersion) from the resolved GitVersion. Without this, GitVersion
+      still updates the in-task assembly attributes (AssemblyVersion / FileVersion
+      / InformationalVersion), but the MSBuild $(Version) property stays at the
+      .NET SDK default of "1.0.0". OpenClaw.Tray.WinUI's SyncAppxManifestVersionTarget
+      reads $(Version) to derive the 4-part MSIX Identity/@Version, so without this
+      flag every .msix produced by build.ps1 -PackageMsix or the build-msix CI job
+      shipped tagged as 1.0.0.0 regardless of the real release version.
+    -->
+    <UpdateVersionProperties>true</UpdateVersionProperties>
   </PropertyGroup>
 
   <ItemGroup>
