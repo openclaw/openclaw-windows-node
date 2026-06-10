@@ -554,33 +554,54 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v3
+    # TEMP: GitHub Release creation disabled so we can validate the Azure
+    # Trusted Signing pipeline on a throwaway tag without publishing a public
+    # Release. Signed MSIX artifacts are surfaced as workflow artifacts only.
+    # Restore the "Create Release" step below before merging this branch.
+    - name: Upload Signed x64 MSIX (TEMP - signing pipeline test)
+      uses: actions/upload-artifact@v7
       with:
-        generate_release_notes: true
-        prerelease: ${{ contains(github.ref_name, '-') }}
-        make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
-        files: |
-          artifacts/msix-win-x64/*.msix
-          artifacts/msix-win-arm64/*.msix
-        body: |
-          ## OpenClaw Windows Hub ${{ github.ref_name }}
+        name: openclaw-msix-signed-win-x64
+        path: artifacts/msix-win-x64/*.msix
+        if-no-files-found: error
+        overwrite: true
 
-          ### Install
+    - name: Upload Signed ARM64 MSIX (TEMP - signing pipeline test)
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-msix-signed-win-arm64
+        path: artifacts/msix-win-arm64/*.msix
+        if-no-files-found: error
+        overwrite: true
 
-          OpenClaw is distributed as an MSIX package via Windows AppInstaller.
-          Use the install links in the [README](https://github.com/openclaw/openclaw-windows-node#install)
-          for the recommended path — Windows handles silent auto-updates from there.
-
-          The `.msix` files attached below are the underlying signed packages.
-          Advanced users can install them directly with `Add-AppxPackage <file>`.
-
-          ### Features
-          - 🦞 System tray integration with gateway status
-          - ✅ Code-signed with Azure Artifact Signing
-          - 🔄 Silent auto-updates via Windows AppInstaller
-
-          ### Requirements
-          - Windows 10 version 1903 or later
-          - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
-          - OpenClaw gateway running locally
+    # TEMP REVERT: re-enable this step before merging.
+    # - name: Create Release
+    #   uses: softprops/action-gh-release@v3
+    #   with:
+    #     generate_release_notes: true
+    #     prerelease: ${{ contains(github.ref_name, '-') }}
+    #     make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
+    #     files: |
+    #       artifacts/msix-win-x64/*.msix
+    #       artifacts/msix-win-arm64/*.msix
+    #     body: |
+    #       ## OpenClaw Windows Hub ${{ github.ref_name }}
+    #
+    #       ### Install
+    #
+    #       OpenClaw is distributed as an MSIX package via Windows AppInstaller.
+    #       Use the install links in the [README](https://github.com/openclaw/openclaw-windows-node#install)
+    #       for the recommended path — Windows handles silent auto-updates from there.
+    #
+    #       The `.msix` files attached below are the underlying signed packages.
+    #       Advanced users can install them directly with `Add-AppxPackage <file>`.
+    #
+    #       ### Features
+    #       - 🦞 System tray integration with gateway status
+    #       - ✅ Code-signed with Azure Artifact Signing
+    #       - 🔄 Silent auto-updates via Windows AppInstaller
+    #
+    #       ### Requirements
+    #       - Windows 10 version 1903 or later
+    #       - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
+    #       - OpenClaw gateway running locally
