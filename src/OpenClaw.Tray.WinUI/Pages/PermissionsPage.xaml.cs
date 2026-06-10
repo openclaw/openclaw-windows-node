@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 
 namespace OpenClawTray.Pages;
 
@@ -696,6 +697,7 @@ public sealed partial class PermissionsPage : Page
 
     private void SaveExecPolicyToDisk()
     {
+        string? tmpPath = null;
         try
         {
             var policyPath = Path.Combine(
@@ -716,9 +718,10 @@ public sealed partial class PermissionsPage : Page
             // The engine hot-reloads exec-policy.json on mtime/length change;
             // a non-atomic write could expose a partial file to a concurrent
             // Evaluate() and the engine would skip the (broken) update.
-            var tmpPath = policyPath + ".tmp";
+            tmpPath = $"{policyPath}.{Guid.NewGuid():N}.tmp";
             File.WriteAllText(tmpPath, json);
-            File.Move(tmpPath, policyPath, overwrite: true);
+            MoveFileWithRetry(tmpPath, policyPath);
+            tmpPath = null;
 
             // Brief inline "Saved" pill in the rules-card header. Reuses a single
             // DispatcherQueueTimer instance so rapid saves don't orphan timers.
@@ -733,6 +736,42 @@ public sealed partial class PermissionsPage : Page
             _execSavedHintTimer.Start();
         }
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        catch
+        {
+            TryDeleteTempFile(tmpPath);
+        }
+    }
+
+    private static void MoveFileWithRetry(string sourcePath, string destinationPath)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (IsTransientReplaceException(ex) && attempt < 20)
+            {
+                Thread.Sleep(5);
+            }
+        }
+    }
+
+    private static bool IsTransientReplaceException(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException;
+
+    private static void TryDeleteTempFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        // slopwatch-ignore: SW003 Cleanup is best-effort after save failure.
         catch { }
     }
 

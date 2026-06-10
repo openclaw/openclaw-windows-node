@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace OpenClaw.Shared;
 
@@ -367,6 +368,7 @@ public class ExecApprovalPolicy
     /// </summary>
     public void Save()
     {
+        string? tmpPath = null;
         try
         {
             var dir = Path.GetDirectoryName(_policyFilePath);
@@ -383,9 +385,10 @@ public class ExecApprovalPolicy
             // Atomic write: serialize to a sibling .tmp first, then replace the
             // target in one move. Guards against torn writes that would let a
             // concurrent reader (or our own hot-reload) see partial JSON.
-            var tmpPath = _policyFilePath + ".tmp";
+            tmpPath = $"{_policyFilePath}.{Guid.NewGuid():N}.tmp";
             File.WriteAllText(tmpPath, json);
-            File.Move(tmpPath, _policyFilePath, overwrite: true);
+            MoveFileWithRetry(tmpPath, _policyFilePath);
+            tmpPath = null;
 
             lock (_stateLock)
             {
@@ -394,7 +397,43 @@ public class ExecApprovalPolicy
         }
         catch (Exception ex)
         {
+            TryDeleteTempFile(tmpPath);
             _logger.Error($"[EXEC-POLICY] Failed to save: {ex.Message}");
+        }
+    }
+
+    private static void MoveFileWithRetry(string sourcePath, string destinationPath)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (IsTransientReplaceException(ex) && attempt < 20)
+            {
+                Thread.Sleep(5);
+            }
+        }
+    }
+
+    private static bool IsTransientReplaceException(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException;
+
+    private static void TryDeleteTempFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // Best-effort cleanup; the original save failure is reported by the caller.
         }
     }
 
