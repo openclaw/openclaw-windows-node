@@ -679,6 +679,45 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task SessionResetCompletion_DropsLatePreResetAgentEventAfterGateOpens()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var preResetTs = DateTimeOffset.UtcNow.AddSeconds(-5).ToUnixTimeMilliseconds();
+        var resetTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "after reset local");
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = resetTs + 2_000;
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response",
+            Ts = resetTs + 2_000
+        });
+
+        var staleAgent = MakeAgentEvent("assistant", """{"delta":"stale agent after gate"}""");
+        staleAgent.Ts = preResetTs;
+        bridge.RaiseAgent(staleAgent);
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale agent", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SessionResetCompletion_LifecycleStartBeforeSendResultOpensAfterRunAccepted()
     {
         var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

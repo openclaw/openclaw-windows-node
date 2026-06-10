@@ -3064,8 +3064,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (IsResetIgnoredRunLocked(threadId, evt.RunId, evt))
             return true;
 
+        var eventTsMs = evt.Ts > 0 ? (long)evt.Ts : 0L;
+        var cutoff = GetResetCutoffUtcMsLocked(threadId);
         if (!_resetAwaitingUserMessage.Contains(threadId))
-            return false;
+            return IsPreResetTimestampLocked(threadId, eventTsMs, cutoff);
 
         if (IsAcceptedPostResetLifecycleStartLocked(threadId, evt, _resetLifecycleStartSequence + 1))
         {
@@ -3073,8 +3075,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return false;
         }
 
-        var cutoff = GetResetCutoffUtcMsLocked(threadId);
-        if (IsPreResetTimestampLocked(threadId, evt.Ts > 0 ? (long)evt.Ts : 0L, cutoff))
+        if (IsPreResetTimestampLocked(threadId, eventTsMs, cutoff))
             return true;
 
         if (IsLifecycleStart(evt))
