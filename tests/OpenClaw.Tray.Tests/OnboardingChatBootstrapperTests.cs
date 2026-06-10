@@ -1,3 +1,4 @@
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 using System.Text.Json;
@@ -80,6 +81,92 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         Assert.False(result);
         Assert.Equal(1, client.SendCount);
         Assert.False(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SkipsPromptAndMarksBootstrapped_WhenRegistryHasExistingGatewayWithSharedToken()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { IsConnectedToGateway = true };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-existing");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-existing",
+            Url = "ws://192.168.1.10:18789",
+            SharedGatewayToken = "existing-shared-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+
+        Assert.True(result, "Should return true when existing gateway is detected.");
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap, "Gate should be marked so the check doesn't repeat.");
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SkipsPromptAndMarksBootstrapped_WhenRegistryHasExistingGatewayWithBootstrapToken()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { IsConnectedToGateway = true };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-bootstrap");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-bootstrap",
+            Url = "ws://my-gateway:18789",
+            BootstrapToken = "existing-bootstrap-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+
+        Assert.True(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenRegistryIsEmptyAndGatewayIsNew()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-new" } };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-empty");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        // Registry has no records — this is a true first-run scenario.
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-new");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenNoRegistryProvided()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-noregistry" } };
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5));
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-noregistry");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
     }
 
 #pragma warning disable CS0067

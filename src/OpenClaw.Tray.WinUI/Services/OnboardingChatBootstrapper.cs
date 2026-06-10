@@ -1,3 +1,4 @@
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using System;
 using System.Collections.Generic;
@@ -36,12 +37,27 @@ public static class OnboardingChatBootstrapper
         IOperatorGatewayClient? client,
         SettingsManager settings,
         TimeSpan? completionTimeout = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        GatewayRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
         if (settings.HasInjectedFirstRunBootstrap)
             return true;
+
+        // Guard: if the user already has a configured gateway, treat this as a non-first-run
+        // installation and silently consume the bootstrap gate without sending the prompt.
+        // This prevents the first-run ritual from firing against an already-configured workspace
+        // in cases where the HasInjectedFirstRunBootstrap flag was not persisted (e.g. fresh
+        // app install over an existing workspace, settings migration, or flag reset).
+        if (registry is not null && SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(
+                registry, settings, SettingsManager.SettingsDirectoryPath))
+        {
+            MarkBootstrapped(settings);
+            Logger.Info("[OnboardingChatBootstrapper] Existing gateway configuration detected; skipping first-run bootstrap prompt.");
+            return true;
+        }
+
         if (client == null || !client.IsConnectedToGateway)
             return false;
         if (Interlocked.CompareExchange(ref s_inFlight, 1, 0) != 0)
