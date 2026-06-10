@@ -179,6 +179,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private NodeService? _nodeService;
     // MCP-only app capability — local testing/control, not exposed to gateway
     private AppCapability? _appCapability;
+    private AppConnectionCapability? _appConnectionCapability;
     
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
@@ -551,18 +552,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 {
                     Logger.Warn("[App] NodeConnector.ClientCreated fired before settings were initialized; node may connect without capabilities");
                     diagnostics.Record("node", "WARNING: settings unavailable; cannot initialize NodeService for capability binding");
+                    throw new InvalidOperationException("Settings unavailable during node capability binding.");
                 }
-                else
-                {
-                    EnsureNodeService(_settings);
-                }
+
+                EnsureNodeService(_settings);
 
                 diagnostics.Record("node", $"ClientCreated fired, _nodeService null={_nodeService is null}");
                 if (_nodeService == null)
                 {
                     Logger.Warn("[App] NodeService unavailable during ClientCreated; node may connect with caps=0/cmds=0");
                     diagnostics.Record("node", "WARNING: NodeService unavailable; cannot bind node capabilities");
-                    return;
+                    throw new InvalidOperationException("NodeService unavailable during node capability binding.");
                 }
 
                 _nodeService.AttachClient(args.Client, args.BearerToken);
@@ -581,6 +581,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 Logger.Warn($"[App] NodeConnector.ClientCreated handler failed: {ex.Message}");
                 diagnostics.Record("node", $"ClientCreated handler THREW: {ex.Message}");
+                throw;
             }
         };
         // SshTunnelService implements ISshTunnelManager directly — no shim needed
@@ -1759,7 +1760,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 () => _keepAliveWindow?.Content as FrameworkElement,
                 settings,
                 enableMcpServer: settings.EnableMcpServer,
-                identityDataPath: IdentityDataPath);
+                identityDataPath: IdentityDataPath,
+                sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;
@@ -1784,7 +1786,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         _appCapability = new AppCapability(new AppLogger());
         _nodeService.RegisterMcpOnlyCapability(_appCapability);
+        _appConnectionCapability = new AppConnectionCapability(new AppLogger());
+        _nodeService.RegisterMcpOnlyCapability(_appConnectionCapability);
         var app = _appCapability;
+        var connection = _appConnectionCapability;
 
         app.NavigateHandler = async (page) =>
         {
@@ -1811,6 +1816,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             gatewayVersion = _appState!.GatewaySelf?.ServerVersion,
             sessionCount = _appState!.Sessions?.Length ?? 0,
             nodeCount = _appState!.Nodes?.Length ?? 0,
+            operatorScopes = _connectionManager?.OperatorClient?.GrantedOperatorScopes.ToArray() ?? Array.Empty<string>(),
+            operatorDeviceId = _connectionManager?.CurrentSnapshot.OperatorDeviceId,
         };
 
         app.SessionsHandler = async (agentId) =>
@@ -1952,6 +1959,36 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 credentialSource,
                 usesSharedGatewayToken = !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
                 hasTokenQuery = url.Contains("?token=", StringComparison.Ordinal) || url.Contains("&token=", StringComparison.Ordinal)
+            };
+        };
+
+        connection.ApplySetupCodeHandler = async setupCode =>
+        {
+            if (_connectionManager == null)
+                return new { outcome = "ConnectionFailed", error = "Connection manager is not initialized", connected = false };
+
+            var result = await _connectionManager.ApplySetupCodeAsync(setupCode);
+            return new
+            {
+                outcome = result.Outcome.ToString(),
+                error = result.ErrorMessage,
+                gatewayUrl = result.GatewayUrl,
+                connected = result.Outcome == SetupCodeOutcome.Success
+            };
+        };
+
+        connection.ConnectSharedTokenHandler = async (gatewayUrl, token) =>
+        {
+            if (_connectionManager == null)
+                return new { outcome = "ConnectionFailed", error = "Connection manager is not initialized", connected = false };
+
+            var result = await _connectionManager.ConnectWithSharedTokenAsync(gatewayUrl, token);
+            return new
+            {
+                outcome = result.Outcome.ToString(),
+                error = result.ErrorMessage,
+                gatewayUrl = result.GatewayUrl,
+                connected = result.Outcome == SetupCodeOutcome.Success
             };
         };
     }
@@ -2221,6 +2258,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var nodeService = _nodeService;
         if (status == ConnectionStatus.Connected && nodeService?.IsPaired == true)
         {
+            RefreshGatewayNodes("node connected");
             var deviceId = nodeService.FullDeviceId;
             if (_toastService!.HasRecentToast("node-paired", deviceId))
             {
@@ -2255,6 +2293,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
+                RefreshGatewayNodes("node paired");
                 // Bug 3: idempotency guard — only show "Node paired" toast/activity once
                 // per device per session. WS reconnects re-fire Paired; suppress duplicates.
                 var deviceKey = args.DeviceId ?? string.Empty;
@@ -2292,6 +2331,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Warn($"App: Failed to handle pairing status '{args.Status}' for device '{DeviceIdForLog(args.DeviceId)}': {ex.Message}");
         }
+    }
+
+    private void RefreshGatewayNodes(string reason)
+    {
+        var client = _connectionManager?.OperatorClient;
+        if (client == null || !client.IsConnectedToGateway)
+            return;
+
+        ObserveBackgroundFault(
+            client.RequestNodesAsync(),
+            $"[App] Node list refresh failed after {reason}");
     }
 
     /// <summary>

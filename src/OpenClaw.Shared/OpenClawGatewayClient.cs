@@ -24,6 +24,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     private static readonly string[] s_operatorScopes =
     [
         "operator.admin",
+        "operator.pairing",
     ];
     private static readonly string[] s_operatorBootstrapScopes =
     [
@@ -96,6 +97,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
+    private readonly bool _ignoreStoredDeviceToken;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
     public bool IsPairingRequired => _pairingRequiredAwaitingApproval;
@@ -239,11 +241,12 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
     public virtual bool IsConnectedToGateway => IsConnected;
 
-    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null)
+    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null, bool ignoreStoredDeviceToken = false)
         : base(gatewayUrl, token, logger)
     {
         _tokenIsBootstrapToken = tokenIsBootstrapToken;
         _bootstrapPairAsNode = bootstrapPairAsNode;
+        _ignoreStoredDeviceToken = ignoreStoredDeviceToken;
         _currentGatewayUrl = gatewayUrl;
         var dataPath = identityPath ?? Path.Combine(
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
@@ -252,8 +255,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
-        _connectAuthToken = _deviceIdentity.DeviceToken ?? (_tokenIsBootstrapToken ? string.Empty : _token);
-        _useV2Signature |= _tokenIsBootstrapToken && string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
+        _connectAuthToken = HasUsableOperatorDeviceToken ? _deviceIdentity.DeviceToken! : (_tokenIsBootstrapToken ? string.Empty : _token);
+        _useV2Signature |= _tokenIsBootstrapToken && !HasUsableOperatorDeviceToken;
     }
 
     public async Task DisconnectAsync()
@@ -926,10 +929,8 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         await SendTrackedRequestAsync("node.pair.list");
     }
 
-    public virtual Task<bool> NodePairApproveAsync(string requestId)
-    {
-        return TrySendTrackedRequestAsync("node.pair.approve", new { requestId });
-    }
+    public virtual Task<bool> NodePairApproveAsync(string requestId) =>
+        ApprovePairingRequestAsync("node.pair.approve", requestId, RequestNodePairListAsync);
 
     public Task<bool> NodePairRejectAsync(string requestId)
     {
@@ -1037,9 +1038,35 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         await SendTrackedRequestAsync("device.pair.list");
     }
 
-    public virtual Task<bool> DevicePairApproveAsync(string requestId)
+    public virtual Task<bool> DevicePairApproveAsync(string requestId) =>
+        ApprovePairingRequestAsync("device.pair.approve", requestId, RequestDevicePairListAsync);
+
+    private async Task<bool> ApprovePairingRequestAsync(
+        string method,
+        string requestId,
+        Func<Task> refreshPairListAsync)
     {
-        return TrySendTrackedRequestAsync("device.pair.approve", new { requestId });
+        if (string.IsNullOrWhiteSpace(requestId))
+            return false;
+        if (!IsConnected)
+            return false;
+
+        try
+        {
+            await SendWizardRequestAsync(method, new { requestId }, timeoutMs: 12000);
+            _ = refreshPairListAsync();
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.Warn($"{method} rejected: {ex.Message}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"{method} failed: {ex.Message}");
+            return false;
+        }
     }
 
     public Task<bool> DevicePairRejectAsync(string requestId)
@@ -1333,7 +1360,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     private string GetConnectRole()
     {
-        return _bootstrapPairAsNode && _tokenIsBootstrapToken && string.IsNullOrEmpty(_deviceIdentity.DeviceToken)
+        return _bootstrapPairAsNode && _tokenIsBootstrapToken && !HasUsableOperatorDeviceToken
             ? "node"
             : OperatorRole;
     }
@@ -1343,7 +1370,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         if (role == "node")
             return [];
 
-        if (string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+        if (!HasUsableOperatorDeviceToken)
         {
             // Shared gateway token (non-bootstrap) → request admin scope.
             // Bootstrap tokens get bounded scopes.
@@ -1368,9 +1395,9 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     {
         var auth = new Dictionary<string, string>();
 
-        if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
+        if (HasUsableOperatorDeviceToken)
         {
-            auth["deviceToken"] = _deviceIdentity.DeviceToken;
+            auth["deviceToken"] = _deviceIdentity.DeviceToken!;
         }
         else if (_tokenIsBootstrapToken)
         {
@@ -1388,11 +1415,14 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 
     private string GetSignatureToken()
     {
-        if (!string.IsNullOrEmpty(_deviceIdentity.DeviceToken))
-            return _deviceIdentity.DeviceToken;
+        if (HasUsableOperatorDeviceToken)
+            return _deviceIdentity.DeviceToken!;
 
         return _tokenIsBootstrapToken ? _token : _connectAuthToken;
     }
+
+    private bool HasUsableOperatorDeviceToken =>
+        !_ignoreStoredDeviceToken && !string.IsNullOrEmpty(_deviceIdentity.DeviceToken);
 
     private async Task SendTrackedRequestAsync(string method, object? parameters = null)
     {
@@ -1693,20 +1723,34 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             Volatile.Write(ref _hasHandshakeSnapshot, true);
             _logger.Info($"[HANDSHAKE] deviceId={_operatorDeviceId}, scopes=[{string.Join(", ", _grantedOperatorScopes)}], mainSession={_mainSessionKey ?? "(unset)"}");
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
-            if (_bootstrapPairAsNode)
+
+            var persistedRoleTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var roleToken in EnumerateHandshakeDeviceTokens(payload))
+            {
+                _deviceIdentity.StoreDeviceTokenForRole(roleToken.Role, roleToken.Token, roleToken.Scopes);
+                persistedRoleTokens.Add(roleToken.Role);
+                if (roleToken.Role.Equals("node", StringComparison.OrdinalIgnoreCase))
+                    _logger.Info("Node device token stored for Windows tray node reconnect");
+                else
+                    _logger.Info($"{roleToken.Role} device token stored for reconnect");
+                DeviceTokenReceived?.Invoke(this, new DeviceTokenReceivedEventArgs(roleToken.Token, roleToken.Scopes, roleToken.Role));
+            }
+
+            if (_bootstrapPairAsNode && !persistedRoleTokens.Contains("node"))
             {
                 var nodeDeviceToken = TryGetHandshakeDeviceTokenCore(payload, "node", allowDirectDeviceTokenFallback: true);
                 if (!string.IsNullOrWhiteSpace(nodeDeviceToken))
                 {
                     var nodeDeviceTokenScopes = TryGetHandshakeDeviceTokenScopesCore(payload, "node", allowDirectDeviceTokenFallback: true);
                     _deviceIdentity.StoreDeviceTokenForRole("node", nodeDeviceToken, nodeDeviceTokenScopes);
+                    persistedRoleTokens.Add("node");
                     _logger.Info("Node device token stored for Windows tray node reconnect");
                     DeviceTokenReceived?.Invoke(this, new DeviceTokenReceivedEventArgs(nodeDeviceToken, nodeDeviceTokenScopes, "node"));
                 }
             }
 
             var newDeviceToken = !_bootstrapPairAsNode
-                ? TryGetHandshakeDeviceTokenCore(payload, preferredRole: null)
+                ? (persistedRoleTokens.Contains(OperatorRole) ? null : TryGetHandshakeDeviceTokenCore(payload, preferredRole: null))
                 : TryGetHandshakeDeviceTokenCore(payload, OperatorRole, allowDirectDeviceTokenFallback: false);
             if (!string.IsNullOrWhiteSpace(newDeviceToken))
             {
@@ -2313,6 +2357,50 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
     {
         return TryGetHandshakeDeviceTokenCore(payload, preferredRole: null);
     }
+
+    private static IEnumerable<(string Role, string Token, string[]? Scopes)> EnumerateHandshakeDeviceTokens(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("auth", out var authPayload) || authPayload.ValueKind != JsonValueKind.Object)
+            yield break;
+
+        if (!authPayload.TryGetProperty("deviceTokens", out var deviceTokens) ||
+            deviceTokens.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (var entry in deviceTokens.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (!entry.TryGetProperty("role", out var roleElement) ||
+                roleElement.ValueKind != JsonValueKind.String ||
+                !entry.TryGetProperty("deviceToken", out var tokenElement) ||
+                tokenElement.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var role = roleElement.GetString();
+            var token = tokenElement.GetString();
+            if (string.IsNullOrWhiteSpace(role) ||
+                string.IsNullOrWhiteSpace(token) ||
+                !IsSupportedDeviceTokenRole(role))
+            {
+                continue;
+            }
+
+            var scopes = entry.TryGetProperty("scopes", out var roleScopes) && roleScopes.ValueKind == JsonValueKind.Array
+                ? ReadStringArray(roleScopes)
+                : [];
+            yield return (role, token, scopes);
+        }
+    }
+
+    private static bool IsSupportedDeviceTokenRole(string role) =>
+        role.Equals(OperatorRole, StringComparison.OrdinalIgnoreCase) ||
+        role.Equals("node", StringComparison.OrdinalIgnoreCase);
 
     private static string? TryGetHandshakeDeviceTokenCore(JsonElement payload, string? preferredRole)
     {

@@ -78,6 +78,26 @@ public sealed class NodeCapabilityGatingTests : IDisposable
     }
 
     [Fact]
+    public void BrowserProxyGatewayRegistration_RequiresGatewayClientAndSharedToken()
+    {
+        var s = NewSettings();
+
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: null, hasGatewayClient: true));
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "   ", hasGatewayClient: true));
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: false));
+        Assert.True(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: true));
+    }
+
+    [Fact]
+    public void BrowserProxyGatewayRegistration_RespectsUserToggle()
+    {
+        var s = NewSettings();
+        s.NodeBrowserProxyEnabled = false;
+
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: true));
+    }
+
+    [Fact]
     public void SystemRun_OnlyDisabledWhenExplicitlySetToFalse()
     {
         var s = NewSettings();

@@ -257,6 +257,7 @@ public class PairingFlowTests : IDisposable
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
 #pragma warning disable CS0067 // never raised in this test fixture — the bridge to NodeService isn't exercised here
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
 

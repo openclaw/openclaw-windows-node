@@ -100,6 +100,48 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
+    public async Task AutoApprove_WhenNodePairApproveRejects_FallsBackToDevicePairApproveWithAdminScope()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin", "operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+        lifecycle.TrackingClient.NodePairApproveResult = false;
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        var approvalDone = lifecycle.TrackingClient.WaitForApprovalCallCountAsync(2);
+        _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-device-role-upgrade");
+        await approvalDone;
+
+        var client = lifecycle.TrackingClient;
+        Assert.Equal(["node.pair.approve", "device.pair.approve"], client.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task AutoApprove_WhenNodePairApproveRejects_WithoutAdminScope_DoesNotFallbackToDevicePairApprove()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+        lifecycle.TrackingClient.NodePairApproveResult = false;
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        var approvalDone = lifecycle.TrackingClient.WaitForApprovalCallAsync();
+        _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-device-role-upgrade");
+        await approvalDone;
+
+        var client = lifecycle.TrackingClient;
+        Assert.Equal(["node.pair.approve"], client.ApprovalMethodsCalled);
+    }
+
+    [Fact]
     public async Task AutoApprove_SameRequestId_DoesNotApproveTwice()
     {
         using var manager = CreateConnectedManager();
@@ -219,8 +261,11 @@ public class NodePairAutoApproveTests : IDisposable
         private TaskCompletionSource? _approvalSignal;
         private TaskCompletionSource? _approvalCompleteSignal;
         private TaskCompletionSource? _approveGate; // blocks NodePairApproveAsync until released
+        private int _approvalCallCount;
+        private int _approvalCallTarget = 1;
 
         public IReadOnlyList<string> ApprovalMethodsCalled => _approvalMethodsCalled;
+        public bool NodePairApproveResult { get; set; } = true;
 
         public TrackingGatewayClient(string url)
             : base(url, "mock-token", NullLogger.Instance) { }
@@ -246,6 +291,15 @@ public class NodePairAutoApproveTests : IDisposable
         public Task WaitForApprovalCallAsync(int timeoutMs = 5000)
         {
             _approvalSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return _approvalSignal.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs));
+        }
+
+        public Task WaitForApprovalCallCountAsync(int count, int timeoutMs = 5000)
+        {
+            _approvalCallTarget = count;
+            _approvalSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (_approvalCallCount >= count)
+                _approvalSignal.TrySetResult();
             return _approvalSignal.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs));
         }
 
@@ -280,18 +334,25 @@ public class NodePairAutoApproveTests : IDisposable
         public override async Task<bool> NodePairApproveAsync(string requestId)
         {
             _approvalMethodsCalled.Add("node.pair.approve");
-            _approvalSignal?.TrySetResult();
+            SignalApprovalCall();
             if (_approveGate != null)
                 await _approveGate.Task;
             _approvalCompleteSignal?.TrySetResult();
-            return true;
+            return NodePairApproveResult;
         }
 
         public override Task<bool> DevicePairApproveAsync(string requestId)
         {
             _approvalMethodsCalled.Add("device.pair.approve");
-            _approvalSignal?.TrySetResult();
+            SignalApprovalCall();
             return Task.FromResult(true);
+        }
+
+        private void SignalApprovalCall()
+        {
+            var count = Interlocked.Increment(ref _approvalCallCount);
+            if (count >= _approvalCallTarget)
+                _approvalSignal?.TrySetResult();
         }
 
     }
@@ -306,6 +367,7 @@ public class NodePairAutoApproveTests : IDisposable
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
 #pragma warning disable CS0067
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
 

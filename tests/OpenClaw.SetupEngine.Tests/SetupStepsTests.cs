@@ -1230,11 +1230,57 @@ public class SetupStepsTests : IDisposable
         Assert.Empty(scopeProps);
     }
 
+    [Fact]
+    public async Task ValidateWslLockdown_RetriesWslConfReadAfterStartupTimeout()
+    {
+        var catAttempts = 0;
+        var ctx = CreateContext(commands: new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command == "cat /etc/wsl.conf")
+                {
+                    catAttempts++;
+                    return catAttempts == 1
+                        ? TimedOut()
+                        : Ok("""
+                            [boot]
+                            systemd=true
+
+                            [automount]
+                            enabled=false
+                            mountFsTab=false
+
+                            [interop]
+                            enabled=false
+                            appendWindowsPath=false
+
+                            [user]
+                            default=openclaw
+                            """);
+                }
+
+                if (command.Contains("LOCKDOWN_VALID", StringComparison.Ordinal))
+                    return Ok("LOCKDOWN_VALID\n");
+
+                return Fail("unexpected WSL command");
+            }));
+        ctx.DistroName = "test-distro";
+
+        var result = await new ValidateWslLockdownStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, catAttempts);
+    }
+
     private static CommandResult Ok(string stdout = "", string stderr = "")
         => new(0, stdout, stderr, TimeSpan.Zero, TimedOut: false);
 
     private static CommandResult Fail(string stderr = "")
         => new(1, "", stderr, TimeSpan.Zero, TimedOut: false);
+
+    private static CommandResult TimedOut()
+        => new(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
 
     private sealed class FakeCommandRunner(
         Func<string[], CommandResult> run,
