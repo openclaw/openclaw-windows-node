@@ -9,6 +9,7 @@ public sealed class TransactionJournal : IDisposable
     private readonly StreamWriter? _writer;
     private readonly List<JournalEntry> _entries = new();
     private readonly object _lock = new();
+    private readonly SetupLogger? _logger;
 
     public IReadOnlyList<JournalEntry> Entries
     {
@@ -20,9 +21,10 @@ public sealed class TransactionJournal : IDisposable
     }
     public string? FilePath { get; }
 
-    public TransactionJournal(string? filePath)
+    public TransactionJournal(string? filePath, SetupLogger? logger = null)
     {
         FilePath = filePath;
+        _logger = logger;
         if (filePath != null)
         {
             var dir = Path.GetDirectoryName(filePath);
@@ -74,6 +76,7 @@ public sealed class TransactionJournal : IDisposable
 
     private void Append(JournalEntry entry)
     {
+        IOException? writeFailure = null;
         lock (_lock)
         {
             _entries.Add(entry);
@@ -82,12 +85,14 @@ public sealed class TransactionJournal : IDisposable
                 var json = JsonSerializer.Serialize(entry, _jsonOptions);
                 _writer?.WriteLine(json);
             }
-            // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-            catch (IOException)
+            catch (IOException ex)
             {
-                // Journal write failure is non-fatal — entries are still in memory
+                writeFailure = ex;
             }
         }
+
+        if (writeFailure != null)
+            _logger?.Warn("transaction journal write failed; entries remain in memory", new { file_path = FilePath, error = writeFailure.Message });
     }
 
     private void LoadExistingEntries(string filePath)
@@ -95,8 +100,10 @@ public sealed class TransactionJournal : IDisposable
         if (!File.Exists(filePath))
             return;
 
+        var lineNumber = 0;
         foreach (var line in File.ReadLines(filePath))
         {
+            lineNumber++;
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
@@ -106,10 +113,9 @@ public sealed class TransactionJournal : IDisposable
                 if (entry != null)
                     _entries.Add(entry);
             }
-            // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-            catch (JsonException)
+            catch (JsonException ex)
             {
-                // Preserve the journal file as crash evidence even if one line is corrupt.
+                _logger?.Warn("transaction journal line is corrupt and was skipped", new { file_path = filePath, line = lineNumber, error = ex.Message });
             }
         }
     }

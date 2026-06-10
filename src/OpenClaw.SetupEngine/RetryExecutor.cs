@@ -37,7 +37,10 @@ public static class RetryExecutor
             }
             catch (Exception ex)
             {
-                logger.Error($"Step '{stepId}' threw exception (attempt {attempt}/{policy.MaxAttempts}): {ex.Message}");
+                // Logged at Warn here because we may still retry; if we exhaust retries,
+                // SetupLogger.StepCompleted will emit the authoritative Error entry with
+                // the full exception once the failing StepResult is returned.
+                logger.Warn($"Step '{stepId}' threw exception (attempt {attempt}/{policy.MaxAttempts}): {ex.Message}");
                 lastResult = StepResult.Fail($"Unhandled exception: {ex.Message}", ex);
             }
 

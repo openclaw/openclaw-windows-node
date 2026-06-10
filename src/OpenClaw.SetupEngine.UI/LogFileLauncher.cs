@@ -65,10 +65,11 @@ internal static class LogFileLauncher
                 });
             }
         }
-        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-        catch
+        catch (Exception ex)
         {
-            // best effort — the link is informational
+            // best effort — the link is informational; if shell open fails
+            // the user can navigate to the log path manually.
+            System.Diagnostics.Trace.WriteLine($"LogFileLauncher.OpenContainingFolder: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

@@ -287,6 +287,16 @@ Write-Info "Runtime identifier: $rid"
 
 $buildResults = @{}
 
+function Invoke-DotNetCaptured($arguments) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        return & dotnet @arguments 2>&1
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
 function Build-Project($name, $path, $useRid = $false) {
     Write-Host "`nBuilding $name..." -ForegroundColor White
     
@@ -295,12 +305,12 @@ function Build-Project($name, $path, $useRid = $false) {
         return $false
     }
     
+    $dotnetArgs = @("build", $path, "-c", $Configuration)
     # WinUI requires runtime identifier for self-contained WebView2 support
     if ($useRid) {
-        $result = & dotnet build $path -c $Configuration -r $rid 2>&1
-    } else {
-        $result = & dotnet build $path -c $Configuration 2>&1
+        $dotnetArgs += @("-r", $rid)
     }
+    $result = Invoke-DotNetCaptured $dotnetArgs
     $exitCode = $LASTEXITCODE
     
     if ($exitCode -eq 0) {

@@ -46,7 +46,16 @@ public sealed partial class SetupLogger : IDisposable
         => Write(LogLevel.Info, $"step.started: {displayName}", new { step_id = stepId });
 
     public void StepCompleted(string stepId, StepResult result, TimeSpan elapsed)
-        => Write(LogLevel.Info, $"step.completed: {stepId} → {result.Outcome}", new { step_id = stepId, outcome = result.Outcome.ToString(), message = result.Message, elapsed_ms = elapsed.TotalMilliseconds });
+    {
+        Write(LogLevel.Info, $"step.completed: {stepId} → {result.Outcome}", new { step_id = stepId, outcome = result.Outcome.ToString(), message = result.Message, elapsed_ms = elapsed.TotalMilliseconds });
+        if (result.Error is not null)
+        {
+            // StepResult.Fail(message, ex) preserves the original exception so
+            // callers don't have to log it inline at every catch site. Surface
+            // it here at Error level so the cause is never silently dropped.
+            Write(LogLevel.Error, $"step.exception: {stepId}: {result.Error.GetType().Name}: {result.Error.Message}", new { step_id = stepId, exception_type = result.Error.GetType().FullName, exception = result.Error.ToString() });
+        }
+    }
 
     public void CommandStarted(string exe, string[] args, TimeSpan timeout)
         => Write(LogLevel.Debug, $"cmd.start: {exe} {Sanitize(string.Join(' ', args))}", new { exe, args = args.Select(Sanitize).ToArray(), timeout_ms = timeout.TotalMilliseconds });

@@ -20,8 +20,8 @@ internal sealed class RendererCleanup : IDisposable
     public void Dispose()
     {
         var action = System.Threading.Interlocked.Exchange(ref _onDispose, null);
-        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-        try { action?.Invoke(); } catch { /* cleanup must never throw */ }
+        try { action?.Invoke(); }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"RendererCleanup: cleanup action threw: {ex.Message}"); }
     }
 }
 
@@ -95,8 +95,8 @@ public sealed class ImageRenderer : IComponentRenderer
                 loadCts = null;
                 if (prev != null)
                 {
-                    // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-                    try { prev.Cancel(); } catch { }
+                    try { prev.Cancel(); }
+                    catch (Exception ex) { ctx.Logger?.Debug($"[A2UI] Image url-cleared: prev CTS cancel failed: {ex.Message}"); }
                     prev.Dispose();
                 }
                 image.Source = null;
@@ -115,8 +115,8 @@ public sealed class ImageRenderer : IComponentRenderer
             loadCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20));
             if (prevCts != null)
             {
-                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-                try { prevCts.Cancel(); } catch { }
+                try { prevCts.Cancel(); }
+                catch (Exception ex) { ctx.Logger?.Debug($"[A2UI] Image swap: prev CTS cancel failed: {ex.Message}"); }
                 prevCts.Dispose();
             }
             _ = LoadAsync(image, url, generation, token, loadCts.Token, ctx.Logger);
@@ -130,8 +130,8 @@ public sealed class ImageRenderer : IComponentRenderer
             var cts = loadCts;
             loadCts = null;
             if (cts == null) return;
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { cts.Cancel(); } catch { }
+            try { cts.Cancel(); }
+            catch (Exception ex) { ctx.Logger?.Debug($"[A2UI] Image surface rebuild: CTS cancel failed: {ex.Message}"); }
             cts.Dispose();
         }));
         // A2UI carries alt text in `description` (preferred) or `label` for images.

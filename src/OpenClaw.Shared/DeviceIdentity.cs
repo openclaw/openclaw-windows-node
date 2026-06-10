@@ -533,10 +533,11 @@ public class DeviceIdentity
             McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort cleanup */ }
+            System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            catch (Exception delEx) { System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: temp cleanup failed: {delEx.GetType().Name}: {delEx.Message}"); }
             throw;
         }
         McpAuthToken.TryRestrictSensitiveFileAcl(path);

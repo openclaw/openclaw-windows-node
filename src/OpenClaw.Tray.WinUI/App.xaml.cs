@@ -310,8 +310,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
         }
-        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-        catch { }
+        catch (Exception ex)
+        {
+            // Process is exiting; the logger writer may already be torn down.
+            // Nothing we can do — Trace.WriteLine matches the standard set in
+            // Services/Logger.cs's own ProcessExit handler; Console.Error is a
+            // belt-and-suspenders backup in case no Trace listener is attached.
+            try { System.Diagnostics.Trace.WriteLine($"App.OnProcessExit: logger unavailable: {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception) { /* Trace itself failed during process exit. */ }
+            try { Console.Error.WriteLine($"Process exiting (logger unavailable): {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception) { /* Console.Error itself failed during process exit — nothing left to call. */ }
+        }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -331,8 +340,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return protocolArgs.Uri?.ToString();
             }
         }
-        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-        catch { /* Not activated via protocol, or not packaged */ }
+        catch (Exception ex)
+        {
+            // Not activated via protocol, or not packaged. Surface at Debug for diagnostics.
+            Logger.Debug($"GetProtocolActivationUri: {ex.GetType().Name}: {ex.Message}");
+        }
         return null;
     }
 
@@ -1103,8 +1115,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
                     .AddText(ex.Message));
             }
-            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-            catch { }
+            catch (Exception toastEx)
+            {
+                // Toast surface failed while reporting an outer error — outer error already logged above.
+                Logger.Debug($"App: Session action failure toast suppressed: {toastEx.Message}");
+            }
         }
     }
 
@@ -1777,7 +1792,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             var queued = _dispatcherQueue?.TryEnqueue(() =>
             {
                 try { ShowHub(page); tcs.SetResult(new { navigated = true, page }); }
-                catch (Exception ex) { tcs.SetResult(new { navigated = false, error = ex.Message }); }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"App: NavigationHandler ShowHub('{page}') failed: {ex.Message}");
+                    tcs.SetResult(new { navigated = false, error = ex.Message });
+                }
             }) ?? false;
             if (!queued) tcs.TrySetResult(new { navigated = false, error = "UI thread unavailable" });
             return await tcs.Task;
@@ -1885,7 +1904,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _settings.Save();
                 return new { name, value = prop.GetValue(_settings) };
             }
-            catch (Exception ex) { return new { error = ex.Message }; }
+            catch (Exception ex)
+            {
+                Logger.Warn($"App: SettingsHandler set '{name}' failed: {ex.Message}");
+                return new { error = ex.Message };
+            }
         };
 
         app.MenuHandler = () =>
@@ -1943,6 +1966,238 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
     }
 
+    /// <summary>
+    /// Ensures a WSL keepalive process is running for the local gateway distro
+    /// so the WSL2 VM stays up even after the tray exits.
+    /// Best-effort, fire-and-forget.
+    /// </summary>
+    private async Task TryEnsureLocalGatewayKeepAliveAsync()
+    {
+        try
+        {
+            if (_settings is null) return;
+
+            var activeRecord = _gatewayRegistry?.GetActive();
+            if (!WslKeepAlivePolicy.ShouldStart(activeRecord, _settings.GetEffectiveGatewayUrl()))
+            {
+                await StopStaleLocalGatewayKeepAliveAsync();
+                return;
+            }
+
+            var distroName = await ResolveLocalGatewayDistroNameAsync(activeRecord);
+            if (string.IsNullOrWhiteSpace(distroName)) return;
+
+            // Verify distro exists before spawning keepalive
+            var runner = new WslExeCommandRunner(new AppLogger(), defaultTimeout: TimeSpan.FromSeconds(4));
+            var distros = await runner.ListDistrosAsync();
+            if (!distros.Any(d => string.Equals(d.Name, distroName, StringComparison.OrdinalIgnoreCase)))
+            {
+                Logger.Warn($"[WslKeepAlive] Distro '{distroName}' not found; skipping keepalive.");
+                return;
+            }
+
+            // Spawn a detached wsl sleep process to keep the VM alive
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = ResolveWslExePath(),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-d");
+            psi.ArgumentList.Add(distroName);
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add("sleep");
+            psi.ArgumentList.Add("infinity");
+
+            var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is not null)
+            {
+                Logger.Info($"[WslKeepAlive] Started keepalive for {distroName} (PID {proc.Id}).");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Startup keepalive failed (non-fatal): {ex.Message}");
+        }
+    }
+
+    private async Task StopStaleLocalGatewayKeepAliveAsync()
+    {
+        try
+        {
+            var localDataDir = SetupExistingGatewayClassifier.ResolveLocalDataPath();
+            var markerDir = Path.Combine(localDataDir, "wsl-keepalive");
+            var markerDistroNames = ReadKeepAliveMarkerDistroNames(markerDir);
+            var setupStateDistroName = await ReadSetupStateDistroNameAsync(localDataDir);
+            var records = _gatewayRegistry?.GetAll() ?? [];
+
+            foreach (var distroName in WslKeepAlivePolicy.FindStaleSetupManagedDistroNames(
+                records,
+                markerDistroNames,
+                setupStateDistroName))
+            {
+                StopKeepAliveProcessesForDistro(distroName);
+                DeleteKeepAliveMarker(markerDir, distroName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Stale keepalive cleanup failed (non-fatal): {ex.Message}");
+        }
+    }
+
+    private static IReadOnlyList<string> ReadKeepAliveMarkerDistroNames(string markerDir)
+    {
+        if (!Directory.Exists(markerDir))
+            return [];
+
+        var distroNames = new List<string>();
+        foreach (var markerPath in Directory.EnumerateFiles(markerDir, "*.json"))
+        {
+            if (WslKeepAlivePolicy.TryGetMarkerDistroName(File.ReadAllText(markerPath), out var distroName))
+                distroNames.Add(distroName);
+        }
+
+        return distroNames;
+    }
+
+    private static async Task<string?> ReadSetupStateDistroNameAsync(string localDataDir)
+    {
+        var stateFile = Path.Combine(localDataDir, "setup-state.json");
+        if (!File.Exists(stateFile))
+            return null;
+
+        var json = await File.ReadAllTextAsync(stateFile);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("DistroName", out var distroElement)
+            ? distroElement.GetString()
+            : null;
+    }
+
+    private static void StopKeepAliveProcessesForDistro(string distroName)
+    {
+        var procs = System.Diagnostics.Process.GetProcessesByName("wsl")
+            .Concat(System.Diagnostics.Process.GetProcessesByName("wsl.exe"));
+
+        foreach (var proc in procs)
+        {
+            try
+            {
+                if (WslKeepAlivePolicy.IsKeepaliveCommandLine(GetProcessCommandLine(proc.Id), distroName))
+                {
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(5000);
+                    Logger.Info($"[WslKeepAlive] Stopped stale keepalive for {distroName} (PID {proc.Id}).");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Process may have exited while being inspected — common race; log at Debug.
+                Logger.Debug($"[WslKeepAlive] Inspect/stop race for PID {proc.Id}: {ex.GetType().Name}: {ex.Message}");
+            }
+            finally
+            {
+                proc.Dispose();
+            }
+        }
+    }
+
+    private static void DeleteKeepAliveMarker(string markerDir, string distroName)
+    {
+        if (!Directory.Exists(markerDir))
+            return;
+
+        foreach (var markerPath in Directory.EnumerateFiles(markerDir, "*.json"))
+        {
+            try
+            {
+                if (WslKeepAlivePolicy.TryGetMarkerDistroName(File.ReadAllText(markerPath), out var markerDistro)
+                    && string.Equals(markerDistro, distroName, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(markerPath);
+                    Logger.Info($"[WslKeepAlive] Deleted stale keepalive marker for {distroName}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Best-effort cleanup; stale/corrupt markers are not fatal. Log at Debug for diagnostics.
+                Logger.Debug($"[WslKeepAlive] Failed to process marker '{markerPath}': {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
+    private static string? GetProcessCommandLine(int pid)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p == null) return null;
+            var output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            return output.Trim();
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"App: GetProcessCommandLine(pid={pid}) failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static string ResolveWslExePath()
+    {
+        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        if (string.IsNullOrWhiteSpace(windowsDir))
+            windowsDir = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
+
+        return Path.Combine(windowsDir, "System32", "wsl.exe");
+    }
+
+    /// <summary>
+    /// Resolves the WSL distro name to keep alive. Prefers the value persisted by
+    /// onboarding in <c>setup-state.json</c> so the keepalive always targets the distro
+    /// the user actually installed. In DEBUG / test builds, an
+    /// <c>OPENCLAW_WSL_DISTRO_NAME</c> environment override is honored to match
+    /// Resolves the local gateway distro name by reading setup-state.json.
+    /// Falls back to "OpenClawGateway" if not found.
+    /// </summary>
+    private async Task<string?> ResolveLocalGatewayDistroNameAsync(GatewayRecord? activeRecord)
+    {
+        string? setupStateDistroName = null;
+        try
+        {
+            var stateFile = Path.Combine(
+                SetupExistingGatewayClassifier.ResolveLocalDataPath(),
+                "setup-state.json");
+
+            if (File.Exists(stateFile))
+            {
+                var json = await File.ReadAllTextAsync(stateFile);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("DistroName", out var dn) &&
+                    dn.GetString() is { Length: > 0 } distroName)
+                {
+                    setupStateDistroName = distroName;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Failed to read setup-state.json: {ex.Message}");
+        }
+
+        return WslKeepAlivePolicy.ResolveDistroName(
+            activeRecord,
+            setupStateDistroName,
+            Environment.GetEnvironmentVariable("OPENCLAW_WSL_DISTRO_NAME"));
+    }
+
     // The pre-unification ShouldInitializeNodeService(GatewayRecord, string) overload
     // and LocalNodeServiceOwnsIdentityFor have been removed: GatewayConnectionManager
     // is now the single owner of the WindowsNodeClient lifecycle for ALL gateways
@@ -1981,8 +2236,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     "node-connected",
                     deviceId);
             }
-            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-            catch { /* ignore */ }
+            catch (Exception ex)
+            {
+                Logger.Warn($"App: Failed to show node-connected toast for device '{DeviceIdForLog(deviceId)}': {ex.Message}");
+            }
         }
     }
 
@@ -2013,7 +2270,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 else
                 {
-                    Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
+                    Logger.Info($"App: Suppressing duplicate Paired toast for device {DeviceIdForLog(deviceKey)}");
                 }
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
@@ -2026,8 +2283,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     args.DeviceId);
             }
         }
-        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-        catch { /* ignore */ }
+        catch (ObjectDisposedException ex)
+        {
+            // Shutdown race: the toast infrastructure is gone. Routine, not a bug.
+            Logger.Debug($"App: OnPairingStatusChanged handler skipped during shutdown (status={args.Status}): {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"App: Failed to handle pairing status '{args.Status}' for device '{DeviceIdForLog(args.DeviceId)}': {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -2037,6 +2301,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public static string BuildPairingApprovalCommand(string deviceId) =>
         $"openclaw devices approve {deviceId}";
+
+    private static string DeviceIdForLog(string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return "<none>";
+
+        var sanitized = TokenSanitizer.Sanitize(deviceId.Trim());
+        if (sanitized.Contains("[REDACTED", StringComparison.Ordinal))
+            return sanitized;
+
+        return sanitized.Length <= 8 ? sanitized : $"{sanitized[..8]}...";
+    }
 
     public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
     {
@@ -2568,8 +2844,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 _hubWindow.AppWindow.Show(activateWindow: false);
             }
-            // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
-            catch { /* swallow */ }
+            catch (Exception ex)
+            {
+                Logger.Debug($"App: Failed to show hub window without activation before tray menu: {ex.Message}");
+            }
         }
     }
 
@@ -3249,7 +3527,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     if (!token.IsCancellationRequested)
                     {
                         Logger.Warn($"Deep link server error: {ex.Message}");
-                        try { await Task.Delay(1000, token); } catch { break; }
+                        try { await Task.Delay(1000, token); }
+                        catch (OperationCanceledException) { break; } // Expected: server cancelled, exit loop.
+                        catch (Exception delayEx)
+                        {
+                            // Defensive: keep the loop resilient even if future code adds awaits that throw other types.
+                            Logger.Debug($"App: Deep link server delay failed: {delayEx.GetType().Name}: {delayEx.Message}");
+                            break;
+                        }
                     }
                 }
             }

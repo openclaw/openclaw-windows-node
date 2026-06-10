@@ -198,8 +198,7 @@ public sealed class AudioPipeline : IAsyncDisposable
             });
 
             SetState(AudioPipelineState.Listening);
-            // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-            try { DiagnosticMessage?.Invoke($"Recording {durationMs / 1000.0:F1}s..."); } catch { }
+            SafeRaiseDiag($"Recording {durationMs / 1000.0:F1}s...");
 
             try
             {
@@ -212,14 +211,8 @@ public sealed class AudioPipeline : IAsyncDisposable
             }
 
             // Stop capture and give NAudio a moment to flush its last buffer.
-            try
-            {
-                _capture?.StopRecording();
-            }
-            catch (Exception ex)
-            {
-                _logger.Warn($"Failed to stop fixed-duration audio capture cleanly: {ex.Message}");
-            }
+            try { _capture?.StopRecording(); }
+            catch (Exception ex) { _logger.Debug($"AudioPipeline: StopRecording during fixed-capture teardown threw: {ex.Message}"); }
             await Task.Delay(150).ConfigureAwait(false);
 
             return _fixedCaptureBuffer.ToArray();
@@ -330,8 +323,7 @@ public sealed class AudioPipeline : IAsyncDisposable
         {
             _logger.Error("Error processing audio data", ex);
             if (_dataCallbackCount <= 3)
-                // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-                try { DiagnosticMessage?.Invoke($"⚠️ Audio error: {ex.Message}"); } catch { }
+                SafeRaiseDiag($"⚠️ Audio error: {ex.Message}");
         }
     }
 
@@ -370,10 +362,9 @@ public sealed class AudioPipeline : IAsyncDisposable
                     _isSpeaking = true;
                     _silenceChunksCount = 0;
                     _speechChunkCount = 0;
-                    // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-                    try { VoiceActivityChanged?.Invoke(new VadEvent { IsSpeaking = true, Probability = energy }); } catch { }
-                    // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-                    try { DiagnosticMessage?.Invoke("🗣️ Listening..."); } catch { }
+                    try { VoiceActivityChanged?.Invoke(new VadEvent { IsSpeaking = true, Probability = energy }); }
+                    catch (Exception ex) { _logger.Debug($"AudioPipeline: VoiceActivityChanged(start) handler threw: {ex.Message}"); }
+                    SafeRaiseDiag("🗣️ Listening...");
 
                     // Prepend the pre-buffer so we don't lose the speech onset
                     while (_preBuffer.Count > 0)
@@ -391,8 +382,8 @@ public sealed class AudioPipeline : IAsyncDisposable
                 if (_silenceChunksCount >= _silenceChunksThreshold)
                 {
                     _isSpeaking = false;
-                    // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-                    try { VoiceActivityChanged?.Invoke(new VadEvent { IsSpeaking = false, Probability = energy }); } catch { }
+                    try { VoiceActivityChanged?.Invoke(new VadEvent { IsSpeaking = false, Probability = energy }); }
+                    catch (Exception ex) { _logger.Debug($"AudioPipeline: VoiceActivityChanged(stop) handler threw: {ex.Message}"); }
 
                     var samples = _speechBuffer.ToArray();
                     _speechBuffer.Clear();
@@ -402,13 +393,11 @@ public sealed class AudioPipeline : IAsyncDisposable
                     var durationSec = (float)samples.Length / PipelineSampleRate;
                     if (_speechChunkCount < 10) // less than ~320ms of actual speech
                     {
-                        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-                        try { DiagnosticMessage?.Invoke("Speak now — I'm listening"); } catch { }
+                        SafeRaiseDiag("Speak now — I'm listening");
                     }
                     else
                     {
-                        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-                        try { DiagnosticMessage?.Invoke($"Transcribing {durationSec:F1}s of speech..."); } catch { }
+                        SafeRaiseDiag($"Transcribing {durationSec:F1}s of speech...");
 
                         // Bounded in-flight count. If Whisper is stuck or
                         // slow, dropping a segment is preferable to letting
@@ -416,8 +405,7 @@ public sealed class AudioPipeline : IAsyncDisposable
                         if (Interlocked.Increment(ref _inFlightTranscriptions) > MaxConcurrentTranscriptions)
                         {
                             Interlocked.Decrement(ref _inFlightTranscriptions);
-                            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-                            try { DiagnosticMessage?.Invoke("⚠️ Transcription backlog — segment dropped"); } catch { }
+                            SafeRaiseDiag("⚠️ Transcription backlog — segment dropped");
                         }
                         else
                         {
@@ -430,8 +418,7 @@ public sealed class AudioPipeline : IAsyncDisposable
                                 catch (Exception ex)
                                 {
                                     _logger.Error("Transcription task failed", ex);
-                                    // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-                                    try { DiagnosticMessage?.Invoke($"⚠️ Error: {ex.Message}"); } catch { }
+                                    SafeRaiseDiag($"⚠️ Error: {ex.Message}");
                                 }
                                 finally
                                 {
@@ -478,8 +465,7 @@ public sealed class AudioPipeline : IAsyncDisposable
 
             if (results.Count == 0)
             {
-                // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-                try { DiagnosticMessage?.Invoke("No speech recognized in segment"); } catch { }
+                SafeRaiseDiag("No speech recognized in segment");
             }
 
             foreach (var result in results)
@@ -526,8 +512,7 @@ public sealed class AudioPipeline : IAsyncDisposable
             _logger.Error("Transcription failed", ex);
             // Sanitized — the raw ex.Message can include sample lengths,
             // language tags, or other audio-shape detail.
-            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-            try { DiagnosticMessage?.Invoke("⚠️ Transcription error"); } catch { }
+            SafeRaiseDiag("⚠️ Transcription error");
         }
         finally
         {
@@ -703,5 +688,15 @@ public sealed class AudioPipeline : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
+    }
+
+    // Helpers: per-frame UI event invokers throw if a subscriber misbehaves.
+    // We don't want a misbehaving subscriber to take down the audio pipeline,
+    // but we also don't want to silently swallow the exception. Log at Debug
+    // (these fire many times per second so Warn would flood the log).
+    private void SafeRaiseDiag(string message)
+    {
+        try { DiagnosticMessage?.Invoke(message); }
+        catch (Exception ex) { _logger.Debug($"AudioPipeline: DiagnosticMessage handler threw: {ex.Message}"); }
     }
 }

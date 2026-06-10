@@ -1453,7 +1453,7 @@
     <value>OpenClaw Hub</value>
   </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+    <value>.NET / WinUI / Windows App SDK</value>
   </data>
   <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
     <value>网关信息</value>
@@ -1462,7 +1462,7 @@
     <value>版本：</value>
   </data>
   <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>模型：</value>
+    <value>协议：</value>
   </data>
   <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
     <value>身份验证模式：</value>
@@ -1489,7 +1489,7 @@
     <value>链接</value>
   </data>
   <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → openclaw.ai/docs</value>
+    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
   </data>
   <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
     <value>GitHub → github.com/openclaw/openclaw-windows-node</value>

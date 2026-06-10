@@ -238,10 +238,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (a.Type == "image" && !string.IsNullOrEmpty(a.FileName) && !string.IsNullOrEmpty(a.Content))
                 {
                     try { ImagePreviewCache[a.FileName] = Convert.FromBase64String(a.Content); }
-                    catch (FormatException ex)
-                    {
-                        Logger.Debug($"Image preview cache skipped invalid Base64 attachment content: {ex.Message}");
-                    }
+                    catch (Exception ex) { Logger.Debug($"ChatDataProvider: image attachment base64 decode failed for '{a.FileName}': {ex.Message}"); }
                 }
             }
         }
@@ -3062,10 +3059,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             File.WriteAllText(tmp, json);
             File.Move(tmp, LastChatStateFilePath, overwrite: true);
         }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Last chat state could not be saved: {ex.Message}");
-        }
+        catch (Exception ex) { Logger.Debug($"ChatDataProvider: persist LastChatState failed: {ex.Message}"); }
     }
 
     private void RaiseNotification(ChatProviderNotification notification)
@@ -3125,10 +3119,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(AbortedIdsFilePath, json);
         }
-        catch (Exception ex)
-        {
-            Logger.Debug($"Aborted message IDs could not be saved: {ex.Message}");
-        }
+        catch (Exception ex) { Logger.Debug($"ChatDataProvider: persist aborted IDs failed: {ex.Message}"); }
     }
 
     // ── Tool metadata persistence ─────────────────────────────────────
@@ -3511,15 +3502,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     }
                     catch (Exception ex)
                     {
-                        Logger.Debug($"Tool metadata temp file cleanup failed: {ex.Message}");
+                        // Best-effort cleanup; persistence remains best-effort.
+                        Logger.Debug($"ChatDataProvider: temp tool-meta file delete failed: {ex.Message}");
                     }
                 }
             }
         }
-        catch (Exception ex)
-        {
-            Logger.Debug($"Tool metadata cache could not be saved: {ex.Message}");
-        }
+        catch (Exception ex) { Logger.Debug($"ChatDataProvider: persist tool meta cache failed: {ex.Message}"); }
     }
 
     /// <summary>
