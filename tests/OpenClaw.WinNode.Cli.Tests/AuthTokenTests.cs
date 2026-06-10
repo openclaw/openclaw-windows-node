@@ -25,6 +25,7 @@ public class AuthTokenTests : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_sandboxDir, recursive: true); } catch { /* best effort */ }
     }
 
@@ -334,6 +335,7 @@ public class AuthTokenTests : IDisposable
         finally
         {
             // Restore so Dispose() can delete the file.
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { RestoreOwnerFullControl(path); } catch { }
         }
     }

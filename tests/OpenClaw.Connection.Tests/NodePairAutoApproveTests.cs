@@ -34,6 +34,7 @@ public class NodePairAutoApproveTests : IDisposable
     public void Dispose()
     {
         _nodeConnector.Dispose();
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 

@@ -169,13 +169,15 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
     private static void TryDelete(string? path)
     {
         if (string.IsNullOrEmpty(path)) return;
-        try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort */ }
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch (Exception ex) { Trace.WriteLine($"DirectAppContainerExecutor.TryDelete '{path}' (best-effort) failed: {ex.Message}"); }
     }
 
     private static void TryDeleteDir(string? path)
     {
         if (string.IsNullOrEmpty(path)) return;
-        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch { /* best-effort */ }
+        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
+        catch (Exception ex) { Trace.WriteLine($"DirectAppContainerExecutor.TryDeleteDir '{path}' (best-effort) failed: {ex.Message}"); }
     }
 
     private void LogConfig(MxcConfig config, string configJson, SandboxExecutionRequest request)
@@ -253,10 +255,11 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
                         "commands that need that path may fail.");
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 // Best-effort diagnostic only. The command result should reflect
                 // the real MXC failure if the volume cannot be queried.
+                _logger.Debug($"DirectAppContainerExecutor: volume filesystem probe failed: {ex.Message}");
             }
         }
     }

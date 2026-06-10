@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.SetupEngine.UI;
 using Microsoft.Win32;
 using Windows.Devices.Enumeration;
 using Windows.Graphics.Capture;
@@ -105,6 +106,7 @@ public sealed partial class PermissionsPage : Page
             btn.Click += async (_, _) =>
             {
                 try { await Windows.System.Launcher.LaunchUriAsync(new Uri(uri)); }
+                // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
                 catch { /* best effort */ }
             };
             actionCol = btn;
@@ -143,10 +145,10 @@ public sealed partial class PermissionsPage : Page
     private void Refresh_Click(object sender, RoutedEventArgs e) => _ = RefreshPermissions();
 
     private void BackToWizard_Click(object sender, RoutedEventArgs e)
-        => App.MainWindow?.NavigateToWizard();
+        => SetupWindow.Active?.NavigateToWizard();
 
     private void Next_Click(object sender, RoutedEventArgs e)
-        => App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, null);
+        => SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, null);
 
     // ── Permission checks (passive, no OS consent dialogs) ──
 

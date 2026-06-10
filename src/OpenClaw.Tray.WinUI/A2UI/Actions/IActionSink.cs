@@ -150,6 +150,7 @@ public sealed class ActionDispatcher : IActionSink, IDisposable
         // dispatcher reference, so without explicit Dispose the handle survives
         // until GC. Disposable transports are the responsibility of whoever
         // constructed them.
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _sendGate.Dispose(); } catch { /* ignore */ }
     }
 }

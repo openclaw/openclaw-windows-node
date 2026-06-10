@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.Chat.Explorations;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -490,7 +491,11 @@ public sealed class OpenClawChatRoot : Component
                     if (cancelled) return;
                     dq?.TryEnqueue(() => { if (!cancelled) welcomeSettledState.Set(true); });
                 }
-                catch { }
+                catch (OperationCanceledException)
+                {
+                    // Cancellation is expected when the welcome eligibility signal changes.
+                }
+                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatRoot: welcome settle race: {ex.Message}"); }
             });
             return () => { cancelled = true; };
         }),
@@ -838,10 +843,9 @@ public sealed class OpenClawChatRoot : Component
                 sb.Children.Add(anim);
                 sb.Begin();
             }
-            catch
+            catch (Exception ex)
             {
-                // Animations are non-essential — never let a storyboard error
-                // disrupt the skeleton surface render.
+                OpenClawTray.Services.Logger.Debug($"ChatRoot: skeleton storyboard animation failed (non-essential): {ex.Message}");
             }
         };
     }
@@ -959,6 +963,7 @@ public sealed class OpenClawChatRoot : Component
         _ = Task.Run(async () =>
         {
             try { await op(CancellationToken.None); }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) { /* expected */ }
             catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[chat] op failed: {ex}"); }
         });

@@ -3,6 +3,7 @@ using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -11,6 +12,9 @@ namespace OpenClawTray.Helpers;
 
 internal static class CommandCenterTextHelper
 {
+    private const int RecentTrayLogTailLines = 120;
+    private const int RecentTrayLogMaxChars = 24_000;
+
     // Pre-compiled patterns used in RedactSupportPath / RedactSupportValue.
     // Compiled once at startup; reused on every diagnostic / support-text build.
     private static readonly Regex PathWindowsUserPattern = new(
@@ -24,7 +28,7 @@ internal static class CommandCenterTextHelper
         TimeSpan.FromMilliseconds(100));
 
     private static readonly Regex ValueUrlHostPattern = new(
-        @"\b[a-z][a-z0-9+.-]*://(?:[^@\s/]+@)?([^:/\s]+)",
+        @"\b(?<scheme>[a-z][a-z0-9+.-]*)://(?:[^@\s/]+@)?(?<host>\[[^\]\s]+\]|[^:/\s]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
 
@@ -32,6 +36,10 @@ internal static class CommandCenterTextHelper
         @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
         RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
+
+    // IPv6 regex is shared with TokenSanitizer to keep log sanitization and support-context
+    // redaction in lock-step. See TokenSanitizer.IpV6Pattern for the alternative-by-alternative
+    // breakdown and the rationale for the trailing negative lookahead.
 
     private static readonly Regex ValueEmailPattern = new(
         @"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b",
@@ -120,6 +128,7 @@ internal static class CommandCenterTextHelper
         AppendSection(builder, "Channel Summary", BuildChannelSummaryText(state.Channels));
         AppendSection(builder, "Activity Summary", BuildActivitySummary(state.RecentActivity));
         AppendSection(builder, "Extensibility Summary", BuildExtensibilitySummary(state.Channels));
+        AppendSection(builder, "Recent Tray Log", BuildRecentTrayLogTail(Logger.LogFilePath));
         return builder.ToString();
     }
 
@@ -325,6 +334,61 @@ internal static class CommandCenterTextHelper
         builder.AppendLine();
     }
 
+    private static string BuildRecentTrayLogTail(string? logPath)
+    {
+        if (string.IsNullOrWhiteSpace(logPath))
+            return "Tray log path is not configured.";
+
+        if (!File.Exists(logPath))
+            return $"Tray log does not exist: {RedactSupportPath(logPath)}";
+
+        var lines = new Queue<string>(RecentTrayLogTailLines);
+        try
+        {
+            using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                lines.Enqueue(RedactSupportLogLine(line));
+                while (lines.Count > RecentTrayLogTailLines)
+                    lines.Dequeue();
+            }
+        }
+        catch (IOException ex)
+        {
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
+        }
+
+        if (lines.Count == 0)
+            return $"Tray log is empty: {RedactSupportPath(logPath)}";
+
+        var builder = new StringBuilder();
+        builder.AppendLine($"Source: {RedactSupportPath(logPath)}");
+        builder.AppendLine($"Showing the last {lines.Count} lines. Sensitive values are redacted before writing and again before bundling.");
+        foreach (var line in lines)
+        {
+            if (builder.Length >= RecentTrayLogMaxChars)
+            {
+                builder.AppendLine("... truncated ...");
+                break;
+            }
+
+            builder.AppendLine(line);
+        }
+
+        return builder.ToString();
+    }
+
+    // SanitizeLogMessage already performs the same folder + Windows/Unix user-path redactions
+    // that an earlier version of this helper duplicated here. Delegating avoids redundant
+    // allocations on every diagnostic-bundle line.
+    private static string RedactSupportLogLine(string line)
+        => TokenSanitizer.SanitizeLogMessage(line);
+
     private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
     {
         if (browserProxyPort is < 1 or > 65535)
@@ -368,31 +432,39 @@ internal static class CommandCenterTextHelper
         if (string.IsNullOrWhiteSpace(path))
             return "not configured";
 
-        var redacted = path;
-        var knownFolders = new Dictionary<string, string>
+        try
         {
-            [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)] = "%USERPROFILE%",
-            [Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)] = "%APPDATA%",
-            [Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)] = "%LOCALAPPDATA%",
-            [Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)] = "%USERPROFILE%\\Documents"
-        };
-
-        foreach (var (folder, replacement) in knownFolders
-                     .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
-                     .OrderByDescending(pair => pair.Key.Length))
-        {
-            if (redacted.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+            var redacted = path;
+            var knownFolders = new Dictionary<string, string>
             {
-                redacted = replacement + redacted[folder.Length..];
-                break;
+                [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)] = "%USERPROFILE%",
+                [Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)] = "%APPDATA%",
+                [Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)] = "%LOCALAPPDATA%",
+                [Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)] = "%USERPROFILE%\\Documents"
+            };
+
+            foreach (var (folder, replacement) in knownFolders
+                         .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+                         .OrderByDescending(pair => pair.Key.Length))
+            {
+                if (redacted.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+                {
+                    redacted = replacement + redacted[folder.Length..];
+                    break;
+                }
             }
+
+            redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
+
+            redacted = PathUnixUserPattern.Replace(redacted, "$HOME");
+
+            return redacted;
         }
-
-        redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
-
-        redacted = PathUnixUserPattern.Replace(redacted, "$HOME");
-
-        return redacted;
+        catch (RegexMatchTimeoutException)
+        {
+            // Fail-closed: see TokenSanitizer.SanitizerTimeoutSentinel.
+            return TokenSanitizer.SanitizerTimeoutSentinel;
+        }
     }
 
     private static string RedactSupportValue(string? value)
@@ -400,21 +472,31 @@ internal static class CommandCenterTextHelper
         if (string.IsNullOrWhiteSpace(value))
             return "unknown";
 
-        var redacted = ValueUrlHostPattern.Replace(
-            value,
-            match => match.Value.Replace(match.Groups[1].Value, "<host>"));
+        try
+        {
+            var redacted = ValueUrlHostPattern.Replace(
+                value,
+                match => $"{match.Groups["scheme"].Value}://<host>");
 
-        redacted = ValueIpPattern.Replace(redacted, "<ip>");
+            redacted = TokenSanitizer.IpV6Pattern.Replace(redacted, TokenSanitizer.RedactIfValidIpV6);
 
-        redacted = ValueEmailPattern.Replace(redacted, "<email>");
+            redacted = ValueIpPattern.Replace(redacted, "<ip>");
 
-        redacted = ValueUserAtHostPattern.Replace(redacted, "<user>@<host>");
+            redacted = ValueEmailPattern.Replace(redacted, "<email>");
 
-        redacted = ValueHostAfterToPattern.Replace(redacted, "<host>");
+            redacted = ValueUserAtHostPattern.Replace(redacted, "<user>@<host>");
 
-        redacted = ValueLeadingHostPattern.Replace(redacted, "<host>");
+            redacted = ValueHostAfterToPattern.Replace(redacted, "<host>");
 
-        return redacted;
+            redacted = ValueLeadingHostPattern.Replace(redacted, "<host>");
+
+            return redacted;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // Fail-closed: see TokenSanitizer.SanitizerTimeoutSentinel.
+            return TokenSanitizer.SanitizerTimeoutSentinel;
+        }
     }
 
     private static string BuildChannelDetail(ChannelCommandCenterInfo channel)

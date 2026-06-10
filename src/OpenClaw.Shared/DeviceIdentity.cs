@@ -523,7 +523,7 @@ public class DeviceIdentity
     /// </summary>
     private static void AtomicWriteKeyFile(string path, DeviceKeyData data)
     {
-        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(data, JsonSerializerOptionsCache.WriteIndented);
         var dir = Path.GetDirectoryName(path);
         var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
         var tempPath = Path.Combine(tempDir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
@@ -533,9 +533,11 @@ public class DeviceIdentity
             McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort cleanup */ }
+            System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            catch (Exception delEx) { System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: temp cleanup failed: {delEx.GetType().Name}: {delEx.Message}"); }
             throw;
         }
         McpAuthToken.TryRestrictSensitiveFileAcl(path);

@@ -193,7 +193,7 @@
                                     Width="100" Visibility="Collapsed">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon x:Name="PiperPreviewIcon" Glyph="&#xE768;" FontSize="14"/>
-                                    <TextBlock x:Name="PiperPreviewLabel" Text="Preview"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_PiperPreview" x:Name="PiperPreviewLabel" Text="Preview"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -216,7 +216,7 @@
                                 Width="140">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon x:Name="PreviewVoiceIcon" Glyph="&#xE768;" FontSize="14"/>
-                                <TextBlock x:Name="PreviewVoiceLabel" Text="Preview Voice"/>
+                                <TextBlock x:Uid="VoiceSettingsPage_PreviewVoice" x:Name="PreviewVoiceLabel" Text="Preview Voice"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

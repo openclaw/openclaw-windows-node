@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,14 +27,10 @@ public sealed class VoiceService : IAsyncDisposable
     private readonly IOpenClawLogger _logger;
     private readonly SettingsManager _settings;
     private readonly SpeechToTextService _stt;
-    private readonly VoiceActivityDetector _vad;
     private readonly WhisperModelManager _modelManager;
     private AudioPipeline? _pipeline;
     private VoiceMode _currentMode = VoiceMode.Inactive;
     private CancellationTokenSource? _sessionCts;
-
-    // Path to the bundled Silero VAD model (deployed with the app)
-    private string? _vadModelPath;
 
     /// <summary>Current voice interaction mode.</summary>
     public VoiceMode CurrentMode => _currentMode;
@@ -106,7 +101,6 @@ public sealed class VoiceService : IAsyncDisposable
         _logger = logger;
         _settings = settings;
         _stt = new SpeechToTextService(logger);
-        _vad = new VoiceActivityDetector(logger);
         _modelManager = new WhisperModelManager(SettingsManager.SettingsDirectoryPath, logger);
     }
 
@@ -118,26 +112,6 @@ public sealed class VoiceService : IAsyncDisposable
         IProgress<(long downloaded, long total)>? downloadProgress = null,
         CancellationToken cancellationToken = default)
     {
-        // Load VAD model
-        if (!_vad.IsLoaded)
-        {
-            var vadPath = FindVadModelPath();
-            if (vadPath == null)
-            {
-                // Auto-download Silero VAD model
-                DiagnosticMessage?.Invoke("Downloading voice activity model…");
-                vadPath = await DownloadVadModelAsync(cancellationToken);
-            }
-            if (vadPath != null)
-            {
-                _vad.LoadModel(vadPath);
-            }
-            else
-            {
-                _logger.Info("Silero VAD model not found — VAD will be unavailable");
-            }
-        }
-
         // Download Whisper model if needed
         var modelName = _settings.SttModelName;
         if (!_modelManager.IsModelDownloaded(modelName))
@@ -172,7 +146,7 @@ public sealed class VoiceService : IAsyncDisposable
         SetMode(VoiceMode.PushToTalk);
 
         _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt, _vad);
+        _pipeline = new AudioPipeline(_logger, _stt);
         WirePipelineEvents(_pipeline);
 
         var options = new AudioPipelineOptions
@@ -214,7 +188,7 @@ public sealed class VoiceService : IAsyncDisposable
         SetMode(VoiceMode.VoiceChat);
 
         _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt, _vad);
+        _pipeline = new AudioPipeline(_logger, _stt);
         WirePipelineEvents(_pipeline);
 
         var options = new AudioPipelineOptions
@@ -251,8 +225,10 @@ public sealed class VoiceService : IAsyncDisposable
     {
         if (_pipeline != null)
         {
-            try { await _pipeline.StopAsync(); } catch { }
-            try { await _pipeline.DisposeAsync(); } catch { }
+            try { await _pipeline.StopAsync(); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop during cleanup failed: {ex.Message}"); }
+            try { await _pipeline.DisposeAsync(); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline dispose during cleanup failed: {ex.Message}"); }
             _pipeline = null;
         }
 
@@ -276,7 +252,7 @@ public sealed class VoiceService : IAsyncDisposable
         using var timeoutCts = new CancellationTokenSource(args.TimeoutMs);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        var pipeline = new AudioPipeline(_logger, _stt, _vad);
+        var pipeline = new AudioPipeline(_logger, _stt);
         WirePipelineEvents(pipeline);
         var tcs = new TaskCompletionSource<SttListenResult>();
         var sw = Stopwatch.StartNew();
@@ -334,7 +310,8 @@ public sealed class VoiceService : IAsyncDisposable
             // Timeout / external cancellation. Stop the pipeline (which
             // flushes any buffered speech) and give UtteranceTranscribed
             // up to 2 s to fire before reporting timeout.
-            try { await pipeline.StopAsync().ConfigureAwait(false); } catch { /* swallow */ }
+            try { await pipeline.StopAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop on timeout path failed: {ex.Message}"); }
             await Task.WhenAny(tcs.Task, Task.Delay(2000)).ConfigureAwait(false);
             if (tcs.Task.IsCompletedSuccessfully)
             {
@@ -345,7 +322,8 @@ public sealed class VoiceService : IAsyncDisposable
         }
         finally
         {
-            try { await pipeline.StopAsync(); } catch { /* idempotent — already stopped above on timeout */ }
+            try { await pipeline.StopAsync(); }
+            catch (Exception ex) { _logger.Debug($"VoiceService: pipeline stop in finally (idempotent) failed: {ex.Message}"); }
             await pipeline.DisposeAsync();
         }
     }
@@ -368,7 +346,7 @@ public sealed class VoiceService : IAsyncDisposable
 
         await EnsureInitializedAsync();
 
-        var pipeline = new AudioPipeline(_logger, _stt, _vad);
+        var pipeline = new AudioPipeline(_logger, _stt);
         var sw = Stopwatch.StartNew();
         try
         {
@@ -504,91 +482,9 @@ public sealed class VoiceService : IAsyncDisposable
         _logger.Info($"Voice mode changed: {mode}");
     }
 
-    /// <summary>
-    /// Locate the Silero VAD ONNX model. Looks in the app's Assets folder
-    /// and the models directory.
-    /// </summary>
-    private string? FindVadModelPath()
-    {
-        if (_vadModelPath != null && File.Exists(_vadModelPath))
-            return _vadModelPath;
-
-        // Check Assets directory (deployed with the app)
-        var assetsPath = Path.Combine(AppContext.BaseDirectory, "Assets", "silero_vad.onnx");
-        if (File.Exists(assetsPath))
-        {
-            _vadModelPath = assetsPath;
-            return assetsPath;
-        }
-
-        // Check models directory
-        var modelsPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "models", "silero_vad.onnx");
-        if (File.Exists(modelsPath))
-        {
-            _vadModelPath = modelsPath;
-            return modelsPath;
-        }
-
-        return null;
-    }
-
-    private const string VadDownloadUrl = SileroVadModelManifest.DownloadUrl;
-
-    /// <summary>Download the Silero VAD ONNX model if not already present.
-    /// SHA-256 is verified before the atomic rename so a tampered or
-    /// truncated file never lands at the canonical path. See
-    /// <see cref="SileroVadModelManifest"/>.</summary>
-    private async Task<string?> DownloadVadModelAsync(CancellationToken cancellationToken)
-    {
-        var destPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "models", SileroVadModelManifest.FileName);
-        if (File.Exists(destPath))
-            return destPath;
-
-        _logger.Info("Downloading Silero VAD model...");
-        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-        var tempPath = destPath + ".tmp";
-        try
-        {
-            using var http = new System.Net.Http.HttpClient();
-            http.Timeout = TimeSpan.FromMinutes(5);
-            using var response = await http.GetAsync(VadDownloadUrl, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                await response.Content.CopyToAsync(fs, cancellationToken);
-            }
-
-            // SECURITY: verify SHA-256 BEFORE the atomic rename so a
-            // tampered file never reaches ONNX Runtime.
-            using (var sha = System.Security.Cryptography.SHA256.Create())
-            using (var verifyStream = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true))
-            {
-                var actual = await sha.ComputeHashAsync(verifyStream, cancellationToken);
-                var actualHex = Convert.ToHexString(actual).ToLowerInvariant();
-                if (!string.Equals(actualHex, SileroVadModelManifest.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new System.Security.SecurityException(
-                        "Silero VAD model failed integrity check. The downloaded file does not match the pinned SHA-256.");
-                }
-            }
-
-            File.Move(tempPath, destPath, overwrite: true);
-            _logger.Info($"Silero VAD model downloaded and verified ({new FileInfo(destPath).Length:N0} bytes)");
-            _vadModelPath = destPath;
-            return destPath;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Failed to download VAD model", ex);
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
-            return null;
-        }
-    }
-
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
         _stt.Dispose();
-        _vad.Dispose();
     }
 }

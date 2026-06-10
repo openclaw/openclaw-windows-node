@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -153,15 +154,15 @@ public sealed partial class BindingsPage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load bindings.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("BindingsPage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("BindingsPage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
     }
 
     private void ShowLoadFailure(Exception ex)
     {
-        ConnectionInfoBar.Title = "Could not load bindings";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("BindingsPage_CouldNotLoadBindings");
         ConnectionInfoBar.Message = ex.Message;
         ConnectionInfoBar.Severity = InfoBarSeverity.Error;
         ConnectionInfoBar.IsOpen = true;

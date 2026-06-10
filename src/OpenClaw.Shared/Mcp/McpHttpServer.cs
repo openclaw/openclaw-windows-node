@@ -179,8 +179,14 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             // ObjectDisposedException into an unobserved task, which surfaces
             // through global unhandled-exception handlers.
             try { _handlerLimiter.Release(); }
-            catch (ObjectDisposedException) { /* server torn down */ }
-            catch (SemaphoreFullException) { /* defensive */ }
+            catch (ObjectDisposedException) { /* Server torn down during request; expected. */ }
+            catch (SemaphoreFullException ex)
+            {
+                // Release-without-Acquire indicates a real bug (counting imbalance);
+                // promote to Warn so it surfaces in production diagnostics. Include
+                // ex.ToString() to capture the stack since Warn has no ex overload.
+                _logger.Warn($"[MCP] Handler limiter release was already at max — possible release/acquire imbalance: {ex}");
+            }
         }
     }
 
@@ -322,7 +328,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             _logger.Error("[MCP] Request failed", ex);
             // Response may already be partially written or closed; swallow.
             try { Reject(ctx, HttpStatusCode.InternalServerError, "internal error"); }
-            catch { /* response already disposed */ }
+            catch (Exception rejEx) { _logger.Debug($"[MCP] Reject after handler error failed (response already disposed?): {rejEx.Message}"); }
         }
     }
 
@@ -393,7 +399,14 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     private static void Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)
     {
         try { WriteText(ctx.Response, status, reason, "text/plain"); }
-        catch { /* response already disposed */ }
+        catch (Exception ex)
+        {
+            // Response may already be disposed; a failed write means the client
+            // already disconnected. Most Reject call sites are validation paths
+            // outside a catch block, so emit a Trace breadcrumb here rather than
+            // relying on a (non-existent) outer log.
+            System.Diagnostics.Trace.WriteLine($"McpHttpServer.Reject: failed to write {(int)status} '{reason}': {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private static void WriteText(HttpListenerResponse response, HttpStatusCode status, string body, string contentType)
@@ -424,8 +437,10 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
     private async Task StopCoreAsync(TimeSpan drainTimeout)
     {
-        try { _cts.Cancel(); } catch { /* already cancelled or disposed */ }
-        try { if (_listener.IsListening) _listener.Stop(); } catch { /* already stopped */ }
+        try { _cts.Cancel(); }
+        catch (Exception ex) { _logger.Debug($"[MCP] StopCore cts.Cancel threw: {ex.Message}"); }
+        try { if (_listener.IsListening) _listener.Stop(); }
+        catch (Exception ex) { _logger.Debug($"[MCP] StopCore listener.Stop threw: {ex.Message}"); }
 
         // Snapshot before awaiting — handlers remove themselves on completion,
         // and we don't want enumeration to race the continuation.
@@ -445,7 +460,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         if (_acceptLoop != null)
         {
             try { await Task.WhenAny(_acceptLoop, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false); }
-            catch { /* loop may have errored */ }
+            catch (Exception ex) { _logger.Debug($"[MCP] Accept loop final await threw (loop may have errored): {ex.Message}"); }
         }
     }
 
@@ -504,7 +519,8 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             _resourcesDisposed = true;
         }
 
-        try { _listener.Close(); } catch { /* already closed */ }
+        try { _listener.Close(); }
+        catch (Exception ex) { _logger.Debug($"[MCP] listener.Close during dispose threw: {ex.Message}"); }
         _cts.Dispose();
         _handlerLimiter.Dispose();
     }

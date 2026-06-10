@@ -33,7 +33,7 @@ on:
       - "package-lock.json"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [master, main]
+    branches: [main, master]
     paths:
       - ".github/codeql/**"
       - ".github/workflows/**"

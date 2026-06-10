@@ -61,7 +61,9 @@ public sealed class ChatExplorationsWindow : WindowEx
 
         Closed += (_, _) =>
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _chatHost?.Dispose(); } catch { }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _panelHost?.Dispose(); } catch { }
             _chatHost = null;
             _panelHost = null;

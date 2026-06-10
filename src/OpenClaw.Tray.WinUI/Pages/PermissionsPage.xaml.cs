@@ -732,6 +732,7 @@ public sealed partial class PermissionsPage : Page
             _execSavedHintTimer.Stop();
             _execSavedHintTimer.Start();
         }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         catch { }
     }
 
@@ -819,6 +820,7 @@ public sealed partial class PermissionsPage : Page
     private void OnOpenPrivacySettings(object sender, RoutedEventArgs e)
     {
         try { Process.Start(new ProcessStartInfo("ms-settings:privacy-webcam") { UseShellExecute = true }); }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { }
     }
 

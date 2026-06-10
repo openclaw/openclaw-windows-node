@@ -546,6 +546,31 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void CommandCenterTextHelper_DebugBundle_IncludesSanitizedTrayLogTail()
+    {
+        var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "CommandCenterTextHelper.cs");
+        Assert.Contains("Recent Tray Log", helper);
+        Assert.Contains("BuildRecentTrayLogTail(Logger.LogFilePath)", helper);
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(line)", helper);
+        Assert.Contains("RecentTrayLogTailLines", helper);
+        Assert.Contains("RecentTrayLogMaxChars", helper);
+        Assert.Contains("FileShare.ReadWrite | FileShare.Delete", helper);
+    }
+
+    [Fact]
+    public void TrayLogWriters_SanitizeSensitiveValuesBeforeWriting()
+    {
+        var logger = Read("src", "OpenClaw.Tray.WinUI", "Services", "Logger.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(message)", logger);
+
+        var diagnosticsJsonl = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsJsonlService.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(JsonSerializer.Serialize(record))", diagnosticsJsonl);
+
+        var crashLogger = Read("src", "OpenClaw.Tray.WinUI", "Services", "AppCrashLogger.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage", crashLogger);
+    }
+
+    [Fact]
     public void DebugPage_DetailView_UsesGenerationCounterForRaceSafety()
     {
         // Hanselman v2 review #5/#6: long log reads must check a

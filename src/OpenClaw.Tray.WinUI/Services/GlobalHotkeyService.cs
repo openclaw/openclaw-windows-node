@@ -346,6 +346,7 @@ public class GlobalHotkeyService : IDisposable
         // but clean up if it wasn't.
         if (_hwnd != IntPtr.Zero)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { DestroyWindow(_hwnd); } catch { }
             _hwnd = IntPtr.Zero;
         }

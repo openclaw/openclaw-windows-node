@@ -5,6 +5,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 
@@ -238,7 +239,10 @@ public sealed partial class SettingsPage : Page
                 .AddText("This is a test notification from OpenClaw settings.")
                 .Show();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Warn($"SettingsPage: Test notification failed: {ex.Message}");
+        }
     }
 
     private void OnRemoveGateway(object sender, RoutedEventArgs e) =>
@@ -299,27 +303,26 @@ public sealed partial class SettingsPage : Page
         UninstallResultBar.IsOpen = false;
 
         _uninstallCts = new CancellationTokenSource();
-        System.Diagnostics.Process? proc = null;
+        Process? proc = null;
         string? jsonOutput = null;
         try
         {
-            var setupExe = App.ResolveSetupEngineUiPath()
-                ?? throw new FileNotFoundException("SetupEngine.UI not found (searched app dir and sibling project output)");
+            var exePath = ResolveCurrentExecutablePath()
+                ?? throw new FileNotFoundException("OpenClaw tray executable could not be resolved for local gateway removal.");
 
             jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-uninstall-{Guid.NewGuid():N}.json");
 
-            var psi = new System.Diagnostics.ProcessStartInfo(setupExe)
+            var psi = new ProcessStartInfo(exePath)
             {
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
             };
-            psi.ArgumentList.Add("--headless");
             psi.ArgumentList.Add("--uninstall");
             psi.ArgumentList.Add("--confirm-destructive");
             psi.ArgumentList.Add("--json-output");
             psi.ArgumentList.Add(jsonOutput);
 
-            proc = System.Diagnostics.Process.Start(psi)!;
+            proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenClaw uninstall process.");
             await proc.WaitForExitAsync(_uninstallCts.Token);
 
             if (proc.ExitCode == 0)
@@ -344,13 +347,17 @@ public sealed partial class SettingsPage : Page
                         if (doc.RootElement.TryGetProperty("message", out var msg) && msg.GetString() is { Length: > 0 } m)
                             errorMsg = m;
                     }
-                    catch { /* best effort */ }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"SettingsPage: Failed to parse uninstall result JSON '{jsonOutput}': {ex.Message}");
+                    }
                 }
                 ShowUninstallError(errorMsg);
             }
 
             // Clean up temp file
-            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to delete uninstall result file '{jsonOutput}': {ex.Message}"); }
         }
         catch (OperationCanceledException)
         {
@@ -362,7 +369,10 @@ public sealed partial class SettingsPage : Page
                     await proc.WaitForExitAsync(CancellationToken.None);
                 }
             }
-            catch { /* best effort cancellation cleanup */ }
+            catch (Exception ex)
+            {
+                Logger.Warn($"SettingsPage: Failed to stop uninstall process during cancellation: {ex.Message}");
+            }
 
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
@@ -373,15 +383,32 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
+            Logger.Warn($"SettingsPage: gateway uninstall failed: {ex}");
             ApplyUninstallUiState(UninstallUiState.Failure);
             ShowUninstallError(ex.Message);
         }
         finally
         {
             proc?.Dispose();
-            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to delete uninstall result file '{jsonOutput}': {ex.Message}"); }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
+        }
+    }
+
+    private static string? ResolveCurrentExecutablePath()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
+            return Environment.ProcessPath;
+
+        try
+        {
+            return Process.GetCurrentProcess().MainModule?.FileName;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -394,7 +421,8 @@ public sealed partial class SettingsPage : Page
         var viewLogsButton = new Button { Content = "View Logs" };
         viewLogsButton.Click += (_, _) =>
         {
-            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); } catch { }
+            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to open logs folder '{logsPath}': {ex.Message}"); }
         };
 
         UninstallResultBar.Severity = InfoBarSeverity.Error;

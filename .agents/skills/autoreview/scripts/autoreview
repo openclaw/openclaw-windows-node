@@ -255,11 +255,11 @@ def default_branch(repo: Path) -> str:
     ).strip()
     if remote_head.startswith("origin/"):
         return remote_head.removeprefix("origin/")
-    for candidate in ("master", "main"):
+    for candidate in ("main", "master"):
         result = run(["git", "rev-parse", "--verify", f"origin/{candidate}"], repo, check=False)
         if result.returncode == 0:
             return candidate
-    return "master"
+    return "main"
 
 
 def default_base_ref(repo: Path) -> str:
@@ -297,6 +297,18 @@ def resolve_command(name: str) -> str:
     if resolved:
         return resolved
     raise SystemExit(f"review engine executable not found: {name}. Install it or pass the matching --*-bin option.")
+
+
+def command_exists(name: str) -> bool:
+    return shutil.which(name) is not None
+
+
+def choose_default_engine(args: argparse.Namespace) -> str:
+    if command_exists(args.codex_bin):
+        return "codex"
+    if command_exists(args.copilot_bin) and allow_unsandboxed_tools():
+        return "copilot"
+    return "codex"
 
 
 def bounded(text: str, limit: int = 180_000) -> str:
@@ -1102,7 +1114,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", choices=["auto", "local", "uncommitted", "branch", "commit"], default="auto")
     parser.add_argument("--base")
     parser.add_argument("--commit", default="HEAD")
-    parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "codex"))
+    parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE"))
     parser.add_argument("--reviewers", help="Comma-separated review panel, e.g. codex,claude or codex:gpt-5:high.")
     parser.add_argument("--panel", action="store_true", help="Run a Codex/Claude review panel unless --engine changes the first reviewer.")
     parser.add_argument("--model", action="append", help="Model for all reviewers or engine=model. Repeatable.")
@@ -1143,6 +1155,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expect-findings", action="store_true", help="Treat findings as success; for harness acceptance tests.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if args.engine is None:
+        args.engine = choose_default_engine(args)
     if args.engine not in ENGINES:
         raise SystemExit(f"invalid --engine/AUTOREVIEW_ENGINE: {args.engine}")
     return args

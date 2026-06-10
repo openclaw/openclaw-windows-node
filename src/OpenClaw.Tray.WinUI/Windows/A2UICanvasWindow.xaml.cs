@@ -77,9 +77,12 @@ public sealed partial class A2UICanvasWindow : WindowEx
         Closed += (_, _) =>
         {
             IsClosed = true;
-            try { _router.SurfaceCreated -= OnSurfaceCreated; } catch { }
-            try { _router.SurfaceDeleted -= OnSurfaceDeleted; } catch { }
-            try { _router.ResetAll(); } catch { }
+            try { _router.SurfaceCreated -= OnSurfaceCreated; }
+            catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: unsubscribe SurfaceCreated failed: {ex.Message}"); }
+            try { _router.SurfaceDeleted -= OnSurfaceDeleted; }
+            catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: unsubscribe SurfaceDeleted failed: {ex.Message}"); }
+            try { _router.ResetAll(); }
+            catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: router ResetAll on close failed: {ex.Message}"); }
             _surfaceScrollers.Clear();
             _surfaceTabs.Clear();
         };
@@ -347,6 +350,6 @@ public sealed partial class A2UICanvasWindow : WindowEx
             if (!keepTopMost)
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         }
-        catch { /* best-effort */ }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: best-effort foreground/topmost adjust failed: {ex.Message}"); }
     }
 }

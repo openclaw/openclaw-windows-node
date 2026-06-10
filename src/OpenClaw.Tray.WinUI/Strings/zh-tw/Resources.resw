@@ -1453,7 +1453,7 @@
     <value>OpenClaw Hub</value>
   </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+    <value>.NET / WinUI / Windows App SDK</value>
   </data>
   <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
     <value>閘道資訊</value>
@@ -1462,7 +1462,7 @@
     <value>版本：</value>
   </data>
   <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>模型：</value>
+    <value>通訊協定：</value>
   </data>
   <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
     <value>驗證模式：</value>
@@ -1489,7 +1489,7 @@
     <value>連結</value>
   </data>
   <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → openclaw.ai/docs</value>
+    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
   </data>
   <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
     <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
@@ -2284,7 +2284,7 @@
     <value>用量</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Cron</value>
+    <value>排程工作</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>這部電腦</value>
@@ -3876,6 +3876,9 @@
   <data name="ConnectionPage_SSHHost.PlaceholderText" xml:space="preserve">
     <value>machine-name</value>
   </data>
+  <data name="ConnectionPage_SshServerPort.Header" xml:space="preserve">
+    <value>SSH 連接埠</value>
+  </data>
   <data name="ConnectionPage_RemotePort.Header" xml:space="preserve">
     <value>遠端連接埠</value>
   </data>
@@ -3918,13 +3921,13 @@
   <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
     <value>排程</value>
   </data>
-  <data name="CronPage_Every.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleEveryOption.Content" xml:space="preserve">
     <value>每</value>
   </data>
-  <data name="CronPage_At.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleAtOption.Content" xml:space="preserve">
     <value>於</value>
   </data>
-  <data name="CronPage_Cron.Content" xml:space="preserve">
+  <data name="CronPage_ScheduleCronOption.Content" xml:space="preserve">
     <value>Cron</value>
   </data>
   <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
@@ -4554,6 +4557,9 @@
   <data name="ConnectionStatusWindow_SSHHost.PlaceholderText" xml:space="preserve">
     <value>192.168.x.x</value>
   </data>
+  <data name="ConnectionStatusWindow_SshServerPort.Header" xml:space="preserve">
+    <value>SSH 連接埠</value>
+  </data>
   <data name="ConnectionStatusWindow_RemotePort.Header" xml:space="preserve">
     <value>遠端連接埠</value>
   </data>
@@ -4589,4 +4595,1150 @@
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>進階</value>
-  </data></root>
+  </data>
+  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
+    <value>即時</value>
+  </data>
+  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
+    <value>此閘道目前正在處理的對話，依頻道分組。</value>
+  </data>
+  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
+    <value>當頻道已連線且有流量時，工作階段將顯示在此處。</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
+    <value>開啟聊天</value>
+  </data>
+  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
+    <value>已啟用</value>
+  </data>
+  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
+    <value>已停用</value>
+  </data>
+  <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
+    <value>預覽</value>
+  </data>
+  <data name="VoiceSettingsPage_PreviewVoice.Text" xml:space="preserve">
+    <value>語音預覽</value>
+  </data>
+  <data name="HubWindow_TitleStatus.Text" xml:space="preserve">
+    <value>已中斷連線</value>
+  </data>
+  <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
+    <value>代理直接在閘道上執行的命令不受此限制。如果閘道在此電腦上，它們仍可能存取您的 Windows 檔案、剪貼簿和網路——請檢查閘道的設定。</value>
+  </data>
+  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
+    <value>所有代理</value>
+  </data>
+  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
+    <value>{0} / {1} 個事件</value>
+  </data>
+  <data name="CronPage_CreateJobLabel" xml:space="preserve">
+    <value>建立任務</value>
+  </data>
+  <data name="CronPage_EditJob" xml:space="preserve">
+    <value>編輯任務</value>
+  </data>
+  <data name="CronPage_NewJobTitle" xml:space="preserve">
+    <value>新任務</value>
+  </data>
+  <data name="CronPage_Running" xml:space="preserve">
+    <value>正在執行...</value>
+  </data>
+  <data name="CronPage_SaveChanges" xml:space="preserve">
+    <value>儲存變更</value>
+  </data>
+  <data name="SchemaConfigEditor_AddItem" xml:space="preserve">
+    <value>新增項目</value>
+  </data>
+  <data name="ChatPage_AttachFile" xml:space="preserve">
+    <value>附加檔案</value>
+  </data>
+  <data name="ChatPage_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ChatPage_CannotAttachFile" xml:space="preserve">
+    <value>無法附加檔案</value>
+  </data>
+  <data name="ChatPage_CannotConnectToGateway" xml:space="preserve">
+    <value>無法連線到 {0} 的閘道
+
+請確認閘道正在運行。</value>
+  </data>
+  <data name="ChatPage_ChatFailedToStart" xml:space="preserve">
+    <value>聊天啟動失敗：
+{0}</value>
+  </data>
+  <data name="ChatPage_ChatReady" xml:space="preserve">
+    <value>聊天已準備就緒；正在啟動您的首次對話…</value>
+  </data>
+  <data name="ChatPage_ChatSurfaceComingOnline" xml:space="preserve">
+    <value>閘道已連線；聊天介面仍在載入中。</value>
+  </data>
+  <data name="ChatPage_GatewayPairingIncomplete" xml:space="preserve">
+    <value>閘道配對未完成。請開啟連線設定以完成配對。</value>
+  </data>
+  <data name="ChatPage_InvalidGatewayUrl" xml:space="preserve">
+    <value>無效的閘道 URL：{0}</value>
+  </data>
+  <data name="ChatPage_OK" xml:space="preserve">
+    <value>確定</value>
+  </data>
+  <data name="ChatPage_OpenConnectionSettings" xml:space="preserve">
+    <value>開啟連線設定以完成與閘道的配對。</value>
+  </data>
+  <data name="ChatPage_OpenVoiceSettings" xml:space="preserve">
+    <value>開啟語音設定</value>
+  </data>
+  <data name="ChatPage_TimedOutChat" xml:space="preserve">
+    <value>等待 {0} 的聊天逾時。請在閘道準備就緒後重試。</value>
+  </data>
+  <data name="ChatPage_TimedOutHandshake" xml:space="preserve">
+    <value>等待閘道操作員交握逾時。請在閘道準備就緒後重試。</value>
+  </data>
+  <data name="ChatPage_VoiceModelInstallMessage" xml:space="preserve">
+    <value>需要先安裝語音轉文字模型才能使用語音輸入。是否要開啟語音設定進行安裝？</value>
+  </data>
+  <data name="ChatPage_VoiceModelRequired" xml:space="preserve">
+    <value>需要語音模型</value>
+  </data>
+  <data name="ChatPage_WebView2InitFailed" xml:space="preserve">
+    <value>WebView2 初始化失敗：
+{0}</value>
+  </data>
+  <data name="ConnectionStatus_Applying" xml:space="preserve">
+    <value>正在套用…</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApproval" xml:space="preserve">
+    <value>等待核准</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApprovalApproveThenConnect" xml:space="preserve">
+    <value>🔐 等待核准 — 核准後請點擊連線</value>
+  </data>
+  <data name="ConnectionStatus_AwaitingApprovalFromGateway" xml:space="preserve">
+    <value>🔐 等待閘道核准</value>
+  </data>
+  <data name="ConnectionStatus_Connect" xml:space="preserve">
+    <value>連線</value>
+  </data>
+  <data name="ConnectionStatus_Connected" xml:space="preserve">
+    <value>✓ 已連線</value>
+  </data>
+  <data name="ConnectionStatus_ConnectedTo" xml:space="preserve">
+    <value>✓ 已連線到 {0}</value>
+  </data>
+  <data name="ConnectionStatus_Connecting" xml:space="preserve">
+    <value>正在連線…</value>
+  </data>
+  <data name="ConnectionStatus_ConnectOnceApproved" xml:space="preserve">
+    <value>連線（核准後）</value>
+  </data>
+  <data name="ConnectionStatus_Disabled" xml:space="preserve">
+    <value>已停用</value>
+  </data>
+  <data name="ConnectionStatus_Disconnected" xml:space="preserve">
+    <value>已中斷連線</value>
+  </data>
+  <data name="ConnectionStatus_EnterGatewayUrl" xml:space="preserve">
+    <value>輸入閘道 URL</value>
+  </data>
+  <data name="ConnectionStatus_NoGateways" xml:space="preserve">
+    <value>沒有閘道</value>
+  </data>
+  <data name="ConnectionStatus_Reconnecting" xml:space="preserve">
+    <value>正在重新連線…</value>
+  </data>
+  <data name="ConnectionStatus_Rejected" xml:space="preserve">
+    <value>已拒絕</value>
+  </data>
+  <data name="ConnectionStatus_StartingSshTunnel" xml:space="preserve">
+    <value>正在啟動 SSH 通道…</value>
+  </data>
+  <data name="ConnectionPage_OnHostname" xml:space="preserve">
+    <value>在 {0} 上</value>
+  </data>
+  <data name="ConnectionPage_ClientSingular" xml:space="preserve">
+    <value>1 個用戶端</value>
+  </data>
+  <data name="ConnectionPage_ClientsPlural" xml:space="preserve">
+    <value>{0} 個用戶端</value>
+  </data>
+  <data name="ConnectionPage_ChannelsSingular" xml:space="preserve">
+    <value>{0}/{1} 個頻道</value>
+  </data>
+  <data name="ConnectionPage_ChannelsPlural" xml:space="preserve">
+    <value>{0}/{1} 個頻道</value>
+  </data>
+  <data name="ConnectionPage_CostToday" xml:space="preserve">
+    <value>今日 ${0}</value>
+  </data>
+  <data name="ConnectionPage_CostTodayZero" xml:space="preserve">
+    <value>今日 $0.00</value>
+  </data>
+  <data name="ConnectionPage_SharedTokenChip" xml:space="preserve">
+    <value>共用權杖</value>
+  </data>
+  <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
+    <value>點擊以複製共用權杖</value>
+  </data>
+  <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
+    <value>透過 SSH 通道</value>
+  </data>
+  <data name="ConnectionPage_TopologyLocal" xml:space="preserve">
+    <value>本機</value>
+  </data>
+  <data name="ConnectionPage_TopologyTailscale" xml:space="preserve">
+    <value>Tailscale</value>
+  </data>
+  <data name="ConnectionPage_TopologyLAN" xml:space="preserve">
+    <value>區域網路</value>
+  </data>
+  <data name="ConnectionPage_TopologyRemote" xml:space="preserve">
+    <value>遠端</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveSessions" xml:space="preserve">
+    <value>使用中 · {0} 個工作階段</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveOneSession" xml:space="preserve">
+    <value>使用中 · 1 個工作階段</value>
+  </data>
+  <data name="ConnectionPage_OperatorActiveNoSessions" xml:space="preserve">
+    <value>使用中 · 目前無工作階段</value>
+  </data>
+  <data name="ConnectionPage_OperatorDisconnected" xml:space="preserve">
+    <value>已中斷連線</value>
+  </data>
+  <data name="ConnectionPage_OperatorConnecting" xml:space="preserve">
+    <value>連線中…</value>
+  </data>
+  <data name="ConnectionPage_OperatorReconnecting" xml:space="preserve">
+    <value>重新連線中…</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveCapabilities" xml:space="preserve">
+    <value>節點使用中 · {0} 項功能</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveOneCapability" xml:space="preserve">
+    <value>節點使用中 · 1 項功能</value>
+  </data>
+  <data name="ConnectionPage_NodeActiveNoCapabilities" xml:space="preserve">
+    <value>節點使用中 · 未啟用任何功能</value>
+  </data>
+  <data name="ConnectionPage_NodeAwaitingPairing" xml:space="preserve">
+    <value>等待配對核准</value>
+  </data>
+  <data name="ConnectionPage_NodePairingRejected" xml:space="preserve">
+    <value>配對遭拒</value>
+  </data>
+  <data name="ConnectionPage_NodeRateLimited" xml:space="preserve">
+    <value>已限流</value>
+  </data>
+  <data name="ConnectionPage_NodeError" xml:space="preserve">
+    <value>節點錯誤</value>
+  </data>
+  <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
+    <value>節點模式已停用</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
+    <value>未啟用任何功能。請在權限中選擇要共用的內容。</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyAwaitingApproval" xml:space="preserve">
+    <value>等待閘道主機上的核准。</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyPairingRejected" xml:space="preserve">
+    <value>配對遭拒。請從新增閘道重新配對。</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyRateLimited" xml:space="preserve">
+    <value>被閘道限流。將在冷卻後重試。</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyError" xml:space="preserve">
+    <value>節點回報了一個錯誤。</value>
+  </data>
+  <data name="ConnectionPage_ProvidingNoCapabilities" xml:space="preserve">
+    <value>未提供任何功能</value>
+  </data>
+  <data name="ConnectionPage_ProvidingCapabilitiesSingular" xml:space="preserve">
+    <value>提供 1 項功能：{0}</value>
+  </data>
+  <data name="ConnectionPage_ProvidingCapabilitiesPlural" xml:space="preserve">
+    <value>提供 {0} 項功能：{1}</value>
+  </data>
+  <data name="ConnectionPage_BadgeConnected" xml:space="preserve">
+    <value>已連線</value>
+  </data>
+  <data name="ConnectionPage_BadgeConnecting" xml:space="preserve">
+    <value>連線中…</value>
+  </data>
+  <data name="ConnectionPage_BadgeAwaitingApproval" xml:space="preserve">
+    <value>等待核准</value>
+  </data>
+  <data name="ConnectionPage_BadgeDisconnecting" xml:space="preserve">
+    <value>正在中斷連線…</value>
+  </data>
+  <data name="ConnectionPage_ConnectAction" xml:space="preserve">
+    <value>連線</value>
+  </data>
+  <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
+    <value>開啟儀表板</value>
+  </data>
+  <data name="ConnectionPage_DisconnectAction" xml:space="preserve">
+    <value>中斷連線</value>
+  </data>
+  <data name="ConnectionPage_Edit" xml:space="preserve">
+    <value>編輯</value>
+  </data>
+  <data name="ConnectionPage_Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="ConnectionPage_ViaSSH" xml:space="preserve">
+    <value>透過 SSH</value>
+  </data>
+  <data name="ConnectionPage_SavedGatewaysSingular" xml:space="preserve">
+    <value>已儲存的閘道 (1)</value>
+  </data>
+  <data name="ConnectionPage_SavedGatewaysPlural" xml:space="preserve">
+    <value>已儲存的閘道 ({0})</value>
+  </data>
+  <data name="ConnectionPage_JustNow" xml:space="preserve">
+    <value>剛才</value>
+  </data>
+  <data name="ConnectionPage_MinutesAgo" xml:space="preserve">
+    <value>{0}分鐘前</value>
+  </data>
+  <data name="ConnectionPage_HoursAgo" xml:space="preserve">
+    <value>{0}小時前</value>
+  </data>
+  <data name="ConnectionPage_DaysAgo" xml:space="preserve">
+    <value>{0}天前</value>
+  </data>
+  <data name="ConnectionPage_MonthsAgo" xml:space="preserve">
+    <value>{0}個月前</value>
+  </data>
+  <data name="ConnectionPage_YearsAgo" xml:space="preserve">
+    <value>{0}年前</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderAuth" xml:space="preserve">
+    <value>重新配對此閘道：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderPairing" xml:space="preserve">
+    <value>等待核准：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTunnel" xml:space="preserve">
+    <value>協助我們修復 SSH 通道：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderServer" xml:space="preserve">
+    <value>協助我們修復此連線：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryAuthBullet1" xml:space="preserve">
+    <value>從閘道主機取得新的設定碼。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryAuthBullet2" xml:space="preserve">
+    <value>或在下方貼上新的直接權杖。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryPairingBullet1" xml:space="preserve">
+    <value>使用以下命令在閘道主機上核准此用戶端。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryPairingBullet2" xml:space="preserve">
+    <value>核准後，按一下連線以繼續。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTunnelBullet1" xml:space="preserve">
+    <value>確認主機上的 SSH 可存取。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTunnelBullet2" xml:space="preserve">
+    <value>如果通道已停止，請在下方重新啟動。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet1" xml:space="preserve">
+    <value>檢查主機上的閘道記錄。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet2" xml:space="preserve">
+    <value>如果閘道部分運作中，請開啟其儀表板。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryServerBullet3" xml:space="preserve">
+    <value>編輯閘道設定以變更 URL 或權杖。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet1" xml:space="preserve">
+    <value>檢查閘道是否在主機上執行。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet2" xml:space="preserve">
+    <value>檢查您是否在相同的網路或 VPN 上。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryDefaultBullet3" xml:space="preserve">
+    <value>如果使用 SSH 通道：確認其已啟動。</value>
+  </data>
+  <data name="ConnectionPage_SshTunnelIsDownText" xml:space="preserve">
+    <value>SSH 通道已中斷。</value>
+  </data>
+  <data name="ConnectionPage_TestingConnection" xml:space="preserve">
+    <value>正在測試連線…</value>
+  </data>
+  <data name="ConnectionPage_GatewayReachable" xml:space="preserve">
+    <value>閘道可存取</value>
+  </data>
+  <data name="ConnectionPage_GatewayRespondedWith" xml:space="preserve">
+    <value>閘道回應代碼為 {0}</value>
+  </data>
+  <data name="ConnectionPage_CannotReachGateway" xml:space="preserve">
+    <value>無法存取閘道</value>
+  </data>
+  <data name="ConnectionPage_EnterGatewayUrl" xml:space="preserve">
+    <value>輸入閘道 URL</value>
+  </data>
+  <data name="ConnectionPage_Connecting" xml:space="preserve">
+    <value>連線中…</value>
+  </data>
+  <data name="ConnectionPage_StartingSshTunnel" xml:space="preserve">
+    <value>正在啟動 SSH 通道…</value>
+  </data>
+  <data name="ConnectionPage_PairingApprovalRequired" xml:space="preserve">
+    <value>需要對 {0} 進行配對核准。</value>
+  </data>
+  <data name="ConnectionPage_ConnectedTo" xml:space="preserve">
+    <value>已連線到 {0}。</value>
+  </data>
+  <data name="ConnectionPage_SshServerPortInvalid" xml:space="preserve">
+    <value>SSH 連接埠必須在 1-65535 之間</value>
+  </data>
+  <data name="ConnectionPage_SshRemotePortInvalid" xml:space="preserve">
+    <value>SSH 遠端連接埠必須在 1–65535 之間</value>
+  </data>
+  <data name="ConnectionPage_SshLocalPortInvalid" xml:space="preserve">
+    <value>SSH 本機連接埠必須在 1–65535 之間</value>
+  </data>
+  <data name="ConnectionPage_TunnelRestartTriggered" xml:space="preserve">
+    <value>通道重新啟動已觸發。</value>
+  </data>
+  <data name="ConnectionPage_TunnelRestartFailed" xml:space="preserve">
+    <value>通道重新啟動失敗：{0}</value>
+  </data>
+  <data name="ConnectionPage_RepairedReconnecting" xml:space="preserve">
+    <value>已重新配對。重新連線中…</value>
+  </data>
+  <data name="ConnectionPage_CouldNotApplyCode" xml:space="preserve">
+    <value>無法套用代碼。</value>
+  </data>
+  <data name="ConnectionPage_PleaseEnterSetupCode" xml:space="preserve">
+    <value>請貼上設定碼。</value>
+  </data>
+  <data name="ConnectionPage_Applying" xml:space="preserve">
+    <value>正在套用…</value>
+  </data>
+  <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
+    <value>已套用 — 閘道：{0}</value>
+  </data>
+  <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
+    <value>設定碼無效</value>
+  </data>
+  <data name="ConnectionPage_InvalidUrl" xml:space="preserve">
+    <value>URL 無效</value>
+  </data>
+  <data name="ConnectionPage_ConnectionFailed" xml:space="preserve">
+    <value>連線失敗</value>
+  </data>
+  <data name="ConnectionPage_UnknownError" xml:space="preserve">
+    <value>未知錯誤</value>
+  </data>
+  <data name="ConnectionPage_PreviewGateway" xml:space="preserve">
+    <value>閘道：{0}</value>
+  </data>
+  <data name="ConnectionPage_PreviewGatewayNotSpecified" xml:space="preserve">
+    <value>（未指定）</value>
+  </data>
+  <data name="ConnectionPage_PreviewNoToken" xml:space="preserve">
+    <value>（無權杖）</value>
+  </data>
+  <data name="ConnectionPage_PreviewToken" xml:space="preserve">
+    <value>權杖：{0}</value>
+  </data>
+  <data name="ConnectionPage_PressScan" xml:space="preserve">
+    <value>按下開始掃描以在您的網路上尋找閘道。</value>
+  </data>
+  <data name="ConnectionPage_ScanningNetwork" xml:space="preserve">
+    <value>正在掃描您的網路…</value>
+  </data>
+  <data name="ConnectionPage_NoGatewaysFound" xml:space="preserve">
+    <value>未在您的網路上找到閘道。</value>
+  </data>
+  <data name="ConnectionPage_DiscoveredOnNetwork" xml:space="preserve">
+    <value>在您的網路上發現 ({0})</value>
+  </data>
+  <data name="ConnectionPage_ScanFailed" xml:space="preserve">
+    <value>掃描失敗：{0}</value>
+  </data>
+  <data name="ConnectionPage_Stop" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="ConnectionPage_ScanAction" xml:space="preserve">
+    <value>掃描</value>
+  </data>
+  <data name="ConnectionPage_Add" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="ConnectionPage_PickDiscoveredGateway" xml:space="preserve">
+    <value>選擇上方發現的閘道進行連線。</value>
+  </data>
+  <data name="ConnectionPage_RemoveGatewayTitle" xml:space="preserve">
+    <value>移除閘道？</value>
+  </data>
+  <data name="ConnectionPage_RemoveGatewayMessage" xml:space="preserve">
+    <value>這將移除此電腦上的 {0} 及其認證。</value>
+  </data>
+  <data name="ConnectionPage_CancelAction" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
+    <value>連線失敗</value>
+  </data>
+  <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
+    <value>閘道連線失敗。</value>
+  </data>
+  <data name="ConnectionPage_ApprovalsSingular" xml:space="preserve">
+    <value>1 項核准等待您處理</value>
+  </data>
+  <data name="ConnectionPage_ApprovalsPlural" xml:space="preserve">
+    <value>{0} 項核准等待您處理</value>
+  </data>
+  <data name="ConnectionPage_DeviceLabel" xml:space="preserve">
+    <value>裝置 · {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeLabel" xml:space="preserve">
+    <value>節點 · {0}</value>
+  </data>
+  <data name="ConnectionPage_RepairRequest" xml:space="preserve">
+    <value>⚠️ 修復請求</value>
+  </data>
+  <data name="ConnectionPage_Approve" xml:space="preserve">
+    <value>核准</value>
+  </data>
+  <data name="ConnectionPage_Deny" xml:space="preserve">
+    <value>拒絕</value>
+  </data>
+  <data name="ConnectionPage_ApprovePairingRequest" xml:space="preserve">
+    <value>核准配對請求</value>
+  </data>
+  <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
+    <value>拒絕配對請求</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
+    <value>{0}
+
+從新增閘道流程中貼上新的設定碼。</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
+    <value>{0}
+
+您的裝置需要在閘道主機上獲得核准。</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
+    <value>{0}
+
+此閘道需要密碼驗證。</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
+    <value>{0}
+
+閘道可能需要不同版本的認證協定。</value>
+  </data>
+  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
+    <value>{0}
+
+請檢查您的連線設定並重試。</value>
+  </data>
+  <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
+    <value>引導</value>
+  </data>
+  <data name="ConnectionPage_AuthModeSharedToken" xml:space="preserve">
+    <value>共用權杖</value>
+  </data>
+  <data name="ConnectionPage_AuthModeDeviceToken" xml:space="preserve">
+    <value>裝置權杖</value>
+  </data>
+  <data name="ConnectionPage_UnknownPlatform" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
+    <value>等待閘道連線完成逾時。</value>
+  </data>
+  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
+    <value>此頻道需要 macOS 主機，無法從 Windows 電腦進行設定。</value>
+  </data>
+  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
+    <value>替換憑證</value>
+  </data>
+  <data name="ChannelsPage_Configuration" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
+    <value>將此裝置與頻道取消連結。掌描新的 QR 碼以重新連線——您的帳戶仍會在手機上保持配對。</value>
+  </data>
+  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
+    <value>暫時暫停頻道——憑證會被保留，以便您可以重新啟動。或完全中斷連線以清除憑證。</value>
+  </data>
+  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
+    <value>啟動頻道——它將使用已儲存的憑證開始處理訊息。或完全中斷連線以清除憑證。</value>
+  </data>
+  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
+    <value>暫停頻道——憑證會被保留，以便您可以重新啟動。</value>
+  </data>
+  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
+    <value>啟動頻道——它將使用已儲存的憑證開始處理訊息。</value>
+  </data>
+  <data name="ChannelsPage_Start" xml:space="preserve">
+    <value>啟動</value>
+  </data>
+  <data name="ChannelsPage_Stop" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="ChannelsPage_Logout" xml:space="preserve">
+    <value>登出</value>
+  </data>
+  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
+    <value>中斷連線並清除憑證</value>
+  </data>
+  <data name="ChannelsPage_Controls" xml:space="preserve">
+    <value>控制</value>
+  </data>
+  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
+    <value>WhatsApp 已連結裝置說明 →</value>
+  </data>
+  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
+    <value>Signal 已連結裝置說明 →</value>
+  </data>
+  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
+    <value>如何建立 Telegram 機器人 →</value>
+  </data>
+  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
+    <value>如何建立 Discord webhook →</value>
+  </data>
+  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
+    <value>如何新增 Google Chat webhook →</value>
+  </data>
+  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
+    <value>Slack 應用程式控制台 →</value>
+  </data>
+  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
+    <value>關於 Nostr →</value>
+  </data>
+  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
+    <value>關於 macOS「訊息」→</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
+    <value>連結您的 WhatsApp 手機</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
+    <value>點擊下方「連結」區段中的 &quot;Show QR&quot;。</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
+    <value>在手機上：WhatsApp → 設定 → 已連結裝置 → 連結裝置。</value>
+  </data>
+  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
+    <value>掌描此處顯示的 QR 碼。</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
+    <value>連結您的 Signal 手機</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
+    <value>點擊下方「連結」區段中的 &quot;Show QR&quot;。</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
+    <value>在手機上：Signal → 設定 → 已連結裝置 → 連結新裝置。</value>
+  </data>
+  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
+    <value>掌描此處顯示的 QR 碼。</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
+    <value>透過機器人連接 Telegram</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
+    <value>開啟 Telegram 並向 @BotFather 傳送訊息。</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
+    <value>傳送 /newbot 並按照提示操作。最後複製機器人權杖。</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
+    <value>將權杖貼到下方的設定表單中。</value>
+  </data>
+  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
+    <value>點擊 &quot;Save and start&quot;。頻道將自動啟動。</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
+    <value>透過 webhook 連接 Discord</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
+    <value>開啟您的 Discord 伺服器設定 → 整合 → Webhooks。</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
+    <value>點擊 &quot;New Webhook&quot;，為其命名，然後複製 webhook URL。</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
+    <value>將 URL 貼到下方的設定表單中。</value>
+  </data>
+  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
+    <value>點擊 &quot;Save and start&quot;。</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
+    <value>透過 webhook 連接 Google Chat</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
+    <value>在 Google Chat 中，開啟聊天室 → 管理 webhook → 新增 webhook。</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
+    <value>複製 webhook URL。</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
+    <value>將 URL 貼到下方的設定表單中。</value>
+  </data>
+  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
+    <value>點擊 &quot;Save and start&quot;。</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
+    <value>透過應用程式連接 Slack</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
+    <value>在 api.slack.com/apps 上建立 Slack 應用程式並將其安裝到您的工作區。</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
+    <value>複製機器人權杖 (xoxb-…) 和簽署密鑰。</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
+    <value>將兩者貼到下方的設定表單中。</value>
+  </data>
+  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
+    <value>點擊 &quot;Save and start&quot;。</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
+    <value>透過中繼連接 Nostr</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
+    <value>產生或貼上私鑰 (nsec)。</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
+    <value>選擇一個或多個中繼 URL（例如 wss://relay.damus.io）。</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
+    <value>將兩者貼到下方的設定表單中。</value>
+  </data>
+  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
+    <value>點擊 &quot;Save and start&quot;。</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
+    <value>iMessage 僅適用於 macOS</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
+    <value>iMessage 讀取本機 Messages.app 資料庫，該資料庫僅存在於 macOS 上。</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
+    <value>若要將 iMessage 與 OpenClaw 搭配使用，請在 Mac 上執行閘道，而非此 Windows 主機。</value>
+  </data>
+  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
+    <value>此列表中的所有其他頻道都可以在 Windows 託管的閘道上正常使用。</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
+    <value>連接此頻道</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
+    <value>&quot;{0}&quot; 是一個外掛頻道。請參閱其文件以了解所需欄位。</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
+    <value>使用下方「設定」區段中的 &quot;Open Config page&quot; 在 channels.{0} 下新增設定。</value>
+  </data>
+  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
+    <value>儲存設定；OpenClaw 將自動啟動頻道。</value>
+  </data>
+  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
+    <value>機器人權杖</value>
+  </data>
+  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
+    <value>Webhook 網址</value>
+  </data>
+  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
+    <value>簽署密鑰</value>
+  </data>
+  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
+    <value>私鑰 (nsec)</value>
+  </data>
+  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
+    <value>中繼 URL</value>
+  </data>
+  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
+    <value>從 @BotFather (/newbot) 取得。</value>
+  </data>
+  <data name="ChannelsPage_HelpWebhookDiscord" xml:space="preserve">
+    <value>伺服器設定 → 整合 → Webhooks → New Webhook。</value>
+  </data>
+  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
+    <value>開啟聊天室 → 管理 webhook → 新增 webhook。</value>
+  </data>
+  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
+    <value>來自您 Slack 應用程式的 OAuth 權杖。</value>
+  </data>
+  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
+    <value>Basic Information → App Credentials。</value>
+  </data>
+  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
+    <value>每行一個。</value>
+  </data>
+  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
+    <value>儲存變更</value>
+  </data>
+  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
+    <value>儲存並啟動</value>
+  </data>
+  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
+    <value>開啟設定頁面</value>
+  </data>
+  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
+    <value>在閘道設定頁面中編輯此頻道的設定。</value>
+  </data>
+  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
+    <value>按照上述步驟操作後，儲存設定以啟動頻道。</value>
+  </data>
+  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
+    <value>未連線</value>
+  </data>
+  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
+    <value>請先連線到閘道，然後再儲存頻道設定。</value>
+  </data>
+  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
+    <value>缺少欄位</value>
+  </data>
+  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
+    <value>{0} 為必填項。</value>
+  </data>
+  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
+    <value>正在儲存 {0}…</value>
+  </data>
+  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
+    <value>正在寫入 {0} 個欄位並啟用頻道。</value>
+  </data>
+  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
+    <value>無法載入閘道設定</value>
+  </data>
+  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
+    <value>閘道未傳回其目前設定——沒有它無法安全儲存。請嘗試重新整理並再次儲存。</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
+    <value>閘道設定在儲存過程中被清除。請嘗試重新整理並再次儲存。</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
+    <value>{0} 的儲存被封鎖</value>
+  </data>
+  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+    <value>閘道未回應。</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
+    <value>{0} 的儲存失敗</value>
+  </data>
+  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
+    <value>您的閘道設定已在其他位置變更（例如，從設定頁面）。我們已重新整理快取——請再次嘗試儲存。詳細資訊：{0}</value>
+  </data>
+  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
+    <value>{0} 如果這看起來像是線路格式不符，請開啟設定頁面進行直接 JSON 編輯。</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
+    <value>{0} 設定已儲存</value>
+  </data>
+  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
+    <value>正在等待閘道確認頻道已執行…</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
+    <value>WSL 閘道</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription.Text" xml:space="preserve">
+    <value>開啟 shell，或在 WSL 中管理本機閘道服務。</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostTerminalLabel.Text" xml:space="preserve">
+    <value>終端機</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.Content" xml:space="preserve">
+    <value>啟動</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.Content" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.Content" xml:space="preserve">
+    <value>重新啟動</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>開啟終端機</value>
+  </data>
+  <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>開啟終端機</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>在瀏覽器中開啟儀表板</value>
+  </data>
+  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>開啟儀表板</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>中斷連線/重新連線</value>
+  </data>
+  <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>中斷連線或重新連線</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>開啟終端機</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostOpenTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>開啟終端機</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>在 WSL 中執行 openclaw gateway start</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>啟動 WSL 閘道</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>在 WSL 中執行 openclaw gateway stop</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>停止 WSL 閘道</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>在 WSL 中執行 openclaw gateway restart</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>重新啟動 WSL 閘道</value>
+  </data>
+  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
+    <value>即時</value>
+  </data>
+  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
+    <value>離線</value>
+  </data>
+  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
+    <value>Could not load bindings</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
+    <value>Agent event log</value>
+  </data>
+  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
+    <value>Go to Agent Events</value>
+  </data>
+  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
+    <value>Gateway bindings</value>
+  </data>
+  <data name="Command_GoToBindings_Title" xml:space="preserve">
+    <value>Go to Bindings</value>
+  </data>
+  <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
+    <value>Gateway channels</value>
+  </data>
+  <data name="Command_GoToChannels_Title" xml:space="preserve">
+    <value>Go to Channels</value>
+  </data>
+  <data name="Command_GoToChat_Subtitle" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="Command_GoToChat_Title" xml:space="preserve">
+    <value>Go to Chat</value>
+  </data>
+  <data name="Command_GoToConfig_Subtitle" xml:space="preserve">
+    <value>Gateway configuration</value>
+  </data>
+  <data name="Command_GoToConfig_Title" xml:space="preserve">
+    <value>Go to Config</value>
+  </data>
+  <data name="Command_GoToConnection_Subtitle" xml:space="preserve">
+    <value>Gateway, node, saved gateways</value>
+  </data>
+  <data name="Command_GoToConnection_Title" xml:space="preserve">
+    <value>Go to Connection</value>
+  </data>
+  <data name="Command_GoToCron_Subtitle" xml:space="preserve">
+    <value>Scheduled tasks</value>
+  </data>
+  <data name="Command_GoToCron_Title" xml:space="preserve">
+    <value>Go to Cron ({0})</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Subtitle" xml:space="preserve">
+    <value>Logs, support bundle, device identity, developer tools</value>
+  </data>
+  <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
+    <value>Go to Diagnostics</value>
+  </data>
+  <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
+    <value>About this app</value>
+  </data>
+  <data name="Command_GoToInfo_Title" xml:space="preserve">
+    <value>Go to Info</value>
+  </data>
+  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
+    <value>Gateway instances</value>
+  </data>
+  <data name="Command_GoToInstances_Title" xml:space="preserve">
+    <value>Go to Instances</value>
+  </data>
+  <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
+    <value>Capabilities, exec policy &amp; allowlists</value>
+  </data>
+  <data name="Command_GoToPermissions_Title" xml:space="preserve">
+    <value>Go to Permissions</value>
+  </data>
+  <data name="Command_GoToSessions_Subtitle" xml:space="preserve">
+    <value>All sessions</value>
+  </data>
+  <data name="Command_GoToSessions_Title" xml:space="preserve">
+    <value>Go to Sessions</value>
+  </data>
+  <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
+    <value>Application settings</value>
+  </data>
+  <data name="Command_GoToSettings_Title" xml:space="preserve">
+    <value>Go to Settings</value>
+  </data>
+  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
+    <value>Registered skills</value>
+  </data>
+  <data name="Command_GoToSkills_Title" xml:space="preserve">
+    <value>Go to Skills</value>
+  </data>
+  <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
+    <value>Usage statistics</value>
+  </data>
+  <data name="Command_GoToUsage_Title" xml:space="preserve">
+    <value>Go to Usage</value>
+  </data>
+  <data name="Command_GoToWorkspace_Subtitle" xml:space="preserve">
+    <value>Workspace files</value>
+  </data>
+  <data name="Command_GoToWorkspace_Title" xml:space="preserve">
+    <value>Go to Workspace ({0})</value>
+  </data>
+  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
+    <value>Open standalone chat</value>
+  </data>
+  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
+    <value>Open Chat Window</value>
+  </data>
+  <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
+    <value>Open web dashboard</value>
+  </data>
+  <data name="Command_OpenDashboard_Title" xml:space="preserve">
+    <value>Open Dashboard</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOff" xml:space="preserve">
+    <value>Currently OFF</value>
+  </data>
+  <data name="Command_Subtitle_CurrentlyOn" xml:space="preserve">
+    <value>Currently ON</value>
+  </data>
+  <data name="Command_ToggleBrowserControl_Title" xml:space="preserve">
+    <value>Toggle Browser Control</value>
+  </data>
+  <data name="Command_ToggleCamera_Title" xml:space="preserve">
+    <value>Toggle Camera</value>
+  </data>
+  <data name="Command_ToggleCanvas_Title" xml:space="preserve">
+    <value>Toggle Canvas</value>
+  </data>
+  <data name="Command_ToggleNodeMode_Title" xml:space="preserve">
+    <value>Toggle Node Mode</value>
+  </data>
+  <data name="Command_ToggleScreenCapture_Title" xml:space="preserve">
+    <value>Toggle Screen Capture</value>
+  </data>
+  <data name="CommandCenter_AuthFailed" xml:space="preserve">
+    <value>Gateway authentication failed</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyAuthMayNeed" xml:space="preserve">
+    <value>Browser proxy auth may need a gateway token</value>
+  </data>
+  <data name="CommandCenter_BrowserProxyHostNotDetected" xml:space="preserve">
+    <value>Browser proxy host not detected</value>
+  </data>
+  <data name="CommandCenter_BrowserProxySshForwardNotListening" xml:space="preserve">
+    <value>Browser proxy SSH forward is not listening</value>
+  </data>
+  <data name="CommandCenter_GatewayConnectionError" xml:space="preserve">
+    <value>Gateway connection error</value>
+  </data>
+  <data name="CommandCenter_GatewayHealthStale" xml:space="preserve">
+    <value>Gateway health is stale</value>
+  </data>
+  <data name="CommandCenter_GatewayNotConnected" xml:space="preserve">
+    <value>Gateway is not connected</value>
+  </data>
+  <data name="CommandCenter_NoChannelsReported" xml:space="preserve">
+    <value>No channels reported</value>
+  </data>
+  <data name="CommandCenter_NoChannelsRunning" xml:space="preserve">
+    <value>No channels are currently running</value>
+  </data>
+  <data name="CommandCenter_NodePendingApproval" xml:space="preserve">
+    <value>Node is waiting for approval</value>
+  </data>
+  <data name="CommandCenter_NoLocalGatewayListener" xml:space="preserve">
+    <value>No local gateway listener detected</value>
+  </data>
+  <data name="CommandCenter_NoNodesReported" xml:space="preserve">
+    <value>No nodes reported</value>
+  </data>
+  <data name="CommandCenter_SshTunnelPortNotListening" xml:space="preserve">
+    <value>SSH tunnel port is not listening</value>
+  </data>
+  <data name="CommandCenter_UsageCostsMissing" xml:space="preserve">
+    <value>Some usage costs are missing</value>
+  </data>
+  <data name="CommandCenter_WaitingForGatewayHealth" xml:space="preserve">
+    <value>Waiting for gateway health</value>
+  </data>
+  <data name="ConfigPage_CheckingConfigPermissions" xml:space="preserve">
+    <value>Checking config permissions</value>
+  </data>
+  <data name="ConfigPage_ConfigIsReadOnly" xml:space="preserve">
+    <value>Config is read-only</value>
+  </data>
+  <data name="ConfigPage_ConfigUnavailable" xml:space="preserve">
+    <value>Config unavailable</value>
+  </data>
+  <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
+    <value>Open a shell or manage the local gateway service in {0}.</value>
+  </data>
+  <data name="CronPage_JobCompleted" xml:space="preserve">
+    <value>Job completed</value>
+  </data>
+  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
+    <value>&quot;{0}&quot; ran successfully and was removed.</value>
+  </data>
+  <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
+    <value>This gateway does not have WSL or SSH terminal access.</value>
+  </data>
+  <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
+    <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
+    <value>Open SSH terminal</value>
+  </data>
+  <data name="GatewayHostAccess_OpenSshTerminalTooltip_Format" xml:space="preserve">
+    <value>Open an SSH terminal to {0}@{1}.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalInWslTooltip_Format" xml:space="preserve">
+    <value>Open a terminal in the {0} WSL gateway.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
+    <value>Open terminal</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Open in chat</value>
+  </data>
+  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Open this session in Chat</value>
+  </data>
+  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
+    <value>已停用</value>
+  </data>
+  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
+    <value>已啟用</value>
+  </data>
+  <data name="SkillsPage_CountFormat" xml:space="preserve">
+    <value>({0}/{1} 已啟用)</value>
+  </data>
+  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
+    <value>已停用 ({0})</value>
+  </data>
+  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
+    <value>已啟用 ({0})</value>
+  </data>
+</root>

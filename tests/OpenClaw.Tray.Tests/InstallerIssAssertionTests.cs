@@ -68,7 +68,7 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"#define MySolidCompression ""yes""", iss);
         Assert.Contains("OutputBaseFilename=OpenClawCompanion-Setup-{#MyAppArch}", iss);
         Assert.Contains(@"Name: ""{group}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""", iss);
-        Assert.Contains(@"Name: ""{group}\OpenClaw Gateway Setup""; Filename: ""{app}\SetupEngine\OpenClaw.SetupEngine.UI.exe""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Gateway Setup""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://setup""", iss);
         Assert.Contains(@"Name: ""{group}\OpenClaw Companion Settings""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://commandcenter""", iss);
         Assert.Contains(@"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://chat""", iss);
         Assert.Contains(@"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://check-updates""", iss);
@@ -140,16 +140,19 @@ public sealed class InstallerIssAssertionTests
     }
 
     [Fact]
-    public void ReleaseBuildCopiesSetupEngineIntoInstallerPayload()
+    public void ReleaseBuildDoesNotShipSeparateSetupUiExecutable()
     {
         var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
         var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
 
+        Assert.Contains(@"FileExists(publish + ""\OpenClaw.Tray.WinUI.exe"")", iss);
         Assert.Contains(@"FileExists(publish + ""\SetupEngine\OpenClaw.SetupEngine.UI.exe"")", iss);
-        Assert.Contains("Publish SetupEngine.UI", ci);
-        Assert.Contains(@"dotnet publish src/OpenClaw.SetupEngine.UI", ci);
-        Assert.Contains(@"mkdir publish\SetupEngine", ci);
-        Assert.Contains(@"copy publish-setup\* publish\SetupEngine\ -Recurse", ci);
+        Assert.Contains("SetupEngine.UI.exe should not be shipped", iss);
+        Assert.DoesNotContain("Publish SetupEngine.UI", ci);
+        Assert.DoesNotContain(@"dotnet publish src/OpenClaw.SetupEngine.UI", ci);
+        Assert.DoesNotContain("publish-setup", ci);
+        Assert.DoesNotContain(@"mkdir publish\SetupEngine", ci);
+        Assert.DoesNotContain(@"copy publish-setup\* publish\SetupEngine\ -Recurse", ci);
     }
 
     [Fact]
