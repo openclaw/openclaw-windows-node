@@ -5,8 +5,10 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenClaw.Shared;
 using OpenClawTray.A2UI.Actions;
@@ -16,6 +18,7 @@ using OpenClawTray.A2UI.Rendering;
 using WinUIEx;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
+using Windows.System;
 
 namespace OpenClawTray.Windows;
 
@@ -45,6 +48,7 @@ public sealed partial class A2UICanvasWindow : WindowEx
     private readonly DispatcherQueue _dispatcher;
     private readonly A2UIRouter _router;
     private readonly DataModelStore _dataModel;
+    private bool _isFullScreen;
 
     public bool IsClosed { get; private set; }
 
@@ -69,6 +73,22 @@ public sealed partial class A2UICanvasWindow : WindowEx
         _router.SurfaceCreated += OnSurfaceCreated;
         _router.SurfaceDeleted += OnSurfaceDeleted;
 
+        // F11 toggles borderless fullscreen; Escape exits it.
+        var f11Accel = new KeyboardAccelerator { Key = VirtualKey.F11 };
+        f11Accel.Invoked += (_, args) =>
+        {
+            args.Handled = true;
+            ToggleFullScreen();
+        };
+        var escAccel = new KeyboardAccelerator { Key = VirtualKey.Escape };
+        escAccel.Invoked += (_, args) =>
+        {
+            if (_isFullScreen) { args.Handled = true; ExitFullScreen(); }
+        };
+        RootGrid.KeyboardAccelerators.Add(f11Accel);
+        RootGrid.KeyboardAccelerators.Add(escAccel);
+        RootGrid.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+
         // Explicit teardown: unsubscribe router events and reset surfaces so
         // the router's component subscriptions don't outlive the window. The
         // router holds back-references via event delegates; without this, a
@@ -77,6 +97,7 @@ public sealed partial class A2UICanvasWindow : WindowEx
         Closed += (_, _) =>
         {
             IsClosed = true;
+            ExitFullScreen();
             try { _router.SurfaceCreated -= OnSurfaceCreated; }
             catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: unsubscribe SurfaceCreated failed: {ex.Message}"); }
             try { _router.SurfaceDeleted -= OnSurfaceDeleted; }
@@ -336,6 +357,30 @@ public sealed partial class A2UICanvasWindow : WindowEx
             ["surfaces"] = surfaces,
         };
         return snapshot.ToJsonString();
+    }
+
+    // ── Fullscreen ──────────────────────────────────────────────────────────
+
+    /// <summary>Toggle borderless fullscreen on F11.</summary>
+    public void ToggleFullScreen()
+    {
+        if (_isFullScreen) ExitFullScreen();
+        else EnterFullScreen();
+    }
+
+    private void EnterFullScreen()
+    {
+        _isFullScreen = true;
+        try { AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen); }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: EnterFullScreen failed: {ex.Message}"); }
+    }
+
+    private void ExitFullScreen()
+    {
+        if (!_isFullScreen) return;
+        _isFullScreen = false;
+        try { AppWindow.SetPresenter(AppWindowPresenterKind.Default); }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"A2UICanvasWindow: ExitFullScreen failed: {ex.Message}"); }
     }
 
     public void BringToFront(bool keepTopMost = false)
