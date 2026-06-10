@@ -309,7 +309,7 @@ public abstract class WebSocketClientBase : IDisposable
             {
                 if (!_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
                 {
-                    await ReconnectWithBackoffAsync();
+                    await ReconnectWithBackoffAsync(ws, connectionGeneration);
                 }
             }
             // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
@@ -317,7 +317,9 @@ public abstract class WebSocketClientBase : IDisposable
         }
     }
 
-    protected async Task ReconnectWithBackoffAsync()
+    protected async Task ReconnectWithBackoffAsync(
+        ClientWebSocket? expectedSocket = null,
+        long expectedGeneration = 0)
     {
         if (Interlocked.CompareExchange(ref _reconnectLoopActive, 1, 0) != 0)
         {
@@ -326,7 +328,10 @@ public abstract class WebSocketClientBase : IDisposable
 
         try
         {
-            while (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
+            while (!_disposed
+                && !_cts.Token.IsCancellationRequested
+                && ShouldAutoReconnect()
+                && IsReconnectOwner(expectedSocket, expectedGeneration))
             {
                 var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
                 // Add 0-25% jitter to prevent thundering herd when multiple clients
@@ -339,16 +344,20 @@ public abstract class WebSocketClientBase : IDisposable
 
                 await Task.Delay(delay, _cts.Token);
 
-                if (_cts.Token.IsCancellationRequested || _disposed || !ShouldAutoReconnect())
+                if (_cts.Token.IsCancellationRequested
+                    || _disposed
+                    || !ShouldAutoReconnect()
+                    || !IsReconnectOwner(expectedSocket, expectedGeneration))
                 {
                     break;
                 }
 
                 // Safely dispose old socket
-                var oldSocket = _webSocket;
-                _webSocket = null;
-                try { oldSocket?.Dispose(); }
-                catch (Exception ex) { _logger.Debug($"WebSocketClientBase: Dispose of old WebSocket during reconnect threw: {ex.Message}"); }
+                var oldSocket = expectedSocket ?? _webSocket;
+                if (oldSocket != null)
+                {
+                    DisposeStaleSocket(oldSocket);
+                }
 
                 await ConnectAsync();
 
@@ -370,6 +379,9 @@ public abstract class WebSocketClientBase : IDisposable
             Interlocked.Exchange(ref _reconnectLoopActive, 0);
         }
     }
+
+    private bool IsReconnectOwner(ClientWebSocket? expectedSocket, long expectedGeneration) =>
+        expectedSocket is null || IsCurrentConnection(expectedSocket, expectedGeneration);
 
     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
     protected async Task SendRawAsync(string message)

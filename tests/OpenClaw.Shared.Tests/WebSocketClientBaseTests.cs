@@ -320,6 +320,38 @@ public class WebSocketClientBaseTests
         client.Dispose();
     }
 
+    [Fact]
+    public async Task ReconnectBackoff_DoesNotDisposeNewerConnection_WhenSupersededDuringDelay()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        var client = new ReconnectBackoffRaceClient(server.WebSocketUrl, "token", _logger);
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
+        client.StatusChanged += (_, s) => statuses.Enqueue(s);
+
+        await client.ConnectAsync();
+        await client.FirstConnected.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForConditionAsync(() => server.AcceptedCount >= 1, TimeSpan.FromSeconds(2));
+
+        await server.CloseSocketAsync(0);
+        await WaitForConditionAsync(
+            () => statuses.Count(s => s == ConnectionStatus.Connecting) >= 2,
+            TimeSpan.FromSeconds(2));
+
+        await client.ConnectAsync();
+        await client.SecondConnected.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var staleReconnectWon = await Task.WhenAny(
+            client.ThirdConnected,
+            Task.Delay(TimeSpan.FromMilliseconds(1800)));
+
+        Assert.NotSame(client.ThirdConnected, staleReconnectWon);
+        Assert.Equal(2, client.OnConnectedCallCount);
+        Assert.Equal(2, server.AcceptedCount);
+
+        client.Dispose();
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var start = DateTime.UtcNow;
@@ -375,6 +407,47 @@ internal sealed class BlockingFirstConnectClient : WebSocketClientBase
     public void ReleaseFirstConnect() => _releaseFirstConnect.TrySetResult();
 }
 
+internal sealed class ReconnectBackoffRaceClient : WebSocketClientBase
+{
+    private readonly TaskCompletionSource _firstConnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _secondConnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _thirdConnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _connectCallbacks;
+
+    public int OnConnectedCallCount => Volatile.Read(ref _connectCallbacks);
+    public Task FirstConnected => _firstConnected.Task;
+    public Task SecondConnected => _secondConnected.Task;
+    public Task ThirdConnected => _thirdConnected.Task;
+
+    public ReconnectBackoffRaceClient(string gatewayUrl, string token, IOpenClawLogger? logger = null)
+        : base(gatewayUrl, token, logger)
+    {
+    }
+
+    protected override int ReceiveBufferSize => 8192;
+    protected override string ClientRole => "reconnect-race-test";
+    protected override Task ProcessMessageAsync(string json) => Task.CompletedTask;
+
+    protected override Task OnConnectedAsync()
+    {
+        var count = Interlocked.Increment(ref _connectCallbacks);
+        switch (count)
+        {
+            case 1:
+                _firstConnected.TrySetResult();
+                break;
+            case 2:
+                _secondConnected.TrySetResult();
+                break;
+            case 3:
+                _thirdConnected.TrySetResult();
+                break;
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class LoopbackWebSocketServer : IDisposable
 {
     private readonly HttpListener _listener = new();
@@ -383,6 +456,16 @@ internal sealed class LoopbackWebSocketServer : IDisposable
     private Task? _acceptLoop;
 
     public string WebSocketUrl { get; }
+    public int AcceptedCount
+    {
+        get
+        {
+            lock (_acceptedSockets)
+            {
+                return _acceptedSockets.Count;
+            }
+        }
+    }
 
     public LoopbackWebSocketServer()
     {
@@ -429,6 +512,23 @@ internal sealed class LoopbackWebSocketServer : IDisposable
             {
                 _acceptedSockets.Add(wsContext.WebSocket);
             }
+        }
+    }
+
+    public async Task CloseSocketAsync(int index)
+    {
+        WebSocket socket;
+        lock (_acceptedSockets)
+        {
+            socket = _acceptedSockets[index];
+        }
+
+        if (socket.State == WebSocketState.Open)
+        {
+            await socket.CloseOutputAsync(
+                WebSocketCloseStatus.NormalClosure,
+                "test close",
+                CancellationToken.None);
         }
     }
 
