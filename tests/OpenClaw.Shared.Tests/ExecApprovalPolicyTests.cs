@@ -593,6 +593,43 @@ public class ExecApprovalPolicyTests : IDisposable
 
         Assert.Null(ex);
     }
+
+    [Fact]
+    public void Evaluate_DoesNotThrow_WhenRulesMutateInProcess()
+    {
+        var policy = CreatePolicy();
+        var rules = new ExecApprovalRule[750];
+        for (var i = 0; i < rules.Length; i++)
+        {
+            rules[i] = new ExecApprovalRule
+            {
+                Pattern = $"definitely-no-match-{i}",
+                Action = ExecApprovalAction.Deny
+            };
+        }
+        policy.SetRules(rules, ExecApprovalAction.Deny);
+
+        // Regression: Evaluate used to keep a reference to _rules after releasing
+        // the state lock, so AddRule/RemoveRule could invalidate enumeration.
+        var ex = Record.Exception(() =>
+            Parallel.For(0, 300, i =>
+            {
+                if (i % 25 == 0)
+                {
+                    policy.AddRule(new ExecApprovalRule
+                    {
+                        Pattern = $"added-no-match-{i}",
+                        Action = ExecApprovalAction.Deny
+                    });
+                    _ = policy.RemoveRule(0);
+                    return;
+                }
+
+                _ = policy.Evaluate("target command");
+            }));
+
+        Assert.Null(ex);
+    }
 }
 
 public class SystemCapabilityExecApprovalsTests

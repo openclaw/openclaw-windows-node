@@ -158,7 +158,7 @@ public class ExecApprovalPolicy
         lock (_stateLock)
         {
             TryHotReloadLocked();
-            rulesSnapshot = _rules;
+            rulesSnapshot = _rules.ToList();
             defaultActionSnapshot = _defaultAction;
         }
 
