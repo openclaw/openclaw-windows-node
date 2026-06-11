@@ -13,13 +13,13 @@
 
   How to use:
     1. Install rehearsal. Pin Version below to 0.6.4.0 (the existing
-       v0.6.5-msixtest.1 release asset is the install source). Then:
+       v0.6.6-msixtest.1 release asset is the install source). Then:
          start ms-appinstaller:?source=https://raw.githubusercontent.com/openclaw/openclaw-windows-node/user%2Fkmahone%2Fmsix/installer/appinstaller/openclaw-msixtest-x64.appinstaller
-    2. Update rehearsal. Push a higher-patch tag (e.g. v0.6.5-msixtest.1) and
+    2. Update rehearsal. Push a higher-patch tag (e.g. v0.6.6-msixtest.1) and
        wait for CI to publish its release. Bump all 4 placeholders below:
-         <AppInstaller Version="0.6.5.0">
-         <MainPackage Version="0.6.5.0"
-                      Uri=".../v0.6.5-msixtest.1/OpenClaw.Tray.WinUI_0.6.5.0_x64.msix" />
+         <AppInstaller Version="0.6.6.0">
+         <MainPackage Version="0.6.6.0"
+                      Uri=".../v0.6.6-msixtest.1/OpenClaw.Tray.WinUI_0.6.6.0_x64.msix" />
        Commit + push the edit. Then either:
          a. Quit the installed Alpha tray and relaunch from Start menu — the
             <OnLaunch> prompt should appear, click Update.
@@ -44,18 +44,18 @@
 -->
 <AppInstaller
   xmlns="http://schemas.microsoft.com/appx/appinstaller/2021"
-  Version="0.6.5.0"
+  Version="0.6.6.0"
   Uri="https://raw.githubusercontent.com/openclaw/openclaw-windows-node/user%2Fkmahone%2Fmsix/installer/appinstaller/openclaw-msixtest-x64.appinstaller">
 
   <MainPackage
     Name="OpenClaw.Companion.Alpha"
     Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
-    Version="0.6.5.0"
+    Version="0.6.6.0"
     ProcessorArchitecture="x64"
-    Uri="https://github.com/openclaw/openclaw-windows-node/releases/download/v0.6.5-msixtest.1/OpenClaw.Tray.WinUI_0.6.5.0_x64.msix" />
+    Uri="https://github.com/openclaw/openclaw-windows-node/releases/download/v0.6.6-msixtest.1/OpenClaw.Tray.WinUI_0.6.6.0_x64.msix" />
 
   <UpdateSettings>
-    <OnLaunch HoursBetweenUpdateChecks="0" UpdateBlocksActivation="true" ShowPrompt="true" />
+    <OnLaunch HoursBetweenUpdateChecks="0" UpdateBlocksActivation="false" ShowPrompt="true" />
     <AutomaticBackgroundTask />
   </UpdateSettings>
 </AppInstaller>
