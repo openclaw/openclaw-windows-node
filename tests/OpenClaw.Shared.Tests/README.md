@@ -205,7 +205,7 @@ Tests run on both Windows and Linux:
 - Tests for backslash paths verify the code detects path separators
 
 ### Windows-Specific Code
-Some functionality is Windows-only (Tray app, PowerToys extension), but the Shared library tests are cross-platform compatible.
+Some functionality is Windows-only (Tray app), but the Shared library tests are cross-platform compatible.
 
 ## Future Test Additions
 

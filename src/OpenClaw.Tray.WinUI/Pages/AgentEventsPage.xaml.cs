@@ -4,6 +4,7 @@ using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 
@@ -44,7 +45,7 @@ public sealed partial class AgentEventsPage : Page
     {
         AgentFilterCombo.SelectionChanged -= OnAgentFilterComboChanged;
         AgentFilterCombo.Items.Clear();
-        AgentFilterCombo.Items.Add(new ComboBoxItem { Content = "All Agents", Tag = "" });
+        AgentFilterCombo.Items.Add(new ComboBoxItem { Content = LocalizationHelper.GetString("AgentEventsPage_AllAgents"), Tag = "" });
         foreach (var id in hub.GetAgentIds())
             AgentFilterCombo.Items.Add(new ComboBoxItem { Content = id, Tag = id });
         AgentFilterCombo.SelectedIndex = 0;
@@ -79,7 +80,7 @@ public sealed partial class AgentEventsPage : Page
 
     public void Initialize(HubWindow hub)
     {
-        _appState = ((App)Application.Current).AppState;
+        _appState = ((App)Application.Current!).AppState!;
         _appState.AgentEventAdded += OnAgentEventAdded;
         _appState.PropertyChanged += OnAppStateChanged;
         PopulateAgentFilter(hub);
@@ -95,7 +96,7 @@ public sealed partial class AgentEventsPage : Page
             {
                 LiveDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 255, 68, 68));
-                LiveText.Text = "Live";
+                LiveText.Text = LocalizationHelper.GetString("AgentEventsPage_Status_Live");
                 LiveText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 255, 68, 68));
                 LiveBadge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
@@ -105,7 +106,7 @@ public sealed partial class AgentEventsPage : Page
             {
                 LiveDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 128, 128, 128));
-                LiveText.Text = "Offline";
+                LiveText.Text = LocalizationHelper.GetString("AgentEventsPage_Status_Offline");
                 LiveText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                     Microsoft.UI.ColorHelper.FromArgb(255, 128, 128, 128));
                 LiveBadge.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
@@ -178,7 +179,7 @@ public sealed partial class AgentEventsPage : Page
         EventsList.Visibility = list.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = list.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         CountText.Text = $"({_allEvents.Count})";
-        StatusText.Text = $"{list.Count} of {_allEvents.Count} events";
+        StatusText.Text = string.Format(LocalizationHelper.GetString("AgentEventsPage_EventsStatus"), list.Count, _allEvents.Count);
     }
 
     private void OnClear(object sender, RoutedEventArgs e)

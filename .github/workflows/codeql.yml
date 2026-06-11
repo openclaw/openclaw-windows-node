@@ -1,0 +1,138 @@
+name: CodeQL
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: CodeQL profile to run
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - csharp
+          - actions
+      advanced_setup:
+        description: Run advanced CodeQL instead of repository default setup
+        required: false
+        default: false
+        type: boolean
+  push:
+    paths:
+      - ".github/codeql/**"
+      - ".github/workflows/**"
+      - "src/**"
+      - "tests/**"
+      - "*.sln"
+      - "*.slnx"
+      - "*.props"
+      - "*.targets"
+      - "global.json"
+      - "NuGet.Config"
+      - "package.json"
+      - "package-lock.json"
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, master]
+    paths:
+      - ".github/codeql/**"
+      - ".github/workflows/**"
+      - "src/**"
+      - "tests/**"
+      - "*.sln"
+      - "*.slnx"
+      - "*.props"
+      - "*.targets"
+      - "global.json"
+      - "NuGet.Config"
+      - "package.json"
+      - "package-lock.json"
+  schedule:
+    - cron: "29 6 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  advanced-setup:
+    name: Advanced setup gate
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.advanced-setup.outputs.enabled }}
+    steps:
+      - name: Decide whether to run advanced CodeQL
+        id: advanced-setup
+        run: |
+          if [ "${{ vars.OPENCLAW_CODEQL_ADVANCED_SETUP }}" = "true" ] || { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.advanced_setup }}" = "true" ]; }; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Advanced CodeQL enabled for this run." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "Advanced CodeQL is disabled for this repository workflow."
+              echo "The repository currently uses GitHub CodeQL default setup; default setup and advanced setup cannot upload SARIF for the same repository at the same time."
+              echo "If maintainers disable default setup, set OPENCLAW_CODEQL_ADVANCED_SETUP=true or dispatch this workflow with advanced_setup=true."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  csharp:
+    name: C# security
+    needs: advanced-setup
+    if: ${{ needs.advanced-setup.outputs.enabled == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'csharp') }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: manual
+          config-file: ./.github/codeql/codeql-csharp-security.yml
+
+      - name: Build for CodeQL
+        run: dotnet build openclaw-windows-node.slnx -c Debug --no-restore
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/codeql/csharp"
+
+  actions:
+    name: Actions security
+    needs: advanced-setup
+    if: ${{ needs.advanced-setup.outputs.enabled == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'actions') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: actions
+          config-file: ./.github/codeql/codeql-actions-security.yml
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/codeql/actions"

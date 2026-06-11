@@ -55,6 +55,7 @@ public sealed class SettingsManagerIsolationTests
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", previousOverride);
             if (Directory.Exists(isolatedDirectory))
             {
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                 try { Directory.Delete(isolatedDirectory, recursive: true); } catch { /* best effort */ }
             }
         }
@@ -100,6 +101,7 @@ public sealed class SettingsManagerIsolationTests
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", previousOverride);
             if (Directory.Exists(isolatedDirectory))
             {
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                 try { Directory.Delete(isolatedDirectory, recursive: true); } catch { /* best effort */ }
             }
         }

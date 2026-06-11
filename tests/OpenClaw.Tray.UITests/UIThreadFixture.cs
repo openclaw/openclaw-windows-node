@@ -32,14 +32,14 @@ namespace OpenClaw.Tray.UITests;
 public sealed class UIThreadFixture : IDisposable
 {
     // Match the Microsoft.WindowsAppSDK package's runtime major/minor. The
-    // bootstrapper resolves a system-installed Microsoft.WindowsAppRuntime.2.0
+    // bootstrapper resolves a system-installed Microsoft.WindowsAppRuntime.2.1
     // framework MSIX (stable channel = empty version
     // tag). On dev machines and on CI the runtime is installed out-of-band — see
     // .github/workflows/ci.yml ("Install WindowsAppRuntime") and the README setup
     // notes. Self-contained deployment was tried but doesn't survive the xunit
     // testhost: the testhost.exe lives in the .NET SDK directory, so the SDK's
     // P/Invoke-based auto-initializer can't probe the test bin folder.
-    private const uint WinAppSdkMajorMinor = 0x00020000;
+    private const uint WinAppSdkMajorMinor = 0x00020001;
     private const string WinAppSdkVersionTag = "";
     private const int DefaultStartupTimeoutSeconds = 90;
 
@@ -140,9 +140,11 @@ public sealed class UIThreadFixture : IDisposable
         {
             Dispatcher.TryEnqueue(() =>
             {
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                 try { TestWindow.Title = $"A2UI render test — {label}"; } catch { }
             });
         }
+        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
         return Task.Delay(ms ?? SlowStepMs);
     }
 
@@ -190,6 +192,7 @@ public sealed class UIThreadFixture : IDisposable
                         {
                             TestWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(900, 640));
                         }
+                        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                         catch { /* best-effort sizing */ }
                     }
 
@@ -232,6 +235,7 @@ public sealed class UIThreadFixture : IDisposable
             // SW_HIDE = 0
             ShowWindow(hwnd, 0);
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
         {
             // best-effort; tests still work even if the window briefly flashes.
@@ -252,13 +256,16 @@ public sealed class UIThreadFixture : IDisposable
             {
                 Dispatcher.TryEnqueue(() =>
                 {
+                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                     try { TestWindow?.Close(); } catch { }
+                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                     try { Application.Current?.Exit(); } catch { }
                 });
             }
             // Don't block the test process forever if the UI thread misbehaves.
             _uiThread.Join(TimeSpan.FromSeconds(5));
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
         {
             // Disposal is best-effort.

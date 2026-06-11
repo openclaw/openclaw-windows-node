@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
@@ -14,7 +15,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SessionsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private SessionInfo[]? _allSessions;
     private string _activeChannel = "all";
@@ -35,7 +36,7 @@ public sealed partial class SessionsPage : Page
     {
         // Guard against duplicate subscriptions (NavigationCacheMode reuses page)
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
 
         // Show "← Back to Connection" only when the user arrived from
@@ -277,7 +278,13 @@ public sealed partial class SessionsPage : Page
         return null;
     }
 
-    private async void OnResetSession(object sender, RoutedEventArgs e)
+    private void OnResetSession(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnResetSessionAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnResetSession));
+
+    private async Task OnResetSessionAsync(object sender)
     {
         if (ResolveSessionKey(sender) is not string key) return;
         var client = CurrentApp.GatewayClient;
@@ -286,7 +293,13 @@ public sealed partial class SessionsPage : Page
         catch (Exception ex) { ShowActionFailure("Reset failed", ex); }
     }
 
-    private async void OnDeleteSession(object sender, RoutedEventArgs e)
+    private void OnDeleteSession(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnDeleteSessionAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnDeleteSession));
+
+    private async Task OnDeleteSessionAsync(object sender)
     {
         if (ResolveSessionKey(sender) is not string key) return;
         var client = CurrentApp.GatewayClient;
@@ -295,7 +308,13 @@ public sealed partial class SessionsPage : Page
         catch (Exception ex) { ShowActionFailure("Delete failed", ex); }
     }
 
-    private async void OnCompactSession(object sender, RoutedEventArgs e)
+    private void OnCompactSession(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnCompactSessionAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnCompactSession));
+
+    private async Task OnCompactSessionAsync(object sender)
     {
         if (ResolveSessionKey(sender) is not string key) return;
         var client = CurrentApp.GatewayClient;
@@ -341,8 +360,8 @@ public sealed partial class SessionsPage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load sessions.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("SessionsPage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("SessionsPage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
         RefreshButton.IsEnabled = false;

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -13,7 +14,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class UsagePage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private IOperatorGatewayClient? _trackedClient;
     // Default matches the XAML-selected Period7DaysItem (IsSelected="True").
@@ -41,7 +42,7 @@ public sealed partial class UsagePage : Page
     public void Initialize()
     {
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         if (CurrentApp.ConnectionManager != null)
         {
@@ -330,8 +331,8 @@ public sealed partial class UsagePage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load usage data.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
     }

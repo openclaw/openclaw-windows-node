@@ -5,7 +5,7 @@ assembly-versioning-scheme: MajorMinorPatch
 branches:
   main:
     regex: ^(master|main)$
-    label: ''
+    label: alpha
     increment: Patch
 
 ignore:

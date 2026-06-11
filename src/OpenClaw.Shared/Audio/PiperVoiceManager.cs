@@ -115,9 +115,10 @@ public sealed class PiperVoiceManager
                 && File.Exists(GetTokensPath(voiceId))
                 && Directory.Exists(GetEspeakDataDir(voiceId));
         }
-        catch
+        catch (Exception ex)
         {
             // FindVoice throws on unknown voiceId — treat as not-downloaded.
+            _logger.Debug($"PiperVoiceManager.IsVoiceDownloaded('{voiceId}'): {ex.Message}");
             return false;
         }
     }
@@ -221,13 +222,16 @@ public sealed class PiperVoiceManager
         {
             // Best-effort cleanup — leaves the user able to retry without
             // leftover partial files.
-            try { if (File.Exists(tarballPath)) File.Delete(tarballPath); } catch { /* swallow */ }
-            try { if (Directory.Exists(voiceDir) && !IsVoiceDownloaded(info.VoiceId)) Directory.Delete(voiceDir, recursive: true); } catch { /* swallow */ }
+            try { if (File.Exists(tarballPath)) File.Delete(tarballPath); }
+            catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: post-failure tarball cleanup failed: {cleanupEx.Message}"); }
+            try { if (Directory.Exists(voiceDir) && !IsVoiceDownloaded(info.VoiceId)) Directory.Delete(voiceDir, recursive: true); }
+            catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: post-failure voiceDir cleanup failed: {cleanupEx.Message}"); }
             throw;
         }
         finally
         {
-            try { if (File.Exists(tarballPath)) File.Delete(tarballPath); } catch { /* swallow */ }
+            try { if (File.Exists(tarballPath)) File.Delete(tarballPath); }
+            catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: finally tarball cleanup failed: {cleanupEx.Message}"); }
         }
     }
 
@@ -270,7 +274,8 @@ public sealed class PiperVoiceManager
         long total = 0;
         foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
         {
-            try { total += new FileInfo(f).Length; } catch { /* skip */ }
+            try { total += new FileInfo(f).Length; }
+            catch (Exception ex) { _logger.Debug($"PiperVoiceManager.GetVoiceSize: skip file '{f}': {ex.Message}"); }
         }
         return total;
     }
@@ -301,7 +306,13 @@ public sealed class PiperVoiceManager
             proc.WaitForExit(2000);
             if (!proc.HasExited)
             {
-                try { proc.Kill(entireProcessTree: true); } catch { /* swallow */ }
+                try { proc.Kill(entireProcessTree: true); }
+                catch (Exception killEx)
+                {
+                    // Static context (no instance logger). Best-effort kill of unresponsive
+                    // tar probe; the InvalidOperationException thrown below carries the user signal.
+                    System.Diagnostics.Trace.WriteLine($"PiperVoiceManager: tar probe kill failed: {killEx.GetType().Name}: {killEx.Message}");
+                }
                 throw new InvalidOperationException("tar.exe didn't respond to --version.");
             }
             if (proc.ExitCode != 0)
@@ -345,8 +356,9 @@ public sealed class PiperVoiceManager
         using var proc = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
-        // Cancellation: kill the tar process if requested.
-        using var reg = cancellationToken.Register(() => { try { proc.Kill(entireProcessTree: true); } catch { /* swallow */ } });
+        // Cancellation: kill the tar process if requested. Static context — no logger;
+        // best-effort kill, the cancellation surfaces via the awaited WaitForExit.
+        using var reg = cancellationToken.Register(() => { try { proc.Kill(entireProcessTree: true); } catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"PiperVoiceManager: tar cancellation kill failed: {ex.GetType().Name}: {ex.Message}"); } });
 
         proc.WaitForExit();
         if (proc.ExitCode != 0)

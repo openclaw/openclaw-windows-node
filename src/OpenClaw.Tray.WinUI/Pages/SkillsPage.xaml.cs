@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -11,7 +13,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class SkillsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private List<SkillData> _allSkills = new();
 
@@ -28,7 +30,7 @@ public sealed partial class SkillsPage : Page
 
     public void Initialize()
     {
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         PopulateAgentFilter();
 
@@ -92,7 +94,13 @@ public sealed partial class SkillsPage : Page
             _ = client.RequestSkillsStatusAsync(GetSelectedAgentId());
     }
 
-    private async void OnToggleSkillClick(object sender, RoutedEventArgs e)
+    private void OnToggleSkillClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnToggleSkillClickAsync(sender),
+            new OpenClawTray.AppLogger(),
+            nameof(OnToggleSkillClick));
+
+    private async Task OnToggleSkillClickAsync(object sender)
     {
         if (sender is not Button btn || btn.Tag is not string skillKey) return;
         if (CurrentApp.GatewayClient == null) return;
@@ -197,12 +205,12 @@ public sealed partial class SkillsPage : Page
         foreach (var s in disabled)
             DisabledPanel.Children.Add(BuildCard(s));
 
-        EnabledHeaderText.Text = $"Enabled ({enabled.Count})";
-        DisabledHeaderText.Text = $"Disabled ({disabled.Count})";
+        EnabledHeaderText.Text = LocalizationHelper.Format("SkillsPage_EnabledHeaderFormat", enabled.Count);
+        DisabledHeaderText.Text = LocalizationHelper.Format("SkillsPage_DisabledHeaderFormat", disabled.Count);
         DisabledExpander.Visibility = disabled.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var total = _allSkills.Count;
-        CountText.Text = total > 0 ? $"({enabled.Count}/{total} enabled)" : "";
+        CountText.Text = total > 0 ? LocalizationHelper.Format("SkillsPage_CountFormat", enabled.Count, total) : "";
 
         if (total > 0)
         {
@@ -249,7 +257,7 @@ public sealed partial class SkillsPage : Page
         };
         badge.Child = new TextBlock
         {
-            Text = s.IsEnabled ? "Enabled" : "Disabled",
+            Text = LocalizationHelper.GetString(s.IsEnabled ? "SkillsPage_BadgeEnabled" : "SkillsPage_BadgeDisabled"),
             FontSize = 11,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = (Brush)Application.Current.Resources[badgeFgKey],

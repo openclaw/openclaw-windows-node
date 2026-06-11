@@ -349,9 +349,7 @@ public class DeepLinkParserTests
 
         DeepLinkHandler.Handle("openclaw://agent?message=ping", actions);
 
-        var completed = await Task.WhenAny(sent.Task, Task.Delay(TimeSpan.FromSeconds(3)));
-        Assert.Same(sent.Task, completed);
-        Assert.Equal("ping", await sent.Task);
+        Assert.Equal("ping", await sent.Task.WaitAsync(TimeSpan.FromSeconds(3)));
     }
 
     [Fact]
@@ -369,8 +367,7 @@ public class DeepLinkParserTests
 
         DeepLinkHandler.Handle("openclaw://healthcheck", actions);
 
-        var completed = await Task.WhenAny(ran.Task, Task.Delay(TimeSpan.FromSeconds(3)));
-        Assert.Same(ran.Task, completed);
+        Assert.True(await ran.Task.WaitAsync(TimeSpan.FromSeconds(3)));
     }
 
     #endregion

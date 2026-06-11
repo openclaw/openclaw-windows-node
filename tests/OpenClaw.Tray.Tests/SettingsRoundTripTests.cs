@@ -15,6 +15,7 @@ public class SettingsRoundTripTests
             UseSshTunnel= true,
             SshTunnelUser = "user1",
             SshTunnelHost = "remote-host",
+            SshTunnelSshPort = 2222,
             SshTunnelRemotePort = 18789,
             SshTunnelLocalPort = 28789,
             AutoStart = true,
@@ -69,6 +70,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.UseSshTunnel, restored.UseSshTunnel);
         Assert.Equal(original.SshTunnelUser, restored.SshTunnelUser);
         Assert.Equal(original.SshTunnelHost, restored.SshTunnelHost);
+        Assert.Equal(original.SshTunnelSshPort, restored.SshTunnelSshPort);
         Assert.Equal(original.SshTunnelRemotePort, restored.SshTunnelRemotePort);
         Assert.Equal(original.SshTunnelLocalPort, restored.SshTunnelLocalPort);
         Assert.Equal(original.AutoStart, restored.AutoStart);
@@ -140,6 +142,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
+        Assert.Equal(22, settings.SshTunnelSshPort);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
         Assert.True(settings.AutoStart);
@@ -220,6 +223,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
+        Assert.Equal(22, settings.SshTunnelSshPort);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
         // New fields should have sensible defaults
@@ -255,6 +259,31 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
+    public void SettingsManager_DefaultsInvalidSshPort()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+              "SshTunnelSshPort": 70000
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.Equal(22, settings.SshTunnelSshPort);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SettingsManager_PersistsRecordingConsentFlags()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
@@ -283,6 +312,9 @@ public class SettingsRoundTripTests
     [WindowsFact]
     public void SettingsManager_ProtectsElevenLabsApiKeyForStorage()
     {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
         var protectedValue = SettingsManager.ProtectSettingSecret("elevenlabs-key");
 
         Assert.NotNull(protectedValue);
@@ -295,6 +327,74 @@ public class SettingsRoundTripTests
     public void SettingsManager_ReturnsNullForCorruptedProtectedSecret()
     {
         Assert.Null(SettingsManager.UnprotectSettingSecret("dpapi:not-base64"));
+    }
+
+    [WindowsFact]
+    public void SettingsManager_SaveProtectsSecretsWithoutMutatingInMemoryData()
+    {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(dir, "settings.json");
+
+        try
+        {
+            var settings = new SettingsManager(dir)
+            {
+                TtsElevenLabsApiKey = "elevenlabs-key"
+            };
+
+            settings.Save();
+            Assert.Equal("elevenlabs-key", settings.TtsElevenLabsApiKey);
+
+            using (var saved = JsonDocument.Parse(File.ReadAllText(settingsPath)))
+            {
+                var stored = saved.RootElement.GetProperty(nameof(SettingsData.TtsElevenLabsApiKey)).GetString();
+                Assert.StartsWith("dpapi:", stored);
+                Assert.DoesNotContain("elevenlabs-key", stored);
+            }
+
+            settings.Save();
+            Assert.Equal("elevenlabs-key", settings.TtsElevenLabsApiKey);
+
+            var reloaded = new SettingsManager(dir);
+            Assert.Equal("elevenlabs-key", reloaded.TtsElevenLabsApiKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SettingsManager_ToSettingsData_ReturnsDetachedMutableLists()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var settings = new SettingsManager(dir);
+            settings.A2UIImageHosts.Add("images.example.test");
+            settings.SandboxCustomFolders.Add(new SandboxCustomFolder
+            {
+                Path = "C:\\Temp\\OpenClaw",
+                Access = SandboxFolderAccess.ReadOnly
+            });
+
+            var snapshot = settings.ToSettingsData();
+            snapshot.A2UIImageHosts!.Add("mutated.example.test");
+            snapshot.SandboxCustomFolders![0].Path = "C:\\Mutated";
+
+            Assert.Equal(["images.example.test"], settings.A2UIImageHosts);
+            Assert.Equal("C:\\Temp\\OpenClaw", settings.SandboxCustomFolders[0].Path);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Theory]

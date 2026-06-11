@@ -57,7 +57,9 @@ internal static class DiagnosticsBundleBuilder
         builder.AppendLine("- Crash log tail");
         builder.AppendLine("- Latest setup log tails");
         builder.AppendLine();
-        builder.AppendLine("Redaction:");
+        builder.AppendLine("Privacy boundary:");
+        builder.AppendLine("- Tray, structured diagnostics, crash, setup, and connection diagnostics are sanitized before they are written or recorded.");
+        builder.AppendLine("- Export-time sanitization is applied again as defense-in-depth for older/raw log lines.");
         builder.AppendLine("- Tokens, bootstrap/shared credentials, bearer headers, API keys, passwords, setup codes, DPAPI blobs, private keys, URLs, emails, IPs, and user paths are sanitized.");
         builder.AppendLine("- Raw settings.json, gateways.json, mcp-token.txt, device-key-ed25519.json, screenshots, recordings, chat payloads, camera data, and microphone data are not included.");
         builder.AppendLine("- Long sections are truncated and marked inline.");
@@ -108,13 +110,13 @@ internal static class DiagnosticsBundleBuilder
         {
             builder.Append(evt.Timestamp.ToUniversalTime().ToString("O"));
             builder.Append(" [");
-            builder.Append(evt.Category);
+            builder.Append(DiagnosticsExportRedactor.Sanitize(evt.Category));
             builder.Append("] ");
-            builder.Append(evt.Message);
+            builder.Append(DiagnosticsExportRedactor.Sanitize(evt.Message));
             if (!string.IsNullOrWhiteSpace(evt.Detail))
             {
                 builder.Append(" — ");
-                builder.Append(evt.Detail);
+                builder.Append(DiagnosticsExportRedactor.Sanitize(evt.Detail));
             }
             builder.AppendLine();
         }

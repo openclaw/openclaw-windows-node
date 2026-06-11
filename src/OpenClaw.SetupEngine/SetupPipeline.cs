@@ -42,10 +42,10 @@ public static class SetupStepFactory
     {
         return
         [
-            new CleanupStaleDistroStep(),
-            new CleanupStaleGatewayStep(),
             new PreflightOsStep(),
             new PreflightWslStep(),
+            new CleanupStaleDistroStep(),
+            new CleanupStaleGatewayStep(),
             new PreflightPortStep(),
             new CreateWslInstanceStep(),
             new ConfigureWslInstanceStep(),
@@ -157,8 +157,16 @@ public sealed class SetupPipeline
                 continue;
             }
 
-            // Step failed — handle rollback if configured
-            ctx.Logger.Error($"Step '{step.Id}' failed: {result.Message}");
+            // Step failed — handle rollback if configured.
+            // When result.Error is set, StepCompleted already emitted an Error log for the
+            // exception, so we downgrade the summary to Warn to avoid duplicate Errors.
+            // When there is no exception (StepResult.Fail(message)), StepCompleted does NOT
+            // emit Error, so we keep this summary at Error so failed steps remain visible on
+            // Error-filtered dashboards.
+            if (result.Error is null)
+                ctx.Logger.Error($"SetupPipeline: Step '{step.Id}' failed: {result.Message}");
+            else
+                ctx.Logger.Warn($"SetupPipeline: Step '{step.Id}' failed: {result.Message}");
 
             if (ctx.Config.RollbackOnFailure)
             {

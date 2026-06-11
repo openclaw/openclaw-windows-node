@@ -46,6 +46,14 @@ public sealed class SetupRunLock : IDisposable
     public void Dispose()
     {
         _stream.Dispose();
-        try { File.Delete(_path); } catch { }
+        try { File.Delete(_path); }
+        catch (Exception ex)
+        {
+            // Best-effort cleanup of the run-lock file. If the delete fails, the
+            // next setup attempt will see an orphan lock and surface a confusing
+            // "another setup active" error — surface the cause via the diagnostic
+            // stderr channel so it is visible in test/CI logs.
+            SetupDiagnostics.TryWriteStderrWarning($"SetupRunLock.Dispose: failed to delete lock file '{_path}': {ex.GetType().Name}: {ex.Message}");
+        }
     }
 }

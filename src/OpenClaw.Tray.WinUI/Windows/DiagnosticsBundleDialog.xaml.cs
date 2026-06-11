@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using System;
 using System.IO;
@@ -62,7 +63,7 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
         timer.Start();
     }
 
-    private async void OnSaveClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    private void OnSaveClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         // Keep the dialog open after Save so the user can also Copy
         // (or save again to a different location). Mirrors OnCopyClick.
@@ -70,25 +71,31 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
         // instead of vanishing in a fire-and-forget task.
         args.Cancel = true;
         var deferral = args.GetDeferral();
-        try
-        {
-            SecondaryButtonText = "Saving...";
-            var result = await SaveToFileAsync();
-            SecondaryButtonText = result.ButtonText;
-        }
-        finally
-        {
-            deferral.Complete();
-        }
+        AsyncEventHandlerGuard.Run(
+            async () =>
+            {
+                try
+                {
+                    SecondaryButtonText = "Saving...";
+                    var result = await SaveToFileAsync();
+                    SecondaryButtonText = result.ButtonText;
+                }
+                finally
+                {
+                    deferral.Complete();
+                }
 
-        var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromSeconds(2);
-        timer.Tick += (_, _) =>
-        {
-            SecondaryButtonText = "Save to file";
-            timer.Stop();
-        };
-        timer.Start();
+                var timer = DispatcherQueue.CreateTimer();
+                timer.Interval = TimeSpan.FromSeconds(2);
+                timer.Tick += (_, _) =>
+                {
+                    SecondaryButtonText = "Save to file";
+                    timer.Stop();
+                };
+                timer.Start();
+            },
+            new OpenClawTray.AppLogger(),
+            nameof(OnSaveClick));
     }
 
     private async Task<SaveResult> SaveToFileAsync()

@@ -17,6 +17,7 @@ public class GatewayRegistryTests : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 
@@ -105,6 +106,19 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Load_WithCorruptedJson_LogsWarningAndStartsEmpty()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "gateways.json"), "{not json");
+        var logger = new CapturingLogger();
+        var registry = new GatewayRegistry(_tempDir, logger: logger);
+
+        registry.Load();
+
+        Assert.Empty(registry.GetAll());
+        Assert.Contains(logger.Warnings, warning => warning.Contains("not valid JSON", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void GetIdentityDirectory_ReturnsGatewayIdSubdir()
     {
         var path = _registry.GetIdentityDirectory("gw-1");
@@ -166,7 +180,7 @@ public class GatewayRegistryTests : IDisposable
     {
         var record = MakeRecord("gw-1", "wss://test1") with
         {
-            SshTunnel = new SshTunnelConfig("user", "host.example.com", 18789, 18789)
+            SshTunnel = new SshTunnelConfig("user", "host.example.com", 18789, 18789, SshPort: 2222)
         };
         _registry.AddOrUpdate(record);
         _registry.Save();
@@ -178,7 +192,37 @@ public class GatewayRegistryTests : IDisposable
         Assert.NotNull(loaded.SshTunnel);
         Assert.Equal("user", loaded.SshTunnel.User);
         Assert.Equal("host.example.com", loaded.SshTunnel.Host);
+        Assert.Equal(2222, loaded.SshTunnel.SshPort);
         Assert.Equal(18789, loaded.SshTunnel.RemotePort);
+    }
+
+    [Fact]
+    public void Load_WithLegacySshTunnelConfig_DefaultsSshPort()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "gateways.json"), """
+        {
+          "activeId": "gw-1",
+          "gateways": [
+            {
+              "id": "gw-1",
+              "url": "wss://test1",
+              "sshTunnel": {
+                "user": "user",
+                "host": "host.example.com",
+                "remotePort": 18789,
+                "localPort": 28789,
+                "includeBrowserProxyForward": false
+              }
+            }
+          ]
+        }
+        """);
+
+        _registry.Load();
+
+        var loaded = _registry.GetById("gw-1")!;
+        Assert.NotNull(loaded.SshTunnel);
+        Assert.Equal(22, loaded.SshTunnel.SshPort);
     }
 
     [Fact]
@@ -233,4 +277,14 @@ public class GatewayRegistryTests : IDisposable
         Id = id,
         Url = url
     };
+
+    private sealed class CapturingLogger : IOpenClawLogger
+    {
+        public List<string> Warnings { get; } = [];
+
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
+    }
 }

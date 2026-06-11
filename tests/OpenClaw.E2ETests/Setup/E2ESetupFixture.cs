@@ -212,6 +212,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private void WriteConfig()
     {
+        var lkgVersion = GatewayLkgVersion.ResolveLkgVersion();
         var config = new
         {
             DistroName = _distroName,
@@ -246,6 +247,10 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 NodeTtsEnabled = true,
                 NodeSttEnabled = true,
             },
+            Gateway = new
+            {
+                Version = lkgVersion
+            }
         };
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
@@ -291,6 +296,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 {
                     if (!File.Exists(tokenPath))
                     {
+                        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
                         await Task.Delay(500);
                         continue;
                     }
@@ -298,6 +304,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                     if (string.IsNullOrEmpty(token))
                     {
                         token = null;
+                        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
                         await Task.Delay(500);
                         continue;
                     }
@@ -319,6 +326,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 lastEx = ex;
             }
 
+            // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
             await Task.Delay(500);
         }
 
@@ -370,6 +378,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 Log($"Connection poll error: {ex.Message}");
             }
 
+            // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
             await Task.Delay(2000);
         }
 
@@ -417,6 +426,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 Log($"Node list poll error: {ex.Message}");
             }
 
+            // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
             await Task.Delay(1000);
         }
 
@@ -507,6 +517,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         catch (OperationCanceledException)
         {
             timedOut = true;
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
         }
 
@@ -590,6 +601,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 }
             }
 
+            // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
             await Task.Delay(500);
         }
 
@@ -639,6 +651,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 await writer.WriteLineAsync(line);
             }
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch { /* process exited — expected */ }
     }
 
@@ -777,6 +790,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         {
             File.AppendAllText(Path.Combine(ArtifactDir, "e2e-fixture.log"), logLine + Environment.NewLine);
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch { /* best effort */ }
     }
 }

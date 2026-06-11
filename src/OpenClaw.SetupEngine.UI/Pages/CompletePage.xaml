@@ -12,7 +12,7 @@
                     HorizontalAlignment="Stretch">
 
             <!-- Success/failure icon -->
-            <Image x:Name="SuccessIcon" Source="ms-appx:///Assets/Setup/PartyPopper.png"
+            <Image x:Name="SuccessIcon" Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/PartyPopper.png"
                    Width="120" Height="120"
                    HorizontalAlignment="Center" Margin="0,0,0,8" />
             <Border x:Name="FailureIcon" Width="96" Height="96"
@@ -43,6 +43,10 @@
                     <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
                                FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
                                Foreground="#FF6B6B" />
+                    <HyperlinkButton x:Name="HelpLink"
+                                     Visibility="Collapsed"
+                                     Padding="0"
+                                     FontSize="13" />
                     <HyperlinkButton x:Name="ViewLogLink" Content="View full log →"
                                      Click="ViewLog_Click" Padding="0"
                                      FontSize="13" />

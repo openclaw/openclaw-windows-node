@@ -27,12 +27,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Updatum;
 using WinUIEx;
+using SetupCompletedEventArgs = OpenClaw.SetupEngine.UI.SetupCompletedEventArgs;
+using SetupWindow = OpenClaw.SetupEngine.UI.SetupWindow;
 
 namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands
 {
-    internal static readonly UpdatumManager AppUpdater = new("shanselman", "openclaw-windows-hub")
+    internal static readonly UpdatumManager AppUpdater = new("openclaw", "openclaw-windows-node")
     {
         FetchOnlyLatestRelease = true,
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
@@ -100,7 +102,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _settings.SshTunnelHost,
             _settings.SshTunnelRemotePort,
             _settings.SshTunnelLocalPort,
-            includeBrowserProxyForward);
+            includeBrowserProxyForward,
+            _settings.SshTunnelSshPort);
     }
 
     /// <summary>
@@ -108,7 +111,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// Used by onboarding pages that need to host file pickers / dialogs.
     /// </summary>
     public IntPtr GetOnboardingWindowHandle()
-        => IntPtr.Zero; // SetupEngine.UI is out-of-process; no onboarding window in tray
+        => _setupWindow is null
+            ? IntPtr.Zero
+            : WinRT.Interop.WindowNative.GetWindowHandle(_setupWindow);
 
     /// <summary>
     /// Returns the HWND of the Hub window, or IntPtr.Zero if it isn't open.
@@ -133,6 +138,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private AppState? _appState;
     internal AppState? AppState => _appState;
+    private UpdateCoordinator? _updateCoordinator;
     private GatewayService? _gatewayService;
     private CancellationTokenSource? _deepLinkCts;
     private bool _isExiting;
@@ -176,9 +182,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
+    private SetupWindow? _setupWindow;
 
     private string[]? _startupArgs;
     private string? _pendingProtocolUri;
+    private bool _isPostSetupRestart;
+    private string? _postSetupLaunch;
     // OPENCLAW_TRAY_DATA_DIR isolates a test instance: settings, logs, run marker,
     // crash log, exec approvals, and the single-instance mutex name all derive from it.
     private static readonly string? DataDirOverride =
@@ -197,21 +206,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OpenClawTray");
-    private static readonly string CrashLogPath = Path.Combine(DataPath, "crash.log");
+    private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
-    private const string DisableMouseInPointerEnv = "OPENCLAW_DISABLE_MOUSE_IN_POINTER";
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnableMouseInPointer([MarshalAs(UnmanagedType.Bool)] bool fEnable);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsMouseInPointerEnabled();
 
     public App()
     {
-        ConfigureMouseInPointerInput();
+        WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs());
+        StartupInputConfigurator.Configure();
 
         // Language override for localization testing (e.g., OPENCLAW_LANGUAGE=zh-CN)
         var langOverride = Environment.GetEnvironmentVariable("OPENCLAW_LANGUAGE");
@@ -225,6 +226,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 Logger.Warn($"[App] Ignoring invalid OPENCLAW_LANGUAGE value: {langOverride}");
         }
 
+        // Wire the GatewayHostAccess localization indirection to LocalizationHelper.
+        // The classifier defaults to identity (returns the resource key as-is) for unit-test
+        // contexts that lack a WinUI runtime; in-app we point it at the real resource lookup.
+        GatewayHostAccessLocalization.GetString = LocalizationHelper.GetString;
+        GatewayHostAccessLocalization.Format = (key, args) => LocalizationHelper.Format(key, args);
+
         InitializeComponent();
         
         s_runMarker.Check();
@@ -237,70 +244,62 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
 
-    private static void ConfigureMouseInPointerInput()
+    private static bool HasArg(string[] args, string name) =>
+        args.Any(arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
+
+    private static string? GetArgValue(string[] args, string name)
     {
-        if (IsTruthyEnvVar(Environment.GetEnvironmentVariable(DisableMouseInPointerEnv)))
+        for (var i = 0; i < args.Length - 1; i++)
         {
-            Logger.Warn($"[Input] Mouse-in-pointer startup configuration disabled by {DisableMouseInPointerEnv}=1.");
+            if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+
+        return null;
+    }
+
+    private static void WaitForRestartSourceIfRequested(string[] args)
+    {
+        var pidValue = GetArgValue(args, "--wait-for-pid");
+        if (!int.TryParse(pidValue, NumberStyles.None, CultureInfo.InvariantCulture, out var pid) ||
+            pid <= 0 ||
+            pid == Environment.ProcessId)
+        {
             return;
         }
 
         try
         {
-            var before = IsMouseInPointerEnabled();
-            if (before)
-            {
-                Logger.Info("[Input] Mouse-in-pointer was already enabled before WinUI initialization.");
-                return;
-            }
-
-            var enabled = EnableMouseInPointer(true);
-            var error = enabled ? 0 : Marshal.GetLastWin32Error();
-            var after = IsMouseInPointerEnabled();
-            if (enabled && after)
-            {
-                Logger.Info("[Input] Enabled mouse-in-pointer before WinUI initialization for precision touchpad scrolling.");
-            }
-            else
-            {
-                Logger.Warn($"[Input] EnableMouseInPointer(true) did not enable mouse-in-pointer. Before={before}, After={after}, LastError={error}.");
-            }
+            using var process = Process.GetProcessById(pid);
+            if (!process.HasExited)
+                process.WaitForExit(TimeSpan.FromSeconds(60));
         }
-        catch (DllNotFoundException ex)
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        catch (ArgumentException)
         {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
+            // The source process already exited.
         }
-        catch (EntryPointNotFoundException ex)
+        catch (Exception ex)
         {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
-        }
-        catch (SEHException ex)
-        {
-            Logger.Warn($"[Input] EnableMouseInPointer startup configuration failed: {ex.Message}");
+            // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
+            try { Logger.Warn($"Post-setup restart wait for PID {pid} failed: {ex.Message}"); } catch { }
         }
     }
 
-    private static bool IsTruthyEnvVar(string? value) =>
-        value is not null &&
-        (string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(value, "on", StringComparison.OrdinalIgnoreCase));
-
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        LogCrash("UnhandledException", e.Exception);
+        _crashLogger.Log("UnhandledException", e.Exception);
         e.Handled = true; // Try to prevent crash
     }
 
     private void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
-        LogCrash("DomainUnhandledException", e.ExceptionObject as Exception);
+        _crashLogger.Log("DomainUnhandledException", e.ExceptionObject as Exception);
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        LogCrash("UnobservedTaskException", e.Exception);
+        _crashLogger.Log("UnobservedTaskException", e.Exception);
         e.SetObserved(); // Prevent crash
     }
     
@@ -311,34 +310,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Info($"Process exiting (ExitCode={Environment.ExitCode})");
         }
-        catch { }
-    }
-
-    private static void LogCrash(string source, Exception? ex)
-    {
-        try
+        catch (Exception ex)
         {
-            var dir = Path.GetDirectoryName(CrashLogPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-
-            var message = $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n";
-            File.AppendAllText(CrashLogPath, message);
+            // Process is exiting; the logger writer may already be torn down.
+            // Nothing we can do — Trace.WriteLine matches the standard set in
+            // Services/Logger.cs's own ProcessExit handler; Console.Error is a
+            // belt-and-suspenders backup in case no Trace listener is attached.
+            try { System.Diagnostics.Trace.WriteLine($"App.OnProcessExit: logger unavailable: {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception) { /* Trace itself failed during process exit. */ }
+            try { Console.Error.WriteLine($"Process exiting (logger unavailable): {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception) { /* Console.Error itself failed during process exit — nothing left to call. */ }
         }
-        catch { /* Can't log the crash logger crash */ }
-        
-        try
-        {
-            if (ex != null)
-            {
-                Logger.Error($"CRASH {source}: {ex}");
-            }
-            else
-            {
-                Logger.Error($"CRASH {source}");
-            }
-        }
-        catch { /* Ignore logging failures */ }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -358,14 +340,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return protocolArgs.Uri?.ToString();
             }
         }
-        catch { /* Not activated via protocol, or not packaged */ }
+        catch (Exception ex)
+        {
+            // Not activated via protocol, or not packaged. Surface at Debug for diagnostics.
+            Logger.Debug($"GetProtocolActivationUri: {ex.GetType().Name}: {ex.Message}");
+        }
         return null;
     }
 
-    protected override async void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(LaunchActivatedEventArgs args) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnLaunchedAsync(args),
+            new AppLogger(),
+            nameof(OnLaunched));
+
+    private async Task OnLaunchedAsync(LaunchActivatedEventArgs args)
     {
         _startupArgs = Environment.GetCommandLineArgs();
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        _isPostSetupRestart = HasArg(_startupArgs, "--post-setup-restart");
+        _postSetupLaunch = GetArgValue(_startupArgs, "--post-setup-launch");
 
         // -----------------------------------------------------------------------
         // CLI uninstall path — headless; never shows tray or any windows.
@@ -403,12 +397,29 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             mutexName = $"OpenClawTray-{Convert.ToHexString(hash, 0, 4)}";
         }
         _mutex = new Mutex(true, mutexName, out bool createdNew);
-        if (!createdNew)
+        var ownsMutex = createdNew;
+        if (!ownsMutex && _isPostSetupRestart)
+        {
+            try
+            {
+                Logger.Warn("Post-setup restart found an existing tray mutex after waiting for the old process; waiting briefly for mutex release.");
+                ownsMutex = _mutex.WaitOne(TimeSpan.FromSeconds(15));
+            }
+            catch (AbandonedMutexException)
+            {
+                Logger.Warn("Post-setup restart acquired abandoned tray mutex.");
+                ownsMutex = true;
+            }
+        }
+
+        if (!ownsMutex)
         {
             // Forward deep link args to running instance (command-line or protocol activation)
             var deepLink = protocolUri
                 ?? (_startupArgs.Length > 1 && _startupArgs[1].StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase)
-                    ? _startupArgs[1] : null);
+                    ? _startupArgs[1] : null)
+                ?? (string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase)
+                    ? "openclaw://chat" : null);
             if (deepLink != null)
             {
                 SendDeepLinkToRunningInstance(deepLink);
@@ -434,7 +445,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Central observable model + gateway event handler.
         _appState = new AppState(_dispatcherQueue);
-        _appState.UpdateInfo = BuildInitialUpdateInfo();
+        _updateCoordinator = new UpdateCoordinator(
+            AppUpdater,
+            _appState,
+            _settings,
+            () =>
+            {
+                XamlRoot? r = null;
+                if (_hubWindow != null && !_hubWindow.IsClosed)
+                    r = (_hubWindow.Content as FrameworkElement)?.XamlRoot;
+                return r ?? (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
+            },
+            refreshStatus: UpdateStatusDetailWindow,
+            exit: Exit);
+        _appState.UpdateInfo = UpdateCoordinator.BuildInitialInfo();
         _gatewayService = new GatewayService(_appState, _dispatcherQueue!);
         _gatewayService.ConnectionStatusChanged += OnGatewayConnectionStatusChanged;
         _gatewayService.AuthenticationFailed += OnGatewayAuthenticationFailed;
@@ -454,12 +478,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Register URI scheme on first run
         DeepLinkHandler.RegisterUriScheme();
 
+        // Anchor the WinUI runtime so transient windows (UpdateDialog,
+        // setup wizard, etc.) don't terminate the process when closed.
+        // WinUI 3 Desktop's default DispatcherShutdownMode is
+        // OnLastWindowClose — without this override, closing the
+        // UpdateDialog on the startup path (when it is the only window)
+        // would shut down the WinUI runtime mid-flight and kill the
+        // in-progress download/extraction. We still control shutdown
+        // explicitly via Application.Exit().
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+
         // Check for updates before launching. Skip in test instances — no UI dialogs,
         // no network calls, no startup delay.
         if (DataDirOverride is null &&
             Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
         {
-            var shouldLaunch = await CheckForUpdatesAsync();
+            var shouldLaunch = await _updateCoordinator.CheckForUpdatesAsync();
             if (!shouldLaunch)
             {
                 Exit();
@@ -475,9 +509,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Initialize tray icon FIRST (window-less pattern from WinUIEx).
         // The tray is application chrome and must always survive any failure
-        // in the onboarding wizard. OnLaunched is async void, so a synchronous
-        // throw inside the OnboardingWindow constructor would otherwise
-        // propagate through `await ShowOnboardingAsync()` and abort OnLaunched
+        // in the onboarding wizard. OnLaunched delegates through a guarded
+        // async boundary so onboarding failures are logged instead of escaping
         // before the tray ever initializes.
         InitializeTrayIcon();
         // Apply the user's saved default chat preset (if any) before any chat
@@ -486,7 +519,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowSurfaceImprovementsTipIfNeeded();
 
         // Initialize connection manager before setup flow.
-        _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath);
+        _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath, logger: new AppLogger());
         _gatewayRegistry.Load();
         var credentialResolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
         var clientFactory = new GatewayClientFactory();
@@ -564,12 +597,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
         // down the tray; user can retry via the Setup Guide menu item.
+        var setupShownDuringStartup = false;
         try
         {
-            if (RequiresSetup(_settings) ||
+            if ((!_isPostSetupRestart && RequiresSetup(_settings)) ||
                 Environment.GetEnvironmentVariable("OPENCLAW_FORCE_ONBOARDING") == "1")
             {
                 await ShowOnboardingAsync();
+                setupShownDuringStartup = true;
             }
         }
         catch (Exception ex)
@@ -596,7 +631,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // hosts. Fire-and-forget on a background task so a slow LxssManager at
         // cold logon never delays InitializeGatewayClient. The keepalive itself
         // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
-        _ = Task.Run(TryEnsureLocalGatewayKeepAliveAsync);
+        var wslKeepAlive = new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry);
+        _ = Task.Run(wslKeepAlive.TryEnsureAsync);
         InitializeGatewayClient();
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
@@ -612,7 +648,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         StartDeepLinkServer();
 
         // Register global hotkey if enabled
-        if (_settings.GlobalHotkeyEnabled)
+        if (_settings?.GlobalHotkeyEnabled == true)
         {
             _globalHotkey = new GlobalHotkeyService();
             _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
@@ -624,9 +660,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var startupDeepLink = _pendingProtocolUri
             ?? (_startupArgs.Length > 1 && _startupArgs[1].StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase)
                 ? _startupArgs[1] : null);
-        if (startupDeepLink != null)
+        if (!setupShownDuringStartup && startupDeepLink != null)
         {
             await HandleDeepLinkAsync(startupDeepLink);
+        }
+        else if (!setupShownDuringStartup && string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleDeepLinkAsync("openclaw://chat");
         }
 
         Logger.Info("Application started (WinUI 3)");
@@ -837,7 +877,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowTrayMenuPopup();
     }
 
-    private async void ShowTrayMenuPopup()
+    private void ShowTrayMenuPopup()
     {
         try
         {
@@ -866,7 +906,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         catch (Exception ex)
         {
-            LogCrash("ShowTrayMenuPopup", ex);
+            _crashLogger.Log("ShowTrayMenuPopup", ex);
             Logger.Error($"Failed to show tray menu: {ex.Message}");
         }
     }
@@ -901,7 +941,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             case "history": ShowHub("channels"); break;
             case "activity": ShowHub("channels"); break;
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
-            case "checkupdates": _ = CheckForUpdatesUserInitiatedAsync(); break;
+            case "checkupdates": _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync(); break;
             case "settings": ShowSettings(); break;
             case "setup": _ = ShowOnboardingAsync(); break;
             case "autostart": ToggleAutoStart(); break;
@@ -1075,7 +1115,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
                     .AddText(ex.Message));
             }
-            catch { }
+            catch (Exception toastEx)
+            {
+                // Toast surface failed while reporting an outer error — outer error already logged above.
+                Logger.Debug($"App: Session action failure toast suppressed: {toastEx.Message}");
+            }
         }
     }
 
@@ -1185,6 +1229,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Show "Reconfigure" if there's an existing setup, "Setup Guide" if fresh
         var hasExistingConfig = _settings != null
             && !StartupSetupState.RequiresSetup(_settings, IdentityDataPath, _gatewayRegistry);
+        var hasSetupManagedLocalWslGateway = WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
         var setupMenuLabel = hasExistingConfig
             ? LocalizationHelper.GetString("Menu_Reconfigure")
             : LocalizationHelper.GetString("Menu_SetupGuide");
@@ -1209,6 +1254,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             UsageCost = _appState?.UsageCost,
             Settings = _settings,
             SetupMenuLabel = setupMenuLabel,
+            ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
         };
     }
 
@@ -1381,7 +1427,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                         _settings.SshTunnelLocalPort,
                         _settings.NodeBrowserProxyEnabled &&
                             SshTunnelCommandLine.CanForwardBrowserProxyPort(
-                                _settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort))
+                                _settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort),
+                        _settings.SshTunnelSshPort)
                     : null,
             };
             _gatewayRegistry.AddOrUpdate(record);
@@ -1423,12 +1470,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// </summary>
     private bool TryConnectGatewayIfCredentialAvailable(GatewayRecord record, string context)
     {
-        if (_connectionManager == null)
+        if (_connectionManager == null || _gatewayRegistry == null)
             return false;
 
-        var credential = ResolveStartupOperatorCredential(record);
+        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
+        var credential = ResolveStartupOperatorCredential(record, resolver, identityDir);
         if (credential == null)
         {
+            var nodeCredential = ResolveStartupNodeCredential(record, resolver, identityDir);
+            if (nodeCredential != null && ShouldInitializeNodeService())
+            {
+                Logger.Info(
+                    $"Connecting node-only gateway during {context}: {record.Url} ({nodeCredential.Source})");
+                ObserveBackgroundFault(
+                    _connectionManager.ConnectNodeOnlyAsync(record.Id),
+                    $"[App] Startup node-only gateway connect failed during {context}");
+                return true;
+            }
+
             Logger.Info($"Active gateway has no usable credential — skipping {context} connect");
             return false;
         }
@@ -1437,17 +1497,44 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ? "last successful gateway"
             : "credentialed gateway";
         Logger.Info($"Connecting to {connectionKind} during {context}: {record.Url} ({credential.Source})");
-        _ = _connectionManager.ConnectAsync(record.Id);
+        ObserveBackgroundFault(
+            _connectionManager.ConnectAsync(record.Id),
+            $"[App] Startup gateway connect failed during {context}");
         return true;
     }
 
-    private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(GatewayRecord record)
+    private static void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            Logger.Error($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            Logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => Logger.Error($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+    }
+
+    private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(
+        GatewayRecord record,
+        CredentialResolver resolver,
+        string identityDir)
     {
         if (_gatewayRegistry == null)
             return null;
 
-        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
-        var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
         var credential = resolver.ResolveOperator(record, identityDir);
         if (credential != null)
             return credential;
@@ -1462,6 +1549,50 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         return null;
+    }
+
+    private OpenClaw.Connection.GatewayCredential? ResolveStartupNodeCredential(
+        GatewayRecord record,
+        CredentialResolver resolver,
+        string identityDir)
+    {
+        var credential = resolver.ResolveNode(record, identityDir);
+        if (credential != null)
+            return credential;
+
+        var effectiveUrl = _settings?.GetEffectiveGatewayUrl();
+        if (string.IsNullOrWhiteSpace(effectiveUrl) ||
+            !string.Equals(record.Url, effectiveUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        credential = resolver.ResolveNode(record, SettingsManager.SettingsDirectoryPath);
+        if (credential == null)
+            return null;
+
+        TryCopyLegacyIdentityToGateway(record.Id, identityDir);
+        return credential;
+    }
+
+    private static void TryCopyLegacyIdentityToGateway(string gatewayId, string identityDir)
+    {
+        var legacyIdentityPath = Path.Combine(SettingsManager.SettingsDirectoryPath, "device-key-ed25519.json");
+        var newIdentityPath = Path.Combine(identityDir, "device-key-ed25519.json");
+        if (!File.Exists(legacyIdentityPath) || File.Exists(newIdentityPath))
+            return;
+
+        try
+        {
+            if (!Directory.Exists(identityDir))
+                Directory.CreateDirectory(identityDir);
+            File.Copy(legacyIdentityPath, newIdentityPath, overwrite: false);
+            Logger.Info($"[GatewayRegistry] Copied legacy identity into active gateway {gatewayId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to copy legacy identity file for gateway {gatewayId}: {ex.Message}");
+        }
     }
 
     private void TryMigrateLegacyGatewaySettings(string gatewayUrl, IOpenClawLogger logger)
@@ -1484,6 +1615,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _settings.UseSshTunnel,
             _settings.SshTunnelUser,
             _settings.SshTunnelHost,
+            _settings.SshTunnelSshPort,
             _settings.SshTunnelRemotePort,
             _settings.SshTunnelLocalPort,
             SettingsManager.SettingsDirectoryPath,
@@ -1660,7 +1792,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             var queued = _dispatcherQueue?.TryEnqueue(() =>
             {
                 try { ShowHub(page); tcs.SetResult(new { navigated = true, page }); }
-                catch (Exception ex) { tcs.SetResult(new { navigated = false, error = ex.Message }); }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"App: NavigationHandler ShowHub('{page}') failed: {ex.Message}");
+                    tcs.SetResult(new { navigated = false, error = ex.Message });
+                }
             }) ?? false;
             if (!queued) tcs.TrySetResult(new { navigated = false, error = "UI thread unavailable" });
             return await tcs.Task;
@@ -1768,7 +1904,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _settings.Save();
                 return new { name, value = prop.GetValue(_settings) };
             }
-            catch (Exception ex) { return new { error = ex.Message }; }
+            catch (Exception ex)
+            {
+                Logger.Warn($"App: SettingsHandler set '{name}' failed: {ex.Message}");
+                return new { error = ex.Message };
+            }
         };
 
         app.MenuHandler = () =>
@@ -1950,9 +2090,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     Logger.Info($"[WslKeepAlive] Stopped stale keepalive for {distroName} (PID {proc.Id}).");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Process may have exited while being inspected.
+                // Process may have exited while being inspected — common race; log at Debug.
+                Logger.Debug($"[WslKeepAlive] Inspect/stop race for PID {proc.Id}: {ex.GetType().Name}: {ex.Message}");
             }
             finally
             {
@@ -1977,9 +2118,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     Logger.Info($"[WslKeepAlive] Deleted stale keepalive marker for {distroName}.");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort cleanup; stale/corrupt markers are not fatal.
+                // Best-effort cleanup; stale/corrupt markers are not fatal. Log at Debug for diagnostics.
+                Logger.Debug($"[WslKeepAlive] Failed to process marker '{markerPath}': {ex.GetType().Name}: {ex.Message}");
             }
         }
     }
@@ -2001,7 +2143,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             p.WaitForExit(5000);
             return output.Trim();
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Logger.Debug($"App: GetProcessCommandLine(pid={pid}) failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     private static string ResolveWslExePath()
@@ -2090,7 +2236,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     "node-connected",
                     deviceId);
             }
-            catch { /* ignore */ }
+            catch (Exception ex)
+            {
+                Logger.Warn($"App: Failed to show node-connected toast for device '{DeviceIdForLog(deviceId)}': {ex.Message}");
+            }
         }
     }
 
@@ -2121,7 +2270,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 else
                 {
-                    Logger.Info($"Suppressing duplicate Paired toast for device {deviceKey}");
+                    Logger.Info($"App: Suppressing duplicate Paired toast for device {DeviceIdForLog(deviceKey)}");
                 }
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
@@ -2134,7 +2283,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     args.DeviceId);
             }
         }
-        catch { /* ignore */ }
+        catch (ObjectDisposedException ex)
+        {
+            // Shutdown race: the toast infrastructure is gone. Routine, not a bug.
+            Logger.Debug($"App: OnPairingStatusChanged handler skipped during shutdown (status={args.Status}): {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"App: Failed to handle pairing status '{args.Status}' for device '{DeviceIdForLog(args.DeviceId)}': {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -2144,6 +2301,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     public static string BuildPairingApprovalCommand(string deviceId) =>
         $"openclaw devices approve {deviceId}";
+
+    private static string DeviceIdForLog(string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return "<none>";
+
+        var sanitized = TokenSanitizer.Sanitize(deviceId.Trim());
+        if (sanitized.Contains("[REDACTED", StringComparison.Ordinal))
+            return sanitized;
+
+        return sanitized.Length <= 8 ? sanitized : $"{sanitized[..8]}...";
+    }
 
     public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
     {
@@ -2652,7 +2821,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         if (activate)
         {
-            _hubWindow.Activate();
+            var hubWindow = _hubWindow;
+            AsyncEventHandlerGuard.Run(
+                () => ActivateHubWhenReadyAsync(hubWindow),
+                new AppLogger(),
+                nameof(ActivateHubWhenReadyAsync));
         }
         else
         {
@@ -2671,8 +2844,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 _hubWindow.AppWindow.Show(activateWindow: false);
             }
-            catch { /* swallow */ }
+            catch (Exception ex)
+            {
+                Logger.Debug($"App: Failed to show hub window without activation before tray menu: {ex.Message}");
+            }
         }
+    }
+
+    private async Task ActivateHubWhenReadyAsync(HubWindow hubWindow)
+    {
+        await hubWindow.WaitForCurrentContentReadyAsync();
+        if (ReferenceEquals(_hubWindow, hubWindow) && !hubWindow.IsClosed)
+            hubWindow.Activate();
     }
 
     private void ShowSettings()
@@ -2921,95 +3104,136 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowHub("channels");
     }
 
-    /// <summary>
-    /// Resolves the SetupEngine.UI executable path.
-    /// Checks <c>{AppDir}/SetupEngine/OpenClaw.SetupEngine.UI.exe</c> (standard layout)
-    /// and <c>{AppDir}/OpenClaw.SetupEngine.UI.exe</c> (flat/legacy layout).
-    /// </summary>
-    internal static string? ResolveSetupEngineUiPath()
-    {
-        const string exeName = "OpenClaw.SetupEngine.UI.exe";
-
-        // Standard layout: SetupEngine subfolder (build.ps1 copies here, installer deploys here)
-        var subDir = Path.Combine(AppContext.BaseDirectory, "SetupEngine", exeName);
-        if (File.Exists(subDir)) return subDir;
-
-        // Flat layout fallback (e.g. everything in one folder)
-        var flat = Path.Combine(AppContext.BaseDirectory, exeName);
-        return File.Exists(flat) ? flat : null;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    private const int SwRestore = 9;
-    private const int SwShownormal = 1;
-
-    private static bool TryBringSetupEngineToFront(System.Diagnostics.Process process)
-    {
-        try
-        {
-            process.Refresh();
-            var hwnd = process.MainWindowHandle;
-            if (hwnd == IntPtr.Zero)
-                return false;
-
-            ShowWindow(hwnd, SwRestore);
-            ShowWindow(hwnd, SwShownormal);
-            return SetForegroundWindow(hwnd);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to focus SetupEngine.UI: {ex.Message}");
-            return false;
-        }
-    }
-
     private async Task ShowOnboardingAsync()
     {
-        if (_settings == null) return;
-
-        var setupExePath = ResolveSetupEngineUiPath();
-        if (setupExePath == null)
-        {
-            Logger.Error($"SetupEngine.UI not found (searched {AppContext.BaseDirectory} and sibling project output)");
+        if (_settings == null)
             return;
-        }
 
-        // Single-instance guard — don't launch if already running
-        var setupProcesses = System.Diagnostics.Process.GetProcessesByName("OpenClaw.SetupEngine.UI");
-        if (setupProcesses.Length > 0)
+        if (_setupWindow != null)
         {
-            Logger.Info("SetupEngine.UI already running — focusing existing instance");
-            foreach (var p in setupProcesses)
-            {
-                TryBringSetupEngineToFront(p);
-            }
-            foreach (var p in setupProcesses) p.Dispose();
+            var existingSetupWindow = _setupWindow;
+            await existingSetupWindow.WaitForInitialContentReadyAsync();
+            if (ReferenceEquals(_setupWindow, existingSetupWindow) && !existingSetupWindow.IsClosed)
+                existingSetupWindow.BringToFrontForSetupLaunch();
             return;
         }
 
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo(setupExePath)
+            var setupWindow = new SetupWindow();
+            _setupWindow = setupWindow;
+            setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
+            setupWindow.SetupCompleted += OnSetupCompleted;
+            setupWindow.Closed += (_, _) =>
             {
-                UseShellExecute = true
+                if (ReferenceEquals(_setupWindow, setupWindow))
+                    _setupWindow = null;
             };
-            var process = System.Diagnostics.Process.Start(psi);
-            if (process != null)
+            await setupWindow.WaitForInitialContentReadyAsync();
+            if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
             {
-                await Task.Delay(500);
-                TryBringSetupEngineToFront(process);
-                process.Dispose();
+                setupWindow.BringToFrontForSetupLaunch();
+                Logger.Info("Opened tray-hosted setup window");
             }
-            Logger.Info("Launched SetupEngine.UI for setup");
         }
         catch (Exception ex)
         {
-            Logger.Error($"Failed to launch SetupEngine.UI: {ex.Message}");
+            Logger.Error($"Failed to open setup window: {ex}");
+        }
+    }
+
+    private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)
+    {
+        ShowHub("connection");
+        _setupWindow?.Close();
+    }
+
+    private void OnSetupCompleted(object? sender, SetupCompletedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => RestartAfterSetupAsync(e.EnableAutoStart),
+            new AppLogger(),
+            nameof(OnSetupCompleted));
+
+    private async Task RestartAfterSetupAsync(bool enableAutoStart)
+    {
+        var exePath = ResolveCurrentExecutablePath();
+        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+        {
+            await ShowSetupRestartErrorAsync("OpenClaw setup finished, but the tray executable could not be found for restart.");
+            return;
+        }
+
+        try
+        {
+            if (enableAutoStart)
+            {
+                try
+                {
+                    AutoStartManager.SetAutoStart(true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Failed to enable autostart after setup: {ex}");
+                }
+            }
+
+            var psi = new ProcessStartInfo(exePath)
+            {
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add("--post-setup-restart");
+            psi.ArgumentList.Add("--wait-for-pid");
+            psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+            psi.ArgumentList.Add("--post-setup-launch");
+            psi.ArgumentList.Add("chat");
+
+            var restarted = Process.Start(psi);
+            if (restarted == null)
+                throw new InvalidOperationException("Process.Start returned null.");
+            restarted.Dispose();
+
+            Logger.Info("Started post-setup tray restart process");
+            _setupWindow?.Close();
+            await ExitApplicationAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to restart tray after setup: {ex}");
+            await ShowSetupRestartErrorAsync("OpenClaw setup finished, but restarting the tray failed. The current tray will keep running; please exit and reopen OpenClaw.");
+        }
+    }
+
+    private async Task ShowSetupRestartErrorAsync(string message)
+    {
+        if (_setupWindow?.Content is not FrameworkElement root || root.XamlRoot is null)
+        {
+            Logger.Error(message);
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Restart OpenClaw",
+            Content = message,
+            CloseButtonText = "OK",
+            XamlRoot = root.XamlRoot,
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private static string? ResolveCurrentExecutablePath()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
+            return Environment.ProcessPath;
+
+        try
+        {
+            return Process.GetCurrentProcess().MainModule?.FileName;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -3115,12 +3339,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     }
     void IAppCommands.ShowVoiceOverlay() => ShowHub("voice");
     void IAppCommands.ShowChat() => ShowChatWindow();
-    void IAppCommands.CheckForUpdates() => _ = CheckForUpdatesUserInitiatedAsync();
+    void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
 
-    private async void ToggleChannel(string channelName)
+    private void ToggleChannel(string channelName) =>
+        AsyncEventHandlerGuard.Run(
+            () => ToggleChannelAsync(channelName),
+            new AppLogger(),
+            nameof(ToggleChannel));
+
+    private async Task ToggleChannelAsync(string channelName)
     {
         var client = _connectionManager?.OperatorClient;
         if (client == null) return;
@@ -3247,465 +3477,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    #region Updates
-
-    private static UpdateCommandCenterInfo BuildInitialUpdateInfo() => new()
-    {
-        Status = "Not checked",
-        CurrentVersion = AppVersionInfo.Version
-    };
-
-    // Cross-path concurrency for update checks, split into two phases:
-    //  - _updateCheckGate: held only during the metadata/network check.
-    //    Short timeout so contended callers don't block on user thinking.
-    //  - _updateInstallInProgress: Interlocked flag covering the user-facing
-    //    UpdateDialog + download + install. Prevents two parallel installs
-    //    without holding a lock across user interaction.
-    private readonly System.Threading.SemaphoreSlim _updateCheckGate = new(1, 1);
-    private int _updateInstallInProgress;
-
-    private async Task<bool> CheckForUpdatesAsync(bool userInitiated = false)
-    {
-        // === Stage 1: metadata check (gate-protected) ===
-        if (!await _updateCheckGate.WaitAsync(TimeSpan.FromSeconds(30)))
-        {
-            Logger.Warn("Update check gate timed out: another check is in progress");
-            if (_appState != null)
-            {
-                _appState.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Failed",
-                    CurrentVersion = AppVersionInfo.Version,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "another update check is already in progress; try again in a moment"
-                };
-            }
-            return true; // Don't block launch
-        }
-
-#if DEBUG
-        try
-        {
-            Logger.Info("Skipping update check in debug build");
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
-            {
-                Status = "Skipped",
-                CurrentVersion = AppVersionInfo.Version,
-                CheckedAt = DateTime.UtcNow,
-                Detail = "debug build"
-            };
-            return true;
-        }
-        finally
-        {
-            _updateCheckGate.Release();
-        }
-#else
-        string releaseTag;
-        string changelog;
-        try
-        {
-            Logger.Info("Checking for updates...");
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
-            {
-                Status = "Checking",
-                CurrentVersion = AppVersionInfo.Version,
-                CheckedAt = DateTime.UtcNow
-            };
-            var updateFound = await AppUpdater.CheckForUpdatesAsync();
-
-            if (!updateFound)
-            {
-                Logger.Info("No updates available");
-                _appState!.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Current",
-                    CurrentVersion = AppVersionInfo.Version,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "no updates available"
-                };
-                return true;
-            }
-
-            var release = AppUpdater.LatestRelease!;
-            if (string.IsNullOrEmpty(release.TagName))
-            {
-                // Defensive: AppUpdater says an update is available but the
-                // release has no tag. Don't silently claim "up to date" —
-                // surface as Failed so the user sees something is off.
-                Logger.Warn("Update reported available but release has no TagName");
-                _appState!.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Failed",
-                    CurrentVersion = AppVersionInfo.Version,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "update metadata incomplete (missing version tag)"
-                };
-                return true;
-            }
-
-            releaseTag = release.TagName;
-            changelog = AppUpdater.GetChangelog(true) ?? "No release notes available.";
-            Logger.Info($"Update available: {releaseTag}");
-            _appState!.UpdateInfo = new UpdateCommandCenterInfo
-            {
-                Status = "Available",
-                CurrentVersion = AppVersionInfo.Version,
-                LatestVersion = releaseTag,
-                CheckedAt = DateTime.UtcNow,
-                Detail = "prompted"
-            };
-
-            if (!string.IsNullOrWhiteSpace(_settings?.SkippedUpdateTag) &&
-                string.Equals(_settings.SkippedUpdateTag, releaseTag, StringComparison.OrdinalIgnoreCase) &&
-                !userInitiated)
-            {
-                Logger.Info($"Skipping update prompt for remembered version {releaseTag}");
-                _appState!.UpdateInfo.Detail = "skipped by user";
-                return true;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.Info("Update check cancelled");
-            if (_appState != null)
-            {
-                // Avoid leaving Status="Checking" stale for the manual flow
-                // or the command-center UI. Surface as Failed with a clear
-                // "cancelled" detail.
-                _appState.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Failed",
-                    CurrentVersion = AppVersionInfo.Version,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "update check cancelled"
-                };
-            }
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Update check failed: {ex.Message}");
-            if (_appState != null)
-            {
-                _appState.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Failed",
-                    CurrentVersion = AppVersionInfo.Version,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = ex.Message
-                };
-            }
-            return true;
-        }
-        finally
-        {
-            // Release the gate BEFORE user interaction & download/install.
-            // Holding it across these long phases would silently time-out
-            // any concurrent manual click.
-            _updateCheckGate.Release();
-        }
-
-        // === Stage 2: user-interactive prompt + download/install ===
-        // Gate is released. Use Interlocked flag so concurrent callers can't
-        // start a second parallel install while we're prompting/downloading.
-        if (System.Threading.Interlocked.CompareExchange(ref _updateInstallInProgress, 1, 0) != 0)
-        {
-            Logger.Info("Update prompt/install already in progress; skipping");
-            if (_appState != null)
-            {
-                _appState.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Failed",
-                    CurrentVersion = AppVersionInfo.Version,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "an update is already being downloaded or installed"
-                };
-            }
-            return true;
-        }
-
-        try
-        {
-            var dialog = new UpdateDialog(releaseTag, changelog);
-            UpdateDialogResult result;
-            try
-            {
-                result = await dialog.ShowAsync();
-            }
-            catch (System.Runtime.InteropServices.COMException ex)
-            {
-                // Visual tree torn down mid-await (e.g. window closed).
-                // Treat as "remind me later" rather than tainting Status with
-                // "Failed" — the network check itself succeeded.
-                Logger.Warn($"[Update] Prompt dialog dismissed before completion: 0x{ex.HResult:X8}");
-                return true;
-            }
-            catch (InvalidOperationException ex)
-            {
-                // Another ContentDialog is already open on this XamlRoot.
-                Logger.Warn($"[Update] Prompt dialog could not be shown: {ex.Message}");
-                return true;
-            }
-
-            if (result == UpdateDialogResult.Download)
-            {
-                // Assign a fresh object rather than mutating .Detail in place:
-                // a concurrent loser of the install-flag CAS may have just
-                // overwritten _appState.UpdateInfo with a "Failed" object,
-                // and mutating its Detail would leave Status="Failed" with
-                // our "download requested" detail — briefly inconsistent.
-                _appState!.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Available",
-                    CurrentVersion = AppVersionInfo.Version,
-                    LatestVersion = releaseTag,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "download requested"
-                };
-                if (_settings != null)
-                {
-                    _settings.SkippedUpdateTag = string.Empty;
-                    _settings.Save();
-                }
-                var installed = await DownloadAndInstallUpdateAsync();
-                if (!installed)
-                {
-                    // Surface the failure so callers (and the manual-check
-                    // dialog) don't show stale "download requested" state.
-                    _appState!.UpdateInfo = new UpdateCommandCenterInfo
-                    {
-                        Status = "Failed",
-                        CurrentVersion = AppVersionInfo.Version,
-                        CheckedAt = DateTime.UtcNow,
-                        Detail = "download or install failed"
-                    };
-                }
-                return !installed; // Don't launch if update succeeded
-            }
-
-            if (result == UpdateDialogResult.Skip && _settings != null)
-            {
-                _settings.SkippedUpdateTag = releaseTag;
-                _settings.Save();
-                _appState!.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Available",
-                    CurrentVersion = AppVersionInfo.Version,
-                    LatestVersion = releaseTag,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = "skipped by user"
-                };
-            }
-            else if (userInitiated && _settings != null
-                && string.Equals(_settings.SkippedUpdateTag, releaseTag,
-                                 StringComparison.OrdinalIgnoreCase))
-            {
-                // User explicitly bypassed the remembered skip for THIS
-                // release and picked RemindLater — clear the stale tag.
-                _settings.SkippedUpdateTag = string.Empty;
-                _settings.Save();
-            }
-
-            return true; // RemindLater or Skip - continue launch
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Update prompt/install failed: {ex.Message}");
-            if (_appState != null)
-            {
-                _appState.UpdateInfo = new UpdateCommandCenterInfo
-                {
-                    Status = "Failed",
-                    CurrentVersion = AppVersionInfo.Version,
-                    CheckedAt = DateTime.UtcNow,
-                    Detail = ex.Message
-                };
-            }
-            return true;
-        }
-        finally
-        {
-            System.Threading.Interlocked.Exchange(ref _updateInstallInProgress, 0);
-        }
-#endif
-    }
-
-    // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
-    // (`_ = CheckForUpdatesUserInitiatedAsync()`), so a double-click would
-    // otherwise open two ContentDialogs on the same XamlRoot which throws
-    // COMException. One in-flight manual check at a time is enough.
-    private int _manualUpdateCheckInFlight;
-
-    private async Task CheckForUpdatesUserInitiatedAsync()
-    {
-        if (System.Threading.Interlocked.CompareExchange(ref _manualUpdateCheckInFlight, 1, 0) != 0)
-        {
-            Logger.Info("Manual update check ignored: another check is already in progress");
-            return;
-        }
-
-        try
-        {
-            Logger.Info("Manual update check requested");
-            // Pass userInitiated=true so an explicit click bypasses the
-            // "remind me later" SkippedUpdateTag — the user is asking *now*.
-            var shouldContinue = await CheckForUpdatesAsync(userInitiated: true);
-            UpdateStatusDetailWindow();
-
-            // The "Available" path already prompts via UpdateDialog. For the
-            // other terminal states a manual click would otherwise produce no
-            // UI at all, leaving users wondering whether the click registered.
-            // Surface each explicitly with a small OK dialog.
-            var info = _appState?.UpdateInfo;
-            if (info != null)
-            {
-                switch (info.Status)
-                {
-                    case "Current":
-                        await ShowUpdateInfoDialogAsync(
-                            "UpToDate",
-                            LocalizationHelper.GetString("Update_Title_UpToDate"),
-                            LocalizationHelper.Format("Update_Message_UpToDate", info.CurrentVersion));
-                        break;
-                    case "Failed":
-                        // Format string ends with "\n\n{0}"; an empty Detail
-                        // would leave a dangling blank line. Trim only the
-                        // newline characters we added, never arbitrary
-                        // whitespace from the localized string.
-                        var failedMessage = LocalizationHelper
-                            .Format("Update_Message_Failed", info.Detail ?? "")
-                            .TrimEnd('\r', '\n');
-                        await ShowUpdateInfoDialogAsync(
-                            "Failed",
-                            LocalizationHelper.GetString("Update_Title_Failed"),
-                            failedMessage);
-                        break;
-#if DEBUG
-                    // Status="Skipped" is only produced by the DEBUG short-circuit
-                    // in CheckForUpdatesAsync. User-skipped versions keep
-                    // Status="Available", so this case must not exist in RELEASE
-                    // or it would surface a confusing "disabled in debug builds"
-                    // dialog to end users.
-                    case "Skipped":
-                        await ShowUpdateInfoDialogAsync(
-                            "Skipped",
-                            LocalizationHelper.GetString("Update_Title_Skipped"),
-                            LocalizationHelper.GetString("Update_Message_Skipped_Debug"));
-                        break;
-#endif
-                }
-            }
-
-            if (!shouldContinue)
-            {
-                Exit();
-            }
-        }
-        finally
-        {
-            System.Threading.Interlocked.Exchange(ref _manualUpdateCheckInFlight, 0);
-        }
-    }
-
-    private async Task ShowUpdateInfoDialogAsync(string logKey, string title, string message)
-    {
-        // Prefer the Hub window when open so the dialog appears modal to what
-        // the user is actually looking at; fall back to the hidden keep-alive
-        // window so the dialog still renders if the Hub has been dismissed.
-        XamlRoot? xamlRoot = null;
-        if (_hubWindow != null && !_hubWindow.IsClosed)
-            xamlRoot = (_hubWindow.Content as FrameworkElement)?.XamlRoot;
-        if (xamlRoot == null)
-            xamlRoot = (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
-        if (xamlRoot == null)
-        {
-            // Log the stable English key, not the localized title, so log
-            // grepping works across locales.
-            Logger.Warn($"[Update] No XAML root available to show dialog: {logKey}");
-            return;
-        }
-
-        var dialog = new ContentDialog
-        {
-            Title = title,
-            Content = message,
-            CloseButtonText = LocalizationHelper.GetString("Update_OK"),
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = xamlRoot
-        };
-        try
-        {
-            await dialog.ShowAsync();
-        }
-        catch (System.Runtime.InteropServices.COMException ex)
-        {
-            // ContentDialog.ShowAsync throws COMException if its XamlRoot's
-            // visual tree is torn down mid-await (e.g. Hub window closed).
-            Logger.Warn($"[Update] Dialog dismissed before completion ({logKey}): 0x{ex.HResult:X8}");
-        }
-        catch (InvalidOperationException ex)
-        {
-            // WinUI throws InvalidOperationException when another ContentDialog
-            // is already open on the same thread/XamlRoot. The re-entrancy
-            // guard only blocks duplicate *update* dialogs; collisions with
-            // other features' dialogs (onboarding, connection, etc.) must be
-            // tolerated here so the fire-and-forget call sites don't crash.
-            Logger.Warn($"[Update] Dialog could not be shown ({logKey}): {ex.Message}");
-        }
-    }
-
-    private async Task<bool> DownloadAndInstallUpdateAsync()
-    {
-        DownloadProgressDialog? progressDialog = null;
-        try
-        {
-            progressDialog = new DownloadProgressDialog(AppUpdater);
-            progressDialog.ShowAsync(); // Fire and forget
-
-            var downloadedAsset = await AppUpdater.DownloadUpdateAsync();
-
-            TryCloseProgressDialog(progressDialog);
-
-            if (downloadedAsset == null || !System.IO.File.Exists(downloadedAsset.FilePath))
-            {
-                Logger.Error("Update download failed or file missing");
-                return false;
-            }
-
-            Logger.Info("Installing update and restarting...");
-            await AppUpdater.InstallUpdateAsync(downloadedAsset);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Update failed: {ex.Message}");
-            TryCloseProgressDialog(progressDialog);
-            return false;
-        }
-    }
-
-    private static void TryCloseProgressDialog(DownloadProgressDialog? dialog)
-    {
-        if (dialog == null) return;
-        try
-        {
-            dialog.Close();
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            // Window already closed — closing a closed WinUI window throws
-            // COMException 0x80070578. Swallow so a real exception in the
-            // outer catch isn't masked by this cleanup failure.
-        }
-        catch (InvalidOperationException)
-        {
-            // Same as above for other "already-disposed" race variants.
-        }
-    }
-
-    #endregion
-
     #region Deep Links
 
     private void StartDeepLinkServer()
@@ -3759,7 +3530,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     if (!token.IsCancellationRequested)
                     {
                         Logger.Warn($"Deep link server error: {ex.Message}");
-                        try { await Task.Delay(1000, token); } catch { break; }
+                        try { await Task.Delay(1000, token); }
+                        catch (OperationCanceledException) { break; } // Expected: server cancelled, exit loop.
+                        catch (Exception delayEx)
+                        {
+                            // Defensive: keep the loop resilient even if future code adds awaits that throw other types.
+                            Logger.Debug($"App: Deep link server delay failed: {delayEx.GetType().Name}: {delayEx.Message}");
+                            break;
+                        }
                     }
                 }
             }
@@ -3844,7 +3622,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             OpenSettings = ShowSettings,
             OpenSetup = () => _ = ShowOnboardingAsync(),
             RunHealthCheck = () => RunHealthCheckAsync(userInitiated: true),
-            CheckForUpdates = CheckForUpdatesUserInitiatedAsync,
+            CheckForUpdates = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync,
             OpenLogFile = OpenLogFile,
             OpenLogFolder = OpenLogFolder,
             OpenConfigFolder = OpenConfigFolder,
@@ -3944,56 +3722,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    #region Toast Activation
-
-    private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args)
-    {
-        var arguments = ToastArguments.Parse(args.Argument);
-        
-        if (arguments.TryGetValue("action", out var action))
-        {
-            OnUiThread(() =>
-            {
-                switch (action)
-                {
-                    case "open_url" when arguments.TryGetValue("url", out var url):
-                        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-                        catch { }
-                        break;
-                    case "open_dashboard":
-                        OpenDashboard();
-                        break;
-                    case "open_settings":
-                        ShowSettings();
-                        break;
-                    case "open_chat":
-                        ShowWebChat();
-                        break;
-                    case "open_activity":
-                        // ActivityPage removed — redirect to Channels.
-                        ShowHub("channels");
-                        break;
-                    case "copy_pairing_command" when arguments.TryGetValue("command", out var command):
-                        CopyTextToClipboard(command);
-                        _toastService!.ShowToast(new ToastContentBuilder()
-                            .AddText(LocalizationHelper.GetString("Toast_PairingCommandCopied"))
-                            .AddText(command));
-                        break;
-                }
-            });
-        }
-    }
-
-    public static void CopyTextToClipboard(string text)
-    {
-        ClipboardHelper.CopyText(text);
-    }
-
-    #endregion
-
     #region Exit
 
     private void ExitApplication()
+    {
+        _ = ExitApplicationAsync();
+    }
+
+    private async Task ExitApplicationAsync()
     {
         if (_isExiting)
         {
@@ -4019,10 +3755,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         });
 
         // Dispose runtime services
-        SafeShutdownStep("gateway client", () =>
+        var connectionManager = _connectionManager;
+        if (connectionManager != null)
         {
-            _connectionManager?.Dispose();
-        });
+            await SafeShutdownStepAsync("gateway client", async () =>
+            {
+                await connectionManager.DisposeAsync();
+            });
+            _connectionManager = null;
+        }
 
         SafeShutdownStep("chat coordinator", () =>
         {
@@ -4030,17 +3771,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _chatCoordinator = null;
         });
 
-        SafeShutdownStep("node service", () =>
+        var nodeService = _nodeService;
+        if (nodeService != null)
         {
-            _nodeService?.Dispose();
+            await SafeShutdownStepAsync("node service", async () =>
+            {
+                await nodeService.DisposeAsync();
+            });
             _nodeService = null;
-        });
+        }
 
-        SafeShutdownStep("standalone voice service", () =>
+        var standaloneVoiceService = _standaloneVoiceService;
+        if (standaloneVoiceService != null)
         {
-            _standaloneVoiceService?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            await SafeShutdownStepAsync("standalone voice service", async () =>
+            {
+                await standaloneVoiceService.DisposeAsync();
+            });
             _standaloneVoiceService = null;
-        });
+        }
 
         SafeShutdownStep("ssh tunnel service", () =>
         {
@@ -4050,6 +3799,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Close windows explicitly for deterministic shutdown tracing.
         SafeShutdownStep("chat window", () => { _chatWindow?.ForceClose(); _chatWindow = null; });
+        SafeShutdownStep("setup window", () => { _setupWindow?.Close(); _setupWindow = null; });
         SafeShutdownStep("tray menu window", () => CloseWindow(_trayMenuWindow));
         _trayMenuWindow = null;
         SafeShutdownStep("keep alive window", () => CloseWindow(_keepAliveWindow));
@@ -4106,6 +3856,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
+    private static async Task SafeShutdownStepAsync(string name, Func<Task> action)
+    {
+        try
+        {
+            Logger.Info($"Shutdown: disposing {name}");
+            await action();
+            Logger.Info($"Shutdown: disposed {name}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Shutdown: failed disposing {name}: {ex.Message}");
+        }
+    }
+
     private bool EnsureSshTunnelConfigured()
     {
         if (_settings == null)
@@ -4137,7 +3901,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     _settings.SshTunnelHost,
                     _settings.SshTunnelRemotePort,
                     _settings.SshTunnelLocalPort,
-                    includeBrowserProxy);
+                    includeBrowserProxy,
+                    _settings.SshTunnelSshPort);
                 DiagnosticsJsonlService.Write("tunnel.ensure_started", new
                 {
                     status = _sshTunnelService.Status.ToString(),
@@ -4164,7 +3929,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    private async void OnSshTunnelExited(object? sender, int exitCode)
+    private void OnSshTunnelExited(object? sender, int exitCode) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnSshTunnelExitedAsync(exitCode),
+            new AppLogger(),
+            nameof(OnSshTunnelExited));
+
+    private async Task OnSshTunnelExitedAsync(int exitCode)
     {
         Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
         _sshTunnelService?.MarkRestarting(exitCode);
@@ -4188,7 +3959,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     _settings.SshTunnelHost,
                     _settings.SshTunnelRemotePort,
                     _settings.SshTunnelLocalPort,
-                    restartBrowserProxy);
+                    restartBrowserProxy,
+                    _settings.SshTunnelSshPort);
                 Logger.Info("SSH tunnel restarted successfully");
                 DiagnosticsJsonlService.Write("tunnel.restart_succeeded", new
                 {

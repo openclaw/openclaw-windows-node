@@ -27,14 +27,16 @@ public class SettingsManager
     public event EventHandler? Saved;
 
     private readonly object _saveLock = new();
+    private SettingsData _data = CreateDefaultData();
 
     // Connection
-    public string GatewayUrl { get; set; } = "ws://localhost:18789";
-    public bool UseSshTunnel { get; set; } = false;
-    public string SshTunnelUser { get; set; } = "";
-    public string SshTunnelHost { get; set; } = "";
-    public int SshTunnelRemotePort { get; set; } = 18789;
-    public int SshTunnelLocalPort { get; set; } = 18789;
+    public string GatewayUrl { get => _data.GatewayUrl ?? "ws://localhost:18789"; set => _data = _data with { GatewayUrl = value }; }
+    public bool UseSshTunnel { get => _data.UseSshTunnel; set => _data = _data with { UseSshTunnel = value }; }
+    public string SshTunnelUser { get => _data.SshTunnelUser ?? ""; set => _data = _data with { SshTunnelUser = value }; }
+    public string SshTunnelHost { get => _data.SshTunnelHost ?? ""; set => _data = _data with { SshTunnelHost = value }; }
+    public int SshTunnelSshPort { get => IsValidPort(_data.SshTunnelSshPort) ? _data.SshTunnelSshPort : 22; set => _data = _data with { SshTunnelSshPort = value }; }
+    public int SshTunnelRemotePort { get => _data.SshTunnelRemotePort <= 0 ? 18789 : _data.SshTunnelRemotePort; set => _data = _data with { SshTunnelRemotePort = value }; }
+    public int SshTunnelLocalPort { get => _data.SshTunnelLocalPort <= 0 ? 18789 : _data.SshTunnelLocalPort; set => _data = _data with { SshTunnelLocalPort = value }; }
     public string? LegacyToken { get; private set; }
     public string? LegacyBootstrapToken { get; private set; }
     public bool HasLegacyGatewayCredentials =>
@@ -42,32 +44,36 @@ public class SettingsManager
         !string.IsNullOrWhiteSpace(LegacyBootstrapToken);
 
     // Startup
-    public bool AutoStart { get; set; } = true;
-    public bool GlobalHotkeyEnabled { get; set; } = true;
+    public bool AutoStart { get => _data.AutoStart; set => _data = _data with { AutoStart = value }; }
+    public bool GlobalHotkeyEnabled { get => _data.GlobalHotkeyEnabled; set => _data = _data with { GlobalHotkeyEnabled = value }; }
     /// <summary>
     /// One-shot gate: set to true after the post-onboarding "first-run" bootstrap
     /// kickoff message has been injected into the chat exactly once.
     /// </summary>
-    public bool HasInjectedFirstRunBootstrap { get; set; } = false;
+    public bool HasInjectedFirstRunBootstrap { get => _data.HasInjectedFirstRunBootstrap; set => _data = _data with { HasInjectedFirstRunBootstrap = value }; }
 
     // Notifications
-    public bool ShowNotifications { get; set; } = true;
-    public string NotificationSound { get; set; } = "Default";
+    public bool ShowNotifications { get => _data.ShowNotifications; set => _data = _data with { ShowNotifications = value }; }
+    public string NotificationSound { get => _data.NotificationSound ?? "Default"; set => _data = _data with { NotificationSound = value }; }
     
     // Notification filters
-    public bool NotifyHealth { get; set; } = true;
-    public bool NotifyUrgent { get; set; } = true;
-    public bool NotifyReminder { get; set; } = true;
-    public bool NotifyEmail { get; set; } = true;
-    public bool NotifyCalendar { get; set; } = true;
-    public bool NotifyBuild { get; set; } = true;
-    public bool NotifyStock { get; set; } = true;
-    public bool NotifyInfo { get; set; } = true;
+    public bool NotifyHealth { get => _data.NotifyHealth; set => _data = _data with { NotifyHealth = value }; }
+    public bool NotifyUrgent { get => _data.NotifyUrgent; set => _data = _data with { NotifyUrgent = value }; }
+    public bool NotifyReminder { get => _data.NotifyReminder; set => _data = _data with { NotifyReminder = value }; }
+    public bool NotifyEmail { get => _data.NotifyEmail; set => _data = _data with { NotifyEmail = value }; }
+    public bool NotifyCalendar { get => _data.NotifyCalendar; set => _data = _data with { NotifyCalendar = value }; }
+    public bool NotifyBuild { get => _data.NotifyBuild; set => _data = _data with { NotifyBuild = value }; }
+    public bool NotifyStock { get => _data.NotifyStock; set => _data = _data with { NotifyStock = value }; }
+    public bool NotifyInfo { get => _data.NotifyInfo; set => _data = _data with { NotifyInfo = value }; }
 
     // Enhanced categorization
-    public bool NotifyChatResponses { get; set; } = true;
-    public bool PreferStructuredCategories { get; set; } = true;
-    public List<OpenClaw.Shared.UserNotificationRule> UserRules { get; set; } = new();
+    public bool NotifyChatResponses { get => _data.NotifyChatResponses; set => _data = _data with { NotifyChatResponses = value }; }
+    public bool PreferStructuredCategories { get => _data.PreferStructuredCategories; set => _data = _data with { PreferStructuredCategories = value }; }
+    public List<OpenClaw.Shared.UserNotificationRule> UserRules
+    {
+        get => _data.UserRules ??= new();
+        set => _data = _data with { UserRules = value ?? new() };
+    }
 
     // User interface
     /// <summary>
@@ -75,72 +81,80 @@ public class SettingsManager
     /// native chat surface in both the Hub Chat tab and tray Chat popup.
     /// Default false (native).
     /// </summary>
-    public bool UseLegacyWebChat { get; set; } = false;
+    public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }
 
     // Node mode(gateway WebSocket connection — separate from MCP)
-    public bool EnableNodeMode { get; set; } = false;
-    public bool NodeCanvasEnabled { get; set; } = true;
-    public bool NodeScreenEnabled { get; set; } = true;
-    public bool NodeCameraEnabled { get; set; } = true;
-    public bool ScreenRecordingConsentGiven { get; set; } = false;
-    public bool CameraRecordingConsentGiven { get; set; } = false;
-    public bool NodeLocationEnabled { get; set; } = true;
-    public bool NodeBrowserProxyEnabled { get; set; } = true;
+    public bool EnableNodeMode { get => _data.EnableNodeMode; set => _data = _data with { EnableNodeMode = value }; }
+    public bool NodeCanvasEnabled { get => _data.NodeCanvasEnabled; set => _data = _data with { NodeCanvasEnabled = value }; }
+    public bool NodeScreenEnabled { get => _data.NodeScreenEnabled; set => _data = _data with { NodeScreenEnabled = value }; }
+    public bool NodeCameraEnabled { get => _data.NodeCameraEnabled; set => _data = _data with { NodeCameraEnabled = value }; }
+    public bool ScreenRecordingConsentGiven { get => _data.ScreenRecordingConsentGiven; set => _data = _data with { ScreenRecordingConsentGiven = value }; }
+    public bool CameraRecordingConsentGiven { get => _data.CameraRecordingConsentGiven; set => _data = _data with { CameraRecordingConsentGiven = value }; }
+    public bool NodeLocationEnabled { get => _data.NodeLocationEnabled; set => _data = _data with { NodeLocationEnabled = value }; }
+    public bool NodeBrowserProxyEnabled { get => _data.NodeBrowserProxyEnabled; set => _data = _data with { NodeBrowserProxyEnabled = value }; }
     /// <summary>
     /// Master switch for the <c>system.run</c> / <c>system.run.prepare</c>
     /// commands. Per-command exec approvals still apply when this is on;
     /// flipping it off removes those commands from the declared capability
     /// entirely. Default <c>true</c> (backward compatible).
     /// </summary>
-    public bool NodeSystemRunEnabled { get; set; } = true;
-    public bool NodeSttEnabled { get; set; } = false;
+    public bool NodeSystemRunEnabled { get => _data.NodeSystemRunEnabled; set => _data = _data with { NodeSystemRunEnabled = value }; }
+    public bool NodeSttEnabled { get => _data.NodeSttEnabled; set => _data = _data with { NodeSttEnabled = value }; }
     /// <summary>STT language: "auto" for Whisper auto-detect, or a BCP-47 tag like "en-US".</summary>
-    public string SttLanguage { get; set; } = "auto";
+    public string SttLanguage { get => string.IsNullOrWhiteSpace(_data.SttLanguage) ? "auto" : _data.SttLanguage; set => _data = _data with { SttLanguage = value }; }
     /// <summary>Whisper model size: "tiny", "base", or "small".</summary>
-    public string SttModelName { get; set; } = "base";
+    public string SttModelName { get => string.IsNullOrWhiteSpace(_data.SttModelName) ? "base" : _data.SttModelName; set => _data = _data with { SttModelName = value }; }
     /// <summary>Seconds of silence before auto-submit in voice chat mode.</summary>
-    public float SttSilenceTimeout { get; set; } = 1.5f;
+    public float SttSilenceTimeout { get => _data.SttSilenceTimeout > 0 ? _data.SttSilenceTimeout : 1.5f; set => _data = _data with { SttSilenceTimeout = value }; }
     /// <summary>Enable TTS playback of responses during voice sessions.</summary>
-    public bool VoiceTtsEnabled { get; set; } = true;
+    public bool VoiceTtsEnabled { get => _data.VoiceTtsEnabled; set => _data = _data with { VoiceTtsEnabled = value }; }
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
-    public bool VoiceAudioFeedback { get; set; } = true;
-    public bool NodeTtsEnabled { get; set; } = false;
-    public string TtsProvider { get; set; } = TtsCapability.PiperProvider;
-    public string TtsElevenLabsApiKey { get; set; } = "";
-    public string TtsElevenLabsModel { get; set; } = "";
-    public string TtsElevenLabsVoiceId { get; set; } = "";
-    public string TtsWindowsVoiceId { get; set; } = "";
+    public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
+    public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }
+    public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.PiperProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
+    public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
+    public string TtsElevenLabsModel { get => _data.TtsElevenLabsModel ?? ""; set => _data = _data with { TtsElevenLabsModel = value }; }
+    public string TtsElevenLabsVoiceId { get => _data.TtsElevenLabsVoiceId ?? ""; set => _data = _data with { TtsElevenLabsVoiceId = value }; }
+    public string TtsWindowsVoiceId { get => _data.TtsWindowsVoiceId ?? ""; set => _data = _data with { TtsWindowsVoiceId = value }; }
     /// <summary>Hub NavigationView pane expanded (true) vs compact (false). Default true.</summary>
-    public bool HubNavPaneOpen { get; set; } = true;
+    public bool HubNavPaneOpen { get => _data.HubNavPaneOpen; set => _data = _data with { HubNavPaneOpen = value }; }
     /// <summary>Piper voice identifier, e.g. "en_US-amy-low".</summary>
-    public string TtsPiperVoiceId { get; set; } = "en_US-amy-low";
+    public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
     // Local MCP HTTP server (independent of EnableNodeMode)
-    public bool EnableMcpServer { get; set; } = false;
+    public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
     /// <summary>
     /// Hostnames the A2UI image renderer is allowed to fetch over HTTPS.
     /// Empty by default — agents can still ship inline data: images. The
     /// runtime never bypasses this list, so it is the single switch keeping
     /// agent JSON from issuing arbitrary outbound HTTP from the tray process.
     /// </summary>
-    public List<string> A2UIImageHosts { get; set; } = new();
-    public bool HasSeenActivityStreamTip { get; set; } = false;
-    public string SkippedUpdateTag { get; set; } = "";
-    public string? PreferredGatewayId { get; set; }
+    public List<string> A2UIImageHosts
+    {
+        get => _data.A2UIImageHosts ??= new();
+        set => _data = _data with { A2UIImageHosts = value ?? new() };
+    }
+    public bool HasSeenActivityStreamTip { get => _data.HasSeenActivityStreamTip; set => _data = _data with { HasSeenActivityStreamTip = value }; }
+    public string SkippedUpdateTag { get => _data.SkippedUpdateTag ?? ""; set => _data = _data with { SkippedUpdateTag = value }; }
+    public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
     /// <summary>Master switch for system.run containment. When true (default), system.run runs sandboxed and is denied if MXC is unavailable. When false, system.run runs on host like before.</summary>
-    public bool SystemRunSandboxEnabled { get; set; } = true;
+    public bool SystemRunSandboxEnabled { get => _data.SystemRunSandboxEnabled; set => _data = _data with { SystemRunSandboxEnabled = value }; }
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
-    public bool SystemRunAllowOutbound { get; set; } = false;
+    public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
 
     // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
-    public SandboxClipboardMode SandboxClipboard { get; set; } = SandboxClipboardMode.None;
-    public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
-    public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }
-    public SandboxFolderAccess? SandboxDesktopAccess { get; set; }
-    public List<SandboxCustomFolder> SandboxCustomFolders { get; set; } = new();
-    public int SandboxTimeoutMs { get; set; } = 30_000;
-    public long SandboxMaxOutputBytes { get; set; } = 4 * 1024 * 1024;
+    public SandboxClipboardMode SandboxClipboard { get => _data.SandboxClipboard; set => _data = _data with { SandboxClipboard = value }; }
+    public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value }; }
+    public SandboxFolderAccess? SandboxDownloadsAccess { get => _data.SandboxDownloadsAccess; set => _data = _data with { SandboxDownloadsAccess = value }; }
+    public SandboxFolderAccess? SandboxDesktopAccess { get => _data.SandboxDesktopAccess; set => _data = _data with { SandboxDesktopAccess = value }; }
+    public List<SandboxCustomFolder> SandboxCustomFolders
+    {
+        get => _data.SandboxCustomFolders ??= new();
+        set => _data = _data with { SandboxCustomFolders = value ?? new() };
+    }
+    public int SandboxTimeoutMs { get => _data.SandboxTimeoutMs > 0 ? _data.SandboxTimeoutMs : 30_000; set => _data = _data with { SandboxTimeoutMs = value }; }
+    public long SandboxMaxOutputBytes { get => _data.SandboxMaxOutputBytes > 0 ? _data.SandboxMaxOutputBytes : 4 * 1024 * 1024; set => _data = _data with { SandboxMaxOutputBytes = value }; }
 
     public SettingsManager() : this(GetDefaultSettingsDirectory())
     {
@@ -169,6 +183,7 @@ public class SettingsManager
     {
         LegacyToken = null;
         LegacyBootstrapToken = null;
+        _data = CreateDefaultData();
 
         try
         {
@@ -179,85 +194,7 @@ public class SettingsManager
                 var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
                 {
-                    GatewayUrl = loaded.GatewayUrl ?? GatewayUrl;
-                    UseSshTunnel = loaded.UseSshTunnel;
-                    SshTunnelUser = loaded.SshTunnelUser ?? SshTunnelUser;
-                    SshTunnelHost = loaded.SshTunnelHost ?? SshTunnelHost;
-                    SshTunnelRemotePort = loaded.SshTunnelRemotePort <= 0 ? SshTunnelRemotePort : loaded.SshTunnelRemotePort;
-                    SshTunnelLocalPort = loaded.SshTunnelLocalPort <= 0 ? SshTunnelLocalPort : loaded.SshTunnelLocalPort;
-                    AutoStart = loaded.AutoStart;
-                    GlobalHotkeyEnabled = loaded.GlobalHotkeyEnabled;
-                    HasInjectedFirstRunBootstrap = loaded.HasInjectedFirstRunBootstrap;
-                    ShowNotifications = loaded.ShowNotifications;
-                    NotificationSound = loaded.NotificationSound ?? NotificationSound;
-                    NotifyHealth = loaded.NotifyHealth;
-                    NotifyUrgent = loaded.NotifyUrgent;
-                    NotifyReminder = loaded.NotifyReminder;
-                    NotifyEmail = loaded.NotifyEmail;
-                    NotifyCalendar = loaded.NotifyCalendar;
-                    NotifyBuild = loaded.NotifyBuild;
-                    NotifyStock = loaded.NotifyStock;
-                    NotifyInfo = loaded.NotifyInfo;
-                    EnableNodeMode = loaded.EnableNodeMode;
-                    NodeCanvasEnabled = loaded.NodeCanvasEnabled;
-                    NodeScreenEnabled = loaded.NodeScreenEnabled;
-                    NodeCameraEnabled = loaded.NodeCameraEnabled;
-                    ScreenRecordingConsentGiven = loaded.ScreenRecordingConsentGiven;
-                    CameraRecordingConsentGiven = loaded.CameraRecordingConsentGiven;
-                    NodeLocationEnabled = loaded.NodeLocationEnabled;
-                    NodeBrowserProxyEnabled = loaded.NodeBrowserProxyEnabled;
-                    NodeSystemRunEnabled = loaded.NodeSystemRunEnabled;
-                    NodeSttEnabled = loaded.NodeSttEnabled;
-                    SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? SttLanguage : loaded.SttLanguage;
-                    SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? SttModelName : loaded.SttModelName;
-                    SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : SttSilenceTimeout;
-                    VoiceTtsEnabled = loaded.VoiceTtsEnabled;
-                    VoiceAudioFeedback = loaded.VoiceAudioFeedback;
-                    NodeTtsEnabled = loaded.NodeTtsEnabled;
-                    TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? TtsProvider : loaded.TtsProvider;
-                    TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? TtsElevenLabsApiKey;
-                    TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? TtsElevenLabsModel;
-                    TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? TtsElevenLabsVoiceId;
-                    TtsWindowsVoiceId = loaded.TtsWindowsVoiceId ?? TtsWindowsVoiceId;
-                    HubNavPaneOpen = loaded.HubNavPaneOpen;
-                    TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? TtsPiperVoiceId : loaded.TtsPiperVoiceId;
-                    EnableMcpServer = loaded.EnableMcpServer;
-                    A2UIImageHosts = loaded.A2UIImageHosts ?? new List<string>();
-                    // Legacy McpOnlyMode migration:
-                    //   true  → node off (no gateway), MCP on
-                    //   false → leave MCP off; the user has not opted in to a
-                    //           local HTTP server. Earlier dev builds tied MCP
-                    //           to EnableNodeMode silently — we deliberately
-                    //           do *not* re-enable MCP for those users on
-                    //           upgrade. They can flip the toggle in Settings.
-                    if (loaded.McpOnlyMode is bool legacyMcpOnly && legacyMcpOnly)
-                    {
-                        EnableMcpServer = true;
-                        EnableNodeMode = false;
-                    }
-                    HasSeenActivityStreamTip = loaded.HasSeenActivityStreamTip;
-                    SkippedUpdateTag = loaded.SkippedUpdateTag ?? SkippedUpdateTag;
-                    PreferredGatewayId = loaded.PreferredGatewayId ?? PreferredGatewayId;
-                    NotifyChatResponses = loaded.NotifyChatResponses;
-                    PreferStructuredCategories = loaded.PreferStructuredCategories;
-                    UseLegacyWebChat = loaded.UseLegacyWebChat;
-                    if (loaded.UserRules != null)
-                        UserRules = loaded.UserRules;
-
-                    // MXC sandbox settings
-                    SystemRunSandboxEnabled = loaded.SystemRunSandboxEnabled;
-                    SystemRunAllowOutbound = loaded.SystemRunAllowOutbound;
-
-                    // MXC sandbox settings (Sandbox page)
-                    SandboxClipboard = loaded.SandboxClipboard;
-                    SandboxDocumentsAccess = loaded.SandboxDocumentsAccess;
-                    SandboxDownloadsAccess = loaded.SandboxDownloadsAccess;
-                    SandboxDesktopAccess = loaded.SandboxDesktopAccess;
-                    SandboxCustomFolders = loaded.SandboxCustomFolders ?? new();
-                    if (loaded.SandboxTimeoutMs > 0)
-                        SandboxTimeoutMs = loaded.SandboxTimeoutMs;
-                    if (loaded.SandboxMaxOutputBytes > 0)
-                        SandboxMaxOutputBytes = loaded.SandboxMaxOutputBytes;
+                    _data = NormalizeLoadedData(loaded);
                 }
             }
         }
@@ -268,6 +205,130 @@ public class SettingsManager
             LegacyBootstrapToken = null;
         }
     }
+
+    private static SettingsData CreateDefaultData() => new()
+    {
+        GatewayUrl = "ws://localhost:18789",
+        UseSshTunnel = false,
+        SshTunnelUser = "",
+        SshTunnelHost = "",
+        SshTunnelSshPort = 22,
+        SshTunnelRemotePort = 18789,
+        SshTunnelLocalPort = 18789,
+        AutoStart = true,
+        GlobalHotkeyEnabled = true,
+        HasInjectedFirstRunBootstrap = false,
+        ShowNotifications = true,
+        NotificationSound = "Default",
+        NotifyHealth = true,
+        NotifyUrgent = true,
+        NotifyReminder = true,
+        NotifyEmail = true,
+        NotifyCalendar = true,
+        NotifyBuild = true,
+        NotifyStock = true,
+        NotifyInfo = true,
+        NotifyChatResponses = true,
+        PreferStructuredCategories = true,
+        UserRules = new(),
+        UseLegacyWebChat = false,
+        EnableNodeMode = false,
+        NodeCanvasEnabled = true,
+        NodeScreenEnabled = true,
+        NodeCameraEnabled = true,
+        ScreenRecordingConsentGiven = false,
+        CameraRecordingConsentGiven = false,
+        NodeLocationEnabled = true,
+        NodeBrowserProxyEnabled = true,
+        NodeSystemRunEnabled = true,
+        NodeSttEnabled = false,
+        SttLanguage = "auto",
+        SttModelName = "base",
+        SttSilenceTimeout = 1.5f,
+        VoiceTtsEnabled = true,
+        VoiceAudioFeedback = true,
+        NodeTtsEnabled = false,
+        TtsProvider = TtsCapability.PiperProvider,
+        TtsElevenLabsApiKey = "",
+        TtsElevenLabsModel = "",
+        TtsElevenLabsVoiceId = "",
+        TtsWindowsVoiceId = "",
+        HubNavPaneOpen = true,
+        TtsPiperVoiceId = "en_US-amy-low",
+        EnableMcpServer = false,
+        A2UIImageHosts = new(),
+        HasSeenActivityStreamTip = false,
+        SkippedUpdateTag = "",
+        PreferredGatewayId = null,
+        SystemRunSandboxEnabled = true,
+        SystemRunAllowOutbound = false,
+        SandboxClipboard = SandboxClipboardMode.None,
+        SandboxDocumentsAccess = null,
+        SandboxDownloadsAccess = null,
+        SandboxDesktopAccess = null,
+        SandboxCustomFolders = new(),
+        SandboxTimeoutMs = 30_000,
+        SandboxMaxOutputBytes = 4 * 1024 * 1024
+    };
+
+    private static SettingsData NormalizeLoadedData(SettingsData loaded)
+    {
+        var defaults = CreateDefaultData();
+        var data = loaded with
+        {
+            GatewayUrl = loaded.GatewayUrl ?? defaults.GatewayUrl,
+            SshTunnelUser = loaded.SshTunnelUser ?? defaults.SshTunnelUser,
+            SshTunnelHost = loaded.SshTunnelHost ?? defaults.SshTunnelHost,
+            SshTunnelSshPort = IsValidPort(loaded.SshTunnelSshPort) ? loaded.SshTunnelSshPort : defaults.SshTunnelSshPort,
+            SshTunnelRemotePort = loaded.SshTunnelRemotePort <= 0 ? defaults.SshTunnelRemotePort : loaded.SshTunnelRemotePort,
+            SshTunnelLocalPort = loaded.SshTunnelLocalPort <= 0 ? defaults.SshTunnelLocalPort : loaded.SshTunnelLocalPort,
+            NotificationSound = loaded.NotificationSound ?? defaults.NotificationSound,
+            SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
+            SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
+            SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
+            TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? defaults.TtsProvider : loaded.TtsProvider,
+            TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? defaults.TtsElevenLabsApiKey,
+            TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
+            TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? defaults.TtsElevenLabsVoiceId,
+            TtsWindowsVoiceId = loaded.TtsWindowsVoiceId ?? defaults.TtsWindowsVoiceId,
+            TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? defaults.TtsPiperVoiceId : loaded.TtsPiperVoiceId,
+            A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
+            SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
+            PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
+            UserRules = loaded.UserRules != null ? new List<UserNotificationRule>(loaded.UserRules) : new(),
+            SandboxCustomFolders = CloneSandboxCustomFolders(loaded.SandboxCustomFolders),
+            SandboxTimeoutMs = loaded.SandboxTimeoutMs > 0 ? loaded.SandboxTimeoutMs : defaults.SandboxTimeoutMs,
+            SandboxMaxOutputBytes = loaded.SandboxMaxOutputBytes > 0 ? loaded.SandboxMaxOutputBytes : defaults.SandboxMaxOutputBytes,
+            McpOnlyMode = null
+        };
+
+        // Legacy McpOnlyMode migration:
+        //   true  -> node off (no gateway), MCP on
+        //   false -> leave MCP off; the user has not opted in to a local HTTP server.
+        if (loaded.McpOnlyMode is true)
+        {
+            data = data with
+            {
+                EnableMcpServer = true,
+                EnableNodeMode = false
+            };
+        }
+
+        return data;
+    }
+
+    private static bool IsValidPort(int port) => port is >= 1 and <= 65535;
+
+    private static List<SandboxCustomFolder> CloneSandboxCustomFolders(IEnumerable<SandboxCustomFolder>? folders) =>
+        folders is null
+            ? new List<SandboxCustomFolder>()
+            : folders
+                .Select(folder => new SandboxCustomFolder
+                {
+                    Path = folder.Path,
+                    Access = folder.Access
+                })
+                .ToList();
 
     private void LoadLegacyGatewayCredentials(string json)
     {
@@ -280,6 +341,7 @@ public class SettingsManager
             LegacyToken = ReadLegacyString(document.RootElement, "Token");
             LegacyBootstrapToken = ReadLegacyString(document.RootElement, "BootstrapToken");
         }
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         catch (JsonException)
         {
             // SettingsData.FromJson handles invalid settings by falling back to defaults.
@@ -295,74 +357,34 @@ public class SettingsManager
     }
 
     /// <summary>
-    /// Creates a snapshot of current settings as an immutable SettingsData record.
-    /// Used for settings change classification (no DPAPI protection applied).
+    /// Creates a detached snapshot of current settings. No DPAPI protection is
+    /// applied here; Save applies it to a second clone for on-disk storage only.
     /// </summary>
-    public SettingsData ToSettingsData() => new()
+    public SettingsData ToSettingsData() => _data with
     {
         GatewayUrl = GatewayUrl,
-        // Token and BootstrapToken are no longer written — GatewayRegistry is the source of truth
-        UseSshTunnel = UseSshTunnel,
         SshTunnelUser = SshTunnelUser,
         SshTunnelHost = SshTunnelHost,
         SshTunnelRemotePort = SshTunnelRemotePort,
         SshTunnelLocalPort = SshTunnelLocalPort,
-        AutoStart = AutoStart,
-        GlobalHotkeyEnabled = GlobalHotkeyEnabled,
-        HasInjectedFirstRunBootstrap = HasInjectedFirstRunBootstrap,
-        ShowNotifications = ShowNotifications,
         NotificationSound = NotificationSound,
-        NotifyHealth = NotifyHealth,
-        NotifyUrgent = NotifyUrgent,
-        NotifyReminder = NotifyReminder,
-        NotifyEmail = NotifyEmail,
-        NotifyCalendar = NotifyCalendar,
-        NotifyBuild = NotifyBuild,
-        NotifyStock = NotifyStock,
-        NotifyInfo = NotifyInfo,
-        EnableNodeMode = EnableNodeMode,
-        NodeCanvasEnabled = NodeCanvasEnabled,
-        NodeScreenEnabled = NodeScreenEnabled,
-        NodeCameraEnabled = NodeCameraEnabled,
-        ScreenRecordingConsentGiven = ScreenRecordingConsentGiven,
-        CameraRecordingConsentGiven = CameraRecordingConsentGiven,
-        NodeLocationEnabled = NodeLocationEnabled,
-        NodeBrowserProxyEnabled = NodeBrowserProxyEnabled,
-        NodeSystemRunEnabled = NodeSystemRunEnabled,
-        NodeSttEnabled = NodeSttEnabled,
         SttLanguage = SttLanguage,
         SttModelName = SttModelName,
         SttSilenceTimeout = SttSilenceTimeout,
-        VoiceTtsEnabled = VoiceTtsEnabled,
-        VoiceAudioFeedback = VoiceAudioFeedback,
-        NodeTtsEnabled = NodeTtsEnabled,
         TtsProvider = TtsProvider,
         TtsElevenLabsApiKey = TtsElevenLabsApiKey,
         TtsElevenLabsModel = string.IsNullOrWhiteSpace(TtsElevenLabsModel) ? null : TtsElevenLabsModel,
         TtsElevenLabsVoiceId = string.IsNullOrWhiteSpace(TtsElevenLabsVoiceId) ? null : TtsElevenLabsVoiceId,
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
-        HubNavPaneOpen = HubNavPaneOpen,
         TtsPiperVoiceId = TtsPiperVoiceId,
-        EnableMcpServer = EnableMcpServer,
         A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
-        HasSeenActivityStreamTip = HasSeenActivityStreamTip,
         SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
         PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
-        NotifyChatResponses = NotifyChatResponses,
-        PreferStructuredCategories = PreferStructuredCategories,
-        UseLegacyWebChat = UseLegacyWebChat,
-        UserRules = UserRules,
-        // MXC sandbox settings
-        SystemRunSandboxEnabled = SystemRunSandboxEnabled,
-        SystemRunAllowOutbound = SystemRunAllowOutbound,
-        // MXC sandbox settings (Sandbox page)
-        SandboxClipboard = SandboxClipboard,
-        SandboxDocumentsAccess = SandboxDocumentsAccess,
-        SandboxDownloadsAccess = SandboxDownloadsAccess,
-        SandboxDesktopAccess = SandboxDesktopAccess,
-        SandboxCustomFolders = SandboxCustomFolders.Count == 0 ? null : new List<SandboxCustomFolder>(SandboxCustomFolders),
+        UserRules = new List<UserNotificationRule>(UserRules),
+        SandboxCustomFolders = SandboxCustomFolders.Count == 0 ? null : CloneSandboxCustomFolders(SandboxCustomFolders),
         SandboxTimeoutMs = SandboxTimeoutMs,
-        SandboxMaxOutputBytes = SandboxMaxOutputBytes
+        SandboxMaxOutputBytes = SandboxMaxOutputBytes,
+        McpOnlyMode = null
     };
 
     public void Save()
@@ -406,6 +428,28 @@ public class SettingsManager
         var bytes = Encoding.UTF8.GetBytes(value);
         var protectedBytes = ProtectedData.Protect(bytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
         return ProtectedSecretPrefix + Convert.ToBase64String(protectedBytes);
+    }
+
+    internal static bool CanProtectSettingSecretsForCurrentUser()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes("openclaw-dpapi-probe");
+            var protectedBytes = ProtectedData.Protect(bytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
+            var unprotectedBytes = ProtectedData.Unprotect(protectedBytes, ProtectedSecretEntropy, DataProtectionScope.CurrentUser);
+            return bytes.SequenceEqual(unprotectedBytes);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
     }
 
     internal static string? UnprotectSettingSecret(string? value)

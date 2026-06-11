@@ -32,7 +32,7 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class ChannelsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
 
     /// <summary>
@@ -151,9 +151,11 @@ public sealed partial class ChannelsPage : Page
         // Cancel + dispose all per-page tokens. Re-enabling the Refresh button
         // here covers the back-to-back-cancel race where neither call reaches
         // its finally block in the !cts.IsCancellationRequested branch.
-        try { _refreshCts?.Cancel(); _refreshCts?.Dispose(); } catch { }
+        try { _refreshCts?.Cancel(); _refreshCts?.Dispose(); }
+        catch (Exception ex) { Logger.Debug($"ChannelsPage: refreshCts dispose failed: {ex.Message}"); }
         _refreshCts = null;
-        try { _linkingCts?.Cancel(); _linkingCts?.Dispose(); } catch { }
+        try { _linkingCts?.Cancel(); _linkingCts?.Dispose(); }
+        catch (Exception ex) { Logger.Debug($"ChannelsPage: linkingCts dispose failed: {ex.Message}"); }
         _linkingCts = null;
         SetRefreshBusy(false);
 
@@ -170,7 +172,7 @@ public sealed partial class ChannelsPage : Page
     /// </summary>
     public void Initialize()
     {
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         if (_appState != null)
             _appState.PropertyChanged += OnAppStateChanged;
 
@@ -316,10 +318,11 @@ public sealed partial class ChannelsPage : Page
         return _configSnapshot.HasRoot;
     }
 
-    private async void OnRefreshAll(object sender, RoutedEventArgs e)
-    {
-        await RefreshAsync();
-    }
+    private void OnRefreshAll(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => RefreshAsync(),
+            new OpenClawTray.AppLogger(),
+            nameof(OnRefreshAll));
 
     private async Task RefreshAsync(bool probe = true)
     {
@@ -338,7 +341,8 @@ public sealed partial class ChannelsPage : Page
         var cts = _refreshCts;
         if (oldCts != null)
         {
-            try { oldCts.Cancel(); oldCts.Dispose(); } catch { }
+            try { oldCts.Cancel(); oldCts.Dispose(); }
+            catch (Exception ex) { Logger.Debug($"ChannelsPage: prior refresh cts cancel/dispose failed: {ex.Message}"); }
         }
 
         // Coalesce concurrent calls (user clicks + push deltas) — only one
@@ -778,7 +782,7 @@ public sealed partial class ChannelsPage : Page
             var unavailableGuide = BuildSetupGuide(record);
             if (unavailableGuide != null) stack.Children.Add(unavailableGuide);
             else stack.Children.Add(BuildInfoText(
-                "This channel requires a macOS host. It can't be configured from a Windows machine."));
+                LocalizationHelper.GetString("ChannelsPage_UnavailableOnWindows")));
             return stack;
         }
 
@@ -818,7 +822,7 @@ public sealed partial class ChannelsPage : Page
         // channels it reads "Configuration" because that's where the
         // channel becomes configured in the first place.
         var inlineForm = BuildInlineConfigForm(record);
-        var configSectionTitle = record.IsConfigured ? "Replace credentials" : "Configuration";
+        var configSectionTitle = record.IsConfigured ? LocalizationHelper.GetString("ChannelsPage_ReplaceCredentials") : LocalizationHelper.GetString("ChannelsPage_Configuration");
         stack.Children.Add(BuildSection(configSectionTitle, inlineForm));
 
         // "Install plugin on your gateway" panel. Hidden entirely when the
@@ -864,23 +868,23 @@ public sealed partial class ChannelsPage : Page
         string caption;
         if (isQr && hasLogout)
         {
-            caption = "Unlink this device from the channel. Scan a fresh QR to reconnect — your account stays paired on your phone.";
+            caption = LocalizationHelper.GetString("ChannelsPage_CaptionQrLogout");
         }
         else if (hasStop && hasLogout)
         {
-            caption = "Pause the channel temporarily — credentials are kept so you can start it again. Or disconnect entirely to clear them.";
+            caption = LocalizationHelper.GetString("ChannelsPage_CaptionStopLogout");
         }
         else if (hasStart && hasLogout)
         {
-            caption = "Start the channel — it'll begin handling messages with the stored credentials. Or disconnect entirely to clear them.";
+            caption = LocalizationHelper.GetString("ChannelsPage_CaptionStartLogout");
         }
         else if (hasStop)
         {
-            caption = "Pause the channel — credentials are kept so you can start it again.";
+            caption = LocalizationHelper.GetString("ChannelsPage_CaptionStopOnly");
         }
         else if (hasStart)
         {
-            caption = "Start the channel — it'll begin handling messages with the stored credentials.";
+            caption = LocalizationHelper.GetString("ChannelsPage_CaptionStartOnly");
         }
         else
         {
@@ -901,12 +905,12 @@ public sealed partial class ChannelsPage : Page
         var buttonRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
 
         if (hasStart)
-            buttonRow.Children.Add(BuildHeaderActionButton(FluentIconCatalog.ChannelStart, "Start", record.Id, channelId => StartChannelAsync(channelId!)));
+            buttonRow.Children.Add(BuildHeaderActionButton(FluentIconCatalog.ChannelStart, LocalizationHelper.GetString("ChannelsPage_Start"), record.Id, channelId => StartChannelAsync(channelId!)));
         if (hasStop)
         {
             var stopBtn = new Button
             {
-                Content = "Stop",
+                Content = LocalizationHelper.GetString("ChannelsPage_Stop"),
                 MinHeight = 32,
                 Padding = new Thickness(12, 5, 12, 5),
             };
@@ -925,13 +929,13 @@ public sealed partial class ChannelsPage : Page
         // Non-QR channels: Logout = clear credentials (destructive — label says so).
         if (hasLogout && isQr)
         {
-            buttonRow.Children.Add(BuildHeaderActionButton(FluentIconCatalog.ChannelLogout, "Logout", record.Id, channelId => LogoutAsync(channelId!, isQr: true)));
+            buttonRow.Children.Add(BuildHeaderActionButton(FluentIconCatalog.ChannelLogout, LocalizationHelper.GetString("ChannelsPage_Logout"), record.Id, channelId => LogoutAsync(channelId!, isQr: true)));
         }
         else if (hasLogout && !isQr)
         {
             var disconnectBtn = new Button
             {
-                Content = "Disconnect and forget credentials",
+                Content = LocalizationHelper.GetString("ChannelsPage_DisconnectForget"),
                 MinHeight = 32,
                 Padding = new Thickness(12, 5, 12, 5),
             };
@@ -949,7 +953,7 @@ public sealed partial class ChannelsPage : Page
         }
 
         stack.Children.Add(buttonRow);
-        return BuildSection("Controls", stack);
+        return BuildSection(LocalizationHelper.GetString("ChannelsPage_Controls"), stack);
     }
 
     private static FrameworkElement BuildSection(string title, FrameworkElement content)
@@ -1060,14 +1064,14 @@ public sealed partial class ChannelsPage : Page
     private static (string? Text, string? Url) ResolveExternalHelpLink(string channelId) =>
         channelId.ToLowerInvariant() switch
         {
-            "whatsapp"   => ("WhatsApp Linked devices help →",     "https://faq.whatsapp.com/378279004439436/"),
-            "signal"     => ("Signal Linked devices help →",       "https://support.signal.org/hc/en-us/articles/360007320551"),
-            "telegram"   => ("How to create a Telegram bot →",     "https://core.telegram.org/bots/features#botfather"),
-            "discord"    => ("How to create a Discord webhook →",  "https://support.discord.com/hc/en-us/articles/228383668"),
-            "googlechat" => ("How to add a Google Chat webhook →", "https://developers.google.com/chat/how-tos/webhooks"),
-            "slack"      => ("Slack app dashboard →",              "https://api.slack.com/apps"),
-            "nostr"      => ("About Nostr →",                      "https://nostr.com/"),
-            "imessage"   => ("About macOS Messages →",             "https://support.apple.com/guide/messages/welcome/mac"),
+            "whatsapp"   => (LocalizationHelper.GetString("ChannelsPage_HelpWhatsApp"),     "https://faq.whatsapp.com/378279004439436/"),
+            "signal"     => (LocalizationHelper.GetString("ChannelsPage_HelpSignal"),       "https://support.signal.org/hc/en-us/articles/360007320551"),
+            "telegram"   => (LocalizationHelper.GetString("ChannelsPage_HelpTelegram"),     "https://core.telegram.org/bots/features#botfather"),
+            "discord"    => (LocalizationHelper.GetString("ChannelsPage_HelpDiscord"),  "https://support.discord.com/hc/en-us/articles/228383668"),
+            "googlechat" => (LocalizationHelper.GetString("ChannelsPage_HelpGoogleChat"), "https://developers.google.com/chat/how-tos/webhooks"),
+            "slack"      => (LocalizationHelper.GetString("ChannelsPage_HelpSlack"),              "https://api.slack.com/apps"),
+            "nostr"      => (LocalizationHelper.GetString("ChannelsPage_HelpNostr"),                      "https://nostr.com/"),
+            "imessage"   => (LocalizationHelper.GetString("ChannelsPage_HelpIMessage"),             "https://support.apple.com/guide/messages/welcome/mac"),
             _ => (null, null),
         };
 
@@ -1079,67 +1083,64 @@ public sealed partial class ChannelsPage : Page
     private static (string? Headline, string[]? Steps) ResolveSetupGuide(string channelId) =>
         channelId.ToLowerInvariant() switch
         {
-            "whatsapp" => ("Link your WhatsApp phone", new[]
+            "whatsapp" => (LocalizationHelper.GetString("ChannelsPage_GuideWhatsAppHeadline"), new[]
             {
-                "Click \"Show QR\" in the Linking section below.",
-                "On your phone: WhatsApp → Settings → Linked devices → Link a device.",
-                "Scan the QR code that appears here.",
+                LocalizationHelper.GetString("ChannelsPage_GuideWhatsAppStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideWhatsAppStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideWhatsAppStep3"),
             }),
-            "signal" => ("Link your Signal phone", new[]
+            "signal" => (LocalizationHelper.GetString("ChannelsPage_GuideSignalHeadline"), new[]
             {
-                "Click \"Show QR\" in the Linking section below.",
-                "On your phone: Signal → Settings → Linked devices → Link new device.",
-                "Scan the QR code that appears here.",
+                LocalizationHelper.GetString("ChannelsPage_GuideSignalStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideSignalStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideSignalStep3"),
             }),
-            "telegram" => ("Connect Telegram via a bot", new[]
+            "telegram" => (LocalizationHelper.GetString("ChannelsPage_GuideTelegramHeadline"), new[]
             {
-                "Open Telegram and send a message to @BotFather.",
-                "Send /newbot and follow the prompts. Copy the bot token at the end.",
-                "Paste the token into the Configuration form below.",
-                "Click \"Save and start\". The channel will start automatically.",
+                LocalizationHelper.GetString("ChannelsPage_GuideTelegramStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideTelegramStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideTelegramStep3"),
+                LocalizationHelper.GetString("ChannelsPage_GuideTelegramStep4"),
             }),
-            "discord" => ("Connect Discord via a webhook", new[]
+            "discord" => (LocalizationHelper.GetString("ChannelsPage_GuideDiscordHeadline"), new[]
             {
-                "Open your Discord server settings → Integrations → Webhooks.",
-                "Click \"New Webhook\", give it a name, and copy the webhook URL.",
-                "Paste the URL into the Configuration form below.",
-                "Click \"Save and start\".",
+                LocalizationHelper.GetString("ChannelsPage_GuideDiscordStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideDiscordStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideDiscordStep3"),
+                LocalizationHelper.GetString("ChannelsPage_GuideDiscordStep4"),
             }),
-            "googlechat" => ("Connect Google Chat via a webhook", new[]
+            "googlechat" => (LocalizationHelper.GetString("ChannelsPage_GuideGoogleChatHeadline"), new[]
             {
-                "In Google Chat, open the space → Manage webhooks → Add webhook.",
-                "Copy the webhook URL.",
-                "Paste the URL into the Configuration form below.",
-                "Click \"Save and start\".",
+                LocalizationHelper.GetString("ChannelsPage_GuideGoogleChatStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideGoogleChatStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideGoogleChatStep3"),
+                LocalizationHelper.GetString("ChannelsPage_GuideGoogleChatStep4"),
             }),
-            "slack" => ("Connect Slack via an app", new[]
+            "slack" => (LocalizationHelper.GetString("ChannelsPage_GuideSlackHeadline"), new[]
             {
-                "Create a Slack app at api.slack.com/apps and install it to your workspace.",
-                "Copy the bot token (xoxb-…) and the signing secret.",
-                "Paste both into the Configuration form below.",
-                "Click \"Save and start\".",
+                LocalizationHelper.GetString("ChannelsPage_GuideSlackStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideSlackStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideSlackStep3"),
+                LocalizationHelper.GetString("ChannelsPage_GuideSlackStep4"),
             }),
-            "nostr" => ("Connect Nostr via relays", new[]
+            "nostr" => (LocalizationHelper.GetString("ChannelsPage_GuideNostrHeadline"), new[]
             {
-                "Generate or paste a private key (nsec).",
-                "Pick one or more relay URLs (e.g. wss://relay.damus.io).",
-                "Paste both into the Configuration form below.",
-                "Click \"Save and start\".",
+                LocalizationHelper.GetString("ChannelsPage_GuideNostrStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideNostrStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideNostrStep3"),
+                LocalizationHelper.GetString("ChannelsPage_GuideNostrStep4"),
             }),
-            "imessage" => ("iMessage is macOS-only", new[]
+            "imessage" => (LocalizationHelper.GetString("ChannelsPage_GuideIMessageHeadline"), new[]
             {
-                "iMessage reads the local Messages.app database, which only exists on macOS.",
-                "To use iMessage with OpenClaw, run the gateway on a Mac instead of this Windows host.",
-                "All other channels in this list work fine from a Windows-hosted gateway.",
+                LocalizationHelper.GetString("ChannelsPage_GuideIMessageStep1"),
+                LocalizationHelper.GetString("ChannelsPage_GuideIMessageStep2"),
+                LocalizationHelper.GetString("ChannelsPage_GuideIMessageStep3"),
             }),
-            // Generic fallback for plugin channels we don't have explicit
-            // guidance for. Better than leaving the section blank — at least
-            // the user knows it's a plugin and where to find its settings.
-            _ => ("Connect this channel", new[]
+            _ => (LocalizationHelper.GetString("ChannelsPage_GuideGenericHeadline"), new[]
             {
-                $"\"{channelId}\" is a plugin channel. Refer to its documentation for the fields it needs.",
-                $"Use \"Open Config page\" in the Configuration section below to add settings under channels.{channelId}.",
-                "Save the config; OpenClaw will start the channel automatically.",
+                string.Format(LocalizationHelper.GetString("ChannelsPage_GuideGenericStep1"), channelId),
+                string.Format(LocalizationHelper.GetString("ChannelsPage_GuideGenericStep2"), channelId),
+                LocalizationHelper.GetString("ChannelsPage_GuideGenericStep3"),
             }),
         };
 
@@ -1169,65 +1170,65 @@ public sealed partial class ChannelsPage : Page
             {
                 new ConfigField(
                     "channels.telegram.botToken",
-                    "Bot token",
+                    LocalizationHelper.GetString("ChannelsPage_FieldBotToken"),
                     "123456:ABCdef...",
                     Sensitive: true,
                     Required: true,
-                    HelpText: "Get from @BotFather (/newbot)."),
+                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpBotToken")),
             },
             "discord" => new[]
             {
                 new ConfigField(
                     "channels.discord.webhookUrl",
-                    "Webhook URL",
+                    LocalizationHelper.GetString("ChannelsPage_FieldWebhookUrl"),
                     "https://discord.com/api/webhooks/...",
                     Sensitive: true,
                     Required: true,
-                    HelpText: "Server Settings → Integrations → Webhooks → New Webhook."),
+                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpWebhookDiscord")),
             },
             "googlechat" => new[]
             {
                 new ConfigField(
                     "channels.googlechat.webhookUrl",
-                    "Webhook URL",
+                    LocalizationHelper.GetString("ChannelsPage_FieldWebhookUrl"),
                     "https://chat.googleapis.com/v1/spaces/...",
                     Sensitive: true,
                     Required: true,
-                    HelpText: "Open a space → Manage webhooks → Add webhook."),
+                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpWebhookGoogleChat")),
             },
             "slack" => new[]
             {
                 new ConfigField(
                     "channels.slack.botToken",
-                    "Bot token",
+                    LocalizationHelper.GetString("ChannelsPage_FieldBotToken"),
                     "xoxb-...",
                     Sensitive: true,
                     Required: true,
-                    HelpText: "OAuth tokens from your Slack app."),
+                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpSlackBotToken")),
                 new ConfigField(
                     "channels.slack.signingSecret",
-                    "Signing secret",
+                    LocalizationHelper.GetString("ChannelsPage_FieldSigningSecret"),
                     "",
                     Sensitive: true,
                     Required: true,
-                    HelpText: "Basic Information → App Credentials."),
+                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpSlackSigningSecret")),
             },
             "nostr" => new[]
             {
                 new ConfigField(
                     "channels.nostr.nsec",
-                    "Private key (nsec)",
+                    LocalizationHelper.GetString("ChannelsPage_FieldPrivateKey"),
                     "nsec1...",
                     Sensitive: true,
                     Required: true),
                 new ConfigField(
                     "channels.nostr.relays",
-                    "Relay URLs",
+                    LocalizationHelper.GetString("ChannelsPage_FieldRelayUrls"),
                     "wss://relay.damus.io",
                     Sensitive: false,
                     Required: true,
                     Multiline: true,
-                    HelpText: "One per line."),
+                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpRelayUrls")),
             },
             _ => null,
         };
@@ -1338,12 +1339,12 @@ public sealed partial class ChannelsPage : Page
         var actionRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
         var saveBtn = new Button
         {
-            Content = record.IsConfigured ? "Save changes" : "Save and start",
+            Content = record.IsConfigured ? LocalizationHelper.GetString("ChannelsPage_SaveChanges") : LocalizationHelper.GetString("ChannelsPage_SaveAndStart"),
             Style = (Style)Application.Current.Resources["AccentButtonStyle"],
         };
         var openConfigBtn = new Button
         {
-            Content = "Open Config page",
+            Content = LocalizationHelper.GetString("ChannelsPage_OpenConfigPage"),
         };
         openConfigBtn.Click += (_, _) => ((IAppCommands)CurrentApp).Navigate("config");
         actionRow.Children.Add(saveBtn);
@@ -1360,8 +1361,8 @@ public sealed partial class ChannelsPage : Page
             var client = CurrentApp.GatewayClient;
             if (client == null)
             {
-                _pendingSaveBanner = (record.Id, "Not connected",
-                    "Connect to a gateway before saving channel config.",
+                _pendingSaveBanner = (record.Id, LocalizationHelper.GetString("ChannelsPage_BannerNotConnectedTitle"),
+                    LocalizationHelper.GetString("ChannelsPage_BannerNotConnectedMessage"),
                     InfoBarSeverity.Error);
                 ApplyPendingSaveBanner();
                 return;
@@ -1380,8 +1381,8 @@ public sealed partial class ChannelsPage : Page
                 };
                 if (field.Required && string.IsNullOrWhiteSpace(raw))
                 {
-                    _pendingSaveBanner = (record.Id, "Missing field",
-                        $"{field.Label} is required.",
+                    _pendingSaveBanner = (record.Id, LocalizationHelper.GetString("ChannelsPage_BannerMissingFieldTitle"),
+                        string.Format(LocalizationHelper.GetString("ChannelsPage_BannerMissingFieldMessage"), field.Label),
                         InfoBarSeverity.Error);
                     ApplyPendingSaveBanner();
                     return;
@@ -1396,8 +1397,8 @@ public sealed partial class ChannelsPage : Page
             saveBtn.IsEnabled = false;
             try
             {
-                _pendingSaveBanner = (record.Id, $"Saving {record.Id}…",
-                    $"Writing {values.Count} field(s) and enabling the channel.",
+                _pendingSaveBanner = (record.Id, string.Format(LocalizationHelper.GetString("ChannelsPage_BannerSavingTitle"), record.Id),
+                    string.Format(LocalizationHelper.GetString("ChannelsPage_BannerSavingMessage"), values.Count),
                     InfoBarSeverity.Informational);
                 ApplyPendingSaveBanner();
 
@@ -1408,8 +1409,8 @@ public sealed partial class ChannelsPage : Page
                 // the gateway's actual response.
                 if (!await EnsureConfigLoadedAsync())
                 {
-                    _pendingSaveBanner = (record.Id, $"Couldn't load gateway config",
-                        "The gateway didn't return its current config — can't safely save without it. Try Refresh and save again.",
+                    _pendingSaveBanner = (record.Id, LocalizationHelper.GetString("ChannelsPage_BannerCantLoadConfigTitle"),
+                        LocalizationHelper.GetString("ChannelsPage_BannerCantLoadConfigMessage"),
                         InfoBarSeverity.Error);
                     ApplyPendingSaveBanner();
                     return;
@@ -1425,8 +1426,8 @@ public sealed partial class ChannelsPage : Page
                     // true when the snapshot is populated — but defend
                     // against a race where the snapshot was reset between
                     // the load returning and this read.
-                    _pendingSaveBanner = (record.Id, $"Couldn't load gateway config",
-                        "The gateway's config was cleared mid-save. Try Refresh and save again.",
+                    _pendingSaveBanner = (record.Id, LocalizationHelper.GetString("ChannelsPage_BannerCantLoadConfigTitle"),
+                        LocalizationHelper.GetString("ChannelsPage_BannerConfigClearedMessage"),
                         InfoBarSeverity.Error);
                     ApplyPendingSaveBanner();
                     return;
@@ -1441,7 +1442,7 @@ public sealed partial class ChannelsPage : Page
 
                 if (buildResult.BlockedReason != null)
                 {
-                    _pendingSaveBanner = (record.Id, $"Save blocked for {record.Id}",
+                    _pendingSaveBanner = (record.Id, string.Format(LocalizationHelper.GetString("ChannelsPage_BannerSaveBlockedTitle"), record.Id),
                         buildResult.BlockedReason,
                         InfoBarSeverity.Warning);
                     ApplyPendingSaveBanner();
@@ -1452,30 +1453,29 @@ public sealed partial class ChannelsPage : Page
 
                 if (!patchResult.Ok)
                 {
-                    var detail = patchResult.Error ?? "The gateway didn't respond.";
-                    var title = $"Save failed for {record.Id}";
+                    var detail = patchResult.Error ?? LocalizationHelper.GetString("ChannelsPage_BannerGatewayNoResponse");
+                    var title = string.Format(LocalizationHelper.GetString("ChannelsPage_BannerSaveFailedTitle"), record.Id);
                     if (patchResult.LooksLikeStaleBaseHash)
                     {
                         // Config changed elsewhere. Refresh the cache so the
                         // next retry uses a fresh baseHash.
                         _ = client.RequestConfigAsync();
                         _pendingSaveBanner = (record.Id, title,
-                            $"Your gateway config changed elsewhere (e.g., from the Config page). " +
-                            $"We refreshed the cache — try Save again. Details: {detail}",
+                            string.Format(LocalizationHelper.GetString("ChannelsPage_BannerStaleConfigMessage"), detail),
                             InfoBarSeverity.Warning);
                     }
                     else
                     {
                         _pendingSaveBanner = (record.Id, title,
-                            $"{detail} If this looks like a wire-format mismatch, open the Config page for direct JSON editing.",
+                            string.Format(LocalizationHelper.GetString("ChannelsPage_BannerSaveFailedMessage"), detail),
                             InfoBarSeverity.Error);
                     }
                     ApplyPendingSaveBanner();
                     return;
                 }
 
-                _pendingSaveBanner = (record.Id, $"{record.Id} config saved",
-                    "Waiting for the gateway to confirm the channel is running…",
+                _pendingSaveBanner = (record.Id, string.Format(LocalizationHelper.GetString("ChannelsPage_BannerConfigSavedTitle"), record.Id),
+                    LocalizationHelper.GetString("ChannelsPage_BannerConfigSavedMessage"),
                     InfoBarSeverity.Success);
                 ApplyPendingSaveBanner();
                 // Invalidate the snapshot so a rapid second save MUST wait
@@ -1784,7 +1784,8 @@ public sealed partial class ChannelsPage : Page
         var ct = _linkingCts.Token;
         if (oldLinking != null)
         {
-            try { oldLinking.Cancel(); oldLinking.Dispose(); } catch { }
+            try { oldLinking.Cancel(); oldLinking.Dispose(); }
+            catch (Exception ex) { Logger.Debug($"ChannelsPage: prior linking cts cancel/dispose failed: {ex.Message}"); }
         }
 
         messageBlock.Text = "Requesting QR code from the gateway…";
@@ -1932,15 +1933,15 @@ public sealed partial class ChannelsPage : Page
         stack.Children.Add(new TextBlock
         {
             Text = record.IsConfigured
-                ? $"Edit this channel's settings in the gateway Config page."
-                : $"After following the steps above, save the config to start the channel.",
+                ? LocalizationHelper.GetString("ChannelsPage_ConfigPlaceholderConfigured")
+                : LocalizationHelper.GetString("ChannelsPage_ConfigPlaceholderUnconfigured"),
             Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             TextWrapping = TextWrapping.Wrap,
         });
         var btn = new Button
         {
-            Content = "Open Config page",
+            Content = LocalizationHelper.GetString("ChannelsPage_OpenConfigPage"),
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         btn.Click += (_, _) =>

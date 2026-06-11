@@ -1,6 +1,6 @@
-# OpenClaw Tray — Installation & Setup Guide
+# OpenClaw Companion — Installation & Setup Guide
 
-This guide covers installing OpenClaw Tray (Molty) on Windows using the pre-built installer. For building from source, see [DEVELOPMENT.md](../DEVELOPMENT.md).
+This guide covers installing OpenClaw Companion (Molty) on Windows using the pre-built installer. For building from source, see [DEVELOPMENT.md](../DEVELOPMENT.md).
 
 ## Prerequisites
 
@@ -8,18 +8,20 @@ Before installing, make sure you have:
 
 - **Windows 10 (20H2 or later)** or **Windows 11**
 - **WebView2 Runtime** — pre-installed on Windows 11 and most up-to-date Windows 10 systems. If missing, download from [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
-- An active **OpenClaw account** with a gateway token — sign up at [openclaw.ai](https://openclaw.ai).
+
+You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway.
 
 ## Step-by-Step Installation
 
 ### 1. Download the Installer
 
-Go to the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases) and download the latest installer for your architecture:
+Download the latest stable installer from the canonical OpenClaw release assets:
 
 | File | Architecture |
 |------|-------------|
-| `OpenClawTray-Setup-x64.exe` | Intel / AMD (most PCs) |
-| `OpenClawTray-Setup-arm64.exe` | ARM64 (Surface Pro X, Snapdragon laptops) |
+| [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-x64.exe) | Intel / AMD (most PCs) |
+| [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-arm64.exe) | ARM64 (Surface Pro X, Snapdragon laptops) |
+| [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt) | SHA-256 checksums |
 
 If you're unsure, use the **x64** installer.
 
@@ -31,34 +33,34 @@ The installer runs without requiring administrator privileges.
 
 ### 3. Choose Optional Components
 
-The installer offers two optional components:
+The installer offers optional shortcuts and startup integration:
 
 - **Create Desktop Icon** — adds a shortcut to your desktop.
-- **Start OpenClaw Tray when Windows starts** — launches Molty automatically at login (recommended).
-- **Install PowerToys Command Palette extension** — enables OpenClaw commands in PowerToys Command Palette (requires [PowerToys](https://github.com/microsoft/PowerToys) to be installed). See [POWERTOYS.md](./POWERTOYS.md) for details.
+- **Start OpenClaw Companion when Windows starts** — launches Molty automatically at login (recommended).
 
 ### 4. First Launch
 
-After the installer finishes, OpenClaw Tray starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
+After the installer finishes, OpenClaw Companion starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
 
 If you don't see it, check the **hidden icons** area (the `^` arrow next to the tray).
 
+The installer also creates a Start Menu group with shortcuts for **OpenClaw Companion**, **OpenClaw Gateway Setup**, **OpenClaw Companion Settings**, **OpenClaw Chat**, **Check for Updates**, and uninstall. The Gateway Setup shortcut launches the bundled local WSL/onboarding setup app.
+
 ### 5. Onboarding Wizard
 
-On first launch, Molty opens a **6-screen onboarding wizard** that walks you through setup:
+On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The default flow installs and configures a dedicated app-owned local WSL gateway:
 
-1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Get Started** to begin.
+1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Install new WSL Gateway** to install a new local WSL gateway.
 
-2. **Connection** — Choose how to connect to your gateway:
-   - **Local** — Select this if the gateway runs on the same machine or in WSL. The URL is pre-filled to `ws://localhost:18789`.
-   - **Remote** — Enter your gateway URL and bootstrap token manually, **or** paste a base64url-encoded **setup code** (a single string containing both URL and token).
-   - **Later** — Skip connection setup for now. You can configure it later from the tray menu → Settings.
+   If you already have a local or remote gateway, choose **Advanced setup** instead. This opens the tray app's Connections tab, where you can connect with an existing gateway URL, token, or setup code without installing a new local WSL gateway.
 
-   After entering your details, click **Test Connection**. The wizard performs a real WebSocket handshake with Ed25519 device authentication and shows real-time status feedback (connecting → connected → pairing).
+2. **Capabilities** — Reviews the Windows node capabilities that can be enabled, such as system commands, canvas, screen capture, camera, location, browser automation, device controls, text-to-speech, and speech-to-text.
 
-3. **Wizard** — If your gateway supports it, this screen walks you through gateway-driven configuration steps (AI provider selection, personality setup, communication channels). The steps are defined by your gateway via RPC. If the gateway doesn't support wizard mode, this screen is skipped automatically.
+3. **Local setup progress** — Installs a fresh app-owned `OpenClawGateway` WSL instance and connects Molty to it. This does not modify an existing user Ubuntu distro.
 
-4. **Permissions** — Reviews Windows system permissions needed for full functionality:
+4. **Gateway setup** — If your gateway supports it, this screen walks you through gateway-driven configuration steps (AI provider selection, personality setup, communication channels). The steps are defined by your gateway via RPC. If the gateway doesn't support wizard mode, this screen is skipped automatically.
+
+5. **Permissions** — Reviews Windows system permissions needed for full functionality:
    - **Notifications** — for toast alerts
    - **Camera** — for camera capture
    - **Microphone** — for voice input
@@ -67,9 +69,7 @@ On first launch, Molty opens a **6-screen onboarding wizard** that walks you thr
 
    Each permission shows its current status. Click **Open Settings** next to any permission to jump directly to the relevant Windows Settings page.
 
-5. **Chat** — Meet your agent! This screen opens a live chat powered by the gateway's web UI. A bootstrap message is sent automatically to kick off your first conversation.
-
-6. **Ready** — A summary of available features (tray menu, channels, voice, canvas, skills). Toggle **Launch at Login** to start Molty with Windows, then click **Finish** to complete setup.
+6. **All set** — A summary of available features (tray menu, channels, voice, canvas, skills). Toggle **Launch at Login** to start Molty with Windows, then click **Finish** to complete setup.
 
 After the wizard, the tray icon turns green when connected. You can re-run the wizard or change settings anytime from the tray menu.
 
@@ -86,7 +86,7 @@ Left-click the icon to open the quick-access menu. Right-click for context optio
 
 ## Deep Links
 
-OpenClaw Tray responds to `openclaw://` deep links, which can be invoked from a browser or another app:
+OpenClaw Companion responds to `openclaw://` deep links, which can be invoked from a browser or another app:
 
 | Link | Action |
 |------|--------|
@@ -127,7 +127,7 @@ OpenClaw Tray responds to `openclaw://` deep links, which can be invoked from a 
 
 1. Check Task Manager for `OpenClaw.Tray.WinUI.exe` — if it's running, the icon may be hidden.
 2. Drag the icon out of the hidden overflow area to always show it.
-3. If the process isn't running, try launching from Start Menu → **OpenClaw Tray**.
+3. If the process isn't running, try launching from Start Menu → **OpenClaw Companion**.
 
 ### "WebView2 Runtime is missing" error
 
@@ -140,6 +140,10 @@ Download and install WebView2 from [Microsoft](https://developer.microsoft.com/m
 - Check Windows Firewall — if your gateway runs on a different machine, allow inbound traffic on port 18789.
 - See the log at `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` for connection errors.
 - For easy-button setup, repair, or remove failures, start with `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt`; Copilot CLI/debugging tools can use `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.jsonl`.
+
+### Need to inspect or edit the managed WSL gateway
+
+Local setup creates a locked-down app-owned `OpenClawGateway` distro rather than a general-purpose user Ubuntu profile. Edit `openclaw.json` from inside WSL as the `openclaw` user, and reserve `wsl.exe -d OpenClawGateway --user root -- ...` for protected-file administration. See [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md) for examples.
 
 ### "Not yet paired" message on reconnect
 
@@ -184,10 +188,10 @@ Settings are stored at `%APPDATA%\OpenClawTray\settings.json`. If this file is c
 
 ## Updating
 
-OpenClaw Tray checks for updates automatically and shows a notification when a new version is available. Click **Update** to download and apply the update. You can also manually check by re-downloading from the [Releases page](https://github.com/openclaw/openclaw-windows-node/releases).
+OpenClaw Companion checks for updates automatically and shows a notification when a new version is available. Click **Update** to download and apply the update. You can also manually check by re-downloading from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows) or the [latest OpenClaw release](https://github.com/openclaw/openclaw/releases/latest).
 
 ## Uninstalling
 
-Go to **Settings → Apps → Installed apps**, find **OpenClaw Tray**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel.
+Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel.
 
 Your settings file at `%APPDATA%\OpenClawTray\settings.json` and device identity files under `%APPDATA%\OpenClawTray\` (including per-gateway keys at `%APPDATA%\OpenClawTray\gateways\<gateway-id>\device-key-ed25519.json`) are not removed automatically — delete them manually if you want a clean uninstall.

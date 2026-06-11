@@ -52,6 +52,8 @@ public sealed partial class CanvasWindow : WindowEx
 
     private readonly DispatcherQueue? _dispatcherQueue;
     private TypedEventHandler<CoreWebView2, CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
+    private TypedEventHandler<CoreWebView2, CoreWebView2WebResourceRequestedEventArgs>? _webResourceRequestedHandler;
+    private string? _webResourceRequestedFilter;
 
     /// <summary>
     /// Fired when the SPA sends a message to the native side via
@@ -147,6 +149,7 @@ public sealed partial class CanvasWindow : WindowEx
             _trustedGatewayOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
             _gatewayOriginForRewrite = _trustedGatewayOrigin;
             Logger.Info($"[Canvas] Trusted gateway origin: {_trustedGatewayOrigin}");
+            ConfigureGatewayAuthHeaderInjection();
         }
         catch (Exception ex)
         {
@@ -237,7 +240,13 @@ public sealed partial class CanvasWindow : WindowEx
         InitializeWebViewAsync();
     }
     
-    private async void InitializeWebViewAsync()
+    private void InitializeWebViewAsync() =>
+        AsyncEventHandlerGuard.Run(
+            InitializeWebViewCoreAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(InitializeWebViewAsync));
+
+    private async Task InitializeWebViewCoreAsync()
     {
         try
         {
@@ -298,23 +307,7 @@ public sealed partial class CanvasWindow : WindowEx
             };
             CanvasWebView.CoreWebView2.WebMessageReceived += _webMessageReceivedHandler;
 
-            // Inject auth token for gateway requests
-            if (!string.IsNullOrEmpty(_trustedGatewayOrigin) && !string.IsNullOrEmpty(_gatewayToken))
-            {
-                var gatewayFilter = $"{_trustedGatewayOrigin}/*";
-                CanvasWebView.CoreWebView2.AddWebResourceRequestedFilter(gatewayFilter, CoreWebView2WebResourceContext.All);
-                var trustedOrigin = _trustedGatewayOrigin;
-                var token = _gatewayToken;
-                CanvasWebView.CoreWebView2.WebResourceRequested += (s, args) =>
-                {
-                    // Only inject auth for requests to the trusted gateway origin
-                    if (args.Request.Uri.StartsWith(trustedOrigin, StringComparison.OrdinalIgnoreCase))
-                    {
-                        args.Request.Headers.SetHeader("Authorization", $"Bearer {token}");
-                    }
-                };
-                Logger.Info("[Canvas] WebView2 auth header injection configured for gateway requests");
-            }
+            ConfigureGatewayAuthHeaderInjection();
 
             // Handle navigation events
             CanvasWebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
@@ -383,6 +376,52 @@ public sealed partial class CanvasWindow : WindowEx
             _webViewReadyTcs.TrySetException(ex);
         }
     }
+
+    private void ConfigureGatewayAuthHeaderInjection()
+    {
+        var coreWebView2 = CanvasWebView.CoreWebView2;
+        if (coreWebView2 == null)
+            return;
+
+        RemoveGatewayAuthHeaderInjection(coreWebView2);
+
+        if (string.IsNullOrEmpty(_trustedGatewayOrigin) || string.IsNullOrEmpty(_gatewayToken))
+            return;
+
+        _webResourceRequestedFilter = $"{_trustedGatewayOrigin}/*";
+        _webResourceRequestedHandler = OnGatewayWebResourceRequested;
+        coreWebView2.AddWebResourceRequestedFilter(_webResourceRequestedFilter, CoreWebView2WebResourceContext.All);
+        coreWebView2.WebResourceRequested += _webResourceRequestedHandler;
+        Logger.Info("[Canvas] WebView2 auth header injection configured for gateway requests");
+    }
+
+    private void RemoveGatewayAuthHeaderInjection(CoreWebView2 coreWebView2)
+    {
+        if (_webResourceRequestedHandler != null)
+        {
+            coreWebView2.WebResourceRequested -= _webResourceRequestedHandler;
+            _webResourceRequestedHandler = null;
+        }
+
+        if (!string.IsNullOrEmpty(_webResourceRequestedFilter))
+        {
+            coreWebView2.RemoveWebResourceRequestedFilter(_webResourceRequestedFilter, CoreWebView2WebResourceContext.All);
+            _webResourceRequestedFilter = null;
+        }
+    }
+
+    private void OnGatewayWebResourceRequested(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args)
+    {
+        var trustedOrigin = _trustedGatewayOrigin;
+        var token = _gatewayToken;
+        if (string.IsNullOrEmpty(trustedOrigin) || string.IsNullOrEmpty(token))
+            return;
+
+        if (IsUriForOrigin(args.Request.Uri, trustedOrigin))
+        {
+            args.Request.Headers.SetHeader("Authorization", $"Bearer {token}");
+        }
+    }
     
     private void OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
@@ -434,16 +473,23 @@ public sealed partial class CanvasWindow : WindowEx
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        _gatewayToken = null;
 
         if (CanvasWebView.CoreWebView2 != null)
         {
             if (_webMessageReceivedHandler != null)
+            {
                 CanvasWebView.CoreWebView2.WebMessageReceived -= _webMessageReceivedHandler;
+                _webMessageReceivedHandler = null;
+            }
+            RemoveGatewayAuthHeaderInjection(CanvasWebView.CoreWebView2);
             CanvasWebView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
         }
 
         _canvasWatcher?.Dispose();
         _canvasWatcher = null;
+        _trustedGatewayOrigin = null;
+        _gatewayOriginForRewrite = null;
     }
     
     private void OnRetryClick(object sender, RoutedEventArgs e)
@@ -606,6 +652,7 @@ public sealed partial class CanvasWindow : WindowEx
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             }
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch
         {
             // Best-effort focus behavior only.
@@ -645,6 +692,15 @@ public sealed partial class CanvasWindow : WindowEx
             return false;
         
         return uri.AbsolutePath.StartsWith("/__openclaw__/a2ui/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUriForOrigin(string uri, string origin)
+    {
+        return uri.StartsWith(origin, StringComparison.OrdinalIgnoreCase) &&
+            (uri.Length == origin.Length ||
+             uri[origin.Length] == '/' ||
+             uri[origin.Length] == '?' ||
+             uri[origin.Length] == '#');
     }
     
     private Task EnsureWebViewReadyAsync()

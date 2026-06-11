@@ -1,16 +1,20 @@
 <Project>
 
-  <!--
-    Shared build configuration for OpenClaw.Shared, OpenClaw.Tray.WinUI, and OpenClaw.Cli.
-
-    OpenClaw.CommandPalette has its own Directory.Build.props one level deeper, so MSBuild
-    stops walking up at that file and this one does NOT apply to CommandPalette.
-  -->
+  <!-- Shared build configuration for OpenClaw.Shared, OpenClaw.Tray.WinUI, and OpenClaw.Cli. -->
 
   <PropertyGroup>
+    <!-- Keep product builds warning-clean by default. Tests already set the same
+         policy in tests/Directory.Build.props. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
     <!-- Audit all package dependencies (direct + transitive) for known CVEs during restore.
          Defaults to "direct" in the SDK; "all" provides broader security coverage. -->
     <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GitVersion.MsBuild" Version="6.7.0" PrivateAssets="all" />
+    <PackageReference Include="VCRuntime.CefSharp.140" Version="1.0.5" PrivateAssets="all" ExcludeAssets="build" />
+  </ItemGroup>
 
 </Project>

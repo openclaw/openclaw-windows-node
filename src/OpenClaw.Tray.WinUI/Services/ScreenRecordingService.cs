@@ -78,6 +78,7 @@ internal sealed class ScreenRecordingService : IDisposable
                 var f = p.TryGetNextFrame();
                 if (f == null) return;
                 Interlocked.Exchange(ref latestFrame, f)?.Dispose();
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { ready.Release(); } catch { /* already signaled */ }
             };
 
@@ -268,7 +269,7 @@ internal sealed class ScreenRecordingService : IDisposable
             throw new InvalidOperationException("D3D11 device creation returned a null device.");
 
         var iid = IID_DXGIDevice;
-        hr = Marshal.QueryInterface(d3dPtr, ref iid, out var dxgiPtr);
+        hr = Marshal.QueryInterface(d3dPtr, in iid, out var dxgiPtr);
         Marshal.Release(d3dPtr);
         Marshal.ThrowExceptionForHR(hr);
         if (dxgiPtr == IntPtr.Zero)

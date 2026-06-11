@@ -43,7 +43,6 @@ public record ChannelGroup(string AgentLabel, (string Id, string Title)[] Sessio
 public record OpenClawComposerProps(
     string ConnectionState,
     bool TurnActive,
-    ChatPermissionRequest? PendingPermission,
     string ChannelLabel,
     string? ChannelId,
     ChannelGroup[] AvailableChannels,
@@ -52,7 +51,6 @@ public record OpenClawComposerProps(
     string? CurrentThinkingLevel,
     Action<string, ChatAttachment?> OnSend,
     Action OnStop,
-    Action<string, bool> OnPermissionResponse,
     Action<string> OnChannelChanged,
     Action<string> OnModelChanged,
     Action<string> OnThinkingLevelChanged,
@@ -155,7 +153,13 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         sendVersion.Set(sendVersion.Value + 1);
                     }
                 }
-                catch { /* voice cancelled or failed */ }
+                catch (Exception ex)
+                {
+                    // Voice recording cancelled mid-transcription or pipeline
+                    // unavailable. The UI already reflects the cancel; surface
+                    // the cause at Debug for diagnostics.
+                    OpenClawTray.Services.Logger.Debug($"OpenClawComposer: voice transcription failed/cancelled: {ex.Message}");
+                }
                 finally
                 {
                     voiceCtsRef.Current = null;
@@ -213,11 +217,12 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 var cb = new ComboBox
                 {
                     MinWidth = 0,
-                    Width = Props.IsCompact ? 180 : 200,
+                    Width = double.NaN,
                     Height = 28,
                     FontSize = 11,
                     Padding = new Thickness(8, 0, 4, 0),
                     CornerRadius = composerCornerRadius,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
                     VerticalAlignment = VerticalAlignment.Center,
                 };
 
@@ -278,11 +283,12 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }).Set(cb =>
         {
             cb.MinWidth = 0;
-            cb.Width = Props.IsCompact ? 170 : 200;
+            cb.Width = double.NaN;
             cb.Height = 28;
             cb.FontSize = 11;
             cb.Padding = new Thickness(8, 0, 4, 0);
             cb.CornerRadius = composerCornerRadius;
+            cb.HorizontalAlignment = HorizontalAlignment.Stretch;
         }).VAlign(VerticalAlignment.Center);
 
         var thinkingLevel = Props.CurrentThinkingLevel ?? "medium";
@@ -297,19 +303,26 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             .Set(cb =>
             {
                 cb.MinWidth = 0;
-                cb.Width = Props.IsCompact ? 95 : 160;
+                cb.Width = double.NaN;
                 cb.Height = 28;
                 cb.FontSize = 11;
                 cb.Padding = new Thickness(8, 0, 4, 0);
                 cb.CornerRadius = composerCornerRadius;
+                cb.HorizontalAlignment = HorizontalAlignment.Stretch;
             }).VAlign(VerticalAlignment.Center);
 
         // ComposerLayout 분기: ThreeRow = 3개 다 보임, InlinePill = 모델만, Minimal = 숨김.
         Element dropdownsRow = composerLayout switch
         {
             ChatComposerLayout.Minimal    => Empty(),
-            ChatComposerLayout.InlinePill => (FlexRow(modelCombo) with { ColumnGap = 6 }),
-            _                             => (FlexRow(channelCombo, modelCombo, reasoningCombo) with { ColumnGap = 6 }),
+            ChatComposerLayout.InlinePill => Grid([GridSize.Star()], [GridSize.Auto],
+                modelCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0)
+            ).HAlign(HorizontalAlignment.Stretch),
+            _                             => Grid([GridSize.Star(1.2), GridSize.Star(), GridSize.Star(0.62)], [GridSize.Auto],
+                channelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0),
+                modelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 1),
+                reasoningCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 2)
+            ).HAlign(HorizontalAlignment.Stretch),
         };
 
         // ── Row 2: multi-line composer textbox ─────────────────────────
@@ -382,10 +395,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                                 Props.OnAttachmentPasted?.Invoke(att);
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
                             // If anything goes wrong reading the clipboard,
                             // fall through to the default text paste behavior.
+                            OpenClawTray.Services.Logger.Debug($"OpenClawComposer: clipboard image paste failed, falling back to text: {ex.Message}");
                         }
                     };
                 }
@@ -785,10 +799,6 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             })
             .Set(b => b.Opacity = showTools ? 1.0 : 0.55);
 
-        var settingsBtn = Props.OnSettingsClick is not null
-            ? IconButton("\uE713", "Settings", () => Props.OnSettingsClick())
-            : Empty();
-
         // Send button — always present so the user can queue follow-up messages
         // even while the assistant is responding.
         var defaultSendBrush = ChatVisualResolver.UserBubbleBrush(
@@ -883,28 +893,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 
         Element workingBanner = Empty();
 
-        Element permissionBanner = Props.PendingPermission is { } perm
-            ? Border(
-                Grid([GridSize.Star(), GridSize.Auto, GridSize.Auto], [GridSize.Auto],
-                    TextBlock($"⚠ {perm.ToolName}: {perm.Detail}")
-                        .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.TextTrimming = TextTrimming.CharacterEllipsis; })
-                        .HAlign(HorizontalAlignment.Stretch)
-                        .VAlign(VerticalAlignment.Center)
-                        .Grid(row: 0, column: 0),
-                    Button(LocalizationHelper.GetString("Chat_Permission_Allow"), () => Props.OnPermissionResponse(perm.RequestId, true))
-                        .Set(b => { b.CornerRadius = new CornerRadius(4); b.Padding = new Thickness(12, 4, 12, 4); b.MinWidth = 0; b.MinHeight = 0; })
-                        .VAlign(VerticalAlignment.Center)
-                        .Margin(8, 0, 0, 0)
-                        .Grid(row: 0, column: 1),
-                    Button(LocalizationHelper.GetString("Chat_Permission_Deny"), () => Props.OnPermissionResponse(perm.RequestId, false))
-                        .Set(b => { b.CornerRadius = new CornerRadius(4); b.Padding = new Thickness(12, 4, 12, 4); b.MinWidth = 0; b.MinHeight = 0; })
-                        .VAlign(VerticalAlignment.Center)
-                        .Margin(8, 0, 0, 0)
-                        .Grid(row: 0, column: 2)
-                ).Padding(12, 16, 12, 16)
-              ).CornerRadius(8).Margin(24, 16, 24, 16)
-               .Set(b => { b.MaxWidth = 720; b.HorizontalAlignment = HorizontalAlignment.Stretch; })
-            : Empty();
+        // Permission/exec-approval banner used to live here, pinned above
+        // the composer. It now renders inline in the timeline as a
+        // ChatTimelineItemKind.PermissionRequest entry so the conversation
+        // history records every approval (and its decided/expired badge)
+        // in chronological order. See OpenClawChatTimeline.RenderPermissionEntry.
 
         // ── ComposerLayout 분기 ───────────────────────────────────────
         // ThreeRow:    [3 dropdowns] [textbox] [attach/voice/more ... send]
@@ -1019,12 +1012,13 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             // Wrapping in FlexRow caused the Button to stretch to the Star column width.
             var bottomRow = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
                 combinedPill.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 0),
-                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, settingsBtn, actionBtn, stopBtn) with { ColumnGap = 4 })                    .HAlign(HorizontalAlignment.Right).Grid(row: 0, column: 1)
+                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn) with { ColumnGap = 4 })
+                    .HAlign(HorizontalAlignment.Right)
+                    .Grid(row: 0, column: 1)
             );
 
             return VStack(0,
                 workingBanner,
-                permissionBanner,
                 Border(
                     VStack(8, composerInput, bottomRow)
                 ).Padding(16, 12, 16, 12)
@@ -1037,19 +1031,17 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }
 
         var actionsRow = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, settingsBtn, actionBtn, stopBtn)
+            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)
             .Grid(row: 0, column: 1)
         );
 
-        // ── Optional working / permission banners above the composer ──
+        // ── Optional working banner above the composer ──
         Element workingBanner2 = workingBanner;
-        Element permissionBanner2 = permissionBanner;
 
         return VStack(0,
             workingBanner2,
-            permissionBanner2,
             Border(
                 VStack(8, dropdownsRow, composerInput, voiceIndicator, actionsRow.Margin(0, -8, 0, -4))
             ).Padding(16, 12, 16, 12)

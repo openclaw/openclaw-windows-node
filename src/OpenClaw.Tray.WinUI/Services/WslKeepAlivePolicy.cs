@@ -5,6 +5,9 @@ namespace OpenClawTray.Services;
 
 internal static class WslKeepAlivePolicy
 {
+    private const string DefaultSetupManagedDistroName = "OpenClawGateway";
+    private const string DefaultSetupManagedFriendlyName = "Local (OpenClawGateway)";
+
     public static bool ShouldStart(GatewayRecord? activeRecord, string? legacyGatewayUrl)
     {
         if (activeRecord is not null)
@@ -36,7 +39,7 @@ internal static class WslKeepAlivePolicy
             return environmentOverride;
 #endif
 
-        return "OpenClawGateway";
+        return DefaultSetupManagedDistroName;
     }
 
     public static IReadOnlyList<string> FindStaleSetupManagedDistroNames(
@@ -46,7 +49,7 @@ internal static class WslKeepAlivePolicy
     {
         var managedLocalDistros = records
             .Where(IsSetupManagedLocalRecord)
-            .Select(r => r.SetupManagedDistroName)
+            .Select(GetSetupManagedDistroName)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -60,6 +63,9 @@ internal static class WslKeepAlivePolicy
             .Select(distro => distro!)
             .ToArray();
     }
+
+    public static bool HasSetupManagedLocalGateway(IEnumerable<GatewayRecord>? records) =>
+        records?.Any(IsSetupManagedLocalRecord) == true;
 
     public static bool IsKeepaliveCommandLine(string? commandLine, string distroName)
     {
@@ -90,14 +96,29 @@ internal static class WslKeepAlivePolicy
         }
     }
 
-    private static bool IsSetupManagedLocalRecord(GatewayRecord record)
+    public static bool IsSetupManagedLocalRecord(GatewayRecord record)
     {
         if (record.SshTunnel is not null)
             return false;
 
-        if (string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
-            return false;
+        if (!string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
+            return record.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url);
 
-        return record.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url);
+        return IsLegacyDefaultSetupManagedLocalRecord(record);
     }
+
+    private static string? GetSetupManagedDistroName(GatewayRecord record)
+    {
+        if (!string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
+            return record.SetupManagedDistroName;
+
+        return IsLegacyDefaultSetupManagedLocalRecord(record)
+            ? DefaultSetupManagedDistroName
+            : null;
+    }
+
+    private static bool IsLegacyDefaultSetupManagedLocalRecord(GatewayRecord record) =>
+        record.IsLocal
+        && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url)
+        && string.Equals(record.FriendlyName, DefaultSetupManagedFriendlyName, StringComparison.Ordinal);
 }

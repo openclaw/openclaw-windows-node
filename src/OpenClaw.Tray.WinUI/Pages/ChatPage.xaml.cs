@@ -22,7 +22,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class ChatPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private HubWindow? _hub;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
@@ -35,6 +35,8 @@ public sealed partial class ChatPage : Page
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navCompletedHandler;
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationStartingEventArgs>? _navStartingHandler;
     private IGatewayConnectionManager? _connectionManager;
+    private IChatPagePanelHost? _panelHost;
+    private IChatPagePanelHost PanelHost => _panelHost ??= new ChatPagePanelHost(this);
     private static readonly HttpClient s_httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(3)
@@ -276,7 +278,7 @@ public sealed partial class ChatPage : Page
         // If the V hotkey (or another caller) requested auto-start voice,
         // trigger it after the UI thread processes the mount (composer needs
         // to render first so TriggerVoiceRecording is registered).
-        if (_hub.PendingAutoStartVoice)
+        if (_hub?.PendingAutoStartVoice == true)
         {
             _hub.PendingAutoStartVoice = false;
             DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -325,8 +327,7 @@ public sealed partial class ChatPage : Page
         if (string.IsNullOrEmpty(_chatUrl) || WebView.CoreWebView2 is null)
             return false;
 
-        ErrorPanel.Visibility = Visibility.Collapsed;
-        WebView.Visibility = Visibility.Visible;
+        ChatPagePanelStates.ApplyShowingWebView(PanelHost);
         WebView.CoreWebView2.Navigate(_chatUrl);
         return true;
     }
@@ -339,7 +340,7 @@ public sealed partial class ChatPage : Page
         WebView.Visibility = Visibility.Collapsed;
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Visible;
-        ErrorText.Text = "Open Connection settings to finish pairing with a gateway.";
+        ErrorText.Text = LocalizationHelper.GetString("ChatPage_OpenConnectionSettings");
     }
 
     private void StopWebViewNavigation()
@@ -361,7 +362,8 @@ public sealed partial class ChatPage : Page
         _functionalHost = null;
         _mountedProvider = null;
         _mountedThreadId = null;
-        try { host?.Dispose(); } catch { /* tear-down race — non-fatal */ }
+        try { host?.Dispose(); }
+        catch (Exception ex) { Logger.Debug($"ChatPage: functional host dispose tear-down race: {ex.Message}"); }
     }
 
     private async Task InitializeWebViewAsync(SettingsManager settings)
@@ -380,7 +382,7 @@ public sealed partial class ChatPage : Page
             {
                 PlaceholderPanel.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
-                ErrorText.Text = "Open Connection settings to finish pairing with a gateway.";
+                ErrorText.Text = LocalizationHelper.GetString("ChatPage_OpenConnectionSettings");
                 return;
             }
 
@@ -388,7 +390,7 @@ public sealed partial class ChatPage : Page
             {
                 PlaceholderPanel.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
-                ErrorText.Text = "Gateway pairing is not complete. Open Connection settings to finish pairing.";
+                ErrorText.Text = LocalizationHelper.GetString("ChatPage_GatewayPairingIncomplete");
                 return;
             }
 
@@ -406,7 +408,7 @@ public sealed partial class ChatPage : Page
             ErrorPanel.Visibility = Visibility.Collapsed;
             WebView.Visibility = Visibility.Collapsed;
             WaitingPanel.Visibility = Visibility.Visible;
-            WaitingStatusText.Text = "The gateway is connected; the chat surface is still coming online.";
+            WaitingStatusText.Text = LocalizationHelper.GetString("ChatPage_ChatSurfaceComingOnline");
             RetryChatButton.Visibility = Visibility.Collapsed;
             LoadingRing.IsActive = true;
             LoadingRing.Visibility = Visibility.Visible;
@@ -429,8 +431,7 @@ public sealed partial class ChatPage : Page
                             document.head.appendChild(style);
                         })();
                     ");
-                    ErrorPanel.Visibility = Visibility.Collapsed;
-                    WebView.Visibility = Visibility.Visible;
+                    ChatPagePanelStates.ApplyShowingWebView(PanelHost);
                     _ = CaptureVisualTestChatAsync();
                 }
                 else if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
@@ -438,9 +439,8 @@ public sealed partial class ChatPage : Page
                          e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionReset ||
                          e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable)
                 {
-                    WebView.Visibility = Visibility.Collapsed;
-                    ErrorPanel.Visibility = Visibility.Visible;
-                    ErrorText.Text = $"Cannot connect to gateway at {credential.GatewayUrl}\n\nMake sure the gateway is running.";
+                    ChatPagePanelStates.ApplyShowingError(PanelHost);
+                    ErrorText.Text = string.Format(LocalizationHelper.GetString("ChatPage_CannotConnectToGateway"), credential.GatewayUrl);
                 }
             };
             WebView.CoreWebView2.NavigationCompleted += _navCompletedHandler;
@@ -464,7 +464,7 @@ public sealed partial class ChatPage : Page
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             WebView.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Visible;
-            ErrorText.Text = $"WebView2 failed to initialize:\n{ex.Message}";
+            ErrorText.Text = string.Format(LocalizationHelper.GetString("ChatPage_WebView2InitFailed"), ex.Message);
         }
     }
 
@@ -481,21 +481,21 @@ public sealed partial class ChatPage : Page
             var ready = await ChatNavigationReadiness.WaitForOperatorHandshakeAsync(connectionManager, TimeSpan.FromSeconds(30), cancellationToken);
             if (!ready)
             {
-                ShowChatReadinessFailure("Timed out waiting for the gateway operator handshake. Retry once the gateway is ready.");
+                ShowChatReadinessFailure(LocalizationHelper.GetString("ChatPage_TimedOutHandshake"));
                 Logger.Warn("[ChatPage] Timed out waiting for operator handshake before chat navigation");
                 return;
             }
 
             Logger.Info("[ChatPage] Operator handshake ready; probing chat HTTP surface");
-            ready = await ProbeChatSurfaceAsync(_chatUrl, TimeSpan.FromSeconds(30), cancellationToken);
+            ready = await ProbeChatSurfaceAsync(_chatUrl!, TimeSpan.FromSeconds(30), cancellationToken);
             if (!ready)
             {
-                ShowChatReadinessFailure($"Timed out waiting for chat at {gatewayUrl}. Retry once the gateway is ready.");
+                ShowChatReadinessFailure(string.Format(LocalizationHelper.GetString("ChatPage_TimedOutChat"), gatewayUrl));
                 Logger.Warn("[ChatPage] Timed out waiting for chat HTTP surface before navigation");
                 return;
             }
 
-            WaitingStatusText.Text = "Chat is ready; starting your first hatching conversation…";
+            WaitingStatusText.Text = LocalizationHelper.GetString("ChatPage_ChatReady");
             var bootstrapped = await OnboardingChatBootstrapper.BootstrapAsync(
                 connectionManager?.OperatorClient,
                 ((App)Application.Current).Settings,
@@ -509,18 +509,17 @@ public sealed partial class ChatPage : Page
             if (cancellationToken.IsCancellationRequested || _navigationStarted) return;
 
             _navigationStarted = true;
-            WaitingPanel.Visibility = Visibility.Collapsed;
-            RetryChatButton.Visibility = Visibility.Collapsed;
-            WebView.Visibility = Visibility.Visible;
+            ChatPagePanelStates.ApplyShowingWebView(PanelHost);
             Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
             WebView.CoreWebView2.Navigate(_chatUrl);
         }
+        // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException)
         {
         }
         catch (Exception ex)
         {
-            ShowChatReadinessFailure($"Chat failed to start:\n{ex.Message}");
+            ShowChatReadinessFailure(string.Format(LocalizationHelper.GetString("ChatPage_ChatFailedToStart"), ex.Message));
             Logger.Warn($"[ChatPage] Chat readiness wait failed: {ex.Message}");
         }
     }
@@ -562,13 +561,8 @@ public sealed partial class ChatPage : Page
     private void ShowChatReadinessFailure(string message)
     {
         LoadingRing.IsActive = false;
-        LoadingRing.Visibility = Visibility.Collapsed;
-        WebView.Visibility = Visibility.Collapsed;
-        PlaceholderPanel.Visibility = Visibility.Collapsed;
-        WaitingPanel.Visibility = Visibility.Visible;
+        ChatPagePanelStates.ApplyShowingReadinessFailure(PanelHost);
         WaitingStatusText.Text = message;
-        RetryChatButton.Visibility = Visibility.Visible;
-        ErrorPanel.Visibility = Visibility.Collapsed;
     }
 
     private async Task CaptureVisualTestChatAsync()
@@ -608,7 +602,7 @@ public sealed partial class ChatPage : Page
         if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(gatewayUrl, out var normalizedUrl) ||
             !Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var gatewayUri))
         {
-            errorMessage = $"Invalid gateway URL: {gatewayUrl}";
+            errorMessage = string.Format(LocalizationHelper.GetString("ChatPage_InvalidGatewayUrl"), gatewayUrl);
             return false;
         }
 
@@ -641,7 +635,7 @@ public sealed partial class ChatPage : Page
     {
         if (string.IsNullOrEmpty(_chatUrl)) return;
         try { Process.Start(new ProcessStartInfo(_chatUrl) { UseShellExecute = true }); }
-        catch { /* shell launch failed — silently ignore */ }
+        catch (Exception ex) { Logger.Warn($"ChatPage: popout shell launch failed for url: {ex.Message}"); }
     }
 
     private void OnRetryChat(object sender, RoutedEventArgs e)
@@ -652,61 +646,40 @@ public sealed partial class ChatPage : Page
         _navigationStarted = false;
         _navigationCts?.Cancel();
         _navigationCts = new CancellationTokenSource();
-        ErrorPanel.Visibility = Visibility.Collapsed;
-        WaitingPanel.Visibility = Visibility.Visible;
-        RetryChatButton.Visibility = Visibility.Collapsed;
+        ChatPagePanelStates.ApplyShowingRetryInProgress(PanelHost);
         LoadingRing.IsActive = true;
-        LoadingRing.Visibility = Visibility.Visible;
         _ = NavigateWhenChatReadyAsync(_connectionManager, CurrentApp.Registry?.GetById(CurrentApp.Registry.ActiveGatewayId ?? "")?.Url ?? "gateway", _navigationCts.Token);
     }
 
     private async Task<string?> VoiceTranscribeAsync(CancellationToken cancellationToken, Action? onRecordingStarted)
     {
+        if (CurrentApp.Settings?.NodeSttEnabled != true)
+        {
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
+                NavigateToVoiceSettings);
+            return null;
+        }
+
         var voiceService = _hub?.VoiceServiceInstance;
         var host = _functionalHost;
-        if (voiceService is null) return null;
+        if (voiceService is null)
+        {
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
+                NavigateToVoiceSettings);
+            return null;
+        }
 
         // If the STT model isn't downloaded yet, prompt the user and open voice settings.
         if (!voiceService.IsModelDownloaded)
         {
-            var tcs = new TaskCompletionSource();
-            DispatcherQueue?.TryEnqueue(async () =>
-            {
-                try
-                {
-                    var dialog = new ContentDialog
-                    {
-                        Title = "Voice Model Required",
-                        Content = "The speech-to-text model needs to be installed before you can use voice input. Would you like to open Voice settings to install it?",
-                        PrimaryButtonText = "Open Voice Settings",
-                        CloseButtonText = "Cancel",
-                        XamlRoot = Content?.XamlRoot
-                    };
-                    // Light-dismiss: close when the user taps the smoke overlay.
-                    dialog.Opened += (s, _) =>
-                    {
-                        if (s is ContentDialog d)
-                        {
-                            foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
-                            {
-                                if (popup.Child is UIElement overlay && overlay != d)
-                                {
-                                    overlay.Tapped += (_, _) => d.Hide();
-                                    break;
-                                }
-                            }
-                        }
-                    };
-                    var result = await dialog.ShowAsync();
-                    if (result == ContentDialogResult.Primary)
-                    {
-                        _hub?.NavigateTo("voice");
-                    }
-                }
-                catch { /* dialog already open or window closing */ }
-                finally { tcs.TrySetResult(); }
-            });
-            await tcs.Task;
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredMessage"),
+                NavigateToVoiceSettings);
             return null;
         }
 
@@ -736,6 +709,64 @@ public sealed partial class ChatPage : Page
         }
     }
 
+    private async Task ShowVoiceSettingsDialogAsync(string title, string message, Action openVoiceSettings)
+    {
+        var tcs = new TaskCompletionSource();
+        if (DispatcherQueue is null || !DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = title,
+                    Content = message,
+                    PrimaryButtonText = LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
+                    CloseButtonText = LocalizationHelper.GetString("ChatVoiceDialog_Dismiss"),
+                    DefaultButton = ContentDialogButton.Primary,
+                    XamlRoot = Content?.XamlRoot
+                };
+                dialog.Opened += (s, _) =>
+                {
+                    if (s is ContentDialog d)
+                    {
+                        foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(d.XamlRoot))
+                        {
+                            if (popup.Child is UIElement overlay && overlay != d)
+                            {
+                                overlay.Tapped += (_, _) => d.Hide();
+                                break;
+                            }
+                        }
+                    }
+                };
+
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                    openVoiceSettings();
+            }
+            catch (InvalidOperationException ex)
+            {
+                Logger.Warn($"Voice settings dialog could not be shown: {ex.Message}");
+            }
+            finally
+            {
+                tcs.TrySetResult();
+            }
+        }))
+        {
+            return;
+        }
+
+        await tcs.Task;
+    }
+
+    private void NavigateToVoiceSettings()
+    {
+        if (_hub is not null)
+            _hub.NavigateTo("voice");
+        else
+            (App.Current as App)?.ShowHub("voice");
+    }
+
     private void OnAttachClicked()
     {
         Logger.Info("[ChatPage] OnAttachClicked invoked");
@@ -753,7 +784,7 @@ public sealed partial class ChatPage : Page
             }
 
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle((Window)_hub!);
-            var path = await Win32FilePickerHelper.PickSingleFileAsync(hwnd, "Attach file");
+            var path = await Win32FilePickerHelper.PickSingleFileAsync(hwnd, LocalizationHelper.GetString("ChatPage_AttachFile"));
 
             if (path is null)
             {
@@ -782,14 +813,80 @@ public sealed partial class ChatPage : Page
         {
             var dialog = new ContentDialog
             {
-                Title = "Cannot attach file",
+                Title = LocalizationHelper.GetString("ChatPage_CannotAttachFile"),
                 Content = message,
-                CloseButtonText = "OK",
+                CloseButtonText = LocalizationHelper.GetString("ChatPage_OK"),
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = this.XamlRoot
             };
             await dialog.ShowAsync();
         }
-        catch { /* dialog display failed, already logged */ }
+        catch (Exception ex) { Logger.Debug($"ChatPage: dialog display failed (already logged upstream): {ex.Message}"); }
+    }
+
+    // WinUI adapter for ChatPagePanelStates. Maps the pure ChatPanelVisibility
+    // enum onto Microsoft.UI.Xaml.Visibility on the named ChatPage panels so
+    // panel-transition logic can be unit-tested without a WinUI runtime.
+    //
+    // All setters mutate UIElement.Visibility and therefore must run on the
+    // UI thread; Debug.Assert enforces this in debug builds. The owning
+    // ChatPage's PanelHost lazy init is also UI-thread-only by construction
+    // (only called from event handlers and UI flows that already dispatch).
+    private sealed class ChatPagePanelHost : IChatPagePanelHost
+    {
+        private readonly ChatPage _page;
+        public ChatPagePanelHost(ChatPage page) => _page = page;
+
+        public ChatPanelVisibility WebView
+        {
+            get => From(_page.WebView.Visibility);
+            set { AssertUiThread(); _page.WebView.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility ErrorPanel
+        {
+            get => From(_page.ErrorPanel.Visibility);
+            set { AssertUiThread(); _page.ErrorPanel.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility WaitingPanel
+        {
+            get => From(_page.WaitingPanel.Visibility);
+            set { AssertUiThread(); _page.WaitingPanel.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility RetryChatButton
+        {
+            get => From(_page.RetryChatButton.Visibility);
+            set { AssertUiThread(); _page.RetryChatButton.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility LoadingRing
+        {
+            get => From(_page.LoadingRing.Visibility);
+            set { AssertUiThread(); _page.LoadingRing.Visibility = To(value); }
+        }
+
+        public ChatPanelVisibility PlaceholderPanel
+        {
+            get => From(_page.PlaceholderPanel.Visibility);
+            set { AssertUiThread(); _page.PlaceholderPanel.Visibility = To(value); }
+        }
+
+        private void AssertUiThread()
+        {
+            // Null DispatcherQueue is itself an anomaly during a setter call
+            // (means the page is detached or torn down) -- default to false
+            // so the assert fires loudly instead of silently passing.
+            System.Diagnostics.Debug.Assert(
+                _page.DispatcherQueue?.HasThreadAccess ?? false,
+                "ChatPagePanelHost mutated off the UI thread (or DispatcherQueue is null)");
+        }
+
+        private static ChatPanelVisibility From(Visibility v) =>
+            v == Visibility.Visible ? ChatPanelVisibility.Visible : ChatPanelVisibility.Collapsed;
+
+        private static Visibility To(ChatPanelVisibility v) =>
+            v == ChatPanelVisibility.Visible ? Visibility.Visible : Visibility.Collapsed;
     }
 }

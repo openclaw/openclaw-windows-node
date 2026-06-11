@@ -205,7 +205,7 @@ public class DeviceIdentity
         }
         catch (Exception ex)
         {
-            _logger.Error($"Failed to load device key: {ex.Message}");
+            _logger.Error($"Failed to load device key: {DescribeException(ex)}");
             GenerateNew();
         }
     }
@@ -523,7 +523,7 @@ public class DeviceIdentity
     /// </summary>
     private static void AtomicWriteKeyFile(string path, DeviceKeyData data)
     {
-        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(data, JsonSerializerOptionsCache.WriteIndented);
         var dir = Path.GetDirectoryName(path);
         var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
         var tempPath = Path.Combine(tempDir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
@@ -533,9 +533,11 @@ public class DeviceIdentity
             McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort cleanup */ }
+            System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            catch (Exception delEx) { System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: temp cleanup failed: {delEx.GetType().Name}: {delEx.Message}"); }
             throw;
         }
         McpAuthToken.TryRestrictSensitiveFileAcl(path);
@@ -552,6 +554,14 @@ public class DeviceIdentity
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string DescribeException(Exception ex)
+    {
+        var message = $"{ex.GetType().Name}: {ex.Message}";
+        return ex.InnerException == null
+            ? message
+            : $"{message} (inner {ex.InnerException.GetType().Name}: {ex.InnerException.Message})";
     }
     
     private static string Base64UrlEncode(byte[] data)

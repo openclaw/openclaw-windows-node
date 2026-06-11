@@ -86,6 +86,7 @@ public sealed class A2UIRouter
         {
             foreach (var s in _surfaces.Values)
             {
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { s.Dispose(); } catch { }
                 SurfaceDeleted?.Invoke(this, s.SurfaceId);
             }
@@ -136,7 +137,7 @@ public sealed class A2UIRouter
                 if (host == null) break;
                 host.BeginRendering(br.Root, br.Styles);
                 SurfaceRendered?.Invoke(this, host);
-                _logger.Info($"[A2UI] beginRendering '{LogSafe(br.SurfaceId)}' root='{LogSafe(br.Root)}' (catalog={LogSafe(br.CatalogId) ?? "default"})");
+                _logger.Info($"[A2UI] beginRendering '{LogSafe(br.SurfaceId)}' root='{LogSafe(br.Root)}' (catalog={LogSafe(br.CatalogId ?? "default")})");
                 _telemetry.Push(br.SurfaceId, "beginRendering", 1);
                 break;
             }
@@ -144,7 +145,7 @@ public sealed class A2UIRouter
             case DataModelUpdateMessage dmu:
             {
                 _dataModel.ApplyDataModelUpdate(dmu.SurfaceId, dmu.Path, dmu.Contents);
-                _logger.Debug($"[A2UI] dataModelUpdate '{LogSafe(dmu.SurfaceId)}' path='{LogSafe(dmu.Path) ?? "/"}' ({dmu.Contents.Count} entry(ies))");
+                _logger.Debug($"[A2UI] dataModelUpdate '{LogSafe(dmu.SurfaceId)}' path='{LogSafe(dmu.Path ?? "/")}' ({dmu.Contents.Count} entry(ies))");
                 _telemetry.Push(dmu.SurfaceId, "dataModelUpdate", dmu.Contents.Count);
                 break;
             }

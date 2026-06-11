@@ -84,9 +84,9 @@ public sealed class DiagnosticsExportRedactorTests
         Assert.DoesNotContain("2d85dba4", sanitized);
         Assert.Contains("signed: [REDACTED_HANDSHAKE]", sanitized);
         Assert.Contains("[REDACTED_SESSION_KEY]", sanitized);
-        Assert.Contains("node: [REDACTED_NODE_ID]", sanitized);
-        Assert.Contains("id='[REDACTED_ID]'", sanitized);
-        Assert.Contains("OpenClawId='[REDACTED_ID]'", sanitized);
+        Assert.Contains("node: [REDACTED]", sanitized);
+        Assert.Contains("id='[REDACTED]'", sanitized);
+        Assert.Contains("OpenClawId='[REDACTED]'", sanitized);
         Assert.Contains("\"ts\":1779900898148", sanitized);
     }
 
@@ -134,5 +134,56 @@ public sealed class DiagnosticsExportRedactorTests
         Assert.Contains("--token [REDACTED]", sanitized);
         Assert.Contains("Cookie: [REDACTED]", sanitized);
         Assert.Contains("--nsec [REDACTED]", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_IsIdempotent()
+    {
+        const string input = """
+            Authorization: Bearer first-secret
+            token=second-secret
+            wss://alice:password@gateway.example.com/private?token=third-secret
+            """;
+
+        var once = DiagnosticsExportRedactor.Sanitize(input);
+        var twice = DiagnosticsExportRedactor.Sanitize(once);
+
+        Assert.Equal(once, twice);
+    }
+
+    [Fact]
+    public void Sanitize_RedactsJsonStyleNonStringSecretValues()
+    {
+        const string input = """{"setupCode":123456,"nonce":987654321,"ok":42,"version":"1.2.3"}""";
+
+        var sanitized = DiagnosticsExportRedactor.Sanitize(input);
+
+        Assert.DoesNotContain("123456", sanitized);
+        Assert.DoesNotContain("987654321", sanitized);
+        Assert.Contains("\"ok\":42", sanitized);
+        Assert.Contains("\"version\":\"1.2.3\"", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_DoesNotTreatVersionStringsAsIpAddresses()
+    {
+        const string input = "Gateway version 1.2.3 connected after 250 ms";
+
+        var sanitized = DiagnosticsExportRedactor.Sanitize(input);
+
+        Assert.Contains("1.2.3", sanitized);
+        Assert.DoesNotContain("<ip>", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_LongMalformedLine_DoesNotTimeoutOrLeakSecret()
+    {
+        var input = "prefix " + new string('a', 16_000) + " token=secret-value " + new string('b', 16_000);
+
+        var sanitized = DiagnosticsExportRedactor.Sanitize(input);
+
+        Assert.DoesNotContain("secret-value", sanitized);
+        Assert.NotEqual(TokenSanitizer.SanitizerTimeoutSentinel, sanitized);
+        Assert.Contains("[REDACTED]", sanitized);
     }
 }

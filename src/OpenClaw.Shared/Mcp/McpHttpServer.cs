@@ -42,7 +42,7 @@ namespace OpenClaw.Shared.Mcp;
 ///   - Active handler tasks are tracked so Stop/Dispose can drain in-flight
 ///     work before tearing down the semaphore and capability services.
 /// </summary>
-public sealed class McpHttpServer : IDisposable
+public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 {
     private const long MaxRequestBodyBytes = 4L * 1024 * 1024; // 4 MiB
     // 16 leaves headroom for parallel tool callers (e.g. an editor + Claude
@@ -75,9 +75,12 @@ public sealed class McpHttpServer : IDisposable
     private readonly SemaphoreSlim _handlerLimiter = new(MaxConcurrentHandlers, MaxConcurrentHandlers);
     private readonly object _activeLock = new();
     private readonly HashSet<Task> _activeHandlers = new();
+    private readonly object _shutdownLock = new();
     private Task? _acceptLoop;
+    private Task? _stopTask;
+    private Task? _disposeTask;
     private int _disposed;
-    private int _stopping;
+    private bool _resourcesDisposed;
 
     public int Port => _port;
     public string Endpoint => $"http://127.0.0.1:{_port}/";
@@ -176,8 +179,14 @@ public sealed class McpHttpServer : IDisposable
             // ObjectDisposedException into an unobserved task, which surfaces
             // through global unhandled-exception handlers.
             try { _handlerLimiter.Release(); }
-            catch (ObjectDisposedException) { /* server torn down */ }
-            catch (SemaphoreFullException) { /* defensive */ }
+            catch (ObjectDisposedException) { /* Server torn down during request; expected. */ }
+            catch (SemaphoreFullException ex)
+            {
+                // Release-without-Acquire indicates a real bug (counting imbalance);
+                // promote to Warn so it surfaces in production diagnostics. Include
+                // ex.ToString() to capture the stack since Warn has no ex overload.
+                _logger.Warn($"[MCP] Handler limiter release was already at max — possible release/acquire imbalance: {ex}");
+            }
         }
     }
 
@@ -319,7 +328,7 @@ public sealed class McpHttpServer : IDisposable
             _logger.Error("[MCP] Request failed", ex);
             // Response may already be partially written or closed; swallow.
             try { Reject(ctx, HttpStatusCode.InternalServerError, "internal error"); }
-            catch { /* response already disposed */ }
+            catch (Exception rejEx) { _logger.Debug($"[MCP] Reject after handler error failed (response already disposed?): {rejEx.Message}"); }
         }
     }
 
@@ -390,7 +399,14 @@ public sealed class McpHttpServer : IDisposable
     private static void Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)
     {
         try { WriteText(ctx.Response, status, reason, "text/plain"); }
-        catch { /* response already disposed */ }
+        catch (Exception ex)
+        {
+            // Response may already be disposed; a failed write means the client
+            // already disconnected. Most Reject call sites are validation paths
+            // outside a catch block, so emit a Trace breadcrumb here rather than
+            // relying on a (non-existent) outer log.
+            System.Diagnostics.Trace.WriteLine($"McpHttpServer.Reject: failed to write {(int)status} '{reason}': {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private static void WriteText(HttpListenerResponse response, HttpStatusCode status, string body, string contentType)
@@ -411,17 +427,20 @@ public sealed class McpHttpServer : IDisposable
     /// </summary>
     public Task StopAsync(TimeSpan drainTimeout)
     {
-        // Idempotence is governed by _stopping (not _disposed) so that Dispose
-        // can call the same drain path *after* setting _disposed=1. The previous
-        // code keyed on _disposed and silently skipped the drain in that flow.
-        if (Interlocked.Exchange(ref _stopping, 1) != 0) return Task.CompletedTask;
-        return StopCoreAsync(drainTimeout);
+        lock (_shutdownLock)
+        {
+            // Return the in-flight stop so later callers still wait for the
+            // original drain instead of observing a false "already stopped".
+            return _stopTask ??= StopCoreAsync(drainTimeout);
+        }
     }
 
     private async Task StopCoreAsync(TimeSpan drainTimeout)
     {
-        try { _cts.Cancel(); } catch { /* already cancelled or disposed */ }
-        try { if (_listener.IsListening) _listener.Stop(); } catch { /* already stopped */ }
+        try { _cts.Cancel(); }
+        catch (Exception ex) { _logger.Debug($"[MCP] StopCore cts.Cancel threw: {ex.Message}"); }
+        try { if (_listener.IsListening) _listener.Stop(); }
+        catch (Exception ex) { _logger.Debug($"[MCP] StopCore listener.Stop threw: {ex.Message}"); }
 
         // Snapshot before awaiting — handlers remove themselves on completion,
         // and we don't want enumeration to race the continuation.
@@ -441,39 +460,92 @@ public sealed class McpHttpServer : IDisposable
         if (_acceptLoop != null)
         {
             try { await Task.WhenAny(_acceptLoop, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false); }
-            catch { /* loop may have errored */ }
+            catch (Exception ex) { _logger.Debug($"[MCP] Accept loop final await threw (loop may have errored): {ex.Message}"); }
         }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        var task = EnsureDisposeTask();
+        return new ValueTask(task);
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        // Run the drain unconditionally on dispose. We can't go through the
-        // public StopAsync because a prior caller may already have set
-        // _stopping — we still need to wait for the drain to finish before
-        // tearing down the limiter and CTS.
-        if (Interlocked.Exchange(ref _stopping, 1) == 0)
+        ObserveBackgroundFault(EnsureDisposeTask(), "[MCP] Dispose error");
+    }
+
+    private Task EnsureDisposeTask()
+    {
+        lock (_shutdownLock)
         {
-            try { StopCoreAsync(DrainTimeout).GetAwaiter().GetResult(); }
-            catch (Exception ex) { _logger.Warn($"[MCP] Drain error: {ex.Message}"); }
-        }
-        else
-        {
-            // A prior StopAsync is in flight; wait briefly for it to finish so
-            // we don't dispose the limiter while a handler is still inside it.
-            lock (_activeLock)
+            if (_disposeTask != null)
             {
-                if (_activeHandlers.Count > 0)
-                {
-                    Task[] toAwait = new Task[_activeHandlers.Count];
-                    _activeHandlers.CopyTo(toAwait);
-                    try { Task.WhenAny(Task.WhenAll(toAwait), Task.Delay(DrainTimeout)).GetAwaiter().GetResult(); }
-                    catch { /* swallow — best-effort */ }
-                }
+                return _disposeTask;
             }
+
+            Interlocked.Exchange(ref _disposed, 1);
+            _disposeTask = DisposeCoreAsync();
+            return _disposeTask;
         }
-        try { _listener.Close(); } catch { /* already closed */ }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        try
+        {
+            await StopAsync(DrainTimeout).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[MCP] Drain error: {ex.Message}");
+        }
+        finally
+        {
+            DisposeResources();
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    private void DisposeResources()
+    {
+        lock (_shutdownLock)
+        {
+            if (_resourcesDisposed)
+            {
+                return;
+            }
+
+            _resourcesDisposed = true;
+        }
+
+        try { _listener.Close(); }
+        catch (Exception ex) { _logger.Debug($"[MCP] listener.Close during dispose threw: {ex.Message}"); }
         _cts.Dispose();
         _handlerLimiter.Dispose();
+    }
+
+    private void ObserveBackgroundFault(Task task, string message)
+    {
+        if (task.IsFaulted)
+        {
+            _logger.Warn($"{message}: {task.Exception.GetBaseException().Message}");
+            return;
+        }
+
+        if (task.IsCanceled)
+        {
+            _logger.Warn($"{message}: canceled");
+            return;
+        }
+
+        if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                t => _logger.Warn($"{message}: {t.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
 }

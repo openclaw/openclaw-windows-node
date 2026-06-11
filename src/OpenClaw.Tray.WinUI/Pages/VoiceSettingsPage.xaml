@@ -37,6 +37,11 @@
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <StackPanel Spacing="12">
                     <TextBlock x:Uid="VoiceSettingsPage_ModelHeader" x:Name="ModelHeaderText" Text="Speech Model" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="VoiceSettingsPage_ModelRequirementText" x:Name="ModelRequirementText"
+                               Text="Voice input is not ready until at least one speech model is downloaded."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
 
                     <ComboBox x:Uid="VoiceSettingsPage_ModelCombo" x:Name="ModelCombo" Header="Model Size"
                               SelectionChanged="OnModelChanged" Width="320">
@@ -188,7 +193,7 @@
                                     Width="100" Visibility="Collapsed">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon x:Name="PiperPreviewIcon" Glyph="&#xE768;" FontSize="14"/>
-                                    <TextBlock x:Name="PiperPreviewLabel" Text="Preview"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_PiperPreview" x:Name="PiperPreviewLabel" Text="Preview"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -211,7 +216,7 @@
                                 Width="140">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon x:Name="PreviewVoiceIcon" Glyph="&#xE768;" FontSize="14"/>
-                                <TextBlock x:Name="PreviewVoiceLabel" Text="Preview Voice"/>
+                                <TextBlock x:Uid="VoiceSettingsPage_PreviewVoice" x:Name="PreviewVoiceLabel" Text="Preview Voice"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

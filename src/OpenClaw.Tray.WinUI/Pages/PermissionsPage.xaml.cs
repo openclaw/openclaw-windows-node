@@ -17,7 +17,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class PermissionsPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private bool _suppressMcpToggle;
     private bool _suppressTtsProviderChange;
     private readonly List<ToggleSwitch> _featureToggles = new();
@@ -225,11 +225,14 @@ public sealed partial class PermissionsPage : Page
     /// page-locally so <see cref="UpdateSttEngineHint"/> can surface "downloading" /
     /// failure copy that's accurate regardless of which code path started the download.
     /// </summary>
-    private async void EnsureWhisperModelDownloadedAsync()
+    private void EnsureWhisperModelDownloadedAsync() =>
+        AsyncEventHandlerGuard.Run(
+            EnsureWhisperModelDownloadedCoreAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(EnsureWhisperModelDownloadedAsync));
+
+    private async Task EnsureWhisperModelDownloadedCoreAsync()
     {
-        // async void: ANY uncaught throw bypasses WinUI's UnhandledException handling
-        // and tears down the process. Keep every statement inside the try so we can't
-        // miss a constructor / IO / XAML access that fails before the await.
         var logger = new AppLogger();
         try
         {
@@ -267,7 +270,7 @@ public sealed partial class PermissionsPage : Page
         }
         catch (Exception ex)
         {
-            // Last-resort guard: log and swallow so async void can never crash the app.
+            // Last-resort guard: log and swallow so background work can never crash the app.
             logger.Error($"[PermissionsPage] EnsureWhisperModelDownloadedAsync unexpected failure: {ex}");
         }
     }
@@ -426,7 +429,6 @@ public sealed partial class PermissionsPage : Page
         {
             CurrentApp.Settings.TtsProvider = newProvider;
             CurrentApp.Settings.Save();
-            ((IAppCommands)CurrentApp).NotifySettingsSaved();
             TtsStatusText.Text = LocalizationHelper.Format(
                 "PermissionsPage_TtsStatus_DefaultProviderFormat", newProvider);
         }
@@ -469,7 +471,6 @@ public sealed partial class PermissionsPage : Page
         if (changed)
         {
             settings.Save();
-            ((IAppCommands)CurrentApp).NotifySettingsSaved();
             TtsElevenLabsApiKeyBox.Password =
                 string.IsNullOrEmpty(settings.TtsElevenLabsApiKey) ? "" : SavedApiKeySentinel;
             TtsStatusText.Text = LocalizationHelper.GetString("PermissionsPage_TtsStatus_ElevenLabsSaved");
@@ -719,6 +720,7 @@ public sealed partial class PermissionsPage : Page
             _execSavedHintTimer.Stop();
             _execSavedHintTimer.Start();
         }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         catch { }
     }
 
@@ -806,6 +808,7 @@ public sealed partial class PermissionsPage : Page
     private void OnOpenPrivacySettings(object sender, RoutedEventArgs e)
     {
         try { Process.Start(new ProcessStartInfo("ms-settings:privacy-webcam") { UseShellExecute = true }); }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { }
     }
 

@@ -6,12 +6,13 @@ namespace OpenClaw.Shared;
 /// <summary>
 /// Serializable settings data model. Used for JSON round-trip persistence.
 /// </summary>
-public class SettingsData
+public record class SettingsData
 {
     public string? GatewayUrl { get; set; }
     public bool UseSshTunnel { get; set; } = false;
     public string? SshTunnelUser { get; set; }
     public string? SshTunnelHost { get; set; }
+    public int SshTunnelSshPort { get; set; } = 22;
     public int SshTunnelRemotePort { get; set; } = 18789;
     public int SshTunnelLocalPort { get; set; } = 18789;
     public bool AutoStart { get; set; } = true;

@@ -9,6 +9,7 @@ public sealed record ConnectionSettingsSnapshot(
     bool UseSshTunnel,
     string? SshTunnelUser,
     string? SshTunnelHost,
+    int SshTunnelSshPort,
     int SshTunnelRemotePort,
     int SshTunnelLocalPort,
     bool EnableNodeMode,

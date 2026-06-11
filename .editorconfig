@@ -132,3 +132,9 @@ dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readon
 
 dotnet_naming_style.s_camel_case.capitalization = camel_case
 dotnet_naming_style.s_camel_case.required_prefix = s_
+
+# WinUI XAML type-info generation references WinUIEx.Icon, which is obsolete
+# in WinUIEx but is not used directly by our source. Keep CS0612 active for
+# source files and suppress it only for the generated type-info file.
+[**/XamlTypeInfo.g.cs]
+dotnet_diagnostic.CS0612.severity = none

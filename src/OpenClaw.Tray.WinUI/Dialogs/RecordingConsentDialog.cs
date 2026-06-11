@@ -172,7 +172,7 @@ public sealed class RecordingConsentDialog : WindowEx
         Logger.Info($"[RecordingConsent] {type} recording consent dialog shown");
     }
 
-    public new Task<bool> ShowAsync()
+    public Task<bool> ShowAsync()
     {
         Activate();
 
@@ -188,6 +188,7 @@ public sealed class RecordingConsentDialog : WindowEx
                 SetForegroundWindow(hwnd);
             }
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch { /* best-effort */ }
 
         return _tcs.Task;

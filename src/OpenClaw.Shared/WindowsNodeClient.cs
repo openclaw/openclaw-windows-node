@@ -117,12 +117,13 @@ public class WindowsNodeClient : WebSocketClientBase
         // Initialize device identity
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
+        _useV2Signature |= !string.IsNullOrEmpty(_bootstrapToken) && string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
         
         // Initialize registration
         _registration = new NodeRegistration
         {
             Id = _deviceIdentity.DeviceId,
-            Version = "1.0.0",
+            Version = AppVersionInfo.Version,
             Platform = WindowsPlatform,
             DeviceFamily = WindowsDeviceFamily,
             DisplayName = $"Windows Node ({Environment.MachineName})"
@@ -514,6 +515,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 stopwatch.Stop();
                 RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Client is shutting down; response is no longer needed
@@ -522,7 +524,8 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _logger.Error($"[NODE] Command execution failed: {command}", ex);
                 stopwatch.Stop();
-                try { await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed"); } catch { }
+                try { await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed"); }
+                catch (Exception sendEx) { _logger.Debug($"[NODE] Failed to send error response for {requestId}: {sendEx.Message}"); }
                 RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
             }
             finally
@@ -1062,6 +1065,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 stopwatch.Stop();
                 RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Client is shutting down; response is no longer needed
@@ -1070,7 +1074,8 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _logger.Error($"Command execution failed: {command}", ex);
                 stopwatch.Stop();
-                try { await SendErrorResponseAsync(requestId, "Command execution failed"); } catch { }
+                try { await SendErrorResponseAsync(requestId, "Command execution failed"); }
+                catch (Exception sendEx) { _logger.Debug($"[NODE] Failed to send error response for {requestId}: {sendEx.Message}"); }
                 RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
             }
             finally

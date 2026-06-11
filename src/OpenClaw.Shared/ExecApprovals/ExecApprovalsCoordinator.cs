@@ -75,7 +75,9 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         }
 
         var sanitizedEnv = envResult.Allowed as IReadOnlyDictionary<string, string>;
-        IReadOnlyList<ExecAllowlistEntry> matches = resolved.Defaults.Security == ExecSecurity.Allowlist
+        var needsAllowlistMatches = resolved.Defaults.Security == ExecSecurity.Allowlist
+            || resolved.Defaults.AskFallback == ExecSecurity.Allowlist;
+        IReadOnlyList<ExecAllowlistEntry> matches = needsAllowlistMatches
             ? ExecAllowlistMatcher.MatchAll(resolved.Allowlist, identity.AllowlistResolutions)
             : [];
 
@@ -143,14 +145,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                         canonical: context.DisplayCommand);
                 }
 
-                // Exhaustive mapping without _ so the compiler warns if ExecApprovalPromptOutcome
-                // gains a new value. Allow is unreachable here — handled by the check above.
+                // Allow is unreachable here — handled by the check above. The fallback arm
+                // fails closed for invalid enum values that can still be cast at runtime.
                 followupDecision = promptResult switch
                 {
                     ExecApprovalPromptOutcome.Deny => ExecApprovalDecision.Deny,
                     ExecApprovalPromptOutcome.AllowOnce => ExecApprovalDecision.AllowOnce,
                     ExecApprovalPromptOutcome.AllowAlways => ExecApprovalDecision.AllowAlways,
                     ExecApprovalPromptOutcome.Allow => throw new UnreachableException("prompt-returned-allow handled above"),
+                    _ => throw new UnreachableException($"unknown prompt outcome: {promptResult}"),
                 };
             }
             else
@@ -207,16 +210,16 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     // ask=Always → Deny: human approval is a precondition; without UI the only safe outcome is deny.
     private static ExecApprovalDecision FallbackDecision(
         ExecApprovalEvaluation context,
-        ExecAsk askFallback)
+        ExecSecurity askFallback)
     {
-        return askFallback switch
+        var effectiveFallback = (ExecSecurity)Math.Min((int)context.Security, (int)askFallback);
+        return effectiveFallback switch
         {
-            ExecAsk.Off => ExecApprovalDecision.AllowOnce,
-            ExecAsk.OnMiss => context.AllowlistSatisfied
+            ExecSecurity.Full => ExecApprovalDecision.AllowOnce,
+            ExecSecurity.Allowlist => context.AllAllowlistResolutionsMatched
                 ? ExecApprovalDecision.AllowOnce
                 : ExecApprovalDecision.Deny,
-            ExecAsk.Always => ExecApprovalDecision.Deny,
-            ExecAsk.Deny => ExecApprovalDecision.Deny,
+            ExecSecurity.Deny => ExecApprovalDecision.Deny,
             _ => ExecApprovalDecision.Deny,  // defensive
         };
     }

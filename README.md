@@ -1,6 +1,8 @@
 # 🦞 OpenClaw Windows Hub
 
-A Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered personal assistant.
+![OpenClaw Windows Node banner](docs/assets/readme-banner.jpg)
+
+A native Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered personal assistant.
 
 *Made with 🦞 love by Scott Hanselman and Molty*
 
@@ -14,25 +16,31 @@ A Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered p
 
 ## Projects
 
-This monorepo contains four projects:
+This monorepo contains the Windows hub, shared client libraries, and CLI utilities:
 
 | Project | Description |
 |---------|-------------|
 | **OpenClaw.Tray.WinUI** | System tray application (WinUI 3) for quick access to OpenClaw |
 | **OpenClaw.Shared** | Shared gateway client library |
 | **OpenClaw.Cli** | CLI validator for WebSocket connect/send/probe using tray settings |
-| **OpenClaw.CommandPalette** | PowerToys Command Palette extension |
 
 ## 🚀 Quick Start
 
-> **End-user installer?** See [docs/SETUP.md](docs/SETUP.md) for a step-by-step installation guide (no build required).
+> **End-user installer?** Download the latest stable x64 or ARM64 installer from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows), or see [docs/SETUP.md](docs/SETUP.md) for step-by-step installation (no build required).
+>
+> **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for editing `openclaw.json` as the `openclaw` user and using root for protected-file administration.
+
+Direct downloads from the latest OpenClaw release:
+
+- [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-x64.exe)
+- [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-arm64.exe)
+- [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt)
 
 ### Prerequisites
 - Windows 10 (20H2+) or Windows 11
 - .NET 10.0 SDK - https://dotnet.microsoft.com/download/dotnet/10.0
 - Windows 10 SDK (for WinUI build) - install via Visual Studio or standalone
 - WebView2 Runtime - pre-installed on modern Windows, or get from https://developer.microsoft.com/microsoft-edge/webview2
-- PowerToys (optional, for Command Palette extension) — see [docs/POWERTOYS.md](docs/POWERTOYS.md)
 
 ### Build
 
@@ -67,10 +75,25 @@ dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true    # x64 MSI
 ### Run Tray App
 
 ```powershell
-# Run the exe directly (path includes runtime identifier)
-.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.19041.0\win-arm64\OpenClaw.Tray.WinUI.exe  # ARM64
-.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.19041.0\win-x64\OpenClaw.Tray.WinUI.exe    # x64
+# Build and launch the unpackaged WinUI tray app
+.\run-app-local.ps1
+
+# If you already built, skip rebuild and launch the existing Debug output
+.\run-app-local.ps1 -NoBuild
+
+# Run isolated from your normal tray settings so multiple worktrees can run together
+.\run-app-local.ps1 -Isolated
+
+# Alpha update testing from a Release build
+.\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
+
+# Optional: launch through WinAppCLI with Package.appxmanifest
+.\run-app-local.ps1 -UseWinApp -NoBuild
 ```
+
+The default path starts the unpackaged executable directly. `-UseWinApp` requires
+Microsoft WinAppCLI (`winget install Microsoft.WinAppCLI`) and is only needed when
+you want manifest/MSIX-adjacent launch validation.
 
 ### Run CLI WebSocket Validator
 
@@ -169,7 +192,6 @@ These features are available in Windows but not in the Mac app:
 | Modern flyout menu | Windows 11-style with dark/light mode |
 | Deep links | `openclaw://` URL scheme with IPC |
 | First-run onboarding | 6-screen guided setup wizard (Welcome → Connection → Wizard → Permissions → Chat → Ready) |
-| PowerToys integration | Command Palette extension |
 
 ### 🔌 Node Mode (Agent Control)
 
@@ -338,44 +360,6 @@ OpenClaw registers the `openclaw://` URL scheme for automation and integration:
 
 Deep links work even when Molty is already running - they're forwarded via IPC.
 
-## 📦 OpenClaw.CommandPalette
-
-PowerToys Command Palette extension for quick OpenClaw access.
-
-### Commands
-- **🦞 Open Dashboard** - Launch the OpenClaw web dashboard
-- **💬 Dashboard: Sessions** - Open the sessions dashboard
-- **📡 Dashboard: Channels** - Open the channel configuration dashboard
-- **🧩 Dashboard: Skills** - Open the skills dashboard
-- **⏱️ Dashboard: Cron** - Open the scheduled jobs dashboard
-- **💬 Web Chat** - Open the embedded Chat page
-- **📝 Quick Send** - Open the Quick Send dialog to compose a message
-- **🧭 Setup Wizard** - Open pairing/setup
-- **🧭 Command Center** - Open diagnostics and support actions
-- **🔄 Run Health Check** - Refresh connection health
-- **⬇️ Check for Updates** - Run a manual GitHub Releases update check
-- **⚡ Activity Stream** - Open recent activity
-- **📋 Notification History** - Open notification history in the Activity page
-- **⚙️ Settings** - Open the OpenClaw Tray Settings page
-- **📄 Open Log File / 📁 Logs / 🗂️ Config / 🧪 Diagnostics** - Open support files and folders
-- **📋 Copy Support Context** - Copy redacted Command Center metadata
-- **🧰 Copy Debug Bundle** - Copy combined support, port, capability, node, channel, and activity diagnostics
-- **🌐 Copy Browser Setup** - Copy browser.proxy and node-host setup guidance
-- **🔌 Copy Port Diagnostics** - Copy gateway/browser/tunnel port owners and stop hints
-- **🛡️ Copy Capability Diagnostics** - Copy permission, allowlist, and parity diagnostics
-- **🖥️ Copy Node Inventory** - Copy node capabilities, commands, and policy status
-- **📡 Copy Channel Summary** - Copy channel health and start/stop availability
-- **⚡ Copy Activity Summary** - Copy recent tray activity
-- **🧩 Copy Extensibility Summary** - Copy channel, skills, and cron surface guidance
-- **🔁 Restart SSH Tunnel** - Restart the tray-managed SSH tunnel when enabled
-
-### Installation
-1. Run the OpenClaw Tray installer and tick **"Install PowerToys Command Palette extension"**, or
-2. Register manually: `Add-AppxPackage -Register "$env:LOCALAPPDATA\OpenClawTray\CommandPalette\AppxManifest.xml" -ForceApplicationShutdown`
-3. Open Command Palette (`Win+Alt+Space`) and type "OpenClaw" to see commands
-
-See [docs/POWERTOYS.md](docs/POWERTOYS.md) for detailed setup and troubleshooting.
-
 ## 📦 OpenClaw.Shared
 
 Shared library containing:
@@ -391,8 +375,7 @@ Shared library containing:
 openclaw-windows-node/
 ├── src/
 │   ├── OpenClaw.Shared/           # Shared gateway library
-│   ├── OpenClaw.Tray.WinUI/       # System tray app (WinUI 3)
-│   └── OpenClaw.CommandPalette/   # PowerToys extension
+│   └── OpenClaw.Tray.WinUI/       # System tray app (WinUI 3)
 ├── tests/
 │   ├── OpenClaw.Shared.Tests/     # Shared library tests
 │   └── OpenClaw.Tray.Tests/       # Tray app helper tests
@@ -434,4 +417,3 @@ MIT License - see [LICENSE](LICENSE)
 ---
 
 *Formerly known as Moltbot, formerly known as Clawdbot*
-

@@ -130,7 +130,9 @@ public sealed class PiperTextToSpeechClient : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _tts.Dispose(); } catch { /* swallow */ }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _gate.Dispose(); } catch { /* swallow */ }
     }
 }

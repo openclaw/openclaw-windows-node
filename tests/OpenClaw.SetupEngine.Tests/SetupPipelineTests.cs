@@ -61,6 +61,10 @@ public class SetupPipelineTests
         var steps = SetupStepFactory.BuildDefaultSteps();
 
         Assert.Equal(18, steps.Count);
+        Assert.IsType<PreflightOsStep>(steps[0]);
+        Assert.IsType<PreflightWslStep>(steps[1]);
+        Assert.IsType<CleanupStaleDistroStep>(steps[2]);
+        Assert.IsType<CleanupStaleGatewayStep>(steps[3]);
         Assert.Contains(steps, s => s is ValidateWslLockdownStep);
         Assert.Contains(steps, s => s is RunGatewayWizardStep);
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
@@ -171,6 +175,7 @@ public class SetupPipelineTests
                 async (_, ct) =>
                 {
                     rollbackCalled = true;
+                    // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
                     await Task.Delay(Timeout.InfiniteTimeSpan, ct);
                 }),
             new MockStep("s2", (_, _) => Task.FromResult(StepResult.Fail("fail"))),
@@ -372,6 +377,7 @@ public class SetupPipelineTests
                 async (_, ct) =>
                 {
                     order.Add("s2");
+                    // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
                     await Task.Delay(Timeout.InfiniteTimeSpan, ct);
                 }),
             new MockStep("s3", (_, _) => Task.FromResult(StepResult.Ok()),

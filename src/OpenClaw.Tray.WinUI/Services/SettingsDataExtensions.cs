@@ -10,6 +10,7 @@ public static class SettingsDataExtensions
         settings.UseSshTunnel,
         settings.SshTunnelUser,
         settings.SshTunnelHost,
+        settings.SshTunnelSshPort,
         settings.SshTunnelRemotePort,
         settings.SshTunnelLocalPort,
         settings.EnableNodeMode,

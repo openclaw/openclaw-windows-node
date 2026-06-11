@@ -7,7 +7,7 @@ namespace OpenClaw.Connection;
 /// Manages operator connection, node connection, credential resolution,
 /// state transitions, and diagnostics.
 /// </summary>
-public interface IGatewayConnectionManager : IDisposable
+public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
 {
     // ─── State ───
     GatewayConnectionSnapshot CurrentSnapshot { get; }
@@ -20,6 +20,7 @@ public interface IGatewayConnectionManager : IDisposable
 
     // ─── Lifecycle ───
     Task ConnectAsync(string? gatewayId = null);
+    Task ConnectNodeOnlyAsync(string? gatewayId = null);
     Task DisconnectAsync();
     Task ReconnectAsync();
     Task SwitchGatewayAsync(string gatewayId);

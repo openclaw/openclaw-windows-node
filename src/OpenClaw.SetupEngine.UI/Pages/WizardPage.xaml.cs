@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.SetupEngine.UI;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -21,9 +22,14 @@ public sealed partial class WizardPage : Page
     private string _stepType = "";
     private bool _sensitive;
     private bool _errorState;
+    private int _operationGeneration;
     private int _wizardStepCount;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<WizardOption> _options = [];
+    private readonly List<WizardOptionValue> _options = [];
+    // Tails the WSL gateway log and surfaces openclaw plugin console.log output
+    // (OAuth URLs, install fallback messages, etc) inline on the active step.
+    // wizard.payload frames don't carry this content.
+    private WizardConsoleTail? _consoleTail;
 
     public WizardPage()
     {
@@ -45,22 +51,33 @@ public sealed partial class WizardPage : Page
 
     private async Task StartWizardAsync()
     {
+        var generation = AdvanceOperationGeneration();
         try
         {
             _errorState = false;
+            HideRecoveryActions();
             await DisconnectAsync();
+            ClearConsoleBanner();
             _sessionId = "";
             _wizardStepCount = 0;
             _stepVisits.Clear();
             SetBusy("Connecting to gateway...");
             _client = await ConnectClientAsync();
+            _client.StatusChanged += OnWizardClientStatusChanged;
             SetBusy("Starting wizard...");
+            StartConsoleTail();
             var payload = await _client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+            if (generation != _operationGeneration)
+                return;
+
             await ApplyPayloadAsync(payload);
         }
         catch (Exception ex)
         {
-            ShowError($"Gateway wizard failed: {ex.Message}");
+            if (generation != _operationGeneration)
+                return;
+
+            await EnterWizardErrorAsync($"Gateway wizard failed: {ex.Message}");
         }
     }
 
@@ -78,7 +95,7 @@ public sealed partial class WizardPage : Page
             ?? record.BootstrapToken
             ?? throw new InvalidOperationException("No gateway credential found.");
 
-        var client = new OpenClawGatewayClient(config.EffectiveGatewayUrl, token, logger: new UiGatewayLogger(), identityPath: identityPath)
+        var client = new OpenClawGatewayClient(config.EffectiveGatewayUrl, token, logger: NullLogger.Instance, identityPath: identityPath)
         {
             UseV2Signature = true
         };
@@ -119,6 +136,25 @@ public sealed partial class WizardPage : Page
         }
     }
 
+    private void OnWizardClientStatusChanged(object? sender, ConnectionStatus status)
+    {
+        if (status is not (ConnectionStatus.Disconnected or ConnectionStatus.Error))
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_errorState
+                || _client == null
+                || !ReferenceEquals(sender, _client)
+                || string.IsNullOrWhiteSpace(_sessionId))
+            {
+                return;
+            }
+
+            _ = EnterWizardErrorAsync("Gateway connection was lost while the wizard was running.");
+        });
+    }
+
     private async Task ApplyPayloadAsync(JsonElement payload)
     {
         if (payload.TryGetProperty("sessionId", out var sid))
@@ -135,9 +171,9 @@ public sealed partial class WizardPage : Page
 
             await DisconnectAsync();
             if (_config!.SkipPermissions)
-                App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
+                SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
             else
-                App.MainWindow?.NavigateToPermissions();
+                SetupWindow.Active?.NavigateToPermissions();
             return;
         }
 
@@ -152,7 +188,7 @@ public sealed partial class WizardPage : Page
         var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
         _sensitive = step.TryGetProperty("sensitive", out var sensitive) && sensitive.ValueKind == JsonValueKind.True;
         var title = step.TryGetProperty("title", out var titleProp) ? titleProp.ToString() : "";
-        var message = step.TryGetProperty("message", out var msgProp) ? msgProp.ToString() : "";
+        var message = WizardPayloadHelpers.ExtractStepMessage(step);
         var initial = step.TryGetProperty("initialValue", out var initialProp) ? initialProp : default;
 
         if (string.IsNullOrWhiteSpace(_stepId))
@@ -184,6 +220,7 @@ public sealed partial class WizardPage : Page
         ErrorText.Visibility = Visibility.Collapsed;
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
+        ShowRecoveryActions();
         StatusText.Text = "Answer the gateway setup question";
         PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
         SecondaryButton.IsEnabled = true;
@@ -223,22 +260,7 @@ public sealed partial class WizardPage : Page
             return true;
 
         _options.Clear();
-        if (step.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var option in options.EnumerateArray())
-            {
-                var value = option.ValueKind == JsonValueKind.Object && option.TryGetProperty("value", out var valueProp)
-                    ? valueProp.ToString()
-                    : option.ToString();
-                var label = option.ValueKind == JsonValueKind.Object && option.TryGetProperty("label", out var labelProp)
-                    ? labelProp.ToString()
-                    : value;
-                var hint = option.ValueKind == JsonValueKind.Object && option.TryGetProperty("hint", out var hintProp)
-                    ? hintProp.ToString()
-                    : "";
-                _options.Add(new(value, label, hint));
-            }
-        }
+        _options.AddRange(WizardAnswerBuilder.ReadOptions(step));
 
         if (!WizardSelection.HasSelectableOptions(_stepType, _options.Select(o => o.Value).ToArray()))
         {
@@ -254,7 +276,7 @@ public sealed partial class WizardPage : Page
                 SelectOptions.Children.Add(new RadioButton
                 {
                     Content = BuildOptionContent(option),
-                    Tag = option.Value,
+                    Tag = option,
                     GroupName = $"wizard-step-{_stepId}",
                     Padding = new Thickness(8, 6, 8, 6),
                     Margin = new Thickness(0, 0, 0, 2),
@@ -263,7 +285,7 @@ public sealed partial class WizardPage : Page
                 });
             }
 
-            var initialValue = initial.ValueKind == JsonValueKind.String ? initial.GetString() : null;
+            var initialValue = WizardAnswerBuilder.ValueKeys(initial).FirstOrDefault();
             var index = WizardSelection.SelectedIndex(initialValue, _options.Select(o => o.Value).ToArray());
             if (index >= 0 && index < SelectOptions.Children.Count && SelectOptions.Children[index] is RadioButton radio)
                 radio.IsChecked = true;
@@ -277,14 +299,14 @@ public sealed partial class WizardPage : Page
         {
             MultiOptions.Visibility = Visibility.Visible;
             var initialValues = initial.ValueKind == JsonValueKind.Array
-                ? initial.EnumerateArray().Select(v => v.ToString()).ToHashSet(StringComparer.Ordinal)
+                ? initial.EnumerateArray().Select(WizardAnswerBuilder.ValueKey).ToHashSet(StringComparer.Ordinal)
                 : [];
             foreach (var option in _options)
             {
                 var checkBox = new CheckBox
                 {
                     Content = BuildOptionContent(option),
-                    Tag = option.Value,
+                    Tag = option,
                     IsChecked = initialValues.Contains(option.Value),
                     Padding = new Thickness(8, 6, 8, 6),
                     Margin = new Thickness(0, 0, 0, 2),
@@ -302,7 +324,7 @@ public sealed partial class WizardPage : Page
         return true;
     }
 
-    private static FrameworkElement BuildOptionContent(WizardOption option)
+    private static FrameworkElement BuildOptionContent(WizardOptionValue option)
     {
         var panel = new StackPanel
         {
@@ -341,7 +363,13 @@ public sealed partial class WizardPage : Page
             : new SolidColorBrush(Microsoft.UI.Colors.Gray);
     }
 
-    private async void Primary_Click(object sender, RoutedEventArgs e)
+    private void Primary_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            PrimaryClickAsync,
+            NullLogger.Instance,
+            nameof(Primary_Click));
+
+    private async Task PrimaryClickAsync()
     {
         if (_errorState)
         {
@@ -352,7 +380,13 @@ public sealed partial class WizardPage : Page
         await SendCurrentAnswerAsync(skip: false);
     }
 
-    private async void Secondary_Click(object sender, RoutedEventArgs e)
+    private void Secondary_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            SecondaryClickAsync,
+            NullLogger.Instance,
+            nameof(Secondary_Click));
+
+    private async Task SecondaryClickAsync()
     {
         if (_errorState)
         {
@@ -363,10 +397,32 @@ public sealed partial class WizardPage : Page
         await SendCurrentAnswerAsync(skip: true);
     }
 
+    private void StartOver_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            StartOverAsync,
+            NullLogger.Instance,
+            nameof(StartOver_Click));
+
+    private async Task StartOverAsync()
+    {
+        AdvanceOperationGeneration();
+        HideRecoveryActions();
+        SetBusy("Starting over...");
+        await CancelCurrentSessionAsync();
+        await StartWizardAsync();
+    }
+
+    private void SkipWizard_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            SkipWizardAsync,
+            NullLogger.Instance,
+            nameof(SkipWizard_Click));
+
     private async Task SendCurrentAnswerAsync(bool skip)
     {
         if (_client == null) return;
 
+        var generation = _operationGeneration;
         try
         {
             object? answerValue = null;
@@ -383,6 +439,10 @@ public sealed partial class WizardPage : Page
             }
 
             SetBusy(skip ? "Skipping..." : "Submitting...");
+            // The console banner shows output that arrived between the last payload
+            // render and the user's current click. Once they answer, those messages
+            // are "consumed" — wipe so the next step starts with a clean slate.
+            ClearConsoleBanner();
             object parameters;
             if (skip)
             {
@@ -396,11 +456,17 @@ public sealed partial class WizardPage : Page
             }
 
             var payload = await _client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutForCurrentStep());
+            if (generation != _operationGeneration)
+                return;
+
             await ApplyPayloadAsync(payload);
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            if (generation != _operationGeneration)
+                return;
+
+            await EnterWizardErrorAsync(ex.Message);
         }
     }
 
@@ -411,11 +477,14 @@ public sealed partial class WizardPage : Page
             "confirm" => true,
             "select" => SelectOptions.Children.OfType<RadioButton>()
                 .FirstOrDefault(r => r.IsChecked == true)
-                ?.Tag?.ToString() ?? "",
+                ?.Tag is WizardOptionValue option
+                    ? option.RawValue
+                    : "",
             "multiselect" => MultiOptions.Children.OfType<CheckBox>()
                 .Where(c => c.IsChecked == true)
-                .Select(c => c.Tag?.ToString() ?? "")
-                .Where(v => v.Length > 0)
+                .Select(c => c.Tag as WizardOptionValue)
+                .OfType<WizardOptionValue>()
+                .Select(option => option.RawValue)
                 .ToArray(),
             "text" => _sensitive ? SecretInput.Password : TextInput.Text,
             _ => "true"
@@ -436,12 +505,12 @@ public sealed partial class WizardPage : Page
         {
             "select" => SelectOptions.Children.OfType<RadioButton>()
                 .Where(r => r.IsChecked == true)
-                .Select(r => r.Tag?.ToString() ?? "")
+                .Select(r => r.Tag is WizardOptionValue option ? option.Value : "")
                 .Where(v => v.Length > 0)
                 .ToArray(),
             "multiselect" => MultiOptions.Children.OfType<CheckBox>()
                 .Where(c => c.IsChecked == true)
-                .Select(c => c.Tag?.ToString() ?? "")
+                .Select(c => c.Tag is WizardOptionValue option ? option.Value : "")
                 .Where(v => v.Length > 0)
                 .ToArray(),
             _ => []
@@ -494,31 +563,94 @@ public sealed partial class WizardPage : Page
             return;
 
         foreach (var line in message.Split('\n'))
+            AppendLineTo(MessagePanel, line, fontSize: 14, opacity: 0.82);
+    }
+
+    // Renders a single line into a target panel, decorating URLs as hyperlinks
+    // and "Code: XXX" patterns as monospace rows with a copy button. Shared by
+    // RenderMessage and AppendConsoleLine.
+    private void AppendLineTo(Panel target, string line, double fontSize, double opacity)
+    {
+        var trimmed = line.TrimEnd('\r');
+
+        var codeMatch = Regex.Match(trimmed, @"^((?:Code|code|user_code|USER_CODE)\s*[:=]\s*)([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b");
+        if (codeMatch.Success)
         {
-            var trimmed = line.TrimEnd('\r');
-            var codeMatch = Regex.Match(trimmed, @"^((?:Code|code|user_code|USER_CODE)\s*[:=]\s*)([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b");
-            if (codeMatch.Success)
-            {
-                MessagePanel.Children.Add(BuildCodeRow(codeMatch.Groups[1].Value, codeMatch.Groups[2].Value));
-                continue;
-            }
-
-            var urlMatch = Regex.Match(trimmed, @"https?://[^\s\)\""]+", RegexOptions.IgnoreCase);
-            if (urlMatch.Success && Uri.TryCreate(urlMatch.Value.TrimEnd('.', ','), UriKind.Absolute, out var uri))
-            {
-                MessagePanel.Children.Add(BuildLinkLine(trimmed, urlMatch.Value, uri));
-                continue;
-            }
-
-            MessagePanel.Children.Add(new TextBlock
-            {
-                Text = trimmed,
-                FontSize = 14,
-                Opacity = 0.82,
-                TextWrapping = TextWrapping.Wrap,
-                IsTextSelectionEnabled = true
-            });
+            target.Children.Add(BuildCodeRow(codeMatch.Groups[1].Value, codeMatch.Groups[2].Value));
+            return;
         }
+
+        var urlMatch = Regex.Match(trimmed, @"https?://[^\s\)\""]+", RegexOptions.IgnoreCase);
+        if (urlMatch.Success && Uri.TryCreate(urlMatch.Value.TrimEnd('.', ','), UriKind.Absolute, out var uri))
+        {
+            target.Children.Add(BuildLinkLine(trimmed, urlMatch.Value, uri));
+            return;
+        }
+
+        target.Children.Add(new TextBlock
+        {
+            Text = trimmed,
+            FontSize = fontSize,
+            Opacity = opacity,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true
+        });
+    }
+
+    private void StartConsoleTail()
+    {
+        StopConsoleTail();
+        var tail = new WizardConsoleTail(logger: NullLogger.Instance);
+        _consoleTail = tail;
+        var dispatcher = DispatcherQueue;
+        tail.Start(message =>
+        {
+            try
+            {
+                dispatcher?.TryEnqueue(() =>
+                {
+                    if (!ReferenceEquals(_consoleTail, tail))
+                        return;
+                    AppendConsoleLine(message);
+                });
+            }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
+            catch
+            {
+            }
+        });
+    }
+
+    private void StopConsoleTail()
+    {
+        var tail = _consoleTail;
+        _consoleTail = null;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        try { tail?.Stop(); } catch { }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        try { tail?.Dispose(); } catch { }
+    }
+
+    private void AppendConsoleLine(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        foreach (var line in message.Split('\n'))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            AppendLineTo(ConsoleBannerLines, line, fontSize: 13, opacity: 0.92);
+        }
+
+        ConsoleBanner.Visibility = Visibility.Visible;
+    }
+
+    private void ClearConsoleBanner()
+    {
+        ConsoleBannerLines.Children.Clear();
+        ConsoleBanner.Visibility = Visibility.Collapsed;
     }
 
     private static FrameworkElement BuildLinkLine(string line, string urlText, Uri uri)
@@ -602,34 +734,76 @@ public sealed partial class WizardPage : Page
         StatusText.Text = "Wizard needs attention";
         ErrorText.Text = message;
         ErrorText.Visibility = Visibility.Visible;
-        PrimaryButton.Content = "Retry";
+        PrimaryButton.Content = "Start wizard again";
         PrimaryButton.IsEnabled = true;
         SecondaryButton.Content = "Skip wizard";
         SecondaryButton.IsEnabled = true;
         SecondaryButton.Visibility = Visibility.Visible;
+        HideRecoveryActions();
+    }
+
+    private async Task EnterWizardErrorAsync(string detail)
+    {
+        if (_errorState)
+            return;
+
+        _errorState = true;
+        await DisconnectAsync();
+        ShowError(detail);
     }
 
     private async Task SkipWizardAsync()
     {
+        AdvanceOperationGeneration();
+        HideRecoveryActions();
+        SetBusy("Skipping wizard...");
+        await CancelCurrentSessionAsync();
+        if (_config!.SkipPermissions)
+            SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
+        else
+            SetupWindow.Active?.NavigateToPermissions();
+    }
+
+    private async Task CancelCurrentSessionAsync()
+    {
         if (_client != null && !string.IsNullOrWhiteSpace(_sessionId))
         {
             try { await _client.SendWizardRequestAsync("wizard.cancel", new { sessionId = _sessionId }, timeoutMs: 10_000); }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { }
         }
-
         await DisconnectAsync();
-        if (_config!.SkipPermissions)
-            App.MainWindow?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
-        else
-            App.MainWindow?.NavigateToPermissions();
+    }
+
+    private int AdvanceOperationGeneration() => unchecked(++_operationGeneration);
+
+    private void ShowRecoveryActions()
+    {
+        if (_errorState)
+            return;
+
+        RecoveryActions.Visibility = Visibility.Visible;
+        StartOverButton.IsEnabled = true;
+        SkipWizardButton.IsEnabled = true;
+    }
+
+    private void HideRecoveryActions()
+    {
+        RecoveryActions.Visibility = Visibility.Collapsed;
+        StartOverButton.IsEnabled = false;
+        SkipWizardButton.IsEnabled = false;
     }
 
     private async Task DisconnectAsync()
     {
-        if (_client == null) return;
-        try { await _client.DisconnectAsync(); } catch { }
-        _client.Dispose();
+        StopConsoleTail();
+        var client = _client;
+        if (client == null) return;
         _client = null;
+        client.StatusChanged -= OnWizardClientStatusChanged;
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        try { await client.DisconnectAsync(); } catch { }
+        client.Dispose();
     }
 
     private static string DisplayTitleFor(string stepType) => stepType switch
@@ -640,14 +814,4 @@ public sealed partial class WizardPage : Page
         "text" => "Enter value",
         _ => "Setup"
     };
-
-    private sealed record WizardOption(string Value, string Label, string Hint);
-
-    private sealed class UiGatewayLogger : IOpenClawLogger
-    {
-        public void Info(string message) { }
-        public void Debug(string message) { }
-        public void Warn(string message) { }
-        public void Error(string message, Exception? ex = null) { }
-    }
 }

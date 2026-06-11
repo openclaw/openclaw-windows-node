@@ -16,6 +16,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_settingsDir, true); } catch { }
     }
 
@@ -26,6 +27,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-1", SessionKey = "agent:main:main" } };
 
         var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5));
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
         client.RaiseFinalAssistant("run-1");
         var result = await task;

@@ -16,6 +16,7 @@ public class OpenClawChatDataProviderTests
         public List<string> SentMessages { get; } = new();
         public List<string?> SentSessionKeys { get; } = new();
         public List<string?> SentSessionIds { get; } = new();
+        public Queue<ChatSendResult> SendResults { get; } = new();
         public List<string> AbortedRunIds { get; } = new();
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
@@ -25,13 +26,20 @@ public class OpenClawChatDataProviderTests
 
         public SessionInfo[] GetSessionList() => Sessions;
         public ModelsListInfo? GetCurrentModelsList() => CurrentModels;
+        public void StartProactiveBootstrap() { }
 
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
+            => SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments);
+
+        public async Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
         {
             SentMessages.Add(message);
             SentSessionKeys.Add(sessionKey);
             SentSessionIds.Add(sessionId);
-            return SendBehavior?.Invoke(message, sessionKey, sessionId) ?? Task.CompletedTask;
+            if (SendBehavior is not null)
+                await SendBehavior(message, sessionKey, sessionId);
+
+            return SendResults.Count > 0 ? SendResults.Dequeue() : new ChatSendResult();
         }
 
         public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
@@ -49,8 +57,18 @@ public class OpenClawChatDataProviderTests
             return AbortBehavior?.Invoke(runId) ?? Task.CompletedTask;
         }
 
+        public List<(string Id, string Decision)> ResolvedApprovals { get; } = new();
+        public Func<string, string, Task>? ResolveApprovalBehavior { get; set; }
+
+        public Task ResolveExecApprovalAsync(string approvalId, string decision)
+        {
+            ResolvedApprovals.Add((approvalId, decision));
+            return ResolveApprovalBehavior?.Invoke(approvalId, decision) ?? Task.CompletedTask;
+        }
+
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<SessionInfo[]>? SessionsUpdated;
+        public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
         public event EventHandler<ModelsListInfo>? ModelsListUpdated;
@@ -58,6 +76,7 @@ public class OpenClawChatDataProviderTests
 
         public void RaiseStatus(ConnectionStatus s) { CurrentStatus = s; StatusChanged?.Invoke(this, s); }
         public void RaiseSessions(SessionInfo[] s) { Sessions = s; SessionsUpdated?.Invoke(this, s); }
+        public void RaiseSessionCommandCompleted(SessionCommandResult result) => SessionCommandCompleted?.Invoke(this, result);
         public void RaiseChat(ChatMessageInfo m) => ChatMessageReceived?.Invoke(this, m);
         public void RaiseAgent(AgentEventInfo a) => AgentEventReceived?.Invoke(this, a);
         public void RaiseModels(ModelsListInfo m) { CurrentModels = m; ModelsListUpdated?.Invoke(this, m); }
@@ -65,10 +84,16 @@ public class OpenClawChatDataProviderTests
     }
 
     private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots, List<ChatProviderNotification> notifications)
-        CreateProvider(SessionInfo[]? initial = null)
+        CreateProvider(SessionInfo[]? initial = null, string? toolMetaCachePath = null, string? attachmentMetaCachePath = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
-        var provider = new OpenClawChatDataProvider(bridge);
+        var provider = toolMetaCachePath is null && attachmentMetaCachePath is null
+            ? new OpenClawChatDataProvider(bridge)
+            : new OpenClawChatDataProvider(
+                bridge,
+                post: null,
+                toolMetaCacheFilePath: toolMetaCachePath ?? Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "tool-metadata.json"),
+                attachmentMetaCacheFilePath: attachmentMetaCachePath);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
@@ -381,6 +406,629 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task SessionResetCompletion_ClearsThreadTimelineAndIgnoresStaleHistory()
+    {
+        var historyTcs = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => historyTcs.Task;
+        await provider.LoadAsync();
+        var historyTask = provider.LoadHistoryAsync("main");
+        await provider.SendMessageAsync("main", "hi");
+        snapshots.Clear();
+
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var resetSnapshot = snapshots[^1];
+        Assert.Empty(resetSnapshot.Timelines["main"].Entries);
+        Assert.True(resetSnapshot.Timelines["main"].HistoryLoaded);
+
+        historyTcs.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "assistant",
+                    Text = "old history",
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                }
+            }
+        });
+        await historyTask;
+
+        var latest = snapshots[^1];
+        Assert.Empty(latest.Timelines["main"].Entries);
+        Assert.True(latest.Timelines["main"].HistoryLoaded);
+
+        await provider.SendMessageAsync("main", "after reset");
+
+        latest = snapshots[^1];
+        var entry = Assert.Single(latest.Timelines["main"].Entries);
+        Assert.Equal(ChatTimelineItemKind.User, entry.Kind);
+        Assert.Equal("after reset", entry.Text);
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_DropsLateLiveEventsUntilNewUserMessage()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run"));
+        snapshots.Clear();
+
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale agent"}""", runId: "old-run"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "stale chat"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Empty(latest.Timelines["main"].Entries);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "new remote message",
+            Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds()
+        });
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "new remote message",
+            Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds()
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "new response"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "new remote message");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "new response");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_TimestamplessRemoteUserCanOpenGateViaHistoryBackfill()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "remote no timestamp",
+                    Ts = 0
+                }
+            }
+        });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "remote no timestamp",
+            Ts = 0
+        });
+
+        for (var i = 0; i < 20; i++)
+        {
+            if (snapshots.Count > 0 &&
+                snapshots[^1].Timelines["main"].Entries.Any(e =>
+                    e.Kind == ChatTimelineItemKind.User &&
+                    e.Text == "remote no timestamp"))
+            {
+                break;
+            }
+            await Task.Delay(10);
+        }
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "remote-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "remote response"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "remote no timestamp");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "remote response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_LocalSendDoesNotReopenGateForStaleChatFrames()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run"));
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "after reset local");
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "stale user echo"
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "stale assistant"
+        });
+
+        var latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run-2" });
+        await provider.SendMessageAsync("main", "second after reset");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "second after reset"
+        });
+
+        latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second after reset");
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh assistant"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh assistant");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_LateUnknownLifecycleStartDoesNotReopenGate()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run");
+        staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(staleStart);
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale old run"}""", runId: "old-run"));
+
+        var latest = snapshots[^1];
+        Assert.Empty(latest.Timelines["main"].Entries);
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "after reset local");
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        latest = snapshots[^1];
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_DropsLatePreResetAgentEventAfterGateOpens()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var preResetTs = DateTimeOffset.UtcNow.AddSeconds(-5).ToUnixTimeMilliseconds();
+        var resetTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "after reset local");
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = resetTs + 2_000;
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response",
+            Ts = resetTs + 2_000
+        });
+
+        var staleAgent = MakeAgentEvent("assistant", """{"delta":"stale agent after gate"}""");
+        staleAgent.Ts = preResetTs;
+        bridge.RaiseAgent(staleAgent);
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale agent", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_LifecycleStartBeforeSendResultOpensAfterRunAccepted()
+    {
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var sendTask = provider.SendMessageAsync("main", "after reset local");
+        var earlyStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        earlyStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(earlyStart);
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        sendGate.SetResult();
+        await sendTask;
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_PreResetSendResultAfterResetDoesNotReopenGate()
+    {
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            return sendGate.Task;
+        };
+        await provider.LoadAsync();
+
+        var staleSendTask = provider.SendMessageAsync("main", "before reset");
+        await sendStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "old-run" });
+        sendGate.SetResult();
+        await staleSendTask;
+
+        var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run");
+        staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(staleStart);
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale old run"}""", runId: "old-run"));
+
+        var latest = snapshots.Count > 0 ? snapshots[^1] : await provider.LoadAsync();
+        Assert.Empty(latest.Timelines["main"].Entries);
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_PostResetSendWithoutRunIdCanOpenOnFreshLifecycleStart()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.SendMessageAsync("main", "after reset local");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "after reset local"
+        });
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "gateway-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_NoRunFallbackIgnoresBufferedStartBeforeLocalSend()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "stale-run");
+        staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(staleStart);
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.SendMessageAsync("main", "after reset local");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "after reset local"
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "stale response"
+        });
+
+        var latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "fresh-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_PreResetSendFailureAfterResetDoesNotAppendError()
+    {
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            return sendGate.Task;
+        };
+        await provider.LoadAsync();
+
+        var staleSendTask = provider.SendMessageAsync("main", "before reset");
+        await sendStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        sendGate.SetException(new InvalidOperationException("old send failed"));
+        await staleSendTask;
+
+        var latest = snapshots.Count > 0 ? snapshots[^1] : await provider.LoadAsync();
+        Assert.Empty(latest.Timelines["main"].Entries);
+        Assert.DoesNotContain(notifications, n => n.Message == "old send failed");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_StaleSendFailureDoesNotClearCurrentEchoState()
+    {
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var staleSendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            if (System.Threading.Interlocked.Increment(ref sendCount) == 1)
+            {
+                sendStarted.TrySetResult();
+                return staleSendGate.Task;
+            }
+
+            return Task.CompletedTask;
+        };
+        await provider.LoadAsync();
+
+        var staleSendTask = provider.SendMessageAsync("main", "same text");
+        await sendStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "same text");
+        snapshots.Clear();
+
+        staleSendGate.SetException(new InvalidOperationException("old send failed"));
+        await staleSendTask;
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "same text"
+        });
+
+        var latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "same text");
+        Assert.DoesNotContain(notifications, n => n.Message == "old send failed");
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_IgnoresInFlightRemoteUserBackfill()
+    {
+        var backfillStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var historyTcs = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ =>
+        {
+            backfillStarted.TrySetResult();
+            return historyTcs.Task;
+        };
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-remote"));
+        await backfillStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        historyTcs.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "old remote user",
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                }
+            }
+        });
+        await Task.Delay(100);
+
+        var latest = snapshots.Count > 0 ? snapshots[^1] : await provider.LoadAsync();
+        Assert.Empty(latest.Timelines["main"].Entries);
+    }
+
+    [Fact]
     public async Task StatusChanged_IsReflectedInSnapshotConnectionLabel()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -634,6 +1282,50 @@ public class OpenClawChatDataProviderTests
         var entry = Assert.Single(timeline.Entries);
         Assert.Equal(ChatTimelineItemKind.Reasoning, entry.Kind);
         Assert.Equal("thinking… step 2.", entry.Text);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ReasoningItemEnd_StartsFreshReasoningBubble()
+    {
+        // Regression: when the model reasons → tool → reasons again within
+        // a single turn, the second reasoning pass must render as its own
+        // bubble. The gateway brackets each pass with
+        // stream:"item", kind:"reasoning", phase:"start|end" — without
+        // honoring the end marker the second pass concatenates into the
+        // first bubble instead of replacing it.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"first pass"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item", """{"kind":"reasoning","phase":"end","itemId":"r1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"second pass"}"""));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var reasoningEntries = timeline.Entries.Where(e => e.Kind == ChatTimelineItemKind.Reasoning).ToList();
+        Assert.Equal(2, reasoningEntries.Count);
+        Assert.Equal("first pass", reasoningEntries[0].Text);
+        Assert.Equal("second pass", reasoningEntries[1].Text);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ReasoningItemStart_IsIgnored()
+    {
+        // Only phase=end closes the bubble; phase=start is informational
+        // and must not produce a stray timeline entry.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item", """{"kind":"reasoning","phase":"start","itemId":"r1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"only pass"}"""));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatTimelineItemKind.Reasoning, entry.Kind);
+        Assert.Equal("only pass", entry.Text);
     }
 
     [Fact]
@@ -1107,7 +1799,14 @@ public class OpenClawChatDataProviderTests
     {
         var historyCalls = 0;
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
-        bridge.HistoryBehavior = _ => { historyCalls++; return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" }); };
+        var reloadObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = _ =>
+        {
+            historyCalls++;
+            if (historyCalls >= 2)
+                reloadObserved.TrySetResult();
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" });
+        };
 
         await provider.LoadAsync();
         await provider.LoadHistoryAsync("main");
@@ -1117,9 +1816,7 @@ public class OpenClawChatDataProviderTests
         bridge.RaiseStatus(ConnectionStatus.Disconnected);
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        // Give the fire-and-forget reload a moment to dispatch.
-        for (int i = 0; i < 50 && historyCalls < 2; i++)
-            await Task.Delay(20);
+        await reloadObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(2, historyCalls);
     }
@@ -1140,6 +1837,7 @@ public class OpenClawChatDataProviderTests
 
         // Already Connected → setting Connected again is a no-op.
         bridge.RaiseStatus(ConnectionStatus.Connected);
+        // slopwatch-ignore: SW004 Negative async assertion needs a brief quiescence window to prove no reload fired.
         for (int i = 0; i < 10; i++) await Task.Delay(10);
 
         Assert.Equal(1, historyCalls);
@@ -1164,6 +1862,28 @@ public class OpenClawChatDataProviderTests
 
         Assert.Equal(
             new[] { "gpt-5.4", "claude-sonnet-4.6", "ollama-only-id" },
+            snapshots[^1].AvailableModels);
+    }
+
+    [Fact]
+    public async Task ModelsListUpdated_FiltersExplicitlyUnconfiguredModels()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = new List<ModelInfo>
+            {
+                new() { Id = "gpt-5.4", IsConfigured = true, HasConfiguredFlag = true },
+                new() { Id = "gpt-5.5", IsConfigured = false, HasConfiguredFlag = true },
+                new() { Id = "legacy-gateway-model" }
+            }
+        });
+
+        Assert.Equal(
+            new[] { "gpt-5.4", "legacy-gateway-model" },
             snapshots[^1].AvailableModels);
     }
 
@@ -1839,6 +2559,120 @@ public class OpenClawChatDataProviderTests
         Assert.Contains("test.txt", userEntry.Text);
     }
 
+    [Fact]
+    public async Task AttachmentMetadata_PersistsAndRehydratesFromHistory()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "Check this", default, new[]
+        {
+            new ChatAttachment
+            {
+                Type = "file",
+                MimeType = "text/plain",
+                FileName = "test.txt",
+                Content = Convert.ToBase64String(new byte[] { 72, 105 }),
+                SizeBytes = 2
+            }
+        });
+
+        var (bridge2, provider2, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "Check this", State = "final", Ts = sentTs }
+            }
+        });
+
+        await provider2.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Check this\n\u200B📎 test.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_RehydratesAttachmentOnlyHistoryMessage()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "", default, new[]
+        {
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "screenshot.png",
+                Content = Convert.ToBase64String(new byte[] { 1, 2, 3 }),
+                SizeBytes = 3
+            }
+        });
+
+        var (bridge2, provider2, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "", State = "final", Ts = sentTs }
+            }
+        });
+
+        await provider2.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("\u200B🖼️ screenshot.png", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_DoesNotRehydratePastedMarkerTextWithoutSidecar()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "\u200B📎 spoof.txt", State = "final", Ts = 1 }
+            }
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("📎 spoof.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithoutAttachment_EscapesPastedMarkerText()
+    {
+        var (_, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        await provider.SendMessageAsync("main", "\u200B📎 spoof.txt");
+
+        var userEntry = snapshots[0].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("📎 spoof.txt", userEntry.Text);
+    }
+
     // ── Auto-reload on connect: OnSessionsUpdated eager history load ──
 
     [Fact]
@@ -1870,8 +2704,7 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseSessions(new[] { MainSession() });
 
-        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
-        Assert.Same(historyLoaded.Task, completed);
+        await historyLoaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Contains("main", historyRequested);
     }
@@ -1891,6 +2724,7 @@ public class OpenClawChatDataProviderTests
         // Status stays Disconnected, sessions arrive.
         bridge.RaiseSessions(new[] { MainSession() });
 
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(100);
 
         Assert.Empty(historyRequested);
@@ -1923,8 +2757,7 @@ public class OpenClawChatDataProviderTests
         };
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        var completed = await Task.WhenAny(historyLoaded.Task, Task.Delay(TimeSpan.FromSeconds(1)));
-        Assert.Same(historyLoaded.Task, completed);
+        await historyLoaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Contains("main", historyRequested);
     }
@@ -1935,6 +2768,7 @@ public class OpenClawChatDataProviderTests
     public async Task LoadHistoryAsync_WhenConnected_RetriesAfterFailure()
     {
         var calls = 0;
+        var retrySucceeded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
         bridge.HistoryBehavior = _ =>
         {
@@ -1942,6 +2776,7 @@ public class OpenClawChatDataProviderTests
             if (calls == 1)
                 throw new InvalidOperationException("gateway not ready");
 
+            retrySucceeded.TrySetResult();
             return Task.FromResult(new ChatHistoryInfo
             {
                 SessionKey = "main",
@@ -1964,8 +2799,7 @@ public class OpenClawChatDataProviderTests
             n.Kind == ChatProviderNotificationKind.Error &&
             n.Message?.Contains("gateway not ready") == true);
 
-        // Wait for the 2-second retry.
-        await Task.Delay(3000);
+        await retrySucceeded.Task.WaitAsync(TimeSpan.FromSeconds(4));
 
         // Retry should have succeeded.
         Assert.True(calls >= 2, $"Expected retry, got {calls} calls");
@@ -2139,6 +2973,36 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task KeylessEvents_DiagnosticResetsOnReconnect()
+    {
+        // The one-shot guard should be reset when the gateway reconnects so
+        // that a still-broken gateway surfaces the notification again in the
+        // new session instead of staying silent forever.
+        var (bridge, provider, _, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
+        await provider.LoadAsync();
+
+        // First keyless event — diagnostic fires once.
+        bridge.RaiseChat(new ChatMessageInfo { SessionKey = "", Role = "assistant", Text = "pre-reconnect drop" });
+        Assert.Single(notifications, n => n.Title == "Chat_Notification_KeylessEventDropped");
+
+        // Simulate gateway disconnect + reconnect.
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+
+        // After reconnect, the same keyless-event drop should fire the diagnostic again.
+        bridge.RaiseChat(new ChatMessageInfo { SessionKey = "", Role = "assistant", Text = "post-reconnect drop" });
+        Assert.Equal(2, notifications.Count(n => n.Title == "Chat_Notification_KeylessEventDropped"));
+        Assert.DoesNotContain(notifications, n =>
+            (n.Title?.Contains("pre-reconnect drop") ?? false) ||
+            (n.Message?.Contains("pre-reconnect drop") ?? false) ||
+            (n.Title?.Contains("post-reconnect drop") ?? false) ||
+            (n.Message?.Contains("post-reconnect drop") ?? false));
+    }
+
+    [Fact]
     public async Task AgentEvent_WithEmptySessionKey_IsDroppedAndDiagnosed()
     {
         var (bridge, provider, snapshots, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
@@ -2221,11 +3085,280 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("agent:main:main", snap.DefaultThreadId);
     }
 
+    // ─── RespondToPermissionAsync routes through the RPC bridge ────────────
+    // These tests pin the slash-command → RPC behavioral pivot. The old code
+    // sent ``/approve <id> <decision>`` as chat input, which deadlocked
+    // because the agent was blocked on the approval. The new code calls
+    // bridge.ResolveExecApprovalAsync. If a refactor reintroduces a slash
+    // command path here, these tests fail.
+    // ──────────────────────────────────────────────────────────────────────
+
+    private static AgentEventInfo MakeApprovalRequestedEvent(string approvalId, string sessionKey = "main")
+        => MakeApprovalRequestedEventWithIds(approvalId, approvalId, sessionKey);
+
+    private static AgentEventInfo MakeApprovalRequestedEventWithIds(
+        string approvalId,
+        string? approvalSlug,
+        string sessionKey = "main",
+        string title = "Exec approval")
+    {
+        var json = $$"""
+            {
+              "phase": "requested",
+              "approvalId": "{{approvalId}}",
+              "approvalSlug": "{{approvalSlug ?? ""}}",
+              "host": "gateway",
+              "command": "openclaw nodes invoke --node \"Windows Node\" --command system.run",
+              "title": "{{title}}",
+              "message": "Approve this exec?",
+              "agentId": "main"
+            }
+            """;
+        return MakeAgentEvent("approval", json, sessionKey: sessionKey);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_AllowRoutesAllowOnceThroughRpcAndClearsBanner()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-allow-1"));
+        // Banner must be visible before the response.
+        Assert.NotNull(snapshots[^1].Timelines["main"].PendingPermission);
+
+        await provider.RespondToPermissionAsync("main", "appr-allow-1", allow: true);
+
+        // RPC was called with allow-once (NOT a slash command).
+        Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal("appr-allow-1", bridge.ResolvedApprovals[0].Id);
+        Assert.Equal("allow-once", bridge.ResolvedApprovals[0].Decision);
+
+        // No chat message was sent (would mean a slash-command regression).
+        Assert.Empty(bridge.SentMessages);
+
+        // Banner cleared on success.
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_DenyRoutesDenyThroughRpcAndClearsBanner()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-deny-1"));
+        Assert.NotNull(snapshots[^1].Timelines["main"].PendingPermission);
+
+        await provider.RespondToPermissionAsync("main", "appr-deny-1", allow: false);
+
+        Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal("appr-deny-1", bridge.ResolvedApprovals[0].Id);
+        Assert.Equal("deny", bridge.ResolvedApprovals[0].Decision);
+        Assert.Empty(bridge.SentMessages);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_RpcThrows_BannerPreservedForRetry()
+    {
+        // Critical contract: if ResolveExecApprovalAsync throws (e.g. gateway
+        // disconnected, see OpenClawGatewayClient.ResolveExecApprovalAsync's
+        // explicit IsConnected guard), the banner MUST remain so the user can
+        // retry. Clearing it would silently swallow the failure and leave
+        // the agent waiting on an approval the user has no way to re-issue.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-fail-1"));
+        var before = snapshots[^1].Timelines["main"].PendingPermission;
+        Assert.NotNull(before);
+
+        bridge.ResolveApprovalBehavior = (_, _) =>
+            Task.FromException(new InvalidOperationException("gateway not connected"));
+
+        await provider.RespondToPermissionAsync("main", "appr-fail-1", allow: true);
+
+        Assert.Single(bridge.ResolvedApprovals);
+        // Banner preserved on failure — the matching pending request is still there.
+        var after = snapshots[^1].Timelines["main"].PendingPermission;
+        Assert.NotNull(after);
+        Assert.Equal("appr-fail-1", after!.RequestId);
+    }
+
+    [Fact]
+    public async Task ResolvedEcho_WithAllowDecision_MarksEntryAllowedNotExpired()
+    {
+        // Regression for the "approvals always render Expired" race: the
+        // gateway broadcasts exec.approval.resolved on the same WebSocket the
+        // RPC response travels on, and the echo typically wins the race. The
+        // terminal-phase handler must honor the gateway's actual decision
+        // (phase="resolved" → Allowed) rather than the legacy default Expired,
+        // otherwise ResolvePermission's no-overwrite guard then blocks the
+        // user-click stamp from ever landing.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-allow"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent("appr-echo-allow", phase: "resolved"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ResolvedEcho_WithDenyDecision_MarksEntryDeniedNotExpired()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-deny"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent("appr-echo-deny", phase: "denied"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Denied, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ResolvedEcho_WithNonDecidedTerminalPhase_StaysExpired()
+    {
+        // Phases that aren't allow/deny (aborted, canceled, expired, timeout,
+        // error) collapse to Expired — the "decided elsewhere or never
+        // decided" badge. Spot-check one of them.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-expired"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent("appr-echo-expired", phase: "expired"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Expired, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ApprovalRequested_DedupesUuidFirstSlugTwin_AndSlugOnlyResolvedClearsBanner()
+    {
+        // Regression for the second "one Expired, one Allowed" root cause:
+        // the top-level translator can emit a UUID-only requested event before
+        // the agent-stream slug+UUID twin. Suppressing that twin must still
+        // record slug<->UUID linkage so a later slug-only terminal echo clears
+        // the original UUID-keyed banner.
+        const string uuid = "8653b04d-fa8f-4188-9f22-c1c4f08fe6b8";
+        const string slug = "8653b04d";
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: ""));
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: slug, title: "Command approval requested"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(uuid, entry.PermissionRequestId);
+        Assert.Equal(uuid, snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        bridge.RaiseAgent(MakeApprovalResolvedEvent(approvalId: "", phase: "resolved", approvalSlug: slug));
+
+        entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ApprovalRequested_DedupesSlugFirstUuidTwin_AndUuidOnlyResolvedClearsBanner()
+    {
+        // Covers the reverse ordering: if the slug+UUID stream wins first,
+        // the UUID-only top-level twin must not render a duplicate, and a
+        // UUID-only terminal echo must still resolve the slug-keyed banner.
+        const string uuid = "b4fd7109-4b8f-4706-8d47-ec7963e65d8d";
+        const string slug = "b4fd7109";
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: slug, title: "Command approval requested"));
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(uuid, approvalSlug: ""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(slug, entry.PermissionRequestId);
+        Assert.Equal(slug, snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        bridge.RaiseAgent(MakeApprovalResolvedEvent(approvalId: uuid, phase: "resolved", approvalSlug: ""));
+
+        entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    private static AgentEventInfo MakeApprovalResolvedEvent(
+        string approvalId,
+        string phase,
+        string sessionKey = "main",
+        string? approvalSlug = null)
+    {
+        // Mirrors the flat envelope that OpenClawGatewayClient.HandleExecApprovalEvent
+        // synthesizes from a top-level exec.approval.resolved broadcast.
+        var json = $$"""
+            {
+              "phase": "{{phase}}",
+              "approvalId": "{{approvalId}}",
+              "approvalSlug": "{{approvalSlug ?? approvalId}}",
+              "host": "gateway",
+              "command": "openclaw nodes invoke --node \"Windows Node\" --command system.run",
+              "agentId": "main"
+            }
+            """;
+        return MakeAgentEvent("approval", json, sessionKey: sessionKey);
+    }
+
+    [Fact]
+    public void LoadLastChatState_WithCorruptedJson_ReturnsNull()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        File.WriteAllText(path, "{not json");
+
+        var state = OpenClawChatDataProvider.LoadLastChatState(path);
+
+        Assert.Null(state);
+    }
+
     private sealed class TestLogger : OpenClaw.Shared.IOpenClawLogger
     {
         public void Debug(string message) { }
         public void Info(string message) { }
         public void Warn(string message) { }
         public void Error(string message, Exception? ex = null) { }
+    }
+
+    private sealed class TempDirectory : IDisposable
+    {
+        public string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), "openclaw-chat-attachments-" + Guid.NewGuid().ToString("N"));
+
+        public TempDirectory()
+        {
+            Directory.CreateDirectory(DirectoryPath);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(DirectoryPath))
+                    Directory.Delete(DirectoryPath, recursive: true);
+            }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            catch
+            {
+                // Test cleanup is best-effort.
+            }
+        }
     }
 }

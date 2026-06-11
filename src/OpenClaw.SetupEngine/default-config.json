@@ -4,7 +4,7 @@
   "DistroName": "OpenClawGateway",
   // Gateway WebSocket port (tray connects here)
   "GatewayPort": 18789,
-  // Base Ubuntu distro to export/import from
+  // Ubuntu release to install as a fresh app-owned WSL gateway distro
   "BaseDistro": "Ubuntu-24.04",
   // Run without UI prompts
   "Headless": true,
@@ -73,7 +73,7 @@
     "Bind": "loopback",
     // Override CLI install script URL (null = https://openclaw.ai/install-cli.sh)
     "InstallUrl": null,
-    // Pin gateway version (null = latest)
+    // Pin gateway version (null = use GatewayLkgVersion.cs embedded LKG)
     "Version": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,

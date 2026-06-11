@@ -546,36 +546,44 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void DirectCopyDebugBundle_RemainsSummaryOnly_NotLogTailBundle()
+    public void CommandCenterTextHelper_DebugBundle_IncludesSanitizedTrayLogTail()
     {
-        var service = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsClipboardService.cs");
-        var copyDebugStart = service.IndexOf("public void CopyDebugBundle()", StringComparison.Ordinal);
-        Assert.True(copyDebugStart >= 0, "CopyDebugBundle must exist.");
-        var copyDebugBody = service.Substring(copyDebugStart, Math.Min(260, service.Length - copyDebugStart));
+        var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "CommandCenterTextHelper.cs");
+        Assert.Contains("Recent Tray Log", helper);
+        Assert.Contains("BuildRecentTrayLogTail(Logger.LogFilePath)", helper);
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(line)", helper);
+        Assert.Contains("RecentTrayLogTailLines", helper);
+        Assert.Contains("RecentTrayLogMaxChars", helper);
+        Assert.Contains("FileShare.ReadWrite | FileShare.Delete", helper);
+    }
 
-        Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", copyDebugBody);
-        Assert.DoesNotContain("DiagnosticsBundleBuilder.Build", copyDebugBody);
+    [Fact]
+    public void TrayLogWriters_SanitizeSensitiveValuesBeforeWriting()
+    {
+        var logger = Read("src", "OpenClaw.Tray.WinUI", "Services", "Logger.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(message)", logger);
 
+        var diagnosticsJsonl = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsJsonlService.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage(JsonSerializer.Serialize(record))", diagnosticsJsonl);
+
+        var crashLogger = Read("src", "OpenClaw.Tray.WinUI", "Services", "AppCrashLogger.cs");
+        Assert.Contains("TokenSanitizer.SanitizeLogMessage", crashLogger);
+    }
+
+    [Fact]
+    public void FullDiagnosticsBundle_IsOnlyBuiltForPreviewDialog()
+    {
         var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("OnCreateDiagnosticsBundle", page);
+        Assert.Contains("DiagnosticsBundleBuilder.Build", page);
+        Assert.Contains("ShowBundlePreviewAsync", page);
+
         var handlerStart = page.IndexOf("private void OnCopyDebugBundle", StringComparison.Ordinal);
         Assert.True(handlerStart >= 0, "OnCopyDebugBundle must exist.");
         var handlerBody = page.Substring(handlerStart, Math.Min(260, page.Length - handlerStart));
 
         Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", handlerBody);
         Assert.DoesNotContain("DiagnosticsBundleBuilder.Build", handlerBody);
-
-        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
-        Assert.Contains("Copy summary debug bundle", xaml);
-        Assert.Contains("excludes log tails", xaml);
-    }
-
-    [Fact]
-    public void FullLogTailBundle_IsOnlyBuiltForPreviewDialog()
-    {
-        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
-        Assert.Contains("OnCreateDiagnosticsBundle", page);
-        Assert.Contains("DiagnosticsBundleBuilder.Build", page);
-        Assert.Contains("ShowBundlePreviewAsync", page);
     }
 
     [Fact]

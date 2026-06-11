@@ -32,6 +32,7 @@ internal sealed class TestApp : Application
         {
             Resources.MergedDictionaries.Add(new Microsoft.UI.Xaml.Controls.XamlControlsResources());
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
         {
             // If XamlControlsResources can't load (rare; missing assembly), keep
@@ -55,6 +56,7 @@ internal sealed class TestApp : Application
         {
             Resources[key] = XamlReader.Load(xaml);
         }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
         {
             // best-effort; missing key just means renderers fall back.

@@ -7,7 +7,27 @@ namespace OpenClaw.SetupEngine;
 
 public sealed record CommandResult(int ExitCode, string Stdout, string Stderr, TimeSpan Elapsed, bool TimedOut);
 
-public sealed class CommandRunner
+public interface ICommandRunner
+{
+    Task<CommandResult> RunAsync(
+        string executable,
+        string[] arguments,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment = null,
+        string? workingDirectory = null,
+        string? stdinInput = null,
+        CancellationToken ct = default);
+
+    Task<CommandResult> RunInWslAsync(
+        string distroName,
+        string command,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment = null,
+        CancellationToken ct = default,
+        string? user = null);
+}
+
+public sealed class CommandRunner : ICommandRunner
 {
     private readonly SetupLogger _logger;
     private const int DrainTimeoutMs = 5000; // bounded drain for orphan WSL processes
@@ -156,7 +176,12 @@ public sealed class CommandRunner
 
     private static void TryKill(Process process)
     {
-        try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+        try { process.Kill(entireProcessTree: true); }
+        catch (Exception ex)
+        {
+            // Best effort — process may already be exiting; no logger in this static helper.
+            Trace.WriteLine($"CommandRunner.TryKill: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private sealed class BoundedOutputBuffer(int maxChars)

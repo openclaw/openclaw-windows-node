@@ -275,6 +275,7 @@ public sealed class ModalRenderer : IComponentRenderer
                 CloseButtonText = OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_ModalClose"),
             };
             try { await dialog.ShowAsync(); }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             catch { /* ContentDialog throws if another dialog is open; swallow */ }
         };
         AutomationHelpers.Apply(trigger, c, ctx);

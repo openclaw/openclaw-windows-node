@@ -24,6 +24,8 @@ public sealed class ExecApprovalEvaluation
     public IReadOnlyList<string> AllowAlwaysPatterns { get; }
     public IReadOnlyList<ExecAllowlistEntry> AllowlistMatches { get; }
 
+    public bool AllAllowlistResolutionsMatched { get; }
+
     // true iff security==allowlist && resolutions.Count>0 && matches.Count==resolutions.Count.
     // Research doc 06 derivation rule — must not be re-derived outside the constructor.
     public bool AllowlistSatisfied { get; }
@@ -70,9 +72,9 @@ public sealed class ExecApprovalEvaluation
 
         Resolution = allowlistResolutions.Count > 0 ? allowlistResolutions[0] : (ExecCommandResolution?)null;
 
-        AllowlistSatisfied = security == ExecSecurity.Allowlist
-            && allowlistResolutions.Count > 0
+        AllAllowlistResolutionsMatched = allowlistResolutions.Count > 0
             && allowlistMatches.Count == allowlistResolutions.Count;
+        AllowlistSatisfied = security == ExecSecurity.Allowlist && AllAllowlistResolutionsMatched;
 
         AllowlistMatch = AllowlistSatisfied ? allowlistMatches[0] : null;
     }

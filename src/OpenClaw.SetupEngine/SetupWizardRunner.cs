@@ -19,7 +19,7 @@ public sealed class SetupWizardRunner
 
     public async Task<StepResult> RunAsync(CancellationToken ct)
     {
-        var registry = new GatewayRegistry(_ctx.DataDir);
+        var registry = new GatewayRegistry(_ctx.DataDir, logger: new SetupOpenClawLogger(_ctx.Logger));
         registry.Load();
 
         var record = !string.IsNullOrWhiteSpace(_ctx.GatewayRecordId)
@@ -165,6 +165,7 @@ public sealed class SetupWizardRunner
                     restartAttempts++;
                     _ctx.Logger.Warn($"Gateway restarted during wizard; reconnecting and replaying answers (attempt {restartAttempts}/2): {ex.Message}");
 
+                    // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                     try { await client.DisconnectAsync(); } catch { }
                     client.Dispose();
 
@@ -279,7 +280,7 @@ public sealed class SetupWizardRunner
             Steps = discoveredSteps
         };
 
-        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(template, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(basePath, json);
         _ctx.Logger.Info($"Wizard answer template written: {basePath}");
         return basePath;
@@ -336,18 +337,7 @@ public sealed class SetupWizardRunner
 
     private static object AnswerValueForWire(WizardPayload step, string answer)
     {
-        if (step.StepType == "confirm" && bool.TryParse(answer, out var booleanAnswer))
-            return booleanAnswer;
-
-        if (step.StepType == "multiselect")
-        {
-            if (string.Equals(answer, "__skip__", StringComparison.Ordinal))
-                return new[] { "__skip__" };
-
-            return SplitMultiSelect(answer);
-        }
-
-        return answer;
+        return WizardAnswerBuilder.BuildWireValue(step.StepType, answer, step.Options);
     }
 
     private static string? InferTextAnswer(WizardPayload step)
@@ -365,7 +355,7 @@ public sealed class SetupWizardRunner
     {
         if (step.StepType == "select")
         {
-            if (!step.Options.Any(o => string.Equals(o.Value, answer, StringComparison.Ordinal)))
+            if (!WizardAnswerBuilder.TryFindOption(step.Options, answer, out _))
             {
                 var source = configuredAnswer ? "configured" : "default";
                 return AnswerResolution.Fail($"The {source} answer for wizard step '{step.StepId}' is not one of the gateway-provided options.");
@@ -373,14 +363,11 @@ public sealed class SetupWizardRunner
         }
         else if (step.StepType == "multiselect")
         {
-            var values = SplitMultiSelect(answer);
-            if (values.Length == 0)
+            if (!WizardAnswerBuilder.TryResolveOptions(step.Options, answer, out var values))
                 return AnswerResolution.Fail($"Gateway wizard step '{step.StepId}' requires at least one selected value.");
 
-            var validValues = step.Options.Select(o => o.Value).ToHashSet(StringComparer.Ordinal);
-            var invalid = values.FirstOrDefault(v => !validValues.Contains(v));
-            if (invalid != null)
-                return AnswerResolution.Fail($"Wizard step '{step.StepId}' has invalid selected value '{invalid}'.");
+            if (values.Length == 0)
+                return AnswerResolution.Fail($"Gateway wizard step '{step.StepId}' requires at least one selected value.");
         }
 
         return AnswerResolution.Ok(answer);
@@ -462,9 +449,6 @@ public sealed class SetupWizardRunner
         return !string.IsNullOrWhiteSpace(messageKey) ? messageKey : stepId;
     }
 
-    private static string[] SplitMultiSelect(string stepInput) =>
-        stepInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
     private static string NormalizeKey(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -479,8 +463,6 @@ public sealed class SetupWizardRunner
         public static AnswerResolution Fail(string error) => new(false, false, "", error);
     }
 
-    private sealed record WizardOption(string Value, string Label, string Hint);
-
     private sealed record WizardPayload(
         bool IsDone,
         string? SessionId,
@@ -492,7 +474,7 @@ public sealed class SetupWizardRunner
         bool Sensitive,
         int StepIndex,
         int TotalSteps,
-        IReadOnlyList<WizardOption> Options,
+        IReadOnlyList<WizardOptionValue> Options,
         string? Error)
     {
         public static WizardPayload Parse(JsonElement payload)
@@ -521,30 +503,14 @@ public sealed class SetupWizardRunner
                 var title = step.TryGetProperty("title", out var titleProperty) ? titleProperty.ToString() : "";
                 var message = step.TryGetProperty("message", out var messageProperty) ? messageProperty.ToString() : "";
                 var stepId = step.TryGetProperty("id", out var idProperty) ? idProperty.ToString() : "";
-                var initialValue = step.TryGetProperty("initialValue", out var initialProperty) ? initialProperty.ToString() : "";
+                var initialValue = step.TryGetProperty("initialValue", out var initialProperty)
+                    ? WizardAnswerBuilder.ValueKey(initialProperty)
+                    : "";
                 var sensitive = step.TryGetProperty("sensitive", out var sensitiveProperty) && sensitiveProperty.ValueKind == JsonValueKind.True;
                 var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
                 var totalSteps = payload.TryGetProperty("totalSteps", out var totalProperty) && totalProperty.TryGetInt32(out var total) ? total : 0;
 
-                var options = new List<WizardOption>();
-                if (step.TryGetProperty("options", out var optionsProperty) && optionsProperty.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var option in optionsProperty.EnumerateArray())
-                    {
-                        if (option.ValueKind == JsonValueKind.Object)
-                        {
-                            var label = option.TryGetProperty("label", out var labelProperty) ? labelProperty.ToString() : "";
-                            var value = option.TryGetProperty("value", out var valueProperty) ? valueProperty.ToString() : label;
-                            var hint = option.TryGetProperty("hint", out var hintProperty) ? hintProperty.ToString() : "";
-                            options.Add(new(value, label, hint));
-                        }
-                        else
-                        {
-                            var value = option.ToString();
-                            options.Add(new(value, value, ""));
-                        }
-                    }
-                }
+                var options = WizardAnswerBuilder.ReadOptions(step);
 
                 return new(false, sessionId, stepId, type, title, message, initialValue, sensitive, stepIndex, totalSteps, options, null);
             }
@@ -564,7 +530,7 @@ public sealed class SetupWizardRunner
         string Message,
         bool Sensitive,
         string? SuggestedAnswer,
-        IReadOnlyList<WizardOption> Options)
+        IReadOnlyList<WizardOptionValue> Options)
     {
         public static WizardTemplateStep From(WizardPayload payload)
         {

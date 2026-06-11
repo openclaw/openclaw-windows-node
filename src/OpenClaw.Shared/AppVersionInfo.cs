@@ -7,8 +7,7 @@ namespace OpenClaw.Shared;
 /// Single source of truth for the OpenClaw Companion app version that is
 /// surfaced to users. Reads <see cref="AssemblyInformationalVersionAttribute"/>
 /// (or falls back to <c>AssemblyVersion</c>) from the tray executable so every
-/// UI/diagnostic/handshake site reports the same number driven by the csproj
-/// <c>&lt;Version&gt;</c> property.
+/// UI/diagnostic/handshake site reports the same GitVersion-derived value.
 /// </summary>
 /// <remarks>
 /// Under <c>dotnet test</c> and inside CLI siblings, <see cref="Assembly.GetEntryAssembly"/>
@@ -29,10 +28,10 @@ public static class AppVersionInfo
     /// </summary>
     internal static string? TestOverride { get; set; }
 
-    /// <summary>Bare version string, e.g. <c>"0.4.7"</c>.</summary>
+    /// <summary>Bare version string, e.g. <c>"1.2.3-alpha.4"</c>.</summary>
     public static string Version => TestOverride ?? _version;
 
-    /// <summary>Version prefixed with <c>v</c>, e.g. <c>"v0.4.7"</c>.</summary>
+    /// <summary>Version prefixed with <c>v</c>, e.g. <c>"v1.2.3-alpha.4"</c>.</summary>
     public static string DisplayVersion => "v" + Version;
 
     private static string ResolveVersion()
@@ -48,7 +47,7 @@ public static class AppVersionInfo
                 ?.InformationalVersion;
             if (!string.IsNullOrWhiteSpace(informational))
             {
-                return NormalizeSemVer(informational);
+                return NormalizeInformationalVersion(informational);
             }
 
             var name = assembly.GetName().Version;
@@ -82,20 +81,12 @@ public static class AppVersionInfo
         return null;
     }
 
-    private static string NormalizeSemVer(string s)
+    internal static string NormalizeInformationalVersion(string s)
     {
-        // Strip SourceLink build metadata, e.g. "0.4.7+abc123" -> "0.4.7".
+        // Strip SourceLink/GitVersion build metadata while preserving prerelease labels.
         var plus = s.IndexOf('+');
         if (plus >= 0) s = s.Substring(0, plus);
-
-        // Strip the SemVer pre-release suffix, e.g. "0.4.7-beta.1" -> "0.4.7".
-        // This keeps the UI string aligned with Updatum, which compares the
-        // numeric AssemblyVersion only. Revisit if pre-release labels should
-        // ever be surfaced to users.
-        var dash = s.IndexOf('-');
-        if (dash >= 0) s = s.Substring(0, dash);
 
         return s;
     }
 }
-

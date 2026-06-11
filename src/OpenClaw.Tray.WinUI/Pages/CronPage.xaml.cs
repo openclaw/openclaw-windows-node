@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -17,7 +18,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class CronPage : Page
 {
-    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current;
+    private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private List<CronJobViewModel> _jobs = new();
     private Border? _editingCard = null; // card hidden during inline edit
@@ -40,7 +41,7 @@ public sealed partial class CronPage : Page
     public void Initialize()
     {
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
-        _appState = CurrentApp.AppState;
+        _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         var client = CurrentApp.GatewayClient;
         if (client != null)
@@ -128,7 +129,7 @@ public sealed partial class CronPage : Page
         var vm = _jobs.Find(j => j.Id == jobId);
         if (vm != null && !vm.IsEnabled) return;
         _runningJobIds.Add(jobId);
-        btn!.Content = "Running...";
+        btn!.Content = LocalizationHelper.GetString("CronPage_Running");
         btn.IsEnabled = false;
 
         CurrentApp.GatewayClient.RunCronJobAsync(jobId).ContinueWith(t =>
@@ -139,7 +140,8 @@ public sealed partial class CronPage : Page
                 DispatcherQueue?.TryEnqueue(() =>
                 {
                     _runningJobIds.Remove(jobId);
-                    _ = CurrentApp.GatewayClient?.RequestCronListAsync();
+                    var client = CurrentApp.GatewayClient;
+                    if (client != null) _ = client.RequestCronListAsync();
                 });
             }
         });
@@ -153,7 +155,8 @@ public sealed partial class CronPage : Page
                 DispatcherQueue?.TryEnqueue(() =>
                 {
                     _runningJobIds.Remove(jobId);
-                    _ = CurrentApp.GatewayClient?.RequestCronListAsync();
+                    var client = CurrentApp.GatewayClient;
+                    if (client != null) _ = client.RequestCronListAsync();
                 });
             }
         });
@@ -194,8 +197,8 @@ public sealed partial class CronPage : Page
         _editingJobId = null;
         RestoreFormFromInline(); // ensure form is back in its home position
         ResetForm();
-        FormTitle.Text = "New Job";
-        FormSaveButton.Content = "Create Job";
+        FormTitle.Text = LocalizationHelper.GetString("CronPage_NewJobTitle");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_CreateJobLabel");
         JobFormPanel.Visibility = Visibility.Visible;
     }
 
@@ -209,8 +212,8 @@ public sealed partial class CronPage : Page
         if (vm == null || !vm.IsEnabled) return;
 
         _editingJobId = jobId;
-        FormTitle.Text = "Edit Job";
-        FormSaveButton.Content = "Save Changes";
+        FormTitle.Text = LocalizationHelper.GetString("CronPage_EditJob");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_SaveChanges");
 
         // Populate form fields from VM
         FormName.Text = vm.Name;
@@ -514,8 +517,8 @@ public sealed partial class CronPage : Page
         _infoDismissCts = new CancellationTokenSource();
         var cts = _infoDismissCts;
 
-        JobCompletedInfoBar.Title = "Job completed";
-        JobCompletedInfoBar.Message = $"\"{jobName}\" ran successfully and was removed.";
+        JobCompletedInfoBar.Title = LocalizationHelper.GetString("CronPage_JobCompleted");
+        JobCompletedInfoBar.Message = LocalizationHelper.Format("CronPage_JobCompletedRanSuccessfully", jobName);
         JobCompletedInfoBar.IsOpen = true;
         DispatcherQueue?.TryEnqueue(async () =>
         {
@@ -860,8 +863,8 @@ public sealed partial class CronPage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load cron jobs.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("CronPage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("CronPage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
     }
