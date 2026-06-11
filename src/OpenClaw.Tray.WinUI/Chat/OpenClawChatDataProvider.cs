@@ -61,6 +61,7 @@ internal static class LocalizationHelper
 /// </remarks>
 public sealed class OpenClawChatDataProvider : IChatDataProvider
 {
+    private const long ResetTimestampToleranceMs = 1000;
     /// <summary>
     /// Process-wide cache mapping an attachment's filename to its raw image
     /// bytes. Populated by <see cref="SendMessageAsync"/> for image
@@ -94,6 +95,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly Dictionary<string, string> _sessionIds = new();      // sessionKey → immutable sessionId
     private readonly HashSet<string> _historyLoaded = new();              // sessionKey
     private readonly HashSet<string> _historyInFlight = new();            // sessionKey
+    private readonly Dictionary<string, long> _resetVersions = new(); // sessionKey -> reset generation
+    private readonly Dictionary<string, long> _resetCutoffUtcMs = new(); // sessionKey -> local reset time
+    private readonly HashSet<string> _resetAwaitingUserMessage = new(); // threads reset and waiting for first post-reset turn
+    private readonly Dictionary<string, HashSet<string>> _resetIgnoredRunIds = new(); // sessionKey -> pre-reset run IDs to drop
+    private readonly Dictionary<string, HashSet<string>> _resetAcceptedRunIds = new(); // sessionKey -> post-reset run IDs allowed to open the gate
+    private readonly Dictionary<string, long> _resetLocalSendWithoutRunVersions = new(); // sessionKey -> reset generation for no-runId sends
+    private readonly Dictionary<string, long> _resetLocalSendWithoutRunStartSequences = new(); // sessionKey -> lifecycle sequence at local send start
+    private readonly Dictionary<string, long> _resetLocalEchoSequences = new(); // sessionKey -> lifecycle sequence when local echo was observed
+    private readonly Dictionary<string, List<PendingResetLifecycleStart>> _resetPendingLifecycleStarts = new(); // sessionKey -> lifecycle.start seen before proof
+    private readonly HashSet<string> _resetRemoteBackfillInFlight = new(); // threads proving a timestamp-less remote user frame via history
+    private long _resetLifecycleStartSequence;
+    private readonly HashSet<string> _resetRemoteUserSeen = new(); // threads with a fresh remote post-reset user frame
+    private readonly Dictionary<string, string> _resetClearedSessionIds = new(); // sessionKey -> sessionId cleared by reset
     // Per-session cache of tool metadata from live SSE events.
     // Keyed by gateway sessionId (immutable UUID).  Persisted to disk
     // so that history reconstruction on restart can recover tool names.
@@ -185,6 +199,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         _bridge.StatusChanged += OnStatusChanged;
         _bridge.SessionsUpdated += OnSessionsUpdated;
+        _bridge.SessionCommandCompleted += OnSessionCommandCompleted;
         _bridge.ChatMessageReceived += OnChatMessageReceived;
         _bridge.AgentEventReceived += OnAgentEventReceived;
         _bridge.ModelsListUpdated += OnModelsListUpdated;
@@ -261,8 +276,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // 1. Optimistically add the user message + flag turn active.
         ChatDataSnapshot snapshot;
         string? sessionId;
+        long sendResetVersion;
+        long sendStartedLifecycleSequence;
         lock (_gate)
         {
+            sendResetVersion = GetResetVersionLocked(threadId);
+            sendStartedLifecycleSequence = _resetLifecycleStartSequence;
             var current = GetOrCreateTimelineLocked(threadId);
             var beforeNextId = current.NextId;
             _timelines[threadId] = ChatTimelineReducer.AddLocalUser(current, displayText, nonce);
@@ -297,22 +316,56 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // 2. Send to gateway.
         try
         {
-            await _bridge.SendChatMessageAsync(trimmed, threadId, sessionId, attachments);
-            if (hasAttachments)
-                CacheAttachmentMeta(sessionId, threadId, trimmed, attachments!, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            var sendResult = await _bridge.SendChatMessageForRunAsync(trimmed, threadId, sessionId, attachments);
+            bool sendStillCurrent;
+            lock (_gate)
+            {
+                sendStillCurrent = GetResetVersionLocked(threadId) == sendResetVersion;
+                if (!sendStillCurrent)
+                {
+                    if (!string.IsNullOrEmpty(sendResult.RunId))
+                        AddResetIgnoredRunIdLocked(threadId, sendResult.RunId!);
+                }
+                else if (!string.IsNullOrEmpty(sendResult.RunId))
+                {
+                    AddResetAcceptedRunIdLocked(threadId, sendResult.RunId!);
+                }
+                else if (_resetAwaitingUserMessage.Contains(threadId))
+                {
+                    _resetLocalSendWithoutRunVersions[threadId] = sendResetVersion;
+                    _resetLocalSendWithoutRunStartSequences[threadId] = sendStartedLifecycleSequence;
+                    TryOpenResetGateFromPendingLifecycleLocked(threadId, acceptedRunId: null);
+                }
+            }
+
+            if (hasAttachments && sendStillCurrent)
+                CacheAttachmentMeta(sessionId, threadId, trimmed, attachments!, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), sendResetVersion);
         }
         catch (Exception ex)
         {
+            bool sendStillCurrent;
+            ChatDataSnapshot? failureSnapshot = null;
             lock (_gate)
             {
-                RemovePendingLocalEchoLocked(threadId, trimmed);
-                _locallyInitiatedThreads.Remove(threadId);
+                sendStillCurrent = GetResetVersionLocked(threadId) == sendResetVersion;
+                if (sendStillCurrent)
+                {
+                    RemovePendingLocalEchoLocked(threadId, trimmed);
+                    _locallyInitiatedThreads.Remove(threadId);
+                    failureSnapshot = ApplyEventLocked(
+                        threadId,
+                        TruncateChatEvent(new ChatErrorEvent($"Send failed: {ex.Message}")),
+                        meta: null);
+                    failureSnapshot = ApplyEventLocked(threadId, new ChatTurnEndEvent(), meta: null);
+                }
             }
+
+            if (!sendStillCurrent)
+                return;
 
             // Surface as an error in the timeline + notification — keeps the
             // user message visible so they can edit/retry.
-            ApplyEventAndPublish(threadId, new ChatErrorEvent($"Send failed: {ex.Message}"));
-            ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
+            Publish(failureSnapshot!);
             RaiseNotification(new ChatProviderNotification(
                 ChatProviderNotificationKind.Error, threadId, LocalizationHelper.GetString("Chat_Notification_SendFailed"), ex.Message));
             throw;
@@ -400,10 +453,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(threadId)) return;
 
+        long requestResetVersion;
         lock (_gate)
         {
             if (!force && _historyLoaded.Contains(threadId)) return;
             if (!_historyInFlight.Add(threadId)) return; // another loader already in progress
+            requestResetVersion = GetResetVersionLocked(threadId);
         }
 
         try
@@ -413,6 +468,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ChatDataSnapshot snapshot;
             lock (_gate)
             {
+                if (GetResetVersionLocked(threadId) != requestResetVersion)
+                {
+                    Logger.Info($"[ChatHistory] Ignoring stale history for reset thread '{threadId}'");
+                    return;
+                }
+
                 if (!string.IsNullOrEmpty(history.SessionId))
                     _sessionIds[threadId] = history.SessionId!;
 
@@ -458,7 +519,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
                 // Load cached tool metadata for this session to restore tool names
                 // that the gateway strips from history responses.
-                var cachedTools = GetCachedToolMetaForSession(history.SessionId);
+                var cachedTools = GetCachedToolMetaForSession(history.SessionId, threadId);
                 if (cachedTools is not null)
                     Logger.Info($"[ChatHistory] Found {cachedTools.Count} cached tool metadata entries for session");
 
@@ -980,6 +1041,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         SaveToolMetaCache();
         _bridge.StatusChanged -= OnStatusChanged;
         _bridge.SessionsUpdated -= OnSessionsUpdated;
+        _bridge.SessionCommandCompleted -= OnSessionCommandCompleted;
         _bridge.ChatMessageReceived -= OnChatMessageReceived;
         _bridge.AgentEventReceived -= OnAgentEventReceived;
         _bridge.ModelsListUpdated -= OnModelsListUpdated;
@@ -1105,6 +1167,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         lock (_gate)
         {
             _sessions = sessions ?? Array.Empty<SessionInfo>();
+            SeedSessionIdsFromSessionsLocked(_sessions);
             _sessionsListReceived = true;
             EnsureTimelinesForSessionsLocked();
             snapshot = BuildSnapshotLocked();
@@ -1135,6 +1198,27 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             _ = LoadHistoryAsync(threadId, force: false);
         }
+    }
+
+    private void OnSessionCommandCompleted(object? sender, SessionCommandResult result)
+    {
+        if (result is not { Ok: true } ||
+            !string.Equals(result.Method, "sessions.reset", StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(result.Key))
+        {
+            return;
+        }
+
+        ChatDataSnapshot snapshot;
+        ResetClearPersistence persistence;
+        lock (_gate)
+        {
+            persistence = ClearThreadHistoryAfterResetLocked(result.Key);
+            snapshot = BuildSnapshotLocked();
+        }
+
+        Publish(snapshot);
+        PersistClearedResetState(persistence);
     }
 
     private void OnModelsListUpdated(object? sender, ModelsListInfo info)
@@ -1203,17 +1287,39 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // Suppress chat messages for threads that were aborted by the user.
         // Chat messages don't carry a runId, so we use thread-level suppression.
         var msgThreadId = message.SessionKey;
+        var role = message.Role ?? "";
+        var roleLower = role.ToLowerInvariant();
+        var rawText = message.Text ?? string.Empty;
         lock (_gate)
         {
+            if (ShouldDropChatMessageAfterResetLocked(
+                msgThreadId,
+                roleLower,
+                rawText,
+                message.Ts,
+                out var consumeEchoText,
+                out var requestRemoteBackfill))
+            {
+                if (consumeEchoText is not null &&
+                    _localSentTexts.TryGetValue(msgThreadId, out var resetEchoQueue) &&
+                    resetEchoQueue.Count > 0)
+                {
+                    TryConsumeLocalEchoLocked(msgThreadId, resetEchoQueue, consumeEchoText);
+                }
+
+                if (requestRemoteBackfill)
+                    _ = FetchRemoteUserMessageAsync(msgThreadId, openResetGateOnSuccess: true);
+
+                Logger.Debug($"[Reset] Dropping stale chat message after reset for threadId='{msgThreadId}' role='{roleLower}'");
+                return;
+            }
+
             if (_abortedThreads.Contains(msgThreadId))
             {
                 Logger.Debug($"[ABORT] Suppressed ChatMessage for threadId='{msgThreadId}' (role={message.Role})");
                 return;
             }
         }
-
-        var role = message.Role ?? "";
-        var roleLower = role.ToLowerInvariant();
 
         // User messages from the SSE stream. System control notes are rendered
         // as dim status entries. Normal user messages: suppress echoes of
@@ -1229,7 +1335,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // this thread, render a dim audit-trail status so the user
             // can still see that an approval decision was made elsewhere
             // (preserves audit signal).
-            var rawText = message.Text ?? string.Empty;
             if (LooksLikeApprovalSlashCommand(rawText))
             {
                 var slashEcho = rawText.Trim();
@@ -1375,6 +1480,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
         var threadId = evt.SessionKey;
+
+        lock (_gate)
+        {
+            if (ShouldDropAgentEventAfterResetLocked(evt, threadId))
+            {
+                Logger.Debug($"[Reset] Dropping stale agent event after reset for threadId='{threadId}' stream='{evt.Stream}' runId='{evt.RunId}'");
+                return;
+            }
+        }
 
         // Always update run tracking first (state maintenance must not be skipped).
         UpdateActiveRunId(evt, threadId);
@@ -1661,8 +1775,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// Fetch the latest user message from history for a remotely-initiated turn.
     /// Called when lifecycle.start arrives for a thread we didn't locally initiate.
     /// </summary>
-    private async Task FetchRemoteUserMessageAsync(string threadId)
+    private async Task FetchRemoteUserMessageAsync(string threadId, bool openResetGateOnSuccess = false)
     {
+        long requestResetVersion;
+        long resetCutoffUtcMs;
+        lock (_gate)
+        {
+            requestResetVersion = GetResetVersionLocked(threadId);
+            resetCutoffUtcMs = GetResetCutoffUtcMsLocked(threadId);
+        }
+
         try
         {
             var history = await _bridge.RequestChatHistoryAsync(threadId);
@@ -1684,10 +1806,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
             if (lastUser is null || string.IsNullOrEmpty(lastUser.Text)) return;
 
+            ChatDataSnapshot? snapshotToPublish = null;
+
             // Check if we already have this user message as the last User entry
             // in the timeline (avoid duplicates on reconnect/reload).
             lock (_gate)
             {
+                if (GetResetVersionLocked(threadId) != requestResetVersion ||
+                    IsPreResetTimestampLocked(threadId, lastUser.Ts, resetCutoffUtcMs))
+                {
+                    Logger.Info($"[REMOTE] Ignoring stale remote user backfill after reset for threadId='{threadId}'");
+                    return;
+                }
+
                 if (_timelines.TryGetValue(threadId, out var tl))
                 {
                     for (int i = tl.Entries.Count - 1; i >= 0; i--)
@@ -1700,18 +1831,33 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         }
                     }
                 }
+
+                if (openResetGateOnSuccess)
+                {
+                    _resetRemoteUserSeen.Add(threadId);
+                    TryOpenResetGateFromPendingLifecycleLocked(threadId, acceptedRunId: null);
+                }
+
+                var meta = BuildLiveMetaLocked(threadId, lastUser.Ts);
+                snapshotToPublish = ApplyEventLocked(
+                    threadId,
+                    new ChatUserMessageEvent(TruncateForChatEntry(lastUser.Text)),
+                    meta);
             }
 
-            ChatEntryMetadata? meta;
-            lock (_gate) { meta = BuildLiveMetaLocked(threadId, lastUser.Ts); }
-            ApplyEventAndPublish(threadId,
-                new ChatUserMessageEvent(TruncateForChatEntry(lastUser.Text)),
-                meta);
+            Publish(snapshotToPublish);
             Logger.Info($"[REMOTE] Injected remote user message for threadId='{threadId}' len={lastUser.Text.Length}");
         }
         catch (Exception ex)
         {
             Logger.Warn($"[REMOTE] Failed to fetch remote user message for threadId='{threadId}': {ex.Message}");
+        }
+        finally
+        {
+            if (openResetGateOnSuccess)
+            {
+                lock (_gate) { _resetRemoteBackfillInFlight.Remove(threadId); }
+            }
         }
     }
 
@@ -2847,52 +2993,57 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         ChatDataSnapshot snapshot;
         lock (_gate)
         {
-            var current = GetOrCreateTimelineLocked(threadId);
-            var beforeIds = new HashSet<string>(current.Entries.Count);
-            for (int i = 0; i < current.Entries.Count; i++) beforeIds.Add(current.Entries[i].Id);
-
-            var next = ChatTimelineReducer.Apply(current, evt);
-            _timelines[threadId] = next;
-
-            // Capture metadata for any newly-created entries. Updates to
-            // existing entries (e.g. UpsertAssistant on the active assistant)
-            // intentionally don't overwrite — the original creation timestamp
-            // for the turn is more useful than the most-recent-delta time.
-            // EXCEPTION: if the new metadata carries usage tokens (only
-            // emitted on terminal frames), merge them into the existing entry
-            // so the footer pills (↑/↓/R/ctx%) light up at end-of-turn.
-            if (meta is not null)
-            {
-                var threadMeta = GetOrCreateThreadMetaLocked(threadId);
-                var hasUsage = meta.InputTokens is not null || meta.OutputTokens is not null
-                    || meta.ResponseTokens is not null || meta.ContextPercent is not null;
-                for (int i = 0; i < next.Entries.Count; i++)
-                {
-                    var id = next.Entries[i].Id;
-                    var isNew = !beforeIds.Contains(id);
-                    if (isNew && !threadMeta.ContainsKey(id))
-                    {
-                        threadMeta[id] = meta;
-                    }
-                    else if (hasUsage && threadMeta.TryGetValue(id, out var existing)
-                        && (existing.InputTokens is null && existing.OutputTokens is null))
-                    {
-                        // Merge usage onto the existing assistant entry whose
-                        // text was just upserted by this final delta.
-                        threadMeta[id] = existing with
-                        {
-                            InputTokens = meta.InputTokens ?? existing.InputTokens,
-                            OutputTokens = meta.OutputTokens ?? existing.OutputTokens,
-                            ResponseTokens = meta.ResponseTokens ?? existing.ResponseTokens,
-                            ContextPercent = meta.ContextPercent ?? existing.ContextPercent
-                        };
-                    }
-                }
-            }
-
-            snapshot = BuildSnapshotLocked();
+            snapshot = ApplyEventLocked(threadId, evt, meta);
         }
         Publish(snapshot);
+    }
+
+    private ChatDataSnapshot ApplyEventLocked(string threadId, ChatEvent evt, ChatEntryMetadata? meta)
+    {
+        var current = GetOrCreateTimelineLocked(threadId);
+        var beforeIds = new HashSet<string>(current.Entries.Count);
+        for (int i = 0; i < current.Entries.Count; i++) beforeIds.Add(current.Entries[i].Id);
+
+        var next = ChatTimelineReducer.Apply(current, evt);
+        _timelines[threadId] = next;
+
+        // Capture metadata for any newly-created entries. Updates to
+        // existing entries (e.g. UpsertAssistant on the active assistant)
+        // intentionally don't overwrite — the original creation timestamp
+        // for the turn is more useful than the most-recent-delta time.
+        // EXCEPTION: if the new metadata carries usage tokens (only
+        // emitted on terminal frames), merge them into the existing entry
+        // so the footer pills (↑/↓/R/ctx%) light up at end-of-turn.
+        if (meta is not null)
+        {
+            var threadMeta = GetOrCreateThreadMetaLocked(threadId);
+            var hasUsage = meta.InputTokens is not null || meta.OutputTokens is not null
+                || meta.ResponseTokens is not null || meta.ContextPercent is not null;
+            for (int i = 0; i < next.Entries.Count; i++)
+            {
+                var id = next.Entries[i].Id;
+                var isNew = !beforeIds.Contains(id);
+                if (isNew && !threadMeta.ContainsKey(id))
+                {
+                    threadMeta[id] = meta;
+                }
+                else if (hasUsage && threadMeta.TryGetValue(id, out var existing)
+                    && (existing.InputTokens is null && existing.OutputTokens is null))
+                {
+                    // Merge usage onto the existing assistant entry whose
+                    // text was just upserted by this final delta.
+                    threadMeta[id] = existing with
+                    {
+                        InputTokens = meta.InputTokens ?? existing.InputTokens,
+                        OutputTokens = meta.OutputTokens ?? existing.OutputTokens,
+                        ResponseTokens = meta.ResponseTokens ?? existing.ResponseTokens,
+                        ContextPercent = meta.ContextPercent ?? existing.ContextPercent
+                    };
+                }
+            }
+        }
+
+        return BuildSnapshotLocked();
     }
 
     private Dictionary<string, ChatEntryMetadata> GetOrCreateThreadMetaLocked(string threadId)
@@ -2905,6 +3056,327 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return meta;
     }
 
+    private readonly record struct ResetClearPersistence(
+        bool SaveAbortedIds,
+        bool SaveToolMeta,
+        bool SaveAttachmentMeta);
+
+    private long GetResetVersionLocked(string threadId) =>
+        _resetVersions.TryGetValue(threadId, out var version) ? version : 0;
+
+    private long GetResetCutoffUtcMsLocked(string threadId) =>
+        _resetCutoffUtcMs.TryGetValue(threadId, out var cutoff) ? cutoff : 0;
+
+    private ResetClearPersistence ClearThreadHistoryAfterResetLocked(string threadId)
+    {
+        var oldSessionId = _sessionIds.TryGetValue(threadId, out var sid) ? sid : null;
+        var saveToolMeta = false;
+        var saveAttachmentMeta = false;
+        var saveAbortedIds = _persistedAbortedIds.Remove(threadId);
+
+        if (!string.IsNullOrEmpty(oldSessionId))
+        {
+            saveToolMeta = _toolMetaCache.Remove(oldSessionId);
+            saveAttachmentMeta = _attachmentMetaCache.Remove(oldSessionId);
+            _resetClearedSessionIds[threadId] = oldSessionId;
+        }
+        else
+        {
+            _resetClearedSessionIds.Remove(threadId);
+        }
+        saveToolMeta = _toolMetaCache.Remove(threadId) || saveToolMeta;
+        saveAttachmentMeta = _attachmentMetaCache.Remove(threadId) || saveAttachmentMeta;
+
+        if (saveToolMeta)
+            _toolMetaSaveVersion++;
+
+        if (_activeRunIds.TryGetValue(threadId, out var activeRunId) && !string.IsNullOrEmpty(activeRunId))
+            AddResetIgnoredRunIdLocked(threadId, activeRunId);
+
+        _resetVersions[threadId] = GetResetVersionLocked(threadId) + 1;
+        _resetCutoffUtcMs[threadId] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _resetAwaitingUserMessage.Add(threadId);
+        _timelines[threadId] = ChatTimelineState.Initial() with { HistoryLoaded = true };
+        _entryMeta.Remove(threadId);
+        _sessionIds.Remove(threadId);
+        _historyLoaded.Add(threadId);
+        _historyRetryCount.Remove(threadId);
+        _activeRunIds.Remove(threadId);
+        _pendingAbortCounts.Remove(threadId);
+        _abortedThreads.Remove(threadId);
+        _locallyInitiatedThreads.Remove(threadId);
+        _localSentTexts.Remove(threadId);
+        _resetAcceptedRunIds.Remove(threadId);
+        _resetLocalSendWithoutRunVersions.Remove(threadId);
+        _resetLocalSendWithoutRunStartSequences.Remove(threadId);
+        _resetLocalEchoSequences.Remove(threadId);
+        _resetPendingLifecycleStarts.Remove(threadId);
+        _resetRemoteBackfillInFlight.Remove(threadId);
+        _resetRemoteUserSeen.Remove(threadId);
+
+        return new ResetClearPersistence(saveAbortedIds, saveToolMeta, saveAttachmentMeta);
+    }
+
+    private void PersistClearedResetState(ResetClearPersistence persistence)
+    {
+        if (persistence.SaveAbortedIds)
+            SaveAbortedIds();
+        if (persistence.SaveToolMeta)
+            SaveToolMetaCache();
+        if (persistence.SaveAttachmentMeta)
+            SaveAttachmentMetaCache();
+    }
+
+    private void AddResetIgnoredRunIdLocked(string threadId, string runId)
+    {
+        if (!_resetIgnoredRunIds.TryGetValue(threadId, out var set))
+        {
+            set = new HashSet<string>(StringComparer.Ordinal);
+            _resetIgnoredRunIds[threadId] = set;
+        }
+        set.Add(runId);
+    }
+
+    private void AddResetAcceptedRunIdLocked(string threadId, string runId)
+    {
+        if (!_resetAwaitingUserMessage.Contains(threadId))
+            return;
+
+        if (!_resetAcceptedRunIds.TryGetValue(threadId, out var set))
+        {
+            set = new HashSet<string>(StringComparer.Ordinal);
+            _resetAcceptedRunIds[threadId] = set;
+        }
+        set.Add(runId);
+        TryOpenResetGateFromPendingLifecycleLocked(threadId, acceptedRunId: runId);
+    }
+
+    private readonly record struct PendingResetLifecycleStart(AgentEventInfo Event, long Sequence);
+
+    private bool ShouldDropChatMessageAfterResetLocked(
+        string threadId,
+        string roleLower,
+        string rawText,
+        long tsMs,
+        out string? consumeEchoText,
+        out bool requestRemoteBackfill)
+    {
+        consumeEchoText = null;
+        requestRemoteBackfill = false;
+        if (!_resetAwaitingUserMessage.Contains(threadId))
+        {
+            return IsPreResetTimestampLocked(threadId, tsMs, GetResetCutoffUtcMsLocked(threadId));
+        }
+
+        var isFreshUser = roleLower == "user" &&
+            !LooksLikeApprovalSlashCommand(rawText) &&
+            !LooksLikeSystemControlNote(rawText) &&
+            !IsPreResetTimestampLocked(threadId, tsMs, GetResetCutoffUtcMsLocked(threadId));
+
+        if (isFreshUser &&
+            _localSentTexts.TryGetValue(threadId, out var echoQueue) &&
+            echoQueue.Count > 0 &&
+            string.Equals(echoQueue.Peek().Text, rawText.Trim(), StringComparison.Ordinal))
+        {
+            consumeEchoText = rawText.Trim();
+            _resetLocalEchoSequences[threadId] = _resetLifecycleStartSequence;
+            if (TryOpenResetGateFromPendingLifecycleLocked(threadId, acceptedRunId: null))
+                return false;
+        }
+        else if (isFreshUser && tsMs > 0)
+        {
+            _resetRemoteUserSeen.Add(threadId);
+            if (TryOpenResetGateFromPendingLifecycleLocked(threadId, acceptedRunId: null))
+                return false;
+        }
+        else if (isFreshUser && _resetRemoteBackfillInFlight.Add(threadId))
+        {
+            requestRemoteBackfill = true;
+        }
+
+        return true;
+    }
+
+    private bool ShouldDropAgentEventAfterResetLocked(AgentEventInfo evt, string threadId)
+    {
+        if (IsResetIgnoredRunLocked(threadId, evt.RunId, evt))
+            return true;
+
+        var eventTsMs = evt.Ts > 0 ? (long)evt.Ts : 0L;
+        var cutoff = GetResetCutoffUtcMsLocked(threadId);
+        if (!_resetAwaitingUserMessage.Contains(threadId))
+            return IsPreResetTimestampLocked(threadId, eventTsMs, cutoff);
+
+        if (IsAcceptedPostResetLifecycleStartLocked(threadId, evt, _resetLifecycleStartSequence + 1))
+        {
+            OpenResetGateForLifecycleStartLocked(threadId, evt);
+            return false;
+        }
+
+        if (IsPreResetTimestampLocked(threadId, eventTsMs, cutoff))
+            return true;
+
+        if (IsLifecycleStart(evt))
+            BufferResetLifecycleStartLocked(threadId, evt);
+
+        return true;
+    }
+
+    private bool IsAcceptedPostResetLifecycleStartLocked(string threadId, AgentEventInfo evt, long lifecycleStartSequence)
+    {
+        if (!IsLifecycleStart(evt))
+            return false;
+
+        if (!string.IsNullOrEmpty(evt.RunId) &&
+            _resetAcceptedRunIds.TryGetValue(threadId, out var acceptedRunIds) &&
+            acceptedRunIds.Contains(evt.RunId))
+        {
+            return true;
+        }
+
+        if (_resetLocalSendWithoutRunVersions.TryGetValue(threadId, out var localSendVersion) &&
+            localSendVersion == GetResetVersionLocked(threadId) &&
+            _resetLocalSendWithoutRunStartSequences.TryGetValue(threadId, out var localSendStartSequence) &&
+        _resetLocalEchoSequences.TryGetValue(threadId, out var localEchoSequence) &&
+        localEchoSequence >= localSendStartSequence &&
+        lifecycleStartSequence > localSendStartSequence &&
+        evt.Ts > 0 &&
+        !IsPreResetTimestampLocked(threadId, (long)evt.Ts, GetResetCutoffUtcMsLocked(threadId)))
+        {
+            return true;
+        }
+
+        return _resetRemoteUserSeen.Contains(threadId) &&
+            !IsPreResetTimestampLocked(threadId, evt.Ts > 0 ? (long)evt.Ts : 0L, GetResetCutoffUtcMsLocked(threadId));
+    }
+
+    private void BufferResetLifecycleStartLocked(string threadId, AgentEventInfo evt)
+    {
+        if (!_resetPendingLifecycleStarts.TryGetValue(threadId, out var pending))
+        {
+            pending = new List<PendingResetLifecycleStart>();
+            _resetPendingLifecycleStarts[threadId] = pending;
+        }
+
+        if (!string.IsNullOrEmpty(evt.RunId) &&
+            pending.Exists(e => string.Equals(e.Event.RunId, evt.RunId, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        pending.Add(new PendingResetLifecycleStart(evt, ++_resetLifecycleStartSequence));
+        if (pending.Count > 8)
+            pending.RemoveRange(0, pending.Count - 8);
+    }
+
+    private bool TryOpenResetGateFromPendingLifecycleLocked(string threadId, string? acceptedRunId)
+    {
+        if (!_resetAwaitingUserMessage.Contains(threadId) ||
+            !_resetPendingLifecycleStarts.TryGetValue(threadId, out var pending))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < pending.Count; i++)
+        {
+            var pendingStart = pending[i];
+            var evt = pendingStart.Event;
+            if (acceptedRunId is not null)
+            {
+                if (!string.Equals(evt.RunId, acceptedRunId, StringComparison.Ordinal))
+                    continue;
+            }
+            else if (!IsAcceptedPostResetLifecycleStartLocked(threadId, evt, pendingStart.Sequence))
+            {
+                continue;
+            }
+
+            pending.RemoveAt(i);
+            OpenResetGateForLifecycleStartLocked(threadId, evt);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void OpenResetGateForLifecycleStartLocked(string threadId, AgentEventInfo evt)
+    {
+        _resetAwaitingUserMessage.Remove(threadId);
+        _resetRemoteUserSeen.Remove(threadId);
+        _resetLocalSendWithoutRunVersions.Remove(threadId);
+        _resetLocalSendWithoutRunStartSequences.Remove(threadId);
+        _resetLocalEchoSequences.Remove(threadId);
+        _resetPendingLifecycleStarts.Remove(threadId);
+
+        if (!string.IsNullOrEmpty(evt.RunId))
+        {
+            _activeRunIds[threadId] = evt.RunId;
+            if (_resetAcceptedRunIds.TryGetValue(threadId, out var acceptedRunIds))
+            {
+                acceptedRunIds.Remove(evt.RunId);
+                if (acceptedRunIds.Count == 0)
+                    _resetAcceptedRunIds.Remove(threadId);
+            }
+        }
+    }
+
+    private bool IsResetIgnoredRunLocked(string threadId, string? runId, AgentEventInfo evt)
+    {
+        if (string.IsNullOrEmpty(runId) ||
+            !_resetIgnoredRunIds.TryGetValue(threadId, out var runIds) ||
+            !runIds.Contains(runId))
+        {
+            return false;
+        }
+
+        if (IsTerminalRunEvent(evt))
+        {
+            runIds.Remove(runId);
+            if (runIds.Count == 0)
+                _resetIgnoredRunIds.Remove(threadId);
+        }
+
+        return true;
+    }
+
+    private bool IsPreResetTimestampLocked(string threadId, long eventTsMs, long resetCutoffUtcMs)
+    {
+        if (eventTsMs <= 0 || resetCutoffUtcMs <= 0)
+            return false;
+
+        return _resetVersions.ContainsKey(threadId) &&
+            eventTsMs + ResetTimestampToleranceMs <= resetCutoffUtcMs;
+    }
+
+    private static bool IsLifecycleStart(AgentEventInfo evt) =>
+        string.Equals(evt.Stream, "lifecycle", StringComparison.OrdinalIgnoreCase) &&
+        evt.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
+        evt.Data.TryGetProperty("phase", out var phaseProp) &&
+        string.Equals(phaseProp.GetString(), "start", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsTerminalRunEvent(AgentEventInfo evt)
+    {
+        if (string.Equals(evt.Stream, "lifecycle", StringComparison.OrdinalIgnoreCase) &&
+            evt.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            evt.Data.TryGetProperty("phase", out var phaseProp))
+        {
+            var phase = phaseProp.GetString();
+            return string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(phase, "error", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (string.Equals(evt.Stream, "job", StringComparison.OrdinalIgnoreCase) &&
+            evt.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            evt.Data.TryGetProperty("state", out var stateProp))
+        {
+            var state = stateProp.GetString();
+            return string.Equals(state, "done", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(state, "error", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
     private ChatEntryMetadata BuildLiveMetaLocked(string threadId, long? tsMs = null)
     {
         var ts = tsMs is { } v && v > 0
@@ -2912,6 +3384,25 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             : (DateTimeOffset?)DateTimeOffset.Now;
         var session = Array.Find(_sessions, s => s.Key == threadId);
         return new ChatEntryMetadata(ts, session?.Model);
+    }
+
+    private void SeedSessionIdsFromSessionsLocked(IEnumerable<SessionInfo> sessions)
+    {
+        foreach (var session in sessions)
+        {
+            if (!string.IsNullOrWhiteSpace(session.Key) &&
+                !string.IsNullOrWhiteSpace(session.SessionId))
+            {
+                if (_resetClearedSessionIds.TryGetValue(session.Key, out var clearedSessionId) &&
+                    string.Equals(clearedSessionId, session.SessionId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                _sessionIds[session.Key] = session.SessionId!;
+                _resetClearedSessionIds.Remove(session.Key);
+            }
+        }
     }
 
     private ChatTimelineState GetOrCreateTimelineLocked(string threadId)
@@ -3421,7 +3912,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string threadId,
         string text,
         IReadOnlyList<ChatAttachment> attachments,
-        long tsMs)
+        long tsMs,
+        long? expectedResetVersion = null)
     {
         if (attachments.Count == 0)
             return;
@@ -3441,6 +3933,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             if (_disposed)
                 return;
+
+            if (expectedResetVersion is { } version &&
+                GetResetVersionLocked(threadId) != version)
+            {
+                return;
+            }
 
             var key = !string.IsNullOrEmpty(sessionId) ? sessionId! : threadId;
             if (!_attachmentMetaCache.TryGetValue(key, out var list))
@@ -3662,13 +4160,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (_disposed)
                 return;
 
-            if (!_sessionIds.TryGetValue(threadId, out var sessionId) || string.IsNullOrEmpty(sessionId))
-                return;
+            var key = _sessionIds.TryGetValue(threadId, out var sessionId) && !string.IsNullOrEmpty(sessionId)
+                ? sessionId
+                : threadId;
 
-            if (!_toolMetaCache.TryGetValue(sessionId, out var list))
+            if (!_toolMetaCache.TryGetValue(key, out var list))
             {
                 list = new List<CachedToolMeta>();
-                _toolMetaCache[sessionId] = list;
+                _toolMetaCache[key] = list;
             }
 
             // Deduplicate by timestamp (same tool event shouldn't be cached twice)
@@ -3694,13 +4193,27 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// Look up cached tool metadata for a session's history reconstruction.
     /// Returns a queue of entries sorted by timestamp for sequential consumption.
     /// </summary>
-    private Queue<CachedToolMeta>? GetCachedToolMetaForSession(string? sessionId)
+    private Queue<CachedToolMeta>? GetCachedToolMetaForSession(string? sessionId, string threadId)
     {
-        if (string.IsNullOrEmpty(sessionId)) return null;
+        if (string.IsNullOrEmpty(sessionId) && string.IsNullOrEmpty(threadId)) return null;
         lock (_gate)
         {
-            if (_toolMetaCache.TryGetValue(sessionId!, out var list) && list.Count > 0)
-                return new Queue<CachedToolMeta>(list.OrderBy(e => e.Ts));
+            var entries = new List<CachedToolMeta>();
+            if (!string.IsNullOrEmpty(sessionId) &&
+                _toolMetaCache.TryGetValue(sessionId!, out var sessionEntries))
+            {
+                entries.AddRange(sessionEntries);
+            }
+
+            if (!string.IsNullOrEmpty(threadId) &&
+                (string.IsNullOrEmpty(sessionId) || !string.Equals(sessionId, threadId, StringComparison.Ordinal)) &&
+                _toolMetaCache.TryGetValue(threadId, out var threadEntries))
+            {
+                entries.AddRange(threadEntries);
+            }
+
+            if (entries.Count > 0)
+                return new Queue<CachedToolMeta>(entries.OrderBy(e => e.Ts));
         }
         return null;
     }
@@ -3733,11 +4246,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// </summary>
     private async Task PersistAbortedMessageIdAsync(string threadId)
     {
+        long requestResetVersion;
+        lock (_gate)
+        {
+            requestResetVersion = GetResetVersionLocked(threadId);
+        }
+
         await _persistLock.WaitAsync().ConfigureAwait(false);
         try
         {
             await Task.Delay(500).ConfigureAwait(false); // let gateway finalize
             var history = await _bridge.RequestChatHistoryAsync(threadId).ConfigureAwait(false);
+
+            lock (_gate)
+            {
+                if (GetResetVersionLocked(threadId) != requestResetVersion)
+                {
+                    Logger.Info($"[ABORT-PERSIST] Ignoring stale abort persistence after reset for thread {threadId}");
+                    return;
+                }
+            }
 
             var newAbortedIds = new List<string>();
             var msgs = history.Messages;
@@ -3782,6 +4310,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             lock (_gate)
             {
+                if (GetResetVersionLocked(threadId) != requestResetVersion)
+                {
+                    Logger.Info($"[ABORT-PERSIST] Ignoring stale abort persistence write after reset for thread {threadId}");
+                    return;
+                }
+
                 if (!_persistedAbortedIds.TryGetValue(threadId, out var set))
                 {
                     set = new HashSet<string>();

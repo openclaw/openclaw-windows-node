@@ -116,6 +116,15 @@ public class OpenClawGatewayClientTests
             method!.Invoke(_client, new object[] { json });
         }
 
+        public long ExtractChatTimestampMs(string payloadJson)
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "ExtractChatTimestampMs",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return (long)method!.Invoke(null, new object[] { document.RootElement.Clone() })!;
+        }
+
         public SessionInfo[] GetSessionList()
         {
             return _client.GetSessionList();
@@ -456,6 +465,16 @@ public class OpenClawGatewayClientTests
 
     private static string CreateTempIdentityPath() =>
         Path.Combine(Path.GetTempPath(), "OpenClawGatewayClientTests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void ExtractChatTimestampMs_FallsBackFromInvalidTimestampToTs()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var ts = helper.ExtractChatTimestampMs("""{"timestamp":999999999999999999999999999999,"ts":1712345678}""");
+
+        Assert.Equal(1_712_345_678_000, ts);
+    }
 
     [Fact]
     public void OperatorConnect_FreshDevice_RequestsBootstrapHandoffScopes()

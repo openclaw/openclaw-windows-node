@@ -16,6 +16,7 @@ public class OpenClawChatDataProviderTests
         public List<string> SentMessages { get; } = new();
         public List<string?> SentSessionKeys { get; } = new();
         public List<string?> SentSessionIds { get; } = new();
+        public Queue<ChatSendResult> SendResults { get; } = new();
         public List<string> AbortedRunIds { get; } = new();
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
@@ -28,11 +29,17 @@ public class OpenClawChatDataProviderTests
         public void StartProactiveBootstrap() { }
 
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
+            => SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments);
+
+        public async Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
         {
             SentMessages.Add(message);
             SentSessionKeys.Add(sessionKey);
             SentSessionIds.Add(sessionId);
-            return SendBehavior?.Invoke(message, sessionKey, sessionId) ?? Task.CompletedTask;
+            if (SendBehavior is not null)
+                await SendBehavior(message, sessionKey, sessionId);
+
+            return SendResults.Count > 0 ? SendResults.Dequeue() : new ChatSendResult();
         }
 
         public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
@@ -61,6 +68,7 @@ public class OpenClawChatDataProviderTests
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<SessionInfo[]>? SessionsUpdated;
+        public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
         public event EventHandler<ModelsListInfo>? ModelsListUpdated;
@@ -68,6 +76,7 @@ public class OpenClawChatDataProviderTests
 
         public void RaiseStatus(ConnectionStatus s) { CurrentStatus = s; StatusChanged?.Invoke(this, s); }
         public void RaiseSessions(SessionInfo[] s) { Sessions = s; SessionsUpdated?.Invoke(this, s); }
+        public void RaiseSessionCommandCompleted(SessionCommandResult result) => SessionCommandCompleted?.Invoke(this, result);
         public void RaiseChat(ChatMessageInfo m) => ChatMessageReceived?.Invoke(this, m);
         public void RaiseAgent(AgentEventInfo a) => AgentEventReceived?.Invoke(this, a);
         public void RaiseModels(ModelsListInfo m) { CurrentModels = m; ModelsListUpdated?.Invoke(this, m); }
@@ -394,6 +403,629 @@ public class OpenClawChatDataProviderTests
         Assert.True(snap.Timelines.ContainsKey("main"));
         Assert.True(snap.Timelines.ContainsKey("sub:abc"));
         Assert.Equal("main", snap.DefaultThreadId);
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_ClearsThreadTimelineAndIgnoresStaleHistory()
+    {
+        var historyTcs = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => historyTcs.Task;
+        await provider.LoadAsync();
+        var historyTask = provider.LoadHistoryAsync("main");
+        await provider.SendMessageAsync("main", "hi");
+        snapshots.Clear();
+
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var resetSnapshot = snapshots[^1];
+        Assert.Empty(resetSnapshot.Timelines["main"].Entries);
+        Assert.True(resetSnapshot.Timelines["main"].HistoryLoaded);
+
+        historyTcs.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "assistant",
+                    Text = "old history",
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                }
+            }
+        });
+        await historyTask;
+
+        var latest = snapshots[^1];
+        Assert.Empty(latest.Timelines["main"].Entries);
+        Assert.True(latest.Timelines["main"].HistoryLoaded);
+
+        await provider.SendMessageAsync("main", "after reset");
+
+        latest = snapshots[^1];
+        var entry = Assert.Single(latest.Timelines["main"].Entries);
+        Assert.Equal(ChatTimelineItemKind.User, entry.Kind);
+        Assert.Equal("after reset", entry.Text);
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_DropsLateLiveEventsUntilNewUserMessage()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run"));
+        snapshots.Clear();
+
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale agent"}""", runId: "old-run"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "stale chat"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Empty(latest.Timelines["main"].Entries);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "new remote message",
+            Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds()
+        });
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "new remote message",
+            Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds()
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "new response"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "new remote message");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "new response");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_TimestamplessRemoteUserCanOpenGateViaHistoryBackfill()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "remote no timestamp",
+                    Ts = 0
+                }
+            }
+        });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "remote no timestamp",
+            Ts = 0
+        });
+
+        for (var i = 0; i < 20; i++)
+        {
+            if (snapshots.Count > 0 &&
+                snapshots[^1].Timelines["main"].Entries.Any(e =>
+                    e.Kind == ChatTimelineItemKind.User &&
+                    e.Text == "remote no timestamp"))
+            {
+                break;
+            }
+            await Task.Delay(10);
+        }
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "remote-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "remote response"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "remote no timestamp");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "remote response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_LocalSendDoesNotReopenGateForStaleChatFrames()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run"));
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "after reset local");
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "stale user echo"
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "stale assistant"
+        });
+
+        var latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run-2" });
+        await provider.SendMessageAsync("main", "second after reset");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "second after reset"
+        });
+
+        latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second after reset");
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh assistant"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh assistant");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_LateUnknownLifecycleStartDoesNotReopenGate()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run");
+        staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(staleStart);
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale old run"}""", runId: "old-run"));
+
+        var latest = snapshots[^1];
+        Assert.Empty(latest.Timelines["main"].Entries);
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "after reset local");
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        latest = snapshots[^1];
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_DropsLatePreResetAgentEventAfterGateOpens()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var preResetTs = DateTimeOffset.UtcNow.AddSeconds(-5).ToUnixTimeMilliseconds();
+        var resetTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "after reset local");
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = resetTs + 2_000;
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response",
+            Ts = resetTs + 2_000
+        });
+
+        var staleAgent = MakeAgentEvent("assistant", """{"delta":"stale agent after gate"}""");
+        staleAgent.Ts = preResetTs;
+        bridge.RaiseAgent(staleAgent);
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale agent", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_LifecycleStartBeforeSendResultOpensAfterRunAccepted()
+    {
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var sendTask = provider.SendMessageAsync("main", "after reset local");
+        var earlyStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        earlyStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(earlyStart);
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        sendGate.SetResult();
+        await sendTask;
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_PreResetSendResultAfterResetDoesNotReopenGate()
+    {
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            return sendGate.Task;
+        };
+        await provider.LoadAsync();
+
+        var staleSendTask = provider.SendMessageAsync("main", "before reset");
+        await sendStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "old-run" });
+        sendGate.SetResult();
+        await staleSendTask;
+
+        var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run");
+        staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(staleStart);
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale old run"}""", runId: "old-run"));
+
+        var latest = snapshots.Count > 0 ? snapshots[^1] : await provider.LoadAsync();
+        Assert.Empty(latest.Timelines["main"].Entries);
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_PostResetSendWithoutRunIdCanOpenOnFreshLifecycleStart()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.SendMessageAsync("main", "after reset local");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "after reset local"
+        });
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "gateway-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        var latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_NoRunFallbackIgnoresBufferedStartBeforeLocalSend()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "stale-run");
+        staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(staleStart);
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.SendMessageAsync("main", "after reset local");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "after reset local"
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "stale response"
+        });
+
+        var latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
+            e.Text.Contains("stale", StringComparison.Ordinal));
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "fresh-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_PreResetSendFailureAfterResetDoesNotAppendError()
+    {
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            return sendGate.Task;
+        };
+        await provider.LoadAsync();
+
+        var staleSendTask = provider.SendMessageAsync("main", "before reset");
+        await sendStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        sendGate.SetException(new InvalidOperationException("old send failed"));
+        await staleSendTask;
+
+        var latest = snapshots.Count > 0 ? snapshots[^1] : await provider.LoadAsync();
+        Assert.Empty(latest.Timelines["main"].Entries);
+        Assert.DoesNotContain(notifications, n => n.Message == "old send failed");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_StaleSendFailureDoesNotClearCurrentEchoState()
+    {
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var staleSendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            if (System.Threading.Interlocked.Increment(ref sendCount) == 1)
+            {
+                sendStarted.TrySetResult();
+                return staleSendGate.Task;
+            }
+
+            return Task.CompletedTask;
+        };
+        await provider.LoadAsync();
+
+        var staleSendTask = provider.SendMessageAsync("main", "same text");
+        await sendStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        await provider.SendMessageAsync("main", "same text");
+        snapshots.Clear();
+
+        staleSendGate.SetException(new InvalidOperationException("old send failed"));
+        await staleSendTask;
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "same text"
+        });
+
+        var latest = await provider.LoadAsync();
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "same text");
+        Assert.DoesNotContain(notifications, n => n.Message == "old send failed");
+
+        var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(freshStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fresh response"
+        });
+
+        latest = snapshots[^1];
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_IgnoresInFlightRemoteUserBackfill()
+    {
+        var backfillStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var historyTcs = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ =>
+        {
+            backfillStarted.TrySetResult();
+            return historyTcs.Task;
+        };
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-remote"));
+        await backfillStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        snapshots.Clear();
+
+        historyTcs.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "old remote user",
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                }
+            }
+        });
+        await Task.Delay(100);
+
+        var latest = snapshots.Count > 0 ? snapshots[^1] : await provider.LoadAsync();
+        Assert.Empty(latest.Timelines["main"].Entries);
     }
 
     [Fact]
