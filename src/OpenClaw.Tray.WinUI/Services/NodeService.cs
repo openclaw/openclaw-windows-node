@@ -7,6 +7,7 @@ using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Mxc;
 using OpenClawTray.A2UI.Actions;
@@ -267,6 +268,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     private void RegisterCapabilities()
     {
+        new ExecApprovalsStore(_dataPath, _logger).MigrateLegacyFileIfNeeded();
+
         // Hold the lock across the entire rebuild. The body is sync construction
         // (no awaits), so the lock is held briefly and an MCP tools/list arriving
         // mid-rebuild waits for a consistent snapshot rather than seeing a half-
