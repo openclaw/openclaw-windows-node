@@ -94,4 +94,23 @@ public class ApprovalRequestHelperTests
         Assert.True(result.Success);
         Assert.Equal("device-req-2", result.RequestId);
     }
+
+    [Theory]
+    [InlineData("plugin not found: device-pair")]
+    [InlineData("plugins.entries.device-pair: plugin not found: device-pair")]
+    [InlineData("error: Plugin not found")]
+    public void IsPluginNotFoundError_ReturnsTrueForPluginNotFoundOutput(string output)
+    {
+        Assert.True(ApprovalRequestHelper.IsPluginNotFoundError(output));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("{}")]
+    [InlineData("approval failed: unknown error")]
+    [InlineData("gateway connection refused")]
+    public void IsPluginNotFoundError_ReturnsFalseForOtherOutput(string output)
+    {
+        Assert.False(ApprovalRequestHelper.IsPluginNotFoundError(output));
+    }
 }
