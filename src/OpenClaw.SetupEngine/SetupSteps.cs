@@ -1919,7 +1919,12 @@ public sealed class PairOperatorStep : SetupStep
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
 
         if (approve.ExitCode != 0)
-            return StepResult.Fail($"Device approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+        {
+            var approveOutput = approve.Stdout.Trim();
+            if (ApprovalRequestHelper.IsPluginNotFoundError(approveOutput))
+                return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+            return StepResult.Fail($"Device approval failed (exit {approve.ExitCode}): {approveOutput}");
+        }
 
         return StepResult.Ok($"Approved request {requestId}");
     }
@@ -2343,7 +2348,12 @@ public sealed class PairNodeStep : SetupStep
             ctx.Logger.Info($"Node pending list: exit={pending.ExitCode}");
 
             if (pending.ExitCode != 0)
-                return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pending.Stdout.Trim()}");
+            {
+                var pendingOutput = pending.Stdout.Trim();
+                if (ApprovalRequestHelper.IsPluginNotFoundError(pendingOutput))
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+                return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pendingOutput}");
+            }
 
             var parsed = ApprovalRequestHelper.TryReadSinglePendingRequestId(pending.Stdout.Trim());
             if (!parsed.Success)
@@ -2370,7 +2380,9 @@ public sealed class PairNodeStep : SetupStep
 
         return approve.ExitCode == 0
             ? StepResult.Ok($"Node approved: {requestId}")
-            : StepResult.Fail($"Node approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+            : ApprovalRequestHelper.IsPluginNotFoundError(approve.Stdout.Trim())
+                ? StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage)
+                : StepResult.Fail($"Node approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
     }
 
     private static void RegisterCapabilitiesFromConfig(WindowsNodeClient client, SetupContext ctx)
