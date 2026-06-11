@@ -807,28 +807,6 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
-    public void AddDecidedPermission_AppendsStampedEntryWithoutTouchingPending()
-    {
-        var state = ChatTimelineState.Initial();
-
-        var updated = ChatTimelineReducer.AddDecidedPermission(
-            state,
-            permissionKind: "Local command request",
-            toolName: "process.exec",
-            detail: "rm -rf /\nReason: policy=allowlist requires approval",
-            decision: ChatPermissionDecision.Denied);
-
-        Assert.Null(updated.PendingPermission);
-        var entry = Assert.Single(updated.Entries);
-        Assert.Equal(ChatTimelineItemKind.PermissionRequest, entry.Kind);
-        Assert.Equal(ChatPermissionDecision.Denied, entry.PermissionDecision);
-        Assert.Equal("Local command request", entry.IntentSummary);
-        Assert.Equal("process.exec", entry.ToolName);
-        Assert.Contains("rm -rf /", entry.Text);
-        Assert.False(string.IsNullOrEmpty(entry.PermissionRequestId));
-    }
-
-    [Fact]
     public void ResolvePermission_DoesNotDowngradeAlreadyDecidedEntry()
     {
         // Local Allow click stamped the entry Allowed; a subsequent

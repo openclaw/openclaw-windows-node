@@ -983,45 +983,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Publish(snapshot);
     }
 
-    /// <summary>
-    /// Synthesize a decided "Denied" permission card in the active chat thread
-    /// for a denial that originated locally — i.e. the user clicked Deny on
-    /// the native ExecApproval prompt rather than the gateway's inline
-    /// Allow/Deny bubble. Without this, a node-side deny would only surface
-    /// to the gateway as a generic tool-call error string with no visible
-    /// indication that the user's click did anything.
-    /// </summary>
-    /// <remarks>
-    /// Best-effort attribution: posts to the gateway's main session resolved
-    /// by <see cref="ResolveDefaultThreadIdLocked"/>. In MCP-only mode (no
-    /// gateway sessions) this no-ops; the native dialog already provided
-    /// immediate feedback in that case.
-    /// </remarks>
-    public void AddLocalDeniedPermissionEntry(string permissionKind, string detail)
-    {
-        ChatDataSnapshot snapshot;
-        lock (_gate)
-        {
-            var threadId = ResolveDefaultThreadIdLocked();
-            if (string.IsNullOrEmpty(threadId))
-            {
-                Logger.Info("[Approval] local deny — no default thread, skipping chat card");
-                return;
-            }
-
-            var current = GetOrCreateTimelineLocked(threadId);
-            _timelines[threadId] = ChatTimelineReducer.AddDecidedPermission(
-                current,
-                permissionKind: permissionKind,
-                toolName: "process.exec",
-                detail: detail ?? string.Empty,
-                decision: ChatPermissionDecision.Denied);
-            Logger.Info($"[Approval] local deny card posted to thread='{threadId}'");
-            snapshot = BuildSnapshotLocked();
-        }
-        Publish(snapshot);
-    }
-
     public ValueTask DisposeAsync()
     {
         if (_disposed) return ValueTask.CompletedTask;
@@ -1441,6 +1402,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
         }
 
+        if (!message.IsFinal && IsLateNonFinalAssistantFrame(threadId))
+        {
+            Logger.Warn($"[ChatProvider] Dropping late non-final assistant frame after completed turn for threadId='{threadId}' len={traceText.Length}");
+            return;
+        }
+
         // Both `state: "delta"` and `state: "final"` carry the cumulative
         // assistant text (the gateway's EmbeddedBlockChunker emits completed
         // blocks, not token deltas — see spec §"Block Streaming"). Map both
@@ -1464,6 +1431,28 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
             RaiseNotification(new ChatProviderNotification(
                 ChatProviderNotificationKind.TurnComplete, threadId, LocalizationHelper.GetString("Chat_Notification_AssistantReplied")));
+        }
+    }
+
+    private bool IsLateNonFinalAssistantFrame(string threadId)
+    {
+        lock (_gate)
+        {
+            if (!_timelines.TryGetValue(threadId, out var timeline))
+                return false;
+            if (timeline.TurnActive)
+                return false;
+
+            for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+            {
+                var entry = timeline.Entries[i];
+                if (entry.Kind == ChatTimelineItemKind.User)
+                    return false;
+                if (entry.Kind == ChatTimelineItemKind.Assistant)
+                    return !entry.IsStreaming;
+            }
+
+            return false;
         }
     }
 

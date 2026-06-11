@@ -2484,11 +2484,10 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // indicator if no reply has streamed yet). Gateway emits tool_start
         // before assistant_delta, but the desired visual flow is
         //   [User] → [Assistant reply / thinking] → [Tool burst] → [Denied permission]
-        // so the assistant message reads first, tool work hangs below it, and any
-        // locally-denied permission (e.g. Windows-node policy denial) appears
-        // last as the outcome. Approved permission badges (gateway-issued)
-        // keep their natural pre-tool position so they read as "user accepted
-        // → tool ran". Exception: when any tool call in the turn failed, preserve
+        // so the assistant message reads first, tool work hangs below it, and a
+        // denied permission appears last as the outcome. Approved permission
+        // badges keep their natural pre-tool position so they read as "user
+        // accepted → tool ran". Exception: when any tool call in the turn failed, preserve
         // insertion order so the error renders before the assistant's acknowledgement —
         // [User] → [Tool burst (error)] → [Assistant reply]. This places the final
         // assistant response at the scroll anchor (bottom), matching the web UI.

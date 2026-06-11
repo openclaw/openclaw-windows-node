@@ -174,6 +174,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private DiagnosticsClipboardService? _diagnosticsClipboard;
     private ToastService? _toastService;
+    private AppNotificationService? _appNotificationService;
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -468,6 +469,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
+        _appNotificationService = new AppNotificationService();
 
         DiagnosticsJsonlService.Write("app.start", new
         {
@@ -2360,38 +2362,69 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return;
         try
         {
-            ChatProvider?.AddLocalDeniedPermissionEntry(
-                permissionKind: LocalizationHelper.GetString("Chat_Permission_LocalDeniedTitle"),
-                detail: BuildLocalDenyDetail(args.Request));
+            _appNotificationService?.Show(new AppNotification
+            {
+                Title = LocalizationHelper.GetString("AppNotification_LocalCommandDenied_Title"),
+                Message = BuildLocalDenyNotificationMessage(args.Request),
+                Source = "exec-approval",
+                Category = "node.invoke",
+                Severity = AppNotificationSeverity.Warning,
+                DedupeKey = BuildLocalDenyDedupeKey(args.Request)
+            });
         }
         catch (Exception ex)
         {
-            Logger.Warn($"Failed to post local-deny chat card: {ex.Message}");
+            Logger.Warn($"Failed to post local-deny app notification: {ex.Message}");
         }
     }
 
-    private static string BuildLocalDenyDetail(ExecApprovalPromptRequest request)
+    private static string BuildLocalDenyNotificationMessage(ExecApprovalPromptRequest request)
     {
-        var sb = new System.Text.StringBuilder();
-        if (!string.IsNullOrWhiteSpace(request.Command))
-            sb.Append(request.Command);
+        var subject = string.IsNullOrWhiteSpace(request.Command)
+            ? LocalizationHelper.GetString("AppNotification_LocalCommandDenied_UnknownCommandSubject")
+            : LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_CommandSubjectFormat",
+                CompactNotificationText(request.Command.Trim()));
+
+        string message;
         if (!string.IsNullOrWhiteSpace(request.Reason))
         {
-            if (sb.Length > 0) sb.Append('\n');
-            sb.Append(LocalizationHelper.GetString("Chat_Permission_LocalDenied_ReasonLabel"))
-              .Append(' ')
-              .Append(request.Reason);
+            message = LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_MessageFormat",
+                subject,
+                CompactNotificationText(request.Reason.Trim()));
         }
+        else
+        {
+            message = LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_MessageNoReasonFormat",
+                subject);
+        }
+
         if (!string.IsNullOrWhiteSpace(request.MatchedPattern))
         {
-            if (sb.Length > 0) sb.Append('\n');
-            sb.Append(LocalizationHelper.GetString("Chat_Permission_LocalDenied_PatternLabel"))
-              .Append(' ')
-              .Append(request.MatchedPattern);
+            message += " " + LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_PatternSuffixFormat",
+                CompactNotificationText(request.MatchedPattern.Trim()));
         }
-        if (sb.Length > 0) sb.Append('\n');
-        sb.Append(LocalizationHelper.GetString("Chat_Permission_LocalDenied_Provenance"));
-        return sb.ToString();
+
+        return message;
+    }
+
+    private static string CompactNotificationText(string text)
+    {
+        const int maxLength = 240;
+        if (text.Length <= maxLength)
+            return text;
+        return text[..(maxLength - 1)] + "…";
+    }
+
+    private static string BuildLocalDenyDedupeKey(ExecApprovalPromptRequest request)
+    {
+        var command = request.Command?.Trim() ?? string.Empty;
+        var reason = request.Reason?.Trim() ?? string.Empty;
+        var pattern = request.MatchedPattern?.Trim() ?? string.Empty;
+        return $"exec-denied:{command}:{reason}:{pattern}";
     }
 
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
@@ -2815,6 +2848,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             _hubWindow = new HubWindow();
             _hubWindow.AppModel = _appState;
+            _hubWindow.BindAppNotifications(_appNotificationService!);
             _hubWindow.ApplyNavPaneState(_settings!);
             _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
             _hubWindow.OpenConnectionStatusAction = ShowConnectionStatusWindow;

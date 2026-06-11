@@ -2301,6 +2301,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Débogage</value>
   </data>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>Alertes</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
     <value>Informations</value>
   </data>
@@ -2982,17 +2985,53 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>Expiré</value>
   </data>
-  <data name="Chat_Permission_LocalDeniedTitle" xml:space="preserve">
-    <value>Demande de commande locale</value>
+  <data name="AppNotification_LocalCommandDenied_Title" xml:space="preserve">
+    <value>Le compagnon Windows a bloqué une commande locale</value>
   </data>
-  <data name="Chat_Permission_LocalDenied_ReasonLabel" xml:space="preserve">
-    <value>Motif :</value>
+  <data name="AppNotification_LocalCommandDenied_CommandSubjectFormat" xml:space="preserve">
+    <value>La commande « {0} »</value>
   </data>
-  <data name="Chat_Permission_LocalDenied_PatternLabel" xml:space="preserve">
-    <value>Motif correspondant :</value>
+  <data name="AppNotification_LocalCommandDenied_UnknownCommandSubject" xml:space="preserve">
+    <value>Une commande locale</value>
   </data>
-  <data name="Chat_Permission_LocalDenied_Provenance" xml:space="preserve">
-    <value>(refusé localement sur ce compagnon Windows)</value>
+  <data name="AppNotification_LocalCommandDenied_MessageFormat" xml:space="preserve">
+    <value>{0} a été refusée par la stratégie d'exécution locale : {1}.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageNoReasonFormat" xml:space="preserve">
+    <value>{0} a été refusée par la stratégie d'exécution locale.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
+    <value>Motif correspondant : {0}.</value>
+  </data>
+  <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
+    <value>{0}×</value>
+  </data>
+  <data name="AppNotification_ShowMore" xml:space="preserve">
+    <value>Afficher plus</value>
+  </data>
+  <data name="NotificationsPage_Title.Text" xml:space="preserve">
+    <value>Alertes</value>
+  </data>
+  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
+    <value>Consultez et effacez les notifications OpenClaw actives.</value>
+  </data>
+  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>Aucune notification</value>
+  </data>
+  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
+    <value>Les nouvelles notifications de l'application apparaissent ici jusqu'à ce que vous les ignoriez ou les effaciez.</value>
+  </data>
+  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
+    <value>Ignorer {0}</value>
+  </data>
+  <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
+    <value>Approbation d'exécution</value>
+  </data>
+  <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
+    <value>Commande du nœud</value>
   </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Approbation d'exécution requise</value>
@@ -5562,6 +5601,12 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
   </data>
   <data name="Command_GoToInfo_Title" xml:space="preserve">
     <value>Go to Info</value>
+  </data>
+  <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
+    <value>Consulter les notifications actives de l'application</value>
+  </data>
+  <data name="Command_GoToNotifications_Title" xml:space="preserve">
+    <value>Accéder à Notifications</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>

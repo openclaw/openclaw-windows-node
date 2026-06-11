@@ -2302,6 +2302,9 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Foutopsporing</value>
   </data>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>Meldingen</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
     <value>Informatie</value>
   </data>
@@ -2983,17 +2986,53 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>Verlopen</value>
   </data>
-  <data name="Chat_Permission_LocalDeniedTitle" xml:space="preserve">
-    <value>Lokale opdrachtaanvraag</value>
+  <data name="AppNotification_LocalCommandDenied_Title" xml:space="preserve">
+    <value>Windows-companion heeft een lokale opdracht geblokkeerd</value>
   </data>
-  <data name="Chat_Permission_LocalDenied_ReasonLabel" xml:space="preserve">
-    <value>Reden:</value>
+  <data name="AppNotification_LocalCommandDenied_CommandSubjectFormat" xml:space="preserve">
+    <value>Opdracht "{0}"</value>
   </data>
-  <data name="Chat_Permission_LocalDenied_PatternLabel" xml:space="preserve">
-    <value>Patroon:</value>
+  <data name="AppNotification_LocalCommandDenied_UnknownCommandSubject" xml:space="preserve">
+    <value>Een lokale opdracht</value>
   </data>
-  <data name="Chat_Permission_LocalDenied_Provenance" xml:space="preserve">
-    <value>(lokaal geweigerd op deze Windows-companion)</value>
+  <data name="AppNotification_LocalCommandDenied_MessageFormat" xml:space="preserve">
+    <value>{0} is geweigerd door het lokale uitvoeringsbeleid: {1}.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageNoReasonFormat" xml:space="preserve">
+    <value>{0} is geweigerd door het lokale uitvoeringsbeleid.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
+    <value>Overeenkomend patroon: {0}.</value>
+  </data>
+  <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
+    <value>{0}×</value>
+  </data>
+  <data name="AppNotification_ShowMore" xml:space="preserve">
+    <value>Meer weergeven</value>
+  </data>
+  <data name="NotificationsPage_Title.Text" xml:space="preserve">
+    <value>Meldingen</value>
+  </data>
+  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
+    <value>Bekijk en wis actieve OpenClaw-meldingen.</value>
+  </data>
+  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
+    <value>Wissen</value>
+  </data>
+  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>Geen meldingen</value>
+  </data>
+  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
+    <value>Nieuwe app-meldingen verschijnen hier totdat u ze sluit of wist.</value>
+  </data>
+  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
+    <value>{0} sluiten</value>
+  </data>
+  <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
+    <value>Uitvoeringsgoedkeuring</value>
+  </data>
+  <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
+    <value>Node-opdracht</value>
   </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Goedkeuring voor uitvoering vereist</value>
@@ -5563,6 +5602,12 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
   </data>
   <data name="Command_GoToInfo_Title" xml:space="preserve">
     <value>Go to Info</value>
+  </data>
+  <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
+    <value>Actieve app-meldingen bekijken</value>
+  </data>
+  <data name="Command_GoToNotifications_Title" xml:space="preserve">
+    <value>Ga naar Meldingen</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>

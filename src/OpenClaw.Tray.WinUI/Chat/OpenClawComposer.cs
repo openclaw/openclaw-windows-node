@@ -812,6 +812,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         if (ChatExplorationState.SendIconShow)
         {
             var hasText = hasTextState.Value || Props.PendingAttachment is not null;
+            var sendTooltip = LocalizationHelper.GetString("Chat_Composer_Tooltip_Send");
             var glyphBrush = hasText
                 ? (Brush)new SolidColorBrush(Colors.White)
                 : (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
@@ -852,7 +853,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     r.Set("ButtonBorderBrushPressed",     new SolidColorBrush(Colors.Transparent));
                 }
             })
-            .AutomationName(LocalizationHelper.GetString("Chat_Composer_Tooltip_Send"));
+            .AutomationName(sendTooltip)
+            .SetToolTip(sendTooltip);
         }
         else
         {
@@ -864,6 +866,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         Element stopBtn = Empty();
         if (Props.TurnActive && ChatExplorationState.StopIconShow)
         {
+            var stopTooltip = LocalizationHelper.GetString("Chat_Composer_Tooltip_Stop");
             stopBtn = Button(
                 TextBlock(stopGlyph)
                     .Set(t =>
@@ -888,7 +891,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 r.Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent));
                 r.Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent));
             })
-            .AutomationName(LocalizationHelper.GetString("Chat_Composer_Tooltip_Stop"));
+            .AutomationName(stopTooltip)
+            .SetToolTip(stopTooltip);
         }
 
         Element workingBanner = Empty();
