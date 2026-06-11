@@ -97,6 +97,12 @@
     <None Include="..\OpenClaw.SetupEngine\default-config.json"
              Link="default-config.json"
              CopyToOutputDirectory="PreserveNewest" />
+    <!-- TEMP rehearsal: embed the AppInstaller XML inside the MSIX payload so
+         the manifest's <uap13:AutoUpdate><uap13:AppInstaller File="..." /> can
+         resolve it at install time. Lets us bypass the broken external feed
+         install path on raw.githubusercontent.com. Reverted with
+         delete-msixtest-appinstaller-file todo. -->
+    <Content Include="openclaw-update.appinstaller" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

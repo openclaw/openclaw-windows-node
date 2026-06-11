@@ -3,10 +3,11 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap13="http://schemas.microsoft.com/appx/manifest/uap/windows10/13"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap desktop com rescap">
+  IgnorableNamespaces="uap uap13 desktop com rescap">
 
   <!-- IMPORTANT: Publisher must exactly match the Azure Artifact Signing certificate subject.
        Check your certificate profile at: Azure Portal > Artifact Signing > openclaw > openclaw
@@ -21,12 +22,21 @@
   <Identity
     Name="OpenClaw.Companion"
     Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
-    Version="1.0.0.0" />
+    Version="0.6.4.0" />
 
   <Properties>
     <DisplayName>OpenClaw Companion</DisplayName>
     <PublisherDisplayName>OpenClaw Foundation</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
+    <!-- TEMP rehearsal: embed openclaw-update.appinstaller in the MSIX payload
+         so Windows registers auto-update polling against its <AppInstaller Uri>
+         at install time. Avoids the broken ms-appinstaller://?source= protocol
+         (disabled by default since Dec 2023) and the raw.githubusercontent.com
+         text/plain MIME issue on the install-time AppInstaller parse.
+         Reverted with delete-msixtest-appinstaller-file todo. -->
+    <uap13:AutoUpdate>
+      <uap13:AppInstaller File="openclaw-update.appinstaller" />
+    </uap13:AutoUpdate>
   </Properties>
 
   <Dependencies>
