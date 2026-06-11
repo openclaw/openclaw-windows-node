@@ -1,9 +1,9 @@
 {
-  "last_run": "2026-06-10",
-  "last_run_id": "27279921369",
+  "last_run": "2026-06-11",
+  "last_run_id": "27317506718",
   "backlog_cursor": {
-    "issue_number": 696,
-    "comment_cursor": 697
+    "issue_number": 727,
+    "comment_cursor": 728
   },
   "comments_made": {
     "467": "2026-05-20",
@@ -38,87 +38,348 @@
     "638": "2026-06-03",
     "661": "2026-06-03",
     "672": "2026-06-05",
-    "697": {"date": "2026-06-06", "note": "Pointed to PR #701 for SSH custom port fix."},
-    "694": {"date": "2026-06-06", "note": "Confirmed WSL locale fix."},
-    "703": {"date": "2026-06-07", "note": "Root cause confirmed, fix PR #712 submitted. Superseded by maintainer PR #713."},
-    "709": {"date": "2026-06-08", "note": "Root cause: EnterWizardErrorAsync disconnects before cancel, leaving stale server session. Fix PRs #717 and #718 submitted."},
-    "688": {"date": "2026-06-08", "note": "Explained Back button architecture constraint."},
-    "720": {"date": "2026-06-08", "note": "Root cause confirmed: GatewayClientFactory.Create() bootstrapPairAsNode issue. Fix PR #721 submitted."},
-    "727": {"date": "2026-06-09", "note": "Welcomed first-time reporter, asked for version/repro details. Labelled bug+needs triage."},
-    "729": {"date": "2026-06-10", "note": "Fix PR submitted (bootstrap guard via SetupExistingGatewayClassifier). Tray tests: 996 passed."},
-    "730": {"date": "2026-06-09", "note": "Confirmed root cause. Issue closed by maintainer RBrid via PR #733."},
-    "641": {"date": "2026-06-10", "note": "Pointed to PR #648 (ranjeshj) for Teams channel wizard timeout fix."},
-    "669": {"date": "2026-06-10", "note": "Draft PR submitted implementing F11/Esc fullscreen for both Canvas windows."},
-    "696": {"date": "2026-06-10", "note": "Documented WebSocketClientBase reconnect-loop root cause: missing connection-generation guard. Stale ListenForMessagesAsync can call ReconnectWithBackoffAsync after _reconnectLoopActive resets to 0. Fix: per-connect generation counter (as in closed PR #443 websocket-lifecycle-correctness branch)."}
+    "697": {
+      "date": "2026-06-06",
+      "note": "Pointed to PR #701 for SSH custom port fix."
+    },
+    "694": {
+      "date": "2026-06-06",
+      "note": "Confirmed WSL locale fix."
+    },
+    "703": {
+      "date": "2026-06-07",
+      "note": "Root cause confirmed, fix PR #712 submitted. Superseded by maintainer PR #713."
+    },
+    "709": {
+      "date": "2026-06-08",
+      "note": "Root cause: EnterWizardErrorAsync disconnects before cancel, leaving stale server session. Fix PRs #717 and #718 submitted."
+    },
+    "688": {
+      "date": "2026-06-08",
+      "note": "Explained Back button architecture constraint."
+    },
+    "720": {
+      "date": "2026-06-08",
+      "note": "Root cause confirmed: GatewayClientFactory.Create() bootstrapPairAsNode issue. Fix PR #721 submitted."
+    },
+    "727": {
+      "date": "2026-06-11",
+      "note": "Follow-up: reporter confirmed v0.6.3. Asked which specific step fails (pair-operator vs pair-node). Noted possible connection to #662 fix."
+    },
+    "729": {
+      "date": "2026-06-10",
+      "note": "Fix PR submitted (bootstrap guard via SetupExistingGatewayClassifier). Tray tests: 996 passed."
+    },
+    "730": {
+      "date": "2026-06-09",
+      "note": "Confirmed root cause. Issue closed by maintainer RBrid via PR #733."
+    },
+    "641": {
+      "date": "2026-06-10",
+      "note": "Pointed to PR #648 (ranjeshj) for Teams channel wizard timeout fix."
+    },
+    "669": {
+      "date": "2026-06-10",
+      "note": "Draft PR submitted implementing F11/Esc fullscreen for both Canvas windows."
+    },
+    "696": {
+      "date": "2026-06-10",
+      "note": "Documented WebSocketClientBase reconnect-loop root cause: missing connection-generation guard. Stale ListenForMessagesAsync can call ReconnectWithBackoffAsync after _reconnectLoopActive resets to 0. Fix: per-connect generation counter (as in closed PR #443 websocket-lifecycle-correctness branch)."
+    },
+    "662": {
+      "date": "2026-06-11",
+      "note": "Root cause identified: PairOperatorStep missing Windows-side health check. Fix PR submitted (pair-operator gateway health check). 248 SetupEngine tests pass."
+    }
   },
   "labels_applied": {
-    "460": ["enhancement"],
-    "459": ["enhancement"],
-    "458": ["enhancement"],
-    "463": ["bug"],
-    "462": ["bug"],
-    "453": ["bug"],
-    "372": ["enhancement"],
-    "338": ["bug"],
-    "331": ["question"],
-    "252": ["enhancement"],
-    "552": ["bug"],
-    "554": ["refactor"],
-    "703": ["bug"],
-    "694": ["bug"],
-    "695": ["bug"],
-    "727": ["bug", "needs triage"]
+    "460": [
+      "enhancement"
+    ],
+    "459": [
+      "enhancement"
+    ],
+    "458": [
+      "enhancement"
+    ],
+    "463": [
+      "bug"
+    ],
+    "462": [
+      "bug"
+    ],
+    "453": [
+      "bug"
+    ],
+    "372": [
+      "enhancement"
+    ],
+    "338": [
+      "bug"
+    ],
+    "331": [
+      "question"
+    ],
+    "252": [
+      "enhancement"
+    ],
+    "552": [
+      "bug"
+    ],
+    "554": [
+      "refactor"
+    ],
+    "703": [
+      "bug"
+    ],
+    "694": [
+      "bug"
+    ],
+    "695": [
+      "bug"
+    ],
+    "727": [
+      "bug",
+      "needs triage"
+    ]
   },
   "fix_attempts": {
-    "351": {"pr": 448, "branch": "repo-assist/fix-mcp-tool-descriptions", "status": "merged", "date": "2026-05-18"},
-    "459": {"pr": 482, "branch": "repo-assist/fix-issue-459-session-key-missing", "status": "merged", "date": "2026-05-21"},
-    "467": {"pr": 472, "branch": "repo-assist/fix-issue-467-wsl-parent-dir-cleanup", "status": "merged", "date": "2026-05-20"},
-    "460": {"pr": 540, "status": "closed-no-merge"},
-    "462": {"pr": 531, "status": "closed-conflict"},
-    "570": {"pr": 571, "status": "closed-conflict"},
-    "583": {"pr": 585, "status": "closed-no-merge"},
-    "590": {"pr": [603, 608], "status": "closed-superseded"},
-    "593": {"pr": 609, "status": "closed-superseded"},
-    "453": {"pr": 615, "status": "closed-superseded"},
-    "458": {"pr": 628, "status": "closed-superseded"},
-    "661": {"pr": "superseded-by-666", "status": "superseded"},
-    "655": {"pr": 679, "status": "merged", "date": "2026-06-04"},
-    "672": {"pr": 699, "status": "merged", "date": "2026-06-05"},
-    "703": {"pr": 712, "status": "closed-superseded", "date": "2026-06-07"},
-    "709": {"branch": "repo-assist/fix-issue-709-wizard-stale-session", "prs": ["#717", "#718"], "status": "open", "date": "2026-06-08", "note": "Two duplicate PRs. #718 is preferred; #717 should be closed."},
-    "720": {"branch": "repo-assist/fix-issue-720-operator-qr-pair-role", "pr": 721, "status": "open", "date": "2026-06-08"},
-    "729": {"branch": "repo-assist/fix-issue-729-bootstrap-existing-workspace-guard", "pr": 734, "status": "open", "date": "2026-06-10", "note": "Guard BootstrapAsync via SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(). 996 tray tests pass. PR #735 is duplicate — should be closed."},
-    "669": {"branch": "repo-assist/feat-canvas-fullscreen-669", "status": "open", "date": "2026-06-10", "note": "F11/Esc fullscreen via AppWindow.SetPresenter. JS injection for WebView2 key capture. 990 tray tests pass."}
+    "351": {
+      "pr": 448,
+      "branch": "repo-assist/fix-mcp-tool-descriptions",
+      "status": "merged",
+      "date": "2026-05-18"
+    },
+    "459": {
+      "pr": 482,
+      "branch": "repo-assist/fix-issue-459-session-key-missing",
+      "status": "merged",
+      "date": "2026-05-21"
+    },
+    "467": {
+      "pr": 472,
+      "branch": "repo-assist/fix-issue-467-wsl-parent-dir-cleanup",
+      "status": "merged",
+      "date": "2026-05-20"
+    },
+    "460": {
+      "pr": 540,
+      "status": "closed-no-merge"
+    },
+    "462": {
+      "pr": 531,
+      "status": "closed-conflict"
+    },
+    "570": {
+      "pr": 571,
+      "status": "closed-conflict"
+    },
+    "583": {
+      "pr": 585,
+      "status": "closed-no-merge"
+    },
+    "590": {
+      "pr": [
+        603,
+        608
+      ],
+      "status": "closed-superseded"
+    },
+    "593": {
+      "pr": 609,
+      "status": "closed-superseded"
+    },
+    "453": {
+      "pr": 615,
+      "status": "closed-superseded"
+    },
+    "458": {
+      "pr": 628,
+      "status": "closed-superseded"
+    },
+    "661": {
+      "pr": "superseded-by-666",
+      "status": "superseded"
+    },
+    "655": {
+      "pr": 679,
+      "status": "merged",
+      "date": "2026-06-04"
+    },
+    "672": {
+      "pr": 699,
+      "status": "merged",
+      "date": "2026-06-05"
+    },
+    "703": {
+      "pr": 712,
+      "status": "closed-superseded",
+      "date": "2026-06-07"
+    },
+    "709": {
+      "branch": "repo-assist/fix-issue-709-wizard-stale-session",
+      "prs": [
+        "#717",
+        "#718"
+      ],
+      "status": "open",
+      "date": "2026-06-08",
+      "note": "Two duplicate PRs. #718 is preferred; #717 should be closed."
+    },
+    "720": {
+      "branch": "repo-assist/fix-issue-720-operator-qr-pair-role",
+      "pr": 721,
+      "status": "closed-no-merge",
+      "date": "2026-06-08",
+      "note": "PR #721 closed by maintainer on 2026-06-10. Connection hardening covered by ranjeshj PR #741."
+    },
+    "729": {
+      "branch": "repo-assist/fix-issue-729-bootstrap-existing-workspace-guard",
+      "pr": 734,
+      "status": "open",
+      "date": "2026-06-10",
+      "note": "Guard BootstrapAsync via SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(). 996 tray tests pass. PR #735 is duplicate \u2014 should be closed."
+    },
+    "669": {
+      "branch": "repo-assist/feat-canvas-fullscreen-669",
+      "status": "open",
+      "date": "2026-06-10",
+      "note": "F11/Esc fullscreen via AppWindow.SetPresenter. JS injection for WebView2 key capture. 990 tray tests pass."
+    },
+    "662": {
+      "branch": "repo-assist/fix-issue-662-pair-operator-gateway-health-check",
+      "status": "open",
+      "date": "2026-06-11",
+      "note": "Added Windows-side HTTP health check to PairOperatorStep.ExecuteAsync() before WebSocket connect (mirrors PairNodeStep pattern). 248 SetupEngine tests pass (+1 new regression test). PR #721 closed by maintainer."
+    }
   },
   "improve_attempts": {
-    "deep-link-parser-tests": {"pr": 456, "status": "merged"},
-    "node-capability-gating-tests": {"pr": 495, "status": "merged"},
-    "menuhelpers-tests": {"pr": 522, "status": "merged"},
-    "channel-result-tests": {"pr": 528, "status": "merged"},
-    "operatorscopehelper-tests": {"pr": 530, "status": "merged"},
-    "activitystreamservice-tests": {"pr": 535, "status": "merged"},
-    "execcmdtoken-tests": {"pr": 548, "status": "closed-no-merge"},
-    "json-options-cache": {"pr": 566, "status": "closed-no-merge"},
-    "deriveoverall-tests": {"pr": 595, "status": "closed-no-merge"},
-    "device-token-handoff-tests": {"pr": 612, "status": "closed-no-merge"},
-    "async-event-handler-guard-tests": {"pr": 635, "status": "closed-no-merge"},
-    "chat-tool-error-regression-tests": {"pr": 692, "status": "merged"},
-    "searchvalues-seam-perf-seam-edge-tests": {"pr": 704, "status": "merged"},
-    "test-ssh-tunnel-state-machine-2026-06-06": {"pr": 706, "status": "merged"},
-    "perf-shorten-path-and-websocket-decode": {"pr": 708, "status": "merged"},
-    "perf-single-pass-dict-remove": {"pr": 722, "status": "open", "date": "2026-06-08"},
-    "weblogin-result-consolidation": {"pr": 728, "status": "open", "date": "2026-06-09"}
+    "deep-link-parser-tests": {
+      "pr": 456,
+      "status": "merged"
+    },
+    "node-capability-gating-tests": {
+      "pr": 495,
+      "status": "merged"
+    },
+    "menuhelpers-tests": {
+      "pr": 522,
+      "status": "merged"
+    },
+    "channel-result-tests": {
+      "pr": 528,
+      "status": "merged"
+    },
+    "operatorscopehelper-tests": {
+      "pr": 530,
+      "status": "merged"
+    },
+    "activitystreamservice-tests": {
+      "pr": 535,
+      "status": "merged"
+    },
+    "execcmdtoken-tests": {
+      "pr": 548,
+      "status": "closed-no-merge"
+    },
+    "json-options-cache": {
+      "pr": 566,
+      "status": "closed-no-merge"
+    },
+    "deriveoverall-tests": {
+      "pr": 595,
+      "status": "closed-no-merge"
+    },
+    "device-token-handoff-tests": {
+      "pr": 612,
+      "status": "closed-no-merge"
+    },
+    "async-event-handler-guard-tests": {
+      "pr": 635,
+      "status": "closed-no-merge"
+    },
+    "chat-tool-error-regression-tests": {
+      "pr": 692,
+      "status": "merged"
+    },
+    "searchvalues-seam-perf-seam-edge-tests": {
+      "pr": 704,
+      "status": "merged"
+    },
+    "test-ssh-tunnel-state-machine-2026-06-06": {
+      "pr": 706,
+      "status": "merged"
+    },
+    "perf-shorten-path-and-websocket-decode": {
+      "pr": 708,
+      "status": "merged"
+    },
+    "perf-single-pass-dict-remove": {
+      "pr": 722,
+      "status": "open",
+      "date": "2026-06-08"
+    },
+    "weblogin-result-consolidation": {
+      "pr": 728,
+      "status": "open",
+      "date": "2026-06-09"
+    }
   },
   "engineering_attempts": {
-    "treat-warnings-as-errors": {"pr": 527, "status": "closed-no-merge"},
-    "nuget-audit-tests": {"pr": 539, "status": "merged"},
-    "bump-nuget-packages-2026-05-29": {"pr": 578, "status": "closed-conflict"},
-    "vc-runtime-version-check-703": {"pr": 712, "status": "closed-superseded"}
+    "treat-warnings-as-errors": {
+      "pr": 527,
+      "status": "closed-no-merge"
+    },
+    "nuget-audit-tests": {
+      "pr": 539,
+      "status": "merged"
+    },
+    "bump-nuget-packages-2026-05-29": {
+      "pr": 578,
+      "status": "closed-conflict"
+    },
+    "vc-runtime-version-check-703": {
+      "pr": 712,
+      "status": "closed-superseded"
+    }
   },
   "monthly_activity_issue": 618,
   "monthly_activity_may_closed": 435,
   "monthly_activity_month": "2026-06",
   "open_repo_assist_issues": [],
-  "closed_repo_assist_prs": [448, 456, 464, 472, 482, 495, 522, 528, 530, 532, 535, 539, 548, 566, 571, 578, 585, 595, 603, 608, 609, 612, 615, 628, 635, 679, 685, 692, 699, 704, 706, 708, 712],
-  "notes": "Run 2026-06-10 (27279921369): Task 3 (feat PR for #669 canvas fullscreen — F11/Esc via AppWindow.SetPresenter; JS bridge for WebView2; 990 tray tests pass). Task 2 (commented #696: WebSocketClientBase connection-generation guard root cause). PR #735 is duplicate of #734 (both fix #729) — maintainer should close #735. Next: monitor open Repo Assist PRs (#717/#718/#721/#722/#728/#734/new #669 PR) for CI failures or merge conflicts."
+  "closed_repo_assist_prs": [
+    448,
+    456,
+    464,
+    472,
+    482,
+    495,
+    522,
+    528,
+    530,
+    532,
+    535,
+    539,
+    548,
+    566,
+    571,
+    578,
+    585,
+    595,
+    603,
+    608,
+    609,
+    612,
+    615,
+    628,
+    635,
+    679,
+    685,
+    692,
+    699,
+    704,
+    706,
+    708,
+    712
+  ],
+  "notes": "Run 2026-06-11 (27317506718): Task 3 (fix PR for #662 pair-operator gateway health check \u2014 PairOperatorStep missing Windows-side health check; mirrors PairNodeStep pattern; 248 SetupEngine tests pass). Task 2 (commented #662: root cause + fix PR; followed up #727: asked which step fails on v0.6.3). PR #721 closed by maintainer. PR #735 is duplicate of #734 (both fix #729) \u2014 maintainer should close #735. Next: monitor open Repo Assist PRs (#717/#718/#722/#728/#734/#738/new #662 fix) for CI failures or merge conflicts."
 }
