@@ -11,7 +11,6 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <OpenClawLibsodiumVersion>1.0.20.1</OpenClawLibsodiumVersion>
     <OpenClawVCRuntimeVersion>1.0.5</OpenClawVCRuntimeVersion>
     <!-- Audit direct + transitive dependencies for known CVEs during restore,
          matching the setting in src/Directory.Build.props. -->
@@ -36,13 +35,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <Target Name="CopyWindowsNativeCryptoForTestHost" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+  <Target Name="CopyWindowsNativeRuntimeForTestHost" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
     <ItemGroup>
-      <OpenClawNativeCrypto Include="$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-x64\native\libsodium.dll" Condition="'$(PROCESSOR_ARCHITECTURE)' != 'ARM64' And Exists('$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-x64\native\libsodium.dll')" />
-      <OpenClawNativeCrypto Include="$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-arm64\native\libsodium.dll" Condition="'$(PROCESSOR_ARCHITECTURE)' == 'ARM64' And Exists('$(NuGetPackageRoot)libsodium\$(OpenClawLibsodiumVersion)\runtimes\win-arm64\native\libsodium.dll')" />
-      <OpenClawNativeCrypto Include="$(NuGetPackageRoot)vcruntime.cefsharp.140\$(OpenClawVCRuntimeVersion)\vc_redist\x64\*.dll" Condition="'$(PROCESSOR_ARCHITECTURE)' != 'ARM64' And Exists('$(NuGetPackageRoot)vcruntime.cefsharp.140\$(OpenClawVCRuntimeVersion)\vc_redist\x64\vcruntime140.dll')" />
+      <OpenClawNativeRuntime Include="$(NuGetPackageRoot)vcruntime.cefsharp.140\$(OpenClawVCRuntimeVersion)\vc_redist\x64\*.dll" Condition="'$(PROCESSOR_ARCHITECTURE)' != 'ARM64' And Exists('$(NuGetPackageRoot)vcruntime.cefsharp.140\$(OpenClawVCRuntimeVersion)\vc_redist\x64\vcruntime140.dll')" />
     </ItemGroup>
-    <Copy SourceFiles="@(OpenClawNativeCrypto)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OpenClawNativeRuntime)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
