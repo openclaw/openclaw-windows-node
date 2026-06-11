@@ -1,6 +1,7 @@
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
+using System.Text.RegularExpressions;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -130,5 +131,85 @@ public sealed class DiagnosticsBundleBuilderTests : IDisposable
         Assert.Contains("split-secret", bundle);
         Assert.DoesNotContain("split-token-secret", bundle);
         Assert.Contains("[REDACTED]", bundle);
+    }
+
+    [Fact]
+    public void Build_DecodesJsonEscapedLogTextForReadablePreview()
+    {
+        var jsonl = Path.Combine(_tempDir, "diagnostics.jsonl");
+        File.WriteAllText(jsonl, string.Join(
+            "\n",
+            """{"event":"structured","metadata":"{\u0022message\u0022:\u0022line1\r\nline2\u0022,\u0022apiKey\u0022:\u0022jsonl-secret\u0022}"}""",
+            """{"event":"nested","metadata":"{\\u0022apiKey\\u0022\\u003a\\u0022nested-secret\\u0022}"}"""));
+
+        var bundle = DiagnosticsBundleBuilder.Build(
+            new GatewayCommandCenterState(),
+            [],
+            new DiagnosticsBundlePaths(
+                null,
+                null,
+                jsonl,
+                null,
+                null));
+
+        Assert.Contains("## Structured Diagnostics JSONL Tail", bundle);
+        Assert.DoesNotContain(@"\u0022", bundle);
+        Assert.DoesNotContain(@"\r\n", bundle);
+        Assert.DoesNotContain("jsonl-secret", bundle);
+        Assert.DoesNotContain("nested-secret", bundle);
+        Assert.Contains(@"""message""", bundle);
+        Assert.Contains("line1", bundle);
+        Assert.Contains("line2", bundle);
+        Assert.Contains("[REDACTED]", bundle);
+    }
+
+    [Fact]
+    public void Build_FinalSanitizationTimeout_ReturnsFailClosedSentinel()
+    {
+        try
+        {
+            DiagnosticsBundleBuilder.SanitizeOverride = text =>
+                text.StartsWith("OpenClaw Windows Tray Diagnostics Bundle", StringComparison.Ordinal)
+                    ? throw new RegexMatchTimeoutException("input", "pattern", TimeSpan.FromMilliseconds(100))
+                    : DiagnosticsExportRedactor.Sanitize(text);
+
+            var bundle = DiagnosticsBundleBuilder.Build(
+                new GatewayCommandCenterState(),
+                [],
+                new DiagnosticsBundlePaths(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null));
+
+            Assert.Equal(TokenSanitizer.SanitizerTimeoutSentinel, bundle);
+        }
+        finally
+        {
+            DiagnosticsBundleBuilder.SanitizeOverride = null;
+        }
+    }
+
+    [Fact]
+    public void BuildSection_SanitizationTimeout_IncludesFailClosedSentinel()
+    {
+        var trayLog = Path.Combine(_tempDir, "openclaw-tray.log");
+        File.WriteAllText(trayLog, "token=secret\n");
+
+        try
+        {
+            DiagnosticsLogTailReader.SanitizeOverride = _ =>
+                throw new RegexMatchTimeoutException("input", "pattern", TimeSpan.FromMilliseconds(100));
+
+            var section = DiagnosticsLogTailReader.BuildSection("Tray Log Tail", trayLog);
+
+            Assert.Contains(TokenSanitizer.SanitizerTimeoutSentinel, section);
+            Assert.DoesNotContain("secret", section);
+        }
+        finally
+        {
+            DiagnosticsLogTailReader.SanitizeOverride = null;
+        }
     }
 }

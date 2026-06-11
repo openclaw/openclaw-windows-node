@@ -67,7 +67,8 @@ public static class DiagnosticsExportRedactor
         if (string.IsNullOrEmpty(text))
             return text ?? string.Empty;
 
-        var sanitized = RedactPrivateKeyBlocks(text);
+        var sanitized = DecodeCommonJsonEscapes(text);
+        sanitized = RedactPrivateKeyBlocks(sanitized);
         sanitized = RedactSignedHandshakeLines(sanitized);
         sanitized = RedactDpapiBlobs(sanitized);
         sanitized = RedactAgentSessionKeys(sanitized);
@@ -79,6 +80,97 @@ public static class DiagnosticsExportRedactor
 
     public static string RedactPath(string? pathOrText) =>
         TokenSanitizer.SanitizeLogMessage(pathOrText);
+
+    private static string DecodeCommonJsonEscapes(string text)
+    {
+        var decoded = text;
+        for (var pass = 0; pass < 3; pass++)
+        {
+            var next = DecodeCommonJsonEscapePass(decoded);
+            if (string.Equals(next, decoded, StringComparison.Ordinal))
+                return next;
+
+            decoded = next;
+        }
+
+        return decoded;
+    }
+
+    private static string DecodeCommonJsonEscapePass(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            var current = text[i];
+            if (current != '\\' || i + 1 >= text.Length)
+            {
+                builder.Append(current);
+                continue;
+            }
+
+            var next = text[i + 1];
+            switch (next)
+            {
+                case '"':
+                    builder.Append('"');
+                    i++;
+                    break;
+                case ':':
+                case ',':
+                case '{':
+                case '}':
+                case '[':
+                case ']':
+                    builder.Append(next);
+                    i++;
+                    break;
+                case 'r' when i + 3 < text.Length && text[i + 2] == '\\' && text[i + 3] == 'n':
+                    builder.Append('\n');
+                    i += 3;
+                    break;
+                case 'u' when TryDecodeUnicodeEscape(text, i + 2, out var decoded):
+                    builder.Append(decoded);
+                    i += 5;
+                    break;
+                default:
+                    builder.Append(current);
+                    break;
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool TryDecodeUnicodeEscape(string text, int start, out char decoded)
+    {
+        decoded = default;
+        if (start + 4 > text.Length)
+            return false;
+
+        var value = 0;
+        for (var i = start; i < start + 4; i++)
+        {
+            var digit = HexValue(text[i]);
+            if (digit < 0)
+                return false;
+            value = (value << 4) + digit;
+        }
+
+        if (value < ' ' || value == '\\')
+            return false;
+
+        decoded = (char)value;
+        return true;
+    }
+
+    private static int HexValue(char c) =>
+        c switch
+        {
+            >= '0' and <= '9' => c - '0',
+            >= 'a' and <= 'f' => c - 'a' + 10,
+            >= 'A' and <= 'F' => c - 'A' + 10,
+            _ => -1
+        };
 
     private static string RedactPrivateKeyBlocks(string text)
     {

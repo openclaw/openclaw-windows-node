@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Services;
 
@@ -33,7 +34,7 @@ internal static class DiagnosticsLogTailReader
             var writtenChars = 0;
             foreach (var rawLine in lines)
             {
-                var line = DiagnosticsExportRedactor.Sanitize(TruncateLine(rawLine, options.MaxLineChars));
+                var line = SanitizeForExport(TruncateLine(rawLine, options.MaxLineChars));
                 if (writtenChars + line.Length > options.MaxSectionChars)
                 {
                     builder.AppendLine($"[truncated section at {options.MaxSectionChars} chars]");
@@ -46,7 +47,11 @@ internal static class DiagnosticsLogTailReader
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            builder.AppendLine($"Status: failed to read ({DiagnosticsExportRedactor.Sanitize(ex.Message)})");
+            builder.AppendLine($"Status: failed to read ({SanitizeForExport(ex.Message)})");
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            builder.AppendLine($"Status: sanitization timed out ({TokenSanitizer.SanitizerTimeoutSentinel})");
         }
 
         builder.AppendLine();
@@ -74,7 +79,7 @@ internal static class DiagnosticsLogTailReader
     private static string FormatPath(string? path) =>
         string.IsNullOrWhiteSpace(path)
             ? "not configured"
-            : DiagnosticsExportRedactor.RedactPath(path);
+            : SanitizeForExport(path);
 
     private static string TruncateLine(string line, int maxChars)
     {
@@ -83,4 +88,25 @@ internal static class DiagnosticsLogTailReader
 
         return line[..maxChars] + $"... [truncated {line.Length - maxChars} chars]";
     }
+
+    private static string SanitizeForExport(string text)
+    {
+        try
+        {
+#if OPENCLAW_TRAY_TESTS
+            if (SanitizeOverride is { } overrideSanitizer)
+                return overrideSanitizer(text);
+#endif
+
+            return DiagnosticsExportRedactor.Sanitize(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return TokenSanitizer.SanitizerTimeoutSentinel;
+        }
+    }
+
+#if OPENCLAW_TRAY_TESTS
+    internal static Func<string, string>? SanitizeOverride { get; set; }
+#endif
 }

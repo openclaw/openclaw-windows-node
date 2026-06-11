@@ -143,12 +143,16 @@ public sealed class DiagnosticsExportRedactorTests
             Authorization: Bearer first-secret
             token=second-secret
             wss://alice:password@gateway.example.com/private?token=third-secret
+            C:\temp\new and C:\\temp\\new should not gain tabs or newlines
+            {"path":"C:\\Users\\christineyan\\AppData\\Roaming\\OpenClawTray"}
             """;
 
         var once = DiagnosticsExportRedactor.Sanitize(input);
         var twice = DiagnosticsExportRedactor.Sanitize(once);
 
         Assert.Equal(once, twice);
+        Assert.DoesNotContain('\t', once);
+        Assert.DoesNotContain("C:\r\n", once);
     }
 
     [Fact]
@@ -162,6 +166,36 @@ public sealed class DiagnosticsExportRedactorTests
         Assert.DoesNotContain("987654321", sanitized);
         Assert.Contains("\"ok\":42", sanitized);
         Assert.Contains("\"version\":\"1.2.3\"", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_DecodesJsonEscapedLogTextBeforeRedacting()
+    {
+        const string input = """{"event":"structured","metadata":"{\u0022message\u0022:\u0022line1\r\nline2\u0022,\u0022apiKey\u0022:\u0022jsonl-secret\u0022}"}""";
+
+        var sanitized = DiagnosticsExportRedactor.Sanitize(input);
+
+        Assert.DoesNotContain(@"\u0022", sanitized);
+        Assert.DoesNotContain(@"\r\n", sanitized);
+        Assert.DoesNotContain("jsonl-secret", sanitized);
+        Assert.Contains(@"""message""", sanitized);
+        Assert.Contains("line1", sanitized);
+        Assert.Contains("line2", sanitized);
+        Assert.Contains("[REDACTED]", sanitized);
+    }
+
+    [Fact]
+    public void Sanitize_DecodesNestedJsonEscapesBeforeRedacting()
+    {
+        const string input = """{"event":"structured","metadata":"{\\u0022apiKey\\u0022\\u003a\\u0022nested-secret\\u0022}"}""";
+
+        var sanitized = DiagnosticsExportRedactor.Sanitize(input);
+        var twice = DiagnosticsExportRedactor.Sanitize(sanitized);
+
+        Assert.Equal(sanitized, twice);
+        Assert.DoesNotContain("nested-secret", sanitized);
+        Assert.DoesNotContain(@"\u0022", sanitized);
+        Assert.Contains("[REDACTED]", sanitized);
     }
 
     [Fact]

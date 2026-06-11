@@ -349,11 +349,10 @@ internal static class CommandCenterTextHelper
         return builder.ToString();
     }
 
-    // SanitizeLogMessage already performs the same folder + Windows/Unix user-path redactions
-    // that an earlier version of this helper duplicated here. Delegating avoids redundant
-    // allocations on every diagnostic-bundle line.
+    // DiagnosticsExportRedactor decodes JSON-escaped log strings for display, then delegates
+    // common URL/path/token cleanup to TokenSanitizer.
     private static string RedactSupportLogLine(string line)
-        => TokenSanitizer.SanitizeLogMessage(line);
+        => DiagnosticsExportRedactor.Sanitize(line);
 
     private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
     {

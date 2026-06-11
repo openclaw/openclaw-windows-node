@@ -551,7 +551,7 @@ public sealed class DiagnosticsPageContractTests
         var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "CommandCenterTextHelper.cs");
         Assert.Contains("Recent Tray Log", helper);
         Assert.Contains("BuildRecentTrayLogTail(Logger.LogFilePath)", helper);
-        Assert.Contains("TokenSanitizer.SanitizeLogMessage(line)", helper);
+        Assert.Contains("DiagnosticsExportRedactor.Sanitize(line)", helper);
         Assert.Contains("RecentTrayLogTailLines", helper);
         Assert.Contains("RecentTrayLogMaxChars", helper);
         Assert.Contains("FileShare.ReadWrite | FileShare.Delete", helper);

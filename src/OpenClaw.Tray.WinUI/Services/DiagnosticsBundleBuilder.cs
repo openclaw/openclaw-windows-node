@@ -2,6 +2,7 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace OpenClawTray.Services;
 
@@ -80,7 +81,7 @@ internal static class DiagnosticsBundleBuilder
         builder.Append(DiagnosticsLogTailReader.BuildSection("Crash Log Tail", paths.CrashLogPath, ShortTail));
         AppendLatestSetupLogs(builder, paths.SetupLogDirectory);
 
-        return DiagnosticsExportRedactor.Sanitize(builder.ToString());
+        return SanitizeForExport(builder.ToString());
     }
 
     private static void AppendSource(StringBuilder builder, string label, string? path)
@@ -90,13 +91,13 @@ internal static class DiagnosticsBundleBuilder
         builder.Append(": ");
         builder.AppendLine(string.IsNullOrWhiteSpace(path)
             ? "not configured"
-            : DiagnosticsExportRedactor.RedactPath(path));
+            : SanitizeForExport(path));
     }
 
     private static void AppendSection(StringBuilder builder, string title, string content)
     {
         builder.AppendLine($"## {title}");
-        builder.AppendLine(DiagnosticsExportRedactor.Sanitize(content).TrimEnd());
+        builder.AppendLine(SanitizeForExport(content).TrimEnd());
         builder.AppendLine();
     }
 
@@ -110,13 +111,13 @@ internal static class DiagnosticsBundleBuilder
         {
             builder.Append(evt.Timestamp.ToUniversalTime().ToString("O"));
             builder.Append(" [");
-            builder.Append(DiagnosticsExportRedactor.Sanitize(evt.Category));
+            builder.Append(SanitizeForExport(evt.Category));
             builder.Append("] ");
-            builder.Append(DiagnosticsExportRedactor.Sanitize(evt.Message));
+            builder.Append(SanitizeForExport(evt.Message));
             if (!string.IsNullOrWhiteSpace(evt.Detail))
             {
                 builder.Append(" — ");
-                builder.Append(DiagnosticsExportRedactor.Sanitize(evt.Detail));
+                builder.Append(SanitizeForExport(evt.Detail));
             }
             builder.AppendLine();
         }
@@ -161,5 +162,26 @@ internal static class DiagnosticsBundleBuilder
     private static string FormatPath(string? path) =>
         string.IsNullOrWhiteSpace(path)
             ? "not configured"
-            : DiagnosticsExportRedactor.RedactPath(path);
+            : SanitizeForExport(path);
+
+    private static string SanitizeForExport(string text)
+    {
+        try
+        {
+#if OPENCLAW_TRAY_TESTS
+            if (SanitizeOverride is { } overrideSanitizer)
+                return overrideSanitizer(text);
+#endif
+
+            return DiagnosticsExportRedactor.Sanitize(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return TokenSanitizer.SanitizerTimeoutSentinel;
+        }
+    }
+
+#if OPENCLAW_TRAY_TESTS
+    internal static Func<string, string>? SanitizeOverride { get; set; }
+#endif
 }
