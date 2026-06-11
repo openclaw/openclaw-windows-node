@@ -1692,6 +1692,18 @@ public sealed class PairOperatorStep : SetupStep
         ctx.Logger.Info($"Device identity initialized: {identity.DeviceId[..16]}...");
         ctx.OperatorDeviceId = identity.DeviceId;
 
+        // Verify gateway is reachable from Windows before connecting (WSL port forwarding may lag)
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
+            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Gateway not reachable before operator pairing: {ex.Message}");
+        }
+
         // Connect operator WebSocket — handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         OpenClawGatewayClient? client = null;
