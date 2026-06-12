@@ -12,7 +12,8 @@ internal sealed class DiagnosticsClipboardService
 {
     private readonly Func<GatewayCommandCenterState> _captureState;
 
-    public DiagnosticsClipboardService(Func<GatewayCommandCenterState> captureState)
+    public DiagnosticsClipboardService(
+        Func<GatewayCommandCenterState> captureState)
     {
         _captureState = captureState;
     }
@@ -34,7 +35,7 @@ internal sealed class DiagnosticsClipboardService
         CopyDiagnostic("support context", CommandCenterTextHelper.BuildSupportContext);
 
     public void CopyDebugBundle() =>
-        CopyDiagnostic("debug bundle", CommandCenterTextHelper.BuildDebugBundle);
+        CopyDiagnostic("summary debug bundle", CommandCenterTextHelper.BuildDebugBundle);
 
     public void CopyBrowserSetupGuidance() =>
         CopyDiagnostic("browser setup guidance", CommandCenterTextHelper.BuildBrowserSetupGuidance);

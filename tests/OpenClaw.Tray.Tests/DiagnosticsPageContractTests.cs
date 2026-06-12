@@ -213,7 +213,7 @@ public sealed class DiagnosticsPageContractTests
         // Each copy handler must pass a human-readable label that
         // shows up in the feedback message.
         Assert.Contains("CopyDiagnosticText(\"Support context\"", cs);
-        Assert.Contains("CopyDiagnosticText(\"Debug bundle\"", cs);
+        Assert.Contains("CopyDiagnosticText(\"Summary debug bundle\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Browser setup guidance\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Port diagnostics\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Capability diagnostics\"", cs);
@@ -551,7 +551,7 @@ public sealed class DiagnosticsPageContractTests
         var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "CommandCenterTextHelper.cs");
         Assert.Contains("Recent Tray Log", helper);
         Assert.Contains("BuildRecentTrayLogTail(Logger.LogFilePath)", helper);
-        Assert.Contains("TokenSanitizer.SanitizeLogMessage(line)", helper);
+        Assert.Contains("DiagnosticsExportRedactor.Sanitize(line)", helper);
         Assert.Contains("RecentTrayLogTailLines", helper);
         Assert.Contains("RecentTrayLogMaxChars", helper);
         Assert.Contains("FileShare.ReadWrite | FileShare.Delete", helper);
@@ -568,6 +568,22 @@ public sealed class DiagnosticsPageContractTests
 
         var crashLogger = Read("src", "OpenClaw.Tray.WinUI", "Services", "AppCrashLogger.cs");
         Assert.Contains("TokenSanitizer.SanitizeLogMessage", crashLogger);
+    }
+
+    [Fact]
+    public void FullDiagnosticsBundle_IsOnlyBuiltForPreviewDialog()
+    {
+        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("OnCreateDiagnosticsBundle", page);
+        Assert.Contains("DiagnosticsBundleBuilder.Build", page);
+        Assert.Contains("ShowBundlePreviewAsync", page);
+
+        var handlerStart = page.IndexOf("private void OnCopyDebugBundle", StringComparison.Ordinal);
+        Assert.True(handlerStart >= 0, "OnCopyDebugBundle must exist.");
+        var handlerBody = page.Substring(handlerStart, Math.Min(260, page.Length - handlerStart));
+
+        Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", handlerBody);
+        Assert.DoesNotContain("DiagnosticsBundleBuilder.Build", handlerBody);
     }
 
     [Fact]

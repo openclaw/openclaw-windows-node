@@ -3538,10 +3538,10 @@
     <value>Connection state, gateway URL, runtime, tunnel.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Header" xml:space="preserve">
-    <value>Copy full debug bundle</value>
+    <value>复制摘要调试包</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Description" xml:space="preserve">
-    <value>Everything the preview dialog produces, no preview.</value>
+    <value>仅包含生成的摘要；不包含日志尾部。请使用“创建诊断包”在共享前检查日志。</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyBrowserSetup.Header" xml:space="preserve">
     <value>Copy browser setup guidance</value>
@@ -4569,9 +4569,6 @@
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
     <value>分享前请审阅</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
-    <value>捆绑包生成器会排除敏感令牌、命令参数、负载和录制内容。</value>
-  </data>
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>已断开连接</value>
   </data>
@@ -4583,6 +4580,12 @@
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>高级</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
+    <value>日志尾部会经过清理并截断。敏感令牌、负载、录制内容和原始设置文件会被排除。共享前请先检查。</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
+    <value>分享前请检查</value>
   </data>
   <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
     <value>实时</value>

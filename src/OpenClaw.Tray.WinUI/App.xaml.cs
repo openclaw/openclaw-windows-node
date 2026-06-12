@@ -2902,6 +2902,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     internal GatewayCommandCenterState BuildCommandCenterState() =>
         new CommandCenterStateBuilder(CaptureSnapshot()).Build();
 
+    internal IReadOnlyList<ConnectionDiagnosticEvent> GetConnectionDiagnosticEvents() =>
+        _connectionManager?.Diagnostics.GetRecent(200) ?? [];
+
     private AppStateSnapshot CaptureSnapshot() => new AppStateSnapshot
     {
         Status = _appState!.Status,

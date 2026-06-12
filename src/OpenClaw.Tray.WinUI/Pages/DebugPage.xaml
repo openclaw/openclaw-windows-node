@@ -131,8 +131,8 @@
                                 </toolkit:SettingsCard.ActionIcon>
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_CopyDebugBundle"
-                                                  Header="Copy full debug bundle"
-                                                  Description="Everything the preview dialog produces, no preview."
+                                                  Header="Copy summary debug bundle"
+                                                  Description="Generated summaries plus the sanitized recent tray log. Use Create diagnostics bundle to review additional logs before sharing."
                                                   IsClickEnabled="True"
                                                   Click="OnCopyDebugBundle">
                                 <toolkit:SettingsCard.ActionIcon>

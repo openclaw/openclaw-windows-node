@@ -27,40 +27,6 @@ internal static class CommandCenterTextHelper
         RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
 
-    private static readonly Regex ValueUrlHostPattern = new(
-        @"\b(?<scheme>[a-z][a-z0-9+.-]*)://(?:[^@\s/]+@)?(?<host>\[[^\]\s]+\]|[^:/\s]+)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueIpPattern = new(
-        @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
-        RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    // IPv6 regex is shared with TokenSanitizer to keep log sanitization and support-context
-    // redaction in lock-step. See TokenSanitizer.IpV6Pattern for the alternative-by-alternative
-    // breakdown and the rationale for the trailing negative lookahead.
-
-    private static readonly Regex ValueEmailPattern = new(
-        @"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueUserAtHostPattern = new(
-        @"\b(?<user>[A-Za-z0-9._-]+)@(?<host>[A-Za-z0-9._-]+)(?=[:\s]|$)",
-        RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueHostAfterToPattern = new(
-        @"(?<=\bto\s)[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueLeadingHostPattern = new(
-        @"^\s*[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
-        RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
     internal static string BuildSupportContext(GatewayCommandCenterState state)
     {
         var builder = new StringBuilder();
@@ -383,11 +349,10 @@ internal static class CommandCenterTextHelper
         return builder.ToString();
     }
 
-    // SanitizeLogMessage already performs the same folder + Windows/Unix user-path redactions
-    // that an earlier version of this helper duplicated here. Delegating avoids redundant
-    // allocations on every diagnostic-bundle line.
+    // DiagnosticsExportRedactor decodes JSON-escaped log strings for display, then delegates
+    // common URL/path/token cleanup to TokenSanitizer.
     private static string RedactSupportLogLine(string line)
-        => TokenSanitizer.SanitizeLogMessage(line);
+        => DiagnosticsExportRedactor.Sanitize(line);
 
     private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
     {
@@ -472,31 +437,7 @@ internal static class CommandCenterTextHelper
         if (string.IsNullOrWhiteSpace(value))
             return "unknown";
 
-        try
-        {
-            var redacted = ValueUrlHostPattern.Replace(
-                value,
-                match => $"{match.Groups["scheme"].Value}://<host>");
-
-            redacted = TokenSanitizer.IpV6Pattern.Replace(redacted, TokenSanitizer.RedactIfValidIpV6);
-
-            redacted = ValueIpPattern.Replace(redacted, "<ip>");
-
-            redacted = ValueEmailPattern.Replace(redacted, "<email>");
-
-            redacted = ValueUserAtHostPattern.Replace(redacted, "<user>@<host>");
-
-            redacted = ValueHostAfterToPattern.Replace(redacted, "<host>");
-
-            redacted = ValueLeadingHostPattern.Replace(redacted, "<host>");
-
-            return redacted;
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            // Fail-closed: see TokenSanitizer.SanitizerTimeoutSentinel.
-            return TokenSanitizer.SanitizerTimeoutSentinel;
-        }
+        return TokenSanitizer.SanitizeLogMessage(value);
     }
 
     private static string BuildChannelDetail(ChannelCommandCenterInfo channel)

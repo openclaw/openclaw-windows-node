@@ -3538,10 +3538,10 @@
     <value>Connection state, gateway URL, runtime, tunnel.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Header" xml:space="preserve">
-    <value>Copy full debug bundle</value>
+    <value>複製摘要偵錯套件</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Description" xml:space="preserve">
-    <value>Everything the preview dialog produces, no preview.</value>
+    <value>僅包含產生的摘要；不包含記錄尾端。請使用「建立診斷套件」在分享前檢查記錄。</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyBrowserSetup.Header" xml:space="preserve">
     <value>Copy browser setup guidance</value>
@@ -4569,9 +4569,6 @@
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
     <value>分享前請檢閱</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
-    <value>套件產生器會排除敏感權杖、命令引數、內容與錄製。</value>
-  </data>
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>已中斷連線</value>
   </data>
@@ -4583,6 +4580,12 @@
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>進階</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
+    <value>記錄尾端會經過清理並截斷。敏感權杖、內容、錄製資料與原始設定檔會被排除。分享前請先檢查。</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
+    <value>分享前請檢查</value>
   </data>
   <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
     <value>即時</value>

@@ -27,7 +27,11 @@ public sealed class ConnectionDiagnostics
 
     public void Record(string category, string message, string? detail = null)
     {
-        var evt = new ConnectionDiagnosticEvent(_clock.UtcNow, category, message, detail);
+        var evt = new ConnectionDiagnosticEvent(
+            _clock.UtcNow,
+            TokenSanitizer.SanitizeLogMessage(category),
+            TokenSanitizer.SanitizeLogMessage(message),
+            detail is null ? null : TokenSanitizer.SanitizeLogMessage(detail));
         lock (_lock)
         {
             _buffer[_head] = evt;
