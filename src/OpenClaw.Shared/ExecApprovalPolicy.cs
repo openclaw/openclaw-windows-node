@@ -42,17 +42,28 @@ public enum ExecApprovalAction
 
 /// <summary>
 /// JsonConverter for <see cref="ExecApprovalAction"/> that emits/accepts the canonical
-/// camelCase values ("allow", "deny", "prompt") but also accepts the legacy "ask" alias.
-/// Older builds of the Permissions UI wrote "ask" for the Prompt action; without this
-/// converter, deserialization would throw and the entire policy file (including any
-/// user-authored rules) would be silently replaced with the default policy on load.
+/// camelCase values ("allow", "deny", "prompt") but also accepts legacy values written
+/// by older builds: the "ask" alias and numeric enum values.
 /// </summary>
 internal sealed class ExecApprovalActionConverter : JsonConverter<ExecApprovalAction>
 {
     public override ExecApprovalAction Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            if (!reader.TryGetInt32(out var numericValue))
+                throw new JsonException("Expected integer value for ExecApprovalAction");
+
+            return numericValue switch
+            {
+                (int)ExecApprovalAction.Allow => ExecApprovalAction.Allow,
+                (int)ExecApprovalAction.Deny => ExecApprovalAction.Deny,
+                (int)ExecApprovalAction.Prompt => ExecApprovalAction.Prompt,
+                _ => throw new JsonException($"Unknown ExecApprovalAction numeric value '{numericValue}'")
+            };
+        }
         if (reader.TokenType != JsonTokenType.String)
-            throw new JsonException($"Expected string for ExecApprovalAction, got {reader.TokenType}");
+            throw new JsonException($"Expected string or number for ExecApprovalAction, got {reader.TokenType}");
 
         var value = reader.GetString();
         return value?.ToLowerInvariant() switch

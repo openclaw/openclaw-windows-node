@@ -17,6 +17,8 @@ public sealed class ExecApprovalPromptRequest
     public string? Shell { get; init; }
     public string? MatchedPattern { get; init; }
     public string Reason { get; init; } = "";
+    public string? SessionKey { get; init; }
+    public string? CorrelationId { get; init; }
 }
 
 public sealed class ExecApprovalPromptDecision

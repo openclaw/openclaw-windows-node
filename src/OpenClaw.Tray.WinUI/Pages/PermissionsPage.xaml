@@ -297,7 +297,7 @@
 
                     <!-- Empty state — visible when there are no rules -->
                     <TextBlock x:Uid="PermissionsPage_NoRulesYetAdd" x:Name="RulesEmptyState"
-                               Text="No rules yet. Add a pattern below to allow or deny specific commands."
+                              Text="No rules yet. Add a pattern below to deny, allow, or ask for specific commands."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                HorizontalAlignment="Center"
@@ -364,8 +364,9 @@
                                  PlaceholderText="Command pattern (e.g. echo *)"
                                  FontFamily="Consolas"/>
                         <ComboBox Grid.Column="1" x:Name="NewRuleAction" MinWidth="100" SelectedIndex="0">
-                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="allow" Tag="allow"/>
-                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="deny" Tag="deny"/>
+                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="Deny" Tag="deny"/>
+                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="Allow" Tag="allow"/>
+                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_56" Content="Ask" Tag="prompt"/>
                         </ComboBox>
                         <Button Grid.Column="2" x:Uid="PermissionsPage_Button_57" Content="Add" Click="OnAddRule"/>
                     </Grid>

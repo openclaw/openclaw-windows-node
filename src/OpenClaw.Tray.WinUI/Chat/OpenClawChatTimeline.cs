@@ -62,7 +62,7 @@ public record OpenClawChatTimelineProps(
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     int ScrollToBottomToken = 0,
-    Action<string, bool>? OnPermissionResponse = null);
+    Action<string, string>? OnPermissionResponse = null);
 
 /// <summary>
 /// OpenClaw-skinned variant of <see cref="ChatTimeline"/> from the vendored
@@ -2253,11 +2253,45 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var detail = entry.Text;
             var onResponse = Props.OnPermissionResponse;
 
+            static bool ActionEquals(string? action, string expected) =>
+                string.Equals(action, expected, StringComparison.OrdinalIgnoreCase);
+
+            string LabelForAction(string action) =>
+                ActionEquals(action, ChatPermissionActionKeys.AllowOnce) ? LocalizationHelper.GetString("Chat_Permission_Allow") :
+                ActionEquals(action, ChatPermissionActionKeys.AllowAlways) ? LocalizationHelper.GetString("Chat_Permission_AllowAlways") :
+                ActionEquals(action, ChatPermissionActionKeys.Deny) ? LocalizationHelper.GetString("Chat_Permission_Deny") :
+                action;
+
+            var actionKeys = ChatPermissionActionKeys.NormalizeActions(entry.PermissionActions);
+
             Element body;
             if (entry.PermissionDecision == ChatPermissionDecision.Pending)
             {
-                var allowLabel = LocalizationHelper.GetString("Chat_Permission_Allow");
-                var denyLabel = LocalizationHelper.GetString("Chat_Permission_Deny");
+                Element PermissionActionButton(string actionKey, int index)
+                {
+                    var label = LabelForAction(actionKey);
+                    var isAccent = ActionEquals(actionKey, ChatPermissionActionKeys.AllowOnce)
+                        || (!actionKeys.Any(a => ActionEquals(a, ChatPermissionActionKeys.AllowOnce))
+                            && index == 0
+                            && !ActionEquals(actionKey, ChatPermissionActionKeys.Deny));
+
+                    return Button(label,
+                        () => onResponse?.Invoke(requestId, actionKey))
+                        .Set(b =>
+                        {
+                            b.CornerRadius = new CornerRadius(4);
+                            b.Padding = new Thickness(14, 6, 14, 6);
+                            b.MinWidth = 0; b.MinHeight = 0;
+                            b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{label}{automationSuffix}");
+                            if (isAccent)
+                            {
+                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; }
+                                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
+                            }
+                        });
+                }
+
                 body = VStack(8,
                     TextBlock($"⚠ {kind}")
                         .Set(t => { t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; t.TextWrapping = TextWrapping.Wrap; }),
@@ -2282,32 +2316,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                      }),
                     TextBlock(LocalizationHelper.GetString("Chat_Permission_Caption"))
                         .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.FontSize = 11; t.Opacity = 0.7; }),
-                    HStack(8,
-                        Button(allowLabel,
-                            () => onResponse?.Invoke(requestId, true))
-                            .Set(b =>
-                            {
-                                b.CornerRadius = new CornerRadius(4);
-                                b.Padding = new Thickness(14, 6, 14, 6);
-                                b.MinWidth = 0; b.MinHeight = 0;
-                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
-                                // Include the operation kind in the screen-reader name so
-                                // users hear "Allow shell.exec" instead of bare "Allow".
-                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{allowLabel}{automationSuffix}");
-                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; }
-                                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
-                            }),
-                        Button(denyLabel,
-                            () => onResponse?.Invoke(requestId, false))
-                            .Set(b =>
-                            {
-                                b.CornerRadius = new CornerRadius(4);
-                                b.Padding = new Thickness(14, 6, 14, 6);
-                                b.MinWidth = 0; b.MinHeight = 0;
-                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
-                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{denyLabel}{automationSuffix}");
-                            })
-                    ).HAlign(HorizontalAlignment.Right)
+                    HStack(8, actionKeys.Select(PermissionActionButton).ToArray())
+                        .HAlign(HorizontalAlignment.Right)
                 );
             }
             else
@@ -2317,9 +2327,10 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 // was approved/denied without expanding anything.
                 var (glyph, labelKey) = entry.PermissionDecision switch
                 {
-                    ChatPermissionDecision.Allowed => ("✓", "Chat_Permission_DecisionAllowed"),
-                    ChatPermissionDecision.Denied  => ("✕", "Chat_Permission_DecisionDenied"),
-                    _                              => ("⌛", "Chat_Permission_DecisionExpired"),
+                    ChatPermissionDecision.Allowed       => ("✓", "Chat_Permission_DecisionAllowed"),
+                    ChatPermissionDecision.AllowedAlways => ("✓", "Chat_Permission_DecisionAlwaysAllowed"),
+                    ChatPermissionDecision.Denied        => ("✕", "Chat_Permission_DecisionDenied"),
+                    _                                    => ("⌛", "Chat_Permission_DecisionExpired"),
                 };
                 var label = LocalizationHelper.GetString(labelKey);
                 // Surrogate-safe truncation: if char 119 is a high surrogate,

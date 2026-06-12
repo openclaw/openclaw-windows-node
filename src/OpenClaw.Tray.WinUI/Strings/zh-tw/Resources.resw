@@ -2020,10 +2020,13 @@
     <value>命令模式 (例如 echo *)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
-    <value>允許</value>
+    <value>拒絕</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>拒絕</value>
+    <value>允許</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
+    <value>詢問</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
     <value>新增規則</value>
@@ -2971,13 +2974,19 @@
     <value> … [已截斷 {0} 位元組]</value>
   </data>
   <data name="Chat_Permission_Allow" xml:space="preserve">
-    <value>允許</value>
+    <value>允許一次</value>
+  </data>
+  <data name="Chat_Permission_AllowAlways" xml:space="preserve">
+    <value>一律允許</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>拒絕</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>已允許</value>
+  </data>
+  <data name="Chat_Permission_DecisionAlwaysAllowed" xml:space="preserve">
+    <value>已一律允許</value>
   </data>
   <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
     <value>已拒絕</value>
@@ -3036,11 +3045,17 @@
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>需要執行核准</value>
   </data>
+  <data name="Chat_Permission_CommandApprovalTitle" xml:space="preserve">
+    <value>已要求命令核准</value>
+  </data>
   <data name="Chat_Permission_Subtitle" xml:space="preserve">
-    <value>在此 Windows 伴侶上執行以下命令需要核准。按一下「允許」以繼續，或按一下「拒絕」以取消。</value>
+    <value>在此 Windows 伴侶上執行以下命令需要核准。允許一次以繼續，一律允許以記住此命令，或拒絕以取消。</value>
   </data>
   <data name="Chat_Permission_Caption" xml:space="preserve">
-    <value>根據目前策略，每條命令都需要核准。您的選擇僅適用於此請求。</value>
+    <value>「允許一次」僅適用於此請求。「一律允許」會在可能時儲存一條精確的允許規則。</value>
+  </data>
+  <data name="Chat_Permission_ResultSubmittedFormat" xml:space="preserve">
+    <value>已為 {1} 提交核准 {0}。</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>連線到閘道中…</value>
@@ -4183,7 +4198,7 @@
     <value>0 條規則</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>尚無規則。在下方新增模式以允許或拒絕特定命令。</value>
+    <value>尚無規則。在下方新增模式以拒絕、允許或詢問特定命令。</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows 隱私</value>

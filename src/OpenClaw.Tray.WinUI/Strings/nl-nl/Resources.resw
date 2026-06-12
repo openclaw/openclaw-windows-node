@@ -2021,10 +2021,13 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Opdrachtpatroon (bijv. echo *)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
-    <value>Toestaan</value>
+    <value>Weigeren</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Weigeren</value>
+    <value>Toestaan</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
+    <value>Vragen</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
     <value>Regel toevoegen</value>
@@ -2972,13 +2975,19 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value> … [{0} bytes afgekapt]</value>
   </data>
   <data name="Chat_Permission_Allow" xml:space="preserve">
-    <value>Toestaan</value>
+    <value>Eenmalig toestaan</value>
+  </data>
+  <data name="Chat_Permission_AllowAlways" xml:space="preserve">
+    <value>Altijd toestaan</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Weigeren</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>Toegestaan</value>
+  </data>
+  <data name="Chat_Permission_DecisionAlwaysAllowed" xml:space="preserve">
+    <value>Altijd toegestaan</value>
   </data>
   <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
     <value>Geweigerd</value>
@@ -3037,11 +3046,17 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Goedkeuring voor uitvoering vereist</value>
   </data>
+  <data name="Chat_Permission_CommandApprovalTitle" xml:space="preserve">
+    <value>Opdrachtgoedkeuring aangevraagd</value>
+  </data>
   <data name="Chat_Permission_Subtitle" xml:space="preserve">
-    <value>Goedkeuring is nodig om de onderstaande opdracht uit te voeren op deze Windows-companion. Klik op Toestaan om door te gaan, of Weigeren om te annuleren.</value>
+    <value>Goedkeuring is nodig om de onderstaande opdracht uit te voeren op deze Windows-companion. Sta eenmalig toe om door te gaan, sta altijd toe om deze opdracht te onthouden, of weiger om te annuleren.</value>
   </data>
   <data name="Chat_Permission_Caption" xml:space="preserve">
-    <value>Voor elke opdracht is goedkeuring vereist volgens het actieve beleid. Uw keuze geldt alleen voor deze aanvraag.</value>
+    <value>Eenmalig toestaan geldt alleen voor deze aanvraag. Altijd toestaan slaat waar mogelijk een exacte toestaan-regel op.</value>
+  </data>
+  <data name="Chat_Permission_ResultSubmittedFormat" xml:space="preserve">
+    <value>Goedkeuring {0} ingediend voor {1}.</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Verbinden met gateway…</value>
@@ -4184,7 +4199,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>0 regels</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>Nog geen regels. Voeg hieronder een patroon toe om specifieke opdrachten toe te staan of te weigeren.</value>
+    <value>Nog geen regels. Voeg hieronder een patroon toe om specifieke opdrachten te weigeren, toe te staan of te vragen.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows-privacy</value>

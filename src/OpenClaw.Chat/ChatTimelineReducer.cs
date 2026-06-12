@@ -174,13 +174,14 @@ public static class ChatTimelineReducer
             ToolName: e.ToolName,
             IntentSummary: e.PermissionKind,
             PermissionRequestId: e.RequestId,
-            PermissionDecision: ChatPermissionDecision.Pending);
+            PermissionDecision: ChatPermissionDecision.Pending,
+            PermissionActions: e.Actions);
 
         return state with
         {
             Entries = entries.Add(entry),
             NextId = state.NextId + 1,
-            PendingPermission = new ChatPermissionRequest(e.RequestId, e.PermissionKind, e.ToolName, detail)
+            PendingPermission = new ChatPermissionRequest(e.RequestId, e.PermissionKind, e.ToolName, detail, e.Actions)
         };
     }
 

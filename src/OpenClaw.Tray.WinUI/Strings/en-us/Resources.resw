@@ -2068,10 +2068,13 @@ On your gateway host (Mac/Linux), run:
     <value>Command pattern (e.g. echo *)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
-    <value>allow</value>
+    <value>Deny</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>deny</value>
+    <value>Allow</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
+    <value>Ask</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
     <value>Add Rule</value>
@@ -3019,13 +3022,19 @@ On your gateway host (Mac/Linux), run:
     <value> … [{0} bytes truncated]</value>
   </data>
   <data name="Chat_Permission_Allow" xml:space="preserve">
-    <value>Allow</value>
+    <value>Allow once</value>
+  </data>
+  <data name="Chat_Permission_AllowAlways" xml:space="preserve">
+    <value>Always allow</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Deny</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>Allowed</value>
+  </data>
+  <data name="Chat_Permission_DecisionAlwaysAllowed" xml:space="preserve">
+    <value>Always allowed</value>
   </data>
   <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
     <value>Denied</value>
@@ -3084,11 +3093,17 @@ On your gateway host (Mac/Linux), run:
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Exec approval needed</value>
   </data>
+  <data name="Chat_Permission_CommandApprovalTitle" xml:space="preserve">
+    <value>Command approval requested</value>
+  </data>
   <data name="Chat_Permission_Subtitle" xml:space="preserve">
-    <value>Approval is needed to run the command below on this Windows companion. Allow once to proceed, or Deny to cancel.</value>
+    <value>Approval is needed to run the command below on this Windows companion. Allow once to proceed, Always allow to remember this command, or Deny to cancel.</value>
   </data>
   <data name="Chat_Permission_Caption" xml:space="preserve">
-    <value>Approval is required for every command by the active policy. Your choice applies only to this request.</value>
+    <value>Allow once applies only to this request. Always allow saves an exact allow rule when possible.</value>
+  </data>
+  <data name="Chat_Permission_ResultSubmittedFormat" xml:space="preserve">
+    <value>Approval {0} submitted for {1}.</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Connecting to gateway…</value>
@@ -4231,7 +4246,7 @@ On your gateway host (Mac/Linux), run:
     <value>0 rules</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>No rules yet. Add a pattern below to allow or deny specific commands.</value>
+    <value>No rules yet. Add a pattern below to deny, allow, or ask for specific commands.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows privacy</value>

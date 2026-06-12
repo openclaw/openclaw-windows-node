@@ -6,6 +6,24 @@ namespace OpenClaw.Tray.Tests;
 public class ChatTimelineReducerTests
 {
     [Fact]
+    public void ChatPermissionDecision_ExistingNumericValuesRemainStable()
+    {
+        Assert.Equal(0, (int)ChatPermissionDecision.Pending);
+        Assert.Equal(1, (int)ChatPermissionDecision.Allowed);
+        Assert.Equal(2, (int)ChatPermissionDecision.Denied);
+        Assert.Equal(3, (int)ChatPermissionDecision.Expired);
+        Assert.Equal(4, (int)ChatPermissionDecision.AllowedAlways);
+    }
+
+    [Fact]
+    public void NormalizeActions_FallsBackToDefaults_WhenProvidedActionsAreBlank()
+    {
+        var actions = ChatPermissionActionKeys.NormalizeActions(["", "   "]);
+
+        Assert.Equal(ChatPermissionActionKeys.ExecApprovalDefaults, actions);
+    }
+
+    [Fact]
     public void ToolStart_BeginsTurnWhenLifecycleStartWasMissed()
     {
         var state = ChatTimelineState.Initial();

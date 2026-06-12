@@ -1756,8 +1756,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 new AppLogger(),
                 _dispatcherQueue,
                 DataPath,
-                () => _keepAliveWindow?.Content as FrameworkElement,
-                settings,
+                rootProvider: () => _keepAliveWindow?.Content as FrameworkElement,
+                chatProviderProvider: () => _chatCoordinator?.Provider,
+                settings: settings,
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
                 sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken);

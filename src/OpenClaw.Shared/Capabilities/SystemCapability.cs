@@ -277,7 +277,7 @@ public class SystemCapability : NodeCapabilityBase
         var rawCommand = GetStringArg(request.Args, "rawCommand");
         var cwd = GetStringArg(request.Args, "cwd");
         var agentId = GetStringArg(request.Args, "agentId");
-        var sessionKey = GetStringArg(request.Args, "sessionKey");
+        var sessionKey = request.SessionKey ?? GetStringArg(request.Args, "sessionKey");
         
         Logger.Info($"system.run.prepare: {rawCommand} (cwd={cwd ?? "default"})");
         
@@ -357,6 +357,7 @@ public class SystemCapability : NodeCapabilityBase
         
         var shell = GetStringArg(request.Args, "shell");
         var cwd = GetStringArg(request.Args, "cwd");
+        var sessionKey = request.SessionKey ?? GetStringArg(request.Args, "sessionKey");
         var timeoutMs = GetIntArg(request.Args, "timeoutMs",
             GetIntArg(request.Args, "timeout", DefaultRunTimeoutMs));
         // Clamp caller-supplied timeouts. timeoutMs <= 0 historically meant
@@ -406,7 +407,7 @@ public class SystemCapability : NodeCapabilityBase
         if (_approvalPolicy != null)
         {
             var approval = _approvalPolicy.Evaluate(fullCommand, shell);
-            var approvalCheck = await EnsureApprovedAsync(fullCommand, shell, approval);
+            var approvalCheck = await EnsureApprovedAsync(fullCommand, shell, approval, sessionKey, correlationId);
             if (!approvalCheck.Allowed)
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
@@ -437,7 +438,7 @@ public class SystemCapability : NodeCapabilityBase
                     continue;
                 }
 
-                var innerApprovalCheck = await EnsureApprovedAsync(target.Command, target.Shell, innerApproval);
+                var innerApprovalCheck = await EnsureApprovedAsync(target.Command, target.Shell, innerApproval, sessionKey, correlationId);
                 if (!innerApprovalCheck.Allowed)
                 {
                     Logger.Warn($"system.run DENIED: {target.Command} ({innerApproval.Reason})");
@@ -478,6 +479,8 @@ public class SystemCapability : NodeCapabilityBase
         string command,
         string? shell,
         ExecApprovalResult approval,
+        string? sessionKey,
+        string correlationId,
         CancellationToken cancellationToken = default)
     {
         if (approval.Allowed)
@@ -494,7 +497,9 @@ public class SystemCapability : NodeCapabilityBase
             Command = command,
             Shell = shell,
             MatchedPattern = approval.MatchedPattern,
-            Reason = approval.Reason ?? "Command requires approval"
+            Reason = approval.Reason ?? "Command requires approval",
+            SessionKey = sessionKey,
+            CorrelationId = correlationId
         }, cancellationToken);
 
         if (decision.Kind == ExecApprovalPromptDecisionKind.Deny)
