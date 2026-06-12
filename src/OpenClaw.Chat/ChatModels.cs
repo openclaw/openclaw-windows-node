@@ -45,10 +45,33 @@ public enum ChatTimelineItemKind
 /// </remarks>
 public enum ChatPermissionDecision
 {
-    Pending,
-    Allowed,
-    Denied,
-    Expired
+    Pending = 0,
+    Allowed = 1,
+    Denied = 2,
+    Expired = 3,
+    AllowedAlways = 4
+}
+
+public static class ChatPermissionActionKeys
+{
+    public const string AllowOnce = "allow-once";
+    public const string AllowAlways = "allow-always";
+    public const string Deny = "deny";
+
+    public static readonly string[] ExecApprovalDefaults = [AllowOnce, AllowAlways, Deny];
+
+    public static string[] NormalizeActions(IReadOnlyList<string>? actions)
+    {
+        if (actions is not { Count: > 0 })
+            return ExecApprovalDefaults;
+
+        var normalized = actions
+            .Where(action => !string.IsNullOrWhiteSpace(action))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return normalized.Length > 0 ? normalized : ExecApprovalDefaults;
+    }
 }
 
 public enum ChatToolCallStatus
@@ -107,9 +130,10 @@ public record ChatTimelineItem(
     ChatTone? Tone = null,
     string? ToolCallId = null,
     string? PermissionRequestId = null,
-    ChatPermissionDecision PermissionDecision = ChatPermissionDecision.Pending);
+    ChatPermissionDecision PermissionDecision = ChatPermissionDecision.Pending,
+    IReadOnlyList<string>? PermissionActions = null);
 
-public record ChatPermissionRequest(string RequestId, string PermissionKind, string ToolName, string Detail);
+public record ChatPermissionRequest(string RequestId, string PermissionKind, string ToolName, string Detail, IReadOnlyList<string>? Actions = null);
 
 public record ChatTimelineState(
     System.Collections.Immutable.ImmutableList<ChatTimelineItem> Entries,
@@ -156,7 +180,7 @@ public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEven
 public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
 public record ChatErrorEvent(string Text) : ChatEvent;
 public record ChatRestoredEvent(string Text) : ChatEvent;
-public record ChatPermissionRequestEvent(string RequestId, string PermissionKind, string ToolName, string Detail) : ChatEvent;
+public record ChatPermissionRequestEvent(string RequestId, string PermissionKind, string ToolName, string Detail, IReadOnlyList<string>? Actions = null) : ChatEvent;
 public record ChatModelChangedEvent(string Model) : ChatEvent;
 public record ChatRawEvent(string EventType, string? Text = null) : ChatEvent;
 
@@ -235,5 +259,11 @@ public interface IChatDataProvider : IAsyncDisposable
     Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default);
     Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default);
     Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default);
-    Task RespondToPermissionAsync(string threadId, string requestId, bool allow, CancellationToken cancellationToken = default);
+    Task RespondToPermissionAsync(string threadId, string requestId, string action, CancellationToken cancellationToken = default);
+    Task RespondToPermissionAsync(string threadId, string requestId, bool allow, CancellationToken cancellationToken = default) =>
+        RespondToPermissionAsync(
+            threadId,
+            requestId,
+            allow ? ChatPermissionActionKeys.AllowOnce : ChatPermissionActionKeys.Deny,
+            cancellationToken);
 }

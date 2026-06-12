@@ -2089,10 +2089,13 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Modèle de commande (par ex. echo *)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
-    <value>Autoriser</value>
+    <value>Refuser</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Refuser</value>
+    <value>Autoriser</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
+    <value>Demander</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
     <value>Ajouter une règle</value>
@@ -3046,13 +3049,19 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value> … [{0} octets tronqués]</value>
   </data>
   <data name="Chat_Permission_Allow" xml:space="preserve">
-    <value>Autoriser</value>
+    <value>Autoriser une fois</value>
+  </data>
+  <data name="Chat_Permission_AllowAlways" xml:space="preserve">
+    <value>Toujours autoriser</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Refuser</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>Autorisé</value>
+  </data>
+  <data name="Chat_Permission_DecisionAlwaysAllowed" xml:space="preserve">
+    <value>Toujours autorisé</value>
   </data>
   <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
     <value>Refusé</value>
@@ -3111,11 +3120,17 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Approbation d'exécution requise</value>
   </data>
+  <data name="Chat_Permission_CommandApprovalTitle" xml:space="preserve">
+    <value>Approbation de commande demandée</value>
+  </data>
   <data name="Chat_Permission_Subtitle" xml:space="preserve">
-    <value>Une approbation est requise pour exécuter la commande ci-dessous sur ce compagnon Windows. Cliquez sur Autoriser pour continuer, ou Refuser pour annuler.</value>
+    <value>Une approbation est requise pour exécuter la commande ci-dessous sur ce compagnon Windows. Autorisez une fois pour continuer, autorisez toujours pour mémoriser cette commande, ou refusez pour annuler.</value>
   </data>
   <data name="Chat_Permission_Caption" xml:space="preserve">
-    <value>Une approbation est requise pour chaque commande selon la stratégie active. Votre choix s'applique uniquement à cette demande.</value>
+    <value>Autoriser une fois s'applique uniquement à cette demande. Toujours autoriser enregistre une règle d'autorisation exacte lorsque c'est possible.</value>
+  </data>
+  <data name="Chat_Permission_ResultSubmittedFormat" xml:space="preserve">
+    <value>Approbation {0} envoyée pour {1}.</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>Connexion à la passerelle…</value>
@@ -4252,7 +4267,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>0 règle</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>Aucune règle pour l'instant. Ajoutez un motif ci-dessous pour autoriser ou refuser des commandes spécifiques.</value>
+    <value>Aucune règle pour l'instant. Ajoutez un motif ci-dessous pour refuser, autoriser ou demander pour des commandes spécifiques.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Confidentialité Windows</value>

@@ -3543,6 +3543,30 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task RespondToPermissionAsync_AllowAlwaysRoutesAllowAlwaysThroughRpcAndMarksAlwaysAllowed()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-always-1"));
+        var pendingEntry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Contains(ChatPermissionActionKeys.AllowAlways, pendingEntry.PermissionActions!);
+
+        await provider.RespondToPermissionAsync("main", "appr-always-1", ChatPermissionActionKeys.AllowAlways);
+
+        Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal("appr-always-1", bridge.ResolvedApprovals[0].Id);
+        Assert.Equal("allow-always", bridge.ResolvedApprovals[0].Decision);
+        Assert.Empty(bridge.SentMessages);
+
+        var decidedEntry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.AllowedAlways, decidedEntry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
     public async Task RespondToPermissionAsync_RpcThrows_BannerPreservedForRetry()
     {
         // Critical contract: if ResolveExecApprovalAsync throws (e.g. gateway
@@ -3588,6 +3612,21 @@ public class OpenClawChatDataProviderTests
         var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
             e => e.Kind == ChatTimelineItemKind.PermissionRequest);
         Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task ResolvedEcho_WithAllowAlwaysDecision_MarksEntryAlwaysAllowed()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-always"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent("appr-echo-always", phase: "resolved", decision: "allow-always"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.AllowedAlways, entry.PermissionDecision);
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
     }
 
@@ -3680,11 +3719,52 @@ public class OpenClawChatDataProviderTests
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
     }
 
+    [Fact]
+    public async Task LocalExecApproval_InlineDecisionCompletesPromptAndAddsHistoryResult()
+    {
+        var (_, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        var promptTask = provider.RequestLocalExecApprovalAsync(new ExecApprovalPromptRequest
+        {
+            Command = "del \"E:\\Temp\\sample.txt\"",
+            Shell = "auto",
+            Reason = "No matching rule; default policy applied",
+            SessionKey = "main",
+            CorrelationId = "abc12345"
+        });
+
+        Assert.False(promptTask.IsCompleted);
+        var pendingTimeline = snapshots[^1].Timelines["main"];
+        var pendingEntry = Assert.Single(pendingTimeline.Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal("local-abc12345", pendingEntry.PermissionRequestId);
+        Assert.Contains(ChatPermissionActionKeys.AllowOnce, pendingEntry.PermissionActions!);
+        Assert.Contains(ChatPermissionActionKeys.AllowAlways, pendingEntry.PermissionActions!);
+        Assert.Contains(ChatPermissionActionKeys.Deny, pendingEntry.PermissionActions!);
+
+        await provider.RespondToPermissionAsync("main", "local-abc12345", ChatPermissionActionKeys.AllowAlways);
+
+        var decision = await promptTask;
+        Assert.Equal(ExecApprovalPromptDecisionKind.AlwaysAllow, decision!.Kind);
+
+        var decidedTimeline = snapshots[^1].Timelines["main"];
+        var decidedEntry = Assert.Single(decidedTimeline.Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.AllowedAlways, decidedEntry.PermissionDecision);
+        Assert.Contains(decidedTimeline.Entries, e =>
+            e.Kind == ChatTimelineItemKind.Status &&
+            e.Text.Contains("allow-always", StringComparison.Ordinal) &&
+            e.Text.Contains("local-abc12345", StringComparison.Ordinal));
+    }
+
     private static AgentEventInfo MakeApprovalResolvedEvent(
         string approvalId,
         string phase,
         string sessionKey = "main",
-        string? approvalSlug = null)
+        string? approvalSlug = null,
+        string? decision = null)
     {
         // Mirrors the flat envelope that OpenClawGatewayClient.HandleExecApprovalEvent
         // synthesizes from a top-level exec.approval.resolved broadcast.
@@ -3693,6 +3773,7 @@ public class OpenClawChatDataProviderTests
               "phase": "{{phase}}",
               "approvalId": "{{approvalId}}",
               "approvalSlug": "{{approvalSlug ?? approvalId}}",
+              "decision": "{{decision ?? ""}}",
               "host": "gateway",
               "command": "openclaw nodes invoke --node \"Windows Node\" --command system.run",
               "agentId": "main"

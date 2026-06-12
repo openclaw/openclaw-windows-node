@@ -281,6 +281,103 @@ public class ExecApprovalPolicyTests : IDisposable
         var result = policy.Evaluate("echo hello");
         Assert.True(result.Allowed);
     }
+
+    [Fact]
+    public void Load_AcceptsLegacyAskAlias_WithoutDataLoss()
+    {
+        var legacy = """
+        {
+          "defaultAction": "ask",
+          "rules": [
+            { "pattern": "my-custom *", "action": "ask" },
+            { "pattern": "secret-only", "action": "allow" }
+          ]
+        }
+        """;
+        File.WriteAllText(Path.Combine(_tempDir, "exec-policy.json"), legacy);
+
+        var policy = CreatePolicy();
+
+        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
+        Assert.Equal(2, policy.Rules.Count);
+        Assert.Equal("my-custom *", policy.Rules[0].Pattern);
+        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
+        Assert.Equal(ExecApprovalAction.Allow, policy.Rules[1].Action);
+    }
+
+    [Fact]
+    public void Load_AcceptsLegacyNumericActionValues_WithoutDataLoss()
+    {
+        var legacy = """
+        {
+          "defaultAction": 2,
+          "rules": [
+            { "pattern": "my-numeric-prompt *", "action": 2 },
+            { "pattern": "my-numeric-allow *", "action": 0 },
+            { "pattern": "my-numeric-deny *", "action": 1 }
+          ]
+        }
+        """;
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        File.WriteAllText(path, legacy);
+
+        var policy = CreatePolicy();
+
+        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
+        Assert.Equal(3, policy.Rules.Count);
+        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
+        Assert.Equal(ExecApprovalAction.Allow, policy.Rules[1].Action);
+        Assert.Equal(ExecApprovalAction.Deny, policy.Rules[2].Action);
+        Assert.Contains("my-numeric-prompt", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Load_LegacyAskFile_DoesNotOverwriteWithDefaultRules()
+    {
+        var legacy = """
+        {
+          "defaultAction": "ask",
+          "rules": [
+            { "pattern": "my-unique-pattern-xyz *", "action": "allow" }
+          ]
+        }
+        """;
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        File.WriteAllText(path, legacy);
+
+        _ = CreatePolicy();
+
+        var after = File.ReadAllText(path);
+        Assert.Contains("my-unique-pattern-xyz", after);
+    }
+
+    [Fact]
+    public void Save_AfterLoadingLegacyAsk_EmitsCanonicalPrompt()
+    {
+        var legacy = """{"defaultAction":"ask","rules":[]}""";
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        File.WriteAllText(path, legacy);
+
+        var policy = CreatePolicy();
+        policy.Save();
+
+        var after = File.ReadAllText(path);
+        Assert.Contains("\"prompt\"", after);
+        Assert.DoesNotContain("\"ask\"", after);
+    }
+
+    [Fact]
+    public void Load_AcceptsCanonicalPromptValue()
+    {
+        var canonical = """{"defaultAction":"prompt","rules":[{"pattern":"x","action":"prompt"}]}""";
+        File.WriteAllText(Path.Combine(_tempDir, "exec-policy.json"), canonical);
+
+        var policy = CreatePolicy();
+
+        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
+        Assert.Single(policy.Rules);
+        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
+    }
     
     [Fact]
     public void InsertRule_ClampsToZero_ForNegativeIndex()
@@ -391,84 +488,6 @@ public class ExecApprovalPolicyTests : IDisposable
         // When no shell is provided, defaults to "powershell" internally, so cmd-only rule doesn't match
         var result = policy.Evaluate("dir C:\\", null); // null shell -> defaults to "powershell"
         Assert.False(result.Allowed); // cmd rule didn't match, default deny applies
-    }
-
-    // ── Legacy "ask" alias migration (regression for silent rule wipe) ──
-    // Older Permissions UI versions wrote "ask" instead of the canonical "prompt".
-    // Before the fix, Load() would throw on "ask", fall back to default rules, and
-    // overwrite the user's file — silently destroying any custom rules they had.
-
-    [Fact]
-    public void Load_AcceptsLegacyAskAlias_WithoutDataLoss()
-    {
-        var legacy = """
-        {
-          "defaultAction": "ask",
-          "rules": [
-            { "pattern": "my-custom *", "action": "ask" },
-            { "pattern": "secret-only", "action": "allow" }
-          ]
-        }
-        """;
-        File.WriteAllText(Path.Combine(_tempDir, "exec-policy.json"), legacy);
-
-        var policy = CreatePolicy();
-
-        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
-        Assert.Equal(2, policy.Rules.Count);
-        Assert.Equal("my-custom *", policy.Rules[0].Pattern);
-        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
-        Assert.Equal(ExecApprovalAction.Allow, policy.Rules[1].Action);
-    }
-
-    [Fact]
-    public void Load_LegacyAskFile_DoesNotOverwriteWithDefaultRules()
-    {
-        var legacy = """
-        {
-          "defaultAction": "ask",
-          "rules": [
-            { "pattern": "my-unique-pattern-xyz *", "action": "allow" }
-          ]
-        }
-        """;
-        var path = Path.Combine(_tempDir, "exec-policy.json");
-        File.WriteAllText(path, legacy);
-
-        _ = CreatePolicy(); // triggers Load()
-
-        // File contents must still contain the user's custom rule. If the bug regresses,
-        // Load()'s catch handler would overwrite the file with CreateDefaultRules().
-        var after = File.ReadAllText(path);
-        Assert.Contains("my-unique-pattern-xyz", after);
-    }
-
-    [Fact]
-    public void Save_AfterLoadingLegacyAsk_EmitsCanonicalPrompt()
-    {
-        var legacy = """{"defaultAction":"ask","rules":[]}""";
-        var path = Path.Combine(_tempDir, "exec-policy.json");
-        File.WriteAllText(path, legacy);
-
-        var policy = CreatePolicy();
-        policy.Save();
-
-        var after = File.ReadAllText(path);
-        Assert.Contains("\"prompt\"", after);
-        Assert.DoesNotContain("\"ask\"", after);
-    }
-
-    [Fact]
-    public void Load_AcceptsCanonicalPromptValue()
-    {
-        var canonical = """{"defaultAction":"prompt","rules":[{"pattern":"x","action":"prompt"}]}""";
-        File.WriteAllText(Path.Combine(_tempDir, "exec-policy.json"), canonical);
-
-        var policy = CreatePolicy();
-
-        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
-        Assert.Single(policy.Rules);
-        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
     }
 
     // ── Hot-reload regression tests ──

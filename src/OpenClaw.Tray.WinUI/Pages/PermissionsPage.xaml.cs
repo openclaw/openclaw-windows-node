@@ -584,12 +584,7 @@ public sealed partial class PermissionsPage : Page
 
                 if (root.TryGetProperty("defaultAction", out var da))
                 {
-                    var action = da.GetString() ?? "deny";
-                    // Migrate legacy "ask" tag (pre-fix files) to the canonical "prompt"
-                    // value used by ExecApprovalAction.Prompt. Without this, files written
-                    // by older builds fail to deserialize and silently reset to Deny.
-                    if (string.Equals(action, "ask", StringComparison.OrdinalIgnoreCase))
-                        action = "prompt";
+                    var action = NormalizeExecPolicyAction(da.GetString());
                     for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
                     {
                         if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
@@ -608,13 +603,16 @@ public sealed partial class PermissionsPage : Page
                             // Accept either case — earlier saves wrote "Pattern" capitalized
                             // due to an anonymous-type property name leak.
                             Pattern = TryGetStringCaseInsensitive(rule, "pattern", "Pattern") ?? "",
-                            Action = TryGetStringCaseInsensitive(rule, "action", "Action") ?? "deny",
+                            Action = NormalizeExecPolicyAction(TryGetStringCaseInsensitive(rule, "action", "Action")),
                             Index = idx++
                         });
                     }
                 }
 
+                var removedDuplicateRules = ExecPolicyRuleList.CoalesceDuplicatePatterns(_policyRules);
                 RefreshPolicyRulesList();
+                if (removedDuplicateRules)
+                    SaveExecPolicyToDisk(showSavedHint: false);
             }
             else
             {
@@ -631,13 +629,16 @@ public sealed partial class PermissionsPage : Page
         for (int i = 0; i < _policyRules.Count; i++) _policyRules[i].Index = i;
         var allowBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
         var denyBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+        var askBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
         PolicyRulesList.ItemsSource = null;
         PolicyRulesList.ItemsSource = _policyRules.Select(r => new
         {
             r.Pattern,
-            r.Action,
+            Action = DisplayExecPolicyAction(r.Action),
             r.Index,
-            ActionBrush = r.Action == "allow" ? allowBrush : denyBrush
+            ActionBrush = r.Action == "allow"
+                ? allowBrush
+                : r.Action == "prompt" ? askBrush : denyBrush
         }).ToList();
 
         // Header badge + empty state
@@ -658,8 +659,8 @@ public sealed partial class PermissionsPage : Page
         if (string.IsNullOrEmpty(pattern)) return;
         // Read .Tag (invariant identifier) instead of .Content so future localization
         // of the allow/deny strings can't break the JSON contract on disk.
-        var action = (NewRuleAction.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "deny";
-        _policyRules.Add(new ExecPolicyRule { Pattern = pattern, Action = action });
+        var action = NormalizeExecPolicyAction((NewRuleAction.SelectedItem as ComboBoxItem)?.Tag?.ToString());
+        ExecPolicyRuleList.UpsertByPattern(_policyRules, pattern, action);
         NewRulePattern.Text = "";
         RefreshPolicyRulesList();
         SaveExecPolicyToDisk();
@@ -684,7 +685,7 @@ public sealed partial class PermissionsPage : Page
     private bool _loadingExecPolicy;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _execSavedHintTimer;
 
-    private void SaveExecPolicyToDisk()
+    private void SaveExecPolicyToDisk(bool showSavedHint = true)
     {
         string? tmpPath = null;
         try
@@ -693,7 +694,7 @@ public sealed partial class PermissionsPage : Page
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "OpenClawTray", "exec-policy.json");
 
-            var defaultAction = (DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "deny";
+            var defaultAction = NormalizeExecPolicyAction((DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString());
             var policy = new
             {
                 defaultAction,
@@ -711,6 +712,9 @@ public sealed partial class PermissionsPage : Page
             File.WriteAllText(tmpPath, json);
             MoveFileWithRetry(tmpPath, policyPath);
             tmpPath = null;
+
+            if (!showSavedHint)
+                return;
 
             // Brief inline "Saved" pill in the rules-card header. Reuses a single
             // DispatcherQueueTimer instance so rapid saves don't orphan timers.
@@ -773,6 +777,19 @@ public sealed partial class PermissionsPage : Page
         }
         return null;
     }
+
+    private static string NormalizeExecPolicyAction(string? action)
+    {
+        if (string.Equals(action, "allow", StringComparison.OrdinalIgnoreCase))
+            return "allow";
+        if (string.Equals(action, "prompt", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(action, "ask", StringComparison.OrdinalIgnoreCase))
+            return "prompt";
+        return "deny";
+    }
+
+    private static string DisplayExecPolicyAction(string action) =>
+        string.Equals(action, "prompt", StringComparison.OrdinalIgnoreCase) ? "ask" : action;
 
     // ── Node Allowlist ───────────────────────────────────────────────
 
@@ -854,10 +871,4 @@ public sealed partial class PermissionsPage : Page
 
     // ── Types ────────────────────────────────────────────────────────
 
-    private class ExecPolicyRule
-    {
-        public string Pattern { get; set; } = "";
-        public string Action { get; set; } = "deny";
-        public int Index { get; set; }
-    }
 }

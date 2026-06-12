@@ -433,6 +433,82 @@ public class SystemRunTests
     }
 
     [Fact]
+    public async Task SystemRun_WithPromptPolicy_UsesPayloadSessionKey_WhenArgsOmitSessionKey()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-session-1",
+                Command = "system.run",
+                Args = Parse("""{"command":"Write-Output hello","shell":"powershell"}"""),
+                SessionKey = "payload-session"
+            });
+
+            Assert.True(res.Ok, res.Error);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Equal("payload-session", prompt.LastRequest?.SessionKey);
+            Assert.NotNull(runner.LastRequest);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_PayloadSessionKeyOverridesArgsSessionKey()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-session-override",
+                Command = "system.run",
+                Args = Parse("""{"command":"Write-Output hello","shell":"powershell","sessionKey":"spoofed-session"}"""),
+                SessionKey = "trusted-session"
+            });
+
+            Assert.True(res.Ok, res.Error);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Equal("trusted-session", prompt.LastRequest?.SessionKey);
+            Assert.NotNull(runner.LastRequest);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task SystemRun_WithPromptPolicy_PromptsOnceForShellWrapper_WhenUserApprovesOnce()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
@@ -651,12 +727,14 @@ public class SystemRunTests
         }
 
         public int CallCount { get; private set; }
+        public ExecApprovalPromptRequest? LastRequest { get; private set; }
 
         public Task<ExecApprovalPromptDecision> RequestAsync(
             ExecApprovalPromptRequest request,
             CancellationToken cancellationToken = default)
         {
             CallCount++;
+            LastRequest = request;
             return Task.FromResult(_decision);
         }
     }

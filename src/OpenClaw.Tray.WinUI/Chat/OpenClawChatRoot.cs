@@ -476,7 +476,7 @@ public sealed class OpenClawChatRoot : Component
                     : null,
                 OnStopSpeaking: _onStopSpeaking,
                 ScrollToBottomToken: scrollToBottomToken.Value,
-                OnPermissionResponse: (rid, allow) => OnPermission(effectiveThread.Id!, rid, allow)));
+                OnPermissionResponse: (rid, action) => OnPermission(effectiveThread.Id!, rid, action)));
         }
 
         // Session list for the composer dropdown — grouped by agent, keyed by
@@ -854,9 +854,9 @@ public sealed class OpenClawChatRoot : Component
         RunFireAndForget(ct => _provider.StopResponseAsync(threadId, ct));
     }
 
-    private void OnPermission(string threadId, string requestId, bool allow)
+    private void OnPermission(string threadId, string requestId, string action)
     {
-        RunFireAndForget(ct => _provider.RespondToPermissionAsync(threadId, requestId, allow, ct));
+        RunFireAndForget(ct => _provider.RespondToPermissionAsync(threadId, requestId, action, ct));
     }
 
     private static void RunFireAndForget(Func<CancellationToken, Task> op)

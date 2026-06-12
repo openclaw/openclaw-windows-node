@@ -481,6 +481,8 @@ public class WindowsNodeClient : WebSocketClientBase
                 }
             }
         }
+
+        var sessionKey = ExtractNodeInvokeSessionKey(payload, args);
         
         _logger.Info($"[NODE] Invoking command: {command}");
         
@@ -489,7 +491,8 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             Id = requestId,
             Command = command,
-            Args = args
+            Args = args,
+            SessionKey = sessionKey
         };
         
         // Find capability that can handle this command
@@ -1041,6 +1044,7 @@ public class WindowsNodeClient : WebSocketClientBase
         var args = paramsEl.TryGetProperty("args", out var argsEl) 
             ? argsEl.Clone() 
             : default;
+        var sessionKey = ExtractNodeInvokeSessionKey(paramsEl, args);
         
         _logger.Info($"Received node.invoke: {command}");
         
@@ -1048,7 +1052,8 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             Id = requestId,
             Command = command,
-            Args = args
+            Args = args,
+            SessionKey = sessionKey
         };
         
         // Find capability that can handle this command
@@ -1107,6 +1112,28 @@ public class WindowsNodeClient : WebSocketClientBase
                 _invokeSemaphore.Release();
             }
         }, CancellationToken.None);
+    }
+
+    private static string? ExtractNodeInvokeSessionKey(JsonElement envelope, JsonElement args)
+    {
+        if (envelope.TryGetProperty("sessionKey", out var envelopeSessionKey) &&
+            envelopeSessionKey.ValueKind == JsonValueKind.String)
+        {
+            var sessionKey = envelopeSessionKey.GetString();
+            if (!string.IsNullOrWhiteSpace(sessionKey))
+                return sessionKey;
+        }
+
+        if (args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty("sessionKey", out var argsSessionKey) &&
+            argsSessionKey.ValueKind == JsonValueKind.String)
+        {
+            var sessionKey = argsSessionKey.GetString();
+            if (!string.IsNullOrWhiteSpace(sessionKey))
+                return sessionKey;
+        }
+
+        return null;
     }
 
     private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)
