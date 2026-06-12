@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 
 namespace OpenClawTray.Pages;
 
@@ -595,6 +596,11 @@ public sealed partial class PermissionsPage : Page
                 if (root.TryGetProperty("defaultAction", out var da))
                 {
                     var action = da.GetString() ?? "deny";
+                    // Migrate legacy "ask" tag (pre-fix files) to the canonical "prompt"
+                    // value used by ExecApprovalAction.Prompt. Without this, files written
+                    // by older builds fail to deserialize and silently reset to Deny.
+                    if (string.Equals(action, "ask", StringComparison.OrdinalIgnoreCase))
+                        action = "prompt";
                     for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
                     {
                         if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
@@ -691,6 +697,7 @@ public sealed partial class PermissionsPage : Page
 
     private void SaveExecPolicyToDisk()
     {
+        string? tmpPath = null;
         try
         {
             var policyPath = Path.Combine(
@@ -706,7 +713,15 @@ public sealed partial class PermissionsPage : Page
 
             var json = JsonSerializer.Serialize(policy, new JsonSerializerOptions { WriteIndented = true });
             Directory.CreateDirectory(Path.GetDirectoryName(policyPath)!);
-            File.WriteAllText(policyPath, json);
+
+            // Atomic write: serialize to a sibling .tmp first, then replace.
+            // The engine hot-reloads exec-policy.json on mtime/length change;
+            // a non-atomic write could expose a partial file to a concurrent
+            // Evaluate() and the engine would skip the (broken) update.
+            tmpPath = $"{policyPath}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(tmpPath, json);
+            MoveFileWithRetry(tmpPath, policyPath);
+            tmpPath = null;
 
             // Brief inline "Saved" pill in the rules-card header. Reuses a single
             // DispatcherQueueTimer instance so rapid saves don't orphan timers.
@@ -721,6 +736,42 @@ public sealed partial class PermissionsPage : Page
             _execSavedHintTimer.Start();
         }
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        catch
+        {
+            TryDeleteTempFile(tmpPath);
+        }
+    }
+
+    private static void MoveFileWithRetry(string sourcePath, string destinationPath)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (IsTransientReplaceException(ex) && attempt < 20)
+            {
+                Thread.Sleep(5);
+            }
+        }
+    }
+
+    private static bool IsTransientReplaceException(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException;
+
+    private static void TryDeleteTempFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        // slopwatch-ignore: SW003 Cleanup is best-effort after save failure.
         catch { }
     }
 

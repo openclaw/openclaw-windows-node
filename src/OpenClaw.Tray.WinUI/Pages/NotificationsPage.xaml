@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClawTray.Pages.NotificationsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="24">
+        <Grid MaxWidth="900" HorizontalAlignment="Stretch">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" ColumnSpacing="12" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="2">
+                    <TextBlock x:Uid="NotificationsPage_Title"
+                               Text="Notifications"
+                               Style="{StaticResource TitleTextBlockStyle}"/>
+                    <TextBlock x:Uid="NotificationsPage_Subtitle"
+                               Text="Review and clear active OpenClaw notifications."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <Button x:Uid="NotificationsPage_ClearButton"
+                        x:Name="ClearButton"
+                        Grid.Column="1"
+                        Content="Clear"
+                        VerticalAlignment="Top"
+                        Click="OnClearClick"/>
+            </Grid>
+
+            <Grid Grid.Row="1">
+                <ListView x:Name="NotificationsList"
+                          SelectionMode="None"
+                          IsItemClickEnabled="False">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="12"
+                                    Margin="0,0,0,8">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <FontIcon Grid.Column="0"
+                                              Glyph="{Binding SeverityGlyph}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="18"
+                                              VerticalAlignment="Top"
+                                              Margin="0,3,0,0"/>
+
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding Title}"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       TextWrapping="WrapWholeWords"/>
+                                            <Border Visibility="{Binding OccurrenceVisibility}"
+                                                    Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                                                    CornerRadius="10"
+                                                    Padding="7,1"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding OccurrenceText}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Message}"
+                                                   TextWrapping="WrapWholeWords"/>
+                                        <TextBlock Text="{Binding Metadata}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+
+                                    <Button Grid.Column="2"
+                                            Tag="{Binding Id}"
+                                            AutomationProperties.Name="{Binding DismissAutomationName}"
+                                            Padding="8"
+                                            MinWidth="32"
+                                            MinHeight="32"
+                                            VerticalAlignment="Top"
+                                            Click="OnDismissNotificationClick">
+                                        <FontIcon Glyph="&#xE711;"
+                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                  FontSize="12"/>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <Border x:Name="EmptyState"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="24"
+                        VerticalAlignment="Top">
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Uid="NotificationsPage_EmptyTitle"
+                                   Text="No notifications"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock x:Uid="NotificationsPage_EmptyDescription"
+                                   Text="New app notifications will appear here until you dismiss or clear them."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="WrapWholeWords"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

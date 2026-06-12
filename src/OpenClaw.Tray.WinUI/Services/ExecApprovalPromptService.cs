@@ -21,13 +21,28 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         _logger = logger;
     }
 
+    /// <summary>
+    /// Raised after every prompt resolves (Allow once / Always allow / Deny /
+    /// cancellation / failure). May fire from either the prompt's background
+    /// STA thread (normal path / exception path) or the caller's thread
+    /// (pre-check cancellation), so subscribers must marshal to their own UI
+    /// thread if needed. Inspect <see cref="ExecApprovalPromptDecidedEventArgs.Source"/>
+    /// to distinguish a user click from a cancellation/failure that also
+    /// resolved as Deny.
+    /// </summary>
+    public event EventHandler<ExecApprovalPromptDecidedEventArgs>? Decided;
+
     public Task<ExecApprovalPromptDecision> RequestAsync(
         ExecApprovalPromptRequest request,
         CancellationToken cancellationToken = default)
     {
         var tcs = new TaskCompletionSource<ExecApprovalPromptDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (cancellationToken.IsCancellationRequested)
-            return Task.FromResult(ExecApprovalPromptDecision.Deny("Approval prompt was cancelled"));
+        {
+            var cancelled = ExecApprovalPromptDecision.Deny("Approval prompt was cancelled");
+            RaiseDecided(request, cancelled, ExecApprovalPromptDecisionSource.Cancelled);
+            return Task.FromResult(cancelled);
+        }
 
         var thread = new Thread(() =>
         {
@@ -35,12 +50,15 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
             {
                 var decision = ShowNativePrompt(request);
                 _logger.Info($"[ExecApproval] Prompt decision: {decision.Kind}");
+                RaiseDecided(request, decision, MapKindToUserSource(decision.Kind));
                 tcs.TrySetResult(decision);
             }
             catch (Exception ex)
             {
                 _logger.Warn($"[ExecApproval] Prompt failed: {ex.Message}");
-                tcs.TrySetResult(ExecApprovalPromptDecision.Deny("Approval prompt failed"));
+                var failed = ExecApprovalPromptDecision.Deny("Approval prompt failed");
+                RaiseDecided(request, failed, ExecApprovalPromptDecisionSource.Failed);
+                tcs.TrySetResult(failed);
             }
         })
         {
@@ -51,6 +69,28 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         thread.Start();
 
         return tcs.Task;
+    }
+
+    private static ExecApprovalPromptDecisionSource MapKindToUserSource(ExecApprovalPromptDecisionKind kind) => kind switch
+    {
+        ExecApprovalPromptDecisionKind.AllowOnce => ExecApprovalPromptDecisionSource.UserAllowOnce,
+        ExecApprovalPromptDecisionKind.AlwaysAllow => ExecApprovalPromptDecisionSource.UserAlwaysAllow,
+        _ => ExecApprovalPromptDecisionSource.UserDeny
+    };
+
+    private void RaiseDecided(
+        ExecApprovalPromptRequest request,
+        ExecApprovalPromptDecision decision,
+        ExecApprovalPromptDecisionSource source)
+    {
+        try
+        {
+            Decided?.Invoke(this, new ExecApprovalPromptDecidedEventArgs(request, decision, source));
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ExecApproval] Decided subscriber threw: {ex.Message}");
+        }
     }
 
     private static ExecApprovalPromptDecision ShowNativePrompt(ExecApprovalPromptRequest request)

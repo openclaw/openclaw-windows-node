@@ -62,17 +62,22 @@ public class NodeConnectorTests
     }
 
     [Fact]
-    public async Task ConnectAsync_WhenClientCreatedHandlerThrows_RecordsDiagnostic()
+    public async Task ConnectAsync_WhenClientCreatedHandlerThrows_AbortsBeforeHandshake()
     {
         var diagnostics = new ConnectionDiagnostics();
         using var connector = new NodeConnector(new StubLogger(), diagnostics);
         connector.ClientCreated += (_, _) => throw new InvalidOperationException("boom");
+        ConnectionStatus? status = null;
+        connector.StatusChanged += (_, e) => status = e;
 
         await connector.ConnectAsync("ws://127.0.0.1:9", new GatewayCredential("tok", false, "test"), "id-path");
 
         var evt = Assert.Single(diagnostics.GetAll(), e => e.Category == "node");
-        Assert.Equal("ClientCreated handler failed; node may connect without capabilities", evt.Message);
+        Assert.Equal("ClientCreated handler failed; node connection aborted before handshake", evt.Message);
         Assert.Equal("boom", evt.Detail);
+        Assert.Equal(ConnectionStatus.Error, status);
+        Assert.Null(connector.Client);
+        Assert.Equal(NodeConnectionMode.Disabled, connector.Mode);
     }
 
     [Fact]

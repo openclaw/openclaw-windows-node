@@ -135,6 +135,39 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task SwitchGatewayAsync_UsesTargetGatewayIdentityAndCredential()
+    {
+        _registry.AddOrUpdate(new GatewayRecord { Id = "gw-1", Url = "wss://test1" });
+        _registry.AddOrUpdate(new GatewayRecord { Id = "gw-2", Url = "wss://test2" });
+        _registry.SetActive("gw-1");
+
+        var identity1 = new DeviceIdentity(_registry.GetIdentityDirectory("gw-1"), NullLogger.Instance);
+        identity1.Initialize();
+        identity1.StoreDeviceTokenForRole("operator", "operator-token-1");
+        var identity2 = new DeviceIdentity(_registry.GetIdentityDirectory("gw-2"), NullLogger.Instance);
+        identity2.Initialize();
+        identity2.StoreDeviceTokenForRole("operator", "operator-token-2");
+
+        var resolver = new CredentialResolver(new DeviceIdentityFileReader());
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            resolver,
+            factory,
+            _registry,
+            NullLogger.Instance);
+
+        await manager.ConnectAsync("gw-1");
+        await manager.SwitchGatewayAsync("gw-2");
+
+        Assert.Equal(["operator-token-1", "operator-token-2"], factory.CreatedCredentials.Select(c => c.Token).ToArray());
+        Assert.Equal(
+            [_registry.GetIdentityDirectory("gw-1"), _registry.GetIdentityDirectory("gw-2")],
+            factory.CreatedIdentityPaths);
+        Assert.Equal(["wss://test1", "wss://test2"], factory.CreatedGatewayUrls);
+        Assert.Equal("gw-2", _registry.ActiveGatewayId);
+    }
+
+    [Fact]
     public async Task StateChanged_Fires_OnConnect()
     {
         SetupGateway("gw-1", "wss://test");
@@ -557,6 +590,46 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectAsync_StartsSshTunnelAndUsesTunnelUrl_WhenGatewayUsesTunnel()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-ssh",
+            Url = "wss://remote.example",
+            SshTunnel = new SshTunnelConfig(
+                "user",
+                "host.example",
+                RemotePort: 18789,
+                LocalPort: 45678,
+                IncludeBrowserProxyForward: true,
+                SshPort: 2222)
+        });
+        _registry.SetActive("gw-ssh");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "operator-token",
+            IsBootstrapToken: false,
+            Source: CredentialResolver.SourceSharedGatewayToken);
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+
+        await manager.ConnectAsync("gw-ssh");
+
+        Assert.Equal(1, tunnel.StartCount);
+        Assert.Equal("user", tunnel.LastConfig?.User);
+        Assert.Equal("host.example", tunnel.LastConfig?.Host);
+        Assert.Equal(18789, tunnel.LastConfig?.RemotePort);
+        Assert.Equal(45678, tunnel.LastConfig?.LocalPort);
+        Assert.True(tunnel.LastConfig?.IncludeBrowserProxyForward);
+        Assert.Equal(2222, tunnel.LastConfig?.SshPort);
+        Assert.Equal(["ws://localhost:45678"], _factory.CreatedGatewayUrls);
+    }
+
+    [Fact]
     public async Task EnsureNodeConnectedAsync_HappyPath_ReturnsWhenPaired()
     {
         SetupGateway("gw-1", "wss://test");
@@ -679,12 +752,16 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         public List<MockLifecycle> CreatedClients { get; } = [];
         public List<GatewayCredential> CreatedCredentials { get; } = [];
+        public List<string> CreatedIdentityPaths { get; } = [];
+        public List<string> CreatedGatewayUrls { get; } = [];
 
         public IGatewayClientLifecycle Create(string gatewayUrl, GatewayCredential credential, string identityPath, IOpenClawLogger logger)
         {
             var mock = new MockLifecycle(gatewayUrl);
             CreatedClients.Add(mock);
             CreatedCredentials.Add(credential);
+            CreatedIdentityPaths.Add(identityPath);
+            CreatedGatewayUrls.Add(gatewayUrl);
             return mock;
         }
     }
@@ -821,7 +898,7 @@ public class GatewayConnectionManagerTests : IDisposable
     // ─── DeviceTokenReceived / bootstrap handoff tests ───
 
     [Fact]
-    public async Task DeviceTokenReceived_NodeRole_ClearsBootstrapTokenFromRegistry()
+    public async Task DeviceTokenReceived_ClearsBootstrapOnlyAfterOperatorAndNodeTokensAreDurable()
     {
         _registry.AddOrUpdate(new GatewayRecord
         {
@@ -834,14 +911,28 @@ public class GatewayConnectionManagerTests : IDisposable
 
         await _manager.ConnectAsync("gw-1");
         var lifecycle = _factory.CreatedClients[0];
+
+        var identityDir = _registry.GetIdentityDirectory("gw-1");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("node", "node-device-token");
+
         lifecycle.SimulateDeviceTokenReceived("node-device-token", "node");
 
         var updated = _registry.GetById("gw-1");
+        Assert.Equal("bs-secret", updated?.BootstrapToken);
+
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "op-device-token", ["operator.read"]);
+
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator", ["operator.read"]);
+
+        updated = _registry.GetById("gw-1");
         Assert.Null(updated?.BootstrapToken);
     }
 
     [Fact]
-    public async Task DeviceTokenReceived_OperatorRole_PreservesBootstrapToken()
+    public async Task DeviceTokenReceived_OperatorRole_PreservesBootstrapTokenUntilNodeTokenIsDurable()
     {
         _registry.AddOrUpdate(new GatewayRecord
         {
@@ -854,10 +945,78 @@ public class GatewayConnectionManagerTests : IDisposable
 
         await _manager.ConnectAsync("gw-1");
         var lifecycle = _factory.CreatedClients[0];
+
+        var identityDir = _registry.GetIdentityDirectory("gw-1");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "op-device-token", ["operator.read"]);
+
         lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator");
 
         var record = _registry.GetById("gw-1");
         Assert.Equal("bs-secret", record?.BootstrapToken);
+    }
+
+    [Fact]
+    public async Task DeviceTokenReceived_OperatorRole_AfterBootstrapConnect_ReconnectsUsingV2Signature()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "bs-secret"
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("bs-secret", true, CredentialResolver.SourceBootstrapToken);
+
+        await _manager.ConnectAsync("gw-1");
+        var lifecycle = _factory.CreatedClients[0];
+
+        var identityDir = _registry.GetIdentityDirectory("gw-1");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "op-device-token", ["operator.read"]);
+
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator", ["operator.read"]);
+
+        await WaitUntilAsync(() => _factory.CreatedClients.Count >= 2);
+        Assert.True(_factory.CreatedClients[1].DataClient.UseV2Signature);
+    }
+
+    [Fact]
+    public async Task NodeDeviceTokenReceived_ClearsBootstrapWhenNodeTokenBecomesDurableAfterOperatorToken()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "bs-secret"
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        var node = new ScriptedNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        var lifecycle = _factory.CreatedClients[0];
+        var identityDir = _registry.GetIdentityDirectory("gw-1");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "op-device-token", ["operator.read"]);
+
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator", ["operator.read"]);
+        Assert.Equal("bs-secret", _registry.GetById("gw-1")?.BootstrapToken);
+
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("node", "node-device-token");
+        node.SimulateDeviceTokenReceived("node-device-token");
+
+        await WaitUntilAsync(() => _registry.GetById("gw-1")?.BootstrapToken == null);
     }
 
     [Fact]
@@ -918,6 +1077,7 @@ public class GatewayConnectionManagerTests : IDisposable
 #pragma warning disable CS0067 // Events required by interface but not fired in tests
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
 
@@ -948,6 +1108,7 @@ public class GatewayConnectionManagerTests : IDisposable
 #pragma warning disable CS0067 // Events required by interface but not fired in tests
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
 
@@ -1014,6 +1175,7 @@ public class GatewayConnectionManagerTests : IDisposable
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
 #pragma warning disable CS0067 // ClientCreated unused in current tests
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
@@ -1044,6 +1206,9 @@ public class GatewayConnectionManagerTests : IDisposable
             PairingStatus = status;
             PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(status, deviceId: "scripted-node", requestId: requestId));
         }
+
+        public void SimulateDeviceTokenReceived(string token, string role = "node", string[]? scopes = null) =>
+            DeviceTokenReceived?.Invoke(this, new DeviceTokenReceivedEventArgs(token, scopes, role));
 
         public void Dispose() { }
     }

@@ -102,6 +102,20 @@ public sealed class ConnectionPageApproveCommandTests
     }
 
     [Fact]
+    public void NodeRoleUpgradeDevicePairing_UsesDevicesApproveCommand()
+    {
+        var src = ReadPlanSource();
+        var nodeBody = ExtractMethodBody(src, "BuildNodeApproveCommand");
+
+        Assert.Contains("PairingApprovalKind.DevicePair", nodeBody);
+        AssertContainsCli(
+            nodeBody,
+            "openclaw devices approve ",
+            "Node role-upgrade requests are WebSocket device-pair approvals, not gateway node-pair command-trust approvals.");
+        Assert.Contains("snap.NodeDeviceId", nodeBody);
+    }
+
+    [Fact]
     public void DevicesApproveCommand_UsesNounFirstSubcommand()
     {
         var src = ReadPlanSource();
@@ -155,6 +169,11 @@ public sealed class ConnectionPageApproveCommandTests
     {
         // Scan only string literals inside the method body — comments
         // legitimately reference `#` and `<` while explaining the rationale.
+        methodBody = System.Text.RegularExpressions.Regex.Replace(
+            methodBody,
+            @"//.*$",
+            "",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
         foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
             methodBody, "\\$?\"[^\"\\n]*\""))
         {
@@ -175,9 +194,11 @@ public sealed class ConnectionPageApproveCommandTests
         // Coarse extractor: from the method signature to the matching closing
         // brace at the same indentation. Sufficient for short pure helpers
         // like BuildNodeApproveCommand / BuildDevicePairingApproveCommand.
-        var sigIndex = source.IndexOf(methodName + "(", System.StringComparison.Ordinal);
-        if (sigIndex < 0) return string.Empty;
-        var bodyStart = source.IndexOf('{', sigIndex);
+        var match = System.Text.RegularExpressions.Regex.Match(
+            source,
+            $@"\b(?:private|internal|public)\s+static\s+[^\r\n]+?\b{System.Text.RegularExpressions.Regex.Escape(methodName)}\s*\(");
+        if (!match.Success) return string.Empty;
+        var bodyStart = source.IndexOf('{', match.Index);
         if (bodyStart < 0) return string.Empty;
         int depth = 0;
         for (int i = bodyStart; i < source.Length; i++)
@@ -192,4 +213,3 @@ public sealed class ConnectionPageApproveCommandTests
         return source.Substring(bodyStart);
     }
 }
-

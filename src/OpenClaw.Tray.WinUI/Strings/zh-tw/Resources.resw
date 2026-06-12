@@ -2301,6 +2301,9 @@
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>偵錯</value>
   </data>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>通知</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
     <value>資訊</value>
   </data>
@@ -2981,6 +2984,54 @@
   </data>
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>已過期</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_Title" xml:space="preserve">
+    <value>Windows 伴侶已阻止本機命令</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_CommandSubjectFormat" xml:space="preserve">
+    <value>命令「{0}」</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_UnknownCommandSubject" xml:space="preserve">
+    <value>本機命令</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageFormat" xml:space="preserve">
+    <value>{0} 已被本機執行策略拒絕：{1}。</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageNoReasonFormat" xml:space="preserve">
+    <value>{0} 已被本機執行策略拒絕。</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
+    <value>比對模式：{0}。</value>
+  </data>
+  <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
+    <value>{0} 次</value>
+  </data>
+  <data name="AppNotification_ShowMore" xml:space="preserve">
+    <value>顯示更多</value>
+  </data>
+  <data name="NotificationsPage_Title.Text" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
+    <value>檢閱並清除作用中的 OpenClaw 通知。</value>
+  </data>
+  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>沒有通知</value>
+  </data>
+  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
+    <value>新的應用程式通知會顯示在這裡，直到您關閉或清除它們。</value>
+  </data>
+  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
+    <value>關閉 {0}</value>
+  </data>
+  <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
+    <value>執行核准</value>
+  </data>
+  <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
+    <value>節點命令</value>
   </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>需要執行核准</value>
@@ -5551,6 +5602,12 @@
   </data>
   <data name="Command_GoToInfo_Title" xml:space="preserve">
     <value>Go to Info</value>
+  </data>
+  <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
+    <value>檢閱作用中的應用程式通知</value>
+  </data>
+  <data name="Command_GoToNotifications_Title" xml:space="preserve">
+    <value>前往通知</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>

@@ -268,6 +268,69 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ChatMessageReceived_DeltaAfterFinalAssistant_DoesNotReactivateTurn()
+    {
+        var (bridge, provider, _, notifications) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final answer",
+            State = "final"
+        });
+        notifications.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "late trailing frame",
+            State = "delta"
+        });
+
+        var timeline = (await provider.LoadAsync()).Timelines["main"];
+        var assistant = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal("final answer", assistant.Text);
+        Assert.False(assistant.IsStreaming);
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.TurnComplete);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_DeltaAfterFinalAssistantBeforeLifecycleEnd_DoesNotReactivateTurn()
+    {
+        var (bridge, provider, _, notifications) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final answer",
+            State = "final"
+        });
+        notifications.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "late trailing frame",
+            State = "delta"
+        });
+
+        var timeline = (await provider.LoadAsync()).Timelines["main"];
+        var assistant = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal("final answer", assistant.Text);
+        Assert.False(assistant.IsStreaming);
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.TurnComplete);
+    }
+
+    [Fact]
     public async Task ChatMessageReceived_UserEcho_Ignored()
     {
         // After sending a message locally, the SSE echo of that same text

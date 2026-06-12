@@ -12,10 +12,12 @@ public sealed class NodeConnector : INodeConnector
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
     private WindowsNodeClient? _client;
+    private long _clientGeneration;
     private bool _disposed;
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+    public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
     public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 
     public NodeConnector(IOpenClawLogger logger, ConnectionDiagnostics? diagnostics = null)
@@ -43,6 +45,7 @@ public sealed class NodeConnector : INodeConnector
         if (_disposed) return;
 
         DisconnectInternal();
+        var generation = Interlocked.Increment(ref _clientGeneration);
 
         Mode = NodeConnectionMode.Gateway;
         _logger.Info($"[NodeConnector] Connecting to {gatewayUrl}");
@@ -79,11 +82,27 @@ public sealed class NodeConnector : INodeConnector
         catch (Exception ex)
         {
             _logger.Warn($"[NodeConnector] ClientCreated handler threw: {ex.Message}");
-            _diagnostics?.Record("node", "ClientCreated handler failed; node may connect without capabilities", ex.Message);
+            _diagnostics?.Record("node", "ClientCreated handler failed; node connection aborted before handshake", ex.Message);
+            DisconnectInternal();
+            StatusChanged?.Invoke(this, ConnectionStatus.Error);
+            return;
         }
 
-        _client.StatusChanged += (s, e) => StatusChanged?.Invoke(this, e);
-        _client.PairingStatusChanged += (s, e) => PairingStatusChanged?.Invoke(this, e);
+        _client.StatusChanged += (s, e) =>
+        {
+            if (IsCurrentClient(s, generation))
+                StatusChanged?.Invoke(this, e);
+        };
+        _client.PairingStatusChanged += (s, e) =>
+        {
+            if (IsCurrentClient(s, generation))
+                PairingStatusChanged?.Invoke(this, e);
+        };
+        _client.DeviceTokenReceived += (s, e) =>
+        {
+            if (IsCurrentClient(s, generation))
+                DeviceTokenReceived?.Invoke(this, e);
+        };
 
         try
         {
@@ -101,8 +120,13 @@ public sealed class NodeConnector : INodeConnector
         return Task.CompletedTask;
     }
 
+    private bool IsCurrentClient(object? sender, long generation) =>
+        Interlocked.Read(ref _clientGeneration) == generation &&
+        ReferenceEquals(sender, _client);
+
     private void DisconnectInternal()
     {
+        Interlocked.Increment(ref _clientGeneration);
         var old = _client;
         _client = null;
         if (old != null)

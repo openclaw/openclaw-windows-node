@@ -2346,6 +2346,9 @@ On your gateway host (Mac/Linux), run:
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissions</value>
   </data>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Diagnostics</value>
   </data>
@@ -3029,6 +3032,54 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>Expired</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_Title" xml:space="preserve">
+    <value>Windows companion blocked a local command</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_CommandSubjectFormat" xml:space="preserve">
+    <value>Command "{0}"</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_UnknownCommandSubject" xml:space="preserve">
+    <value>A local command</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageFormat" xml:space="preserve">
+    <value>{0} was denied by local exec policy: {1}.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageNoReasonFormat" xml:space="preserve">
+    <value>{0} was denied by local exec policy.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
+    <value>Matched pattern: {0}.</value>
+  </data>
+  <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
+    <value>{0}x</value>
+  </data>
+  <data name="AppNotification_ShowMore" xml:space="preserve">
+    <value>Show more</value>
+  </data>
+  <data name="NotificationsPage_Title.Text" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
+    <value>Review and clear active OpenClaw notifications.</value>
+  </data>
+  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>No notifications</value>
+  </data>
+  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
+    <value>New app notifications will appear here until you dismiss or clear them.</value>
+  </data>
+  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
+    <value>Dismiss {0}</value>
+  </data>
+  <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
+    <value>Exec approval</value>
+  </data>
+  <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
+    <value>Node command</value>
   </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Exec approval needed</value>
@@ -5592,6 +5643,12 @@ Check your connection settings and try again.</value>
   </data>
   <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
     <value>Go to Diagnostics</value>
+  </data>
+  <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
+    <value>Review active app notifications</value>
+  </data>
+  <data name="Command_GoToNotifications_Title" xml:space="preserve">
+    <value>Go to Notifications</value>
   </data>
   <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
     <value>About this app</value>

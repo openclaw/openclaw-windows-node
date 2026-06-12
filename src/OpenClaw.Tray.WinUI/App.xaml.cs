@@ -14,6 +14,7 @@ using OpenClaw.Connection;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.Diagnostics;
 using System.Drawing;
@@ -174,11 +175,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private DiagnosticsClipboardService? _diagnosticsClipboard;
     private ToastService? _toastService;
+    private AppNotificationService? _appNotificationService;
 
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
-    // MCP-only app capability — local testing/control, not exposed to gateway
-    private AppCapability? _appCapability;
 
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
@@ -479,6 +479,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
+        _appNotificationService = new AppNotificationService();
 
         DiagnosticsJsonlService.Write("app.start", new
         {
@@ -562,18 +563,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 {
                     Logger.Warn("[App] NodeConnector.ClientCreated fired before settings were initialized; node may connect without capabilities");
                     diagnostics.Record("node", "WARNING: settings unavailable; cannot initialize NodeService for capability binding");
+                    throw new InvalidOperationException("Settings unavailable during node capability binding.");
                 }
-                else
-                {
-                    EnsureNodeService(_settings);
-                }
+
+                EnsureNodeService(_settings);
 
                 diagnostics.Record("node", $"ClientCreated fired, _nodeService null={_nodeService is null}");
                 if (_nodeService == null)
                 {
                     Logger.Warn("[App] NodeService unavailable during ClientCreated; node may connect with caps=0/cmds=0");
                     diagnostics.Record("node", "WARNING: NodeService unavailable; cannot bind node capabilities");
-                    return;
+                    throw new InvalidOperationException("NodeService unavailable during node capability binding.");
                 }
 
                 _nodeService.AttachClient(args.Client, args.BearerToken);
@@ -592,6 +592,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 Logger.Warn($"[App] NodeConnector.ClientCreated handler failed: {ex.Message}");
                 diagnostics.Record("node", $"ClientCreated handler THREW: {ex.Message}");
+                throw;
             }
         };
         // SshTunnelService implements ISshTunnelManager directly — no shim needed
@@ -1770,7 +1771,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 () => _keepAliveWindow?.Content as FrameworkElement,
                 settings,
                 enableMcpServer: settings.EnableMcpServer,
-                identityDataPath: IdentityDataPath);
+                identityDataPath: IdentityDataPath,
+                sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;
@@ -1778,6 +1780,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _nodeService.ChannelHealthUpdated += _gatewayService.OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
             _nodeService.GatewaySelfUpdated += _gatewayService.OnGatewaySelfUpdated;
+            _nodeService.LocalExecApprovalDecided += OnLocalExecApprovalDecided;
             return _nodeService;
         }
         catch (Exception ex)
@@ -1786,185 +1789,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _nodeService = null;
             return null;
         }
-    }
-
-    private void WireAppCapabilityHandlers()
-    {
-        if (_nodeService == null) return;
-        if (_appCapability != null) return; // already wired
-
-        _appCapability = new AppCapability(new AppLogger());
-        _nodeService.RegisterMcpOnlyCapability(_appCapability);
-        var app = _appCapability;
-
-        app.NavigateHandler = async (page) =>
-        {
-            var tcs = new TaskCompletionSource<object?>();
-            var queued = _dispatcherQueue?.TryEnqueue(() =>
-            {
-                try { ShowHub(page); tcs.SetResult(new { navigated = true, page }); }
-                catch (Exception ex)
-                {
-                    Logger.Warn($"App: NavigationHandler ShowHub('{page}') failed: {ex.Message}");
-                    tcs.SetResult(new { navigated = false, error = ex.Message });
-                }
-            }) ?? false;
-            if (!queued) tcs.TrySetResult(new { navigated = false, error = "UI thread unavailable" });
-            return await tcs.Task;
-        };
-
-        app.StatusHandler = () => new
-        {
-            connectionStatus = _appState!.Status.ToString(),
-            nodeConnected = _nodeService?.IsConnected ?? false,
-            nodePaired = _nodeService?.IsPaired ?? false,
-            nodePendingApproval = _nodeService?.IsPendingApproval ?? false,
-            gatewayVersion = _appState!.GatewaySelf?.ServerVersion,
-            sessionCount = _appState!.Sessions?.Length ?? 0,
-            nodeCount = _appState!.Nodes?.Length ?? 0,
-        };
-
-        app.SessionsHandler = async (agentId) =>
-        {
-            var sessions = _appState!.Sessions ?? Array.Empty<SessionInfo>();
-            if (!string.IsNullOrEmpty(agentId))
-                sessions = sessions.Where(s => s.Key != null &&
-                    s.Key.StartsWith($"agent:{agentId}:", StringComparison.OrdinalIgnoreCase)).ToArray();
-            return sessions.Select(s => new { s.Key, s.Status, s.Model, s.AgeText, tokens = s.InputTokens + s.OutputTokens }).ToArray();
-        };
-
-        app.AgentsHandler = async () =>
-        {
-            if (_appState!.AgentsList.HasValue &&
-                _appState!.AgentsList.Value.TryGetProperty("agents", out var agentsArr) &&
-                agentsArr.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                return System.Text.Json.JsonSerializer.Deserialize<object>(agentsArr.GetRawText());
-            }
-            return Array.Empty<object>();
-        };
-
-        app.NodesHandler = () =>
-        {
-            return _appState!.Nodes?.Select(n => new
-            {
-                n.DisplayName,
-                n.NodeId,
-                n.IsOnline,
-                n.Platform,
-                n.CapabilityCount,
-                n.CommandCount,
-                n.Capabilities,
-                n.Commands,
-                n.DisabledCommands,
-                n.Permissions
-            }).ToArray()
-                ?? Array.Empty<object>();
-        };
-
-        app.ConfigGetHandler = async (path) =>
-        {
-            if (_appState?.Config == null) return new { error = "Config not loaded" };
-            // Config is already redacted by the gateway's redactConfigSnapshot
-            var raw = _appState.Config.Value;
-            var config = raw.TryGetProperty("parsed", out var parsed) ? parsed
-                : (raw.TryGetProperty("config", out var cfg) ? cfg : raw);
-            if (!string.IsNullOrEmpty(path))
-            {
-                foreach (var segment in path.Split('.'))
-                {
-                    if (config.TryGetProperty(segment, out var child)) config = child;
-                    else return (object)new { error = $"Path not found: {path}" };
-                }
-            }
-            return System.Text.Json.JsonSerializer.Deserialize<object>(config.GetRawText());
-        };
-
-        // Allowlist of safe settings (no secrets like Token, BootstrapToken, API keys)
-        var safeSettings = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "AutoStart", "GlobalHotkeyEnabled", "ShowNotifications", "NotificationSound",
-            "NotifyHealth", "NotifyUrgent", "NotifyReminder", "NotifyEmail", "NotifyCalendar",
-            "NotifyBuild", "NotifyStock", "NotifyInfo", "NotifyChatResponses",
-            "EnableNodeMode", "EnableMcpServer", "PreferStructuredCategories",
-            "NodeCanvasEnabled", "NodeScreenEnabled", "NodeCameraEnabled",
-            "NodeLocationEnabled", "NodeBrowserProxyEnabled", "NodeTtsEnabled",
-            "HasSeenActivityStreamTip", "TtsProvider"
-        };
-
-        app.SettingsGetHandler = (name) =>
-        {
-            if (_settings == null) return null;
-            if (!safeSettings.Contains(name)) return new { error = $"Setting '{name}' is not accessible" };
-            var prop = typeof(SettingsManager).GetProperty(name,
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
-            return prop?.GetValue(_settings);
-        };
-
-        app.SettingsSetHandler = (name, value) =>
-        {
-            if (_settings == null) return new { error = "Settings not loaded" };
-            if (!safeSettings.Contains(name)) return new { error = $"Setting '{name}' is not accessible" };
-            var prop = typeof(SettingsManager).GetProperty(name,
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
-            if (prop == null) return new { error = $"Unknown setting: {name}" };
-            try
-            {
-                var converted = Convert.ChangeType(value, prop.PropertyType);
-                prop.SetValue(_settings, converted);
-                _settings.Save();
-                return new { name, value = prop.GetValue(_settings) };
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"App: SettingsHandler set '{name}' failed: {ex.Message}");
-                return new { error = ex.Message };
-            }
-        };
-
-        app.MenuHandler = () =>
-        {
-            var items = new List<object>
-            {
-                new { type = "status", status = _appState!.Status.ToString() },
-                new { type = "sessions", count = _appState!.Sessions?.Length ?? 0 },
-                new { type = "nodes", count = _appState!.Nodes?.Length ?? 0 },
-            };
-            return items;
-        };
-
-        app.SearchHandler = (query) =>
-        {
-            if (_hubWindow == null) return Array.Empty<object>();
-            var commands = _hubWindow.BuildCommandList();
-            var matches = commands
-                .Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
-                .Take(10)
-                .Select(c => new { c.Title, c.Subtitle, c.Icon })
-                .ToArray();
-            return matches;
-        };
-
-        app.DashboardUrlHandler = (path) =>
-        {
-            if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
-                return new { error = "Gateway URL or credential is not configured" };
-
-            var url = GatewayDashboardUrlBuilder.Build(
-                gatewayUrl,
-                path,
-                token,
-                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
-
-            return new
-            {
-                url,
-                credentialSource,
-                usesSharedGatewayToken = !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
-                hasTokenQuery = url.Contains("?token=", StringComparison.Ordinal) || url.Contains("&token=", StringComparison.Ordinal)
-            };
-        };
     }
 
     private bool RequiresSetup(SettingsManager settings)
@@ -2232,6 +2056,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var nodeService = _nodeService;
         if (status == ConnectionStatus.Connected && nodeService?.IsPaired == true)
         {
+            RefreshGatewayNodes("node connected");
             var deviceId = nodeService.FullDeviceId;
             if (_toastService!.HasRecentToast("node-paired", deviceId))
             {
@@ -2266,6 +2091,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
+                RefreshGatewayNodes("node paired");
                 // Bug 3: idempotency guard — only show "Node paired" toast/activity once
                 // per device per session. WS reconnects re-fire Paired; suppress duplicates.
                 var deviceKey = args.DeviceId ?? string.Empty;
@@ -2303,6 +2129,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Warn($"App: Failed to handle pairing status '{args.Status}' for device '{DeviceIdForLog(args.DeviceId)}': {ex.Message}");
         }
+    }
+
+    private void RefreshGatewayNodes(string reason)
+    {
+        var client = _connectionManager?.OperatorClient;
+        if (client == null || !client.IsConnectedToGateway)
+            return;
+
+        ObserveBackgroundFault(
+            client.RequestNodesAsync(),
+            $"[App] Node list refresh failed after {reason}");
     }
 
     /// <summary>
@@ -2362,6 +2199,78 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private void OnNodeToastRequested(object? sender, Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder builder)
         => OnUiThread(() =>
             NonFatalAction.Run(() => _toastService!.ShowToast(builder), msg => Logger.Warn($"Failed to show node toast: {msg}")));
+
+    private void OnLocalExecApprovalDecided(object? sender, ExecApprovalPromptDecidedEventArgs args)
+    {
+        if (args.Source is not (ExecApprovalPromptDecisionSource.UserDeny
+            or ExecApprovalPromptDecisionSource.PolicyAutoDeny))
+            return;
+        try
+        {
+            _appNotificationService?.Show(new AppNotification
+            {
+                Title = LocalizationHelper.GetString("AppNotification_LocalCommandDenied_Title"),
+                Message = BuildLocalDenyNotificationMessage(args.Request),
+                Source = "exec-approval",
+                Category = "node.invoke",
+                Severity = AppNotificationSeverity.Warning,
+                DedupeKey = BuildLocalDenyDedupeKey(args.Request)
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to post local-deny app notification: {ex.Message}");
+        }
+    }
+
+    private static string BuildLocalDenyNotificationMessage(ExecApprovalPromptRequest request)
+    {
+        var subject = string.IsNullOrWhiteSpace(request.Command)
+            ? LocalizationHelper.GetString("AppNotification_LocalCommandDenied_UnknownCommandSubject")
+            : LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_CommandSubjectFormat",
+                CompactNotificationText(request.Command.Trim()));
+
+        string message;
+        if (!string.IsNullOrWhiteSpace(request.Reason))
+        {
+            message = LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_MessageFormat",
+                subject,
+                CompactNotificationText(request.Reason.Trim()));
+        }
+        else
+        {
+            message = LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_MessageNoReasonFormat",
+                subject);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.MatchedPattern))
+        {
+            message += " " + LocalizationHelper.Format(
+                "AppNotification_LocalCommandDenied_PatternSuffixFormat",
+                CompactNotificationText(request.MatchedPattern.Trim()));
+        }
+
+        return message;
+    }
+
+    private static string CompactNotificationText(string text)
+    {
+        const int maxLength = 240;
+        if (text.Length <= maxLength)
+            return text;
+        return text[..(maxLength - 1)] + "…";
+    }
+
+    private static string BuildLocalDenyDedupeKey(ExecApprovalPromptRequest request)
+    {
+        var command = request.Command?.Trim() ?? string.Empty;
+        var reason = request.Reason?.Trim() ?? string.Empty;
+        var pattern = request.MatchedPattern?.Trim() ?? string.Empty;
+        return $"exec-denied:{command}:{reason}:{pattern}";
+    }
 
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
     {
@@ -2784,6 +2693,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             _hubWindow = new HubWindow();
             _hubWindow.AppModel = _appState;
+            _hubWindow.BindAppNotifications(_appNotificationService!);
             _hubWindow.ApplyNavPaneState(_settings!);
             _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
             _hubWindow.OpenConnectionStatusAction = ShowConnectionStatusWindow;

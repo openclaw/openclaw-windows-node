@@ -18,6 +18,7 @@ public interface INodeConnector : IDisposable
     // ─── Events ───
     event EventHandler<ConnectionStatus> StatusChanged;
     event EventHandler<PairingStatusEventArgs> PairingStatusChanged;
+    event EventHandler<DeviceTokenReceivedEventArgs> DeviceTokenReceived;
 
     /// <summary>
     /// Raised right after a new <see cref="WindowsNodeClient"/> is constructed

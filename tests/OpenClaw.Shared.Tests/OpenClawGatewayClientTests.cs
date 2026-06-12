@@ -539,6 +539,7 @@ public class OpenClawGatewayClientTests
         var auth = helper.BuildAuthPayload();
 
         Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
         Assert.Equal("test-token", auth["token"]);
         Assert.False(auth.ContainsKey("bootstrapToken"));
         Assert.False(auth.ContainsKey("deviceToken"));
@@ -554,6 +555,7 @@ public class OpenClawGatewayClientTests
         var auth = helper.BuildAuthPayload();
 
         Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
         Assert.Equal("test-token", auth["token"]);
         Assert.False(auth.ContainsKey("bootstrapToken"));
     }
@@ -567,6 +569,7 @@ public class OpenClawGatewayClientTests
         var scopes = helper.GetRequestedOperatorScopes();
 
         Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
     }
 
     [Fact]
@@ -579,6 +582,7 @@ public class OpenClawGatewayClientTests
         var auth = helper.BuildAuthPayload();
 
         Assert.Contains("operator.admin", scopes);
+        Assert.Contains("operator.pairing", scopes);
         Assert.Equal("paired-device-token", auth["deviceToken"]);
         Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("bootstrapToken"));
@@ -678,6 +682,41 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal("node-token", helper.GetStoredNodeDeviceToken());
         Assert.Equal("operator-token", helper.GetStoredOperatorDeviceToken());
+    }
+
+    [Fact]
+    public void OperatorBootstrap_HelloOkWithNodeHandoffToken_StoresNodeToken()
+    {
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true,
+            bootstrapPairAsNode: false,
+            identityPath: CreateTempIdentityPath());
+        helper.SetDeviceTokenForTest(null);
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "req-hello-operator",
+          "payload": {
+            "type": "hello-ok",
+            "auth": {
+              "deviceToken": "operator-token",
+              "role": "operator",
+              "scopes": ["operator.read"],
+              "deviceTokens": [
+                {
+                  "deviceToken": "node-token",
+                  "role": "node",
+                  "scopes": []
+                }
+              ]
+            }
+          }
+        }
+        """);
+
+        Assert.Equal("operator-token", helper.GetStoredOperatorDeviceToken());
+        Assert.Equal("node-token", helper.GetStoredNodeDeviceToken());
     }
 
     [Fact]

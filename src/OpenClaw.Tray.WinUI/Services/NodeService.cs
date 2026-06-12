@@ -7,6 +7,7 @@ using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Mxc;
 using OpenClawTray.A2UI.Actions;
@@ -93,6 +94,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // the same DeviceIdentity store as operator tokens (Phase 1 model:
     // single shared location, role distinction inside).
     private readonly string _identityDataPath;
+    private readonly Func<string?>? _sharedGatewayTokenResolver;
     private string? _token;
 
     // Authoritative capability list — populated by RegisterCapabilities and
@@ -162,6 +164,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
     public event EventHandler<ToastContentBuilder>? ToastRequested;
+    public event EventHandler<ExecApprovalPromptDecidedEventArgs>? LocalExecApprovalDecided;
     
     public bool IsScreenRecording { get; private set; }
     public bool IsCameraRecording { get; private set; }
@@ -188,12 +191,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         Func<FrameworkElement?>? rootProvider = null,
         SettingsManager? settings = null,
         bool enableMcpServer = false,
-        string? identityDataPath = null)
+        string? identityDataPath = null,
+        Func<string?>? sharedGatewayTokenResolver = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
         _dataPath = dataPath;
         _identityDataPath = string.IsNullOrWhiteSpace(identityDataPath) ? dataPath : identityDataPath;
+        _sharedGatewayTokenResolver = sharedGatewayTokenResolver;
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
@@ -267,6 +272,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     private void RegisterCapabilities()
     {
+        new ExecApprovalsStore(_dataPath, _logger).MigrateLegacyFileIfNeeded();
+
         // Hold the lock across the entire rebuild. The body is sync construction
         // (no awaits), so the lock is held briefly and an MCP tools/list arriving
         // mid-rebuild waits for a consistent snapshot rather than seeing a half-
@@ -283,9 +290,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _logger,
             includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
+        _systemCapability.PolicyAutoDecided += OnLocalExecApprovalDecided;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
-        _systemCapability.SetPromptHandler(new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger));
+        var execPrompt = new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger);
+        execPrompt.Decided += OnLocalExecApprovalDecided;
+        _systemCapability.SetPromptHandler(execPrompt);
         Register(_systemCapability);
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
@@ -361,13 +371,18 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _deviceCapability = new DeviceCapability(_logger, _deviceStatusProvider);
         Register(_deviceCapability);
 
-        // BrowserProxy needs a live gateway connection — only register when gateway is up.
-        if (_nodeClient != null && NodeCapabilityGating.ShouldRegisterBrowserProxy(_settings))
+        // BrowserProxy talks to the HTTP/browser-control surface, which expects
+        // the shared gateway token rather than the node WebSocket device token.
+        var sharedGatewayToken = _sharedGatewayTokenResolver?.Invoke();
+        if (NodeCapabilityGating.ShouldRegisterBrowserProxy(
+                _settings,
+                sharedGatewayToken,
+                hasGatewayClient: _nodeClient != null))
         {
             _browserProxyCapability = new BrowserProxyCapability(
                 _logger,
-                _nodeClient.GatewayUrl,
-                _token,
+                _nodeClient!.GatewayUrl,
+                sharedGatewayToken,
                 sshRemoteGatewayPort: _settings?.UseSshTunnel == true
                     ? _settings.SshTunnelRemotePort
                     : null);
@@ -396,8 +411,18 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private void Register(INodeCapability capability)
     {
         _capabilities.Add(capability);
+        if (IsLocalOnlyCapability(capability))
+        {
+            _logger.Warn($"Capability {capability.Category} contains local-only commands and will not be registered with the gateway node transport.");
+            return;
+        }
+
         _nodeClient?.RegisterCapability(capability);
     }
+
+    private static bool IsLocalOnlyCapability(INodeCapability capability) =>
+        capability.Commands.Any(command =>
+            command.StartsWith("app.connection.", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Register a capability that is only visible to local MCP clients, not
@@ -843,6 +868,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _dispatcherQueue.TryEnqueue(() =>
         {
             NotificationRequested?.Invoke(this, args);
+        });
+    }
+
+    private void OnLocalExecApprovalDecided(object? sender, ExecApprovalPromptDecidedEventArgs args)
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            LocalExecApprovalDecided?.Invoke(this, args);
         });
     }
     

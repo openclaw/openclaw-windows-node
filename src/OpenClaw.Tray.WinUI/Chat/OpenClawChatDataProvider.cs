@@ -1402,6 +1402,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
         }
 
+        if (!message.IsFinal && IsLateNonFinalAssistantFrame(threadId))
+        {
+            Logger.Warn($"[ChatProvider] Dropping late non-final assistant frame after completed turn for threadId='{threadId}' len={traceText.Length}");
+            return;
+        }
+
         // Both `state: "delta"` and `state: "final"` carry the cumulative
         // assistant text (the gateway's EmbeddedBlockChunker emits completed
         // blocks, not token deltas — see spec §"Block Streaming"). Map both
@@ -1425,6 +1431,28 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
             RaiseNotification(new ChatProviderNotification(
                 ChatProviderNotificationKind.TurnComplete, threadId, LocalizationHelper.GetString("Chat_Notification_AssistantReplied")));
+        }
+    }
+
+    private bool IsLateNonFinalAssistantFrame(string threadId)
+    {
+        lock (_gate)
+        {
+            if (!_timelines.TryGetValue(threadId, out var timeline))
+                return false;
+            if (timeline.TurnActive)
+                return false;
+
+            for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+            {
+                var entry = timeline.Entries[i];
+                if (entry.Kind == ChatTimelineItemKind.User)
+                    return false;
+                if (entry.Kind == ChatTimelineItemKind.Assistant)
+                    return !entry.IsStreaming;
+            }
+
+            return false;
         }
     }
 

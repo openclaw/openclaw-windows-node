@@ -210,6 +210,7 @@ public sealed class ConnectionManagerWindowsNodeConnectorTests : IDisposable
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
 #pragma warning disable CS0067
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
 

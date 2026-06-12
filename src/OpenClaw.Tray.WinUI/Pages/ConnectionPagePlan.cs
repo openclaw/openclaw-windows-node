@@ -520,18 +520,29 @@ internal sealed record ConnectionPagePlan
         var reqId = !string.IsNullOrEmpty(snap.NodePairingRequestId)
             ? ConnectionCardPlanSanitizer.Sanitize(snap.NodePairingRequestId!, maxLen: 64)
             : null;
-        // CLI is noun-first: `openclaw nodes approve <requestId>` (see
-        // openclaw/src/cli/nodes-cli/register.pairing.ts). The earlier
-        // `openclaw approve node …` form does not match any registered
-        // subcommand and silently failed when users pasted it.
+        // Node WebSocket role-upgrade requests are device-pair approvals even
+        // though they surface on the node card; gateway-owned command-trust
+        // requests are node-pair approvals.
         // Missing requestId is a real-world case on older gateway builds:
-        // emit a single discovery command (`openclaw nodes pending`) the
+        // emit a single discovery command the
         // user can paste verbatim into any shell — they then pick a
         // requestId from its output and run approve manually. We avoid
         // embedding a "# then:" or "<requestId>" follow-up in the clipboard
         // text because `#` is treated as a literal arg by cmd.exe and `<`
         // is parsed as input redirection — pasting either breaks for
         // Windows-cmd users.
+        if (snap.NodePairingApprovalKind == PairingApprovalKind.DevicePair)
+        {
+            var deviceId = !string.IsNullOrEmpty(snap.NodeDeviceId)
+                ? ConnectionCardPlanSanitizer.Sanitize(snap.NodeDeviceId!, maxLen: 128)
+                : null;
+            return reqId != null
+                ? $"openclaw devices approve {reqId}"
+                : deviceId != null
+                    ? $"openclaw devices approve {deviceId}"
+                    : "openclaw devices list";
+        }
+
         return reqId != null
             ? $"openclaw nodes approve {reqId}"
             : "openclaw nodes pending";

@@ -29,6 +29,12 @@ public sealed partial class HubWindow : WindowEx
     private string _currentAgentId = "main";
     public string CurrentAgentId => _currentAgentId;
     private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
+    private AppNotificationService? _appNotificationService;
+    private readonly AppNotificationBannerState _appNotificationBannerState = new();
+    private AppNotificationSnapshot? _lastAppNotificationSnapshot;
+    private AppNotification? _currentAppNotification;
+    private bool _suppressAppNotificationClosed;
+    private bool _appNotificationActionShowsMore;
 
     // Legacy compatibility alias
     public string SelectedAgentId => _currentAgentId;
@@ -89,6 +95,8 @@ public sealed partial class HubWindow : WindowEx
             IsClosed = true;
             _contentReady.TrySetResult(true);
             _gatewayNavHideTimer?.Stop();
+            if (_appNotificationService != null)
+                _appNotificationService.Changed -= OnAppNotificationChanged;
             if (AppModel != null)
                 AppModel.PropertyChanged -= OnAppModelChanged;
         };
@@ -115,6 +123,135 @@ public sealed partial class HubWindow : WindowEx
             // Apply agents list that may have arrived before this window opened.
             if (AppModel.AgentsList.HasValue)
                 RebuildAgentNavItems(AppModel.AgentsList.Value);
+        }
+    }
+
+    internal void BindAppNotifications(AppNotificationService service)
+    {
+        if (_appNotificationService != null)
+            _appNotificationService.Changed -= OnAppNotificationChanged;
+
+        _appNotificationService = service;
+        _appNotificationService.Changed += OnAppNotificationChanged;
+        RenderAppNotification(service.Snapshot);
+    }
+
+    private void OnAppNotificationChanged(object? sender, AppNotificationChangedEventArgs args)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (IsClosed) return;
+            RenderAppNotification(args.Snapshot);
+        });
+    }
+
+    private void RenderAppNotification(AppNotificationSnapshot snapshot)
+    {
+        _lastAppNotificationSnapshot = snapshot;
+        var displayedNotificationWasRemoved = _currentAppNotification is not null
+            && AppNotificationInfoBar.IsOpen
+            && !snapshot.ActiveNotifications.Any(notification =>
+                string.Equals(notification.Id, _currentAppNotification.Id, StringComparison.Ordinal));
+        _currentAppNotification = _appNotificationBannerState.SelectVisibleNotification(
+            snapshot,
+            revealHiddenIfNeeded: displayedNotificationWasRemoved);
+        if (_currentAppNotification is null)
+        {
+            HideAppNotificationInfoBar();
+            return;
+        }
+
+        var notification = _currentAppNotification;
+        AppNotificationInfoBar.Visibility = Visibility.Visible;
+        AppNotificationInfoBar.Severity = ToInfoBarSeverity(notification.Severity);
+        AppNotificationInfoBar.Title = notification.Title;
+        AppNotificationInfoBar.Message = string.Empty;
+        AppNotificationMessageText.Text = notification.Message;
+
+        if (snapshot.HasMultipleActiveNotifications)
+        {
+            _appNotificationActionShowsMore = true;
+            AppNotificationActionButton.Content = LocalizationHelper.GetString("AppNotification_ShowMore");
+            AppNotificationActionButton.Visibility = Visibility.Visible;
+            UpdateAppNotificationActionEnabledState();
+        }
+        else if (!string.IsNullOrWhiteSpace(notification.ActionLabel) &&
+            !string.IsNullOrWhiteSpace(notification.ActionRoute))
+        {
+            _appNotificationActionShowsMore = false;
+            AppNotificationActionButton.Content = notification.ActionLabel;
+            AppNotificationActionButton.Visibility = Visibility.Visible;
+            UpdateAppNotificationActionEnabledState();
+        }
+        else
+        {
+            _appNotificationActionShowsMore = false;
+            AppNotificationActionButton.Visibility = Visibility.Collapsed;
+            AppNotificationActionButton.IsEnabled = true;
+        }
+
+        AppNotificationInfoBar.IsOpen = true;
+    }
+
+    private void HideAppNotificationInfoBar()
+    {
+        _suppressAppNotificationClosed = true;
+        AppNotificationInfoBar.IsOpen = false;
+        AppNotificationInfoBar.Visibility = Visibility.Collapsed;
+        AppNotificationInfoBar.Title = string.Empty;
+        AppNotificationInfoBar.Message = string.Empty;
+        AppNotificationMessageText.Text = string.Empty;
+        AppNotificationActionButton.Visibility = Visibility.Collapsed;
+        _appNotificationActionShowsMore = false;
+        _currentAppNotification = null;
+        _suppressAppNotificationClosed = false;
+        AppNotificationActionButton.IsEnabled = true;
+    }
+
+    private void UpdateAppNotificationActionEnabledState()
+    {
+        AppNotificationActionButton.IsEnabled = !_appNotificationActionShowsMore ||
+            !string.Equals(_currentNavTag, "notifications", StringComparison.Ordinal);
+    }
+
+    private static InfoBarSeverity ToInfoBarSeverity(AppNotificationSeverity severity) => severity switch
+    {
+        AppNotificationSeverity.Success => InfoBarSeverity.Success,
+        AppNotificationSeverity.Warning => InfoBarSeverity.Warning,
+        AppNotificationSeverity.Error => InfoBarSeverity.Error,
+        _ => InfoBarSeverity.Informational
+    };
+
+    private void OnAppNotificationInfoBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (_suppressAppNotificationClosed)
+            return;
+
+        if (_lastAppNotificationSnapshot is not null)
+        {
+            // Closing the InfoBar hides the entire banner strip for notifications
+            // that were already active. The Notifications page remains the source
+            // of truth, and deleting the displayed list item can still reveal a
+            // remaining hidden item via RenderAppNotification's fallback path.
+            _appNotificationBannerState.HideActiveNotifications(_lastAppNotificationSnapshot);
+        }
+
+        HideAppNotificationInfoBar();
+    }
+
+    private void OnAppNotificationActionButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (_appNotificationActionShowsMore)
+        {
+            NavigateTo("notifications");
+            return;
+        }
+
+        if (_currentAppNotification?.ActionRoute is { Length: > 0 } route)
+        {
+            NavigateTo(route);
+            _appNotificationService?.Dismiss(_currentAppNotification.Id);
+            return;
         }
     }
 
@@ -566,6 +703,7 @@ public sealed partial class HubWindow : WindowEx
         }
 
         InitializeCurrentPage();
+        UpdateAppNotificationActionEnabledState();
         ArmContentReady(e.Content as FrameworkElement);
     }
 
@@ -669,6 +807,7 @@ public sealed partial class HubWindow : WindowEx
                 break;
             case BindingsPage bindings: bindings.Initialize(); break;
             case SettingsPage settings: settings.Initialize(); break;
+            case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
             case AboutPage about: about.Initialize(); break;
         }
@@ -699,6 +838,7 @@ public sealed partial class HubWindow : WindowEx
         // redirect to ChannelsPage via DeepLinkHandler.
         "activity" => typeof(ChannelsPage),
         "settings" => typeof(SettingsPage),
+        "notifications" => typeof(NotificationsPage),
         "debug" => typeof(DebugPage),
         "info" => typeof(AboutPage),
         // Legacy tags
@@ -823,6 +963,7 @@ public sealed partial class HubWindow : WindowEx
             new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToBindings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToBindings_Subtitle"), Tag = "bindings" },
             new() { Icon = "🛡️", Title = LocalizationHelper.GetString("Command_GoToPermissions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToPermissions_Subtitle"), Tag = "permissions" },
             new() { Icon = "⚙️", Title = LocalizationHelper.GetString("Command_GoToSettings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSettings_Subtitle"), Tag = "settings" },
+            new() { Icon = "🔔", Title = LocalizationHelper.GetString("Command_GoToNotifications_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToNotifications_Subtitle"), Tag = "notifications" },
             new() { Icon = "🐛", Title = LocalizationHelper.GetString("Command_GoToDiagnostics_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToDiagnostics_Subtitle"), Tag = "debug" },
             new() { Icon = "ℹ️", Title = LocalizationHelper.GetString("Command_GoToInfo_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToInfo_Subtitle"), Tag = "info" },
 
@@ -928,6 +1069,7 @@ public sealed partial class HubWindow : WindowEx
         { "permissions", "\uEA18" },
         { "sandbox",     "\uE72E" },
         { "activity",    "\uEA95" },
+        { "notifications", "\uE7F4" },
         { "debug",       "\uEBE8" },
         { "info",        "\uE946" },
     };

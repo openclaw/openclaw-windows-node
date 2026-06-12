@@ -2483,17 +2483,22 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // ToolCall bursts render AFTER the assistant reply (or the thinking
         // indicator if no reply has streamed yet). Gateway emits tool_start
         // before assistant_delta, but the desired visual flow is
-        //   [User] → [Assistant reply / thinking] → [Tool burst]
-        // so the assistant message reads first and the tool work hangs below it.
-        // Exception: when any tool call in the turn failed, preserve insertion
-        // order so the error renders before the assistant's acknowledgement —
-        // [User] → [Tool burst (error)] → [Assistant reply]. This places the
-        // final assistant response at the scroll anchor (bottom), matching the
-        // web UI. See issue #672.
+        //   [User] → [Assistant reply / thinking] → [Tool burst] → [Denied permission]
+        // so the assistant message reads first, tool work hangs below it, and a
+        // denied permission appears last as the outcome. Approved permission
+        // badges keep their natural pre-tool position so they read as "user
+        // accepted → tool ran". Exception: when any tool call in the turn failed, preserve
+        // insertion order so the error renders before the assistant's acknowledgement —
+        // [User] → [Tool burst (error)] → [Assistant reply]. This places the final
+        // assistant response at the scroll anchor (bottom), matching the web UI.
+        // See issue #672.
         var orderedIdx = new int[Props.Entries.Count];
         {
             int outPos = 0;
             int turnStart = 0;
+            static bool IsDeniedPermission(ChatTimelineItem e) =>
+                e.Kind == ChatTimelineItemKind.PermissionRequest
+                && e.PermissionDecision == ChatPermissionDecision.Denied;
             void Flush(int endExclusive)
             {
                 // If the turn contains any failed tool call, preserve insertion
@@ -2520,10 +2525,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     return;
                 }
                 for (int j = turnStart; j < endExclusive; j++)
-                    if (Props.Entries[j].Kind != ChatTimelineItemKind.ToolCall)
+                    if (Props.Entries[j].Kind != ChatTimelineItemKind.ToolCall
+                        && !IsDeniedPermission(Props.Entries[j]))
                         orderedIdx[outPos++] = j;
                 for (int j = turnStart; j < endExclusive; j++)
                     if (Props.Entries[j].Kind == ChatTimelineItemKind.ToolCall)
+                        orderedIdx[outPos++] = j;
+                for (int j = turnStart; j < endExclusive; j++)
+                    if (IsDeniedPermission(Props.Entries[j]))
                         orderedIdx[outPos++] = j;
             }
             for (int i = 0; i < Props.Entries.Count; i++)

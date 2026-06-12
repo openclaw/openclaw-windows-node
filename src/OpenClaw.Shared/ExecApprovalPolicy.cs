@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace OpenClaw.Shared;
 
@@ -40,6 +41,42 @@ public enum ExecApprovalAction
 }
 
 /// <summary>
+/// JsonConverter for <see cref="ExecApprovalAction"/> that emits/accepts the canonical
+/// camelCase values ("allow", "deny", "prompt") but also accepts the legacy "ask" alias.
+/// Older builds of the Permissions UI wrote "ask" for the Prompt action; without this
+/// converter, deserialization would throw and the entire policy file (including any
+/// user-authored rules) would be silently replaced with the default policy on load.
+/// </summary>
+internal sealed class ExecApprovalActionConverter : JsonConverter<ExecApprovalAction>
+{
+    public override ExecApprovalAction Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Expected string for ExecApprovalAction, got {reader.TokenType}");
+
+        var value = reader.GetString();
+        return value?.ToLowerInvariant() switch
+        {
+            "allow" => ExecApprovalAction.Allow,
+            "deny" => ExecApprovalAction.Deny,
+            "prompt" or "ask" => ExecApprovalAction.Prompt,
+            _ => throw new JsonException($"Unknown ExecApprovalAction value '{value}'")
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, ExecApprovalAction value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value switch
+        {
+            ExecApprovalAction.Allow => "allow",
+            ExecApprovalAction.Deny => "deny",
+            ExecApprovalAction.Prompt => "prompt",
+            _ => throw new JsonException($"Unknown ExecApprovalAction enum {value}")
+        });
+    }
+}
+
+/// <summary>
 /// Result of evaluating a command against the policy.
 /// </summary>
 public class ExecApprovalResult
@@ -61,20 +98,35 @@ public class ExecApprovalPolicy
     private readonly string _policyFilePath;
     private List<ExecApprovalRule> _rules = new();
     private ExecApprovalAction _defaultAction = ExecApprovalAction.Deny;
-    
+
+    // Protects _rules, _defaultAction, and the file-signature fields below.
+    // Evaluate() takes the lock just long enough to hot-reload (if needed) and
+    // snapshot state into locals; pattern matching runs outside the lock.
+    private readonly object _stateLock = new();
+
+    // File-signature cache for non-destructive hot-reload. When the on-disk
+    // file's (mtime, length) differs from the cached pair, Evaluate() reparses
+    // the file into local variables and swaps them in only on success — never
+    // calling the bootstrap fallback that would wipe user rules on a torn write.
+    private DateTime _lastFileMtimeUtc;
+    private long _lastFileLength = -1;
+
     // Compiled regex cache — ConcurrentDictionary for thread safety.
     // Pattern → compiled Regex mapping never changes for a given pattern string
     // (glob-to-regex conversion is deterministic), so no cache invalidation is needed.
     private static readonly ConcurrentDictionary<string, Regex> _regexCache = new(StringComparer.Ordinal);
     
-    /// <summary>Current rules (read-only view)</summary>
-    public IReadOnlyList<ExecApprovalRule> Rules => _rules.AsReadOnly();
-    
+    /// <summary>Current rules (read-only snapshot)</summary>
+    public IReadOnlyList<ExecApprovalRule> Rules
+    {
+        get { lock (_stateLock) return _rules.ToList().AsReadOnly(); }
+    }
+
     /// <summary>Action when no rules match</summary>
     public ExecApprovalAction DefaultAction
     {
-        get => _defaultAction;
-        set => _defaultAction = value;
+        get { lock (_stateLock) return _defaultAction; }
+        set { lock (_stateLock) _defaultAction = value; }
     }
     
     public ExecApprovalPolicy(string dataPath, IOpenClawLogger logger)
@@ -98,10 +150,22 @@ public class ExecApprovalPolicy
                 Reason = "Empty command"
             };
         }
-        
+
+        // Snapshot policy state under lock (and hot-reload if the on-disk file
+        // changed externally — e.g. the Permissions UI saved a new default).
+        // Pattern matching runs outside the lock against the local snapshot.
+        List<ExecApprovalRule> rulesSnapshot;
+        ExecApprovalAction defaultActionSnapshot;
+        lock (_stateLock)
+        {
+            TryHotReloadLocked();
+            rulesSnapshot = _rules.ToList();
+            defaultActionSnapshot = _defaultAction;
+        }
+
         var shellSpan = (shell ?? "powershell").AsSpan();
 
-        foreach (var rule in _rules)
+        foreach (var rule in rulesSnapshot)
         {
             if (!rule.Enabled) continue;
             
@@ -137,15 +201,61 @@ public class ExecApprovalPolicy
         }
         
         // No rule matched - use default
-        var defaultAllowed = _defaultAction == ExecApprovalAction.Allow;
-        _logger.Info($"[EXEC-POLICY] DEFAULT {(_defaultAction)}: '{command}' (no rule matched)");
+        var defaultAllowed = defaultActionSnapshot == ExecApprovalAction.Allow;
+        _logger.Info($"[EXEC-POLICY] DEFAULT {(defaultActionSnapshot)}: '{command}' (no rule matched)");
         
         return new ExecApprovalResult
         {
             Allowed = defaultAllowed,
-            Action = _defaultAction,
+            Action = defaultActionSnapshot,
             Reason = "No matching rule; default policy applied"
         };
+    }
+
+    /// <summary>
+    /// Non-destructive hot-reload: if the on-disk policy file's signature
+    /// (mtime, length) differs from the cached pair, attempt to reparse it.
+    /// On success, atomically swap rules + default action. On failure (file
+    /// missing, partially written, corrupt JSON), log and keep the existing
+    /// in-memory state — NEVER fall back to default rules, which would
+    /// silently destroy the user's policy during a torn write.
+    /// Caller must hold <see cref="_stateLock"/>.
+    /// </summary>
+    private void TryHotReloadLocked()
+    {
+        FileInfo info;
+        try
+        {
+            info = new FileInfo(_policyFilePath);
+            if (!info.Exists) return;
+        }
+        catch
+        {
+            return;
+        }
+
+        var mtime = info.LastWriteTimeUtc;
+        var length = info.Length;
+        if (mtime == _lastFileMtimeUtc && length == _lastFileLength) return;
+
+        try
+        {
+            var json = File.ReadAllText(_policyFilePath);
+            var data = JsonSerializer.Deserialize<ExecPolicyData>(json, _jsonOptions);
+            if (data == null) return; // keep current state
+
+            _rules = data.Rules ?? new List<ExecApprovalRule>();
+            _defaultAction = data.DefaultAction;
+            _lastFileMtimeUtc = mtime;
+            _lastFileLength = length;
+            _logger.Info($"[EXEC-POLICY] Hot-reloaded {_rules.Count} rules from {_policyFilePath} (defaultAction={_defaultAction})");
+        }
+        catch (Exception ex)
+        {
+            // Keep current in-memory policy. Do not bump the signature cache
+            // so the next Evaluate() will retry once the writer finishes.
+            _logger.Warn($"[EXEC-POLICY] Hot-reload skipped (file may be mid-write): {ex.Message}");
+        }
     }
     
     /// <summary>
@@ -153,7 +263,7 @@ public class ExecApprovalPolicy
     /// </summary>
     public void AddRule(ExecApprovalRule rule)
     {
-        _rules.Add(rule);
+        lock (_stateLock) _rules.Add(rule);
         Save();
     }
     
@@ -162,8 +272,11 @@ public class ExecApprovalPolicy
     /// </summary>
     public void InsertRule(int index, ExecApprovalRule rule)
     {
-        index = Math.Clamp(index, 0, _rules.Count);
-        _rules.Insert(index, rule);
+        lock (_stateLock)
+        {
+            index = Math.Clamp(index, 0, _rules.Count);
+            _rules.Insert(index, rule);
+        }
         Save();
     }
     
@@ -172,8 +285,11 @@ public class ExecApprovalPolicy
     /// </summary>
     public bool RemoveRule(int index)
     {
-        if (index < 0 || index >= _rules.Count) return false;
-        _rules.RemoveAt(index);
+        lock (_stateLock)
+        {
+            if (index < 0 || index >= _rules.Count) return false;
+            _rules.RemoveAt(index);
+        }
         Save();
         return true;
     }
@@ -183,8 +299,11 @@ public class ExecApprovalPolicy
     /// </summary>
     public void SetRules(IEnumerable<ExecApprovalRule> rules, ExecApprovalAction? defaultAction = null)
     {
-        _rules = new List<ExecApprovalRule>(rules);
-        if (defaultAction.HasValue) _defaultAction = defaultAction.Value;
+        lock (_stateLock)
+        {
+            _rules = new List<ExecApprovalRule>(rules);
+            if (defaultAction.HasValue) _defaultAction = defaultAction.Value;
+        }
         Save();
     }
     
@@ -193,11 +312,7 @@ public class ExecApprovalPolicy
     /// </summary>
     public ExecPolicyData GetPolicyData()
     {
-        return new ExecPolicyData
-        {
-            DefaultAction = _defaultAction,
-            Rules = _rules.ToList()
-        };
+        lock (_stateLock) return GetPolicyDataLocked();
     }
 
     public string GetPolicyHash()
@@ -220,8 +335,12 @@ public class ExecApprovalPolicy
                 var data = JsonSerializer.Deserialize<ExecPolicyData>(json, _jsonOptions);
                 if (data != null)
                 {
-                    _rules = data.Rules ?? new List<ExecApprovalRule>();
-                    _defaultAction = data.DefaultAction;
+                    lock (_stateLock)
+                    {
+                        _rules = data.Rules ?? new List<ExecApprovalRule>();
+                        _defaultAction = data.DefaultAction;
+                        UpdateFileSignatureLocked();
+                    }
                     _logger.Info($"[EXEC-POLICY] Loaded {_rules.Count} rules from {_policyFilePath}");
                     return;
                 }
@@ -233,30 +352,116 @@ public class ExecApprovalPolicy
         }
         
         // Default policy: allow safe read-only commands, deny everything else
-        _rules = CreateDefaultRules();
-        _defaultAction = ExecApprovalAction.Deny;
+        lock (_stateLock)
+        {
+            _rules = CreateDefaultRules();
+            _defaultAction = ExecApprovalAction.Deny;
+        }
         _logger.Info("[EXEC-POLICY] Using default policy");
         Save();
     }
     
     /// <summary>
-    /// Save current policy to disk.
+    /// Save current policy to disk atomically (write to .tmp, then replace).
+    /// Updates the file-signature cache so the engine doesn't spuriously
+    /// hot-reload its own writes.
     /// </summary>
     public void Save()
     {
+        string? tmpPath = null;
         try
         {
             var dir = Path.GetDirectoryName(_policyFilePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            var json = JsonSerializer.Serialize(GetPolicyData(), _jsonOptions);
-            File.WriteAllText(_policyFilePath, json);
+            ExecPolicyData snapshot;
+            lock (_stateLock)
+            {
+                snapshot = GetPolicyDataLocked();
+            }
+            var json = JsonSerializer.Serialize(snapshot, _jsonOptions);
+
+            // Atomic write: serialize to a sibling .tmp first, then replace the
+            // target in one move. Guards against torn writes that would let a
+            // concurrent reader (or our own hot-reload) see partial JSON.
+            tmpPath = $"{_policyFilePath}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(tmpPath, json);
+            MoveFileWithRetry(tmpPath, _policyFilePath);
+            tmpPath = null;
+
+            lock (_stateLock)
+            {
+                UpdateFileSignatureLocked();
+            }
         }
         catch (Exception ex)
         {
+            TryDeleteTempFile(tmpPath);
             _logger.Error($"[EXEC-POLICY] Failed to save: {ex.Message}");
         }
+    }
+
+    private static void MoveFileWithRetry(string sourcePath, string destinationPath)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (IsTransientReplaceException(ex) && attempt < 20)
+            {
+                Thread.Sleep(5);
+            }
+        }
+    }
+
+    private static bool IsTransientReplaceException(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException;
+
+    private static void TryDeleteTempFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // Best-effort cleanup; the original save failure is reported by the caller.
+        }
+    }
+
+    private void UpdateFileSignatureLocked()
+    {
+        try
+        {
+            var info = new FileInfo(_policyFilePath);
+            if (info.Exists)
+            {
+                _lastFileMtimeUtc = info.LastWriteTimeUtc;
+                _lastFileLength = info.Length;
+            }
+        }
+        catch
+        {
+            // Best-effort. If we can't stat, leave cache as-is; next Evaluate
+            // will attempt hot-reload (and either succeed or be a no-op).
+        }
+    }
+
+    private ExecPolicyData GetPolicyDataLocked()
+    {
+        return new ExecPolicyData
+        {
+            DefaultAction = _defaultAction,
+            Rules = _rules.ToList()
+        };
     }
     
     private static List<ExecApprovalRule> CreateDefaultRules()
@@ -321,7 +526,7 @@ public class ExecApprovalPolicy
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+        Converters = { new ExecApprovalActionConverter() },
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
