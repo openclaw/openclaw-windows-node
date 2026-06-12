@@ -157,6 +157,31 @@ public sealed partial class ConnectionPage : Page
             UpdatePairingRequests(existingNode);
         if (_appState?.DevicePairList is { } existingDevice)
             UpdateDevicePairingRequests(existingDevice);
+
+        RefreshBackOriginLink();
+    }
+
+    private string? _backOriginTag;
+
+    private void RefreshBackOriginLink()
+    {
+        var hub = CurrentApp.ActiveHubWindow as OpenClawTray.Windows.HubWindow;
+        var origin = hub?.LastNavigationOrigin;
+        if (string.IsNullOrEmpty(origin))
+        {
+            _backOriginTag = null;
+            BackOriginLink.Visibility = Visibility.Collapsed;
+            return;
+        }
+        _backOriginTag = origin;
+        BackOriginText.Text = Helpers.NavOriginLabels.BackToLabel(origin);
+        BackOriginLink.Visibility = Visibility.Visible;
+    }
+
+    private void OnBackOriginClicked(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(_backOriginTag))
+            ((IAppCommands)CurrentApp).Navigate(_backOriginTag);
     }
 
     private void OnPageUnloaded(object sender, RoutedEventArgs e)

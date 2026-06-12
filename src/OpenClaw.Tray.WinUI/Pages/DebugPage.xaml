@@ -50,6 +50,18 @@
                             Padding="24,24,24,24"
                             Spacing="{StaticResource DiagSettingsCardSpacing}">
 
+                    <!-- Inline "Back to {origin}" link; visible only when arriving via a cross-page link. -->
+                    <HyperlinkButton x:Name="BackOriginLink"
+                                     Click="OnBackOriginClicked"
+                                     Padding="0" Margin="0,0,0,4"
+                                     Visibility="Collapsed"
+                                     AutomationProperties.AutomationId="BackOriginLink">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Back, Mode=OneTime}" FontSize="12"/>
+                            <TextBlock x:Uid="BackToOriginGeneric" x:Name="BackOriginText" Text="Back"/>
+                        </StackPanel>
+                    </HyperlinkButton>
+
                     <!-- Title block (in-stack, same column as cards). -->
                     <TextBlock x:Uid="DiagnosticsPage_Title"
                                Text="Diagnostics"

@@ -41,7 +41,8 @@ public sealed class AsyncListLoadingPageWiringTests
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", fileName);
 
         Assert.Contains("ShowDisconnected", source);
-        Assert.Contains("Navigate(\"connection\")", source);
+        // Match both Navigate("connection") and Navigate("connection", "<origin>").
+        Assert.Contains("Navigate(\"connection\"", source);
         Assert.Contains(".Fail()", source);
     }
 
