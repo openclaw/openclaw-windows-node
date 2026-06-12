@@ -1438,6 +1438,7 @@ public class WindowsNodeClientTests
         private readonly TaskCompletionSource<bool> _executedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int ExecuteCount { get; private set; }
         public string? LastCommand { get; private set; }
+        public NodeInvokeRequest? LastRequest { get; private set; }
         /// <summary>Completes when ExecuteAsync is first called. Use in tests to await fire-and-forget dispatch.</summary>
         public Task ExecutedTask => _executedTcs.Task;
 
@@ -1455,6 +1456,7 @@ public class WindowsNodeClientTests
         {
             ExecuteCount++;
             LastCommand = request.Command;
+            LastRequest = request;
             _executedTcs.TrySetResult(true);
             return Task.FromResult(new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { dispatched = true } });
         }
@@ -1585,6 +1587,123 @@ public class WindowsNodeClientTests
 
             Assert.Equal(1, cap.ExecuteCount);
             Assert.Equal("mock.ping", cap.LastCommand);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_ReqPath_PropagatesParamsSessionKey()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            var json = """
+                {
+                  "type": "req",
+                  "id": "req-session-params",
+                  "method": "node.invoke",
+                  "params": {
+                    "requestId": "inv-session-params",
+                    "command": "mock.ping",
+                    "sessionKey": "chat-thread-from-params",
+                    "args": {}
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal("chat-thread-from-params", cap.LastRequest?.SessionKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_ReqPath_PropagatesArgsSessionKey()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            var json = """
+                {
+                  "type": "req",
+                  "id": "req-session-args",
+                  "method": "node.invoke",
+                  "params": {
+                    "requestId": "inv-session-args",
+                    "command": "mock.ping",
+                    "args": {
+                      "sessionKey": "chat-thread-from-args"
+                    }
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal("chat-thread-from-args", cap.LastRequest?.SessionKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_ReqPath_ParamsSessionKeyOverridesArgsSessionKey()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            var json = """
+                {
+                  "type": "req",
+                  "id": "req-session-override",
+                  "method": "node.invoke",
+                  "params": {
+                    "requestId": "inv-session-override",
+                    "command": "mock.ping",
+                    "sessionKey": "trusted-session",
+                    "args": {
+                      "sessionKey": "spoofed-session"
+                    }
+                  }
+                }
+                """;
+
+            await InvokeProcessMessageAsync(client, json);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal("trusted-session", cap.LastRequest?.SessionKey);
         }
         finally
         {

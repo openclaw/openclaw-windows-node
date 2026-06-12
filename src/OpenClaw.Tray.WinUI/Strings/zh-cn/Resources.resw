@@ -2020,10 +2020,13 @@
     <value>命令模式（例如 echo *）</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
-    <value>允许</value>
+    <value>拒绝</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>拒绝</value>
+    <value>允许</value>
+  </data>
+  <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
+    <value>询问</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
     <value>添加规则</value>
@@ -2971,13 +2974,19 @@
     <value> … [已截断 {0} 字节]</value>
   </data>
   <data name="Chat_Permission_Allow" xml:space="preserve">
-    <value>允许</value>
+    <value>允许一次</value>
+  </data>
+  <data name="Chat_Permission_AllowAlways" xml:space="preserve">
+    <value>始终允许</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>拒绝</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>已允许</value>
+  </data>
+  <data name="Chat_Permission_DecisionAlwaysAllowed" xml:space="preserve">
+    <value>已始终允许</value>
   </data>
   <data name="Chat_Permission_DecisionDenied" xml:space="preserve">
     <value>已拒绝</value>
@@ -3036,11 +3045,17 @@
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>需要执行批准</value>
   </data>
+  <data name="Chat_Permission_CommandApprovalTitle" xml:space="preserve">
+    <value>已请求命令批准</value>
+  </data>
   <data name="Chat_Permission_Subtitle" xml:space="preserve">
-    <value>在此 Windows 伴侣上运行以下命令需要获得批准。单击"允许"继续执行，或单击"拒绝"取消。</value>
+    <value>在此 Windows 伴侣上运行以下命令需要获得批准。允许一次以继续，始终允许以记住此命令，或拒绝以取消。</value>
   </data>
   <data name="Chat_Permission_Caption" xml:space="preserve">
-    <value>根据当前策略，每条命令都需要批准。您的选择仅适用于此请求。</value>
+    <value>“允许一次”仅适用于此请求。“始终允许”会在可能时保存一条精确的允许规则。</value>
+  </data>
+  <data name="Chat_Permission_ResultSubmittedFormat" xml:space="preserve">
+    <value>已为 {1} 提交批准 {0}。</value>
   </data>
   <data name="Chat_Root_ConnectingToGateway" xml:space="preserve">
     <value>正在连接到网关…</value>
@@ -4183,7 +4198,7 @@
     <value>0 条规则</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>尚无规则。在下方添加模式以允许或拒绝特定命令。</value>
+    <value>尚无规则。在下方添加模式以拒绝、允许或询问特定命令。</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows 隐私</value>

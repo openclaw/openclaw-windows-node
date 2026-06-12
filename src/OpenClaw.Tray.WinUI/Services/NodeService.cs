@@ -10,6 +10,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Mxc;
+using OpenClawTray.Chat;
 using OpenClawTray.A2UI.Actions;
 using OpenClawTray.A2UI.Rendering;
 using OpenClawTray.Helpers;
@@ -26,6 +27,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly IOpenClawLogger _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly Func<FrameworkElement?> _rootProvider;
+    private readonly Func<OpenClawChatDataProvider?> _chatProviderProvider;
     private readonly SettingsManager? _settings;
     private readonly SemaphoreSlim _consentLock = new(1, 1);
     private readonly object _disposeLock = new();
@@ -189,6 +191,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         DispatcherQueue dispatcherQueue,
         string dataPath,
         Func<FrameworkElement?>? rootProvider = null,
+        Func<OpenClawChatDataProvider?>? chatProviderProvider = null,
         SettingsManager? settings = null,
         bool enableMcpServer = false,
         string? identityDataPath = null,
@@ -200,6 +203,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _identityDataPath = string.IsNullOrWhiteSpace(identityDataPath) ? dataPath : identityDataPath;
         _sharedGatewayTokenResolver = sharedGatewayTokenResolver;
         _rootProvider = rootProvider ?? (() => null);
+        _chatProviderProvider = chatProviderProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
@@ -293,7 +297,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _systemCapability.PolicyAutoDecided += OnLocalExecApprovalDecided;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
-        var execPrompt = new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger);
+        var execPrompt = new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger, _chatProviderProvider);
         execPrompt.Decided += OnLocalExecApprovalDecided;
         _systemCapability.SetPromptHandler(execPrompt);
         Register(_systemCapability);

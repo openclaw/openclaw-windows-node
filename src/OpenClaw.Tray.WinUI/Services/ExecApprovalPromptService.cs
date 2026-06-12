@@ -6,19 +6,23 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenClawTray.Chat;
 
 namespace OpenClawTray.Services;
 
 public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
 {
     private readonly IOpenClawLogger _logger;
+    private readonly Func<OpenClawChatDataProvider?>? _chatProviderProvider;
 
     public ExecApprovalPromptService(
         DispatcherQueue dispatcherQueue,
         Func<FrameworkElement?> rootProvider,
-        IOpenClawLogger logger)
+        IOpenClawLogger logger,
+        Func<OpenClawChatDataProvider?>? chatProviderProvider = null)
     {
         _logger = logger;
+        _chatProviderProvider = chatProviderProvider;
     }
 
     /// <summary>
@@ -32,17 +36,42 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
     /// </summary>
     public event EventHandler<ExecApprovalPromptDecidedEventArgs>? Decided;
 
-    public Task<ExecApprovalPromptDecision> RequestAsync(
+    public async Task<ExecApprovalPromptDecision> RequestAsync(
         ExecApprovalPromptRequest request,
         CancellationToken cancellationToken = default)
     {
-        var tcs = new TaskCompletionSource<ExecApprovalPromptDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (cancellationToken.IsCancellationRequested)
         {
             var cancelled = ExecApprovalPromptDecision.Deny("Approval prompt was cancelled");
             RaiseDecided(request, cancelled, ExecApprovalPromptDecisionSource.Cancelled);
-            return Task.FromResult(cancelled);
+            return cancelled;
         }
+
+        if (!string.IsNullOrWhiteSpace(request.SessionKey) && _chatProviderProvider?.Invoke() is { } provider)
+        {
+            try
+            {
+                var inlineDecision = await provider.RequestLocalExecApprovalAsync(request, cancellationToken).ConfigureAwait(false);
+                if (inlineDecision is not null)
+                {
+                    _logger.Info($"[ExecApproval] Inline prompt decision: {inlineDecision.Kind}");
+                    RaiseDecided(request, inlineDecision, MapKindToUserSource(inlineDecision.Kind));
+                    return inlineDecision;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                var cancelled = ExecApprovalPromptDecision.Deny("Approval prompt was cancelled");
+                RaiseDecided(request, cancelled, ExecApprovalPromptDecisionSource.Cancelled);
+                return cancelled;
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[ExecApproval] Inline prompt failed: {ex.Message}; falling back to native prompt");
+            }
+        }
+
+        var tcs = new TaskCompletionSource<ExecApprovalPromptDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var thread = new Thread(() =>
         {
@@ -68,7 +97,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        return tcs.Task;
+        return await tcs.Task.ConfigureAwait(false);
     }
 
     private static ExecApprovalPromptDecisionSource MapKindToUserSource(ExecApprovalPromptDecisionKind kind) => kind switch
