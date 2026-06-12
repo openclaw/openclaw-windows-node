@@ -15,21 +15,25 @@ You do **not** need a pre-existing local OpenClaw gateway before installing. On 
 
 ### 1. Download the Installer
 
-Download the latest stable installer from the canonical OpenClaw release assets:
+<!--
+TODO(MSIX phase 7): Rewrite this section once the MSIX-primary release pipeline
+lands. The Inno `.exe` installer + SHA-256 download table that lived here was
+removed alongside the Inno installer itself. The replacement is an MSIX
+package + .appinstaller manifest hosted on GitHub Releases.
+-->
 
-| File | Architecture |
-|------|-------------|
-| [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-x64.exe) | Intel / AMD (most PCs) |
-| [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-arm64.exe) | ARM64 (Surface Pro X, Snapdragon laptops) |
-| [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt) | SHA-256 checksums |
-
-If you're unsure, use the **x64** installer.
+> **MSIX installer downloads coming soon.** The Inno `.exe` installer has been
+> retired and the MSIX-primary distribution pipeline is in progress. Build
+> locally from source in the meantime — see [DEVELOPMENT.md](../DEVELOPMENT.md).
 
 ### 2. Run the Installer
 
-Double-click the downloaded `.exe`. Windows may show a SmartScreen prompt — click **More info → Run anyway** (this is normal for code-signed apps that haven't yet accumulated reputation).
+Once the MSIX download is published, double-click the downloaded `.msix`
+package to install it via the Windows App Installer. SmartScreen may show a
+prompt the first time — click **More info → Run anyway** (this is normal for
+newly published code-signed apps that haven't yet accumulated reputation).
 
-The installer runs without requiring administrator privileges.
+MSIX installs do not require administrator privileges.
 
 ### 3. Choose Optional Components
 
@@ -104,7 +108,6 @@ OpenClaw Companion responds to `openclaw://` deep links, which can be invoked fr
 | `openclaw://activity` | Open the Activity page |
 | `openclaw://history` | Open the Activity page filtered to notification history |
 | `openclaw://healthcheck` | Run a manual health check |
-| `openclaw://check-updates` | Run a manual update check |
 | `openclaw://logs` | Open the current tray log file |
 | `openclaw://log-folder` | Open the logs folder |
 | `openclaw://config` | Open the config folder |

@@ -1739,7 +1739,7 @@ public sealed partial class ConnectionPage : Page
     /// <summary>
     /// Handler for both the Welcome and Cockpit "Install local WSL gateway"
     /// buttons. Hands off to the hub's OpenSetupAction (which the App wires
-    /// to the V2 onboarding flow) — same wiring master added on the legacy
+    /// to the V2 onboarding flow) — same wiring main added on the legacy
     /// ConnectionPage; the cards live in different slots in the rebuilt
     /// page but the user-facing behavior is identical.
     /// </summary>

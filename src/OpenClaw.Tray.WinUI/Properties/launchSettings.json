@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "OpenClaw.Tray.WinUI": {
+      "commandName": "MsixPackage",
+      "hotReloadEnabled": false,
+      "debugEngines": "managed,native"
+    }
+  }
+}

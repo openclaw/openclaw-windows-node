@@ -15,10 +15,6 @@ param(
 
     [switch]$RequireAppLocalVCRuntime,
 
-    [switch]$RequireInstallerVCRedist,
-
-    [string]$InstallerVCRedistPath,
-
     [switch]$SkipNativeLoadProbe
 )
 
@@ -328,20 +324,6 @@ if ($shouldProbeNativeLoad) {
     }
 
     Add-TtsNativeStackProbeErrors
-}
-
-if ($RequireInstallerVCRedist) {
-    $redist = if ([string]::IsNullOrWhiteSpace($InstallerVCRedistPath)) {
-        Join-Path $payloadRoot "vc_redist.x64.exe"
-    } else {
-        $InstallerVCRedistPath
-    }
-
-    if (-not (Test-Path -LiteralPath $redist)) {
-        $errors.Add("Missing bundled Visual C++ Runtime redistributable at $redist.")
-    } elseif ($runningOnWindows) {
-        Add-MicrosoftSignatureErrors -File (Get-Item -LiteralPath $redist)
-    }
 }
 
 if ($errors.Count -gt 0) {

@@ -138,8 +138,6 @@ public class TrayMenuWindowMarkupTests
 
         Assert.Contains(@"case ""healthcheck"":", source);
         Assert.Contains("RunHealthCheck", source);
-        Assert.Contains(@"case ""check-updates"":", source);
-        Assert.Contains("CheckForUpdates", source);
         Assert.Contains(@"case ""logs"":", source);
         Assert.Contains("OpenLogFile?.Invoke", source);
     }

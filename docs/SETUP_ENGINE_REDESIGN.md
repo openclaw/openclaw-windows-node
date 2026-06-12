@@ -12,6 +12,48 @@ The bundled `default-config.json` ships with the tray executable and provides se
 
 ---
 
+## Hazards
+
+### Don't split `OpenClaw.SetupEngine.UI` into its own process
+
+`OpenClaw.SetupEngine.UI` is intentionally a class library that the tray
+references and hosts in-process. The tray's `App.xaml.cs` constructs
+`SetupWindow` directly and reuses the tray's single-instance mutex, deep-link
+surface, and post-setup restart sequence.
+
+There is an MSBuild ship-guard in
+`src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj` that fails the build if
+`OpenClaw.SetupEngine.UI.exe` appears in the tray's `bin/` or `publish/`
+output. (Before MSIX became primary, the same guard lived in `installer.iss`
+as a `#error` preprocessor check.) Do not weaken or remove it without
+deliberately re-evaluating the single-process design below.
+
+If you ever do split SetupEngine into a standalone executable inside the MSIX:
+
+- You'll need to copy XAML/resource files into SetupEngine.UI's own publish
+  directory (its own `CopyXamlResourcesToPublishDirectory` MSBuild target) so
+  the standalone `.exe` can find them — `OpenClaw.Tray.WinUI` no longer owns
+  the resource pipeline for SetupEngine.UI in that world.
+- Standalone WinUI 3 executables need to bootstrap the Windows App Runtime
+  themselves before any framework call. That means a `WindowsAppRuntime_EnsureIsLoaded`
+  P/Invoke in `SetupEngine.UI/Program.cs` (or equivalent C# bootstrapper).
+  Inside the tray today this happens automatically via the MSIX
+  `Dependencies > Package Name="Microsoft.WindowsAppRuntime.*"` element.
+- The single-instance mutex (`App.xaml.cs:355-405`) and the
+  `--post-setup-restart`/`--wait-for-pid` handoff would need to coordinate
+  across two processes instead of being intra-process state.
+- The `openclaw://` deep-link surface, the tray flyout, and the StartupTask
+  registration all live in the tray today. Splitting setup out means each of
+  those needs an explicit cross-process protocol for what setup needs to
+  announce back to the tray.
+
+PR #468 contains a worked example of the bootstrapper diffs needed (search
+its tree for `OpenClaw.SetupEngine.UI.csproj` `CopyXamlResourcesToPublishDirectory`
+and `Program.cs` `WindowsAppRuntime_EnsureIsLoaded`) — use it as a starting
+point if you ever revisit this decision.
+
+---
+
 ## Architecture
 
 ```

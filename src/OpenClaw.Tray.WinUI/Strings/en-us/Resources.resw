@@ -226,9 +226,6 @@
   <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
     <value>Copy Debug Bundle</value>
   </data>
-  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
-    <value>Check Updates</value>
-  </data>
   <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
     <value>Copy Port Diagnostics</value>
   </data>
@@ -318,9 +315,6 @@
   <data name="WindowTitle_Welcome" xml:space="preserve">
     <value>Welcome to OpenClaw</value>
   </data>
-  <data name="WindowTitle_Update" xml:space="preserve">
-    <value>OpenClaw Update</value>
-  </data>
   <!-- Settings runtime status -->
   <data name="Status_Testing" xml:space="preserve">
     <value>Testing...</value>
@@ -355,48 +349,6 @@
   </data>
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>Open Settings</value>
-  </data>
-  <!-- UpdateDialog -->
-  <data name="Update_VersionAvailable" xml:space="preserve">
-    <value>🎉 Version {0} is available!</value>
-  </data>
-  <data name="Update_CurrentVersion" xml:space="preserve">
-    <value>Current version: {0}</value>
-  </data>
-  <data name="Update_WhatsNew" xml:space="preserve">
-    <value>What's New:</value>
-  </data>
-  <data name="Update_SkipButton" xml:space="preserve">
-    <value>Skip This Version</value>
-  </data>
-  <data name="Update_RemindLaterButton" xml:space="preserve">
-    <value>Remind Me Later</value>
-  </data>
-  <data name="Update_DownloadButton" xml:space="preserve">
-    <value>Download &amp; Install</value>
-  </data>
-  <data name="Update_Title_UpToDate" xml:space="preserve">
-    <value>You're up to date</value>
-  </data>
-  <data name="Update_Message_UpToDate" xml:space="preserve">
-    <value>You're running the latest version (v{0}).</value>
-  </data>
-  <data name="Update_Title_Failed" xml:space="preserve">
-    <value>Couldn't check for updates</value>
-  </data>
-  <data name="Update_Message_Failed" xml:space="preserve">
-    <value>Something went wrong while checking for updates.
-
-{0}</value>
-  </data>
-  <data name="Update_Title_Skipped" xml:space="preserve">
-    <value>Update check skipped</value>
-  </data>
-  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
-    <value>Update checks are disabled in debug builds.</value>
-  </data>
-  <data name="Update_OK" xml:space="preserve">
-    <value>OK</value>
   </data>
   <!-- Tray menu items -->
   <data name="Menu_OpenDashboard" xml:space="preserve">
@@ -1052,13 +1004,6 @@ On your gateway host (Mac/Linux), run:
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>Cancel</value>
   </data>
-  <!-- ==================== DownloadProgressDialog ==================== -->
-  <data name="WindowTitle_Downloading" xml:space="preserve">
-    <value>Downloading Update...</value>
-  </data>
-  <data name="Download_ProgressText" xml:space="preserve">
-    <value>Downloading update...</value>
-  </data>
   <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — Approve URL</value>
@@ -1529,9 +1474,6 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="CopySupportButton.Content" xml:space="preserve">
     <value>Copy Support Context</value>
-  </data>
-  <data name="CheckUpdatesButton.Content" xml:space="preserve">
-    <value>Check for Updates</value>
   </data>
   <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
     <value>Links</value>
@@ -5261,7 +5203,7 @@ Check your connection settings and try again.</value>
     <value>Link your WhatsApp phone</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Click &quot;Show QR&quot; in the Linking section below.</value>
+    <value>Click "Show QR" in the Linking section below.</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
     <value>On your phone: WhatsApp → Settings → Linked devices → Link a device.</value>
@@ -5273,7 +5215,7 @@ Check your connection settings and try again.</value>
     <value>Link your Signal phone</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Click &quot;Show QR&quot; in the Linking section below.</value>
+    <value>Click "Show QR" in the Linking section below.</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
     <value>On your phone: Signal → Settings → Linked devices → Link new device.</value>
@@ -5294,7 +5236,7 @@ Check your connection settings and try again.</value>
     <value>Paste the token into the Configuration form below.</value>
   </data>
   <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;. The channel will start automatically.</value>
+    <value>Click "Save and start". The channel will start automatically.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
     <value>Connect Discord via a webhook</value>
@@ -5303,13 +5245,13 @@ Check your connection settings and try again.</value>
     <value>Open your Discord server settings → Integrations → Webhooks.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Click &quot;New Webhook&quot;, give it a name, and copy the webhook URL.</value>
+    <value>Click "New Webhook", give it a name, and copy the webhook URL.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
     <value>Paste the URL into the Configuration form below.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
+    <value>Click "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>Connect Google Chat via a webhook</value>
@@ -5324,7 +5266,7 @@ Check your connection settings and try again.</value>
     <value>Paste the URL into the Configuration form below.</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
+    <value>Click "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
     <value>Connect Slack via an app</value>
@@ -5339,7 +5281,7 @@ Check your connection settings and try again.</value>
     <value>Paste both into the Configuration form below.</value>
   </data>
   <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
+    <value>Click "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
     <value>Connect Nostr via relays</value>
@@ -5354,7 +5296,7 @@ Check your connection settings and try again.</value>
     <value>Paste both into the Configuration form below.</value>
   </data>
   <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
+    <value>Click "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
     <value>iMessage is macOS-only</value>
@@ -5372,10 +5314,10 @@ Check your connection settings and try again.</value>
     <value>Connect this channel</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; is a plugin channel. Refer to its documentation for the fields it needs.</value>
+    <value>"{0}" is a plugin channel. Refer to its documentation for the fields it needs.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Use &quot;Open Config page&quot; in the Configuration section below to add settings under channels.{0}.</value>
+    <value>Use "Open Config page" in the Configuration section below to add settings under channels.{0}.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
     <value>Save the config; OpenClaw will start the channel automatically.</value>

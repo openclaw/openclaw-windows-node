@@ -45,6 +45,21 @@
            Text="vswhere did not find a Visual Studio install with the C++ Redistributable (Microsoft.VisualStudio.Component.VC.Redist.14.Latest) component (got '$(_OpenClawVsInstallRoot)'). Install that component via the Visual Studio Installer (Individual Components tab)." />
 
     <!--
+      Select the single latest VC Redist version directory. A VS install can
+      have multiple side-by-side Redist versions (e.g. 14.42 / 14.44 / 14.51).
+      Without narrowing to one, the publish item group ends up with duplicates
+      under the same RelativePath, which the .NET SDK rejects (NETSDK1152).
+    -->
+    <Exec Command="powershell -NoProfile -NonInteractive -Command &quot;Get-ChildItem -Directory -Path '$(_OpenClawVsInstallRoot)\VC\Redist\MSVC' | Where-Object { $_.Name -match '^[0-9]+(\.[0-9]+)+$' } | Sort-Object { [version]$_.Name } | Select-Object -Last 1 | ForEach-Object { $_.FullName }&quot;"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_OpenClawVCRedistVersionRoot" />
+    </Exec>
+
+    <Error Condition="'$(_OpenClawVCRedistVersionRoot)' == '' or !Exists('$(_OpenClawVCRedistVersionRoot)')"
+           Text="No VC++ Redist version directory found under '$(_OpenClawVsInstallRoot)\VC\Redist\MSVC' (got '$(_OpenClawVCRedistVersionRoot)'). Install the C++ Redistributable Update Visual Studio component." />
+
+    <!--
       Glob the loose CRT DLLs. The Microsoft.VC*.CRT folder name carries the VS
       major version (Microsoft.VC143.CRT for VS 2022, Microsoft.VC145.CRT for
       VS 18). There is at most one Microsoft.VC*.CRT subdir per arch per redist
@@ -58,17 +73,17 @@
     -->
     <ItemGroup Condition="'$(OpenClawVCRuntimeArch)' == 'x64'">
       <OpenClawVCRuntimeFiles Remove="@(OpenClawVCRuntimeFiles)" />
-      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\vcruntime140*.dll" />
-      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\msvcp140*.dll" />
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVCRedistVersionRoot)\x64\Microsoft.VC*.CRT\vcruntime140*.dll" />
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVCRedistVersionRoot)\x64\Microsoft.VC*.CRT\msvcp140*.dll" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(OpenClawVCRuntimeArch)' == 'arm64'">
-      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\arm64\Microsoft.VC*.CRT\vcruntime140*.dll" />
-      <OpenClawVCRuntimeFiles Include="$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\arm64\Microsoft.VC*.CRT\msvcp140*.dll" />
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVCRedistVersionRoot)\arm64\Microsoft.VC*.CRT\vcruntime140*.dll" />
+      <OpenClawVCRuntimeFiles Include="$(_OpenClawVCRedistVersionRoot)\arm64\Microsoft.VC*.CRT\msvcp140*.dll" />
     </ItemGroup>
 
     <Error Condition="'@(OpenClawVCRuntimeFiles)' == ''"
-           Text="No $(OpenClawVCRuntimeArch) VC++ Runtime DLLs were found under '$(_OpenClawVsInstallRoot)\VC\Redist\MSVC\*\$(OpenClawVCRuntimeArch)\Microsoft.VC*.CRT\'. Install the C++ Redistributable Update Visual Studio component." />
+           Text="No $(OpenClawVCRuntimeArch) VC++ Runtime DLLs were found under '$(_OpenClawVCRedistVersionRoot)\$(OpenClawVCRuntimeArch)\Microsoft.VC*.CRT\'. Install the C++ Redistributable Update Visual Studio component." />
   </Target>
 
   <!-- Legacy alias so existing CI log searches and docs still find the target. -->
@@ -96,6 +111,29 @@
     <Copy SourceFiles="@(OpenClawVCRuntimeFiles)"
           DestinationFolder="$(PublishDir)"
           SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    Register the VS-resolved VC++ runtime DLLs as ResolvedFileToPublish items so
+    they flow through the standard .NET SDK publish pipeline. This is what gets
+    them into PublishItemsOutputGroupOutput (and therefore PackagingOutputs and
+    the MSIX payload).
+
+    Without this, the AfterTargets="Publish" copy above still lands the DLLs in
+    PublishDir for the loose-tray publish case, but the WinUI single-project
+    MSIX packaging task collects payload from PackagingOutputs (not from random
+    files in PublishDir), so vcruntime140.dll would be missing from the .msix.
+  -->
+  <Target Name="AddOpenClawVCRuntimeToPublishItems"
+          BeforeTargets="ComputeFilesToPublish"
+          DependsOnTargets="ResolveOpenClawVCRuntimeFromVSInstall"
+          Condition="'$(OpenClawVCRuntimeArch)' != ''">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(OpenClawVCRuntimeFiles)">
+        <RelativePath>%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
   </Target>
 
   <Target Name="ValidateOpenClawVCRuntimePublished"

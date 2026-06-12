@@ -169,23 +169,6 @@ dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained -o
 
 This creates a standalone executable with all dependencies bundled.
 
-#### Local Inno Installer Iteration
-
-Use the local helper to build unsigned installer EXEs without waiting for CI:
-
-```powershell
-# Fast x64 installer for Windows Sandbox smoke tests
-.\scripts\build-inno-local.ps1 -Arch x64 -Fast
-
-# Recompile Inno only after changing installer.iss
-.\scripts\build-inno-local.ps1 -Arch x64 -Fast -NoPublish
-
-# Build both release-shaped architectures locally
-.\scripts\build-inno-local.ps1 -Arch All
-```
-
-`-Fast` uses ZIP/no-solid compression for quick local iteration. CI release builds keep the default LZMA solid compression and Azure signing.
-
 ## Architecture Overview
 
 ### Native chat surface (FunctionalUI + OpenClaw.Chat)
@@ -577,15 +560,11 @@ When a tag is pushed (e.g., `git tag v1.2.3 && git push origin v1.2.3`):
    - All artifacts built for x64 and ARM64
    - Executables signed with Azure Trusted Signing certificate
 
-2. **Create Installers:**
-   - Inno Setup creates Windows installers
-   - Separate installers for x64 and ARM64
-
-3. **GitHub Release:**
+2. **GitHub Release:**
    - Automatic release created with tag name
-   - Includes:
-     - Installers: `OpenClawCompanion-Setup-x64.exe`, `OpenClawCompanion-Setup-arm64.exe`
-     - Portable ZIPs: `OpenClawTray-{version}-win-x64.zip`, `OpenClawTray-{version}-win-arm64.zip`
+   - Includes portable ZIPs: `OpenClawTray-{version}-win-x64.zip`, `OpenClawTray-{version}-win-arm64.zip`
+   - MSIX installer artifacts will be added once the MSIX-primary distribution
+     pipeline lands (see the MSIX-primary publishing plan).
    - Release notes auto-generated from commits
 
 ### Monitoring CI

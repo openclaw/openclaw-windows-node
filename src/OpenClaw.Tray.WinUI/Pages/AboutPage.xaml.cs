@@ -147,11 +147,6 @@ public sealed partial class AboutPage : Page
         await Task.CompletedTask;
     }
 
-    private void OnCheckUpdatesClick(object sender, RoutedEventArgs e)
-    {
-        ((IAppCommands)CurrentApp).CheckForUpdates();
-    }
-
     private void OnMoreDiagnosticsClick(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).Navigate("debug");

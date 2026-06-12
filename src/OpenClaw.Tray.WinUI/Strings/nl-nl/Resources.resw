@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -212,9 +212,6 @@
   <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
     <value>Debugbundel kopiëren</value>
   </data>
-  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
-    <value>Updates zoeken</value>
-  </data>
   <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
     <value>Poortdiagnostiek kopiëren</value>
   </data>
@@ -294,9 +291,6 @@
   <data name="WindowTitle_Welcome" xml:space="preserve">
     <value>Welkom bij OpenClaw</value>
   </data>
-  <data name="WindowTitle_Update" xml:space="preserve">
-    <value>OpenClaw-update</value>
-  </data>
   <data name="Status_Testing" xml:space="preserve">
     <value>Testen...</value>
   </data>
@@ -329,47 +323,6 @@
   </data>
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>Instellingen openen</value>
-  </data>
-  <data name="Update_VersionAvailable" xml:space="preserve">
-    <value>🎉 Versie {0} is beschikbaar!</value>
-  </data>
-  <data name="Update_CurrentVersion" xml:space="preserve">
-    <value>Huidige versie: {0}</value>
-  </data>
-  <data name="Update_WhatsNew" xml:space="preserve">
-    <value>Wat is er nieuw:</value>
-  </data>
-  <data name="Update_SkipButton" xml:space="preserve">
-    <value>Deze versie overslaan</value>
-  </data>
-  <data name="Update_RemindLaterButton" xml:space="preserve">
-    <value>Herinner me later</value>
-  </data>
-  <data name="Update_DownloadButton" xml:space="preserve">
-    <value>Downloaden en installeren</value>
-  </data>
-  <data name="Update_Title_UpToDate" xml:space="preserve">
-    <value>Je bent up-to-date</value>
-  </data>
-  <data name="Update_Message_UpToDate" xml:space="preserve">
-    <value>Je gebruikt de nieuwste versie (v{0}).</value>
-  </data>
-  <data name="Update_Title_Failed" xml:space="preserve">
-    <value>Kan niet op updates controleren</value>
-  </data>
-  <data name="Update_Message_Failed" xml:space="preserve">
-    <value>Er is iets misgegaan tijdens het controleren op updates.
-
-{0}</value>
-  </data>
-  <data name="Update_Title_Skipped" xml:space="preserve">
-    <value>Updatecontrole overgeslagen</value>
-  </data>
-  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
-    <value>Updatecontroles zijn uitgeschakeld in debug-builds.</value>
-  </data>
-  <data name="Update_OK" xml:space="preserve">
-    <value>OK</value>
   </data>
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Dashboard openen</value>
@@ -1007,12 +960,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <data name="WindowTitle_Downloading" xml:space="preserve">
-    <value>Update downloaden...</value>
-  </data>
-  <data name="Download_ProgressText" xml:space="preserve">
-    <value>Update downloaden...</value>
-  </data>
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — URL goedkeuren</value>
   </data>
@@ -1482,9 +1429,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="CopySupportButton.Content" xml:space="preserve">
     <value>Ondersteuningscontext kopiëren</value>
-  </data>
-  <data name="CheckUpdatesButton.Content" xml:space="preserve">
-    <value>Updates zoeken</value>
   </data>
   <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
     <value>Koppelingen</value>
@@ -5214,7 +5158,7 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Koppel uw WhatsApp-telefoon</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Klik op &quot;Show QR&quot; in het gedeelte Koppelen hieronder.</value>
+    <value>Klik op "Show QR" in het gedeelte Koppelen hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
     <value>Op uw telefoon: WhatsApp → Instellingen → Gekoppelde apparaten → Apparaat koppelen.</value>
@@ -5226,7 +5170,7 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Koppel uw Signal-telefoon</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Klik op &quot;Show QR&quot; in het gedeelte Koppelen hieronder.</value>
+    <value>Klik op "Show QR" in het gedeelte Koppelen hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
     <value>Op uw telefoon: Signal → Instellingen → Gekoppelde apparaten → Nieuw apparaat koppelen.</value>
@@ -5247,7 +5191,7 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Plak het token in het configuratieformulier hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Klik op &quot;Save and start&quot;. Het kanaal start automatisch.</value>
+    <value>Klik op "Save and start". Het kanaal start automatisch.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
     <value>Discord verbinden via een webhook</value>
@@ -5256,13 +5200,13 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Open uw Discord-serverinstellingen → Integraties → Webhooks.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Klik op &quot;New Webhook&quot;, geef het een naam en kopieer de webhook-URL.</value>
+    <value>Klik op "New Webhook", geef het een naam en kopieer de webhook-URL.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
     <value>Plak de URL in het configuratieformulier hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Klik op &quot;Save and start&quot;.</value>
+    <value>Klik op "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>Google Chat verbinden via een webhook</value>
@@ -5277,7 +5221,7 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Plak de URL in het configuratieformulier hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Klik op &quot;Save and start&quot;.</value>
+    <value>Klik op "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
     <value>Slack verbinden via een app</value>
@@ -5292,7 +5236,7 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Plak beide in het configuratieformulier hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Klik op &quot;Save and start&quot;.</value>
+    <value>Klik op "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
     <value>Nostr verbinden via relays</value>
@@ -5307,7 +5251,7 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Plak beide in het configuratieformulier hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Klik op &quot;Save and start&quot;.</value>
+    <value>Klik op "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
     <value>iMessage is alleen beschikbaar op macOS</value>
@@ -5325,10 +5269,10 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Dit kanaal verbinden</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; is een pluginkanaal. Raadpleeg de documentatie voor de vereiste velden.</value>
+    <value>"{0}" is een pluginkanaal. Raadpleeg de documentatie voor de vereiste velden.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Gebruik &quot;Open Config page&quot; in het gedeelte Configuratie hieronder om instellingen toe te voegen onder channels.{0}.</value>
+    <value>Gebruik "Open Config page" in het gedeelte Configuratie hieronder om instellingen toe te voegen onder channels.{0}.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
     <value>Sla de configuratie op; OpenClaw start het kanaal automatisch.</value>

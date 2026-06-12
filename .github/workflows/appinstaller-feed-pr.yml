@@ -1,0 +1,166 @@
+name: AppInstaller Feed PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag whose signed MSIX assets should advance the stable AppInstaller feed
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-feed:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: main
+        fetch-depth: 0
+
+    - name: Render stable AppInstaller feed files
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $repo = '${{ github.repository }}'
+        $tag = '${{ inputs.tag }}'.Trim()
+        if ([string]::IsNullOrWhiteSpace($tag)) {
+          throw "tag input is required."
+        }
+        if (-not $tag.StartsWith('v', [StringComparison]::OrdinalIgnoreCase)) {
+          throw "Release tag must start with 'v'. Got '$tag'."
+        }
+        if ($tag.Contains('-')) {
+          throw "Pre-release AppInstaller feed updates are blocked until alpha channel policy is decided. Tag: $tag"
+        }
+
+        $release = gh release view $tag --repo $repo --json tagName,isPrerelease,assets | ConvertFrom-Json
+        if ($release.isPrerelease) {
+          throw "Pre-release AppInstaller feed updates are blocked until alpha channel policy is decided. Tag: $tag"
+        }
+
+        $versionText = $tag.Substring(1)
+        if ($versionText -notmatch '^\d+\.\d+\.\d+$') {
+          throw "Stable release tag must be vX.Y.Z so the MSIX/AppInstaller version can be rendered as X.Y.Z.0. Got '$tag'."
+        }
+        $version = "$versionText.0"
+        $publisher = 'CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US'
+        $identityName = 'OpenClaw.Companion'
+        $feedDir = 'installer\appinstaller'
+        New-Item -ItemType Directory -Force -Path $feedDir | Out-Null
+
+        function Get-RequiredAsset {
+          param([Parameter(Mandatory)] [string] $Pattern)
+          $matches = @($release.assets | Where-Object { $_.name -like $Pattern })
+          if ($matches.Count -ne 1) {
+            $available = ($release.assets | ForEach-Object { $_.name }) -join ', '
+            throw "Expected exactly one release asset matching '$Pattern' for $tag; found $($matches.Count). Assets: $available"
+          }
+          return $matches[0]
+        }
+
+        function Get-ReleaseAssetUri {
+          param([Parameter(Mandatory)] [string] $AssetName)
+          $escapedName = [Uri]::EscapeDataString($AssetName)
+          return "https://github.com/$repo/releases/download/$tag/$escapedName"
+        }
+
+        $x64Asset = Get-RequiredAsset -Pattern "OpenClaw.Companion_${version}_x64.msix"
+        $arm64Asset = Get-RequiredAsset -Pattern "OpenClaw.Companion_${version}_arm64.msix"
+        $x64Uri = Get-ReleaseAssetUri -AssetName $x64Asset.name
+        $arm64Uri = Get-ReleaseAssetUri -AssetName $arm64Asset.name
+
+        $rawBase = "https://raw.githubusercontent.com/$repo/main/installer/appinstaller"
+        $x64FeedPath = Join-Path $feedDir 'openclaw-x64.appinstaller'
+        $arm64FeedPath = Join-Path $feedDir 'openclaw-arm64.appinstaller'
+
+        .\scripts\render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -IdentityName $identityName `
+          -ProcessorArchitecture x64 `
+          -MsixUri $x64Uri `
+          -AppInstallerUri "$rawBase/openclaw-x64.appinstaller" `
+          -OutputPath $x64FeedPath
+
+        .\scripts\render-appinstaller.ps1 `
+          -Version $version `
+          -Publisher $publisher `
+          -IdentityName $identityName `
+          -ProcessorArchitecture arm64 `
+          -MsixUri $arm64Uri `
+          -AppInstallerUri "$rawBase/openclaw-arm64.appinstaller" `
+          -OutputPath $arm64FeedPath
+
+        .\scripts\validate-appinstaller-hosting.ps1 `
+          -AppInstallerPath $x64FeedPath `
+          -MsixUri $x64Uri `
+          -AllowGitHubContentTypes
+        .\scripts\validate-appinstaller-hosting.ps1 `
+          -AppInstallerPath $arm64FeedPath `
+          -MsixUri $arm64Uri `
+          -AllowGitHubContentTypes
+
+        $branch = "automation/appinstaller-feed-$($tag -replace '[^A-Za-z0-9._-]', '-')"
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git checkout -B $branch
+        git add $feedDir
+
+        $changes = git status --short -- $feedDir
+        if ([string]::IsNullOrWhiteSpace($changes)) {
+          Write-Host "Stable AppInstaller feed already points at $tag; no PR needed."
+          exit 0
+        }
+
+        git commit -m "chore(msix): update AppInstaller feed for $tag" `
+          -m "Advance the stable Windows AppInstaller feed to the signed MSIX assets from $tag." `
+          -m "Merging this PR advances the auto-update source for installed MSIX clients."
+        git push --force-with-lease origin $branch
+
+        $bodyPath = Join-Path $env:RUNNER_TEMP 'appinstaller-feed-pr.md'
+        $body = @"
+Updates the stable Windows AppInstaller feed files for ``$tag``.
+
+Merging this PR advances installed MSIX clients that poll the stable feed:
+
+- x64 feed: ``$rawBase/openclaw-x64.appinstaller``
+- ARM64 feed: ``$rawBase/openclaw-arm64.appinstaller``
+- x64 MSIX: ``$x64Uri``
+- ARM64 MSIX: ``$arm64Uri``
+
+Validation performed:
+
+- Rendered both feed files from ``scripts/render-appinstaller.ps1``
+- Parsed local AppInstaller XML before publishing
+- Validated GitHub release MSIX headers with candidate GitHub content-type compatibility enabled
+- Blocked pre-release/alpha feed updates until channel policy is decided
+
+Note: the MSIX is built with ``WindowsAppSDKSelfContained=true``, so the feed
+intentionally omits any ``<Dependencies>`` block — Windows installs the runtime
+bundled inside the .msix and never fetches a separate framework package.
+"@
+        Set-Content -Path $bodyPath -Value $body -Encoding UTF8
+
+        $existingPr = gh pr list --repo $repo --base main --head $branch --json number --jq '.[0].number'
+        if ([string]::IsNullOrWhiteSpace($existingPr)) {
+          gh pr create `
+            --repo $repo `
+            --base main `
+            --head $branch `
+            --title "chore(msix): update AppInstaller feed for $tag" `
+            --body-file $bodyPath
+        }
+        else {
+          gh pr edit $existingPr `
+            --repo $repo `
+            --title "chore(msix): update AppInstaller feed for $tag" `
+            --body-file $bodyPath
+        }

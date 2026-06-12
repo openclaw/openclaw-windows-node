@@ -26,6 +26,7 @@
       <Platform Solution="*|Any CPU" Project="x64" />
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|ARM64" Project="ARM64" />
+      <Deploy Solution="Debug|Any CPU" />
     </Project>
   </Folder>
   <Folder Name="/tests/">

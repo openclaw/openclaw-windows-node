@@ -107,7 +107,12 @@ jobs:
       uses: gittools/actions/gitversion/execute@v4
 
     - name: Verify tag version output
-      if: startsWith(github.ref, 'refs/tags/v')
+      # TEMP: skip the strict tag/SemVer match for msixtest signing-pipeline
+      # rehearsal tags. GitVersion ignores the tag's prerelease label when it
+      # does not match the branch's auto-derived label, so on a feature branch
+      # `v0.6.4-msixtest.1` resolves to `0.6.4-<branch-slug>.<height>`. Revert
+      # the contains-check below before merging this branch to main.
+      if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, 'msixtest')
       shell: pwsh
       run: |
         $expected = "${{ github.ref_name }}" -replace '^v', ''
@@ -365,79 +370,11 @@ jobs:
           TestResults/E2E/
         if-no-files-found: warn
 
-  build:
-    needs: [test, e2etests]
-    runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
-    strategy:
-      matrix:
-        rid: [win-x64, win-arm64]
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
-
-    - name: Setup .NET 10
-      uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: 10.0.x
-
-    - name: Cache NuGet packages
-      continue-on-error: true
-      uses: actions/cache@v5
-      with:
-        path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
-
-    - name: Restore WinUI Tray App
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
-
-    - name: Build WinUI Tray App (Release)
-      run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }}
-
-    - name: Publish WinUI Tray App
-      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish
-
-    - name: Verify x64 Native Runtime Payload
-      if: matrix.rid == 'win-x64'
-      shell: pwsh
-      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime
-
-    - name: Verify ARM64 Native Runtime Payload
-      if: matrix.rid == 'win-arm64'
-      shell: pwsh
-      # -SkipNativeLoadProbe: an ARM64 runner CAN LoadLibrary ARM64 DLLs, but
-      # libsodium pulls in a long native dependency chain that may not all be
-      # in the payload here (WindowsAppSDK pieces, etc.). The probe is for x64
-      # parity; signature + presence is what we actually care about.
-      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe
-
-    - name: Verify GitVersion assembly metadata
-      shell: pwsh
-      run: |
-        $expected = "${{ needs.test.outputs.semVer }}"
-        $assemblyPath = Resolve-Path "publish\OpenClaw.Tray.WinUI.dll"
-        $metadata = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($assemblyPath)
-        if ([string]::IsNullOrWhiteSpace($metadata.ProductVersion)) {
-          throw "OpenClaw.Tray.WinUI.dll is missing ProductVersion metadata."
-        }
-        $actual = $metadata.ProductVersion -replace '\+.*$', ''
-        if ($actual -ne $expected) {
-          throw "ProductVersion '$actual' did not match GitVersion SemVer '$expected'."
-        }
-
-    - name: Upload Tray Artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: openclaw-tray-${{ matrix.rid }}
-        path: publish/
-
   build-msix:
-    needs: [test, e2etests]
-    if: false # Paused for alpha.4; ship Inno setup and portable ZIP artifacts only.
+    # TEMP: needs:[test, e2etests] removed for faster iteration on this PR.
+    # Restore before merging — release job depends on all four.
+    needs: []
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -477,37 +414,58 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v3
 
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v4
+      with:
+        versionSpec: '6.4.x'
+
+    - name: Determine Version
+      id: gitversion
+      uses: gittools/actions/gitversion/execute@v4
+
     - name: Restore
       run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
 
-    - name: Patch MSIX manifest metadata
+    - name: Determine release channel
+      id: channel
       shell: pwsh
+      # Map the tag pattern to one of Stable / Alpha / Dev. The csproj's
+      # SyncAppxManifestVersionTarget consumes -p:ReleaseChannel=... to pick
+      # Identity Name, DisplayName, and whether to embed an AppInstaller.
+      #
+      # TEMP rehearsal (revert-msixtest-as-alpha): msixtest tags map to Alpha
+      # so we can exercise the full Alpha-channel install + silent-update
+      # flow on this branch with throwaway tags. After merging to main,
+      # msixtest tags should fall through to Dev (their original purpose:
+      # signing-pipeline-only validation without auto-update).
       run: |
-        $version = "${{ needs.test.outputs.majorMinorPatch }}.0"
-        $isAlpha = "${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-') }}" -eq "true"
-        $identityName = if ($isAlpha) { "OpenClaw.Companion.Alpha" } else { "OpenClaw.Companion" }
-        $displayName = if ($isAlpha) { "OpenClaw Companion Alpha" } else { "OpenClaw Companion" }
-        $manifest = "src/OpenClaw.Tray.WinUI/Package.appxmanifest"
-        [xml]$xml = Get-Content $manifest
-        $xml.Package.Identity.Name = $identityName
-        $xml.Package.Identity.Version = $version
-        $xml.Package.Properties.DisplayName = $displayName
-        $xml.Package.Applications.Application.VisualElements.DisplayName = $displayName
-        $xml.Save((Resolve-Path $manifest))
-        Write-Host "Patched MSIX manifest to identity $identityName, display name '$displayName', version $version"
+        $tag = "${{ github.ref_name }}"
+        $isTaggedRelease = "${{ startsWith(github.ref, 'refs/tags/v') }}" -eq "true"
+        if ($isTaggedRelease -and $tag -match '^v\d+\.\d+\.\d+$') {
+          $channel = 'Stable'
+        } elseif ($isTaggedRelease -and $tag -match '^v\d+\.\d+\.\d+-(alpha|msixtest)(\.\d+)?$') {
+          $channel = 'Alpha'
+        } else {
+          $channel = 'Dev'
+        }
+        Write-Host "Tag '$tag' -> ReleaseChannel '$channel'"
+        "channel=$channel" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Build MSIX Package
       run: >
-        msbuild src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj
-        /p:Configuration=Release
-        /p:RuntimeIdentifier=${{ matrix.rid }}
-        /p:Platform=${{ matrix.platform }}
-        /p:PackageMsix=true
-        /p:GenerateAppxPackageOnBuild=true
-        /p:AppxPackageSigningEnabled=false
-        /p:AppxBundle=Never
-        /p:UapAppxPackageBuildMode=SideloadOnly
-        /p:AppxPackageDir=AppPackages\
+        dotnet publish src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj
+        -c Release
+        -r ${{ matrix.rid }}
+        --self-contained
+        -p:Platform=${{ matrix.platform }}
+        -p:PackageMsix=true
+        -p:GenerateAppxPackageOnBuild=true
+        -p:AppxPackageSigningEnabled=false
+        -p:AppxBundle=Never
+        -p:UapAppxPackageBuildMode=SideloadOnly
+        -p:AppxPackageDir=AppPackages\
+        -p:ReleaseChannel=${{ steps.channel.outputs.channel }}
+        -p:ReleaseTag=${{ github.ref_name }}
 
     - name: Find MSIX Package
       id: find-msix
@@ -522,6 +480,35 @@ jobs:
         echo "msix_path=$($msix.FullName)" >> $env:GITHUB_OUTPUT
         echo "msix_name=$($msix.Name)" >> $env:GITHUB_OUTPUT
 
+    - name: Verify MSIX Package Contents
+      shell: pwsh
+      # Extract the .msix (it's a zip) and validate the actual payload that
+      # ships to users: GitVersion metadata on the tray .dll and the libsodium
+      # / VC++ runtime dependencies required by NSec.Cryptography.
+      run: |
+        $msixPath = "${{ steps.find-msix.outputs.msix_path }}"
+        $extractDir = Join-Path $env:RUNNER_TEMP "msix-contents-${{ matrix.rid }}"
+        if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }
+        Expand-Archive -Path $msixPath -DestinationPath $extractDir -Force
+
+        $assemblyPath = Join-Path $extractDir "OpenClaw.Tray.WinUI.dll"
+        if (-not (Test-Path $assemblyPath)) {
+          throw "OpenClaw.Tray.WinUI.dll missing from MSIX payload at $assemblyPath"
+        }
+        $expected = "${{ steps.gitversion.outputs.semVer }}"
+        $metadata = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($assemblyPath)
+        if ([string]::IsNullOrWhiteSpace($metadata.ProductVersion)) {
+          throw "OpenClaw.Tray.WinUI.dll inside MSIX is missing ProductVersion metadata."
+        }
+        $actual = $metadata.ProductVersion -replace '\+.*$', ''
+        if ($actual -ne $expected) {
+          throw "MSIX-internal ProductVersion '$actual' did not match GitVersion SemVer '$expected'."
+        }
+
+        $skipProbeArgs = @{}
+        if ("${{ matrix.rid }}" -eq "win-arm64") { $skipProbeArgs["SkipNativeLoadProbe"] = $true }
+        & .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath $extractDir -RequireAppLocalVCRuntime @skipProbeArgs
+
     - name: Upload MSIX Artifact
       uses: actions/upload-artifact@v7
       with:
@@ -529,8 +516,8 @@ jobs:
         path: ${{ steps.find-msix.outputs.msix_path }}
 
   release:
-    needs: [repo-hygiene, test, e2etests, build]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && !cancelled()
+    needs: [repo-hygiene, test, e2etests, build-msix]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build-msix.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
@@ -541,17 +528,17 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Download win-x64 tray artifact
+    - name: Download win-x64 MSIX artifact
       uses: actions/download-artifact@v8
       with:
-        name: openclaw-tray-win-x64
-        path: artifacts/tray-win-x64
+        name: openclaw-msix-win-x64
+        path: artifacts/msix-win-x64
 
-    - name: Download win-arm64 tray artifact
+    - name: Download win-arm64 MSIX artifact
       uses: actions/download-artifact@v8
       with:
-        name: openclaw-tray-win-arm64
-        path: artifacts/tray-win-arm64
+        name: openclaw-msix-win-arm64
+        path: artifacts/msix-win-arm64
 
     - name: Disable NuGet source mapping for signing
       shell: pwsh
@@ -568,164 +555,111 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Stage x64 OpenClaw Executables for Signing
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Path signing-input-x64 -Force | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-x64\OpenClaw.Tray.WinUI.exe | Out-Null
-
-    - name: Stage ARM64 OpenClaw Executables for Signing
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Path signing-input-arm64 -Force | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-arm64\OpenClaw.Tray.WinUI.exe | Out-Null
-
-    - name: Sign x64 OpenClaw Executables
+    - name: Sign x64 Release MSIX Package
       uses: azure/artifact-signing-action@v2
       with:
         endpoint: https://eus.codesigning.azure.net/
         signing-account-name: openclaw
         certificate-profile-name: openclaw
-        files-folder: signing-input-x64
-        files-folder-filter: exe
+        files-folder: artifacts/msix-win-x64
+        files-folder-filter: msix
         files-folder-depth: 1
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
-    - name: Sign ARM64 OpenClaw Executables
+    - name: Sign ARM64 Release MSIX Package
       uses: azure/artifact-signing-action@v2
       with:
         endpoint: https://eus.codesigning.azure.net/
         signing-account-name: openclaw
         certificate-profile-name: openclaw
-        files-folder: signing-input-arm64
-        files-folder-filter: exe
+        files-folder: artifacts/msix-win-arm64
+        files-folder-filter: msix
         files-folder-depth: 1
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
-    - name: Verify x64 Release Executable Signing Policy
-      shell: pwsh
-      run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-x64 -RequireSignedOpenClaw
-
-    - name: Verify ARM64 Release Executable Signing Policy
-      shell: pwsh
-      run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireSignedOpenClaw
-
-    - name: Verify x64 Release Native Dependencies
-      shell: pwsh
-      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-x64 -RequireAppLocalVCRuntime
-
-    - name: Verify ARM64 Release Native Dependencies
-      shell: pwsh
-      # -SkipNativeLoadProbe: this release job runs on the x64 windows-latest
-      # runner and cannot LoadLibrary an ARM64 DLL. The signature and presence
-      # checks still run.
-      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireAppLocalVCRuntime -SkipNativeLoadProbe
-
-    - name: Download Visual C++ Runtime Redistributables
-      shell: pwsh
-      run: |
-        $redists = @(
-          @{ Uri = "https://aka.ms/vc14/vc_redist.x64.exe"; Path = "vc_redist.x64.exe" },
-          @{ Uri = "https://aka.ms/vc14/vc_redist.arm64.exe"; Path = "vc_redist.arm64.exe" }
-        )
-
-        foreach ($redist in $redists) {
-          Invoke-WebRequest -Uri $redist.Uri -OutFile $redist.Path
-          $signature = Get-AuthenticodeSignature -LiteralPath $redist.Path
-          if ($signature.Status -ne "Valid") {
-            throw "$($redist.Path) Authenticode signature was $($signature.Status)."
-          }
-          $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "" }
-          if ($subject -notmatch "O=Microsoft Corporation") {
-            throw "$($redist.Path) signer was not Microsoft Corporation: $subject"
-          }
-        }
-
-    # Create ZIP files for Updatum auto-update (asset name must contain the RID).
-    # We ship both x64 and arm64 portables now that the build job produces a
-    # libsodium-compatible app-local VC runtime for both architectures (the
-    # arm64 leg sources its loose Microsoft.VC*.CRT DLLs from the VS install
-    # on the windows-11-arm runner; see src/Directory.Build.targets).
-    - name: Create x64 Release ZIP
-      run: |
-        Compress-Archive -Path artifacts/tray-win-x64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
-
-    - name: Create arm64 Release ZIP
-      run: |
-        Compress-Archive -Path artifacts/tray-win-arm64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
-
-    # Inno Setup installer for x64
-    - name: Install Inno Setup
-      run: choco install innosetup -y
-
-    - name: Build x64 Installer
-      run: |
-        # Prepare x64 files
-        mkdir publish-x64
-        copy artifacts/tray-win-x64/* publish-x64/ -Recurse
-        .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-x64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.x64.exe
-        # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 /DvcRedist=vc_redist.x64.exe installer.iss
-
-    - name: Build arm64 Installer
-      run: |
-        # Prepare arm64 files
-        mkdir publish-arm64
-        copy artifacts/tray-win-arm64/* publish-arm64/ -Recurse
-        # -RequireAppLocalVCRuntime: arm64 payload now ships VC runtime DLLs from the build job.
-        # -SkipNativeLoadProbe:      this verifier runs on the x64 release runner and cannot
-        #                             LoadLibrary an arm64 DLL.
-        .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe
-        # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 /DvcRedist=vc_redist.arm64.exe installer.iss
-
-    - name: Sign Installers
-      uses: azure/artifact-signing-action@v2
+    # TEMP: GitHub Release creation is constrained while we validate the
+    # signing + AppInstaller auto-update pipeline.
+    #   - For msixtest rehearsal tags (vX.Y.Z-msixtest.N): publish a real
+    #     prerelease GitHub Release so AppInstaller can fetch the signed .msix
+    #     from a stable HTTPS URL. AppInstaller cannot read GitHub workflow
+    #     artifacts (they require auth).
+    #   - For any other tag: do NOT publish a Release; just upload as workflow
+    #     artifacts. We do not want to publish a production Release from this
+    #     feature branch by mistake.
+    # Restore the unconditional "Create Release" behavior before merging.
+    - name: Upload Signed x64 MSIX (TEMP)
+      uses: actions/upload-artifact@v7
       with:
-        endpoint: https://eus.codesigning.azure.net/
-        signing-account-name: openclaw
-        certificate-profile-name: openclaw
-        files-folder: Output
-        files-folder-filter: exe
-        file-digest: SHA256
-        timestamp-rfc3161: http://timestamp.acs.microsoft.com
-        timestamp-digest: SHA256
+        name: openclaw-msix-signed-win-x64
+        path: artifacts/msix-win-x64/*.msix
+        if-no-files-found: error
+        overwrite: true
 
-    - name: Create Release
+    - name: Upload Signed ARM64 MSIX (TEMP)
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-msix-signed-win-arm64
+        path: artifacts/msix-win-arm64/*.msix
+        if-no-files-found: error
+        overwrite: true
+
+    - name: Create Prerelease (TEMP - msixtest tags only)
+      if: ${{ contains(github.ref_name, 'msixtest') }}
       uses: softprops/action-gh-release@v3
       with:
-        generate_release_notes: true
+        prerelease: true
+        make_latest: false
         files: |
-          Output/OpenClawCompanion-Setup-x64.exe
-          Output/OpenClawCompanion-Setup-arm64.exe
-          OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
-          OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
-        prerelease: ${{ contains(github.ref_name, '-') }}
-        make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
+          artifacts/msix-win-x64/*.msix
+          artifacts/msix-win-arm64/*.msix
         body: |
           ## OpenClaw Windows Hub ${{ github.ref_name }}
 
-          ### Downloads
-          - **Installer (x64)**: `OpenClawCompanion-Setup-x64.exe` - Intel/AMD 64-bit
-          - **Installer (ARM64)**: `OpenClawCompanion-Setup-arm64.exe` - Windows on ARM (Surface, etc.)
-          - **Portable x64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip`
-          - **Portable ARM64**: `OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip`
+          **THROWAWAY TEST RELEASE — DO NOT INSTALL.**
 
-          ### Features
-          - 🦞 System tray integration with gateway status
-          - 🔄 Auto-updates from GitHub Releases
-          - ✅ Code-signed with Azure Artifact Signing
+          This release exists only to validate the Azure Trusted Signing leg
+          of the release pipeline and the AppInstaller silent-update flow on
+          the `user/kmahone/msix` branch. It will be deleted along with its
+          tag once testing is complete.
 
-          ### Requirements
-          - Windows 10 version 1903 or later
-          - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
-          - OpenClaw gateway running locally
+          The signed `.msix` files attached below are addressed by the
+          temporary AppInstaller feed at
+          `installer/appinstaller/openclaw-msixtest-x64.appinstaller` on the
+          branch.
 
-          ### Quick Start
-          1. Run the installer for your architecture
-          2. Launch from Start Menu or system tray
-          3. Right-click tray icon → Settings to configure
+    # TEMP REVERT: re-enable this step (and remove the two TEMP blocks above)
+    # before merging.
+    # - name: Create Release
+    #   uses: softprops/action-gh-release@v3
+    #   with:
+    #     generate_release_notes: true
+    #     prerelease: ${{ contains(github.ref_name, '-') }}
+    #     make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
+    #     files: |
+    #       artifacts/msix-win-x64/*.msix
+    #       artifacts/msix-win-arm64/*.msix
+    #     body: |
+    #       ## OpenClaw Windows Hub ${{ github.ref_name }}
+    #
+    #       ### Install
+    #
+    #       OpenClaw is distributed as an MSIX package via Windows AppInstaller.
+    #       Use the install links in the [README](https://github.com/openclaw/openclaw-windows-node#install)
+    #       for the recommended path — Windows handles silent auto-updates from there.
+    #
+    #       The `.msix` files attached below are the underlying signed packages.
+    #       Advanced users can install them directly with `Add-AppxPackage <file>`.
+    #
+    #       ### Features
+    #       - 🦞 System tray integration with gateway status
+    #       - ✅ Code-signed with Azure Artifact Signing
+    #       - 🔄 Silent auto-updates via Windows AppInstaller
+    #
+    #       ### Requirements
+    #       - Windows 10 version 1903 or later
+    #       - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
+    #       - OpenClaw gateway running locally

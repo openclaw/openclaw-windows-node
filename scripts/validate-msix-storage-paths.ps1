@@ -38,8 +38,9 @@
       - MUST add in-app pre-uninstall warning banner gated on:
             PackageHelper.IsPackaged() && File.Exists(setupStatePath)
         so users are warned before removing the MSIX package.
-      - The Inno uninstaller script (Uninstall-LocalGateway.ps1) targets real paths
-        unconditionally — no change needed there.
+      - Pre-MSIX cleanup paths (now removed: scripts/Uninstall-LocalGateway.ps1
+        + installer.iss) targeted real paths unconditionally; an MSIX-flavored
+        cleanup path will need the same behavior.
       - Recovery: scripts/validate-wsl-gateway-uninstall.ps1 -Scenario Full
             -ConfirmDestructiveClean is still relevant for orphaned state.
 

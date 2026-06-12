@@ -134,7 +134,6 @@ public class SettingsManager
         set => _data = _data with { A2UIImageHosts = value ?? new() };
     }
     public bool HasSeenActivityStreamTip { get => _data.HasSeenActivityStreamTip; set => _data = _data with { HasSeenActivityStreamTip = value }; }
-    public string SkippedUpdateTag { get => _data.SkippedUpdateTag ?? ""; set => _data = _data with { SkippedUpdateTag = value }; }
     public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
@@ -258,7 +257,6 @@ public class SettingsManager
         EnableMcpServer = false,
         A2UIImageHosts = new(),
         HasSeenActivityStreamTip = false,
-        SkippedUpdateTag = "",
         PreferredGatewayId = null,
         SystemRunSandboxEnabled = true,
         SystemRunAllowOutbound = false,
@@ -293,7 +291,6 @@ public class SettingsManager
             TtsWindowsVoiceId = loaded.TtsWindowsVoiceId ?? defaults.TtsWindowsVoiceId,
             TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? defaults.TtsPiperVoiceId : loaded.TtsPiperVoiceId,
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
-            SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
             UserRules = loaded.UserRules != null ? new List<UserNotificationRule>(loaded.UserRules) : new(),
             SandboxCustomFolders = CloneSandboxCustomFolders(loaded.SandboxCustomFolders),
@@ -378,7 +375,6 @@ public class SettingsManager
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
         TtsPiperVoiceId = TtsPiperVoiceId,
         A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
-        SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
         PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
         UserRules = new List<UserNotificationRule>(UserRules),
         SandboxCustomFolders = SandboxCustomFolders.Count == 0 ? null : CloneSandboxCustomFolders(SandboxCustomFolders),

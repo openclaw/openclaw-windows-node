@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Embedded AppInstaller source for the ALPHA channel. Shipped inside every
+  Alpha MSIX. Same pattern as openclaw-update.stable.appinstaller; only
+  differences are MainPackage Name and the polled feed URL.
+
+  Build process (csproj target, Commit 2):
+    1. Copy this file to bin/.../openclaw-update.appinstaller.
+    2. XmlPoke the three {{...}} placeholder values:
+         - {{VERSION}}, {{ARCH}}, {{MAIN_PACKAGE_URI}}
+
+  arm64 builds also rewrite "openclaw-alpha-x64.appinstaller" -> "openclaw-alpha-arm64.appinstaller"
+  in the AppInstaller self-Uri.
+-->
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="{{VERSION}}"
+  Uri="https://raw.githubusercontent.com/openclaw/openclaw-windows-node/main/installer/appinstaller/openclaw-alpha-x64.appinstaller">
+
+  <MainPackage
+    Name="OpenClaw.Companion.Alpha"
+    Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="{{ARCH}}"
+    Uri="{{MAIN_PACKAGE_URI}}" />
+
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="0" UpdateBlocksActivation="true" ShowPrompt="true" />
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>

@@ -33,7 +33,6 @@ public sealed partial class HubWindow : WindowEx
     // Legacy compatibility alias
     public string SelectedAgentId => _currentAgentId;
     public Action<string?>? OpenDashboardAction { get; set; }
-    public Action? CheckForUpdatesAction { get; set; }
     public Action? ConnectAction { get; set; }
     public Action? DisconnectAction { get; set; }
     public Action? ReconnectAction { get; set; }

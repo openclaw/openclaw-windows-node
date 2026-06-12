@@ -30,11 +30,18 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 >
 > **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for editing `openclaw.json` as the `openclaw` user and using root for protected-file administration.
 
-Direct downloads from the latest OpenClaw release:
+Install via Windows AppInstaller (auto-updates from the stable feed):
 
-- [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-x64.exe)
-- [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-arm64.exe)
-- [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt)
+- **Install (x64)** — [openclaw-x64.appinstaller](https://raw.githubusercontent.com/openclaw/openclaw-windows-node/main/installer/appinstaller/openclaw-x64.appinstaller)
+- **Install (ARM64)** — [openclaw-arm64.appinstaller](https://raw.githubusercontent.com/openclaw/openclaw-windows-node/main/installer/appinstaller/openclaw-arm64.appinstaller)
+
+Click the link for your machine architecture; Windows opens the App Installer
+UI, prompts for consent, then installs the signed MSIX. Future updates are
+delivered automatically by Windows via the same feed URL — no in-app "Check
+for updates" button needed.
+
+> See [docs/SETUP.md](docs/SETUP.md) for step-by-step guidance and what to do
+> if the install link opens as plain text in your browser.
 
 ### Prerequisites
 - Windows 10 (20H2+) or Windows 11
@@ -74,8 +81,12 @@ dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true    # x64 MSI
 
 ### Run Tray App
 
+The tray always runs as a packaged WinUI app in development. `run-app-local.ps1`
+uses Microsoft WinAppCLI (`winget install Microsoft.WinAppCLI`) to activate the
+build output as a packaged loose layout — no `.msix` file is required.
+
 ```powershell
-# Build and launch the unpackaged WinUI tray app
+# Build and launch the tray app (packaged loose layout via winapp)
 .\run-app-local.ps1
 
 # If you already built, skip rebuild and launch the existing Debug output
@@ -86,14 +97,7 @@ dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true    # x64 MSI
 
 # Alpha update testing from a Release build
 .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
-
-# Optional: launch through WinAppCLI with Package.appxmanifest
-.\run-app-local.ps1 -UseWinApp -NoBuild
 ```
-
-The default path starts the unpackaged executable directly. `-UseWinApp` requires
-Microsoft WinAppCLI (`winget install Microsoft.WinAppCLI`) and is only needed when
-you want manifest/MSIX-adjacent launch validation.
 
 ### Run CLI WebSocket Validator
 
@@ -340,7 +344,6 @@ OpenClaw registers the `openclaw://` URL scheme for automation and integration:
 | `openclaw://dashboard/skills` | Open Skills dashboard page |
 | `openclaw://dashboard/cron` | Open Cron dashboard page |
 | `openclaw://healthcheck` | Run a manual health check |
-| `openclaw://check-updates` | Run a manual update check |
 | `openclaw://logs` | Open the current tray log file |
 | `openclaw://log-folder` | Open the logs folder |
 | `openclaw://config` | Open the config folder |

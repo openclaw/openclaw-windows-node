@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenClaw Companion AppInstaller template.
+
+  Rendered by scripts/render-appinstaller.ps1 (invoked by
+  .github/workflows/appinstaller-feed-pr.yml after each signed release) by
+  string-substituting:
+
+    {{VERSION}}                - 4-part version, e.g. 0.5.3.0; must match the
+                                 MSIX <Identity Version="…"> exactly.
+    {{PUBLISHER}}              - Publisher subject from the MSIX manifest;
+                                 must match the cert Subject DN exactly.
+                                 Example: CN=OpenClaw Foundation,
+                                 O=OpenClaw Foundation, L=Mill Valley,
+                                 S=California, C=US
+    {{IDENTITY_NAME}}          - MSIX package identity, e.g. OpenClaw.Companion.
+    {{PROCESSOR_ARCHITECTURE}} - x64 or arm64; must match the MSIX package.
+    {{MSIX_URI}}               - Absolute https:// URL of the matching
+                                 architecture .msix release asset.
+    {{APPINSTALLER_URI}}       - Absolute https:// URL of THIS rendered
+                                 .appinstaller file on the stable channel.
+
+  No <Dependencies> block is emitted because the OpenClaw Companion MSIX is
+  built with WindowsAppSDKSelfContained=true (see
+  src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj). The WindowsAppRuntime
+  is packaged inside the .msix, so AppInstaller does not need to fetch a
+  separate framework package.
+
+  <UpdateSettings><AutomaticBackgroundTask /></UpdateSettings> hands all
+  update polling to the OS. There is no in-app "Check for updates" button by
+  design — see docs/RELEASING.md.
+-->
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="{{VERSION}}"
+  Uri="{{APPINSTALLER_URI}}">
+
+  <MainPackage
+    Name="{{IDENTITY_NAME}}"
+    Publisher="{{PUBLISHER}}"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="{{PROCESSOR_ARCHITECTURE}}"
+    Uri="{{MSIX_URI}}" />
+
+  <UpdateSettings>
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>

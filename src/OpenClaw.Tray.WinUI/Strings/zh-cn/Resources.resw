@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -212,9 +212,6 @@
   <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
     <value>复制调试包</value>
   </data>
-  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
-    <value>检查更新</value>
-  </data>
   <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
     <value>复制端口诊断</value>
   </data>
@@ -293,9 +290,6 @@
   <data name="WindowTitle_Welcome" xml:space="preserve">
     <value>欢迎使用 OpenClaw</value>
   </data>
-  <data name="WindowTitle_Update" xml:space="preserve">
-    <value>OpenClaw 更新</value>
-  </data>
   <data name="Status_Testing" xml:space="preserve">
     <value>测试中...</value>
   </data>
@@ -328,47 +322,6 @@
   </data>
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>打开设置</value>
-  </data>
-  <data name="Update_VersionAvailable" xml:space="preserve">
-    <value>🎉 版本 {0} 已可用！</value>
-  </data>
-  <data name="Update_CurrentVersion" xml:space="preserve">
-    <value>当前版本: {0}</value>
-  </data>
-  <data name="Update_WhatsNew" xml:space="preserve">
-    <value>更新内容:</value>
-  </data>
-  <data name="Update_SkipButton" xml:space="preserve">
-    <value>跳过此版本</value>
-  </data>
-  <data name="Update_RemindLaterButton" xml:space="preserve">
-    <value>稍后提醒</value>
-  </data>
-  <data name="Update_DownloadButton" xml:space="preserve">
-    <value>下载并安装</value>
-  </data>
-  <data name="Update_Title_UpToDate" xml:space="preserve">
-    <value>已是最新版本</value>
-  </data>
-  <data name="Update_Message_UpToDate" xml:space="preserve">
-    <value>您正在使用最新版本 (v{0})。</value>
-  </data>
-  <data name="Update_Title_Failed" xml:space="preserve">
-    <value>无法检查更新</value>
-  </data>
-  <data name="Update_Message_Failed" xml:space="preserve">
-    <value>检查更新时出错。
-
-{0}</value>
-  </data>
-  <data name="Update_Title_Skipped" xml:space="preserve">
-    <value>已跳过更新检查</value>
-  </data>
-  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
-    <value>调试版本已禁用更新检查。</value>
-  </data>
-  <data name="Update_OK" xml:space="preserve">
-    <value>确定</value>
   </data>
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>打开仪表板</value>
@@ -1006,12 +959,6 @@
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="WindowTitle_Downloading" xml:space="preserve">
-    <value>正在下载更新...</value>
-  </data>
-  <data name="Download_ProgressText" xml:space="preserve">
-    <value>正在下载更新...</value>
-  </data>
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — 批准 URL</value>
   </data>
@@ -1481,9 +1428,6 @@
   </data>
   <data name="CopySupportButton.Content" xml:space="preserve">
     <value>复制支持上下文</value>
-  </data>
-  <data name="CheckUpdatesButton.Content" xml:space="preserve">
-    <value>检查更新</value>
   </data>
   <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
     <value>链接</value>
@@ -5214,7 +5158,7 @@
     <value>关联您的 WhatsApp 手机</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>点击下方“关联”部分中的 &quot;Show QR&quot;。</value>
+    <value>点击下方“关联”部分中的 "Show QR"。</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
     <value>在手机上：WhatsApp → 设置 → 已关联设备 → 关联设备。</value>
@@ -5226,7 +5170,7 @@
     <value>关联您的 Signal 手机</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>点击下方“关联”部分中的 &quot;Show QR&quot;。</value>
+    <value>点击下方“关联”部分中的 "Show QR"。</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
     <value>在手机上：Signal → 设置 → 已关联设备 → 关联新设备。</value>
@@ -5247,7 +5191,7 @@
     <value>将令牌粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。频道将自动启动。</value>
+    <value>点击 "Save and start"。频道将自动启动。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
     <value>通过 webhook 连接 Discord</value>
@@ -5256,13 +5200,13 @@
     <value>打开您的 Discord 服务器设置 → 集成 → Webhooks。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>点击 &quot;New Webhook&quot;，为其命名，然后复制 webhook URL。</value>
+    <value>点击 "New Webhook"，为其命名，然后复制 webhook URL。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
     <value>将 URL 粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>通过 webhook 连接 Google Chat</value>
@@ -5277,7 +5221,7 @@
     <value>将 URL 粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
     <value>通过应用连接 Slack</value>
@@ -5292,7 +5236,7 @@
     <value>将两者粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
     <value>通过中继连接 Nostr</value>
@@ -5307,7 +5251,7 @@
     <value>将两者粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
     <value>iMessage 仅适用于 macOS</value>
@@ -5325,10 +5269,10 @@
     <value>连接此频道</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; 是一个插件频道。请参阅其文档以了解所需字段。</value>
+    <value>"{0}" 是一个插件频道。请参阅其文档以了解所需字段。</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>使用下方“配置”部分中的 &quot;Open Config page&quot; 在 channels.{0} 下添加设置。</value>
+    <value>使用下方“配置”部分中的 "Open Config page" 在 channels.{0} 下添加设置。</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
     <value>保存配置；OpenClaw 将自动启动频道。</value>

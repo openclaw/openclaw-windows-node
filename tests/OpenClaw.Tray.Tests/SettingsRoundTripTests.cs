@@ -53,7 +53,6 @@ public class SettingsRoundTripTests
             HubNavPaneOpen = false,
             TtsPiperVoiceId = "fr_FR-siwis-low",
             HasSeenActivityStreamTip = true,
-            SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
             PreferStructuredCategories = true,
             UserRules = new List<UserNotificationRule>
@@ -108,7 +107,6 @@ public class SettingsRoundTripTests
         Assert.Equal(original.HubNavPaneOpen, restored.HubNavPaneOpen);
         Assert.Equal(original.TtsPiperVoiceId, restored.TtsPiperVoiceId);
         Assert.Equal(original.HasSeenActivityStreamTip, restored.HasSeenActivityStreamTip);
-        Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
         Assert.NotNull(restored.UserRules);
@@ -173,7 +171,6 @@ public class SettingsRoundTripTests
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);
         Assert.False(settings.HasSeenActivityStreamTip);
-        Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
         // HubNavPaneOpen defaults to true (NavView starts expanded for new
@@ -245,7 +242,6 @@ public class SettingsRoundTripTests
         Assert.Null(settings.TtsElevenLabsModel);
         Assert.Null(settings.TtsElevenLabsVoiceId);
         Assert.False(settings.HasSeenActivityStreamTip);
-        Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.GlobalHotkeyEnabled);
         // HubNavPaneOpen wasn't in this older JSON shape; default true.
         Assert.True(settings.HubNavPaneOpen);

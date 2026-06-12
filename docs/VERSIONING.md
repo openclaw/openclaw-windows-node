@@ -22,12 +22,12 @@ Tagged releases must resolve to the exact tag SemVer:
 - `vX.Y.Z` -> `X.Y.Z`
 - `vX.Y.Z-alpha.N` -> `X.Y.Z-alpha.N`
 
-Untagged `master` checkouts are still prerelease builds. After an alpha tag,
+Untagged `main` checkouts are still prerelease builds. After an alpha tag,
 GitVersion advances to the next alpha prerelease until another tag pins the
-version. For example, after `v0.6.0-alpha.5`, an untagged commit on `master`
+version. For example, after `v0.6.0-alpha.5`, an untagged commit on `main`
 may resolve to `0.6.0-alpha.6`.
 
-`GitVersion.yml` intentionally gives the `master`/`main` branch the `alpha`
+`GitVersion.yml` intentionally gives the `main`/`master` branch the `alpha`
 label so alpha tags are treated as exact version sources. Do not remove that
 label unless the release train stops using alpha tags.
 
@@ -80,9 +80,6 @@ For example:
 .\scripts\Get-OpenClawVersion.ps1 -Variable MajorMinorPatch
 ```
 
-`scripts\build-inno-local.ps1` uses that helper for Inno's `AppVersion` when
-`-Version` is not explicitly supplied.
-
 ## Guardrails
 
 - Do not add `<Version>` release literals to product `.csproj` files.
@@ -95,5 +92,4 @@ For example:
 ## References
 
 - [Microsoft Docs: Assembly Versioning](https://learn.microsoft.com/en-us/dotnet/standard/assembly/versioning)
-- [Updatum Library](https://github.com/sn4k3/Updatum)
 - [GitVersion Documentation](https://gitversion.net/)

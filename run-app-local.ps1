@@ -3,11 +3,10 @@
     Builds and launches the WinUI tray app for local development.
 
 .DESCRIPTION
-    Builds the tray app, then launches the unpackaged WinUI executable directly
-    for the common local-development path.
-
-    Use -UseWinApp when you specifically want Microsoft WinAppCLI (`winapp run`)
-    to launch with Package.appxmanifest for packaged/MSIX-adjacent validation.
+    Builds the tray app, then launches it as a packaged WinUI app via
+    Microsoft WinAppCLI (`winapp run`) using Package.appxmanifest from the
+    build output. The tray always runs with MSIX package identity in dev (no
+    .msix file required); direct unpackaged launch is no longer supported.
 
     Use -Isolated (or -DataDir) to run multiple worktrees side-by-side without
     sharing settings, logs, run markers, device identities, or mutex names.
@@ -36,16 +35,8 @@
     Set OPENCLAW_UPDATE_CHANNEL for this launch. Use alpha for prerelease update
     testing after building a lower-version Release baseline.
 
-.PARAMETER UseWinApp
-    Launch through Microsoft WinAppCLI (`winapp run`) with Package.appxmanifest
-    instead of directly starting the unpackaged executable.
-
 .PARAMETER NoDebugOutput
-    With -UseWinApp, launch without winapp --debug-output.
-
-.PARAMETER Wait
-    Wait for the launched process to exit. Direct launches return immediately by
-    default after printing the PID.
+    Launch winapp without --debug-output.
 
 .PARAMETER DryRun
     Print the launch command and environment without starting the app.
@@ -81,11 +72,7 @@ param(
     [ValidateSet("stable", "alpha", "prerelease")]
     [string]$UpdateChannel,
 
-    [switch]$UseWinApp,
-
     [switch]$NoDebugOutput,
-
-    [switch]$Wait,
 
     [switch]$DryRun
 )
@@ -158,15 +145,12 @@ if (-not (Test-Path $exePath)) {
     throw "Tray executable not found: $exePath. Run without -NoBuild first."
 }
 
-$winapp = $null
-if ($UseWinApp) {
-    $winapp = Get-Command winapp -ErrorAction SilentlyContinue
-    if (-not $winapp) {
-        throw "winapp CLI was not found. Install Microsoft WinAppCLI (winget install Microsoft.WinAppCLI) or run /winui-setup."
-    }
+$winapp = Get-Command winapp -ErrorAction SilentlyContinue
+if (-not $winapp) {
+    throw "winapp CLI was not found. Install Microsoft WinAppCLI (winget install Microsoft.WinAppCLI) or run /winui-setup."
 }
 
-if ($UseWinApp -and -not (Test-Path $manifestPath)) {
+if (-not (Test-Path $manifestPath)) {
     throw "Manifest not found: $manifestPath."
 }
 
@@ -194,11 +178,9 @@ try {
         $env:OPENCLAW_UPDATE_CHANNEL = $UpdateChannel
     }
 
-    if ($UseWinApp) {
-        $winappArgs = @("run", $outputDir, "--manifest", $manifestPath, "--executable", "OpenClaw.Tray.WinUI.exe")
-        if (-not $NoDebugOutput) {
-            $winappArgs += "--debug-output"
-        }
+    $winappArgs = @("run", $outputDir, "--manifest", $manifestPath, "--executable", "OpenClaw.Tray.WinUI.exe")
+    if (-not $NoDebugOutput) {
+        $winappArgs += "--debug-output"
     }
 
     Write-Host "Launching OpenClaw Tray" -ForegroundColor Cyan
@@ -206,35 +188,22 @@ try {
     Write-Host "  Configuration: $Configuration"
     Write-Host "  Runtime:       $runtimeIdentifier"
     Write-Host "  Output:        $outputDir"
-    Write-Host "  Mode:          $(if ($UseWinApp) { 'WinAppCLI manifest activation' } else { 'Direct unpackaged executable' })"
+    Write-Host "  Mode:          WinAppCLI manifest activation (packaged loose layout)"
     if ($env:OPENCLAW_TRAY_DATA_DIR) {
         Write-Host "  Data dir:      $env:OPENCLAW_TRAY_DATA_DIR"
     }
     if ($env:OPENCLAW_UPDATE_CHANNEL) {
         Write-Host "  Update channel: $env:OPENCLAW_UPDATE_CHANNEL"
     }
-    if ($UseWinApp) {
-        Write-Host "  Launcher:      $($winapp.Source)"
-        Write-Host "  Command:       winapp $($winappArgs -join ' ')"
-    } else {
-        Write-Host "  Launcher:      $exePath"
-    }
+    Write-Host "  Launcher:      $($winapp.Source)"
+    Write-Host "  Command:       winapp $($winappArgs -join ' ')"
 
     if ($DryRun) {
         return
     }
 
-    if ($UseWinApp) {
-        & $winapp.Source @winappArgs
-        $exitCode = $LASTEXITCODE
-    } elseif ($Wait) {
-        $process = Start-Process -FilePath $exePath -WorkingDirectory $outputDir -Wait -PassThru
-        $exitCode = $process.ExitCode
-    } else {
-        $process = Start-Process -FilePath $exePath -WorkingDirectory $outputDir -PassThru
-        Write-Host "Started OpenClaw Tray (PID: $($process.Id))" -ForegroundColor Green
-        $exitCode = 0
-    }
+    & $winapp.Source @winappArgs
+    $exitCode = $LASTEXITCODE
 } finally {
     $env:OPENCLAW_TRAY_DATA_DIR = $previousDataDir
     $env:OPENCLAW_UPDATE_CHANNEL = $previousUpdateChannel

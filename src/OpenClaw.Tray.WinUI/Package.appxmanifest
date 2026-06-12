@@ -3,24 +3,47 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap13="http://schemas.microsoft.com/appx/manifest/uap/windows10/13"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  IgnorableNamespaces="uap uap13 desktop com rescap">
 
   <!-- IMPORTANT: Publisher must exactly match the Azure Artifact Signing certificate subject.
        Check your certificate profile at: Azure Portal > Artifact Signing > openclaw > openclaw
        Update the Publisher= value below to match. -->
-  <!-- Version is patched at build time by the SyncAppxManifestVersionTarget in
-       OpenClaw.Tray.WinUI.csproj from $(Version) (see docs/VERSIONING.md).
-       The 0.0.0.0 below is a sentinel and is never shipped. -->
+  <!-- Version: the always-packaged dev path (WinAppCLI loose-layout register,
+       VS F5 with the MsixPackage launch profile) reads this value as-is, so
+       the in-source baseline must be a valid 4-part MSIX version (not all
+       zeros). For .msix file production (build.ps1 -PackageMsix / CI build-msix
+       job) SyncAppxManifestVersionTarget in OpenClaw.Tray.WinUI.csproj
+       overwrites this with the GitVersion-derived $(Version); see
+       docs/VERSIONING.md.
+
+       Identity Name and DisplayName below default to the Stable channel.
+       SyncAppxManifestVersionTarget rewrites them per $(ReleaseChannel)
+       (Stable / Alpha / Dev). For Dev builds the same target also strips the
+       embedded-AppInstaller element from the Properties block below so Dev
+       MSIXs do not poll for updates. -->
   <Identity
-    Name="OpenClaw.Companion"
+    Name="OpenClaw.Companion.Alpha"
     Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
-    Version="0.0.0.0" />
+    Version="0.6.7.0" />
 
   <Properties>
-    <DisplayName>OpenClaw Companion</DisplayName>
+    <DisplayName>OpenClaw Companion Alpha</DisplayName>
     <PublisherDisplayName>OpenClaw Foundation</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
+    <!-- Embedded AppInstaller-based silent auto-update for Stable/Alpha MSIXs.
+         The referenced openclaw-update.appinstaller file is generated at build
+         time by the RenderEmbeddedAppInstaller target in OpenClaw.Tray.WinUI.csproj
+         from installer/appinstaller/openclaw-update.{stable,alpha}.appinstaller.
+         Dev MSIX builds strip this entire element at build time (via
+         SyncAppxManifestVersion's RemoveAutoUpdate=true) so the resulting
+         package does not poll for updates. -->
+    <uap13:AutoUpdate>
+      <uap13:AppInstaller File="openclaw-update.appinstaller" />
+    </uap13:AutoUpdate>
   </Properties>
 
   <Dependencies>
@@ -36,7 +59,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="OpenClaw Companion"
+        DisplayName="OpenClaw Companion Alpha"
         Description="OpenClaw Windows system tray for gateway management, node capabilities, and agent interaction"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -52,6 +75,25 @@
             <uap:DisplayName>OpenClaw Protocol</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
+
+        <!-- Toast notification activation. Required when running packaged so
+             Microsoft.Toolkit.Uwp.Notifications (ToastNotificationManagerCompat)
+             can register its COM activator against a stable CLSID and route
+             toast button clicks back into App.OnToastActivated. The toolkit
+             generates the activator type at runtime; we only need the CLSID
+             declared here plus a matching <com:ComServer> entry for the
+             packaged COM activator. -->
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="EF9297B3-EEEB-4E50-8306-D1D118E04BC7" />
+        </desktop:Extension>
+
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="OpenClaw.Tray.WinUI.exe" DisplayName="OpenClaw Toast Activator" Arguments="-ToastActivated">
+              <com:Class Id="EF9297B3-EEEB-4E50-8306-D1D118E04BC7" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
       </Extensions>
     </Application>
   </Applications>

@@ -73,18 +73,9 @@ git tag -a vX.Y.Z-alpha.N -m "OpenClaw Windows Hub vX.Y.Z-alpha.N"
 git push origin vX.Y.Z-alpha.N
 ```
 
-For the current alpha flow, ship only:
-
-- Inno setup installers:
-  - `OpenClawCompanion-Setup-x64.exe`
-  - `OpenClawCompanion-Setup-arm64.exe`
-- Portable ZIP payloads for Updatum:
-  - `OpenClawTray-<version>-win-x64.zip`
-  - `OpenClawTray-<version>-win-arm64.zip`
-
-MSIX artifacts are intentionally paused for alpha while we focus on the Inno
-installer path and signed portable update payloads. Re-enable MSIX only when we
-explicitly want packaged camera/microphone consent validation again.
+For the current alpha flow, no binary artifacts are attached to the GitHub
+release (the MSIX-primary distribution pipeline lands in a follow-up phase on
+the `user/kmahone/msix` branch). The tag itself is the published artifact.
 
 ## Executable signing policy
 
@@ -226,7 +217,7 @@ Only tag when `HEAD == origin/main`.
 - Do not add csproj `<Version>` release fallbacks; product versions come from
   GitVersion/tag history.
 - Release versions come from the tag (`vX.Y.Z` or `vX.Y.Z-alpha.N`).
-- Untagged `master` builds are prerelease builds. After `vX.Y.Z-alpha.N`, an
+- Untagged `main` builds are prerelease builds. After `vX.Y.Z-alpha.N`, an
   untagged commit may resolve to the next alpha prerelease, for example
   `X.Y.Z-alpha.(N+1)`.
 - CI computes GitVersion outputs for artifact naming, while product builds use

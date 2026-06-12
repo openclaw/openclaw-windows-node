@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEMP rehearsal (revert-alpha-feed-branch-url-arm64): self-Uri points at the
+     user/kmahone/msix branch instead of main so we can exercise the AppInstaller
+     silent-update flow on the branch before merging. Revert to .../main/...
+     before merging this branch to main. -->
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="0.0.0.0"
+  Uri="https://raw.githubusercontent.com/openclaw/openclaw-windows-node/user%2Fkmahone%2Fmsix/installer/appinstaller/openclaw-alpha-arm64.appinstaller">
+
+  <MainPackage
+    Name="OpenClaw.Companion.Alpha"
+    Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
+    Version="0.0.0.0"
+    ProcessorArchitecture="arm64"
+    Uri="https://github.com/openclaw/openclaw-windows-node/releases/download/v0.0.0-alpha.1/OpenClawCompanion-0.0.0-alpha.1-win-arm64.msix" />
+
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="0" UpdateBlocksActivation="true" ShowPrompt="true" />
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>

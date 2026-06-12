@@ -79,8 +79,6 @@
                                 Click="OnOpenConfigClick"/>
                         <Button x:Uid="CopySupportButton" x:Name="CopySupportButton" Content="Copy Support Context"
                                 Click="OnCopySupportClick"/>
-                        <Button x:Uid="CheckUpdatesButton" x:Name="CheckUpdatesButton" Content="Check for Updates"
-                                Click="OnCheckUpdatesClick"/>
                     </StackPanel>
                     <HyperlinkButton x:Uid="AboutPage_MoreDiagnosticsLink"
                                      Content="More diagnostics →"

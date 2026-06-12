@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -212,9 +212,6 @@
   <data name="StatusCopyDebugBundleButton.Content" xml:space="preserve">
     <value>Copier le paquet de débogage</value>
   </data>
-  <data name="StatusCheckUpdatesButton.Content" xml:space="preserve">
-    <value>Rechercher des mises à jour</value>
-  </data>
   <data name="StatusCopyPortDiagnosticsButton.Content" xml:space="preserve">
     <value>Copier les diagnostics des ports</value>
   </data>
@@ -293,9 +290,6 @@
   <data name="WindowTitle_Welcome" xml:space="preserve">
     <value>Bienvenue sur OpenClaw</value>
   </data>
-  <data name="WindowTitle_Update" xml:space="preserve">
-    <value>Mettre à jour OpenClaw</value>
-  </data>
   <data name="Status_Testing" xml:space="preserve">
     <value>Test en cours...</value>
   </data>
@@ -328,47 +322,6 @@
   </data>
   <data name="Welcome_OpenSettingsButton" xml:space="preserve">
     <value>Ouvrir les paramètres</value>
-  </data>
-  <data name="Update_VersionAvailable" xml:space="preserve">
-    <value>🎉 La version {0} est disponible !</value>
-  </data>
-  <data name="Update_CurrentVersion" xml:space="preserve">
-    <value>Version actuelle : {0}</value>
-  </data>
-  <data name="Update_WhatsNew" xml:space="preserve">
-    <value>Les nouveautés :</value>
-  </data>
-  <data name="Update_SkipButton" xml:space="preserve">
-    <value>Ignorer cette version</value>
-  </data>
-  <data name="Update_RemindLaterButton" xml:space="preserve">
-    <value>Me rappeler plus tard</value>
-  </data>
-  <data name="Update_DownloadButton" xml:space="preserve">
-    <value>Télécharger &amp; Installer</value>
-  </data>
-  <data name="Update_Title_UpToDate" xml:space="preserve">
-    <value>Vous êtes à jour</value>
-  </data>
-  <data name="Update_Message_UpToDate" xml:space="preserve">
-    <value>Vous utilisez la dernière version (v{0}).</value>
-  </data>
-  <data name="Update_Title_Failed" xml:space="preserve">
-    <value>Impossible de vérifier les mises à jour</value>
-  </data>
-  <data name="Update_Message_Failed" xml:space="preserve">
-    <value>Une erreur s'est produite lors de la vérification des mises à jour.
-
-{0}</value>
-  </data>
-  <data name="Update_Title_Skipped" xml:space="preserve">
-    <value>Vérification ignorée</value>
-  </data>
-  <data name="Update_Message_Skipped_Debug" xml:space="preserve">
-    <value>La vérification des mises à jour est désactivée dans les builds de débogage.</value>
-  </data>
-  <data name="Update_OK" xml:space="preserve">
-    <value>OK</value>
   </data>
   <data name="Menu_OpenDashboard" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
@@ -1006,12 +959,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="SettingsMcpTokenResetDialog_CloseButton" xml:space="preserve">
     <value>Annuler</value>
   </data>
-  <data name="WindowTitle_Downloading" xml:space="preserve">
-    <value>Téléchargement en cours...</value>
-  </data>
-  <data name="Download_ProgressText" xml:space="preserve">
-    <value>Téléchargement en cours...</value>
-  </data>
   <data name="UrlApproval_Caption" xml:space="preserve">
     <value>OpenClaw — Approuver l'URL</value>
   </data>
@@ -1481,9 +1428,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="CopySupportButton.Content" xml:space="preserve">
     <value>Copier le contexte de support</value>
-  </data>
-  <data name="CheckUpdatesButton.Content" xml:space="preserve">
-    <value>Rechercher des mises à jour</value>
   </data>
   <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
     <value>Liens</value>
@@ -5213,7 +5157,7 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Associer votre téléphone WhatsApp</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Cliquez sur &quot;Show QR&quot; dans la section Liaison ci-dessous.</value>
+    <value>Cliquez sur "Show QR" dans la section Liaison ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
     <value>Sur votre téléphone : WhatsApp → Paramètres → Appareils liés → Lier un appareil.</value>
@@ -5225,7 +5169,7 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Associer votre téléphone Signal</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Cliquez sur &quot;Show QR&quot; dans la section Liaison ci-dessous.</value>
+    <value>Cliquez sur "Show QR" dans la section Liaison ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
     <value>Sur votre téléphone : Signal → Paramètres → Appareils liés → Lier un nouvel appareil.</value>
@@ -5246,7 +5190,7 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Collez le jeton dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;. Le canal démarrera automatiquement.</value>
+    <value>Cliquez sur "Save and start". Le canal démarrera automatiquement.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
     <value>Connecter Discord via un webhook</value>
@@ -5255,13 +5199,13 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Ouvrez les paramètres de votre serveur Discord → Intégrations → Webhooks.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Cliquez sur &quot;New Webhook&quot;, donnez-lui un nom et copiez l’URL du webhook.</value>
+    <value>Cliquez sur "New Webhook", donnez-lui un nom et copiez l’URL du webhook.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
     <value>Collez l’URL dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>Connecter Google Chat via un webhook</value>
@@ -5276,7 +5220,7 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Collez l’URL dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
     <value>Connecter Slack via une application</value>
@@ -5291,7 +5235,7 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Collez les deux dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
     <value>Connecter Nostr via des relais</value>
@@ -5306,7 +5250,7 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Collez les deux dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
     <value>iMessage est réservé à macOS</value>
@@ -5324,10 +5268,10 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Connecter ce canal</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; est un canal de plugin. Consultez sa documentation pour connaître les champs requis.</value>
+    <value>"{0}" est un canal de plugin. Consultez sa documentation pour connaître les champs requis.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Utilisez &quot;Open Config page&quot; dans la section Configuration ci-dessous pour ajouter des paramètres sous channels.{0}.</value>
+    <value>Utilisez "Open Config page" dans la section Configuration ci-dessous pour ajouter des paramètres sous channels.{0}.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
     <value>Enregistrez la configuration ; OpenClaw démarrera le canal automatiquement.</value>

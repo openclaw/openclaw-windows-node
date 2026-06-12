@@ -21,9 +21,44 @@
     cannot read a repo owned by a different Windows account/group. The script
     will print the manual command instead.
 
+.PARAMETER PackageMsix
+    In addition to the always-packaged loose-layout build, produce a .msix
+    package file in src/OpenClaw.Tray.WinUI/AppPackages/. Requires the
+    OpenClaw.Tray.WinUI project to be in the build set (Project=All, Tray, or
+    WinUI). Requires %LOCALAPPDATA%\OpenClawTray\dev-msix.pfx (run
+    scripts\setup-dev-msix-cert.ps1 once to create it); the build hard-fails
+    if the cert is missing because MSIX packages cannot be installed unsigned
+    on stock Windows (Add-AppxPackage -AllowUnsigned only works under very
+    specific developer-mode conditions that do not cover this package).
+
+.PARAMETER ReleaseChannel
+    Which MSIX release channel to build (only meaningful with -PackageMsix):
+
+      Dev    - Local builds. Identity OpenClaw.Companion.Dev, no embedded
+               AppInstaller, no auto-update. Default for -PackageMsix.
+
+      Alpha  - Tester builds. Identity OpenClaw.Companion.Alpha, embedded
+               AppInstaller pointing at the alpha polled feed on main. CI uses
+               this for tags matching vX.Y.Z-alpha.N.
+
+      Stable - Production builds. Identity OpenClaw.Companion, embedded
+               AppInstaller pointing at the stable polled feed on main. CI uses
+               this for tags matching vX.Y.Z.
+
+    Stable and Alpha require -ReleaseTag so the embedded AppInstaller's
+    MainPackage Uri can reference the matching GitHub release.
+
+.PARAMETER ReleaseTag
+    Git tag corresponding to this MSIX, e.g. v0.6.4 or v0.6.4-alpha.1. Required
+    when -ReleaseChannel is Stable or Alpha. Used by the embedded AppInstaller's
+    MainPackage Uri to reference the right GitHub release asset.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 -Project WinUI -Configuration Release
+    .\build.ps1 -Project WinUI -PackageMsix
+    .\build.ps1 -Project WinUI -PackageMsix -ReleaseChannel Alpha -ReleaseTag v0.6.4-alpha.1
+    .\build.ps1 -Project WinUI -PackageMsix -ReleaseChannel Stable -ReleaseTag v0.6.4
     .\build.ps1 -CheckOnly
 #>
 
@@ -36,7 +71,14 @@ param(
     
     [switch]$CheckOnly,
 
-    [switch]$NoTrustRepository
+    [switch]$NoTrustRepository,
+
+    [switch]$PackageMsix,
+
+    [ValidateSet("Dev", "Alpha", "Stable")]
+    [string]$ReleaseChannel = "Dev",
+
+    [string]$ReleaseTag
 )
 
 $ErrorActionPreference = "Stop"
@@ -297,7 +339,7 @@ function Invoke-DotNetCaptured($arguments) {
     }
 }
 
-function Build-Project($name, $path, $useRid = $false) {
+function Build-Project($name, $path, $useRid = $false, $publishMsix = $false) {
     Write-Host "`nBuilding $name..." -ForegroundColor White
     
     if (-not (Test-Path $path)) {
@@ -305,10 +347,29 @@ function Build-Project($name, $path, $useRid = $false) {
         return $false
     }
     
-    $dotnetArgs = @("build", $path, "-c", $Configuration)
-    # WinUI requires runtime identifier for self-contained WebView2 support
-    if ($useRid) {
-        $dotnetArgs += @("-r", $rid)
+    if ($publishMsix) {
+        # MSIX file production: dotnet publish so the self-contained layout MSIX
+        # tooling packages matches what end-users install. -p:PackageMsix=true
+        # turns on GenerateAppxPackageOnBuild in the csproj. The csproj's
+        # SyncAppxManifestVersionTarget reads $(ReleaseChannel) to pick the
+        # Identity Name / DisplayName / embedded-AppInstaller behavior; default
+        # Dev produces an OpenClaw.Companion.Dev MSIX with no auto-update.
+        $dotnetArgs = @(
+            "publish", $path,
+            "-c", $Configuration,
+            "-r", $rid,
+            "--self-contained",
+            "-p:PackageMsix=true",
+            "-p:ReleaseChannel=$ReleaseChannel"
+        )
+        if ($ReleaseTag) {
+            $dotnetArgs += "-p:ReleaseTag=$ReleaseTag"
+        }
+    } elseif ($useRid) {
+        # WinUI requires runtime identifier for self-contained WebView2 support.
+        $dotnetArgs = @("build", $path, "-c", $Configuration, "-r", $rid)
+    } else {
+        $dotnetArgs = @("build", $path, "-c", $Configuration)
     }
     $result = Invoke-DotNetCaptured $dotnetArgs
     $exitCode = $LASTEXITCODE
@@ -369,11 +430,48 @@ if ($Project -ne "Shared" -and $Project -ne "All" -and $toBuild -notcontains "Sh
     $toBuild = @("Shared") + $toBuild
 }
 
+# -PackageMsix preflight: must include WinUI/Tray and dev signing cert must
+# exist. Unsigned MSIX packages cannot be installed on stock Windows, so a
+# missing cert is a hard fail rather than a warning.
+if ($PackageMsix) {
+    $winUITargetIncluded = ($toBuild -contains "WinUI") -or ($toBuild -contains "Tray")
+    if (-not $winUITargetIncluded) {
+        Write-Error "-PackageMsix requires -Project All, Tray, or WinUI (current: $Project)"
+        exit 1
+    }
+
+    # Stable and Alpha embed an AppInstaller that references a specific GitHub
+    # release asset — without a tag we can't compute that URI.
+    if ($ReleaseChannel -in @("Stable", "Alpha") -and -not $ReleaseTag) {
+        Write-Error "-ReleaseChannel $ReleaseChannel requires -ReleaseTag (e.g. v0.6.4-alpha.1 or v0.6.4)"
+        exit 1
+    }
+    if ($ReleaseChannel -eq "Dev" -and $ReleaseTag) {
+        Write-Warning "-ReleaseTag '$ReleaseTag' is ignored for Dev channel (Dev MSIXs do not embed an AppInstaller)"
+    }
+    Write-Info "MSIX channel: $ReleaseChannel$(if ($ReleaseTag) { " (release tag: $ReleaseTag)" })"
+
+    $devPfx = Join-Path $env:LOCALAPPDATA "OpenClawTray\dev-msix.pfx"
+    if (Test-Path $devPfx) {
+        Write-Success "Dev MSIX signing cert found: $devPfx"
+    } else {
+        Write-Error "Dev MSIX signing cert not found at $devPfx"
+        Write-Host ""
+        Write-Host "To create the dev signing cert, run (elevated):" -ForegroundColor Cyan
+        Write-Host "  .\scripts\setup-dev-msix-cert.ps1" -ForegroundColor White
+        exit 1
+    }
+} elseif ($ReleaseChannel -ne "Dev" -or $ReleaseTag) {
+    Write-Warning "-ReleaseChannel/-ReleaseTag are only meaningful with -PackageMsix; ignoring."
+}
+
 for ($i = 0; $i -lt $toBuild.Count; $i++) {
     $proj = $toBuild[$i]
     if ($projects.ContainsKey($proj)) {
         $projInfo = $projects[$proj]
-        $buildResults[$proj] = Build-Project $proj $projInfo.Path $projInfo.UseRid
+        $isWinUI = ($proj -eq "WinUI" -or $proj -eq "Tray")
+        $shouldPackageMsix = $PackageMsix -and $isWinUI
+        $buildResults[$proj] = Build-Project $proj $projInfo.Path $projInfo.UseRid $shouldPackageMsix
         if ($proj -eq "Shared" -and -not $buildResults[$proj] -and $i -lt ($toBuild.Count - 1)) {
             Write-Warning "Skipping remaining projects because Shared failed."
             break
@@ -409,10 +507,26 @@ if ($failCount -eq 0) {
             $winUIManifestPath = ".\$winUIProjectDirectory\Package.appxmanifest"
             Write-Host "  WinUI:    .\run-app-local.ps1 -NoBuild" -ForegroundColor White
             Write-Host "  Isolated: .\run-app-local.ps1 -NoBuild -Isolated" -ForegroundColor White
-            Write-Host "  WinApp:   .\run-app-local.ps1 -NoBuild -UseWinApp" -ForegroundColor White
-            Write-Host "            Direct launch is default. -UseWinApp runs: winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --executable `"OpenClaw.Tray.WinUI.exe`" --debug-output" -ForegroundColor DarkGray
+            Write-Host "            Runs: winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --executable `"OpenClaw.Tray.WinUI.exe`" --debug-output" -ForegroundColor DarkGray
         } else {
             Write-Warning "Unable to determine WinUI target framework from $winUIProjectPath"
+        }
+
+        if ($PackageMsix) {
+            $appPackagesDir = Join-Path $winUIProjectDirectory "AppPackages"
+            $producedMsix = $null
+            if (Test-Path $appPackagesDir) {
+                $producedMsix = Get-ChildItem -Path $appPackagesDir -Recurse -Filter "*.msix" -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            }
+
+            Write-Host "`nMSIX:" -ForegroundColor Cyan
+            if ($producedMsix) {
+                Write-Host "  Path:     $($producedMsix.FullName)" -ForegroundColor White
+                Write-Host "  Install:  Add-AppxPackage -Path `"$($producedMsix.FullName)`"" -ForegroundColor White
+            } else {
+                Write-Warning "Could not locate produced .msix under $appPackagesDir"
+            }
         }
     }
 } else {

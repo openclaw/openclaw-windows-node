@@ -91,7 +91,6 @@ public class DeepLinkParserTests
     [Theory]
     [InlineData("openclaw://setup", "setup")]
     [InlineData("openclaw://healthcheck", "healthcheck")]
-    [InlineData("openclaw://check-updates", "check-updates")]
     [InlineData("openclaw://logs", "logs")]
     [InlineData("openclaw://log-folder", "log-folder")]
     [InlineData("openclaw://config", "config")]
@@ -260,7 +259,6 @@ public class DeepLinkParserTests
     [InlineData("openclaw://channel-summary", nameof(DeepLinkActions.CopyChannelSummary))]
     [InlineData("openclaw://activity-summary", nameof(DeepLinkActions.CopyActivitySummary))]
     [InlineData("openclaw://extensibility-summary", nameof(DeepLinkActions.CopyExtensibilitySummary))]
-    [InlineData("openclaw://check-updates", nameof(DeepLinkActions.CheckForUpdates))]
     [InlineData("openclaw://restart-ssh-tunnel", nameof(DeepLinkActions.RestartSshTunnel))]
     public void Handle_InvokesExpectedAction(string uri, string expectedAction)
     {
@@ -283,11 +281,6 @@ public class DeepLinkParserTests
             CopyActivitySummary = () => invoked = nameof(DeepLinkActions.CopyActivitySummary),
             CopyExtensibilitySummary = () => invoked = nameof(DeepLinkActions.CopyExtensibilitySummary),
             OpenActivityStream = _ => invoked = nameof(DeepLinkActions.OpenActivityStream),
-            CheckForUpdates = () =>
-            {
-                invoked = nameof(DeepLinkActions.CheckForUpdates);
-                return Task.CompletedTask;
-            },
             RestartSshTunnel = () => invoked = nameof(DeepLinkActions.RestartSshTunnel)
         };
 

@@ -29,7 +29,6 @@ public sealed class AppRefactorContractTests
         AssertInOrder(
             source,
             "_settings = new SettingsManager();",
-            "CheckForUpdatesAsync();",
             "ToastNotificationManagerCompat.OnActivated += OnToastActivated;",
             "InitializeTrayIcon();",
             "_gatewayRegistry = new GatewayRegistry",

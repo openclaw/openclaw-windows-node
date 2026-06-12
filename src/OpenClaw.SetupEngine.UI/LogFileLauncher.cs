@@ -95,7 +95,7 @@ internal static class LogFileLauncher
         }
         catch
         {
-            // Unpackaged process — no virtualization in play.
+            // Process is unpackaged or the package identity API is unavailable; no virtualization in play.
             return null;
         }
     }

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Embedded AppInstaller source for the STABLE channel. Shipped inside every
+  Stable MSIX as openclaw-update.appinstaller (referenced from
+  Package.appxmanifest's <uap13:AppInstaller File="..."/>). Once installed,
+  Windows uses this file's <AppInstaller Uri> as the canonical update-poll
+  endpoint and the <MainPackage> attributes to validate updates.
+
+  Build process (csproj target, Commit 2):
+    1. Copy this file to bin/.../openclaw-update.appinstaller.
+    2. XmlPoke the three {{...}} placeholder values:
+         - {{VERSION}}          - 4-part MSIX Identity Version, e.g. 0.6.4.0
+         - {{ARCH}}             - "x64" or "arm64"
+         - {{MAIN_PACKAGE_URI}} - github.com release-asset URL for THIS MSIX
+
+  AppInstaller self-Uri must match the polled stable feed file for the target
+  architecture. arm64 builds rewrite "openclaw-x64.appinstaller" -> "openclaw-arm64.appinstaller"
+  at the same XmlPoke step.
+
+  The polled feed file
+  (installer/appinstaller/openclaw-x64.appinstaller and openclaw-arm64.appinstaller)
+  must use matching <UpdateSettings> so successive polls preserve the OnLaunch
+  behavior. Keep both files in sync when changing <OnLaunch> or
+  <AutomaticBackgroundTask>.
+-->
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="{{VERSION}}"
+  Uri="https://raw.githubusercontent.com/openclaw/openclaw-windows-node/main/installer/appinstaller/openclaw-x64.appinstaller">
+
+  <MainPackage
+    Name="OpenClaw.Companion"
+    Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="{{ARCH}}"
+    Uri="{{MAIN_PACKAGE_URI}}" />
+
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="0" UpdateBlocksActivation="true" ShowPrompt="true" />
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>

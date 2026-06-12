@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AppInstaller
+  xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+  Version="0.0.0.0"
+  Uri="https://raw.githubusercontent.com/openclaw/openclaw-windows-node/main/installer/appinstaller/openclaw-x64.appinstaller">
+
+  <MainPackage
+    Name="OpenClaw.Companion"
+    Publisher="CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
+    Version="0.0.0.0"
+    ProcessorArchitecture="x64"
+    Uri="https://github.com/openclaw/openclaw-windows-node/releases/download/v0.0.0/OpenClawCompanion-0.0.0-win-x64.msix" />
+
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="0" UpdateBlocksActivation="true" ShowPrompt="true" />
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>
