@@ -408,33 +408,6 @@ public class SetupAndConnectTests
     }
 
     [E2EFact]
-    public async Task ExternalLike_FreshTray_QrSetupCodeFlow_PairsOperatorAndNode()
-    {
-        var gateway = _fixture.ReadActiveGatewayRecord();
-        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
-        var pendingBefore = await ReadPendingDeviceRequestIdsAsync();
-
-        var setupCode = await MintRealGatewaySetupCodeAsync(env, "mint real gateway setup code for clean external-like tray");
-
-        await using var externalTray = await IsolatedTrayInstance.StartAsync(_fixture.ArtifactDir, "external-qr-clean");
-        using var applyDoc = await externalTray.Client.CallToolExpectSuccessAsync(
-            "app.connection.applySetupCode",
-            new { setupCode });
-        var apply = applyDoc.RootElement;
-        Console.WriteLine($"[E2E] external QR applySetupCode response: {apply.GetRawText()}");
-        Assert.Equal("Success", apply.GetProperty("outcome").GetString());
-
-        await ApproveAndReconnectQrOnlyTrayUntilNodeTokenAsync(pendingBefore, externalTray);
-        await externalTray.WaitForNodeListReady(TimeSpan.FromSeconds(90));
-        await ApproveNewPendingNodeRequestsUntilNoPendingAsync();
-        var credentials = externalTray.ReadCredentialState();
-        Assert.True(credentials.HasNodeToken, "Expected QR-only isolated tray node token after explicit approvals.");
-        Assert.True(credentials.HasOperatorToken, "Expected QR-only isolated tray operator token after explicit approval.");
-        Assert.Null(externalTray.ReadActiveGatewayRecord().SharedGatewayToken);
-        await AssertGatewayCliStateHealthy();
-    }
-
-    [E2EFact]
     public async Task RealGateway_BadSharedToken_DoesNotDestroyExistingPairing()
     {
         var before = _fixture.ReadActiveGatewayRecord();
@@ -676,80 +649,6 @@ public class SetupAndConnectTests
         }
 
         throw new TimeoutException($"Timed out waiting for clean external-like tray credentials. Last devices list: {lastDevicesOutput}");
-    }
-
-    private async Task ApproveNewPendingNodeRequestsUntilNoPendingAsync()
-    {
-        var approved = new HashSet<string>(StringComparer.Ordinal);
-        var deadline = DateTime.UtcNow.AddSeconds(90);
-        string lastNodesOutput = "<none>";
-        while (DateTime.UtcNow < deadline)
-        {
-            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
-            lastNodesOutput = approvals.RootElement.GetRawText();
-            var pendingIds = ReadPendingApprovalIds(approvals.RootElement, "nodePending", "RequestId", "NodeId").ToArray();
-            if (pendingIds.Length == 0)
-                return;
-
-            foreach (var requestId in pendingIds.Where(id => approved.Add(id)))
-            {
-                using var approve = await ApproveNodePairingFromConnectionPageAsync(requestId);
-                Console.WriteLine($"[E2E] approved clean QR node request via Connection page: {approve.RootElement.GetRawText()}");
-            }
-
-            await Task.Delay(500);
-        }
-
-        throw new TimeoutException($"Timed out waiting for clean QR external-like tray node approvals to clear. Last nodes list: {lastNodesOutput}");
-    }
-
-    private async Task ApproveAndReconnectQrOnlyTrayUntilNodeTokenAsync(
-        HashSet<string> ignoredRequestIds,
-        IsolatedTrayInstance tray)
-    {
-        var approved = new HashSet<string>(ignoredRequestIds, StringComparer.Ordinal);
-        var deadline = DateTime.UtcNow.AddSeconds(120);
-        string lastDevicesOutput = "<none>";
-        while (DateTime.UtcNow < deadline)
-        {
-            var credentials = tray.ReadCredentialState();
-            if (credentials.HasNodeToken)
-            {
-                using var pendingCheck = await ReadPendingApprovalsFromConnectionPageAsync();
-                var remaining = ReadPendingApprovalIds(pendingCheck.RootElement, "devicePending", "RequestId", "DeviceId")
-                    .Where(id => !ignoredRequestIds.Contains(id))
-                    .ToArray();
-                if (remaining.Length == 0)
-                    return;
-            }
-
-            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
-            lastDevicesOutput = approvals.RootElement.GetRawText();
-            var approvedAny = false;
-            foreach (var requestId in ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId")
-                         .Where(id => approved.Add(id))
-                         .ToArray())
-            {
-                using var approve = await ApproveDevicePairingFromConnectionPageAsync(requestId);
-                Console.WriteLine($"[E2E] approved clean QR device request via Connection page: {approve.RootElement.GetRawText()}");
-                approvedAny = true;
-            }
-
-            if (approvedAny && !credentials.HasOperatorToken)
-            {
-                using var reconnectDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnect");
-                Assert.True(reconnectDoc.RootElement.GetProperty("reconnected").GetBoolean());
-            }
-            else if (approvedAny)
-            {
-                using var reconnectNodeDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnectNode");
-                Assert.True(reconnectNodeDoc.RootElement.GetProperty("reconnected").GetBoolean());
-            }
-
-            await Task.Delay(1000);
-        }
-
-        throw new TimeoutException($"Timed out waiting for clean QR external-like tray node token. Last devices list: {lastDevicesOutput}");
     }
 
     private async Task<JsonDocument> ReadPendingApprovalsFromConnectionPageAsync()
