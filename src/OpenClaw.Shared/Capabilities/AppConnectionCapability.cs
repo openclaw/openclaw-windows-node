@@ -16,6 +16,11 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
     [
         "app.connection.applySetupCode",
         "app.connection.connectSharedToken",
+        "app.connection.pendingApprovals",
+        "app.connection.approveDevicePairing",
+        "app.connection.rejectDevicePairing",
+        "app.connection.approveNodePairing",
+        "app.connection.rejectNodePairing",
         "app.connection.reconnect",
         "app.connection.reconnectNode",
     ];
@@ -24,6 +29,11 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
 
     public Func<string, Task<object?>>? ApplySetupCodeHandler;
     public Func<string, string, Task<object?>>? ConnectSharedTokenHandler;
+    public Func<Task<object?>>? PendingApprovalsHandler;
+    public Func<string, Task<object?>>? ApproveDevicePairingHandler;
+    public Func<string, Task<object?>>? RejectDevicePairingHandler;
+    public Func<string, Task<object?>>? ApproveNodePairingHandler;
+    public Func<string, Task<object?>>? RejectNodePairingHandler;
     public Func<Task<object?>>? ReconnectHandler;
     public Func<Task<object?>>? ReconnectNodeHandler;
 
@@ -35,6 +45,11 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
         {
             "app.connection.applySetupCode" => await HandleApplySetupCode(request),
             "app.connection.connectSharedToken" => await HandleConnectSharedToken(request),
+            "app.connection.pendingApprovals" => await HandlePendingApprovals(),
+            "app.connection.approveDevicePairing" => await HandleApproveDevicePairing(request),
+            "app.connection.rejectDevicePairing" => await HandleRejectDevicePairing(request),
+            "app.connection.approveNodePairing" => await HandleApproveNodePairing(request),
+            "app.connection.rejectNodePairing" => await HandleRejectNodePairing(request),
             "app.connection.reconnect" => await HandleReconnect(),
             "app.connection.reconnectNode" => await HandleReconnectNode(),
             _ => Error($"Unknown command: {request.Command}")
@@ -66,6 +81,58 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
         return Success(result);
     }
 
+    private async Task<NodeInvokeResponse> HandlePendingApprovals()
+    {
+        if (PendingApprovalsHandler == null)
+            return Error("Pending approvals handler not registered");
+        var result = await PendingApprovalsHandler();
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleApproveDevicePairing(NodeInvokeRequest request)
+    {
+        var requestId = GetPairingRequestId(request);
+        if (string.IsNullOrWhiteSpace(requestId))
+            return Error("Missing required arg: requestId");
+        if (ApproveDevicePairingHandler == null)
+            return Error("Approve device pairing handler not registered");
+        var result = await ApproveDevicePairingHandler(requestId);
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleRejectDevicePairing(NodeInvokeRequest request)
+    {
+        var requestId = GetPairingRequestId(request);
+        if (string.IsNullOrWhiteSpace(requestId))
+            return Error("Missing required arg: requestId");
+        if (RejectDevicePairingHandler == null)
+            return Error("Reject device pairing handler not registered");
+        var result = await RejectDevicePairingHandler(requestId);
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleApproveNodePairing(NodeInvokeRequest request)
+    {
+        var requestId = GetPairingRequestId(request);
+        if (string.IsNullOrWhiteSpace(requestId))
+            return Error("Missing required arg: requestId");
+        if (ApproveNodePairingHandler == null)
+            return Error("Approve node pairing handler not registered");
+        var result = await ApproveNodePairingHandler(requestId);
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleRejectNodePairing(NodeInvokeRequest request)
+    {
+        var requestId = GetPairingRequestId(request);
+        if (string.IsNullOrWhiteSpace(requestId))
+            return Error("Missing required arg: requestId");
+        if (RejectNodePairingHandler == null)
+            return Error("Reject node pairing handler not registered");
+        var result = await RejectNodePairingHandler(requestId);
+        return Success(result);
+    }
+
     private async Task<NodeInvokeResponse> HandleReconnect()
     {
         if (ReconnectHandler == null)
@@ -81,4 +148,8 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
         var result = await ReconnectNodeHandler();
         return Success(result);
     }
+
+    private string? GetPairingRequestId(NodeInvokeRequest request) =>
+        GetStringArg(request.Args, "requestId") ??
+        GetStringArg(request.Args, "id");
 }

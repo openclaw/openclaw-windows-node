@@ -14,6 +14,7 @@ using OpenClaw.Connection;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.Diagnostics;
 using System.Drawing;
@@ -1992,6 +1993,84 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             };
         };
 
+        connection.PendingApprovalsHandler = GetPendingApprovalsForMcpAsync;
+
+        connection.ApproveDevicePairingHandler = async requestId =>
+        {
+            var client = GatewayClient;
+            if (client == null || !client.IsConnectedToGateway)
+                return new { succeeded = false, error = "Gateway client is not connected" };
+
+            var approved = await client.DevicePairApproveAsync(requestId);
+            if (approved)
+                await WaitForAppStateUpdateAsync(nameof(AppState.DevicePairList), client.RequestDevicePairListAsync);
+
+            return BuildPendingApprovalsPayload(
+                connected: client.IsConnectedToGateway,
+                decisionKind: "device",
+                decisionAction: "approve",
+                requestId: requestId,
+                succeeded: approved,
+                error: approved ? null : "Device pairing approval was rejected or unavailable");
+        };
+
+        connection.RejectDevicePairingHandler = async requestId =>
+        {
+            var client = GatewayClient;
+            if (client == null || !client.IsConnectedToGateway)
+                return new { succeeded = false, error = "Gateway client is not connected" };
+
+            var rejected = await client.DevicePairRejectAsync(requestId);
+            if (rejected)
+                await WaitForAppStateUpdateAsync(nameof(AppState.DevicePairList), client.RequestDevicePairListAsync);
+
+            return BuildPendingApprovalsPayload(
+                connected: client.IsConnectedToGateway,
+                decisionKind: "device",
+                decisionAction: "reject",
+                requestId: requestId,
+                succeeded: rejected,
+                error: rejected ? null : "Device pairing rejection was rejected or unavailable");
+        };
+
+        connection.ApproveNodePairingHandler = async requestId =>
+        {
+            var client = GatewayClient;
+            if (client == null || !client.IsConnectedToGateway)
+                return new { succeeded = false, error = "Gateway client is not connected" };
+
+            var approved = await client.NodePairApproveAsync(requestId);
+            if (approved)
+                await WaitForAppStateUpdateAsync(nameof(AppState.NodePairList), client.RequestNodePairListAsync);
+
+            return BuildPendingApprovalsPayload(
+                connected: client.IsConnectedToGateway,
+                decisionKind: "node",
+                decisionAction: "approve",
+                requestId: requestId,
+                succeeded: approved,
+                error: approved ? null : "Node pairing approval was rejected or unavailable");
+        };
+
+        connection.RejectNodePairingHandler = async requestId =>
+        {
+            var client = GatewayClient;
+            if (client == null || !client.IsConnectedToGateway)
+                return new { succeeded = false, error = "Gateway client is not connected" };
+
+            var rejected = await client.NodePairRejectAsync(requestId);
+            if (rejected)
+                await WaitForAppStateUpdateAsync(nameof(AppState.NodePairList), client.RequestNodePairListAsync);
+
+            return BuildPendingApprovalsPayload(
+                connected: client.IsConnectedToGateway,
+                decisionKind: "node",
+                decisionAction: "reject",
+                requestId: requestId,
+                succeeded: rejected,
+                error: rejected ? null : "Node pairing rejection was rejected or unavailable");
+        };
+
         connection.ReconnectHandler = async () =>
         {
             if (_connectionManager == null)
@@ -2009,6 +2088,104 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             await _connectionManager.ConnectNodeOnlyAsync();
             return new { reconnected = true };
         };
+    }
+
+    private async Task<object?> GetPendingApprovalsForMcpAsync()
+    {
+        var client = GatewayClient;
+        if (client == null || !client.IsConnectedToGateway)
+            return BuildPendingApprovalsPayload(connected: false, error: "Gateway client is not connected");
+
+        await WaitForAppStateUpdateAsync(nameof(AppState.DevicePairList), client.RequestDevicePairListAsync);
+        await WaitForAppStateUpdateAsync(nameof(AppState.NodePairList), client.RequestNodePairListAsync);
+
+        return BuildPendingApprovalsPayload(connected: client.IsConnectedToGateway);
+    }
+
+    private object BuildPendingApprovalsPayload(
+        bool connected,
+        string? decisionKind = null,
+        string? decisionAction = null,
+        string? requestId = null,
+        bool? succeeded = null,
+        string? error = null)
+    {
+        var devicePending = _appState?.DevicePairList?.Pending
+            .Select(req => (object)new Dictionary<string, object?>
+            {
+                ["requestId"] = req.RequestId,
+                ["deviceId"] = req.DeviceId,
+                ["displayName"] = req.DisplayName,
+                ["platform"] = req.Platform,
+                ["clientId"] = req.ClientId,
+                ["clientMode"] = req.ClientMode,
+                ["role"] = req.Role,
+                ["scopes"] = req.Scopes,
+                ["remoteIp"] = req.RemoteIp,
+                ["isRepair"] = req.IsRepair
+            })
+            .ToArray() ?? Array.Empty<object>();
+
+        var nodePending = _appState?.NodePairList?.Pending
+            .Select(req => (object)new Dictionary<string, object?>
+            {
+                ["requestId"] = req.RequestId,
+                ["nodeId"] = req.NodeId,
+                ["displayName"] = req.DisplayName,
+                ["platform"] = req.Platform,
+                ["version"] = req.Version,
+                ["remoteIp"] = req.RemoteIp,
+                ["isRepair"] = req.IsRepair
+            })
+            .ToArray() ?? Array.Empty<object>();
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["connected"] = connected,
+            ["error"] = error,
+            ["totalPending"] = devicePending.Length + nodePending.Length,
+            ["devicePending"] = devicePending,
+            ["nodePending"] = nodePending
+        };
+        if (decisionKind != null)
+        {
+            payload["decision"] = new Dictionary<string, object?>
+            {
+                ["kind"] = decisionKind,
+                ["action"] = decisionAction,
+                ["requestId"] = requestId,
+                ["succeeded"] = succeeded ?? false
+            };
+        }
+
+        return payload;
+    }
+
+    private async Task WaitForAppStateUpdateAsync(string propertyName, Func<Task> requestAsync)
+    {
+        if (_appState == null)
+        {
+            await requestAsync();
+            return;
+        }
+
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        PropertyChangedEventHandler handler = (_, args) =>
+        {
+            if (string.Equals(args.PropertyName, propertyName, StringComparison.Ordinal))
+                tcs.TrySetResult(null);
+        };
+
+        _appState.PropertyChanged += handler;
+        try
+        {
+            await requestAsync();
+            await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            _appState.PropertyChanged -= handler;
+        }
     }
 
     private bool RequiresSetup(SettingsManager settings)

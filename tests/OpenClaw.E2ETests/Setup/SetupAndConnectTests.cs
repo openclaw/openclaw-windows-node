@@ -395,11 +395,8 @@ public class SetupAndConnectTests
         Assert.False(dashboard.GetProperty("usesSharedGatewayToken").GetBoolean());
         Assert.False(dashboard.GetProperty("hasTokenQuery").GetBoolean());
 
-        var reject = await _fixture.RunInWslAsync(
-            $"openclaw devices reject {ShellSingleQuote(requestId)}",
-            TimeSpan.FromSeconds(30),
-            env);
-        AssertCommandSucceeded(reject, "reject external-like pending device approval");
+        using var rejectDoc = await RejectDevicePairingFromConnectionPageAsync(requestId);
+        Console.WriteLine($"[E2E] rejected external-like pending device request via Connection page: {rejectDoc.RootElement.GetRawText()}");
     }
 
     [E2EFact]
@@ -649,9 +646,8 @@ public class SetupAndConnectTests
 
     private async Task<HashSet<string>> ReadPendingDeviceRequestIdsAsync(Dictionary<string, string> env)
     {
-        var devices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
-        AssertCommandSucceeded(devices, "list pending device approvals");
-        return ReadPendingRequestIds(devices.Stdout);
+        using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+        return ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId");
     }
 
     private async Task<string> WaitForFirstPendingDeviceRequestIdAsync(
@@ -662,10 +658,9 @@ public class SetupAndConnectTests
         string lastOutput = "<none>";
         while (DateTime.UtcNow < deadline)
         {
-            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
-            AssertCommandSucceeded(pendingDevices, "list pending device approval for external-like QR");
-            lastOutput = pendingDevices.Stdout;
-            var requestId = ReadPendingRequestIds(pendingDevices.Stdout)
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastOutput = approvals.RootElement.GetRawText();
+            var requestId = ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId")
                 .FirstOrDefault(id => !ignoredRequestIds.Contains(id));
             if (!string.IsNullOrWhiteSpace(requestId))
                 return requestId;
@@ -690,17 +685,31 @@ public class SetupAndConnectTests
             if (credentials.HasOperatorToken && credentials.HasNodeToken && !credentials.HasBootstrapToken)
                 return;
 
-            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
-            AssertCommandSucceeded(pendingDevices, "list pending device approvals for clean external-like tray");
-            lastDevicesOutput = pendingDevices.Stdout;
-            foreach (var requestId in ReadPendingRequestIds(pendingDevices.Stdout).Where(id => approved.Add(id)).ToArray())
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastDevicesOutput = approvals.RootElement.GetRawText();
+            var approvedAny = false;
+            foreach (var requestId in ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId")
+                         .Where(id => approved.Add(id))
+                         .ToArray())
             {
-                var approve = await _fixture.RunInWslAsync(
-                    $"openclaw devices approve {ShellSingleQuote(requestId)} --json",
-                    TimeSpan.FromSeconds(30),
-                    env);
-                AssertCommandSucceeded(approve, $"approve external-like device request {requestId}");
-                Console.WriteLine($"[E2E] approved external-like device request {requestId}:\n{approve.Stdout}");
+                using var approve = await ApproveDevicePairingFromConnectionPageAsync(requestId);
+                Console.WriteLine($"[E2E] approved external-like device request via Connection page: {approve.RootElement.GetRawText()}");
+                approvedAny = true;
+            }
+
+            if (approvedAny)
+            {
+                var updatedCredentials = tray.ReadCredentialState();
+                if (!updatedCredentials.HasOperatorToken)
+                {
+                    using var reconnectDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnect");
+                    Assert.True(reconnectDoc.RootElement.GetProperty("reconnected").GetBoolean());
+                }
+                else if (!updatedCredentials.HasNodeToken)
+                {
+                    using var reconnectNodeDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+                    Assert.True(reconnectNodeDoc.RootElement.GetProperty("reconnected").GetBoolean());
+                }
             }
 
             await Task.Delay(500);
@@ -718,10 +727,9 @@ public class SetupAndConnectTests
         string lastDevicesOutput = "<none>";
         while (DateTime.UtcNow < deadline)
         {
-            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
-            AssertCommandSucceeded(pendingDevices, "list pending device approvals for clean QR external-like tray");
-            lastDevicesOutput = pendingDevices.Stdout;
-            var pendingIds = ReadPendingRequestIds(pendingDevices.Stdout)
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastDevicesOutput = approvals.RootElement.GetRawText();
+            var pendingIds = ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId")
                 .Where(id => !ignoredRequestIds.Contains(id))
                 .ToArray();
             if (pendingIds.Length == 0)
@@ -729,12 +737,8 @@ public class SetupAndConnectTests
 
             foreach (var requestId in pendingIds.Where(id => approved.Add(id)))
             {
-                var approve = await _fixture.RunInWslAsync(
-                    $"openclaw devices approve {ShellSingleQuote(requestId)} --json",
-                    TimeSpan.FromSeconds(30),
-                    env);
-                AssertCommandSucceeded(approve, $"approve clean QR device request {requestId}");
-                Console.WriteLine($"[E2E] approved clean QR device request {requestId}:\n{approve.Stdout}");
+                using var approve = await ApproveDevicePairingFromConnectionPageAsync(requestId);
+                Console.WriteLine($"[E2E] approved clean QR device request via Connection page: {approve.RootElement.GetRawText()}");
             }
 
             await Task.Delay(500);
@@ -750,21 +754,16 @@ public class SetupAndConnectTests
         string lastNodesOutput = "<none>";
         while (DateTime.UtcNow < deadline)
         {
-            var pendingNodes = await _fixture.RunInWslAsync("openclaw nodes list --json", TimeSpan.FromSeconds(30), env);
-            AssertCommandSucceeded(pendingNodes, "list pending node approvals for clean QR external-like tray");
-            lastNodesOutput = pendingNodes.Stdout;
-            var pendingIds = ReadPendingRequestIds(pendingNodes.Stdout).ToArray();
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastNodesOutput = approvals.RootElement.GetRawText();
+            var pendingIds = ReadPendingApprovalIds(approvals.RootElement, "nodePending", "RequestId", "NodeId").ToArray();
             if (pendingIds.Length == 0)
                 return;
 
             foreach (var requestId in pendingIds.Where(id => approved.Add(id)))
             {
-                var approve = await _fixture.RunInWslAsync(
-                    $"openclaw nodes approve {ShellSingleQuote(requestId)} --json",
-                    TimeSpan.FromSeconds(30),
-                    env);
-                AssertCommandSucceeded(approve, $"approve clean QR node request {requestId}");
-                Console.WriteLine($"[E2E] approved clean QR node request {requestId}:\n{approve.Stdout}");
+                using var approve = await ApproveNodePairingFromConnectionPageAsync(requestId);
+                Console.WriteLine($"[E2E] approved clean QR node request via Connection page: {approve.RootElement.GetRawText()}");
             }
 
             await Task.Delay(500);
@@ -786,27 +785,23 @@ public class SetupAndConnectTests
             var credentials = tray.ReadCredentialState();
             if (credentials.HasNodeToken)
             {
-                var pendingCheck = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
-                AssertCommandSucceeded(pendingCheck, "list pending device approvals after QR node token");
-                var remaining = ReadPendingRequestIds(pendingCheck.Stdout)
+                using var pendingCheck = await ReadPendingApprovalsFromConnectionPageAsync();
+                var remaining = ReadPendingApprovalIds(pendingCheck.RootElement, "devicePending", "RequestId", "DeviceId")
                     .Where(id => !ignoredRequestIds.Contains(id))
                     .ToArray();
                 if (remaining.Length == 0)
                     return;
             }
 
-            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
-            AssertCommandSucceeded(pendingDevices, "list pending device approvals for clean QR external-like tray");
-            lastDevicesOutput = pendingDevices.Stdout;
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastDevicesOutput = approvals.RootElement.GetRawText();
             var approvedAny = false;
-            foreach (var requestId in ReadPendingRequestIds(pendingDevices.Stdout).Where(id => approved.Add(id)).ToArray())
+            foreach (var requestId in ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId")
+                         .Where(id => approved.Add(id))
+                         .ToArray())
             {
-                var approve = await _fixture.RunInWslAsync(
-                    $"openclaw devices approve {ShellSingleQuote(requestId)} --json",
-                    TimeSpan.FromSeconds(30),
-                    env);
-                AssertCommandSucceeded(approve, $"approve clean QR device request {requestId}");
-                Console.WriteLine($"[E2E] approved clean QR device request {requestId}:\n{approve.Stdout}");
+                using var approve = await ApproveDevicePairingFromConnectionPageAsync(requestId);
+                Console.WriteLine($"[E2E] approved clean QR device request via Connection page: {approve.RootElement.GetRawText()}");
                 approvedAny = true;
             }
 
@@ -827,12 +822,117 @@ public class SetupAndConnectTests
         throw new TimeoutException($"Timed out waiting for clean QR external-like tray node token. Last devices list: {lastDevicesOutput}");
     }
 
+    private async Task<JsonDocument> ReadPendingApprovalsFromConnectionPageAsync()
+    {
+        using var navigate = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.navigate",
+            new { page = "connection" });
+        Assert.True(navigate.RootElement.GetProperty("navigated").GetBoolean(), $"Expected admin tray to navigate to Connection page: {navigate.RootElement.GetRawText()}");
+
+        return await _fixture.Client!.CallToolExpectSuccessAsync("app.connection.pendingApprovals");
+    }
+
+    private async Task<JsonDocument> ApproveDevicePairingFromConnectionPageAsync(string requestId)
+    {
+        using var navigate = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.navigate",
+            new { page = "connection" });
+        Assert.True(navigate.RootElement.GetProperty("navigated").GetBoolean(), $"Expected admin tray to navigate to Connection page: {navigate.RootElement.GetRawText()}");
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.approveDevicePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "device", "approve", requestId);
+        return doc;
+    }
+
+    private async Task<JsonDocument> RejectDevicePairingFromConnectionPageAsync(string requestId)
+    {
+        using var navigate = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.navigate",
+            new { page = "connection" });
+        Assert.True(navigate.RootElement.GetProperty("navigated").GetBoolean(), $"Expected admin tray to navigate to Connection page: {navigate.RootElement.GetRawText()}");
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.rejectDevicePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "device", "reject", requestId);
+        return doc;
+    }
+
+    private async Task<JsonDocument> ApproveNodePairingFromConnectionPageAsync(string requestId)
+    {
+        using var navigate = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.navigate",
+            new { page = "connection" });
+        Assert.True(navigate.RootElement.GetProperty("navigated").GetBoolean(), $"Expected admin tray to navigate to Connection page: {navigate.RootElement.GetRawText()}");
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.approveNodePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "node", "approve", requestId);
+        return doc;
+    }
+
     private static void AssertExternalTrayDurablePairing(IsolatedTrayInstance tray)
     {
         var credentials = tray.ReadCredentialState();
         Assert.True(credentials.HasOperatorToken, "Expected isolated tray operator token after approval recovery.");
         Assert.True(credentials.HasNodeToken, "Expected isolated tray node token after approval recovery.");
         Assert.False(credentials.HasBootstrapToken, "Bootstrap token should be cleared after isolated tray role tokens are durable.");
+    }
+
+    private static void AssertConnectionPageDecisionSucceeded(JsonElement root, string kind, string action, string requestId)
+    {
+        Assert.True(root.GetProperty("connected").GetBoolean(), $"Admin tray should stay connected while deciding pairing request: {root.GetRawText()}");
+        Assert.True(root.TryGetProperty("decision", out var decision) && decision.ValueKind == JsonValueKind.Object,
+            $"Pairing decision response should include a decision object: {root.GetRawText()}");
+        Assert.Equal(kind, decision.GetProperty("kind").GetString());
+        Assert.Equal(action, decision.GetProperty("action").GetString());
+        Assert.Equal(requestId, decision.GetProperty("requestId").GetString());
+        Assert.True(decision.GetProperty("succeeded").GetBoolean(),
+            $"Connection page {action} action should succeed for {kind} request {requestId}: {root.GetRawText()}");
+    }
+
+    private static HashSet<string> ReadPendingApprovalIds(JsonElement root, string arrayProperty, string requestIdProperty, string fallbackIdProperty)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (!root.TryGetProperty(arrayProperty, out var pending) ||
+            pending.ValueKind != JsonValueKind.Array)
+        {
+            return ids;
+        }
+
+        foreach (var request in pending.EnumerateArray())
+        {
+            var requestId = ReadNonEmptyStringProperty(request, requestIdProperty);
+            var fallbackId = ReadNonEmptyStringProperty(request, fallbackIdProperty);
+            var id = requestId ?? fallbackId;
+            if (!string.IsNullOrWhiteSpace(id))
+                ids.Add(id);
+        }
+
+        return ids;
+    }
+
+    private static string? ReadNonEmptyStringProperty(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            return property.GetString();
+        }
+
+        var camelCase = char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
+        if (element.TryGetProperty(camelCase, out property) &&
+            property.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            return property.GetString();
+        }
+
+        return null;
     }
 
     private static HashSet<string> ReadPendingRequestIds(string output)
