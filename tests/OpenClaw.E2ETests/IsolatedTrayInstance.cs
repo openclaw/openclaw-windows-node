@@ -51,6 +51,8 @@ internal sealed class IsolatedTrayInstance : IAsyncDisposable
             process = SpawnTray(exePath, dataDir, localAppDataRoot, artifactDir, mcpPort);
             client = await WaitForMcpReadyAsync(process, dataDir, artifactDir, mcpPort);
             await WaitForToolAsync(process, artifactDir, client, "app.connection.applySetupCode");
+            await WaitForToolAsync(process, artifactDir, client, "app.connection.reconnect");
+            await WaitForToolAsync(process, artifactDir, client, "app.connection.reconnectNode");
             return new IsolatedTrayInstance(process, dataDir, localAppDataRoot, artifactDir, mcpPort, client);
         }
         catch
@@ -114,7 +116,7 @@ internal sealed class IsolatedTrayInstance : IAsyncDisposable
         var hasNode = false;
         if (File.Exists(identityPath))
         {
-            using var identityDoc = JsonDocument.Parse(File.ReadAllText(identityPath));
+            using var identityDoc = ReadJsonDocumentWithRetry(identityPath);
             var root = identityDoc.RootElement;
             hasOperator = root.TryGetProperty("DeviceToken", out var op) &&
                 op.ValueKind == JsonValueKind.String &&
@@ -125,7 +127,7 @@ internal sealed class IsolatedTrayInstance : IAsyncDisposable
         }
 
         var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-        using var gatewaysDoc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
+        using var gatewaysDoc = ReadJsonDocumentWithRetry(gatewaysPath);
         var hasBootstrap = false;
         if (gatewaysDoc.RootElement.TryGetProperty("gateways", out var gateways) &&
             gateways.ValueKind == JsonValueKind.Array)
@@ -144,6 +146,90 @@ internal sealed class IsolatedTrayInstance : IAsyncDisposable
         }
 
         return (hasOperator, hasNode, hasBootstrap);
+    }
+
+    private static JsonDocument ReadJsonDocumentWithRetry(string path)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return JsonDocument.Parse(File.ReadAllText(path));
+            }
+            catch (IOException) when (attempt < 5)
+            {
+                Thread.Sleep(25);
+            }
+            catch (JsonException) when (attempt < 5)
+            {
+                Thread.Sleep(25);
+            }
+        }
+    }
+
+    public async Task WaitForConnectionReady(TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(90));
+        string lastStatus = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_process.HasExited)
+                throw new InvalidOperationException($"Isolated tray exited while waiting for ready state (exit code {_process.ExitCode}). Logs: {_artifactDir}");
+
+            try
+            {
+                using var doc = await Client.CallToolExpectSuccessAsync("app.status");
+                var root = doc.RootElement;
+                lastStatus = root.GetRawText();
+                var connectionStatus = root.GetProperty("connectionStatus").GetString();
+                var nodeConnected = root.TryGetProperty("nodeConnected", out var nc) && nc.GetBoolean();
+                var nodePaired = root.TryGetProperty("nodePaired", out var np) && np.GetBoolean();
+                if (connectionStatus is "Ready" or "Connected" && nodeConnected && nodePaired)
+                    return;
+            }
+            catch
+            {
+                // Keep polling; setup/connect paths can briefly swap clients.
+            }
+
+            await Task.Delay(1000);
+        }
+
+        throw new TimeoutException($"Isolated tray did not become ready. Last status: {lastStatus}. Logs: {_artifactDir}");
+    }
+
+    public async Task WaitForNodeListReady(TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(60));
+        string lastResponse = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_process.HasExited)
+                throw new InvalidOperationException($"Isolated tray exited while waiting for node list (exit code {_process.ExitCode}). Logs: {_artifactDir}");
+
+            try
+            {
+                using var doc = await Client.CallToolExpectSuccessAsync("app.nodes");
+                var root = doc.RootElement;
+                lastResponse = root.GetRawText();
+                if (root.ValueKind == JsonValueKind.Array && root.EnumerateArray().Any(node =>
+                    node.TryGetProperty("IsOnline", out var online)
+                    && online.GetBoolean()
+                    && node.TryGetProperty("CapabilityCount", out var capabilities)
+                    && capabilities.GetInt32() > 0))
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                // Keep polling until the tray finishes reconnecting.
+            }
+
+            await Task.Delay(1000);
+        }
+
+        throw new TimeoutException($"Isolated tray node list did not become ready. Last response: {lastResponse}. Logs: {_artifactDir}");
     }
 
     public async ValueTask DisposeAsync()

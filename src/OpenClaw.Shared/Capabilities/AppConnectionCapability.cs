@@ -16,12 +16,16 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
     [
         "app.connection.applySetupCode",
         "app.connection.connectSharedToken",
+        "app.connection.reconnect",
+        "app.connection.reconnectNode",
     ];
 
     public override IReadOnlyList<string> Commands => s_commands;
 
     public Func<string, Task<object?>>? ApplySetupCodeHandler;
     public Func<string, string, Task<object?>>? ConnectSharedTokenHandler;
+    public Func<Task<object?>>? ReconnectHandler;
+    public Func<Task<object?>>? ReconnectNodeHandler;
 
     public AppConnectionCapability(IOpenClawLogger logger) : base(logger) { }
 
@@ -31,6 +35,8 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
         {
             "app.connection.applySetupCode" => await HandleApplySetupCode(request),
             "app.connection.connectSharedToken" => await HandleConnectSharedToken(request),
+            "app.connection.reconnect" => await HandleReconnect(),
+            "app.connection.reconnectNode" => await HandleReconnectNode(),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
@@ -57,6 +63,22 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
         if (ConnectSharedTokenHandler == null)
             return Error("Connect shared token handler not registered");
         var result = await ConnectSharedTokenHandler(gatewayUrl, token);
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleReconnect()
+    {
+        if (ReconnectHandler == null)
+            return Error("Reconnect handler not registered");
+        var result = await ReconnectHandler();
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleReconnectNode()
+    {
+        if (ReconnectNodeHandler == null)
+            return Error("Reconnect node handler not registered");
+        var result = await ReconnectNodeHandler();
         return Success(result);
     }
 }

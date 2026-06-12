@@ -61,6 +61,118 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
+    public async Task AutoApprove_DevicePairRequest_CallsDevicePairApprove_NotNodePairApprove()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin", "operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        var approvalDone = lifecycle.TrackingClient.WaitForApprovalCallAsync();
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "req-device-role-upgrade",
+            approvalKind: PairingApprovalKind.DevicePair);
+        await approvalDone;
+
+        var client = lifecycle.TrackingClient;
+        Assert.Equal(["device.pair.approve"], client.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task AutoApprove_DevicePairRequest_WithoutAdminScope_DoesNotAttemptApproval()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "req-device-role-upgrade",
+            approvalKind: PairingApprovalKind.DevicePair);
+
+        await Task.Delay(50);
+
+        Assert.Empty(lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task NodeStatusUpdate_DuringDevicePairPending_PreservesRequestMetadata()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "req-device-role-upgrade",
+            approvalKind: PairingApprovalKind.DevicePair);
+        await WaitUntilAsync(() => manager.CurrentSnapshot.NodePairingRequestId == "req-device-role-upgrade");
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        Assert.Equal("req-device-role-upgrade", manager.CurrentSnapshot.NodePairingRequestId);
+        Assert.Equal(PairingApprovalKind.DevicePair, manager.CurrentSnapshot.NodePairingApprovalKind);
+    }
+
+    [Fact]
+    public async Task AutoApprove_NodePairListForLocalNode_CallsNodePairApprove()
+    {
+        _nodeConnector.NodeDeviceId = "local-node";
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin", "operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+
+        var approvalDone = lifecycle.TrackingClient.WaitForApprovalCallAsync();
+        lifecycle.TrackingClient.SimulateNodePairListUpdated(new PairingRequest
+        {
+            RequestId = "req-list-local",
+            NodeId = "local-node"
+        });
+        await approvalDone;
+
+        Assert.Equal(["node.pair.approve"], lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task AutoApprove_NodePairListForDifferentNode_DoesNotApprove()
+    {
+        _nodeConnector.NodeDeviceId = "local-node";
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin", "operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+
+        lifecycle.TrackingClient.SimulateNodePairListUpdated(new PairingRequest
+        {
+            RequestId = "req-list-other",
+            NodeId = "other-node"
+        });
+
+        await Task.Delay(50);
+
+        Assert.Empty(lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
     public async Task AutoApprove_WithoutRequestId_DoesNotAttemptApproval()
     {
         using var manager = CreateConnectedManager();
@@ -100,7 +212,7 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
-    public async Task AutoApprove_WhenNodePairApproveRejects_FallsBackToDevicePairApproveWithAdminScope()
+    public async Task AutoApprove_WhenUnknownPairApproveRejects_FallsBackToDevicePairApproveWithAdminScope()
     {
         using var manager = CreateConnectedManager();
 
@@ -118,6 +230,29 @@ public class NodePairAutoApproveTests : IDisposable
 
         var client = lifecycle.TrackingClient;
         Assert.Equal(["node.pair.approve", "device.pair.approve"], client.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task AutoApprove_WhenKnownNodePairApproveRejects_DoesNotFallbackToDevicePairApprove()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.admin", "operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+        lifecycle.TrackingClient.NodePairApproveResult = false;
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        var approvalDone = lifecycle.TrackingClient.WaitForApprovalCallAsync();
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "req-node-command-trust",
+            approvalKind: PairingApprovalKind.NodePair);
+        await approvalDone;
+
+        Assert.Equal(["node.pair.approve"], lifecycle.TrackingClient.ApprovalMethodsCalled);
     }
 
     [Fact]
@@ -175,6 +310,57 @@ public class NodePairAutoApproveTests : IDisposable
             .Count(m => m == "node.pair.approve"));
     }
 
+    [Fact]
+    public async Task AutoApprove_SameRequestId_RetriesAfterFalseResponse()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+        lifecycle.TrackingClient.NodePairApproveResult = false;
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        var firstComplete = lifecycle.TrackingClient.WaitForApprovalCompleteAsync();
+        _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-retry");
+        await firstComplete;
+        await WaitUntilAsync(() => lifecycle.TrackingClient.ApprovalMethodsCalled.Count == 1);
+
+        lifecycle.TrackingClient.NodePairApproveResult = true;
+        var secondComplete = lifecycle.TrackingClient.WaitForApprovalCompleteAsync();
+        _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-retry");
+        await secondComplete;
+
+        Assert.Equal(["node.pair.approve", "node.pair.approve"], lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
+    [Fact]
+    public async Task AutoApprove_SameRequestId_RetriesAfterThrownApproval()
+    {
+        using var manager = CreateConnectedManager();
+
+        var lifecycle = _factory.CreatedClients[0];
+        lifecycle.TrackingClient.SetGrantedScopes(["operator.pairing"]);
+        lifecycle.TrackingClient.SetIsConnected(true);
+        lifecycle.TrackingClient.ThrowOnNextNodePairApprove = true;
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FireStatusChanged(ConnectionStatus.Connecting));
+
+        var firstComplete = lifecycle.TrackingClient.WaitForApprovalCompleteAsync();
+        _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-throw-retry");
+        await firstComplete;
+        await WaitUntilAsync(() => lifecycle.TrackingClient.ApprovalMethodsCalled.Count == 1);
+
+        var secondComplete = lifecycle.TrackingClient.WaitForApprovalCompleteAsync();
+        _nodeConnector.FirePairingStatusChanged(PairingStatus.Pending, requestId: "req-throw-retry");
+        await secondComplete;
+
+        Assert.Equal(["node.pair.approve", "node.pair.approve"], lifecycle.TrackingClient.ApprovalMethodsCalled);
+    }
+
     // ─── Helpers ───
 
     private GatewayConnectionManager CreateConnectedManager()
@@ -208,6 +394,19 @@ public class NodePairAutoApproveTests : IDisposable
         manager.StateChanged += Handler;
         action();
         return await tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs));
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+                return;
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition(), "Condition was not met before timeout.");
     }
 
     // ─── Mocks ───
@@ -266,6 +465,8 @@ public class NodePairAutoApproveTests : IDisposable
 
         public IReadOnlyList<string> ApprovalMethodsCalled => _approvalMethodsCalled;
         public bool NodePairApproveResult { get; set; } = true;
+        public bool ThrowOnNextNodePairApprove { get; set; }
+        public int RequestDevicePairListCount { get; private set; }
 
         public TrackingGatewayClient(string url)
             : base(url, "mock-token", NullLogger.Instance) { }
@@ -282,6 +483,36 @@ public class NodePairAutoApproveTests : IDisposable
         public void SetIsConnected(bool connected)
         {
             _simulatedConnected = connected;
+        }
+
+        public void SimulateNodePairListUpdated(params PairingRequest[] pending)
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                nameof(NodePairListUpdated),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var handler = field!.GetValue(this) as EventHandler<PairingListInfo>;
+            handler?.Invoke(this, new PairingListInfo { Pending = pending.ToList() });
+        }
+
+        public void SimulateDevicePairListUpdated(params DevicePairingRequest[] pending)
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                nameof(DevicePairListUpdated),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var handler = field!.GetValue(this) as EventHandler<DevicePairingListInfo>;
+            handler?.Invoke(this, new DevicePairingListInfo { Pending = pending.ToList() });
+        }
+
+        public void SimulateHandshakeSucceeded()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                nameof(HandshakeSucceeded),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var handler = field!.GetValue(this) as EventHandler;
+            handler?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>
@@ -335,10 +566,23 @@ public class NodePairAutoApproveTests : IDisposable
         {
             _approvalMethodsCalled.Add("node.pair.approve");
             SignalApprovalCall();
-            if (_approveGate != null)
-                await _approveGate.Task;
-            _approvalCompleteSignal?.TrySetResult();
-            return NodePairApproveResult;
+            try
+            {
+                if (_approveGate != null)
+                    await _approveGate.Task;
+
+                if (ThrowOnNextNodePairApprove)
+                {
+                    ThrowOnNextNodePairApprove = false;
+                    throw new InvalidOperationException("transient approval failure");
+                }
+
+                return NodePairApproveResult;
+            }
+            finally
+            {
+                _approvalCompleteSignal?.TrySetResult();
+            }
         }
 
         public override Task<bool> DevicePairApproveAsync(string requestId)
@@ -346,6 +590,12 @@ public class NodePairAutoApproveTests : IDisposable
             _approvalMethodsCalled.Add("device.pair.approve");
             SignalApprovalCall();
             return Task.FromResult(true);
+        }
+
+        public override Task RequestDevicePairListAsync()
+        {
+            RequestDevicePairListCount++;
+            return Task.CompletedTask;
         }
 
         private void SignalApprovalCall()
@@ -360,6 +610,7 @@ public class NodePairAutoApproveTests : IDisposable
     private sealed class ScriptedNodeConnector : INodeConnector
     {
         public bool IsConnected { get; private set; }
+        public int ConnectCount { get; private set; }
         public PairingStatus PairingStatus { get; set; } = PairingStatus.Unknown;
         public string? NodeDeviceId { get; set; }
         public NodeConnectionMode Mode { get; set; } = NodeConnectionMode.Disabled;
@@ -374,6 +625,7 @@ public class NodePairAutoApproveTests : IDisposable
         public Task ConnectAsync(string gatewayUrl, GatewayCredential credential,
             string identityPath, bool useV2Signature = false)
         {
+            ConnectCount++;
             Mode = NodeConnectionMode.Gateway;
             return Task.CompletedTask;
         }
@@ -386,11 +638,14 @@ public class NodePairAutoApproveTests : IDisposable
             StatusChanged?.Invoke(this, status);
         }
 
-        public void FirePairingStatusChanged(PairingStatus status, string? requestId = null)
+        public void FirePairingStatusChanged(
+            PairingStatus status,
+            string? requestId = null,
+            PairingApprovalKind approvalKind = PairingApprovalKind.Unknown)
         {
             PairingStatus = status;
             PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
-                status, NodeDeviceId ?? "test-node", requestId: requestId));
+                status, NodeDeviceId ?? "test-node", requestId: requestId, approvalKind: approvalKind));
         }
 
         public void Dispose() { }

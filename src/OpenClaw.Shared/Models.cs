@@ -22,19 +22,33 @@ public enum PairingStatus
     Rejected    // Pairing was rejected
 }
 
+public enum PairingApprovalKind
+{
+    Unknown,
+    DevicePair,
+    NodePair
+}
+
 public class PairingStatusEventArgs : EventArgs
 {
     public PairingStatus Status { get; }
     public string DeviceId { get; }
     public string? Message { get; }
     public string? RequestId { get; }
+    public PairingApprovalKind ApprovalKind { get; }
     
-    public PairingStatusEventArgs(PairingStatus status, string deviceId, string? message = null, string? requestId = null)
+    public PairingStatusEventArgs(
+        PairingStatus status,
+        string deviceId,
+        string? message = null,
+        string? requestId = null,
+        PairingApprovalKind approvalKind = PairingApprovalKind.Unknown)
     {
         Status = status;
         DeviceId = deviceId;
         Message = message;
         RequestId = requestId;
+        ApprovalKind = approvalKind;
     }
 }
 

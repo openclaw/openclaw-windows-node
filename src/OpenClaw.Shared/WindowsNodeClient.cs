@@ -53,6 +53,7 @@ public class WindowsNodeClient : WebSocketClientBase
     };
 
     private static readonly Regex s_commandValidator = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex s_pairingRequestIdValidator = new(@"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled);
 
     // Bounded concurrency for capability invocations: prevents a slow capability (e.g. a
     // 5-minute screen.record) from blocking health pings on the same WS receive loop.
@@ -339,12 +340,26 @@ public class WindowsNodeClient : WebSocketClientBase
         _pairingBlocked = true;
         _pairingApprovedAwaitingReconnect = false;
 
-        _logger.Info($"[NODE] Pairing requested for this device via {eventType}");
-        _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
+        var approvalKind = string.Equals(eventType, "node.pair.requested", StringComparison.OrdinalIgnoreCase)
+            ? PairingApprovalKind.NodePair
+            : PairingApprovalKind.DevicePair;
+        var requestId = TryGetSafePairingRequestId(payload);
+        var command = approvalKind == PairingApprovalKind.NodePair
+            ? "openclaw nodes approve"
+            : "openclaw devices approve";
+        var approvalCommand = !string.IsNullOrWhiteSpace(requestId)
+            ? $"{command} {requestId}"
+            : approvalKind == PairingApprovalKind.NodePair
+                ? "openclaw nodes pending"
+                : $"{command} {_deviceIdentity.DeviceId}";
+        _logger.Info($"[NODE] Pairing requested for this device via {eventType}; requestId={requestId ?? "none"}");
+        _logger.Info($"To approve, run: {approvalCommand}");
         EmitPairingStatusOnTransition(new PairingStatusEventArgs(
             PairingStatus.Pending,
             _deviceIdentity.DeviceId,
-            $"Run: openclaw devices approve {ShortDeviceId}..."));
+            $"Run: {approvalCommand}",
+            requestId: requestId,
+            approvalKind: approvalKind));
     }
 
     private async Task HandlePairingResolvedEventAsync(JsonElement root, string? eventType)
@@ -826,10 +841,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 {
                     pairingReason = reason;
                 }
-                if (TryGetString(detailsProp, "requestId", out var requestId))
-                {
-                    pairingRequestId = requestId;
-                }
+                pairingRequestId = TryGetSafePairingRequestId(detailsProp);
             }
         }
 
@@ -856,7 +868,8 @@ public class WindowsNodeClient : WebSocketClientBase
                 PairingStatus.Pending,
                 _deviceIdentity.DeviceId,
                 detail,
-                requestId: pairingRequestId));
+                requestId: pairingRequestId,
+                approvalKind: PairingApprovalKind.DevicePair));
             return;
         }
 
@@ -918,6 +931,17 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         return false;
+    }
+
+    private static string? TryGetSafePairingRequestId(JsonElement payload)
+    {
+        if (!TryGetString(payload, "requestId", out var requestId) ||
+            string.IsNullOrWhiteSpace(requestId))
+        {
+            return null;
+        }
+
+        return s_pairingRequestIdValidator.IsMatch(requestId) ? requestId : null;
     }
 
     private static bool TryGetString(JsonElement element, string propertyName, out string? value)

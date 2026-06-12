@@ -30,6 +30,7 @@ public sealed record GatewayConnectionSnapshot
     /// Used by the connection page to show the correct approval command.
     /// </summary>
     public string? NodePairingRequestId { get; init; }
+    public OpenClaw.Shared.PairingApprovalKind NodePairingApprovalKind { get; init; }
 
     // ─── Gateway ───
     public string? GatewayId { get; init; }

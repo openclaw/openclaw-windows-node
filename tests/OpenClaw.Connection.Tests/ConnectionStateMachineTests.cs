@@ -279,6 +279,40 @@ public class ConnectionStateMachineTests
     }
 
     [Fact]
+    public void SetNodeInfo_PendingWithoutRequestId_ClearsStaleRequestIdAndKind()
+    {
+        _sm.SetNodeInfo(
+            "node-1",
+            OpenClaw.Shared.PairingStatus.Pending,
+            "req-1",
+            OpenClaw.Shared.PairingApprovalKind.DevicePair);
+
+        _sm.SetNodeInfo("node-1", OpenClaw.Shared.PairingStatus.Pending);
+
+        Assert.Null(_sm.Current.NodePairingRequestId);
+        Assert.Equal(OpenClaw.Shared.PairingApprovalKind.Unknown, _sm.Current.NodePairingApprovalKind);
+    }
+
+    [Fact]
+    public void SetNodeInfo_UnknownKindForSameRequestId_PreservesKnownKind()
+    {
+        _sm.SetNodeInfo(
+            "node-1",
+            OpenClaw.Shared.PairingStatus.Pending,
+            "req-1",
+            OpenClaw.Shared.PairingApprovalKind.DevicePair);
+
+        _sm.SetNodeInfo(
+            "node-1",
+            OpenClaw.Shared.PairingStatus.Pending,
+            "req-1",
+            OpenClaw.Shared.PairingApprovalKind.Unknown);
+
+        Assert.Equal("req-1", _sm.Current.NodePairingRequestId);
+        Assert.Equal(OpenClaw.Shared.PairingApprovalKind.DevicePair, _sm.Current.NodePairingApprovalKind);
+    }
+
+    [Fact]
     public void NodePaired_TransitionsToConnected()
     {
         _sm.SetNodeEnabled(true);

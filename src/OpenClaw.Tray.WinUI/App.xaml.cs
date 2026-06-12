@@ -1991,6 +1991,24 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 connected = result.Outcome == SetupCodeOutcome.Success
             };
         };
+
+        connection.ReconnectHandler = async () =>
+        {
+            if (_connectionManager == null)
+                return new { reconnected = false, error = "Connection manager is not initialized" };
+
+            await _connectionManager.ReconnectAsync();
+            return new { reconnected = true };
+        };
+
+        connection.ReconnectNodeHandler = async () =>
+        {
+            if (_connectionManager == null)
+                return new { reconnected = false, error = "Connection manager is not initialized" };
+
+            await _connectionManager.ConnectNodeOnlyAsync();
+            return new { reconnected = true };
+        };
     }
 
     private bool RequiresSetup(SettingsManager settings)

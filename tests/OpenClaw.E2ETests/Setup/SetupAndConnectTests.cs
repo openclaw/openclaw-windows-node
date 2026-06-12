@@ -224,6 +224,7 @@ public class SetupAndConnectTests
         var nodes = await _fixture.RunInWslAsync("openclaw nodes list --json", TimeSpan.FromSeconds(30), env);
         AssertCommandSucceeded(nodes, "list gateway nodes");
         Console.WriteLine($"[E2E] openclaw nodes list --json:\n{nodes.Stdout}");
+        AssertNoPendingRequests(nodes.Stdout);
         Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -438,6 +439,64 @@ public class SetupAndConnectTests
     }
 
     [E2EFact]
+    public async Task ExternalLike_FreshTray_SharedTokenFlow_PairsOperatorAndNode()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        Assert.False(string.IsNullOrWhiteSpace(gateway.SharedGatewayToken));
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = gateway.SharedGatewayToken! };
+        var pendingBefore = await ReadPendingDeviceRequestIdsAsync(env);
+
+        await using var externalTray = await IsolatedTrayInstance.StartAsync(_fixture.ArtifactDir, "external-shared-token");
+        using var connectDoc = await externalTray.Client.CallToolExpectSuccessAsync(
+            "app.connection.connectSharedToken",
+            new { gatewayUrl = gateway.GatewayUrl, token = gateway.SharedGatewayToken });
+        var connect = connectDoc.RootElement;
+        Console.WriteLine($"[E2E] external shared-token connect response: {connect.GetRawText()}");
+        Assert.Equal("Success", connect.GetProperty("outcome").GetString());
+
+        await ApproveNewPendingDeviceRequestsUntilReadyAsync(env, pendingBefore, externalTray);
+        await externalTray.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+        await externalTray.WaitForNodeListReady(TimeSpan.FromSeconds(90));
+        AssertExternalTrayDurablePairing(externalTray);
+        await AssertGatewayCliStateHealthy();
+    }
+
+    [E2EFact]
+    public async Task ExternalLike_FreshTray_QrSetupCodeFlow_PairsOperatorAndNode()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        Assert.False(string.IsNullOrWhiteSpace(gateway.SharedGatewayToken));
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = gateway.SharedGatewayToken! };
+        var pendingBefore = await ReadPendingDeviceRequestIdsAsync(env);
+
+        var qr = await _fixture.RunInWslAsync(
+            "openclaw qr --json",
+            TimeSpan.FromSeconds(30),
+            env);
+        AssertCommandSucceeded(qr, "mint real gateway setup code for clean external-like tray");
+        using var qrDoc = JsonDocument.Parse(ExtractJsonObject(qr.Stdout));
+        var setupCode = qrDoc.RootElement.GetProperty("setupCode").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(setupCode));
+
+        await using var externalTray = await IsolatedTrayInstance.StartAsync(_fixture.ArtifactDir, "external-qr-clean");
+        using var applyDoc = await externalTray.Client.CallToolExpectSuccessAsync(
+            "app.connection.applySetupCode",
+            new { setupCode });
+        var apply = applyDoc.RootElement;
+        Console.WriteLine($"[E2E] external QR applySetupCode response: {apply.GetRawText()}");
+        Assert.Equal("Success", apply.GetProperty("outcome").GetString());
+
+        await ApproveAndReconnectQrOnlyTrayUntilNodeTokenAsync(env, pendingBefore, externalTray);
+        await externalTray.WaitForNodeListReady(TimeSpan.FromSeconds(90));
+        await ApproveNewPendingNodeRequestsUntilNoPendingAsync(env);
+        var credentials = externalTray.ReadCredentialState();
+        Assert.True(credentials.HasNodeToken, "Expected QR-only isolated tray node token after explicit approvals.");
+        Assert.True(credentials.HasOperatorToken, "Expected QR-only isolated tray operator token after explicit approval.");
+        Assert.Null(externalTray.ReadActiveGatewayRecord().SharedGatewayToken);
+        await AssertGatewayCliStateHealthy();
+    }
+
+    [E2EFact]
     public async Task RealGateway_BadSharedToken_DoesNotDestroyExistingPairing()
     {
         var before = _fixture.ReadActiveGatewayRecord();
@@ -584,6 +643,7 @@ public class SetupAndConnectTests
 
         var nodes = await _fixture.RunInWslAsync("openclaw nodes list --json", TimeSpan.FromSeconds(30), env);
         AssertCommandSucceeded(nodes, "list gateway nodes after reconnect");
+        AssertNoPendingRequests(nodes.Stdout);
         Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -614,6 +674,165 @@ public class SetupAndConnectTests
         }
 
         throw new TimeoutException($"Timed out waiting for pending device approval. Last output: {lastOutput}");
+    }
+
+    private async Task ApproveNewPendingDeviceRequestsUntilReadyAsync(
+        Dictionary<string, string> env,
+        HashSet<string> ignoredRequestIds,
+        IsolatedTrayInstance tray)
+    {
+        var approved = new HashSet<string>(ignoredRequestIds, StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        string lastDevicesOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            var credentials = tray.ReadCredentialState();
+            if (credentials.HasOperatorToken && credentials.HasNodeToken && !credentials.HasBootstrapToken)
+                return;
+
+            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
+            AssertCommandSucceeded(pendingDevices, "list pending device approvals for clean external-like tray");
+            lastDevicesOutput = pendingDevices.Stdout;
+            foreach (var requestId in ReadPendingRequestIds(pendingDevices.Stdout).Where(id => approved.Add(id)).ToArray())
+            {
+                var approve = await _fixture.RunInWslAsync(
+                    $"openclaw devices approve {ShellSingleQuote(requestId)} --json",
+                    TimeSpan.FromSeconds(30),
+                    env);
+                AssertCommandSucceeded(approve, $"approve external-like device request {requestId}");
+                Console.WriteLine($"[E2E] approved external-like device request {requestId}:\n{approve.Stdout}");
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Timed out waiting for clean external-like tray credentials. Last devices list: {lastDevicesOutput}");
+    }
+
+    private async Task ApproveNewPendingDeviceRequestsUntilNoPendingAsync(
+        Dictionary<string, string> env,
+        HashSet<string> ignoredRequestIds)
+    {
+        var approved = new HashSet<string>(ignoredRequestIds, StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        string lastDevicesOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
+            AssertCommandSucceeded(pendingDevices, "list pending device approvals for clean QR external-like tray");
+            lastDevicesOutput = pendingDevices.Stdout;
+            var pendingIds = ReadPendingRequestIds(pendingDevices.Stdout)
+                .Where(id => !ignoredRequestIds.Contains(id))
+                .ToArray();
+            if (pendingIds.Length == 0)
+                return;
+
+            foreach (var requestId in pendingIds.Where(id => approved.Add(id)))
+            {
+                var approve = await _fixture.RunInWslAsync(
+                    $"openclaw devices approve {ShellSingleQuote(requestId)} --json",
+                    TimeSpan.FromSeconds(30),
+                    env);
+                AssertCommandSucceeded(approve, $"approve clean QR device request {requestId}");
+                Console.WriteLine($"[E2E] approved clean QR device request {requestId}:\n{approve.Stdout}");
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Timed out waiting for clean QR external-like tray pending approvals to clear. Last devices list: {lastDevicesOutput}");
+    }
+
+    private async Task ApproveNewPendingNodeRequestsUntilNoPendingAsync(Dictionary<string, string> env)
+    {
+        var approved = new HashSet<string>(StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        string lastNodesOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            var pendingNodes = await _fixture.RunInWslAsync("openclaw nodes list --json", TimeSpan.FromSeconds(30), env);
+            AssertCommandSucceeded(pendingNodes, "list pending node approvals for clean QR external-like tray");
+            lastNodesOutput = pendingNodes.Stdout;
+            var pendingIds = ReadPendingRequestIds(pendingNodes.Stdout).ToArray();
+            if (pendingIds.Length == 0)
+                return;
+
+            foreach (var requestId in pendingIds.Where(id => approved.Add(id)))
+            {
+                var approve = await _fixture.RunInWslAsync(
+                    $"openclaw nodes approve {ShellSingleQuote(requestId)} --json",
+                    TimeSpan.FromSeconds(30),
+                    env);
+                AssertCommandSucceeded(approve, $"approve clean QR node request {requestId}");
+                Console.WriteLine($"[E2E] approved clean QR node request {requestId}:\n{approve.Stdout}");
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Timed out waiting for clean QR external-like tray node approvals to clear. Last nodes list: {lastNodesOutput}");
+    }
+
+    private async Task ApproveAndReconnectQrOnlyTrayUntilNodeTokenAsync(
+        Dictionary<string, string> env,
+        HashSet<string> ignoredRequestIds,
+        IsolatedTrayInstance tray)
+    {
+        var approved = new HashSet<string>(ignoredRequestIds, StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.AddSeconds(120);
+        string lastDevicesOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            var credentials = tray.ReadCredentialState();
+            if (credentials.HasNodeToken)
+            {
+                var pendingCheck = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
+                AssertCommandSucceeded(pendingCheck, "list pending device approvals after QR node token");
+                var remaining = ReadPendingRequestIds(pendingCheck.Stdout)
+                    .Where(id => !ignoredRequestIds.Contains(id))
+                    .ToArray();
+                if (remaining.Length == 0)
+                    return;
+            }
+
+            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
+            AssertCommandSucceeded(pendingDevices, "list pending device approvals for clean QR external-like tray");
+            lastDevicesOutput = pendingDevices.Stdout;
+            var approvedAny = false;
+            foreach (var requestId in ReadPendingRequestIds(pendingDevices.Stdout).Where(id => approved.Add(id)).ToArray())
+            {
+                var approve = await _fixture.RunInWslAsync(
+                    $"openclaw devices approve {ShellSingleQuote(requestId)} --json",
+                    TimeSpan.FromSeconds(30),
+                    env);
+                AssertCommandSucceeded(approve, $"approve clean QR device request {requestId}");
+                Console.WriteLine($"[E2E] approved clean QR device request {requestId}:\n{approve.Stdout}");
+                approvedAny = true;
+            }
+
+            if (approvedAny && !credentials.HasOperatorToken)
+            {
+                using var reconnectDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnect");
+                Assert.True(reconnectDoc.RootElement.GetProperty("reconnected").GetBoolean());
+            }
+            else if (approvedAny)
+            {
+                using var reconnectNodeDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+                Assert.True(reconnectNodeDoc.RootElement.GetProperty("reconnected").GetBoolean());
+            }
+
+            await Task.Delay(1000);
+        }
+
+        throw new TimeoutException($"Timed out waiting for clean QR external-like tray node token. Last devices list: {lastDevicesOutput}");
+    }
+
+    private static void AssertExternalTrayDurablePairing(IsolatedTrayInstance tray)
+    {
+        var credentials = tray.ReadCredentialState();
+        Assert.True(credentials.HasOperatorToken, "Expected isolated tray operator token after approval recovery.");
+        Assert.True(credentials.HasNodeToken, "Expected isolated tray node token after approval recovery.");
+        Assert.False(credentials.HasBootstrapToken, "Bootstrap token should be cleared after isolated tray role tokens are durable.");
     }
 
     private static HashSet<string> ReadPendingRequestIds(string output)

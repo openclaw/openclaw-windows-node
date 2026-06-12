@@ -1032,7 +1032,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
     }
 
-    public async Task RequestDevicePairListAsync()
+    public virtual async Task RequestDevicePairListAsync()
     {
         if (_devicePairListUnsupported) return;
         await SendTrackedRequestAsync("device.pair.list");

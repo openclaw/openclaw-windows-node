@@ -958,6 +958,32 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task DeviceTokenReceived_OperatorRole_AfterBootstrapConnect_ReconnectsUsingV2Signature()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "bs-secret"
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("bs-secret", true, CredentialResolver.SourceBootstrapToken);
+
+        await _manager.ConnectAsync("gw-1");
+        var lifecycle = _factory.CreatedClients[0];
+
+        var identityDir = _registry.GetIdentityDirectory("gw-1");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "op-device-token", ["operator.read"]);
+
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator", ["operator.read"]);
+
+        await WaitUntilAsync(() => _factory.CreatedClients.Count >= 2);
+        Assert.True(_factory.CreatedClients[1].DataClient.UseV2Signature);
+    }
+
+    [Fact]
     public async Task NodeDeviceTokenReceived_ClearsBootstrapWhenNodeTokenBecomesDurableAfterOperatorToken()
     {
         _registry.AddOrUpdate(new GatewayRecord

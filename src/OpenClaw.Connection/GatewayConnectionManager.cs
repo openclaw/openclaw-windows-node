@@ -281,6 +281,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (Interlocked.Read(ref _generation) != gen) return;
                 _ = HandlePairingRequiredAsync(requestId, gen);
             };
+            lifecycle.DataClient.NodePairListUpdated += (s, list) =>
+            {
+                if (Interlocked.Read(ref _generation) != gen) return;
+                _ = HandleNodePairListUpdatedAsync(list, gen);
+            };
+            lifecycle.DataClient.DevicePairListUpdated += (s, list) =>
+            {
+                if (Interlocked.Read(ref _generation) != gen) return;
+                _ = HandleDevicePairListUpdatedAsync(list, gen);
+            };
             lifecycle.DataClient.V2SignatureFallback += (s, _) =>
             {
                 if (Interlocked.Read(ref _generation) != gen) return;
@@ -863,6 +873,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var detail = hasOperatorToken
             ? "using persisted operator device token"
             : "using preserved shared gateway token";
+        RememberGatewayNeedsV2Signature(_activeGatewayRecordId);
         _diagnostics.Record("credential", "Bootstrap handoff complete — reconnecting operator role", detail);
 
         ScheduleDelayedReconnect(
@@ -1156,7 +1167,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Update node state in snapshot
             if (_nodeConnector != null)
             {
-                _stateMachine.SetNodeInfo(_nodeConnector.NodeDeviceId, _nodeConnector.PairingStatus);
+                var current = _stateMachine.Current;
+                if (_nodeConnector.PairingStatus == PairingStatus.Pending &&
+                    !string.IsNullOrWhiteSpace(current.NodePairingRequestId))
+                {
+                    _stateMachine.SetNodeInfo(
+                        _nodeConnector.NodeDeviceId,
+                        _nodeConnector.PairingStatus,
+                        current.NodePairingRequestId,
+                        current.NodePairingApprovalKind);
+                }
+                else
+                {
+                    _stateMachine.SetNodeInfo(_nodeConnector.NodeDeviceId, _nodeConnector.PairingStatus);
+                }
             }
 
             TryClearBootstrapTokenAfterDurablePairing();
@@ -1199,7 +1223,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Update snapshot
             if (_nodeConnector != null)
             {
-                _stateMachine.SetNodeInfo(_nodeConnector.NodeDeviceId, _nodeConnector.PairingStatus, e.RequestId);
+                _stateMachine.SetNodeInfo(
+                    _nodeConnector.NodeDeviceId,
+                    _nodeConnector.PairingStatus,
+                    e.RequestId,
+                    e.ApprovalKind);
             }
 
             TryClearBootstrapTokenAfterDurablePairing();
@@ -1210,82 +1238,139 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
 
-        // Auto-approve node pairing if operator has admin/pairing scope.
-        // _autoApproveInFlight is a CAS guard scoped to JUST the approve RPC —
-        // we release it before the reconnect delay so unrelated approvals
-        // (different requestIds) aren't starved while we wait for the gateway
-        // and node-reconnect handshake to settle (which can take 5–30s on
-        // first connect via WSL cold-start).
         if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId)
             && e.RequestId != _lastAutoApprovedRequestId)
         {
-            if (Interlocked.CompareExchange(ref _autoApproveInFlight, e.RequestId, null) != null)
-            {
-                return;
-            }
+            if (e.ApprovalKind == PairingApprovalKind.DevicePair)
+                _diagnostics.Record("node", "Node device role-upgrade pending", $"requestId={e.RequestId}");
 
-            var approvalGeneration = Interlocked.Read(ref _generation);
-            bool attemptedApprove = false;
-            bool approved = false;
-            try
+            await AutoApproveNodePairingRequestAsync(
+                e.RequestId,
+                e.ApprovalKind,
+                Interlocked.Read(ref _generation));
+        }
+    }
+
+    private async Task HandleNodePairListUpdatedAsync(PairingListInfo list, long gen)
+    {
+        var nodeDeviceId = _nodeConnector?.NodeDeviceId;
+        if (string.IsNullOrWhiteSpace(nodeDeviceId))
+            return;
+
+        var request = list.Pending.FirstOrDefault(p =>
+            !string.IsNullOrWhiteSpace(p.RequestId) &&
+            string.Equals(p.NodeId, nodeDeviceId, StringComparison.OrdinalIgnoreCase));
+        if (request == null || Interlocked.Read(ref _generation) != gen)
+            return;
+
+        _diagnostics.Record("node", "Local node-pair request is pending", $"requestId={request.RequestId}");
+        await AutoApproveNodePairingRequestAsync(request.RequestId, PairingApprovalKind.NodePair, gen);
+    }
+
+    private async Task HandleDevicePairListUpdatedAsync(DevicePairingListInfo list, long gen)
+    {
+        await Task.CompletedTask;
+    }
+
+    // Auto-approve node pairing if operator has admin/pairing scope.
+    // _autoApproveInFlight is a CAS guard scoped to JUST the approve RPC —
+    // we release it before the reconnect delay so unrelated approvals
+    // (different requestIds) aren't starved while we wait for the gateway
+    // and node-reconnect handshake to settle (which can take 5–30s on
+    // first connect via WSL cold-start).
+    private async Task AutoApproveNodePairingRequestAsync(
+        string requestId,
+        PairingApprovalKind approvalKind,
+        long approvalGeneration)
+    {
+        if (requestId == _lastAutoApprovedRequestId)
+            return;
+
+        if (Interlocked.CompareExchange(ref _autoApproveInFlight, requestId, null) != null)
+            return;
+
+        bool attemptedApprove = false;
+        bool approved = false;
+        try
+        {
+            var operatorClient = _activeLifecycle?.DataClient;
+            if (operatorClient?.IsConnectedToGateway == true)
             {
-                var operatorClient = _activeLifecycle?.DataClient;
-                if (operatorClient?.IsConnectedToGateway == true)
+                var scopes = operatorClient.GrantedOperatorScopes;
+                var canApprove = approvalKind == PairingApprovalKind.DevicePair
+                    ? OperatorScopeHelper.HasAdminScope(scopes)
+                    : OperatorScopeHelper.CanApproveDevices(scopes);
+
+                if (canApprove)
                 {
-                    var scopes = operatorClient.GrantedOperatorScopes;
-                    var canApprove = OperatorScopeHelper.CanApproveDevices(scopes);
-
-                    if (canApprove)
+                    var approvalLabel = approvalKind == PairingApprovalKind.DevicePair ? "device role-upgrade pairing" : "node pairing";
+                    _diagnostics.Record("node", $"Auto-approving {approvalLabel} (requestId={requestId})");
+                    try
                     {
-                        _diagnostics.Record("node", $"Auto-approving node pairing (requestId={e.RequestId})");
-                        try
+                        attemptedApprove = true;
+                        if (approvalKind == PairingApprovalKind.DevicePair)
                         {
-                            attemptedApprove = true;
-                            approved = await operatorClient.NodePairApproveAsync(e.RequestId);
-                            if (!approved && OperatorScopeHelper.HasAdminScope(scopes))
+                            approved = await operatorClient.DevicePairApproveAsync(requestId);
+                        }
+                        else
+                        {
+                            approved = await operatorClient.NodePairApproveAsync(requestId);
+                            if (!approved &&
+                                approvalKind == PairingApprovalKind.Unknown &&
+                                OperatorScopeHelper.HasAdminScope(scopes))
                             {
-                                _diagnostics.Record("node", "Node pair approval rejected — trying device role approval", $"requestId={e.RequestId}");
-                                approved = await operatorClient.DevicePairApproveAsync(e.RequestId);
-                            }
-                            if (!approved)
-                            {
-                                var detail = OperatorScopeHelper.HasAdminScope(scopes)
-                                    ? "Gateway rejected node.pair.approve; check requestId and gateway node-pair state."
-                                    : OperatorScopeHelper.CanApproveDevices(scopes)
-                                        ? "Gateway rejected node.pair.approve; Windows nodes with system.* commands require operator.admin."
-                                        : "Operator token lacks operator.pairing/operator.admin for node.pair.approve.";
-                                _diagnostics.Record("node", "Node auto-approval failed", detail);
+                                _diagnostics.Record("node", "Unknown pairing approval rejected as node-pair — trying device role approval", $"requestId={requestId}");
+                                approved = await operatorClient.DevicePairApproveAsync(requestId);
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            _logger.Warn($"[ConnMgr] Node auto-approve failed: {ex.Message}");
-                            _diagnostics.Record("node", $"Auto-approve error: {ex.Message}");
-                        }
+                        if (!approved)
+                            _diagnostics.Record("node", "Node auto-approval failed", BuildAutoApprovalFailureDetail(scopes, approvalKind));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"[ConnMgr] Node auto-approve failed: {ex.Message}");
+                        _diagnostics.Record("node", $"Auto-approve error: {ex.Message}");
                     }
                 }
-            }
-            finally
-            {
-                // Only dedupe after an actual approve attempt. If the operator
-                // client was disconnected or lacked scope, do not burn the
-                // requestId; a later Pending event can still retry once the
-                // operator client is ready or has approval scope.
-                if (attemptedApprove && Interlocked.Read(ref _generation) == approvalGeneration)
-                    _lastAutoApprovedRequestId = e.RequestId;
-                Interlocked.Exchange(ref _autoApproveInFlight, null);
-            }
-
-            // Post-approve reconnect happens OUTSIDE the CAS guard so it
-            // doesn't block unrelated approvals.
-            if (approved)
-            {
-                _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
-                await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
-                if (Interlocked.Read(ref _generation) == approvalGeneration)
-                    await StartNodeConnectionAsync();
+                else
+                {
+                    _diagnostics.Record("node", "Node auto-approval skipped", BuildAutoApprovalFailureDetail(scopes, approvalKind));
+                }
             }
         }
+        finally
+        {
+            // Only dedupe successful approvals. If the gateway rejects,
+            // times out, or throws while the same request is still pending,
+            // a later Pending event must be able to retry the same requestId.
+            if (attemptedApprove && approved && Interlocked.Read(ref _generation) == approvalGeneration)
+                _lastAutoApprovedRequestId = requestId;
+            Interlocked.Exchange(ref _autoApproveInFlight, null);
+        }
+
+        // Post-approve reconnect happens OUTSIDE the CAS guard so it
+        // doesn't block unrelated approvals.
+        if (approved)
+        {
+            _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
+            await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
+            if (Interlocked.Read(ref _generation) == approvalGeneration)
+                await StartNodeConnectionAsync();
+        }
+    }
+
+    private static string BuildAutoApprovalFailureDetail(IReadOnlyList<string> scopes, PairingApprovalKind approvalKind)
+    {
+        if (approvalKind == PairingApprovalKind.DevicePair)
+            return OperatorScopeHelper.HasAdminScope(scopes)
+                ? "Gateway rejected device.pair.approve; check requestId and gateway device-pair state."
+                : "Operator token lacks operator.admin for device.pair.approve role-upgrade approval.";
+
+        return OperatorScopeHelper.HasAdminScope(scopes)
+            ? "Gateway rejected node.pair.approve; check requestId and gateway node-pair state."
+            : OperatorScopeHelper.CanApproveDevices(scopes)
+                ? "Gateway rejected node.pair.approve; Windows nodes with system.* commands require operator.admin."
+                : "Operator token lacks operator.pairing/operator.admin for node.pair.approve.";
     }
 
     // ─── Helpers ───
