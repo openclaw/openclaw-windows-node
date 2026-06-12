@@ -89,6 +89,7 @@ public sealed partial class HubWindow : WindowEx
             IsClosed = true;
             _contentReady.TrySetResult(true);
             _gatewayNavHideTimer?.Stop();
+            TeardownSvgDiagnostics();
             if (AppModel != null)
                 AppModel.PropertyChanged -= OnAppModelChanged;
         };
@@ -98,6 +99,7 @@ public sealed partial class HubWindow : WindowEx
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         RootGrid.SizeChanged += OnRootGridSizeChanged;
+        InitializeSvgDiagnostics();
     }
 
     /// <summary>
