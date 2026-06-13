@@ -311,6 +311,7 @@ public class SetupAndConnectTests
         var gateway = _fixture.ReadActiveGatewayRecord();
         var env = GatewayTokenEnv(gateway.SharedGatewayToken);
         var pendingBefore = await ReadPendingDeviceRequestIdsAsync();
+        var pendingNodeBefore = await ReadPendingNodeRequestIdsAsync();
         var setupCode = await MintRealGatewaySetupCodeAsync(env, "mint real gateway setup code for external-like tray");
 
         await using var externalTray = await IsolatedTrayInstance.StartAsync(_fixture.ArtifactDir, "external-qr-only");
@@ -353,6 +354,15 @@ public class SetupAndConnectTests
 
         using var rejectDoc = await RejectDevicePairingFromConnectionPageAsync(requestId);
         Console.WriteLine($"[E2E] rejected external-like pending device request via Connection page: {rejectDoc.RootElement.GetRawText()}");
+
+        var nodeRequests = await ReadNewPendingNodeApprovalsUntilAsync(
+            pendingNodeBefore,
+            TimeSpan.FromSeconds(10));
+        foreach (var nodeRequest in nodeRequests)
+        {
+            using var rejectNodeDoc = await RejectNodePairingFromConnectionPageAsync(nodeRequest.RequestId);
+            Console.WriteLine($"[E2E] rejected external-like pending node-trust request via Connection page: {rejectNodeDoc.RootElement.GetRawText()}");
+        }
     }
 
     [E2EFact]
@@ -391,6 +401,7 @@ public class SetupAndConnectTests
         var gateway = _fixture.ReadActiveGatewayRecord();
         var sharedGatewayToken = RequireSharedGatewayToken(gateway.SharedGatewayToken);
         var pendingBefore = await ReadPendingDeviceRequestIdsAsync();
+        var pendingNodeBefore = await ReadPendingNodeRequestIdsAsync();
 
         await using var externalTray = await IsolatedTrayInstance.StartAsync(_fixture.ArtifactDir, "external-shared-token");
         using var connectDoc = await externalTray.Client.CallToolExpectSuccessAsync(
@@ -401,8 +412,22 @@ public class SetupAndConnectTests
         Assert.Equal("Success", connect.GetProperty("outcome").GetString());
 
         await ApproveNewPendingDeviceRequestsUntilReadyAsync(pendingBefore, externalTray);
+        var nodeRequest = Assert.Single(await ReadNewPendingNodeApprovalsUntilAsync(
+            pendingNodeBefore,
+            TimeSpan.FromSeconds(30)));
+        using (var approve = await ApproveNodePairingFromConnectionPageAsync(nodeRequest.RequestId))
+        {
+            Console.WriteLine($"[E2E] explicitly approved external node-trust request via Connection page: {approve.RootElement.GetRawText()}");
+        }
+
+        using var reconnectNode = await externalTray.Client.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+        Assert.True(reconnectNode.RootElement.GetProperty("reconnected").GetBoolean());
         await externalTray.WaitForConnectionReady(TimeSpan.FromSeconds(120));
-        await externalTray.WaitForNodeListReady(TimeSpan.FromSeconds(90));
+        await WaitForNodeEffectiveStateAsync(
+            externalTray.Client,
+            nodeRequest.NodeId,
+            new CapabilitiesConfig { Tts = false },
+            TimeSpan.FromSeconds(90));
         AssertExternalTrayDurablePairing(externalTray);
         await AssertGatewayCliStateHealthy();
     }
@@ -551,10 +576,63 @@ public class SetupAndConnectTests
     {
         await _fixture.WaitForConnectionReady();
         await _fixture.WaitForNodeListReady();
+        var nodeId = _fixture.ReadActiveGatewayDeviceId();
+        if (await ApprovePendingNodeTrustRequestsForHealthyStateAsync(nodeId))
+            await ReconnectPrimaryNodeAndWaitForEffectiveStateAsync(nodeId);
+
+        await AssertGatewayCliStateHealthy();
         using var statusDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.status");
         AssertReadyStatus(statusDoc.RootElement);
         AssertOperatorCanApproveNodeTrust(statusDoc.RootElement);
-        await AssertGatewayCliStateHealthy();
+    }
+
+    private async Task ReconnectPrimaryNodeAndWaitForEffectiveStateAsync(string nodeId)
+    {
+        using var reconnectNode = await _fixture.Client!.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+        Assert.True(reconnectNode.RootElement.GetProperty("reconnected").GetBoolean());
+        await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+        await WaitForNodeEffectiveStateAsync(
+            _fixture.Client!,
+            nodeId,
+            new CapabilitiesConfig(),
+            TimeSpan.FromSeconds(90));
+    }
+
+    private async Task<bool> ApprovePendingNodeTrustRequestsForHealthyStateAsync(string nodeId)
+    {
+        var approvedRequestIds = new HashSet<string>(StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        DateTime? quietSince = null;
+        string lastOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastOutput = approvals.RootElement.GetRawText();
+            var requests = ReadPendingNodeApprovals(approvals.RootElement)
+                .Where(request => string.Equals(request.NodeId, nodeId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            foreach (var request in requests.Where(request => approvedRequestIds.Add(request.RequestId)))
+            {
+                using var approve = await ApproveNodePairingFromConnectionPageAsync(request.RequestId);
+                Console.WriteLine($"[E2E] explicitly approved pending node-trust request via Connection page: {approve.RootElement.GetRawText()}");
+            }
+
+            if (requests.Length > 0)
+            {
+                quietSince = null;
+            }
+            else
+            {
+                quietSince ??= DateTime.UtcNow;
+                if (DateTime.UtcNow - quietSince >= TimeSpan.FromSeconds(3))
+                    return approvedRequestIds.Count > 0;
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException(
+            $"Timed out waiting for pending node approvals for {nodeId} to remain clear. Last output: {lastOutput}");
     }
 
     private async Task<string> MintRealGatewaySetupCodeAsync(Dictionary<string, string> env, string description)
@@ -583,6 +661,34 @@ public class SetupAndConnectTests
     {
         using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
         return ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId");
+    }
+
+    private async Task<HashSet<string>> ReadPendingNodeRequestIdsAsync()
+    {
+        using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+        return ReadPendingNodeApprovals(approvals.RootElement)
+            .Select(request => request.RequestId)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private async Task<IReadOnlyList<PendingNodeApproval>> ReadNewPendingNodeApprovalsUntilAsync(
+        HashSet<string> ignoredRequestIds,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            var requests = ReadPendingNodeApprovals(approvals.RootElement)
+                .Where(request => !ignoredRequestIds.Contains(request.RequestId))
+                .ToArray();
+            if (requests.Length > 0)
+                return requests;
+
+            await Task.Delay(500);
+        }
+
+        return Array.Empty<PendingNodeApproval>();
     }
 
     private async Task<string> WaitForFirstPendingDeviceRequestIdAsync(
@@ -691,6 +797,17 @@ public class SetupAndConnectTests
         return doc;
     }
 
+    private async Task<JsonDocument> RejectNodePairingFromConnectionPageAsync(string requestId)
+    {
+        await NavigateAdminTrayToConnectionPageAsync();
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.rejectNodePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "node", "reject", requestId);
+        return doc;
+    }
+
     private async Task NavigateAdminTrayToConnectionPageAsync()
     {
         using var navigate = await _fixture.Client!.CallToolExpectSuccessAsync(
@@ -740,6 +857,70 @@ public class SetupAndConnectTests
         return ids;
     }
 
+    private static IReadOnlyList<PendingNodeApproval> ReadPendingNodeApprovals(JsonElement root)
+    {
+        if (!root.TryGetProperty("nodePending", out var pending) ||
+            pending.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<PendingNodeApproval>();
+        }
+
+        return pending.EnumerateArray()
+            .Select(request => new PendingNodeApproval(
+                ReadNonEmptyStringProperty(request, "RequestId") ?? "",
+                ReadNonEmptyStringProperty(request, "NodeId") ?? ""))
+            .Where(request => request.RequestId.Length > 0 && request.NodeId.Length > 0)
+            .ToArray();
+    }
+
+    private static async Task WaitForNodeEffectiveStateAsync(
+        McpClient client,
+        string nodeId,
+        CapabilitiesConfig expected,
+        TimeSpan timeout)
+    {
+        var expectedCapabilities = expected
+            .GetEnabledCapabilities()
+            .Select(capability => capability.Category)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var expectedCommands = expected
+            .GetEnabledCommandIds()
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var deadline = DateTime.UtcNow.Add(timeout);
+        string lastResponse = "<none>";
+
+        while (DateTime.UtcNow < deadline)
+        {
+            using var doc = await client.CallToolExpectSuccessAsync("app.nodes");
+            var root = doc.RootElement;
+            lastResponse = root.GetRawText();
+            var node = root.ValueKind == JsonValueKind.Array
+                ? root.EnumerateArray().FirstOrDefault(candidate =>
+                    string.Equals(
+                        ReadNonEmptyStringProperty(candidate, "NodeId"),
+                        nodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                : default;
+            if (node.ValueKind == JsonValueKind.Object &&
+                node.TryGetProperty("IsOnline", out var online) &&
+                online.GetBoolean() &&
+                node.TryGetProperty("Capabilities", out var capabilities) &&
+                node.TryGetProperty("Commands", out var commands) &&
+                expectedCapabilities.SequenceEqual(ReadStringArray(capabilities), StringComparer.OrdinalIgnoreCase) &&
+                expectedCommands.SequenceEqual(ReadStringArray(commands), StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException(
+            $"Node {nodeId} did not reconnect with its approved effective capabilities and commands. Last app.nodes response: {lastResponse}");
+    }
+
     private static string? ReadNonEmptyStringProperty(JsonElement element, string propertyName)
     {
         if (element.TryGetProperty(propertyName, out var property) &&
@@ -777,6 +958,8 @@ public class SetupAndConnectTests
         Assert.True(start >= 0 && end > start, $"Expected JSON object in output: {output}");
         return output[start..(end + 1)];
     }
+
+    private sealed record PendingNodeApproval(string RequestId, string NodeId);
 
     private static void AssertJsonPath(JsonElement root, string[] path, string expected)
     {
