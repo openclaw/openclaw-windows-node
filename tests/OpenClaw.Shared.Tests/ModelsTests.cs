@@ -1406,6 +1406,19 @@ public class CommandCenterModelTests
     }
 
     [Fact]
+    public void BuildUnknownPairingDiscoveryCommands_IncludesBothApprovalQueues()
+    {
+        var commands = CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands();
+
+        Assert.Equal(
+            string.Join(Environment.NewLine, "openclaw nodes pending", "openclaw devices list"),
+            commands);
+        Assert.DoesNotContain("#", commands);
+        Assert.DoesNotContain("<", commands);
+        Assert.DoesNotContain(">", commands);
+    }
+
+    [Fact]
     public void TryBuildNodeApprovalCommand_DistinguishesApprovalFromDiscovery()
     {
         Assert.True(CommandCenterDiagnostics.TryBuildNodeApprovalCommand(

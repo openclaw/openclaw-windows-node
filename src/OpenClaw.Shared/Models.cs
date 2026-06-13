@@ -1243,6 +1243,9 @@ public static class CommandCenterDiagnostics
             : "openclaw nodes pending";
     }
 
+    public static string BuildUnknownPairingDiscoveryCommands() =>
+        string.Join(Environment.NewLine, "openclaw nodes pending", "openclaw devices list");
+
     public static bool TryBuildNodeApprovalCommand(
         string? pendingRequestId,
         out string approvalCommand)

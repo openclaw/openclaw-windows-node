@@ -21,8 +21,9 @@ public sealed class ConnectionPageNodeApprovalSourceTests
         Assert.Contains(
             "PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId)",
             builderSource);
-        Assert.Contains("_ => \"openclaw nodes pending\"", builderSource);
+        Assert.Contains("_ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()", builderSource);
         Assert.Contains("node.UnverifiedDeclaredCommands.Contains(\"browser.proxy\"", builderSource);
+        Assert.Contains("node.LocalDeclaredCommands.Contains(\"browser.proxy\"", builderSource);
         Assert.Contains(
             "NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind",
             appSource);

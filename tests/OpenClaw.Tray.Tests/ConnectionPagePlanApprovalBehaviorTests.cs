@@ -109,7 +109,9 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
         var plan = Build(PairingApprovalKind.Unknown, localNode: null, requestId: "ambiguous-request");
 
         Assert.Equal(NodeCardState.OnNodePairingRequired, plan.NodeCard);
-        Assert.Equal("openclaw devices list", plan.NodeApproveCommand);
+        Assert.Equal(
+            CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands(),
+            plan.NodeApproveCommand);
         Assert.Null(plan.NodeTrustApproveCommand);
         Assert.False(plan.NodeTrustCommandApprovesRequest);
     }

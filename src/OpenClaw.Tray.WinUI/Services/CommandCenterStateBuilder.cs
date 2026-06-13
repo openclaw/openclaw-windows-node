@@ -66,7 +66,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 PairingApprovalKind.DevicePair => $"openclaw devices approve {_snapshot.NodeService.FullDeviceId}",
                 PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId),
-                _ => "openclaw nodes pending"
+                _ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()
             };
             warnings.Add(new GatewayDiagnosticWarning
             {
@@ -203,7 +203,8 @@ internal sealed class CommandCenterStateBuilder
         if (_snapshot.Settings?.NodeBrowserProxyEnabled == false ||
             !nodes.Any(node =>
                 node.BrowserApprovedCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase) ||
-                node.UnverifiedDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
+                node.UnverifiedDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase) ||
+                node.LocalDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
         {
             yield break;
         }

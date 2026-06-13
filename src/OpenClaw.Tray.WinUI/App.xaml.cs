@@ -2076,7 +2076,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 {
                     OpenClaw.Shared.PairingApprovalKind.DevicePair => BuildPairingApprovalCommand(args.DeviceId),
                     OpenClaw.Shared.PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId),
-                    _ => "openclaw nodes pending"
+                    _ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()
                 };
                 ShowPairingPendingNotification(args.DeviceId, approvalCommand);
             }

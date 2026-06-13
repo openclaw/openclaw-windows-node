@@ -650,7 +650,7 @@ internal sealed record ConnectionPagePlan
                 : "openclaw nodes pending";
         }
 
-        return "openclaw devices list";
+        return CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands();
     }
 
     private static string? BuildDevicePairingApproveCommand(GatewayConnectionSnapshot snap)

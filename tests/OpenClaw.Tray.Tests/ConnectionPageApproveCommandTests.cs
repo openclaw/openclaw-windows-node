@@ -42,11 +42,13 @@ public sealed class ConnectionPageApproveCommandTests
     }
 
     [Fact]
-    public void UnknownNodePairingKind_UsesDiscoveryEvenWithRequestId()
+    public void UnknownNodePairingKind_UsesBothDiscoveryQueuesEvenWithRequestId()
     {
         var plan = BuildNodePairingPlan("ambiguous-request", PairingApprovalKind.Unknown);
 
-        AssertShellSafeCommand("openclaw devices list", plan.NodeApproveCommand);
+        AssertShellSafeCommand(
+            CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands(),
+            plan.NodeApproveCommand);
         Assert.Null(plan.NodeTrustApproveCommand);
         Assert.False(plan.NodeTrustCommandApprovesRequest);
     }
