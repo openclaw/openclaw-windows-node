@@ -147,6 +147,36 @@ public class NodePairAutoApproveTests : IDisposable
         Assert.Equal(["device.pair.approve"], client.ApprovalMethodsCalled);
     }
 
+    [Fact]
+    public async Task ExplicitDevicePairRequest_SameRequestId_CanBeApprovedAgainAfterPairingCompletes()
+    {
+        using var manager = CreateConnectedManager();
+        var client = GetConnectedClient(["operator.admin"]);
+        var connectCountBeforeApproval = _nodeConnector.ConnectCount;
+
+        var firstApprovalDone = client.WaitForApprovalCallAsync();
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "reused-request",
+            approvalKind: PairingApprovalKind.DevicePair);
+        await firstApprovalDone;
+        await WaitUntilAsync(() => _nodeConnector.ConnectCount > connectCountBeforeApproval);
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FirePairingStatusChanged(PairingStatus.Paired));
+
+        var secondApprovalDone = client.WaitForApprovalCallAsync();
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "reused-request",
+            approvalKind: PairingApprovalKind.DevicePair);
+        await secondApprovalDone;
+
+        Assert.Equal(
+            ["device.pair.approve", "device.pair.approve"],
+            client.ApprovalMethodsCalled);
+    }
+
     private TrackingGatewayClient GetConnectedClient(string[] scopes)
     {
         var lifecycle = _factory.CreatedClients[0];

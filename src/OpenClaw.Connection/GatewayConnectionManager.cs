@@ -1226,6 +1226,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 case PairingStatus.Paired:
                     _stateMachine.TryTransition(ConnectionTrigger.NodePaired);
+                    Interlocked.Exchange(ref _lastAutoApprovedDevicePairRequestId, null);
                     break;
                 case PairingStatus.Pending:
                     _stateMachine.TryTransition(ConnectionTrigger.NodePairingRequired);
