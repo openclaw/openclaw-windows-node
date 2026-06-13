@@ -363,6 +363,17 @@ public class NodePairAutoApproveTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
+        }
+
         public Task DisconnectAsync() => Task.CompletedTask;
 
         public void FireStatusChanged(ConnectionStatus status)

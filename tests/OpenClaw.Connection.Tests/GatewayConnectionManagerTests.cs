@@ -600,6 +600,8 @@ public class GatewayConnectionManagerTests : IDisposable
         await manager.ConnectAsync("gw-1");
         await InvokeHandshakeSucceededAsync(manager);
         var operatorLifecycle = Assert.Single(_factory.CreatedClients);
+        var stateChangedCount = 0;
+        manager.StateChanged += (_, _) => Interlocked.Increment(ref stateChangedCount);
 
         var firstConnect = manager.ConnectNodeOnlyAsync();
         await node.FirstConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -608,8 +610,9 @@ public class GatewayConnectionManagerTests : IDisposable
         await Task.WhenAll(firstConnect, replacementConnect).WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.False(operatorLifecycle.IsDisposed);
+        Assert.True(node.FirstConnectCancelled.Task.IsCompleted);
         Assert.Equal(2, node.ConnectCount);
-        Assert.Equal(2, node.DisconnectCount);
+        Assert.Equal(1, stateChangedCount);
     }
 
     [Theory]
@@ -1188,6 +1191,17 @@ public class GatewayConnectionManagerTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
+        }
+
         public Task DisconnectAsync() => Task.CompletedTask;
 
         public void Dispose() { }
@@ -1195,13 +1209,13 @@ public class GatewayConnectionManagerTests : IDisposable
 
     private sealed class SupersedingNodeConnector : INodeConnector
     {
-        private readonly TaskCompletionSource<bool> _releaseFirstConnect =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _connectCount;
 
         public TaskCompletionSource<bool> FirstConnectStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int ConnectCount { get; private set; }
-        public int DisconnectCount { get; private set; }
+        public TaskCompletionSource<bool> FirstConnectCancelled { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int ConnectCount => Volatile.Read(ref _connectCount);
         public bool IsConnected => ConnectCount > 1;
         public PairingStatus PairingStatus => IsConnected ? PairingStatus.Paired : PairingStatus.Pending;
         public string? NodeDeviceId => "superseding-node";
@@ -1218,25 +1232,35 @@ public class GatewayConnectionManagerTests : IDisposable
             string gatewayUrl,
             GatewayCredential credential,
             string identityPath,
-            bool useV2Signature = false)
+            bool useV2Signature,
+            CancellationToken cancellationToken)
         {
-            ConnectCount++;
-            if (ConnectCount == 1)
+            var connectNumber = Interlocked.Increment(ref _connectCount);
+            if (connectNumber == 1)
             {
                 FirstConnectStarted.SetResult(true);
-                await _releaseFirstConnect.Task;
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    FirstConnectCancelled.SetResult(true);
+                    throw;
+                }
             }
         }
 
-        public Task DisconnectAsync()
-        {
-            DisconnectCount++;
-            if (FirstConnectStarted.Task.IsCompleted)
-                _releaseFirstConnect.TrySetResult(true);
-            return Task.CompletedTask;
-        }
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature = false) =>
+            ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature, CancellationToken.None);
 
-        public void Dispose() => _releaseFirstConnect.TrySetResult(true);
+        public Task DisconnectAsync() => Task.CompletedTask;
+
+        public void Dispose() { }
     }
 
     private sealed class BlockingNodeDisconnectConnector : INodeConnector
@@ -1258,6 +1282,17 @@ public class GatewayConnectionManagerTests : IDisposable
 
         public Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)
             => Task.CompletedTask;
+
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
+        }
 
         public async Task DisconnectAsync()
         {
@@ -1330,6 +1365,17 @@ public class GatewayConnectionManagerTests : IDisposable
             LastGatewayUrl = gatewayUrl;
             ConnectAction?.Invoke(this, gatewayUrl);
             return Task.CompletedTask;
+        }
+
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
         }
 
         public Task DisconnectAsync()

@@ -11,6 +11,8 @@ public sealed class NodeConnector : INodeConnector
 {
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
+    private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
+    private CancellationTokenRegistration _connectionCancellationRegistration;
     private WindowsNodeClient? _client;
     private long _clientGeneration;
     private bool _disposed;
@@ -40,11 +42,49 @@ public sealed class NodeConnector : INodeConnector
     /// <summary>The underlying node client, for capability registration by NodeService.</summary>
     public WindowsNodeClient? Client => _client;
 
-    public async Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)
+    public Task ConnectAsync(
+        string gatewayUrl,
+        GatewayCredential credential,
+        string identityPath,
+        bool useV2Signature = false) =>
+        ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature, CancellationToken.None);
+
+    public async Task ConnectAsync(
+        string gatewayUrl,
+        GatewayCredential credential,
+        string identityPath,
+        bool useV2Signature,
+        CancellationToken cancellationToken)
     {
         if (_disposed) return;
 
-        DisconnectInternal();
+        await _connectSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await ConnectCoreAsync(
+                gatewayUrl,
+                credential,
+                identityPath,
+                useV2Signature,
+                cancellationToken);
+        }
+        finally
+        {
+            _connectSemaphore.Release();
+        }
+    }
+
+    private async Task ConnectCoreAsync(
+        string gatewayUrl,
+        GatewayCredential credential,
+        string identityPath,
+        bool useV2Signature,
+        CancellationToken cancellationToken)
+    {
+        if (_disposed) return;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        DisconnectCurrentClient();
         var generation = Interlocked.Increment(ref _clientGeneration);
 
         Mode = NodeConnectionMode.Gateway;
@@ -55,16 +95,21 @@ public sealed class NodeConnector : INodeConnector
             ? new DiagnosticTeeLogger(_logger, _diagnostics)
             : _logger;
 
-        _client = new WindowsNodeClient(
+        var client = new WindowsNodeClient(
             gatewayUrl,
             credential.IsBootstrapToken ? "" : credential.Token,
             identityPath,
             nodeLogger,
             bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
+        _client = client;
 
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
         if (useV2Signature)
-            _client.UseV2Signature = true;
+            client.UseV2Signature = true;
+
+        _connectionCancellationRegistration = cancellationToken.Register(
+            () => DisconnectIfCurrent(generation));
+        cancellationToken.ThrowIfCancellationRequested();
 
         // CRITICAL: fire ClientCreated BEFORE await _client.ConnectAsync() so subscribers
         // (NodeService) can register capabilities synchronously. WindowsNodeClient
@@ -76,29 +121,29 @@ public sealed class NodeConnector : INodeConnector
             ClientCreated?.Invoke(
                 this,
                 new NodeClientCreatedEventArgs(
-                    _client,
+                    client,
                     credential.IsBootstrapToken ? null : credential.Token));
         }
         catch (Exception ex)
         {
             _logger.Warn($"[NodeConnector] ClientCreated handler threw: {ex.Message}");
             _diagnostics?.Record("node", "ClientCreated handler failed; node connection aborted before handshake", ex.Message);
-            DisconnectInternal();
+            DisconnectCurrentClient();
             StatusChanged?.Invoke(this, ConnectionStatus.Error);
             return;
         }
 
-        _client.StatusChanged += (s, e) =>
+        client.StatusChanged += (s, e) =>
         {
             if (IsCurrentClient(s, generation))
                 StatusChanged?.Invoke(this, e);
         };
-        _client.PairingStatusChanged += (s, e) =>
+        client.PairingStatusChanged += (s, e) =>
         {
             if (IsCurrentClient(s, generation))
                 PairingStatusChanged?.Invoke(this, e);
         };
-        _client.DeviceTokenReceived += (s, e) =>
+        client.DeviceTokenReceived += (s, e) =>
         {
             if (IsCurrentClient(s, generation))
                 DeviceTokenReceived?.Invoke(this, e);
@@ -106,7 +151,12 @@ public sealed class NodeConnector : INodeConnector
 
         try
         {
-            await _client.ConnectAsync();
+            await client.ConnectAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -116,13 +166,26 @@ public sealed class NodeConnector : INodeConnector
 
     public Task DisconnectAsync()
     {
-        DisconnectInternal();
+        DisconnectCurrentClient();
         return Task.CompletedTask;
     }
 
     private bool IsCurrentClient(object? sender, long generation) =>
         Interlocked.Read(ref _clientGeneration) == generation &&
         ReferenceEquals(sender, _client);
+
+    private void DisconnectIfCurrent(long generation)
+    {
+        if (Interlocked.Read(ref _clientGeneration) == generation)
+            DisconnectInternal();
+    }
+
+    private void DisconnectCurrentClient()
+    {
+        _connectionCancellationRegistration.Dispose();
+        _connectionCancellationRegistration = default;
+        DisconnectInternal();
+    }
 
     private void DisconnectInternal()
     {
@@ -141,6 +204,6 @@ public sealed class NodeConnector : INodeConnector
     {
         if (_disposed) return;
         _disposed = true;
-        DisconnectInternal();
+        DisconnectCurrentClient();
     }
 }

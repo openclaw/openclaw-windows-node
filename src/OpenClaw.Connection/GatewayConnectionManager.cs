@@ -23,10 +23,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
+    private readonly object _nodeOperationLock = new();
     private readonly object _disposeLock = new();
 
     private long _generation;
     private CancellationTokenSource? _operationCts;
+    private long _nodeConnectionGeneration;
+    private CancellationTokenSource? _nodeOperationCts;
     private IGatewayClientLifecycle? _activeLifecycle;
     private string? _activeIdentityPath; // identity directory for the active connection
     private string? _activeGatewayRecordId; // gateway record ID for node credential resolution
@@ -1080,6 +1083,41 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private async Task<bool> StartNodeConnectionAsync()
     {
+        if (_disposed)
+            return false;
+
+        var nodeOperationCts = new CancellationTokenSource();
+        CancellationTokenSource? oldNodeOperationCts;
+        long nodeGeneration;
+        lock (_nodeOperationLock)
+        {
+            nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
+            oldNodeOperationCts = _nodeOperationCts;
+            _nodeOperationCts = nodeOperationCts;
+        }
+        oldNodeOperationCts?.Cancel();
+        oldNodeOperationCts?.Dispose();
+
+        try
+        {
+            return await StartNodeConnectionCoreAsync(nodeGeneration, nodeOperationCts.Token);
+        }
+        catch (OperationCanceledException) when (nodeOperationCts.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
+    private async Task<bool> StartNodeConnectionCoreAsync(
+        long nodeGeneration,
+        CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested ||
+            Interlocked.Read(ref _nodeConnectionGeneration) != nodeGeneration)
+        {
+            return false;
+        }
+
         if (_nodeConnector == null || _activeGatewayRecordId == null || _activeIdentityPath == null) return false;
 
         var record = _registry.GetById(_activeGatewayRecordId);
@@ -1100,7 +1138,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         // Mark node as enabled in the state machine so UI reflects node state
         // State machine is not thread-safe — acquire semaphore for mutation
-        await _transitionSemaphore.WaitAsync();
+        await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
             _stateMachine.SetNodeEnabled(true);
@@ -1108,6 +1146,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         finally
         {
             _transitionSemaphore.Release();
+        }
+
+        if (cancellationToken.IsCancellationRequested ||
+            Interlocked.Read(ref _nodeConnectionGeneration) != nodeGeneration)
+        {
+            return false;
         }
 
         var nodeConnectUrl = record.SshTunnel != null
@@ -1119,22 +1163,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         try
         {
-            // A reconnect must retire the previous node client before creating its
-            // replacement. Keep the operator lifecycle alive, but do not allow an
-            // approval-era node handshake to race the new attempt.
-            await _nodeConnector.DisconnectAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"[ConnMgr] Previous node disconnect failed: {ex.Message}");
-            _diagnostics.Record("node", "Previous node disconnect failed", ex.Message);
-            return false;
-        }
-
-        try
-        {
             await _nodeConnector.ConnectAsync(nodeConnectUrl, nodeCredential, _activeIdentityPath,
-                useV2Signature: _gatewayNeedsV2Signature);
+                useV2Signature: _gatewayNeedsV2Signature,
+                cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
         }
         catch (Exception ex)
         {
@@ -1142,7 +1177,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _diagnostics.Record("node", "Node connect failed", ex.Message);
         }
 
-        return true;
+        return !cancellationToken.IsCancellationRequested &&
+            Interlocked.Read(ref _nodeConnectionGeneration) == nodeGeneration;
     }
 
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status) =>
@@ -1434,6 +1470,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private async Task DisposeActiveClientAsync()
     {
+        CancelNodeConnectionOperation();
+
         // Disconnect node first, but do not block the caller thread; shutdown
         // and reconnect paths await this with a bounded timeout.
         if (_nodeConnector != null)
@@ -1458,6 +1496,19 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             });
             old.Dispose();
         }
+    }
+
+    private void CancelNodeConnectionOperation()
+    {
+        CancellationTokenSource? nodeOperationCts;
+        lock (_nodeOperationLock)
+        {
+            Interlocked.Increment(ref _nodeConnectionGeneration);
+            nodeOperationCts = _nodeOperationCts;
+            _nodeOperationCts = null;
+        }
+        nodeOperationCts?.Cancel();
+        nodeOperationCts?.Dispose();
     }
 
     private async Task WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
