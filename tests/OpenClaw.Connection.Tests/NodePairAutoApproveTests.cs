@@ -148,6 +148,55 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
+    public async Task ExplicitDevicePairRequest_PendingDuringReconnect_QueuesOneBoundedRetry()
+    {
+        var firstDelayStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDelay = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayCount = 0;
+        Task ReconnectDelay(TimeSpan _)
+        {
+            if (Interlocked.Increment(ref delayCount) == 1)
+            {
+                firstDelayStarted.SetResult(true);
+                return releaseFirstDelay.Task;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        using var manager = CreateConnectedManager(ReconnectDelay);
+        var client = GetConnectedClient(["operator.admin"]);
+        var connectCountBeforeApproval = _nodeConnector.ConnectCount;
+
+        var approvalDone = client.WaitForApprovalCallAsync();
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "req-device-role-upgrade",
+            approvalKind: PairingApprovalKind.DevicePair);
+        await approvalDone;
+        await firstDelayStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await FireAndWait(manager, () =>
+            _nodeConnector.FirePairingStatusChanged(
+                PairingStatus.Pending,
+                requestId: "req-device-role-upgrade",
+                approvalKind: PairingApprovalKind.DevicePair));
+        await FireAndWait(manager, () =>
+            _nodeConnector.FirePairingStatusChanged(
+                PairingStatus.Pending,
+                requestId: "req-device-role-upgrade",
+                approvalKind: PairingApprovalKind.DevicePair));
+        releaseFirstDelay.SetResult(true);
+
+        await WaitUntilAsync(() => _nodeConnector.ConnectCount >= connectCountBeforeApproval + 2);
+        await Task.Delay(50);
+
+        Assert.Equal(connectCountBeforeApproval + 2, _nodeConnector.ConnectCount);
+        Assert.Equal(2, Volatile.Read(ref delayCount));
+        Assert.Equal(["device.pair.approve"], client.ApprovalMethodsCalled);
+    }
+
+    [Fact]
     public async Task ExplicitDevicePairRequest_SameRequestId_CanBeApprovedAgainAfterPairingCompletes()
     {
         using var manager = CreateConnectedManager();
@@ -185,7 +234,7 @@ public class NodePairAutoApproveTests : IDisposable
         return lifecycle.TrackingClient;
     }
 
-    private GatewayConnectionManager CreateConnectedManager()
+    private GatewayConnectionManager CreateConnectedManager(Func<TimeSpan, Task>? reconnectDelay = null)
     {
         _registry.AddOrUpdate(new GatewayRecord { Id = "gw1", Url = "wss://test" });
         _registry.SetActive("gw1");
@@ -198,7 +247,7 @@ public class NodePairAutoApproveTests : IDisposable
             _resolver, _factory, _registry, NullLogger.Instance,
             nodeConnector: _nodeConnector,
             isNodeEnabled: () => true,
-            reconnectDelay: _ => Task.CompletedTask);
+            reconnectDelay: reconnectDelay ?? (_ => Task.CompletedTask));
 
         manager.ConnectAsync("gw1").GetAwaiter().GetResult();
         return manager;

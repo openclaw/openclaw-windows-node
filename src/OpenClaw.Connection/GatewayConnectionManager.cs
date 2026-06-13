@@ -24,6 +24,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
     private readonly object _nodeOperationLock = new();
+    private readonly object _devicePairReconnectLock = new();
     private readonly object _disposeLock = new();
 
     private long _generation;
@@ -40,7 +41,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _operatorTokenRecoveryAttemptedGatewayId;
     private string? _lastAutoApprovedDevicePairRequestId; // prevent role-upgrade auto-approve loops
     private string? _devicePairAutoApproveInFlight; // atomic guard against concurrent approval of same requestId
-    private string? _devicePairReconnectInFlight; // reconnect-only retry guard for an already-approved requestId
+    private bool _devicePairReconnectInFlight;
+    private bool _devicePairReconnectRetryAccepted;
+    private string? _queuedDevicePairReconnectRequestId;
+    private long _queuedDevicePairReconnectGeneration;
     private string? _forceBootstrapForGatewayRecordId;
     private bool _activeConnectUsedBootstrapToken;
     private bool _postBootstrapOperatorReconnectScheduled;
@@ -1436,20 +1440,87 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         string requestId,
         long approvalGeneration)
     {
-        if (Interlocked.CompareExchange(ref _devicePairReconnectInFlight, requestId, null) != null)
-            return;
+        var ownsReconnect = false;
+        var queuedRetry = false;
+        lock (_devicePairReconnectLock)
+        {
+            if (_devicePairReconnectInFlight)
+            {
+                if (!_devicePairReconnectRetryAccepted)
+                {
+                    _devicePairReconnectRetryAccepted = true;
+                    _queuedDevicePairReconnectRequestId = requestId;
+                    _queuedDevicePairReconnectGeneration = approvalGeneration;
+                    queuedRetry = true;
+                }
+            }
+            else
+            {
+                _devicePairReconnectInFlight = true;
+                _devicePairReconnectRetryAccepted = false;
+                _queuedDevicePairReconnectRequestId = null;
+                _queuedDevicePairReconnectGeneration = 0;
+                ownsReconnect = true;
+            }
+        }
 
+        if (!ownsReconnect)
+        {
+            if (queuedRetry)
+                _diagnostics.Record("node", "Device role-upgrade reconnect retry queued");
+            return;
+        }
+
+        var guardOwned = true;
         try
         {
-            _diagnostics.Record("node", "Device role-upgrade pairing approved — reconnecting node");
-            await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
-            if (Interlocked.Read(ref _generation) == approvalGeneration)
-                await StartNodeConnectionAsync();
+            await RunDevicePairReconnectAttemptAsync(approvalGeneration);
+
+            string? retryRequestId;
+            long retryGeneration;
+            lock (_devicePairReconnectLock)
+            {
+                retryRequestId = _queuedDevicePairReconnectRequestId;
+                retryGeneration = _queuedDevicePairReconnectGeneration;
+                if (retryRequestId == null)
+                {
+                    _devicePairReconnectInFlight = false;
+                    _devicePairReconnectRetryAccepted = false;
+                    _queuedDevicePairReconnectGeneration = 0;
+                    guardOwned = false;
+                }
+            }
+
+            if (retryRequestId != null)
+            {
+                _diagnostics.Record(
+                    "node",
+                    "Retrying device role-upgrade reconnect after repeated pending signal",
+                    $"requestId={retryRequestId}");
+                await RunDevicePairReconnectAttemptAsync(retryGeneration);
+            }
         }
         finally
         {
-            Interlocked.CompareExchange(ref _devicePairReconnectInFlight, null, requestId);
+            if (guardOwned)
+            {
+                lock (_devicePairReconnectLock)
+                {
+                    _devicePairReconnectInFlight = false;
+                    _devicePairReconnectRetryAccepted = false;
+                    _queuedDevicePairReconnectRequestId = null;
+                    _queuedDevicePairReconnectGeneration = 0;
+                }
+            }
         }
+    }
+
+    private async Task RunDevicePairReconnectAttemptAsync(long approvalGeneration)
+    {
+        _diagnostics.Record("node", "Device role-upgrade pairing approved — reconnecting node");
+        await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
+        if (Interlocked.Read(ref _generation) == approvalGeneration)
+            await StartNodeConnectionAsync();
     }
 
     private static string BuildDeviceAutoApprovalFailureDetail(IReadOnlyList<string> scopes) =>
@@ -1486,7 +1557,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _activeSshTunnel = null;
         _lastAutoApprovedDevicePairRequestId = null;
         Interlocked.Exchange(ref _devicePairAutoApproveInFlight, null);
-        Interlocked.Exchange(ref _devicePairReconnectInFlight, null);
+        lock (_devicePairReconnectLock)
+        {
+            _devicePairReconnectRetryAccepted = false;
+            _queuedDevicePairReconnectRequestId = null;
+            _queuedDevicePairReconnectGeneration = 0;
+        }
         if (old != null)
         {
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs
