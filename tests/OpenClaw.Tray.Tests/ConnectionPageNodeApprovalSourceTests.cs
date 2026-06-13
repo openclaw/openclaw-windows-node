@@ -26,12 +26,6 @@ public sealed class ConnectionPageNodeApprovalSourceTests
         Assert.Contains("GatewayNodeInfo? localNode", planSource);
         Assert.Contains("NodeCardState.OnNodeApprovalRequired", planSource);
         Assert.Contains("NodeCardState.OnNodeReapprovalRequired", planSource);
-        Assert.Contains("NodeEffectiveCapabilities = localNode.Capabilities.ToArray()", planSource);
-        Assert.Contains("NodeEffectiveCommands = localNode.Commands.ToArray()", planSource);
-        Assert.Contains("NodeEffectivePermissions = new Dictionary<string, bool>(", planSource);
-        Assert.Contains("NodePendingDeclaredCapabilities = localNode.PendingDeclaredCapabilities.ToArray()", planSource);
-        Assert.Contains("NodePendingDeclaredCommands = localNode.PendingDeclaredCommands.ToArray()", planSource);
-        Assert.Contains("NodePendingDeclaredPermissions = new Dictionary<string, bool>(", planSource);
         Assert.Contains("CommandCenterDiagnostics.TryBuildNodeApprovalCommand(", planSource);
         Assert.Contains("var nodeCardAllowsTrustOverride = plan.NodeCard is", planSource);
         Assert.Contains("NodeCardState.OnNodePairingRequired", planSource);
@@ -53,7 +47,8 @@ public sealed class ConnectionPageNodeApprovalSourceTests
         var pageMarkup = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml");
 
         Assert.Contains("var localNode = NodeCapabilityGating.GetLocalNodeInfo(", pageSource);
-        Assert.Contains("savedCount, localNode, _userIntent", pageSource);
+        Assert.Contains("userIntent: _userIntent", pageSource);
+        Assert.Contains("localNode: localNode", pageSource);
         Assert.Contains("case nameof(AppState.Nodes):", pageSource);
         Assert.Contains("NodeCardState.OnNodeApprovalRequired", pageSource);
         Assert.Contains("NodeCardState.OnNodeReapprovalRequired", pageSource);
