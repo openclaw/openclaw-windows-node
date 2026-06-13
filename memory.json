@@ -1,8 +1,8 @@
 {
   "last_run": "2026-06-13",
-  "last_run_id": "27452404232",
+  "last_run_id": "27467329232",
   "monthly_activity_issue": 618,
-  "backlog_comment_cursor": 727,
+  "backlog_comment_cursor": 729,
   "open_repo_assist_prs": [
     "#717",
     "#718",
@@ -20,9 +20,17 @@
       "date": "2026-06-10",
       "note": "Pointed to PR #648 for Teams channel timeout fix."
     },
+    "661": {
+      "date": "2026-06-13",
+      "note": "Noted v0.6.3 runtime verification by TurboTheTurtle; suggested closure."
+    },
     "662": {
       "date": "2026-06-11",
       "note": "Root cause: PairOperatorStep missing Windows-side health check. Fix PR #743 submitted."
+    },
+    "667": {
+      "date": "2026-06-12",
+      "note": "Summarized connection/pairing (PR #741) and TTS crash (PR #745) fixes."
     },
     "669": {
       "date": "2026-06-10",
@@ -32,9 +40,9 @@
       "date": "2026-06-11",
       "note": "Identified device-pair plugin not loaded in gateway CLI <2026.6.0. Fix PR submitted."
     },
-    "667": {
-      "date": "2026-06-12",
-      "note": "Summarized connection/pairing (PR #741) and TTS crash (PR #745) fixes."
+    "682": {
+      "date": "2026-06-13",
+      "note": "Root cause is gateway-side (unbound method in LM Studio wizard). Upstream PR at openclaw/openclaw#90429."
     },
     "688": {
       "date": "2026-06-08",
@@ -52,13 +60,17 @@
       "date": "2026-06-08",
       "note": "Root cause confirmed. Fix PR #717 and #718 submitted."
     },
+    "710": {
+      "date": "2026-06-13",
+      "note": "Summarized what PR #741 covers (scoping, stuck UI, token forwarding) vs. remaining gateway-side work."
+    },
     "720": {
       "date": "2026-06-08",
-      "note": "Root cause confirmed: GatewayClientFactory.Create() bootstrapPairAsNode issue. PR #721 closed."
+      "note": "Root cause confirmed: GatewayClientFactory.Create() bootstrapPairAsNode issue. PR #721 closed. fuller-stack-dev verified fixed by #741 on 2026-06-12."
     },
     "727": {
       "date": "2026-06-11",
-      "note": "Follow-up: asked which setup step fails on v0.6.3."
+      "note": "Follow-up: asked which setup step fails on v0.6.3. User confirmed v0.6.3, no further response."
     },
     "729": {
       "date": "2026-06-10",
@@ -67,10 +79,6 @@
     "730": {
       "date": "2026-06-09",
       "note": "Confirmed root cause. Issue closed by maintainer."
-    },
-    "710": {
-      "date": "2026-06-13",
-      "note": "Summarized what PR #741 covers (scoping, stuck UI, token forwarding) vs. remaining gateway-side work (unknown requestId, token rotation)."
     }
   },
   "fix_attempts": {
@@ -100,7 +108,7 @@
       "pr": 743,
       "status": "open",
       "date": "2026-06-11",
-      "note": "Rebased on main 2026-06-13 after #741 merge. Conflict in SetupStepsTests.cs resolved by keeping both new tests."
+      "note": "Rebased on main 2026-06-13 (run 27467329232). Only 2 files changed: SetupSteps.cs and SetupStepsTests.cs. No ci.yml. Tests: SetupEngine 248 passed (1 pre-existing Linux failure), Shared 2229 passed, Tray 1049 passed."
     },
     "677": {
       "branch": "repo-assist/eng-device-pair-plugin-not-found-2026-06-11-8f330ecd7f643284",
@@ -124,5 +132,9 @@
     }
   },
   "merged_prs": ["#722"],
-  "notes": "Run 2026-06-13: Task 6 rebased PR #743 (conflict with #741 in SetupStepsTests.cs, resolved); Task 2 commented on #710 (PR #741 coverage summary). PR #722 was merged into main. Next: monitor PRs #718/#728 which may overlap with #741."
+  "known_fixed_issues": {
+    "661": "fixed in PR #666 (merged), verified in v0.6.3 by TurboTheTurtle on 2026-06-13",
+    "720": "fixed in PR #741 (merged), verified by fuller-stack-dev on 2026-06-12"
+  },
+  "notes": "Run 2026-06-13 (27467329232): Rebased PR #743 cleanly on main (no ci.yml); commented on #661 (v0.6.3 verified) and #682 (gateway-side root cause). Issues #661 and #720 are fixed on main and in v0.6.3 - ready for maintainer closure. Issue #754 protected files warning resolved by clean rebase."
 }
