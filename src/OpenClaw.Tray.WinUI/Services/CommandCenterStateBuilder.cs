@@ -43,6 +43,9 @@ internal sealed class CommandCenterStateBuilder
                 string.Equals(node.NodeId, localNodeId, StringComparison.OrdinalIgnoreCase) &&
                 node.ApprovalState is GatewayNodeApprovalState.PendingApproval or
                     GatewayNodeApprovalState.PendingReapproval);
+        var shouldShowPendingLocalNodeApproval =
+            _snapshot.NodePairingApprovalKind == PairingApprovalKind.DevicePair ||
+            !hasAuthoritativePendingLocalNodeTrust;
         warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
         warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel));
         warnings.AddRange(BuildBrowserProxyAuthWarnings(nodes));
@@ -58,7 +61,7 @@ internal sealed class CommandCenterStateBuilder
             });
         }
 
-        if (!hasAuthoritativePendingLocalNodeTrust &&
+        if (shouldShowPendingLocalNodeApproval &&
             _snapshot.NodeService?.IsPendingApproval == true &&
             !string.IsNullOrWhiteSpace(_snapshot.NodeService.FullDeviceId))
         {

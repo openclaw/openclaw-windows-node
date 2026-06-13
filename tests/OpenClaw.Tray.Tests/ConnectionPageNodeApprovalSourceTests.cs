@@ -16,7 +16,10 @@ public sealed class ConnectionPageNodeApprovalSourceTests
         Assert.DoesNotContain("NodeCapabilityHealthInfo.FromNode(localNode)", builderSource);
         Assert.Contains("var hasAuthoritativePendingLocalNodeTrust =", builderSource);
         Assert.Contains("string.Equals(node.NodeId, localNodeId, StringComparison.OrdinalIgnoreCase)", builderSource);
-        Assert.Contains("if (!hasAuthoritativePendingLocalNodeTrust &&", builderSource);
+        Assert.Contains("var shouldShowPendingLocalNodeApproval =", builderSource);
+        Assert.Contains("_snapshot.NodePairingApprovalKind == PairingApprovalKind.DevicePair ||", builderSource);
+        Assert.Contains("!hasAuthoritativePendingLocalNodeTrust;", builderSource);
+        Assert.Contains("if (shouldShowPendingLocalNodeApproval &&", builderSource);
         Assert.Contains("_snapshot.NodePairingApprovalKind switch", builderSource);
         Assert.Contains(
             "PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId)",
