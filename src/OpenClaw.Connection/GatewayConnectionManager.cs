@@ -45,6 +45,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Dictionary<string, int> _devicePairReconnectAttempts = new(StringComparer.Ordinal);
     private string? _queuedDevicePairReconnectRequestId;
     private long _queuedDevicePairReconnectGeneration;
+    private long _queuedDevicePairReconnectNodeGeneration;
     private string? _forceBootstrapForGatewayRecordId;
     private bool _activeConnectUsedBootstrapToken;
     private bool _postBootstrapOperatorReconnectScheduled;
@@ -133,8 +134,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (!preparedGeneration.HasValue)
             return;
 
-        var started = await StartNodeConnectionAsync(preparedGeneration.Value);
-        if (started)
+        var startedGeneration = await StartNodeConnectionAsync(preparedGeneration.Value);
+        if (startedGeneration.HasValue)
             EmitStateChanged(prevState);
     }
 
@@ -1037,7 +1038,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         StateChanged += Handler;
         try
         {
-            var startAttempted = await StartNodeConnectionAsync(Interlocked.Read(ref _generation));
+            var startAttempted = (await StartNodeConnectionAsync(Interlocked.Read(ref _generation))).HasValue;
 
             if (!startAttempted)
             {
@@ -1090,7 +1091,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         return _isNodeEnabled?.Invoke() ?? false;
     }
 
-    private async Task<bool> StartNodeConnectionAsync(long expectedLifecycleGeneration)
+    private bool IsCurrentNodeAttempt(long lifecycleGeneration, long nodeGeneration) =>
+        !_disposed &&
+        Interlocked.Read(ref _generation) == lifecycleGeneration &&
+        Interlocked.Read(ref _nodeConnectionGeneration) == nodeGeneration;
+
+    private async Task<long?> StartNodeConnectionAsync(
+        long expectedLifecycleGeneration,
+        long? expectedNodeGeneration = null)
     {
         CancellationTokenSource nodeOperationCts;
         CancellationTokenSource? oldNodeOperationCts;
@@ -1098,9 +1106,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         lock (_nodeOperationLock)
         {
             if (_disposed ||
-                Interlocked.Read(ref _generation) != expectedLifecycleGeneration)
+                Interlocked.Read(ref _generation) != expectedLifecycleGeneration ||
+                (expectedNodeGeneration.HasValue &&
+                 Interlocked.Read(ref _nodeConnectionGeneration) != expectedNodeGeneration.Value))
             {
-                return false;
+                return null;
             }
 
             nodeOperationCts = new CancellationTokenSource();
@@ -1113,11 +1123,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         try
         {
-            return await StartNodeConnectionCoreAsync(nodeGeneration, nodeOperationCts.Token);
+            return await StartNodeConnectionCoreAsync(nodeGeneration, nodeOperationCts.Token)
+                ? nodeGeneration
+                : null;
         }
         catch (OperationCanceledException) when (nodeOperationCts.IsCancellationRequested)
         {
-            return false;
+            return null;
         }
     }
 
@@ -1276,20 +1288,33 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e) =>
+    private void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e)
+    {
+        var lifecycleGeneration = Interlocked.Read(ref _generation);
+        var nodeGeneration = Interlocked.Read(ref _nodeConnectionGeneration);
         AsyncEventHandlerGuard.Run(
-            () => OnNodePairingStatusChangedAsync(e),
+            () => OnNodePairingStatusChangedAsync(e, lifecycleGeneration, nodeGeneration),
             _logger,
             nameof(OnNodePairingStatusChanged),
             ex => _diagnostics.Record("node", "Node pairing handler failed", ex.Message));
+    }
 
-    private async Task OnNodePairingStatusChangedAsync(PairingStatusEventArgs e)
+    private async Task OnNodePairingStatusChangedAsync(
+        PairingStatusEventArgs e,
+        long lifecycleGeneration,
+        long nodeGeneration)
     {
+        if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+            return;
+
         _diagnostics.Record("node", $"Node pairing: {e.Status}");
 
         await _transitionSemaphore.WaitAsync();
         try
         {
+            if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+                return;
+
             var prev = _stateMachine.Current.OverallState;
             switch (e.Status)
             {
@@ -1301,6 +1326,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         _devicePairReconnectAttempts.Clear();
                         _queuedDevicePairReconnectRequestId = null;
                         _queuedDevicePairReconnectGeneration = 0;
+                        _queuedDevicePairReconnectNodeGeneration = 0;
                     }
                     break;
                 case PairingStatus.Pending:
@@ -1331,6 +1357,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId))
         {
+            if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+                return;
+
             if (e.ApprovalKind == PairingApprovalKind.DevicePair)
             {
                 _diagnostics.Record("node", "Node device role-upgrade pending", $"requestId={e.RequestId}");
@@ -1338,13 +1367,15 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 {
                     await AutoApproveDevicePairingRequestAsync(
                         e.RequestId,
-                        Interlocked.Read(ref _generation));
+                        lifecycleGeneration,
+                        nodeGeneration);
                 }
                 else
                 {
                     await ReconnectAfterApprovedDevicePairAsync(
                         e.RequestId,
-                        Interlocked.Read(ref _generation));
+                        lifecycleGeneration,
+                        nodeGeneration);
                 }
             }
             else
@@ -1399,10 +1430,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     // first connect via WSL cold-start).
     private async Task AutoApproveDevicePairingRequestAsync(
         string requestId,
-        long approvalGeneration)
+        long approvalGeneration,
+        long approvalNodeGeneration)
     {
-        if (requestId == _lastAutoApprovedDevicePairRequestId)
+        if (requestId == _lastAutoApprovedDevicePairRequestId ||
+            !IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+        {
             return;
+        }
 
         if (Interlocked.CompareExchange(ref _devicePairAutoApproveInFlight, requestId, null) != null)
             return;
@@ -1411,6 +1446,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         bool approved = false;
         try
         {
+            if (!IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+                return;
+
             var operatorClient = _activeLifecycle?.DataClient;
             if (operatorClient?.IsConnectedToGateway == true)
             {
@@ -1444,23 +1482,34 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Only dedupe successful approvals. If the gateway rejects,
             // times out, or throws while the same request is still pending,
             // a later Pending event must be able to retry the same requestId.
-            if (attemptedApprove && approved && Interlocked.Read(ref _generation) == approvalGeneration)
+            if (attemptedApprove &&
+                approved &&
+                IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+            {
                 _lastAutoApprovedDevicePairRequestId = requestId;
+            }
             Interlocked.Exchange(ref _devicePairAutoApproveInFlight, null);
         }
 
         // Post-approve reconnect happens OUTSIDE the CAS guard so it
         // doesn't block unrelated approvals.
-        if (approved)
+        if (approved && IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
         {
-            await ReconnectAfterApprovedDevicePairAsync(requestId, approvalGeneration);
+            await ReconnectAfterApprovedDevicePairAsync(
+                requestId,
+                approvalGeneration,
+                approvalNodeGeneration);
         }
     }
 
     private async Task ReconnectAfterApprovedDevicePairAsync(
         string requestId,
-        long approvalGeneration)
+        long approvalGeneration,
+        long approvalNodeGeneration)
     {
+        if (!IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+            return;
+
         var ownsReconnect = false;
         var queuedRetry = false;
         lock (_devicePairReconnectLock)
@@ -1476,6 +1525,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _devicePairReconnectAttempts[requestId] = attemptCount + 1;
                     _queuedDevicePairReconnectRequestId = requestId;
                     _queuedDevicePairReconnectGeneration = approvalGeneration;
+                    _queuedDevicePairReconnectNodeGeneration = approvalNodeGeneration;
                     queuedRetry = true;
                 }
             }
@@ -1497,18 +1547,26 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var guardOwned = true;
         try
         {
-            await RunDevicePairReconnectAttemptAsync(approvalGeneration);
+            var startedNodeGeneration = await RunDevicePairReconnectAttemptAsync(
+                approvalGeneration,
+                approvalNodeGeneration);
+            AdvanceQueuedDevicePairReconnectNodeGeneration(
+                approvalNodeGeneration,
+                startedNodeGeneration);
 
             while (true)
             {
                 string? retryRequestId;
                 long retryGeneration;
+                long retryNodeGeneration;
                 lock (_devicePairReconnectLock)
                 {
                     retryRequestId = _queuedDevicePairReconnectRequestId;
                     retryGeneration = _queuedDevicePairReconnectGeneration;
+                    retryNodeGeneration = _queuedDevicePairReconnectNodeGeneration;
                     _queuedDevicePairReconnectRequestId = null;
                     _queuedDevicePairReconnectGeneration = 0;
+                    _queuedDevicePairReconnectNodeGeneration = 0;
                     if (retryRequestId == null)
                     {
                         _devicePairReconnectInFlight = false;
@@ -1521,7 +1579,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     "node",
                     "Retrying device role-upgrade reconnect after repeated pending signal",
                     $"requestId={retryRequestId}");
-                await RunDevicePairReconnectAttemptAsync(retryGeneration);
+                startedNodeGeneration = await RunDevicePairReconnectAttemptAsync(
+                    retryGeneration,
+                    retryNodeGeneration);
+                AdvanceQueuedDevicePairReconnectNodeGeneration(
+                    retryNodeGeneration,
+                    startedNodeGeneration);
             }
         }
         finally
@@ -1533,17 +1596,36 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _devicePairReconnectInFlight = false;
                     _queuedDevicePairReconnectRequestId = null;
                     _queuedDevicePairReconnectGeneration = 0;
+                    _queuedDevicePairReconnectNodeGeneration = 0;
                 }
             }
         }
     }
 
-    private async Task RunDevicePairReconnectAttemptAsync(long approvalGeneration)
+    private void AdvanceQueuedDevicePairReconnectNodeGeneration(
+        long previousNodeGeneration,
+        long? startedNodeGeneration)
+    {
+        if (!startedNodeGeneration.HasValue)
+            return;
+
+        lock (_devicePairReconnectLock)
+        {
+            if (_queuedDevicePairReconnectRequestId != null &&
+                _queuedDevicePairReconnectNodeGeneration == previousNodeGeneration)
+            {
+                _queuedDevicePairReconnectNodeGeneration = startedNodeGeneration.Value;
+            }
+        }
+    }
+
+    private async Task<long?> RunDevicePairReconnectAttemptAsync(
+        long approvalGeneration,
+        long approvalNodeGeneration)
     {
         _diagnostics.Record("node", "Device role-upgrade pairing approved — reconnecting node");
         await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
-        if (Interlocked.Read(ref _generation) == approvalGeneration)
-            await StartNodeConnectionAsync(approvalGeneration);
+        return await StartNodeConnectionAsync(approvalGeneration, approvalNodeGeneration);
     }
 
     private static string BuildDeviceAutoApprovalFailureDetail(IReadOnlyList<string> scopes) =>
@@ -1585,6 +1667,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _devicePairReconnectAttempts.Clear();
             _queuedDevicePairReconnectRequestId = null;
             _queuedDevicePairReconnectGeneration = 0;
+            _queuedDevicePairReconnectNodeGeneration = 0;
         }
         if (old != null)
         {

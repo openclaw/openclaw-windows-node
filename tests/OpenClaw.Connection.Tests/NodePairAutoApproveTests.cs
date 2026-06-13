@@ -292,6 +292,67 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
+    public async Task ExplicitDevicePairRequest_ManualReconnectDuringDelay_DoesNotSupersedeManualAttempt()
+    {
+        var delayStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDelay = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var manager = CreateConnectedManager(_ =>
+        {
+            delayStarted.SetResult(true);
+            return releaseDelay.Task;
+        });
+        var client = GetConnectedClient(["operator.admin"]);
+        await MarkOperatorConnectedAsync(manager);
+        var operatorClient = manager.OperatorClient;
+
+        var approvalDone = client.WaitForApprovalCallAsync();
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "req-device-role-upgrade",
+            approvalKind: PairingApprovalKind.DevicePair);
+        await approvalDone;
+        await delayStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await manager.ConnectNodeOnlyAsync();
+        var connectCountAfterManualReconnect = _nodeConnector.ConnectCount;
+        Assert.Same(operatorClient, manager.OperatorClient);
+        releaseDelay.SetResult(true);
+        await Task.Delay(50);
+
+        Assert.Equal(connectCountAfterManualReconnect, _nodeConnector.ConnectCount);
+    }
+
+    [Fact]
+    public async Task ExplicitDevicePairRequest_ApprovalCompletesAfterManualReconnect_DoesNotReconnectAgain()
+    {
+        using var manager = CreateConnectedManager();
+        var client = GetConnectedClient(["operator.admin"]);
+        await MarkOperatorConnectedAsync(manager);
+        var operatorClient = manager.OperatorClient;
+        var approvalStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseApproval = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.DevicePairApproveOverride = _ =>
+        {
+            approvalStarted.SetResult(true);
+            return releaseApproval.Task;
+        };
+
+        _nodeConnector.FirePairingStatusChanged(
+            PairingStatus.Pending,
+            requestId: "req-device-role-upgrade",
+            approvalKind: PairingApprovalKind.DevicePair);
+        await approvalStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await manager.ConnectNodeOnlyAsync();
+        var connectCountAfterManualReconnect = _nodeConnector.ConnectCount;
+        Assert.Same(operatorClient, manager.OperatorClient);
+        releaseApproval.SetResult(true);
+        await Task.Delay(50);
+
+        Assert.Equal(connectCountAfterManualReconnect, _nodeConnector.ConnectCount);
+    }
+
+    [Fact]
     public async Task ExplicitDevicePairRequest_SameRequestId_CanBeApprovedAgainAfterPairingCompletes()
     {
         using var manager = CreateConnectedManager();
@@ -376,6 +437,21 @@ public class NodePairAutoApproveTests : IDisposable
         Assert.True(condition(), "Condition was not met before timeout.");
     }
 
+    private static async Task MarkOperatorConnectedAsync(GatewayConnectionManager manager)
+    {
+        var generationField = typeof(GatewayConnectionManager).GetField(
+            "_generation",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var handshakeMethod = typeof(GatewayConnectionManager).GetMethod(
+            "HandleHandshakeSucceededAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(generationField);
+        Assert.NotNull(handshakeMethod);
+
+        var generation = Assert.IsType<long>(generationField!.GetValue(manager));
+        await Assert.IsAssignableFrom<Task>(handshakeMethod!.Invoke(manager, [generation]));
+    }
+
     private sealed class MockCredentialResolver : ICredentialResolver
     {
         public GatewayCredential? OperatorCredential { get; set; }
@@ -424,6 +500,7 @@ public class NodePairAutoApproveTests : IDisposable
         private TaskCompletionSource? _approvalSignal;
 
         public IReadOnlyList<string> ApprovalMethodsCalled => _approvalMethodsCalled;
+        public Func<string, Task<bool>>? DevicePairApproveOverride { get; set; }
 
         public TrackingGatewayClient(string url)
             : base(url, "mock-token", NullLogger.Instance) { }
@@ -471,7 +548,7 @@ public class NodePairAutoApproveTests : IDisposable
         {
             _approvalMethodsCalled.Add("device.pair.approve");
             _approvalSignal?.TrySetResult();
-            return Task.FromResult(true);
+            return DevicePairApproveOverride?.Invoke(requestId) ?? Task.FromResult(true);
         }
     }
 
