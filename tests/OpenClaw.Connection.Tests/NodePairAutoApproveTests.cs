@@ -353,6 +353,22 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
+    public async Task ManualReconnect_RetiresOldNodeBeforePublishingReplacementAttempt()
+    {
+        using var manager = CreateConnectedManager();
+        var client = GetConnectedClient(["operator.admin"]);
+        await MarkOperatorConnectedAsync(manager);
+        var operatorClient = manager.OperatorClient;
+        _nodeConnector.EmitRetiredDevicePairingOnReplacementConnect = true;
+
+        await manager.ConnectNodeOnlyAsync();
+        await Task.Delay(50);
+
+        Assert.Same(operatorClient, manager.OperatorClient);
+        Assert.Empty(client.ApprovalMethodsCalled);
+    }
+
+    [Fact]
     public async Task ExplicitDevicePairRequest_SameRequestId_CanBeApprovedAgainAfterPairingCompletes()
     {
         using var manager = CreateConnectedManager();
@@ -557,9 +573,11 @@ public class NodePairAutoApproveTests : IDisposable
         public bool IsConnected { get; private set; }
         public int ConnectCount { get; private set; }
         public int ConnectFailuresRemaining { get; set; }
+        public bool EmitRetiredDevicePairingOnReplacementConnect { get; set; }
         public PairingStatus PairingStatus { get; set; } = PairingStatus.Unknown;
         public string? NodeDeviceId { get; set; }
         public NodeConnectionMode Mode { get; set; } = NodeConnectionMode.Disabled;
+        private bool _currentClientRetired = true;
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
@@ -574,7 +592,17 @@ public class NodePairAutoApproveTests : IDisposable
             string identityPath,
             bool useV2Signature = false)
         {
+            if (EmitRetiredDevicePairingOnReplacementConnect && !_currentClientRetired)
+            {
+                PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(
+                    PairingStatus.Pending,
+                    NodeDeviceId ?? "test-node",
+                    requestId: "retired-device-pair",
+                    approvalKind: PairingApprovalKind.DevicePair));
+            }
+
             ConnectCount++;
+            _currentClientRetired = false;
             Mode = NodeConnectionMode.Gateway;
             if (ConnectFailuresRemaining > 0)
             {
@@ -595,7 +623,11 @@ public class NodePairAutoApproveTests : IDisposable
             return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
         }
 
-        public Task DisconnectAsync() => Task.CompletedTask;
+        public Task DisconnectAsync()
+        {
+            _currentClientRetired = true;
+            return Task.CompletedTask;
+        }
 
         public void FireStatusChanged(ConnectionStatus status)
         {

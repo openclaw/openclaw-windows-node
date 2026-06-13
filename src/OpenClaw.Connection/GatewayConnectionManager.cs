@@ -23,6 +23,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
+    private readonly SemaphoreSlim _nodeStartSemaphore = new(1, 1);
     private readonly object _nodeOperationLock = new();
     private readonly object _devicePairReconnectLock = new();
     private readonly object _disposeLock = new();
@@ -1101,37 +1102,81 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         long? expectedNodeGeneration = null)
     {
         CancellationTokenSource nodeOperationCts;
-        CancellationTokenSource? oldNodeOperationCts;
+        CancellationToken nodeOperationToken;
         long nodeGeneration;
-        lock (_nodeOperationLock)
+
+        await _nodeStartSemaphore.WaitAsync();
+        try
         {
-            if (_disposed ||
-                Interlocked.Read(ref _generation) != expectedLifecycleGeneration ||
-                (expectedNodeGeneration.HasValue &&
-                 Interlocked.Read(ref _nodeConnectionGeneration) != expectedNodeGeneration.Value))
+            CancellationTokenSource? oldNodeOperationCts;
+            lock (_nodeOperationLock)
             {
-                return null;
+                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, expectedNodeGeneration))
+                    return null;
+
+                oldNodeOperationCts = _nodeOperationCts;
+                _nodeOperationCts = null;
+                oldNodeOperationCts?.Cancel();
             }
 
-            nodeOperationCts = new CancellationTokenSource();
-            nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
-            oldNodeOperationCts = _nodeOperationCts;
-            _nodeOperationCts = nodeOperationCts;
+            if (_nodeConnector != null)
+            {
+                try
+                {
+                    await _nodeConnector.DisconnectAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"[ConnMgr] Previous node disconnect failed: {ex.Message}");
+                    _diagnostics.Record("node", "Previous node disconnect failed", ex.Message);
+                    return null;
+                }
+            }
+
+            lock (_nodeOperationLock)
+            {
+                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, expectedNodeGeneration))
+                    return null;
+
+                nodeOperationCts = new CancellationTokenSource();
+                nodeOperationToken = nodeOperationCts.Token;
+                nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
+                _nodeOperationCts = nodeOperationCts;
+            }
         }
-        oldNodeOperationCts?.Cancel();
-        oldNodeOperationCts?.Dispose();
+        finally
+        {
+            _nodeStartSemaphore.Release();
+        }
 
         try
         {
-            return await StartNodeConnectionCoreAsync(nodeGeneration, nodeOperationCts.Token)
+            return await StartNodeConnectionCoreAsync(nodeGeneration, nodeOperationToken)
                 ? nodeGeneration
                 : null;
         }
-        catch (OperationCanceledException) when (nodeOperationCts.IsCancellationRequested)
+        catch (OperationCanceledException) when (nodeOperationToken.IsCancellationRequested)
         {
             return null;
         }
+        finally
+        {
+            lock (_nodeOperationLock)
+            {
+                if (ReferenceEquals(_nodeOperationCts, nodeOperationCts))
+                    _nodeOperationCts = null;
+            }
+            nodeOperationCts.Dispose();
+        }
     }
+
+    private bool IsExpectedNodeStartCurrent(
+        long expectedLifecycleGeneration,
+        long? expectedNodeGeneration) =>
+        !_disposed &&
+        Interlocked.Read(ref _generation) == expectedLifecycleGeneration &&
+        (!expectedNodeGeneration.HasValue ||
+         Interlocked.Read(ref _nodeConnectionGeneration) == expectedNodeGeneration.Value);
 
     private async Task<bool> StartNodeConnectionCoreAsync(
         long nodeGeneration,
@@ -1646,14 +1691,26 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private async Task DisposeActiveClientAsync()
     {
-        CancelNodeConnectionOperation();
-
-        // Disconnect node first, but do not block the caller thread; shutdown
-        // and reconnect paths await this with a bounded timeout.
-        if (_nodeConnector != null)
+        await _nodeStartSemaphore.WaitAsync();
+        try
         {
-            try { await WaitWithTimeoutAsync(_nodeConnector.DisconnectAsync(), TimeSpan.FromSeconds(2), "Node disconnect"); }
-            catch (Exception ex) { _logger.Warn($"[ConnMgr] Node disconnect error: {ex.Message}"); }
+            CancelNodeConnectionOperation();
+
+            // Retire the connector before advancing the manager generation so
+            // events from the old client cannot be tagged as belonging to the
+            // replacement attempt.
+            if (_nodeConnector != null)
+            {
+                try { await WaitWithTimeoutAsync(_nodeConnector.DisconnectAsync(), TimeSpan.FromSeconds(2), "Node disconnect"); }
+                catch (Exception ex) { _logger.Warn($"[ConnMgr] Node disconnect error: {ex.Message}"); }
+            }
+
+            lock (_nodeOperationLock)
+                Interlocked.Increment(ref _nodeConnectionGeneration);
+        }
+        finally
+        {
+            _nodeStartSemaphore.Release();
         }
 
         var old = _activeLifecycle;
@@ -1682,15 +1739,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private void CancelNodeConnectionOperation()
     {
-        CancellationTokenSource? nodeOperationCts;
         lock (_nodeOperationLock)
         {
-            Interlocked.Increment(ref _nodeConnectionGeneration);
-            nodeOperationCts = _nodeOperationCts;
+            var nodeOperationCts = _nodeOperationCts;
             _nodeOperationCts = null;
+            nodeOperationCts?.Cancel();
         }
-        nodeOperationCts?.Cancel();
-        nodeOperationCts?.Dispose();
     }
 
     private async Task WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
