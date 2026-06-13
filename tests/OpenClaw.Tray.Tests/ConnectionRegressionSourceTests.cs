@@ -51,29 +51,7 @@ public sealed class ConnectionRegressionSourceTests
 
     private static string ReadSource(params string[] relativePathParts)
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(new[] { root }.Concat(relativePathParts).ToArray()));
-    }
-
-    private static string GetRepositoryRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
     }
 }

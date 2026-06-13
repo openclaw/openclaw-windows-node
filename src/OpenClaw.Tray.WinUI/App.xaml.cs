@@ -513,9 +513,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // async boundary so onboarding failures are logged instead of escaping
         // before the tray ever initializes.
         InitializeTrayIcon();
-        // Apply the user's saved default chat preset (if any) before any chat
-        // surface mounts so initial render uses their preferred styling.
-        OpenClawTray.Chat.Explorations.ChatExplorationPresetStore.ApplyDefaultIfPresent();
         ShowSurfaceImprovementsTipIfNeeded();
 
         // Initialize connection manager before setup flow.

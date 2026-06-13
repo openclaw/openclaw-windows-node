@@ -146,7 +146,7 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void SetupUiPages_DoNotOwnTrayProcessHandoff()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var setupUiDir = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI");
         var source = string.Join(
             "\n",
@@ -169,7 +169,7 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void SettingsLocalGatewayRemoval_UsesCancelableTrayChildProcess()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
 
         Assert.Contains("ResolveCurrentExecutablePath()", source);
@@ -183,7 +183,7 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void SetupUiImages_UseLibraryQualifiedAssetUris()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var setupUiDir = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI");
         var xaml = string.Join(
             "\n",
@@ -201,7 +201,7 @@ public sealed class AppRefactorContractTests
 
     private static string ReadAppSources()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var appDir = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
         return string.Join(
             "\n",
@@ -252,24 +252,4 @@ public sealed class AppRefactorContractTests
         }
     }
 
-    private static string GetRepositoryRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not find repository root.");
-    }
 }

@@ -83,6 +83,10 @@ public record ChatThread
     public string? ProfileName { get; init; }
     public string? Model { get; init; }
     public string? ThinkingLevel { get; init; }
+    public long InputTokens { get; init; }
+    public long OutputTokens { get; init; }
+    public long TotalTokens { get; init; }
+    public long ContextTokens { get; init; }
     public int? HistoryCursor { get; init; }
     public DateTimeOffset? CreatedAt { get; init; }
     public DateTimeOffset? UpdatedAt { get; init; }
