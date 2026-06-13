@@ -107,7 +107,14 @@ public sealed class NodeConnector : INodeConnector
         long generation;
         lock (_clientLifecycleLock)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (_disposed || cancellationToken.IsCancellationRequested)
+            {
+                try { client.Dispose(); }
+                catch (Exception ex) { _logger.Warn($"[NodeConnector] Candidate dispose error: {ex.Message}"); }
+                cancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
+
             generation = Interlocked.Increment(ref _clientGeneration);
             _client = client;
             Mode = NodeConnectionMode.Gateway;
@@ -262,8 +269,11 @@ public sealed class NodeConnector : INodeConnector
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        DisconnectCurrentClient();
+        lock (_clientLifecycleLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            DisconnectInternalCore();
+        }
     }
 }

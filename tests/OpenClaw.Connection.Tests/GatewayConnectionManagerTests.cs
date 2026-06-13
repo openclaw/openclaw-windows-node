@@ -232,6 +232,34 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectNodeOnlyAsync_StalledRetirementDoesNotBlockManagerDisconnect()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new BlockingNodeDisconnectConnector();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: nodeConnector);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        nodeConnector.BlockDisconnects = true;
+
+        var nodeStart = manager.ConnectNodeOnlyAsync();
+        await nodeConnector.DisconnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var disconnect = manager.DisconnectAsync();
+
+        await nodeStart.WaitAsync(TimeSpan.FromSeconds(3));
+        nodeConnector.AllowDisconnect.SetResult(true);
+        await disconnect.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Contains(
+            manager.Diagnostics.GetAll(),
+            diagnostic => diagnostic.Message == "Previous node disconnect timed out");
+    }
+
+    [Fact]
     public void Diagnostics_IsAccessible()
     {
         Assert.NotNull(_manager.Diagnostics);
@@ -1304,7 +1332,7 @@ public class GatewayConnectionManagerTests : IDisposable
                 return;
             }
 
-            DisconnectStarted.SetResult(true);
+            DisconnectStarted.TrySetResult(true);
             await AllowDisconnect.Task;
         }
 

@@ -1123,7 +1123,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 try
                 {
-                    await _nodeConnector.DisconnectAsync();
+                    if (!await WaitWithTimeoutAsync(
+                            _nodeConnector.DisconnectAsync(),
+                            TimeSpan.FromSeconds(2),
+                            "Previous node disconnect"))
+                    {
+                        _diagnostics.Record("node", "Previous node disconnect timed out");
+                        return null;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1747,16 +1754,17 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private async Task WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
+    private async Task<bool> WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
     {
         var completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
         if (completed != task)
         {
             _logger.Warn($"[ConnMgr] {operation} timed out after {timeout.TotalSeconds:F1}s");
-            return;
+            return false;
         }
 
         await task.ConfigureAwait(false);
+        return true;
     }
 
     private void ThrowIfDisposed()
