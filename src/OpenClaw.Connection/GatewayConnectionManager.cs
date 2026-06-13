@@ -30,6 +30,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private IGatewayClientLifecycle? _activeLifecycle;
     private string? _activeIdentityPath; // identity directory for the active connection
     private string? _activeGatewayRecordId; // gateway record ID for node credential resolution
+    private SshTunnelConfig? _activeSshTunnel;
     private bool _disposed;
     private Task? _disposeTask;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
@@ -189,6 +190,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _diagnostics.RecordCredentialResolution(credential);
             _activeIdentityPath = perGatewayIdentityDir;
             _activeGatewayRecordId = record.Id;
+            _activeSshTunnel = record.SshTunnel;
             _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
 
             if (credential == null)
@@ -355,15 +357,28 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return false;
         }
 
-        var gen = Interlocked.Increment(ref _generation);
-        var oldCts = Interlocked.Exchange(ref _operationCts, new CancellationTokenSource());
-        oldCts?.Cancel();
-        oldCts?.Dispose();
+        // Same-gateway node reapproval reconnects keep the operator alive so it can
+        // request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
+        var preservesOperatorConnection =
+            _activeLifecycle != null &&
+            _stateMachine.Current.OperatorState == RoleConnectionState.Connected &&
+            string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
+            string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
+            Equals(_activeSshTunnel, record.SshTunnel);
+        long? gen = null;
+        if (!preservesOperatorConnection)
+        {
+            gen = Interlocked.Increment(ref _generation);
+            var oldCts = Interlocked.Exchange(ref _operationCts, new CancellationTokenSource());
+            oldCts?.Cancel();
+            oldCts?.Dispose();
 
-        await DisposeActiveClientAsync();
+            await DisposeActiveClientAsync();
+        }
 
         _activeIdentityPath = perGatewayIdentityDir;
         _activeGatewayRecordId = record.Id;
+        _activeSshTunnel = record.SshTunnel;
         _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
         _stateMachine.Current = _stateMachine.Current with
         {
@@ -376,10 +391,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
             $"Credential source: {nodeCredential.Source}");
 
-        if (!await TryStartTunnelForNodeOnlyAsync(record))
+        if (!preservesOperatorConnection && !await TryStartTunnelForNodeOnlyAsync(record))
             return false;
 
-        return Interlocked.Read(ref _generation) == gen;
+        return !gen.HasValue || Interlocked.Read(ref _generation) == gen.Value;
     }
 
     private async Task<bool> TryStartTunnelForNodeOnlyAsync(GatewayRecord record)
@@ -1382,6 +1397,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var old = _activeLifecycle;
         _activeLifecycle = null;
         _activeGatewayRecordId = null;
+        _activeSshTunnel = null;
         _lastAutoApprovedDevicePairRequestId = null;
         Interlocked.Exchange(ref _devicePairAutoApproveInFlight, null);
         if (old != null)

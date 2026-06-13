@@ -324,6 +324,10 @@ public partial class App
                 return new { reconnected = false, error = "Connection manager is not initialized" };
 
             await _connectionManager.ConnectNodeOnlyAsync();
+            var client = GatewayClient;
+            if (client?.IsConnectedToGateway == true)
+                await WaitForAppStateUpdateAsync(nameof(AppState.Nodes), client.RequestNodesAsync);
+
             return new { reconnected = true };
         };
     }

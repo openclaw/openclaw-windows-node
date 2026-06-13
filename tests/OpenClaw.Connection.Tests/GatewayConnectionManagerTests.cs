@@ -557,6 +557,74 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectNodeOnlyAsync_PreservesConnectedOperatorForNodeListRefresh()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        var operatorLifecycle = Assert.Single(_factory.CreatedClients);
+        var operatorClient = manager.OperatorClient;
+
+        await manager.ConnectNodeOnlyAsync();
+
+        Assert.False(operatorLifecycle.IsDisposed);
+        Assert.Same(operatorClient, manager.OperatorClient);
+        Assert.Single(_factory.CreatedClients);
+        Assert.Equal(1, node.ConnectCount);
+    }
+
+    [Theory]
+    [InlineData("gw-2", "wss://test-1", false, "wss://test-1")]
+    [InlineData("gw-1", "wss://test-2", false, "wss://test-2")]
+    [InlineData("gw-1", "wss://test-1", true, "ws://localhost:45678")]
+    public async Task ConnectNodeOnlyAsync_ChangedGatewayConnectionDisposesConnectedOperator(
+        string targetId,
+        string targetUrl,
+        bool addTunnel,
+        string expectedNodeUrl)
+    {
+        SetupGateway("gw-1", "wss://test-1");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        var operatorLifecycle = Assert.Single(_factory.CreatedClients);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = targetId,
+            Url = targetUrl,
+            SshTunnel = addTunnel
+                ? new SshTunnelConfig("user", "host.example", 18789, 45678)
+                : null
+        });
+        _registry.SetActive(targetId);
+
+        await manager.ConnectNodeOnlyAsync(targetId);
+
+        Assert.True(operatorLifecycle.IsDisposed);
+        Assert.Null(manager.OperatorClient);
+        Assert.Equal(expectedNodeUrl, node.LastGatewayUrl);
+    }
+
+    [Fact]
     public async Task ConnectNodeOnlyAsync_StartsSshTunnel_WhenGatewayUsesTunnel()
     {
         _registry.AddOrUpdate(new GatewayRecord
@@ -776,6 +844,7 @@ public class GatewayConnectionManagerTests : IDisposable
         }
 
         public OpenClawGatewayClient DataClient => _client;
+        public bool IsDisposed { get; private set; }
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<string>? AuthenticationFailed;
 
@@ -796,7 +865,7 @@ public class GatewayConnectionManagerTests : IDisposable
         public void SimulateDeviceTokenReceived(string token, string role, string[]? scopes = null) =>
             _client.SimulateDeviceTokenReceived(token, role, scopes);
 
-        public void Dispose() { }
+        public void Dispose() => IsDisposed = true;
     }
 
     private sealed class MockGatewayClient : OpenClawGatewayClient

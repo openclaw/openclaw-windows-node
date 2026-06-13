@@ -21,6 +21,15 @@ public sealed class ConnectionRegressionSourceTests
         Assert.Contains("RollbackDirectConnect(previousActiveId", pageSource);
     }
 
+    [Fact]
+    public void ReconnectNode_RefreshesVisibleEffectiveNodeList()
+    {
+        var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.CapabilityHandlers.cs");
+
+        Assert.Contains("await _connectionManager.ConnectNodeOnlyAsync();", appSource);
+        Assert.Contains("WaitForAppStateUpdateAsync(nameof(AppState.Nodes), client.RequestNodesAsync)", appSource);
+    }
+
     private static string ReadSource(params string[] relativePathParts)
     {
         var root = GetRepositoryRoot();
