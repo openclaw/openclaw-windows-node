@@ -30,6 +30,25 @@ public sealed class ConnectionRegressionSourceTests
         Assert.Contains("WaitForAppStateUpdateAsync(nameof(AppState.Nodes), client.RequestNodesAsync)", appSource);
     }
 
+    [Fact]
+    public void NodeTrustPendingToast_CopiesNodeApprovalCommand()
+    {
+        var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+
+        Assert.Contains("args.ApprovalKind == OpenClaw.Shared.PairingApprovalKind.NodePair", appSource);
+        Assert.Contains("CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId)", appSource);
+        Assert.Contains("ShowPairingPendingNotification(args.DeviceId, approvalCommand)", appSource);
+    }
+
+    [Fact]
+    public void LocalNodeTrustPairListUpdate_RefreshesVisibleNodeList()
+    {
+        var managerSource = ReadSource("src", "OpenClaw.Connection", "GatewayConnectionManager.cs");
+
+        Assert.Contains("operatorClient.RequestNodesAsync()", managerSource);
+        Assert.Contains("Node list refresh failed after local node trust request", managerSource);
+    }
+
     private static string ReadSource(params string[] relativePathParts)
     {
         var root = GetRepositoryRoot();

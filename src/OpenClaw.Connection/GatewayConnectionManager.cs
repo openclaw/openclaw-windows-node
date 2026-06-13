@@ -1290,6 +1290,15 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             "node",
             "Local node command-trust request is awaiting explicit operator approval",
             $"requestId={request.RequestId}");
+
+        var operatorClient = _activeLifecycle?.DataClient;
+        if (operatorClient?.IsConnectedToGateway == true)
+        {
+            ObserveBackgroundFault(
+                operatorClient.RequestNodesAsync(),
+                "[ConnMgr] Node list refresh failed after local node trust request");
+        }
+
         return Task.CompletedTask;
     }
 
