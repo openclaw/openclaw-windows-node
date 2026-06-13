@@ -92,16 +92,21 @@ public sealed partial class CanvasWindow : WindowEx
             return true;
         }
         // Allow URLs from the trusted gateway origin with strict boundary check
-        if (!string.IsNullOrEmpty(_trustedGatewayOrigin) &&
-            url.StartsWith(_trustedGatewayOrigin, StringComparison.OrdinalIgnoreCase) &&
-            (url.Length == _trustedGatewayOrigin.Length ||
-             url[_trustedGatewayOrigin.Length] == '/' ||
-             url[_trustedGatewayOrigin.Length] == '?' ||
-             url[_trustedGatewayOrigin.Length] == '#'))
+        if (MatchesTrustedPrefix(url, _trustedGatewayOrigin) ||
+            MatchesTrustedPrefix(url, _canvasSurfaceBaseUrl))
         {
             return true;
         }
         return !DangerousUrlPattern.IsMatch(url);
+    }
+
+    private static bool MatchesTrustedPrefix(string url, string? prefix)
+    {
+        if (string.IsNullOrEmpty(prefix)) return false;
+        if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+        if (url.Length == prefix.Length) return true;
+        var next = url[prefix.Length];
+        return next == '/' || next == '?' || next == '#';
     }
     
     private static bool IsSafeDataUrl(string url)
@@ -131,6 +136,13 @@ public sealed partial class CanvasWindow : WindowEx
     private string? _trustedGatewayOrigin;
     private string? _gatewayOriginForRewrite;
     private string? _gatewayToken;
+    // Plugin-node capability-scoped URL for the canvas surface, e.g.
+    // http://127.0.0.1:19001/__openclaw__/cap/<oc_cap_token>. Sent by the
+    // gateway in hello-ok's pluginSurfaceUrls.canvas. Relative URLs that
+    // target /__openclaw__/canvas/... must be prefixed with this — the bare
+    // gateway origin returns 401 on that route because it expects the cap
+    // token (path-scoped or ?oc_cap=) for plugin-hosted surfaces.
+    private string? _canvasSurfaceBaseUrl;
 
     /// <summary>
     /// Allow URLs from the connected gateway origin. Call after creating the window
@@ -138,10 +150,13 @@ public sealed partial class CanvasWindow : WindowEx
     /// Also rewrites gateway URLs to use the node's effective connection
     /// (e.g., localhost when connected via SSH tunnel).
     /// </summary>
-    public void SetTrustedGatewayOrigin(string? gatewayUrl, string? token = null)
+    public void SetTrustedGatewayOrigin(string? gatewayUrl, string? token = null, string? canvasSurfaceUrl = null)
     {
         if (string.IsNullOrEmpty(gatewayUrl)) return;
         _gatewayToken = token;
+        _canvasSurfaceBaseUrl = string.IsNullOrWhiteSpace(canvasSurfaceUrl)
+            ? null
+            : canvasSurfaceUrl!.TrimEnd('/');
         try
         {
             var uri = new Uri(GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl));
@@ -149,6 +164,8 @@ public sealed partial class CanvasWindow : WindowEx
             _trustedGatewayOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
             _gatewayOriginForRewrite = _trustedGatewayOrigin;
             Logger.Info($"[Canvas] Trusted gateway origin: {_trustedGatewayOrigin}");
+            if (_canvasSurfaceBaseUrl != null)
+                Logger.Info($"[Canvas] Canvas surface base URL (cap-scoped) registered");
             ConfigureGatewayAuthHeaderInjection();
         }
         catch (Exception ex)
@@ -167,12 +184,42 @@ public sealed partial class CanvasWindow : WindowEx
 
         try
         {
-            // Handle relative paths — prepend the gateway origin
+            // Handle relative paths — prepend the gateway origin (or the
+            // cap-scoped canvas surface URL for /__openclaw__/canvas/* paths,
+            // since that route requires the plugin-node capability token).
             if (url.StartsWith("/"))
             {
-                var rewritten = _gatewayOriginForRewrite + url;
-                rewritten = AppendGatewayToken(rewritten);
-                Logger.Info($"[Canvas] Resolved relative URL to gateway origin");
+                // First check the local virtual host fast path for published
+                // canvas documents (avoids hitting the gateway entirely).
+                if (url.StartsWith("/__openclaw__/canvas/documents/", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(_canvasDir))
+                {
+                    var localRelative = url.Substring("/__openclaw__/canvas/documents/".Length);
+                    var queryIdx = localRelative.IndexOfAny(new[] { '?', '#' });
+                    if (queryIdx >= 0) localRelative = localRelative.Substring(0, queryIdx);
+                    var localPath = Path.GetFullPath(Path.Combine(_canvasDir, localRelative.Replace('/', Path.DirectorySeparatorChar)));
+                    if (localPath.StartsWith(_canvasDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                        File.Exists(localPath))
+                    {
+                        var localUrl = $"https://openclaw-canvas.local/{localRelative}";
+                        Logger.Info($"[Canvas] Using local file: {localUrl}");
+                        return localUrl;
+                    }
+                }
+
+                string rewritten;
+                if (_canvasSurfaceBaseUrl != null &&
+                    url.StartsWith("/__openclaw__/canvas/", StringComparison.OrdinalIgnoreCase))
+                {
+                    rewritten = _canvasSurfaceBaseUrl + url;
+                    Logger.Info($"[Canvas] Resolved relative canvas URL via cap-scoped surface URL");
+                }
+                else
+                {
+                    rewritten = _gatewayOriginForRewrite + url;
+                    rewritten = AppendGatewayToken(rewritten);
+                    Logger.Info($"[Canvas] Resolved relative URL to gateway origin");
+                }
                 return rewritten;
             }
 

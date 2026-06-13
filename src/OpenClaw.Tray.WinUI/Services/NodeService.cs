@@ -853,6 +853,25 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
     private void OnGatewaySelfUpdated(object? sender, GatewaySelfInfo info)
     {
+        // Refresh the canvas window's cap-scoped surface URL when the gateway
+        // issues a new pluginSurfaceUrls.canvas (e.g. after reconnect or cap
+        // token rotation). Without this, an open CanvasWindow caches the
+        // stale URL captured at SetTrustedGatewayOrigin time and the next
+        // navigate would 401.
+        if (info.PluginSurfaceUrls != null &&
+            info.PluginSurfaceUrls.TryGetValue("canvas", out var canvasUrl) &&
+            !string.IsNullOrWhiteSpace(canvasUrl))
+        {
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                var window = _canvasWindow;
+                if (window != null && !window.IsClosed)
+                {
+                    window.SetTrustedGatewayOrigin(GatewayUrl, _token, canvasUrl);
+                }
+            });
+        }
+
         GatewaySelfUpdated?.Invoke(this, info);
     }
 
@@ -897,7 +916,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 if (_canvasWindow == null || _canvasWindow.IsClosed)
                 {
                     _canvasWindow = new CanvasWindow();
-                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
+                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token, _nodeClient?.CanvasSurfaceUrl);
                 }
 
                 // Configure window
@@ -1403,7 +1422,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         if (_canvasWindow == null || _canvasWindow.IsClosed)
         {
             _canvasWindow = new CanvasWindow();
-            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
+            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token, _nodeClient?.CanvasSurfaceUrl);
         }
         _canvasWindow?.Activate();
     }
