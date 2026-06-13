@@ -118,22 +118,22 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         ThrowIfDisposed();
         var prevState = _stateMachine.Current.OverallState;
-        var prepared = false;
+        long? preparedGeneration = null;
 
         await _transitionSemaphore.WaitAsync();
         try
         {
-            prepared = await PrepareNodeOnlyConnectCoreAsync(gatewayId);
+            preparedGeneration = await PrepareNodeOnlyConnectCoreAsync(gatewayId);
         }
         finally
         {
             _transitionSemaphore.Release();
         }
 
-        if (!prepared)
+        if (!preparedGeneration.HasValue)
             return;
 
-        var started = await StartNodeConnectionAsync();
+        var started = await StartNodeConnectionAsync(preparedGeneration.Value);
         if (started)
             EmitStateChanged(prevState);
     }
@@ -337,20 +337,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     /// durable tray restart path for already-paired Windows nodes whose registry
     /// record only has a persisted NodeDeviceToken.
     /// </summary>
-    private async Task<bool> PrepareNodeOnlyConnectCoreAsync(string? gatewayId = null)
+    private async Task<long?> PrepareNodeOnlyConnectCoreAsync(string? gatewayId = null)
     {
         var id = gatewayId ?? _registry.ActiveGatewayId;
         if (id == null)
         {
             _logger.Warn("[ConnMgr] No gateway ID specified and no active gateway for node-only connect");
-            return false;
+            return null;
         }
 
         var record = _registry.GetById(id);
         if (record == null)
         {
             _logger.Warn($"[ConnMgr] Gateway {id} not found in registry for node-only connect");
-            return false;
+            return null;
         }
 
         var perGatewayIdentityDir = _registry.GetIdentityDirectory(record.Id);
@@ -362,7 +362,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _logger.Warn("[ConnMgr] No node credential available for node-only connect");
             _diagnostics.Record("node", "No node credential available for node-only connect");
-            return false;
+            return null;
         }
 
         // Same-gateway node reapproval reconnects keep the operator alive so it can
@@ -400,9 +400,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             $"Credential source: {nodeCredential.Source}");
 
         if (!preservesOperatorConnection && !await TryStartTunnelForNodeOnlyAsync(record))
-            return false;
+            return null;
 
-        return Interlocked.Read(ref _generation) == gen;
+        return Interlocked.Read(ref _generation) == gen ? gen : null;
     }
 
     private async Task<bool> TryStartTunnelForNodeOnlyAsync(GatewayRecord record)
@@ -458,6 +458,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
     private async Task DisconnectCoreAsync()
     {
+        Interlocked.Increment(ref _generation);
+        var oldCts = Interlocked.Exchange(ref _operationCts, null);
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+
         var prev = _stateMachine.Current.OverallState;
         await DisposeActiveClientAsync();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
@@ -819,7 +824,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         // Start node connection outside the semaphore to avoid deadlocks
         if (_nodeConnector != null && ShouldStartNodeConnection())
         {
-            await StartNodeConnectionAsync();
+            await StartNodeConnectionAsync(gen);
         }
     }
 
@@ -1032,7 +1037,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         StateChanged += Handler;
         try
         {
-            var startAttempted = await StartNodeConnectionAsync();
+            var startAttempted = await StartNodeConnectionAsync(Interlocked.Read(ref _generation));
 
             if (!startAttempted)
             {
@@ -1085,16 +1090,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         return _isNodeEnabled?.Invoke() ?? false;
     }
 
-    private async Task<bool> StartNodeConnectionAsync()
+    private async Task<bool> StartNodeConnectionAsync(long expectedLifecycleGeneration)
     {
-        if (_disposed)
-            return false;
-
-        var nodeOperationCts = new CancellationTokenSource();
+        CancellationTokenSource nodeOperationCts;
         CancellationTokenSource? oldNodeOperationCts;
         long nodeGeneration;
         lock (_nodeOperationLock)
         {
+            if (_disposed ||
+                Interlocked.Read(ref _generation) != expectedLifecycleGeneration)
+            {
+                return false;
+            }
+
+            nodeOperationCts = new CancellationTokenSource();
             nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
             oldNodeOperationCts = _nodeOperationCts;
             _nodeOperationCts = nodeOperationCts;
@@ -1177,6 +1186,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
         catch (Exception ex)
         {
+            if (cancellationToken.IsCancellationRequested ||
+                Interlocked.Read(ref _nodeConnectionGeneration) != nodeGeneration)
+            {
+                return false;
+            }
+
             _logger.Error($"[ConnMgr] Node connect failed: {ex.Message}");
             _diagnostics.Record("node", "Node connect failed", ex.Message);
         }
@@ -1468,8 +1483,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 _devicePairReconnectAttempts[requestId] = attemptCount + 1;
                 _devicePairReconnectInFlight = true;
-                _queuedDevicePairReconnectRequestId = null;
-                _queuedDevicePairReconnectGeneration = 0;
                 ownsReconnect = true;
             }
         }
@@ -1486,22 +1499,24 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             await RunDevicePairReconnectAttemptAsync(approvalGeneration);
 
-            string? retryRequestId;
-            long retryGeneration;
-            lock (_devicePairReconnectLock)
+            while (true)
             {
-                retryRequestId = _queuedDevicePairReconnectRequestId;
-                retryGeneration = _queuedDevicePairReconnectGeneration;
-                if (retryRequestId == null)
+                string? retryRequestId;
+                long retryGeneration;
+                lock (_devicePairReconnectLock)
                 {
-                    _devicePairReconnectInFlight = false;
+                    retryRequestId = _queuedDevicePairReconnectRequestId;
+                    retryGeneration = _queuedDevicePairReconnectGeneration;
+                    _queuedDevicePairReconnectRequestId = null;
                     _queuedDevicePairReconnectGeneration = 0;
-                    guardOwned = false;
+                    if (retryRequestId == null)
+                    {
+                        _devicePairReconnectInFlight = false;
+                        guardOwned = false;
+                        return;
+                    }
                 }
-            }
 
-            if (retryRequestId != null)
-            {
                 _diagnostics.Record(
                     "node",
                     "Retrying device role-upgrade reconnect after repeated pending signal",
@@ -1528,7 +1543,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _diagnostics.Record("node", "Device role-upgrade pairing approved — reconnecting node");
         await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
         if (Interlocked.Read(ref _generation) == approvalGeneration)
-            await StartNodeConnectionAsync();
+            await StartNodeConnectionAsync(approvalGeneration);
     }
 
     private static string BuildDeviceAutoApprovalFailureDetail(IReadOnlyList<string> scopes) =>

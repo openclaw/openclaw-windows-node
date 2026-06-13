@@ -613,6 +613,9 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.True(node.FirstConnectCancelled.Task.IsCompleted);
         Assert.Equal(2, node.ConnectCount);
         Assert.Equal(1, stateChangedCount);
+        Assert.DoesNotContain(
+            manager.Diagnostics.GetAll(),
+            diagnostic => diagnostic.Message == "Node connect failed");
     }
 
     [Theory]
@@ -1246,7 +1249,7 @@ public class GatewayConnectionManagerTests : IDisposable
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     FirstConnectCancelled.SetResult(true);
-                    throw;
+                    throw new InvalidOperationException("retired node connect failed");
                 }
             }
         }
