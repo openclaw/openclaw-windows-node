@@ -155,7 +155,9 @@ public sealed partial class DebugPage : Page
     private void UpdateStatusInfoBar()
     {
         var gatewayUrl = CurrentApp.Settings?.GetEffectiveGatewayUrl();
-        var gatewayDisplay = string.IsNullOrWhiteSpace(gatewayUrl) ? "no gateway configured" : gatewayUrl;
+        var gatewayDisplay = string.IsNullOrWhiteSpace(gatewayUrl)
+            ? LocalizationHelper.GetString("DebugPage_NoGatewayConfigured")
+            : gatewayUrl;
         var status = _appState?.Status ?? ConnectionStatus.Disconnected;
 
         switch (status)
@@ -163,27 +165,27 @@ public sealed partial class DebugPage : Page
             case ConnectionStatus.Connected:
                 StatusInfoBar.Severity = InfoBarSeverity.Success;
                 StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = $"OpenClaw is connected to {gatewayDisplay}.";
+                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusConnectedFormat", gatewayDisplay);
                 break;
             case ConnectionStatus.Connecting:
                 StatusInfoBar.Severity = InfoBarSeverity.Informational;
                 StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = $"Connecting to {gatewayDisplay}…";
+                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusConnectingFormat", gatewayDisplay);
                 break;
             case ConnectionStatus.Disconnected:
                 StatusInfoBar.Severity = InfoBarSeverity.Warning;
                 StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = $"Not connected. Gateway: {gatewayDisplay}.";
+                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusDisconnectedFormat", gatewayDisplay);
                 break;
             case ConnectionStatus.Error:
                 StatusInfoBar.Severity = InfoBarSeverity.Error;
                 StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = $"Last gateway: {gatewayDisplay}. See the event timeline.";
+                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusErrorFormat", gatewayDisplay);
                 break;
             default:
                 StatusInfoBar.Severity = InfoBarSeverity.Informational;
                 StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = $"Gateway: {gatewayDisplay}.";
+                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusGatewayFormat", gatewayDisplay);
                 break;
         }
     }
@@ -248,8 +250,8 @@ public sealed partial class DebugPage : Page
 
         if (mode == DetailMode.Log)
         {
-            DetailTitle.Text = "Recent log";
-            DetailCaption.Text = $"Last 200 lines of {LogPath}. Severity is parsed from [info]/[warn]/[error] tags.";
+            DetailTitle.Text = LocalizationHelper.GetString("DebugPage_RecentLogTitle");
+            DetailCaption.Text = LocalizationHelper.Format("DebugPage_RecentLogCaptionFormat", LogPath);
             DetailOpenFileButton.Visibility = Visibility.Visible;
             DetailRefreshButton.Visibility = Visibility.Visible;
             _ = LoadLogFileAsync(_detailGeneration);
@@ -552,7 +554,7 @@ public sealed partial class DebugPage : Page
 
     private void ShowCopyFeedback(string label)
     {
-        CopyFeedbackInfoBar.Message = $"{label} copied to clipboard.";
+        CopyFeedbackInfoBar.Message = LocalizationHelper.Format("DebugPage_CopyFeedbackFormat", label);
         CopyFeedbackInfoBar.IsOpen = true;
 
         if (_copyFeedbackTimer == null)

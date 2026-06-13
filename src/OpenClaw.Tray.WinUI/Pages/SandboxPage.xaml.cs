@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -13,6 +14,8 @@ namespace OpenClawTray.Pages;
 public sealed partial class SandboxPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
+    private static string L(string key) => LocalizationHelper.GetString(key);
+    private static string Lf(string key, params object?[] args) => LocalizationHelper.Format(key, args);
     private bool _suppress;
     private bool _dialogOpen;
 
@@ -256,15 +259,15 @@ public sealed partial class SandboxPage : Page
             }
             else
             {
-                SandboxStatusTitle.Text = "Node Sandbox is on";
-                SandboxStatusSubtext.Text = "Programs the agent runs on this PC are contained.";
+                SandboxStatusTitle.Text = L("SandboxPage_StatusOnTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusOnSubtext");
             }
         }
         else
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox is off — high risk";
-            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are not contained.";
+            SandboxStatusTitle.Text = L("SandboxPage_StatusOffTitle");
+            SandboxStatusSubtext.Text = L("SandboxPage_StatusOffSubtext");
         }
     }
 
@@ -288,7 +291,7 @@ public sealed partial class SandboxPage : Page
         var reasons = availability.UnsupportedReasons;
         var reasonText = reasons.Count > 0
             ? string.Join("  ·  ", reasons)
-            : "MXC sandboxing primitives are not available on this machine.";
+            : L("SandboxPage_UnavailableDefaultReason");
 
         // A transient probe error (timeout / couldn't launch / garbled output) is NOT
         // the same as the host being unsupported — don't push the user at Windows
@@ -320,31 +323,48 @@ public sealed partial class SandboxPage : Page
         }
         else if (isWindowsIssue)
         {
+<<<<<<< HEAD
             UnavailableActionBar.Title = "Your Windows version doesn't support sandboxing yet";
             UnavailableActionMessage.Text =
                 $"{reasonText}\n\n{unavailableBehavior}Sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
                 "Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.";
             UnavailablePrimaryButton.Content = "Open Windows Update";
+=======
+            UnavailableActionBar.Title = L("SandboxPage_WindowsUnsupportedTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_WindowsUnsupportedMessageFormat", reasonText);
+            UnavailablePrimaryButton.Content = L("SandboxPage_OpenWindowsUpdate");
+>>>>>>> 0d964cd4 (Use app notifications for background issues)
             UnavailablePrimaryButton.Tag = "windowsupdate";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else if (isSetupIssue)
         {
+<<<<<<< HEAD
             UnavailableActionBar.Title = "Sandboxing components are missing";
             UnavailableActionMessage.Text =
                 $"{reasonText}\n\nThe wxc-exec binary couldn't be located. {unavailableBehavior}" +
                 "If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. " +
                 "Otherwise reinstall the companion app to restore sandboxing.";
             UnavailablePrimaryButton.Content = "Show install instructions";
+=======
+            UnavailableActionBar.Title = L("SandboxPage_ComponentsMissingTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_ComponentsMissingMessageFormat", reasonText);
+            UnavailablePrimaryButton.Content = L("SandboxPage_ShowInstallInstructions");
+>>>>>>> 0d964cd4 (Use app notifications for background issues)
             UnavailablePrimaryButton.Tag = "install";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else
         {
+<<<<<<< HEAD
             UnavailableActionBar.Title = blockHostFallback
                 ? "Sandbox unavailable — commands blocked"
                 : "Sandbox unavailable — host fallback";
             UnavailableActionMessage.Text = $"{reasonText}\n\n{unavailableBehavior}";
+=======
+            UnavailableActionBar.Title = L("SandboxPage_UnavailableTitle");
+            UnavailableActionMessage.Text = reasonText;
+>>>>>>> 0d964cd4 (Use app notifications for background issues)
             UnavailablePrimaryButton.Visibility = Visibility.Collapsed;
         }
 
@@ -581,6 +601,7 @@ public sealed partial class SandboxPage : Page
     {
         if (_suppress) return;
         CurrentApp.Settings?.Save();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
         UpdatePresetHighlight();
     }
 

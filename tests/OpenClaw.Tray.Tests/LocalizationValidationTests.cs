@@ -60,6 +60,11 @@ public class LocalizationValidationTests
         // Sample IDs / brand identifiers — same across locales.
         "VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText",
         "VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText",
+        // Capability command identifier — should match the wire/API name.
+        "NotificationsPage_MetadataSystemRun",
+        // Punctuation-only layout format; localized parts are supplied by
+        // separate placeholders and should keep the same visual separator.
+        "ConfigPage_AccessSummaryFormat",
         // NodesPage detail labels — "Version", "Hardware", and "PATH" are
         // technical loanwords that read the same in every supported locale
         // in this app's audience. Translating them adds no clarity and

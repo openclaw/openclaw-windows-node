@@ -347,15 +347,15 @@ public sealed partial class SettingsPage : Page
                 OpenClawOnboardCard.Visibility = Visibility.Collapsed;
                 ApplyUninstallUiState(UninstallUiState.Success);
                 UninstallResultBar.Severity = InfoBarSeverity.Success;
-                UninstallResultBar.Title = "Local gateway removed";
-                UninstallResultBar.Message = "Setup is reset; you can re-run setup from the tray menu.";
+                UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedTitle");
+                UninstallResultBar.Message = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedMessage");
                 UninstallResultBar.ActionButton = null;
                 UninstallResultBar.IsOpen = true;
             }
             else
             {
                 ApplyUninstallUiState(UninstallUiState.Failure);
-                var errorMsg = "Removal completed with errors. Check logs for details.";
+                var errorMsg = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalErrorsMessage");
                 if (File.Exists(jsonOutput))
                 {
                     try
@@ -394,8 +394,8 @@ public sealed partial class SettingsPage : Page
 
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
-            UninstallResultBar.Title = "Removal cancelled";
-            UninstallResultBar.Message = "Gateway may be in a partially-removed state. Review logs or retry.";
+            UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalCancelledTitle");
+            UninstallResultBar.Message = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalCancelledMessage");
             UninstallResultBar.ActionButton = null;
             UninstallResultBar.IsOpen = true;
         }
@@ -436,7 +436,7 @@ public sealed partial class SettingsPage : Page
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenClawTray", "Logs");
 
-        var viewLogsButton = new Button { Content = "View Logs" };
+        var viewLogsButton = new Button { Content = LocalizationHelper.GetString("SettingsPage_ViewLogs") };
         viewLogsButton.Click += (_, _) =>
         {
             try { System.Diagnostics.Process.Start("explorer.exe", logsPath); }
@@ -444,7 +444,7 @@ public sealed partial class SettingsPage : Page
         };
 
         UninstallResultBar.Severity = InfoBarSeverity.Error;
-        UninstallResultBar.Title = "Removal failed";
+        UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalFailedTitle");
         UninstallResultBar.Message = message;
         UninstallResultBar.ActionButton = viewLogsButton;
         UninstallResultBar.IsOpen = true;
@@ -456,7 +456,7 @@ public sealed partial class SettingsPage : Page
         {
             case UninstallUiState.Idle:
             case UninstallUiState.Failure:
-                RemoveGatewayButton.Content = "Remove Local Gateway";
+                RemoveGatewayButton.Content = LocalizationHelper.GetString("SettingsPage_RemoveLocalGatewayButton");
                 RemoveGatewayButton.IsEnabled = true;
                 RemoveGatewayButton.Visibility = Visibility.Visible;
                 GatewayBodyText.Text = GatewayIdleBodyText;
@@ -474,13 +474,13 @@ public sealed partial class SettingsPage : Page
                 });
                 sp.Children.Add(new TextBlock
                 {
-                    Text = "Removing distro\u2026",
+                    Text = LocalizationHelper.GetString("SettingsPage_RemovingDistro"),
                     VerticalAlignment = VerticalAlignment.Center
                 });
                 RemoveGatewayButton.Content = sp;
                 RemoveGatewayButton.IsEnabled = false;
                 RemoveGatewayButton.Visibility = Visibility.Visible;
-                GatewayBodyText.Text = "Removing the local gateway. This may take 10\u201330 seconds\u2026";
+                GatewayBodyText.Text = LocalizationHelper.GetString("SettingsPage_RemovingLocalGatewayMessage");
                 break;
             }
 

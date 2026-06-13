@@ -430,7 +430,7 @@ public sealed partial class CanvasWindow : WindowEx
         {
             LoadingRing.IsActive = false;
             ErrorPanel.Visibility = Visibility.Visible;
-            ErrorText.Text = $"Failed to initialize WebView2: {ex.Message}";
+            ErrorText.Text = LocalizationHelper.Format("CanvasWindow_WebViewInitFailedFormat", ex.Message);
             _webViewReadyTcs.TrySetException(ex);
         }
     }
@@ -502,7 +502,7 @@ public sealed partial class CanvasWindow : WindowEx
             // Show error for failed navigation
             ErrorPanel.Visibility = Visibility.Visible;
             CanvasWebView.Visibility = Visibility.Collapsed;
-            ErrorText.Text = $"Navigation failed: {args.WebErrorStatus}";
+            ErrorText.Text = LocalizationHelper.Format("CanvasWindow_NavigationFailedFormat", args.WebErrorStatus);
         }
         else
         {

@@ -3093,6 +3093,78 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="AppNotification_ShowMore" xml:space="preserve">
     <value>Afficher plus</value>
   </data>
+  <data name="AppNotification_ActionOpenConnection" xml:space="preserve">
+    <value>Ouvrir Connexion</value>
+  </data>
+  <data name="AppNotification_ActionOpenChannels" xml:space="preserve">
+    <value>Ouvrir Canaux</value>
+  </data>
+  <data name="AppNotification_ActionOpenSandbox" xml:space="preserve">
+    <value>Ouvrir Sandbox</value>
+  </data>
+  <data name="AppNotification_ActionOpenCron" xml:space="preserve">
+    <value>Ouvrir Cron</value>
+  </data>
+  <data name="AppNotification_GatewayAuthenticationFailed_Title" xml:space="preserve">
+    <value>Échec de l'authentification de la passerelle</value>
+  </data>
+  <data name="AppNotification_GatewayConnectionFailed_Title" xml:space="preserve">
+    <value>Échec de la connexion à la passerelle</value>
+  </data>
+  <data name="AppNotification_GatewayConnectionFailed_DefaultMessage" xml:space="preserve">
+    <value>OpenClaw n'a pas pu se connecter à la passerelle active.</value>
+  </data>
+  <data name="AppNotification_GatewayPairingRequired_Title" xml:space="preserve">
+    <value>Approbation d'appairage de la passerelle requise</value>
+  </data>
+  <data name="AppNotification_GatewayPairingRequired_GenericMessage" xml:space="preserve">
+    <value>Ouvrez Connexion pour terminer l'appairage de la passerelle.</value>
+  </data>
+  <data name="AppNotification_GatewayPairingRequired_DeviceMessageFormat" xml:space="preserve">
+    <value>Ouvrez Connexion pour approuver l'appareil {0}.</value>
+  </data>
+  <data name="AppNotification_WindowsNodeConnectionFailed_Title" xml:space="preserve">
+    <value>Échec de la connexion du nœud Windows</value>
+  </data>
+  <data name="AppNotification_WindowsNodeConnectionFailed_DefaultMessage" xml:space="preserve">
+    <value>La passerelle est connectée, mais ce nœud Windows n'est pas disponible.</value>
+  </data>
+  <data name="AppNotification_WindowsNodeRateLimited_Title" xml:space="preserve">
+    <value>Connexion du nœud Windows limitée</value>
+  </data>
+  <data name="AppNotification_WindowsNodeRateLimited_DefaultMessage" xml:space="preserve">
+    <value>La passerelle est connectée, mais ce nœud Windows est temporairement limité.</value>
+  </data>
+  <data name="AppNotification_ChannelNeedsAttention_TitleFormat" xml:space="preserve">
+    <value>Le canal {0} nécessite une attention</value>
+  </data>
+  <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
+    <value>La passerelle signale {0} comme {1}.</value>
+  </data>
+  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
+    <value>Le Sandbox du nœud est désactivé — les commandes s'exécutent sans confinement</value>
+  </data>
+  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
+    <value>Les commandes Windows lancées par l'agent s'exécuteront sans confinement jusqu'à ce que le Sandbox du nœud soit réactivé.</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
+    <value>Sandbox indisponible — les commandes s'exécutent sans confinement</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
+    <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
+  </data>
+  <data name="AppNotification_CronRunFailed_Title" xml:space="preserve">
+    <value>La tâche Cron n'a pas démarré</value>
+  </data>
+  <data name="AppNotification_CronRunFailed_DefaultDetail" xml:space="preserve">
+    <value>La demande a échoué.</value>
+  </data>
+  <data name="AppNotification_CronRunRejectedDetail" xml:space="preserve">
+    <value>La passerelle a rejeté la demande cron.run.</value>
+  </data>
+  <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
   <data name="NotificationsPage_Title.Text" xml:space="preserve">
     <value>Alertes</value>
   </data>
@@ -3140,6 +3212,57 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="AppNotification_ExecApprovalPending_AgentSlotLabelFormat" xml:space="preserve">
     <value>{0} / {1}</value>
+  </data>
+  <data name="NotificationsPage_MetadataAuthentication" xml:space="preserve">
+    <value>Authentification</value>
+  </data>
+  <data name="NotificationsPage_MetadataBindings" xml:space="preserve">
+    <value>Liaisons</value>
+  </data>
+  <data name="NotificationsPage_MetadataChannels" xml:space="preserve">
+    <value>Canaux</value>
+  </data>
+  <data name="NotificationsPage_MetadataConfig" xml:space="preserve">
+    <value>Configuration</value>
+  </data>
+  <data name="NotificationsPage_MetadataConnection" xml:space="preserve">
+    <value>Connexion</value>
+  </data>
+  <data name="NotificationsPage_MetadataCron" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="NotificationsPage_MetadataGateway" xml:space="preserve">
+    <value>Passerelle</value>
+  </data>
+  <data name="NotificationsPage_MetadataJobs" xml:space="preserve">
+    <value>Tâches</value>
+  </data>
+  <data name="NotificationsPage_MetadataLoad" xml:space="preserve">
+    <value>Chargement</value>
+  </data>
+  <data name="NotificationsPage_MetadataLifecycle" xml:space="preserve">
+    <value>Cycle de vie</value>
+  </data>
+  <data name="NotificationsPage_MetadataLocalGateway" xml:space="preserve">
+    <value>Passerelle locale</value>
+  </data>
+  <data name="NotificationsPage_MetadataNode" xml:space="preserve">
+    <value>Nœud</value>
+  </data>
+  <data name="NotificationsPage_MetadataPairing" xml:space="preserve">
+    <value>Appairage</value>
+  </data>
+  <data name="NotificationsPage_MetadataSandbox" xml:space="preserve">
+    <value>Bac à sable</value>
+  </data>
+  <data name="NotificationsPage_MetadataSettings" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="NotificationsPage_MetadataStatus" xml:space="preserve">
+    <value>État</value>
+  </data>
+  <data name="NotificationsPage_MetadataSystemRun" xml:space="preserve">
+    <value>system.run</value>
   </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Approbation d'exécution requise</value>
@@ -5897,13 +6020,319 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Waiting for gateway health</value>
   </data>
   <data name="ConfigPage_CheckingConfigPermissions" xml:space="preserve">
-    <value>Checking config permissions</value>
+    <value>Vérification des autorisations de configuration</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnly" xml:space="preserve">
-    <value>Config is read-only</value>
+    <value>La configuration est en lecture seule</value>
   </data>
   <data name="ConfigPage_ConfigUnavailable" xml:space="preserve">
-    <value>Config unavailable</value>
+    <value>Configuration indisponible</value>
+  </data>
+  <data name="ConfigPage_EditingPathFormat" xml:space="preserve">
+    <value>Modification de {0} via le formulaire guidé par schéma.</value>
+  </data>
+  <data name="ConfigPage_RenderConfigUnavailableTitle" xml:space="preserve">
+    <value>Configuration indisponible</value>
+  </data>
+  <data name="ConfigPage_RenderConfigUnavailableMessage" xml:space="preserve">
+    <value>La configuration de la passerelle n'a pas pu être affichée. Actualisez et réessayez.</value>
+  </data>
+  <data name="ConfigPage_RenderSchemaUnavailableTitle" xml:space="preserve">
+    <value>Schéma indisponible</value>
+  </data>
+  <data name="ConfigPage_RenderSchemaUnavailableMessage" xml:space="preserve">
+    <value>Le schéma de la passerelle n'a pas pu être affiché. Le JSON brut reste disponible en aperçu en lecture seule.</value>
+  </data>
+  <data name="ConfigPage_StatusGatewayRestartingTitle" xml:space="preserve">
+    <value>Redémarrage de la passerelle</value>
+  </data>
+  <data name="ConfigPage_StatusGatewayRestartingMessage" xml:space="preserve">
+    <value>Enregistrement des modifications. La passerelle redémarre et se reconnectera automatiquement.</value>
+  </data>
+  <data name="ConfigPage_StatusNoChangesTitle" xml:space="preserve">
+    <value>Aucune modification</value>
+  </data>
+  <data name="ConfigPage_StatusNoChangesMessage" xml:space="preserve">
+    <value>Il n'y a rien à enregistrer.</value>
+  </data>
+  <data name="ConfigPage_StatusFixValidationErrorsTitle" xml:space="preserve">
+    <value>Corriger les erreurs de validation</value>
+  </data>
+  <data name="ConfigPage_StatusValidationErrorMessageFormat" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
+  <data name="ConfigPage_StatusNotConnectedTitle" xml:space="preserve">
+    <value>Non connecté</value>
+  </data>
+  <data name="ConfigPage_StatusNotConnectedMessage" xml:space="preserve">
+    <value>Connectez-vous à une passerelle avant d'enregistrer la configuration.</value>
+  </data>
+  <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
+    <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.write ; les modifications de configuration ne peuvent donc pas être enregistrées.</value>
+  </data>
+  <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
+    <value>Configuration non chargée</value>
+  </data>
+  <data name="ConfigPage_StatusConfigNotLoadedMessage" xml:space="preserve">
+    <value>Actualisez la configuration de la passerelle avant d'enregistrer.</value>
+  </data>
+  <data name="ConfigPage_StatusSavingConfigTitle" xml:space="preserve">
+    <value>Enregistrement de la configuration…</value>
+  </data>
+  <data name="ConfigPage_StatusSavingConfigMessageFormat" xml:space="preserve">
+    <value>Écriture de {0} modification(s) vers la passerelle.</value>
+  </data>
+  <data name="ConfigPage_StatusStaleConfigTitle" xml:space="preserve">
+    <value>La configuration de la passerelle a changé ailleurs</value>
+  </data>
+  <data name="ConfigPage_StatusStaleConfigMessageFormat" xml:space="preserve">
+    <value>Vos modifications sont conservées. La dernière configuration est en cours d'actualisation ; vérifiez le formulaire et réessayez Enregistrer. Détails : {0}</value>
+  </data>
+  <data name="ConfigPage_StatusStaleConfigDefaultDetail" xml:space="preserve">
+    <value>hachage de configuration obsolète</value>
+  </data>
+  <data name="ConfigPage_StatusSaveFailedTitle" xml:space="preserve">
+    <value>Échec de l'enregistrement</value>
+  </data>
+  <data name="ConfigPage_StatusSaveRejectedMessage" xml:space="preserve">
+    <value>La passerelle a rejeté la mise à jour de configuration. Vos modifications sont conservées.</value>
+  </data>
+  <data name="ConfigPage_StatusSaveExceptionMessageFormat" xml:space="preserve">
+    <value>{0} Vos modifications sont conservées.</value>
+  </data>
+  <data name="ConfigPage_SaveStatusCheckingConfigPermissions" xml:space="preserve">
+    <value>Vérification des autorisations de configuration…</value>
+  </data>
+  <data name="ConfigPage_SaveStatusRefreshing" xml:space="preserve">
+    <value>Actualisation…</value>
+  </data>
+  <data name="ConfigPage_StatusChangesDiscardedTitle" xml:space="preserve">
+    <value>Modifications ignorées</value>
+  </data>
+  <data name="ConfigPage_StatusChangesDiscardedMessage" xml:space="preserve">
+    <value>Le formulaire est revenu à la dernière configuration chargée depuis la passerelle.</value>
+  </data>
+  <data name="ConfigPage_FullConfig" xml:space="preserve">
+    <value>Configuration complète</value>
+  </data>
+  <data name="ConfigPage_StatusSectionResetTitle" xml:space="preserve">
+    <value>Section réinitialisée</value>
+  </data>
+  <data name="ConfigPage_StatusSectionResetMessageFormat" xml:space="preserve">
+    <value>{0} est revenu à la dernière valeur chargée depuis la passerelle.</value>
+  </data>
+  <data name="ConfigPage_StatusCopiedJsonDiffTitle" xml:space="preserve">
+    <value>Diff JSON copié</value>
+  </data>
+  <data name="ConfigPage_StatusCopiedJsonDiffMessage" xml:space="preserve">
+    <value>Le diff de la section sélectionnée a été copié dans le presse-papiers.</value>
+  </data>
+  <data name="ConfigPage_StatusGatewayReconnectedTitle" xml:space="preserve">
+    <value>Passerelle reconnectée</value>
+  </data>
+  <data name="ConfigPage_StatusGatewayReconnectedRefreshingMessage" xml:space="preserve">
+    <value>Configuration enregistrée et connexion à la passerelle rétablie. Actualisation de la dernière configuration.</value>
+  </data>
+  <data name="ConfigPage_StatusGatewayReconnectedLoadedMessage" xml:space="preserve">
+    <value>Configuration enregistrée et dernière configuration de la passerelle chargée.</value>
+  </data>
+  <data name="ConfigPage_StatusGatewayStillReconnectingTitle" xml:space="preserve">
+    <value>La passerelle se reconnecte encore</value>
+  </data>
+  <data name="ConfigPage_StatusGatewayStillReconnectingMessage" xml:space="preserve">
+    <value>L'enregistrement de la configuration a été accepté, mais la passerelle ne s'est pas encore reconnectée. Vous pouvez garder cette page ouverte ou utiliser Connexion pour vérifier l'état.</value>
+  </data>
+  <data name="ConfigPage_CheckingConfigPermissionsMessage" xml:space="preserve">
+    <value>En attente du rapport des autorisations de cet opérateur par la passerelle.</value>
+  </data>
+  <data name="ConfigPage_ConfigUnavailableMessage" xml:space="preserve">
+    <value>Ce jeton opérateur ne dispose pas de l'autorisation operator.read ; la configuration de la passerelle ne peut donc pas être chargée ici.</value>
+  </data>
+  <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
+    <value>Ce jeton opérateur peut lire la configuration, mais ne dispose pas de l'autorisation operator.write. Vous pouvez inspecter et valider les brouillons, mais Enregistrer est désactivé.</value>
+  </data>
+  <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
+    <value>Aucune modification non enregistrée.</value>
+  </data>
+  <data name="ConfigPage_MetaUnsavedChangesFormat" xml:space="preserve">
+    <value>{0} modification(s) non enregistrée(s)</value>
+  </data>
+  <data name="ConfigPage_MetaUnsavedChangesWithValidationFormat" xml:space="preserve">
+    <value>{0} modification(s) non enregistrée(s) · {1} problème(s) de validation</value>
+  </data>
+  <data name="ConfigPage_SaveStatusSaving" xml:space="preserve">
+    <value>Enregistrement…</value>
+  </data>
+  <data name="ConfigPage_SaveStatusGatewayRestarting" xml:space="preserve">
+    <value>Redémarrage de la passerelle…</value>
+  </data>
+  <data name="ConfigPage_SaveStatusConnectToGateway" xml:space="preserve">
+    <value>Connectez-vous à une passerelle pour modifier</value>
+  </data>
+  <data name="ConfigPage_SaveStatusCheckingPermissions" xml:space="preserve">
+    <value>Vérification des autorisations…</value>
+  </data>
+  <data name="ConfigPage_SaveStatusMissingRead" xml:space="preserve">
+    <value>Configuration indisponible : operator.read manquant</value>
+  </data>
+  <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
+    <value>Lecture seule : operator.write manquant</value>
+  </data>
+  <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
+    <value>Corrigez les erreurs de validation avant d'enregistrer</value>
+  </data>
+  <data name="ConfigPage_SaveStatusUnsavedChanges" xml:space="preserve">
+    <value>Modifications non enregistrées</value>
+  </data>
+  <data name="ConfigPage_SaveStatusNoUnsavedChanges" xml:space="preserve">
+    <value>Aucune modification non enregistrée</value>
+  </data>
+  <data name="ConfigPage_AccessDisconnected" xml:space="preserve">
+    <value>Déconnecté</value>
+  </data>
+  <data name="ConfigPage_AccessChecking" xml:space="preserve">
+    <value>Vérification de l'accès</value>
+  </data>
+  <data name="ConfigPage_AccessNoRead" xml:space="preserve">
+    <value>Aucun accès en lecture à la configuration</value>
+  </data>
+  <data name="ConfigPage_AccessReadOnly" xml:space="preserve">
+    <value>Accès en lecture seule</value>
+  </data>
+  <data name="ConfigPage_AccessReadWrite" xml:space="preserve">
+    <value>Accès en lecture/écriture</value>
+  </data>
+  <data name="ConfigPage_AccessUnknown" xml:space="preserve">
+    <value>Accès inconnu</value>
+  </data>
+  <data name="ConfigPage_AccessChangesFormat" xml:space="preserve">
+    <value>{0} modification(s)</value>
+  </data>
+  <data name="ConfigPage_AccessValidationClean" xml:space="preserve">
+    <value>Validation locale correcte</value>
+  </data>
+  <data name="ConfigPage_AccessValidationIssuesFormat" xml:space="preserve">
+    <value>{0} problème(s) de validation</value>
+  </data>
+  <data name="ConfigPage_AccessSummaryFormat" xml:space="preserve">
+    <value>{0} · {1} · {2}</value>
+  </data>
+  <data name="DebugPage_NoGatewayConfigured" xml:space="preserve">
+    <value>aucune passerelle configurée</value>
+  </data>
+  <data name="DebugPage_StatusConnectedFormat" xml:space="preserve">
+    <value>OpenClaw est connecté à {0}.</value>
+  </data>
+  <data name="DebugPage_StatusConnectingFormat" xml:space="preserve">
+    <value>Connexion à {0}…</value>
+  </data>
+  <data name="DebugPage_StatusDisconnectedFormat" xml:space="preserve">
+    <value>Non connecté. Passerelle : {0}.</value>
+  </data>
+  <data name="DebugPage_StatusErrorFormat" xml:space="preserve">
+    <value>Dernière passerelle : {0}. Consultez la chronologie des événements.</value>
+  </data>
+  <data name="DebugPage_StatusGatewayFormat" xml:space="preserve">
+    <value>Passerelle : {0}.</value>
+  </data>
+  <data name="DebugPage_RecentLogTitle" xml:space="preserve">
+    <value>Journal récent</value>
+  </data>
+  <data name="DebugPage_RecentLogCaptionFormat" xml:space="preserve">
+    <value>Les 200 dernières lignes de {0}. La gravité est analysée à partir des balises [info]/[warn]/[error].</value>
+  </data>
+  <data name="DebugPage_CopyFeedbackFormat" xml:space="preserve">
+    <value>{0} copié dans le presse-papiers.</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
+    <value>Sandbox du nœud indisponible — les commandes s'exécutent sans confinement</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
+    <value>Le confinement n'est pas disponible sur ce PC ; les commandes s'exécutent donc sans protection de sandbox.</value>
+  </data>
+  <data name="SandboxPage_StatusOnTitle" xml:space="preserve">
+    <value>Le Sandbox du nœud est activé</value>
+  </data>
+  <data name="SandboxPage_StatusOnSubtext" xml:space="preserve">
+    <value>Les programmes exécutés par l'agent sur ce PC sont confinés.</value>
+  </data>
+  <data name="SandboxPage_StatusOffTitle" xml:space="preserve">
+    <value>Le Sandbox du nœud est désactivé — risque élevé</value>
+  </data>
+  <data name="SandboxPage_StatusOffSubtext" xml:space="preserve">
+    <value>Les programmes exécutés par l'agent sur ce PC ne sont pas confinés.</value>
+  </data>
+  <data name="SandboxPage_UnavailableDefaultReason" xml:space="preserve">
+    <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
+  </data>
+  <data name="SandboxPage_WindowsUnsupportedTitle" xml:space="preserve">
+    <value>Votre version de Windows ne prend pas encore en charge le sandboxing</value>
+  </data>
+  <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
+    <value>{0}&#x0A;&#x0A;Les commandes s'exécutent sans confinement sur cette machine — le sandboxing nécessite une version récente de Windows avec les primitives AppContainer. Installez les dernières mises à jour Windows (ou rejoignez le programme Windows Insider pour les versions les plus récentes) afin d'activer le confinement.</value>
+  </data>
+  <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
+    <value>Ouvrir Windows Update</value>
+  </data>
+  <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
+    <value>Des composants de sandboxing sont manquants</value>
+  </data>
+  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
+    <value>{0}&#x0A;&#x0A;Le binaire wxc-exec est introuvable ; les commandes s'exécutent donc sans confinement. S'il s'agit d'une build développeur, compilez l'application Tray pour copier wxc-exec.exe dans le dossier de sortie. Sinon, réinstallez le compagnon pour restaurer le sandboxing.</value>
+  </data>
+  <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
+    <value>Afficher les instructions d'installation</value>
+  </data>
+  <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
+    <value>Sandbox indisponible — les commandes s'exécutent sans confinement</value>
+  </data>
+  <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
+    <value>Passerelle locale supprimée</value>
+  </data>
+  <data name="SettingsPage_LocalGatewayRemovedMessage" xml:space="preserve">
+    <value>La configuration est réinitialisée ; vous pouvez relancer la configuration depuis le menu de la barre d'état.</value>
+  </data>
+  <data name="SettingsPage_LocalGatewayRemovalErrorsMessage" xml:space="preserve">
+    <value>La suppression s'est terminée avec des erreurs. Consultez les journaux pour plus de détails.</value>
+  </data>
+  <data name="SettingsPage_LocalGatewayRemovalCancelledTitle" xml:space="preserve">
+    <value>Suppression annulée</value>
+  </data>
+  <data name="SettingsPage_LocalGatewayRemovalCancelledMessage" xml:space="preserve">
+    <value>La passerelle peut être dans un état partiellement supprimé. Consultez les journaux ou réessayez.</value>
+  </data>
+  <data name="SettingsPage_ViewLogs" xml:space="preserve">
+    <value>Afficher les journaux</value>
+  </data>
+  <data name="SettingsPage_LocalGatewayRemovalFailedTitle" xml:space="preserve">
+    <value>Échec de la suppression</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
+    <value>Supprimer la passerelle locale</value>
+  </data>
+  <data name="SettingsPage_RemovingDistro" xml:space="preserve">
+    <value>Suppression de la distribution…</value>
+  </data>
+  <data name="SettingsPage_RemovingLocalGatewayMessage" xml:space="preserve">
+    <value>Suppression de la passerelle locale. Cela peut prendre 10 à 30 secondes…</value>
+  </data>
+  <data name="CronPage_NextWakeFormat" xml:space="preserve">
+    <value>· Prochain réveil : {0}</value>
+  </data>
+  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
+    <value>Impossible de charger le chat. L'URL ou le jeton de la passerelle n'est pas disponible.</value>
+  </data>
+  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
+    <value>Impossible de charger le chat. Réessayez. ({0})</value>
+  </data>
+  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
+    <value>Échec de WebView2 : {0}</value>
+  </data>
+  <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
+    <value>Échec de l'initialisation de WebView2 : {0}</value>
+  </data>
+  <data name="CanvasWindow_NavigationFailedFormat" xml:space="preserve">
+    <value>Échec de la navigation : {0}</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
     <value>Open a shell or manage the local gateway service in {0}.</value>

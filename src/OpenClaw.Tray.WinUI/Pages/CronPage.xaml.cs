@@ -146,9 +146,16 @@ public sealed partial class CronPage : Page
                 var result = t.IsCompletedSuccessfully ? t.Result : null;
                 if (t.IsFaulted || result?.Enqueued != true)
                 {
-                    // Request failed or gateway declined to enqueue the run.
+                    var detail = t.IsFaulted
+                        ? t.Exception?.GetBaseException().Message ?? LocalizationHelper.GetString("AppNotification_CronRunFailed_DefaultDetail")
+                        : result?.Reason ?? result?.Error ?? LocalizationHelper.GetString("AppNotification_CronRunRejectedDetail");
                     ClearRunningJob(jobId);
-                    ShowRunNotStartedNotification(vm?.Name ?? jobId, result?.Reason ?? result?.Error);
+                    ShowRunNotStartedNotification(vm?.Name ?? jobId, detail);
+                    ShowCronAppNotification(
+                        LocalizationHelper.GetString("AppNotification_CronRunFailed_Title"),
+                        LocalizationHelper.Format("AppNotification_CronRunFailed_MessageFormat", vm?.Name ?? jobId, detail),
+                        AppNotificationSeverity.Error,
+                        $"cron:{jobId}:run-failed");
                     if (client != null) _ = client.RequestCronListAsync();
                     return;
                 }
@@ -644,6 +651,24 @@ public sealed partial class CronPage : Page
         });
     }
 
+    private static void ShowCronAppNotification(
+        string title,
+        string message,
+        AppNotificationSeverity severity,
+        string dedupeKey)
+    {
+        AppNotificationPublisher.Show(
+            CurrentApp.AppNotifications,
+            title,
+            message,
+            "cron",
+            "jobs",
+            severity,
+            dedupeKey,
+            "cron",
+            LocalizationHelper.GetString("AppNotification_ActionOpenCron"));
+    }
+
     private static string? GetSelectedTag(ComboBox combo)
     {
         return (combo.SelectedItem as ComboBoxItem)?.Tag as string;
@@ -995,7 +1020,7 @@ public sealed partial class CronPage : Page
                 ? (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"]
                 : (Brush)Application.Current.Resources["SystemFillColorNeutralBrush"];
             StorePathText.Text = storePath;
-            NextWakeText.Text = $"· Next wake: {nextWake}";
+            NextWakeText.Text = LocalizationHelper.Format("CronPage_NextWakeFormat", nextWake);
         });
     }
 
