@@ -142,6 +142,12 @@ public sealed class NodeConnector : INodeConnector
         }
         catch (Exception ex)
         {
+            if (cancellationToken.IsCancellationRequested ||
+                !IsCurrentClient(client, generation))
+            {
+                return;
+            }
+
             _logger.Warn($"[NodeConnector] ClientCreated handler threw: {ex.Message}");
             _diagnostics?.Record("node", "ClientCreated handler failed; node connection aborted before handshake", ex.Message);
             DisconnectCurrentClient();
@@ -183,6 +189,12 @@ public sealed class NodeConnector : INodeConnector
         }
         catch (Exception ex)
         {
+            if (cancellationToken.IsCancellationRequested ||
+                !IsCurrentClient(client, generation))
+            {
+                return;
+            }
+
             _logger.Error($"[NodeConnector] Connect failed: {ex.Message}");
         }
     }
