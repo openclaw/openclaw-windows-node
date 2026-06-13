@@ -42,7 +42,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _lastAutoApprovedDevicePairRequestId; // prevent role-upgrade auto-approve loops
     private string? _devicePairAutoApproveInFlight; // atomic guard against concurrent approval of same requestId
     private bool _devicePairReconnectInFlight;
-    private bool _devicePairReconnectRetryAccepted;
+    private readonly Dictionary<string, int> _devicePairReconnectAttempts = new(StringComparer.Ordinal);
     private string? _queuedDevicePairReconnectRequestId;
     private long _queuedDevicePairReconnectGeneration;
     private string? _forceBootstrapForGatewayRecordId;
@@ -1281,6 +1281,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 case PairingStatus.Paired:
                     _stateMachine.TryTransition(ConnectionTrigger.NodePaired);
                     Interlocked.Exchange(ref _lastAutoApprovedDevicePairRequestId, null);
+                    lock (_devicePairReconnectLock)
+                    {
+                        _devicePairReconnectAttempts.Clear();
+                        _queuedDevicePairReconnectRequestId = null;
+                        _queuedDevicePairReconnectGeneration = 0;
+                    }
                     break;
                 case PairingStatus.Pending:
                     _stateMachine.TryTransition(ConnectionTrigger.NodePairingRequired);
@@ -1444,11 +1450,15 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var queuedRetry = false;
         lock (_devicePairReconnectLock)
         {
+            _devicePairReconnectAttempts.TryGetValue(requestId, out var attemptCount);
+            if (attemptCount >= 2)
+                return;
+
             if (_devicePairReconnectInFlight)
             {
-                if (!_devicePairReconnectRetryAccepted)
+                if (_queuedDevicePairReconnectRequestId == null)
                 {
-                    _devicePairReconnectRetryAccepted = true;
+                    _devicePairReconnectAttempts[requestId] = attemptCount + 1;
                     _queuedDevicePairReconnectRequestId = requestId;
                     _queuedDevicePairReconnectGeneration = approvalGeneration;
                     queuedRetry = true;
@@ -1456,8 +1466,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
             else
             {
+                _devicePairReconnectAttempts[requestId] = attemptCount + 1;
                 _devicePairReconnectInFlight = true;
-                _devicePairReconnectRetryAccepted = false;
                 _queuedDevicePairReconnectRequestId = null;
                 _queuedDevicePairReconnectGeneration = 0;
                 ownsReconnect = true;
@@ -1485,7 +1495,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (retryRequestId == null)
                 {
                     _devicePairReconnectInFlight = false;
-                    _devicePairReconnectRetryAccepted = false;
                     _queuedDevicePairReconnectGeneration = 0;
                     guardOwned = false;
                 }
@@ -1507,7 +1516,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 lock (_devicePairReconnectLock)
                 {
                     _devicePairReconnectInFlight = false;
-                    _devicePairReconnectRetryAccepted = false;
                     _queuedDevicePairReconnectRequestId = null;
                     _queuedDevicePairReconnectGeneration = 0;
                 }
@@ -1559,7 +1567,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         Interlocked.Exchange(ref _devicePairAutoApproveInFlight, null);
         lock (_devicePairReconnectLock)
         {
-            _devicePairReconnectRetryAccepted = false;
+            _devicePairReconnectAttempts.Clear();
             _queuedDevicePairReconnectRequestId = null;
             _queuedDevicePairReconnectGeneration = 0;
         }

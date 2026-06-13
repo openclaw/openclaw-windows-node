@@ -189,6 +189,11 @@ public class NodePairAutoApproveTests : IDisposable
         releaseFirstDelay.SetResult(true);
 
         await WaitUntilAsync(() => _nodeConnector.ConnectCount >= connectCountBeforeApproval + 2);
+        await FireAndWait(manager, () =>
+            _nodeConnector.FirePairingStatusChanged(
+                PairingStatus.Pending,
+                requestId: "req-device-role-upgrade",
+                approvalKind: PairingApprovalKind.DevicePair));
         await Task.Delay(50);
 
         Assert.Equal(connectCountBeforeApproval + 2, _nodeConnector.ConnectCount);

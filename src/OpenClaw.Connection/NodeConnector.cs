@@ -12,6 +12,7 @@ public sealed class NodeConnector : INodeConnector
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
     private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
+    private readonly object _clientLifecycleLock = new();
     private CancellationTokenRegistration _connectionCancellationRegistration;
     private WindowsNodeClient? _client;
     private long _clientGeneration;
@@ -85,9 +86,7 @@ public sealed class NodeConnector : INodeConnector
 
         cancellationToken.ThrowIfCancellationRequested();
         DisconnectCurrentClient();
-        var generation = Interlocked.Increment(ref _clientGeneration);
 
-        Mode = NodeConnectionMode.Gateway;
         _logger.Info($"[NodeConnector] Connecting to {gatewayUrl}");
 
         // Use a diagnostic tee logger so node handshake logs appear in the Connection Status timeline
@@ -101,11 +100,19 @@ public sealed class NodeConnector : INodeConnector
             identityPath,
             nodeLogger,
             bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
-        _client = client;
 
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
         if (useV2Signature)
             client.UseV2Signature = true;
+
+        long generation;
+        lock (_clientLifecycleLock)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            generation = Interlocked.Increment(ref _clientGeneration);
+            _client = client;
+            Mode = NodeConnectionMode.Gateway;
+        }
 
         _connectionCancellationRegistration = cancellationToken.Register(
             () => DisconnectIfCurrent(generation));
@@ -118,11 +125,21 @@ public sealed class NodeConnector : INodeConnector
         // the gateway sees an empty caps array for this session.
         try
         {
-            ClientCreated?.Invoke(
-                this,
-                new NodeClientCreatedEventArgs(
-                    client,
-                    credential.IsBootstrapToken ? null : credential.Token));
+            lock (_clientLifecycleLock)
+            {
+                ThrowIfNotCurrent(client, generation, cancellationToken);
+                ClientCreated?.Invoke(
+                    this,
+                    new NodeClientCreatedEventArgs(
+                        client,
+                        credential.IsBootstrapToken ? null : credential.Token));
+            }
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested ||
+            !IsCurrentClient(client, generation))
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -151,8 +168,15 @@ public sealed class NodeConnector : INodeConnector
 
         try
         {
-            await client.ConnectAsync();
-            cancellationToken.ThrowIfCancellationRequested();
+            Task connectTask;
+            lock (_clientLifecycleLock)
+            {
+                ThrowIfNotCurrent(client, generation, cancellationToken);
+                connectTask = client.ConnectAsync();
+            }
+            await connectTask;
+            lock (_clientLifecycleLock)
+                ThrowIfNotCurrent(client, generation, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -170,14 +194,22 @@ public sealed class NodeConnector : INodeConnector
         return Task.CompletedTask;
     }
 
-    private bool IsCurrentClient(object? sender, long generation) =>
-        Interlocked.Read(ref _clientGeneration) == generation &&
-        ReferenceEquals(sender, _client);
+    private bool IsCurrentClient(object? sender, long generation)
+    {
+        lock (_clientLifecycleLock)
+        {
+            return Interlocked.Read(ref _clientGeneration) == generation &&
+                ReferenceEquals(sender, _client);
+        }
+    }
 
     private void DisconnectIfCurrent(long generation)
     {
-        if (Interlocked.Read(ref _clientGeneration) == generation)
-            DisconnectInternal();
+        lock (_clientLifecycleLock)
+        {
+            if (Interlocked.Read(ref _clientGeneration) == generation)
+                DisconnectInternalCore();
+        }
     }
 
     private void DisconnectCurrentClient()
@@ -189,6 +221,12 @@ public sealed class NodeConnector : INodeConnector
 
     private void DisconnectInternal()
     {
+        lock (_clientLifecycleLock)
+            DisconnectInternalCore();
+    }
+
+    private void DisconnectInternalCore()
+    {
         Interlocked.Increment(ref _clientGeneration);
         var old = _client;
         _client = null;
@@ -198,6 +236,19 @@ public sealed class NodeConnector : INodeConnector
             catch (Exception ex) { _logger.Warn($"[NodeConnector] Dispose error: {ex.Message}"); }
         }
         Mode = NodeConnectionMode.Disabled;
+    }
+
+    private void ThrowIfNotCurrent(
+        WindowsNodeClient client,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Interlocked.Read(ref _clientGeneration) != generation ||
+            !ReferenceEquals(client, _client))
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
     }
 
     public void Dispose()
