@@ -122,11 +122,12 @@ public class NodePairAutoApproveTests : IDisposable
     }
 
     [Fact]
-    public async Task ExplicitDevicePairRequest_SameRequestId_DoesNotAutoApproveTwice()
+    public async Task ExplicitDevicePairRequest_SameRequestId_RetriesReconnectWithoutReapproving()
     {
         using var manager = CreateConnectedManager();
         var client = GetConnectedClient(["operator.admin"]);
         var connectCountBeforeApproval = _nodeConnector.ConnectCount;
+        _nodeConnector.ConnectFailuresRemaining = 1;
 
         var approvalDone = client.WaitForApprovalCallAsync();
         _nodeConnector.FirePairingStatusChanged(
@@ -135,12 +136,13 @@ public class NodePairAutoApproveTests : IDisposable
             approvalKind: PairingApprovalKind.DevicePair);
         await approvalDone;
         await WaitUntilAsync(() => _nodeConnector.ConnectCount > connectCountBeforeApproval);
+        var connectCountAfterFailedReconnect = _nodeConnector.ConnectCount;
 
         _nodeConnector.FirePairingStatusChanged(
             PairingStatus.Pending,
             requestId: "req-device-role-upgrade",
             approvalKind: PairingApprovalKind.DevicePair);
-        await Task.Delay(50);
+        await WaitUntilAsync(() => _nodeConnector.ConnectCount > connectCountAfterFailedReconnect);
 
         Assert.Equal(["device.pair.approve"], client.ApprovalMethodsCalled);
     }
@@ -303,6 +305,7 @@ public class NodePairAutoApproveTests : IDisposable
     {
         public bool IsConnected { get; private set; }
         public int ConnectCount { get; private set; }
+        public int ConnectFailuresRemaining { get; set; }
         public PairingStatus PairingStatus { get; set; } = PairingStatus.Unknown;
         public string? NodeDeviceId { get; set; }
         public NodeConnectionMode Mode { get; set; } = NodeConnectionMode.Disabled;
@@ -322,6 +325,11 @@ public class NodePairAutoApproveTests : IDisposable
         {
             ConnectCount++;
             Mode = NodeConnectionMode.Gateway;
+            if (ConnectFailuresRemaining > 0)
+            {
+                ConnectFailuresRemaining--;
+                throw new InvalidOperationException("transient node reconnect failure");
+            }
             return Task.CompletedTask;
         }
 

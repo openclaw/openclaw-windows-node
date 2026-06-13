@@ -37,6 +37,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _operatorTokenRecoveryAttemptedGatewayId;
     private string? _lastAutoApprovedDevicePairRequestId; // prevent role-upgrade auto-approve loops
     private string? _devicePairAutoApproveInFlight; // atomic guard against concurrent approval of same requestId
+    private string? _devicePairReconnectInFlight; // reconnect-only retry guard for an already-approved requestId
     private string? _forceBootstrapForGatewayRecordId;
     private bool _activeConnectUsedBootstrapToken;
     private bool _postBootstrapOperatorReconnectScheduled;
@@ -365,7 +366,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
             string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
             Equals(_activeSshTunnel, record.SshTunnel);
-        long? gen = null;
+        var gen = Interlocked.Read(ref _generation);
         if (!preservesOperatorConnection)
         {
             gen = Interlocked.Increment(ref _generation);
@@ -394,7 +395,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (!preservesOperatorConnection && !await TryStartTunnelForNodeOnlyAsync(record))
             return false;
 
-        return !gen.HasValue || Interlocked.Read(ref _generation) == gen.Value;
+        return Interlocked.Read(ref _generation) == gen;
     }
 
     private async Task<bool> TryStartTunnelForNodeOnlyAsync(GatewayRecord record)
@@ -1263,6 +1264,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         e.RequestId,
                         Interlocked.Read(ref _generation));
                 }
+                else
+                {
+                    await ReconnectAfterApprovedDevicePairAsync(
+                        e.RequestId,
+                        Interlocked.Read(ref _generation));
+                }
             }
             else
             {
@@ -1370,10 +1377,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         // doesn't block unrelated approvals.
         if (approved)
         {
-            _diagnostics.Record("node", "Device role-upgrade pairing auto-approved — reconnecting node");
+            await ReconnectAfterApprovedDevicePairAsync(requestId, approvalGeneration);
+        }
+    }
+
+    private async Task ReconnectAfterApprovedDevicePairAsync(
+        string requestId,
+        long approvalGeneration)
+    {
+        if (Interlocked.CompareExchange(ref _devicePairReconnectInFlight, requestId, null) != null)
+            return;
+
+        try
+        {
+            _diagnostics.Record("node", "Device role-upgrade pairing approved — reconnecting node");
             await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
             if (Interlocked.Read(ref _generation) == approvalGeneration)
                 await StartNodeConnectionAsync();
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _devicePairReconnectInFlight, null, requestId);
         }
     }
 
@@ -1409,6 +1433,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _activeSshTunnel = null;
         _lastAutoApprovedDevicePairRequestId = null;
         Interlocked.Exchange(ref _devicePairAutoApproveInFlight, null);
+        Interlocked.Exchange(ref _devicePairReconnectInFlight, null);
         if (old != null)
         {
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs
