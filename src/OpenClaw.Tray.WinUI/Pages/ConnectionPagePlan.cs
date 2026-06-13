@@ -197,8 +197,8 @@ internal sealed record ConnectionPagePlan
         return ApplyNodeListApproval(
             plan,
             localNode,
-            snap.NodePairingApprovalKind,
-            snap.NodePairingRequestId);
+            snap,
+            settings);
     }
 
     private static ConnectionPagePlan BuildDerived(
@@ -514,16 +514,24 @@ internal sealed record ConnectionPagePlan
     private static ConnectionPagePlan ApplyNodeListApproval(
         ConnectionPagePlan plan,
         GatewayNodeInfo? localNode,
-        PairingApprovalKind pairingApprovalKind,
-        string? pairingRequestId)
+        GatewayConnectionSnapshot snap,
+        SettingsManager? settings)
     {
+        var pairingApprovalKind = snap.NodePairingApprovalKind;
+        var pairingRequestId = snap.NodePairingRequestId;
         var isPendingTrustApproval = localNode?.ApprovalState is
             GatewayNodeApprovalState.PendingApproval or
             GatewayNodeApprovalState.PendingReapproval;
+        var nodeConnectingAllowsTrustOverride =
+            plan.NodeCard == NodeCardState.Hidden &&
+            settings?.EnableNodeMode == true &&
+            snap.OperatorState == RoleConnectionState.Connected &&
+            snap.NodeState == RoleConnectionState.Connecting;
         var nodeCardAllowsTrustOverride = plan.NodeCard is
             NodeCardState.OnHealthy or
             NodeCardState.OnPermissionsIncomplete or
-            NodeCardState.OnNodePairingRequired;
+            NodeCardState.OnNodePairingRequired ||
+            nodeConnectingAllowsTrustOverride;
         // Authoritative node-list trust can override any non-device-pair card.
         // Snapshot fallback is narrower: Unknown stays on discovery-only pairing UI.
         var nodeListTrustOwnsApprovalUx =

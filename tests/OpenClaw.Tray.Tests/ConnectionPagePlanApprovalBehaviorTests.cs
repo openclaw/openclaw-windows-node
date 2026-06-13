@@ -76,6 +76,23 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
     }
 
     [Fact]
+    public void NodeListTrust_OverridesNodeConnectingWaitState()
+    {
+        var plan = Build(
+            new GatewayConnectionSnapshot
+            {
+                OverallState = OverallConnectionState.Connecting,
+                OperatorState = RoleConnectionState.Connected,
+                NodeState = RoleConnectionState.Connecting
+            },
+            PendingReapprovalNode());
+
+        Assert.Equal(NodeCardState.OnNodeReapprovalRequired, plan.NodeCard);
+        Assert.Equal("openclaw nodes approve trust-request", plan.NodeTrustApproveCommand);
+        Assert.True(plan.NodeTrustCommandApprovesRequest);
+    }
+
+    [Fact]
     public void SnapshotNodeTrust_OwnsCopyOnlyApprovalBeforeNodeListArrives()
     {
         var plan = Build(PairingApprovalKind.NodePair, localNode: null, requestId: "trust-request");
@@ -178,6 +195,21 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
             PendingReapprovalNode());
 
         AssertTrustDoesNotOverride(plan, NodeCardState.Off);
+    }
+
+    [Fact]
+    public void OperatorConnecting_RemainsHiddenDespiteStalePendingReapproval()
+    {
+        var plan = Build(
+            new GatewayConnectionSnapshot
+            {
+                OverallState = OverallConnectionState.Connecting,
+                OperatorState = RoleConnectionState.Connecting,
+                NodeState = RoleConnectionState.Idle
+            },
+            PendingReapprovalNode());
+
+        AssertTrustDoesNotOverride(plan, NodeCardState.Hidden);
     }
 
     [Fact]
