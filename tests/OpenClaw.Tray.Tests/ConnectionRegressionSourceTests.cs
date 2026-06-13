@@ -42,7 +42,7 @@ public sealed class ConnectionRegressionSourceTests
         Assert.Contains(
             "OpenClaw.Shared.PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId)",
             appSource);
-        Assert.Contains("_ => \"openclaw devices list\"", appSource);
+        Assert.Contains("_ => \"openclaw nodes pending\"", appSource);
         Assert.Contains("ShowPairingPendingNotification(args.DeviceId, approvalCommand)", appSource);
     }
 

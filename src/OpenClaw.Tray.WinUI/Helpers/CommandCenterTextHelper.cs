@@ -251,6 +251,7 @@ internal static class CommandCenterTextHelper
             builder.AppendLine($"  pending declared capabilities: {FormatCommandList(node.PendingDeclaredCapabilities)}");
             builder.AppendLine($"  pending declared commands: {FormatCommandList(node.PendingDeclaredCommands)}");
             builder.AppendLine($"  pending declared permissions: {FormatPermissions(node.PendingDeclaredPermissions)}");
+            builder.AppendLine($"  legacy declared/unverified commands: {FormatCommandList(node.UnverifiedDeclaredCommands)}");
             builder.AppendLine($"  local declared/unverified capabilities: {FormatCommandList(node.LocalDeclaredCapabilities)}");
             builder.AppendLine($"  local declared/unverified commands: {FormatCommandList(node.LocalDeclaredCommands)}");
             builder.AppendLine($"  local declared/unverified permissions: {FormatPermissions(node.LocalDeclaredPermissions)}");
@@ -609,6 +610,7 @@ internal static class CommandCenterTextHelper
         builder.AppendLine($"Pending declared capabilities: {FormatCommandList(node.PendingDeclaredCapabilities)}");
         builder.AppendLine($"Pending declared commands: {FormatCommandList(node.PendingDeclaredCommands)}");
         builder.AppendLine($"Pending declared permissions: {FormatPermissions(node.PendingDeclaredPermissions)}");
+        builder.AppendLine($"Legacy declared/unverified commands: {FormatCommandList(node.UnverifiedDeclaredCommands)}");
         builder.AppendLine($"Local declared/unverified capabilities: {FormatCommandList(node.LocalDeclaredCapabilities)}");
         builder.AppendLine($"Local declared/unverified commands: {FormatCommandList(node.LocalDeclaredCommands)}");
         builder.AppendLine($"Local declared/unverified permissions: {FormatPermissions(node.LocalDeclaredPermissions)}");

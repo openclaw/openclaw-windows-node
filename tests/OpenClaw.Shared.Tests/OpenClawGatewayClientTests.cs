@@ -1715,6 +1715,7 @@ public class OpenClawGatewayClientTests
         Assert.Equal(["system", "camera"], node.PendingDeclaredCapabilities);
         Assert.Equal(["system.notify", "camera.snap"], node.PendingDeclaredCommands);
         Assert.False(node.PendingDeclaredPermissions["camera.snap"]);
+        Assert.Empty(node.UnverifiedDeclaredCommands);
     }
 
     [Fact]
@@ -1736,6 +1737,7 @@ public class OpenClawGatewayClientTests
         Assert.Empty(node.Commands);
         Assert.Equal(0, node.CommandCount);
         Assert.Empty(node.PendingDeclaredCommands);
+        Assert.Equal(["system.run", "camera.snap"], node.UnverifiedDeclaredCommands);
     }
 
     [Fact]
@@ -1841,6 +1843,7 @@ public class OpenClawGatewayClientTests
         Assert.Empty(n.PendingDeclaredCapabilities);
         Assert.Empty(n.PendingDeclaredCommands);
         Assert.Empty(n.PendingDeclaredPermissions);
+        Assert.Empty(n.UnverifiedDeclaredCommands);
     }
 
     [Fact]

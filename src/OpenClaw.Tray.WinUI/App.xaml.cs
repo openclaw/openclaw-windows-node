@@ -2076,7 +2076,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 {
                     OpenClaw.Shared.PairingApprovalKind.DevicePair => BuildPairingApprovalCommand(args.DeviceId),
                     OpenClaw.Shared.PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId),
-                    _ => "openclaw devices list"
+                    _ => "openclaw nodes pending"
                 };
                 ShowPairingPendingNotification(args.DeviceId, approvalCommand);
             }
@@ -2996,6 +2996,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         LastUpdateInfo = _appState!.UpdateInfo,
         Settings = _settings,
         NodeService = _nodeService,
+        NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind
+            ?? PairingApprovalKind.Unknown,
+        NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId,
         SshTunnelSnapshot = _sshTunnelService?.CreateSnapshot(),
         HasGatewayClient = _connectionManager?.OperatorClient != null
     };

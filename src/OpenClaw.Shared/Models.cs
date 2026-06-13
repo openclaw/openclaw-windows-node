@@ -521,6 +521,9 @@ public class GatewayNodeInfo
     public List<string> PendingDeclaredCapabilities { get; set; } = new();
     public List<string> PendingDeclaredCommands { get; set; } = new();
     public Dictionary<string, bool> PendingDeclaredPermissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    // Older gateways only expose declaredCommands. Keep them visible here
+    // without treating them as approved/effective or pending declarations.
+    public List<string> UnverifiedDeclaredCommands { get; set; } = new();
 
     // Identity / hardware (from gateway NodeListNode schema)
     public string? Version { get; set; }
@@ -929,6 +932,7 @@ public class NodeCapabilityHealthInfo
     public List<string> PendingDeclaredCapabilities { get; set; } = new();
     public List<string> PendingDeclaredCommands { get; set; } = new();
     public Dictionary<string, bool> PendingDeclaredPermissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<string> UnverifiedDeclaredCommands { get; set; } = new();
     public List<string> LocalDeclaredCapabilities { get; set; } = new();
     public List<string> LocalDeclaredCommands { get; set; } = new();
     public Dictionary<string, bool> LocalDeclaredPermissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -966,6 +970,7 @@ public class NodeCapabilityHealthInfo
             PendingDeclaredPermissions = new Dictionary<string, bool>(
                 node.PendingDeclaredPermissions,
                 StringComparer.OrdinalIgnoreCase),
+            UnverifiedDeclaredCommands = node.UnverifiedDeclaredCommands.ToList(),
             DisabledBySettingsCommands = node.DisabledCommands
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Order(StringComparer.OrdinalIgnoreCase)
@@ -1337,6 +1342,7 @@ public static class CommandCenterDiagnostics
             node.LocalDeclaredCapabilities.Count > 0 ||
             node.LocalDeclaredCommands.Count > 0 ||
             node.LocalDeclaredPermissions.Count > 0;
+        var hasUnverifiedLegacyDeclarations = node.UnverifiedDeclaredCommands.Count > 0;
 
         if (!node.IsOnline)
         {
@@ -1381,7 +1387,21 @@ public static class CommandCenterDiagnostics
             });
         }
 
-        if (node.Commands.Count == 0 && !isPendingApproval && !hasUnverifiedLocalDeclarations)
+        if (hasUnverifiedLegacyDeclarations)
+        {
+            warnings.Add(new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Info,
+                Category = "node",
+                Title = "Legacy node declarations are unverified",
+                Detail = "This older gateway reported declared commands without identifying approved/effective commands. They remain visible for troubleshooting only and are not approved/effective surfaces."
+            });
+        }
+
+        if (node.Commands.Count == 0 &&
+            !isPendingApproval &&
+            !hasUnverifiedLocalDeclarations &&
+            !hasUnverifiedLegacyDeclarations)
         {
             warnings.Add(new GatewayDiagnosticWarning
             {

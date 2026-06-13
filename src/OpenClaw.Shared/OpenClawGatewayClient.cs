@@ -3489,6 +3489,15 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 var pendingDeclaredCapabilities = GetStringArray(nodeElement, "pendingDeclaredCaps");
                 var pendingDeclaredCommands = GetStringArray(nodeElement, "pendingDeclaredCommands");
                 var pendingDeclaredPermissions = GetBoolDictionary(nodeElement, "pendingDeclaredPermissions");
+                var hasApprovalFields =
+                    nodeElement.TryGetProperty("approvalState", out _) ||
+                    nodeElement.TryGetProperty("pendingRequestId", out _) ||
+                    nodeElement.TryGetProperty("pendingDeclaredCaps", out _) ||
+                    nodeElement.TryGetProperty("pendingDeclaredCommands", out _) ||
+                    nodeElement.TryGetProperty("pendingDeclaredPermissions", out _);
+                var unverifiedDeclaredCommands = hasApprovalFields
+                    ? []
+                    : GetStringArray(nodeElement, "declaredCommands");
 
                 var clientMode = GetString(nodeElement, "clientMode");
 
@@ -3542,6 +3551,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                     PendingDeclaredCapabilities = pendingDeclaredCapabilities.ToList(),
                     PendingDeclaredCommands = pendingDeclaredCommands.ToList(),
                     PendingDeclaredPermissions = pendingDeclaredPermissions,
+                    UnverifiedDeclaredCommands = unverifiedDeclaredCommands.ToList(),
                     Version = GetString(nodeElement, "version"),
                     CoreVersion = GetString(nodeElement, "coreVersion"),
                     UiVersion = GetString(nodeElement, "uiVersion"),

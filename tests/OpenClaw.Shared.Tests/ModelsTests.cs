@@ -1231,6 +1231,29 @@ public class CommandCenterModelTests
     }
 
     [Fact]
+    public void NodeCapabilityHealthInfo_LegacyDeclarationsStayUnverifiedButVisible()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "legacy-node",
+            DisplayName = "Legacy Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            UnverifiedDeclaredCommands = ["system.notify", "browser.proxy"]
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Empty(info.Commands);
+        Assert.Empty(info.BrowserApprovedCommands);
+        Assert.Equal(["system.notify", "browser.proxy"], info.UnverifiedDeclaredCommands);
+        Assert.Contains(info.Warnings, warning =>
+            warning.Title == "Legacy node declarations are unverified" &&
+            warning.Detail.Contains("not approved/effective", StringComparison.Ordinal));
+        Assert.DoesNotContain(info.Warnings, warning => warning.Title == "No node commands visible");
+    }
+
+    [Fact]
     public void NodeCapabilityHealthInfo_SeparatesSafeAndDangerousPolicyBlocks()
     {
         var node = new GatewayNodeInfo

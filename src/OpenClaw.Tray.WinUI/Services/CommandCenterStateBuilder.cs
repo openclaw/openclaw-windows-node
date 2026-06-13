@@ -62,13 +62,18 @@ internal sealed class CommandCenterStateBuilder
             _snapshot.NodeService?.IsPendingApproval == true &&
             !string.IsNullOrWhiteSpace(_snapshot.NodeService.FullDeviceId))
         {
-            var approvalCommand = $"openclaw devices approve {_snapshot.NodeService.FullDeviceId}";
+            var approvalCommand = _snapshot.NodePairingApprovalKind switch
+            {
+                PairingApprovalKind.DevicePair => $"openclaw devices approve {_snapshot.NodeService.FullDeviceId}",
+                PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId),
+                _ => "openclaw nodes pending"
+            };
             warnings.Add(new GatewayDiagnosticWarning
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "pairing",
                 Title = LocalizationHelper.GetString("CommandCenter_NodePendingApproval"),
-                Detail = $"Approve device {_snapshot.NodeService.ShortDeviceId} from the gateway CLI, then re-open the command center after reconnect.",
+                Detail = $"Resolve the pending node approval for {_snapshot.NodeService.ShortDeviceId} from the gateway CLI, then re-open the command center after reconnect.",
                 RepairAction = "Copy approval command",
                 CopyText = approvalCommand
             });
@@ -196,7 +201,9 @@ internal sealed class CommandCenterStateBuilder
     private IEnumerable<GatewayDiagnosticWarning> BuildBrowserProxyAuthWarnings(IReadOnlyList<NodeCapabilityHealthInfo> nodes)
     {
         if (_snapshot.Settings?.NodeBrowserProxyEnabled == false ||
-            !nodes.Any(node => node.BrowserApprovedCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
+            !nodes.Any(node =>
+                node.BrowserApprovedCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase) ||
+                node.UnverifiedDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
         {
             yield break;
         }
@@ -206,7 +213,7 @@ internal sealed class CommandCenterStateBuilder
             Severity = GatewayDiagnosticSeverity.Info,
             Category = "browser",
             Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyAuthMayNeed"),
-            Detail = "This Windows node is advertising browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
+            Detail = "This Windows node reports or declares browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
             RepairAction = "Copy browser proxy auth guidance",
             CopyText = "If browser.proxy returns an auth error, enter the gateway shared token in Settings > Gateway Token, or configure the browser-control host to use auth compatible with the Windows node. Do not paste QR bootstrap tokens into the normal gateway token field."
         };

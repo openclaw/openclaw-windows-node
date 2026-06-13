@@ -10,12 +10,25 @@ public sealed class ConnectionPageNodeApprovalSourceTests
             "OpenClaw.Tray.WinUI",
             "Services",
             "CommandCenterStateBuilder.cs");
+        var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
         Assert.Contains("NodeCapabilityHealthInfo.FromLocalDeclarations(localNode)", builderSource);
         Assert.DoesNotContain("NodeCapabilityHealthInfo.FromNode(localNode)", builderSource);
         Assert.Contains("var hasAuthoritativePendingLocalNodeTrust =", builderSource);
         Assert.Contains("string.Equals(node.NodeId, localNodeId, StringComparison.OrdinalIgnoreCase)", builderSource);
         Assert.Contains("if (!hasAuthoritativePendingLocalNodeTrust &&", builderSource);
+        Assert.Contains("_snapshot.NodePairingApprovalKind switch", builderSource);
+        Assert.Contains(
+            "PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId)",
+            builderSource);
+        Assert.Contains("_ => \"openclaw nodes pending\"", builderSource);
+        Assert.Contains("node.UnverifiedDeclaredCommands.Contains(\"browser.proxy\"", builderSource);
+        Assert.Contains(
+            "NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind",
+            appSource);
+        Assert.Contains(
+            "NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId",
+            appSource);
     }
 
     [Fact]
