@@ -13,7 +13,6 @@ public sealed class NodeConnector : INodeConnector
     private readonly ConnectionDiagnostics? _diagnostics;
     private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
     private readonly object _clientLifecycleLock = new();
-    private CancellationTokenRegistration _connectionCancellationRegistration;
     private WindowsNodeClient? _client;
     private long _clientGeneration;
     private bool _disposed;
@@ -114,7 +113,7 @@ public sealed class NodeConnector : INodeConnector
             Mode = NodeConnectionMode.Gateway;
         }
 
-        _connectionCancellationRegistration = cancellationToken.Register(
+        using var cancellationRegistration = cancellationToken.Register(
             () => DisconnectIfCurrent(generation));
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -214,8 +213,6 @@ public sealed class NodeConnector : INodeConnector
 
     private void DisconnectCurrentClient()
     {
-        _connectionCancellationRegistration.Dispose();
-        _connectionCancellationRegistration = default;
         DisconnectInternal();
     }
 
