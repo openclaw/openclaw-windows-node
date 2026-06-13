@@ -2072,9 +2072,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
-                var approvalCommand = args.ApprovalKind == OpenClaw.Shared.PairingApprovalKind.NodePair
-                    ? CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId)
-                    : BuildPairingApprovalCommand(args.DeviceId);
+                var approvalCommand = args.ApprovalKind == OpenClaw.Shared.PairingApprovalKind.DevicePair
+                    ? BuildPairingApprovalCommand(args.DeviceId)
+                    : CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId);
                 ShowPairingPendingNotification(args.DeviceId, approvalCommand);
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)

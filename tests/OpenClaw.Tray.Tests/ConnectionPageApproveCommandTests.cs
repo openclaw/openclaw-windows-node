@@ -13,11 +13,13 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ConnectionPageApproveCommandTests
 {
     [Fact]
-    public void NodeApproveCommand_UsesNounFirstSubcommand()
+    public void NodeTrustApproveCommand_UsesNounFirstSubcommandBeforeNodeListArrives()
     {
         var plan = BuildNodePairingPlan(requestId: "node-req-123", PairingApprovalKind.NodePair);
 
-        Assert.Equal("openclaw nodes approve node-req-123", plan.NodeApproveCommand);
+        Assert.Null(plan.NodeApproveCommand);
+        Assert.Equal("openclaw nodes approve node-req-123", plan.NodeTrustApproveCommand);
+        Assert.True(plan.NodeTrustCommandApprovesRequest);
     }
 
     [Fact]
@@ -40,7 +42,6 @@ public sealed class ConnectionPageApproveCommandTests
     }
 
     [Theory]
-    [InlineData(PairingApprovalKind.NodePair, null, "openclaw nodes pending")]
     [InlineData(PairingApprovalKind.DevicePair, null, "openclaw devices list")]
     [InlineData(PairingApprovalKind.DevicePair, "node-device-789", "openclaw devices approve node-device-789")]
     public void MissingNodeRequestId_EmitsShellSafeDiscoveryCommand_NotBareApprove(
@@ -51,6 +52,16 @@ public sealed class ConnectionPageApproveCommandTests
         var plan = BuildNodePairingPlan(null, approvalKind, nodeDeviceId);
 
         AssertShellSafeCommand(expected, plan.NodeApproveCommand);
+    }
+
+    [Fact]
+    public void MissingNodeTrustRequestId_EmitsShellSafeDiscoveryCommand_NotBareApprove()
+    {
+        var plan = BuildNodePairingPlan(null, PairingApprovalKind.NodePair);
+
+        Assert.Null(plan.NodeApproveCommand);
+        AssertShellSafeCommand("openclaw nodes pending", plan.NodeTrustApproveCommand);
+        Assert.False(plan.NodeTrustCommandApprovesRequest);
     }
 
     [Fact]

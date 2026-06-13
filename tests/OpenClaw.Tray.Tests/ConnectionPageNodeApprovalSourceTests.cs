@@ -36,7 +36,9 @@ public sealed class ConnectionPageNodeApprovalSourceTests
         Assert.Contains("var nodeCardAllowsTrustOverride = plan.NodeCard is", planSource);
         Assert.Contains("NodeCardState.OnNodePairingRequired", planSource);
         Assert.Contains("pairingApprovalKind != PairingApprovalKind.DevicePair", planSource);
-        Assert.Contains("NodeApproveCommand = nodeListTrustOwnsApprovalUx ? null : plan.NodeApproveCommand", planSource);
+        Assert.Contains("var snapshotTrustOwnsApprovalUx =", planSource);
+        Assert.Contains("var nodeTrustOwnsApprovalUx =", planSource);
+        Assert.Contains("NodeApproveCommand = nodeTrustOwnsApprovalUx ? null : plan.NodeApproveCommand", planSource);
         Assert.Contains("NodeTrustCommandApprovesRequest = hasApprovalCommand", planSource);
         Assert.Contains("\"openclaw nodes pending\"", planSource);
         Assert.DoesNotContain("NodeEffectiveCapabilities = localNode.PendingDeclaredCapabilities", planSource);

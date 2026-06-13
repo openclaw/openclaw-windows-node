@@ -35,9 +35,11 @@ public sealed class ConnectionRegressionSourceTests
     {
         var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
-        Assert.Contains("args.ApprovalKind == OpenClaw.Shared.PairingApprovalKind.NodePair", appSource);
+        Assert.Contains("args.ApprovalKind == OpenClaw.Shared.PairingApprovalKind.DevicePair", appSource);
+        Assert.Contains("BuildPairingApprovalCommand(args.DeviceId)", appSource);
         Assert.Contains("CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId)", appSource);
         Assert.Contains("ShowPairingPendingNotification(args.DeviceId, approvalCommand)", appSource);
+        Assert.DoesNotContain("args.ApprovalKind == OpenClaw.Shared.PairingApprovalKind.NodePair", appSource);
     }
 
     [Fact]

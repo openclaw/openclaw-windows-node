@@ -194,7 +194,11 @@ internal sealed record ConnectionPagePlan
         if (userIntent == UserIntent.AddingGateway)
             plan = plan with { Mode = ConnectionPageMode.AddGateway };
 
-        return ApplyNodeListApproval(plan, localNode, snap.NodePairingApprovalKind);
+        return ApplyNodeListApproval(
+            plan,
+            localNode,
+            snap.NodePairingApprovalKind,
+            snap.NodePairingRequestId);
     }
 
     private static ConnectionPagePlan BuildDerived(
@@ -510,60 +514,76 @@ internal sealed record ConnectionPagePlan
     private static ConnectionPagePlan ApplyNodeListApproval(
         ConnectionPagePlan plan,
         GatewayNodeInfo? localNode,
-        PairingApprovalKind pairingApprovalKind)
+        PairingApprovalKind pairingApprovalKind,
+        string? pairingRequestId)
     {
-        if (localNode == null)
-            return plan;
-
-        var isPendingTrustApproval = localNode.ApprovalState is
+        var isPendingTrustApproval = localNode?.ApprovalState is
             GatewayNodeApprovalState.PendingApproval or
             GatewayNodeApprovalState.PendingReapproval;
         var nodeCardAllowsTrustOverride = plan.NodeCard is
             NodeCardState.OnHealthy or
             NodeCardState.OnPermissionsIncomplete or
             NodeCardState.OnNodePairingRequired;
+        // Only an explicitly typed device-pair request may retain role-pairing UI.
+        // Snapshot state owns the trust fallback; node.list enriches it when available.
         var nodeListTrustOwnsApprovalUx =
             isPendingTrustApproval &&
             nodeCardAllowsTrustOverride &&
             pairingApprovalKind != PairingApprovalKind.DevicePair;
+        var snapshotTrustOwnsApprovalUx =
+            plan.NodeCard == NodeCardState.OnNodePairingRequired &&
+            pairingApprovalKind != PairingApprovalKind.DevicePair;
+        var nodeTrustOwnsApprovalUx =
+            nodeListTrustOwnsApprovalUx ||
+            snapshotTrustOwnsApprovalUx;
         var nodeCard = plan.NodeCard;
-        if (nodeListTrustOwnsApprovalUx)
+        if (nodeTrustOwnsApprovalUx)
         {
-            nodeCard = localNode.ApprovalState switch
+            nodeCard = localNode?.ApprovalState switch
             {
-                GatewayNodeApprovalState.PendingApproval => NodeCardState.OnNodeApprovalRequired,
                 GatewayNodeApprovalState.PendingReapproval => NodeCardState.OnNodeReapprovalRequired,
-                _ => nodeCard
+                _ => NodeCardState.OnNodeApprovalRequired
             };
         }
 
+        var trustRequestId = isPendingTrustApproval
+            ? localNode!.PendingRequestId
+            : pairingRequestId;
         var approvalCommand = "";
-        var hasApprovalCommand = nodeListTrustOwnsApprovalUx &&
+        var hasApprovalCommand = nodeTrustOwnsApprovalUx &&
             CommandCenterDiagnostics.TryBuildNodeApprovalCommand(
-                localNode.PendingRequestId,
+                trustRequestId,
                 out approvalCommand);
 
         return plan with
         {
             NodeCard = nodeCard,
-            NodeApproveCommand = nodeListTrustOwnsApprovalUx ? null : plan.NodeApproveCommand,
-            NodeApprovalState = localNode.ApprovalState,
-            NodeTrustApproveCommand = nodeListTrustOwnsApprovalUx
+            NodeApproveCommand = nodeTrustOwnsApprovalUx ? null : plan.NodeApproveCommand,
+            NodeApprovalState = localNode?.ApprovalState ?? plan.NodeApprovalState,
+            NodeTrustApproveCommand = nodeTrustOwnsApprovalUx
                 ? hasApprovalCommand
                     ? approvalCommand
                     : "openclaw nodes pending"
                 : null,
             NodeTrustCommandApprovesRequest = hasApprovalCommand,
-            NodeEffectiveCapabilities = localNode.Capabilities.ToArray(),
-            NodeEffectiveCommands = localNode.Commands.ToArray(),
-            NodeEffectivePermissions = new Dictionary<string, bool>(
-                localNode.Permissions,
-                StringComparer.OrdinalIgnoreCase),
-            NodePendingDeclaredCapabilities = localNode.PendingDeclaredCapabilities.ToArray(),
-            NodePendingDeclaredCommands = localNode.PendingDeclaredCommands.ToArray(),
-            NodePendingDeclaredPermissions = new Dictionary<string, bool>(
-                localNode.PendingDeclaredPermissions,
-                StringComparer.OrdinalIgnoreCase)
+            NodeEffectiveCapabilities = localNode != null
+                ? localNode.Capabilities.ToArray()
+                : plan.NodeEffectiveCapabilities,
+            NodeEffectiveCommands = localNode != null
+                ? localNode.Commands.ToArray()
+                : plan.NodeEffectiveCommands,
+            NodeEffectivePermissions = localNode != null
+                ? new Dictionary<string, bool>(localNode.Permissions, StringComparer.OrdinalIgnoreCase)
+                : plan.NodeEffectivePermissions,
+            NodePendingDeclaredCapabilities = localNode != null
+                ? localNode.PendingDeclaredCapabilities.ToArray()
+                : plan.NodePendingDeclaredCapabilities,
+            NodePendingDeclaredCommands = localNode != null
+                ? localNode.PendingDeclaredCommands.ToArray()
+                : plan.NodePendingDeclaredCommands,
+            NodePendingDeclaredPermissions = localNode != null
+                ? new Dictionary<string, bool>(localNode.PendingDeclaredPermissions, StringComparer.OrdinalIgnoreCase)
+                : plan.NodePendingDeclaredPermissions
         };
     }
 

@@ -75,6 +75,48 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
         Assert.False(plan.NodeTrustCommandApprovesRequest);
     }
 
+    [Theory]
+    [InlineData(PairingApprovalKind.NodePair, "trust-request", "openclaw nodes approve trust-request", true)]
+    [InlineData(PairingApprovalKind.Unknown, null, "openclaw nodes pending", false)]
+    public void SnapshotNodeTrust_OwnsCopyOnlyApprovalBeforeNodeListArrives(
+        PairingApprovalKind approvalKind,
+        string? requestId,
+        string expectedCommand,
+        bool commandApprovesRequest)
+    {
+        var plan = Build(approvalKind, localNode: null, requestId: requestId);
+
+        Assert.Equal(NodeCardState.OnNodeApprovalRequired, plan.NodeCard);
+        Assert.Null(plan.NodeApproveCommand);
+        Assert.Equal(expectedCommand, plan.NodeTrustApproveCommand);
+        Assert.Equal(commandApprovesRequest, plan.NodeTrustCommandApprovesRequest);
+    }
+
+    [Fact]
+    public void SnapshotNodeTrust_WithStaleNodeList_PreservesEffectiveSurfaces()
+    {
+        var plan = Build(
+            PairingApprovalKind.NodePair,
+            new GatewayNodeInfo
+            {
+                ApprovalState = GatewayNodeApprovalState.Approved,
+                Capabilities = ["system"],
+                Commands = ["system.notify"],
+                Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["system.notify"] = true
+                }
+            },
+            requestId: "trust-request");
+
+        Assert.Equal(NodeCardState.OnNodeApprovalRequired, plan.NodeCard);
+        Assert.Null(plan.NodeApproveCommand);
+        Assert.Equal("openclaw nodes approve trust-request", plan.NodeTrustApproveCommand);
+        Assert.Equal(["system"], plan.NodeEffectiveCapabilities);
+        Assert.Equal(["system.notify"], plan.NodeEffectiveCommands);
+        Assert.True(plan.NodeEffectivePermissions["system.notify"]);
+    }
+
     [Fact]
     public void ExplicitDevicePairRoleUpgrade_RemainsPrimaryOverNodeListTrust()
     {
@@ -137,7 +179,8 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
 
     private ConnectionPagePlan Build(
         PairingApprovalKind pairingApprovalKind,
-        GatewayNodeInfo localNode)
+        GatewayNodeInfo? localNode,
+        string? requestId = "pairing-request")
     {
         var snapshot = new GatewayConnectionSnapshot
         {
@@ -146,7 +189,7 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
             NodeState = RoleConnectionState.PairingRequired,
             NodePairingStatus = PairingStatus.Pending,
             NodePairingApprovalKind = pairingApprovalKind,
-            NodePairingRequestId = "pairing-request",
+            NodePairingRequestId = requestId,
             NodeDeviceId = "local-node"
         };
 
@@ -155,7 +198,7 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
 
     private ConnectionPagePlan Build(
         GatewayConnectionSnapshot snapshot,
-        GatewayNodeInfo localNode,
+        GatewayNodeInfo? localNode,
         bool enableNodeMode = true)
     {
         var settings = new SettingsManager(_settingsDirectory)
