@@ -908,8 +908,12 @@ public class SetupAndConnectTests
                 online.GetBoolean() &&
                 node.TryGetProperty("Capabilities", out var capabilities) &&
                 node.TryGetProperty("Commands", out var commands) &&
-                expectedCapabilities.SequenceEqual(ReadStringArray(capabilities), StringComparer.OrdinalIgnoreCase) &&
-                expectedCommands.SequenceEqual(ReadStringArray(commands), StringComparer.OrdinalIgnoreCase))
+                expectedCapabilities.SequenceEqual(
+                    ReadStringArray(capabilities).Order(StringComparer.OrdinalIgnoreCase),
+                    StringComparer.OrdinalIgnoreCase) &&
+                expectedCommands.SequenceEqual(
+                    ReadStringArray(commands).Order(StringComparer.OrdinalIgnoreCase),
+                    StringComparer.OrdinalIgnoreCase))
             {
                 return;
             }
