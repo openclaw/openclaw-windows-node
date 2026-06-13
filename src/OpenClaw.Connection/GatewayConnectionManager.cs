@@ -1119,6 +1119,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         try
         {
+            // A reconnect must retire the previous node client before creating its
+            // replacement. Keep the operator lifecycle alive, but do not allow an
+            // approval-era node handshake to race the new attempt.
+            await _nodeConnector.DisconnectAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"[ConnMgr] Previous node disconnect failed: {ex.Message}");
+            _diagnostics.Record("node", "Previous node disconnect failed", ex.Message);
+            return false;
+        }
+
+        try
+        {
             await _nodeConnector.ConnectAsync(nodeConnectUrl, nodeCredential, _activeIdentityPath,
                 useV2Signature: _gatewayNeedsV2Signature);
         }

@@ -583,6 +583,35 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(1, node.ConnectCount);
     }
 
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_SameGatewaySupersedesPendingNodeConnect()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new SupersedingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        var operatorLifecycle = Assert.Single(_factory.CreatedClients);
+
+        var firstConnect = manager.ConnectNodeOnlyAsync();
+        await node.FirstConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var replacementConnect = manager.ConnectNodeOnlyAsync();
+
+        await Task.WhenAll(firstConnect, replacementConnect).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(operatorLifecycle.IsDisposed);
+        Assert.Equal(2, node.ConnectCount);
+        Assert.Equal(2, node.DisconnectCount);
+    }
+
     [Theory]
     [InlineData("gw-2", "wss://test-1", false, "wss://test-1")]
     [InlineData("gw-1", "wss://test-2", false, "wss://test-2")]
@@ -1162,6 +1191,52 @@ public class GatewayConnectionManagerTests : IDisposable
         public Task DisconnectAsync() => Task.CompletedTask;
 
         public void Dispose() { }
+    }
+
+    private sealed class SupersedingNodeConnector : INodeConnector
+    {
+        private readonly TaskCompletionSource<bool> _releaseFirstConnect =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<bool> FirstConnectStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int ConnectCount { get; private set; }
+        public int DisconnectCount { get; private set; }
+        public bool IsConnected => ConnectCount > 1;
+        public PairingStatus PairingStatus => IsConnected ? PairingStatus.Paired : PairingStatus.Pending;
+        public string? NodeDeviceId => "superseding-node";
+        public NodeConnectionMode Mode => NodeConnectionMode.Gateway;
+
+#pragma warning disable CS0067 // Events required by interface but not fired in tests
+        public event EventHandler<ConnectionStatus>? StatusChanged;
+        public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
+        public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
+#pragma warning restore CS0067
+
+        public async Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature = false)
+        {
+            ConnectCount++;
+            if (ConnectCount == 1)
+            {
+                FirstConnectStarted.SetResult(true);
+                await _releaseFirstConnect.Task;
+            }
+        }
+
+        public Task DisconnectAsync()
+        {
+            DisconnectCount++;
+            if (FirstConnectStarted.Task.IsCompleted)
+                _releaseFirstConnect.TrySetResult(true);
+            return Task.CompletedTask;
+        }
+
+        public void Dispose() => _releaseFirstConnect.TrySetResult(true);
     }
 
     private sealed class BlockingNodeDisconnectConnector : INodeConnector
