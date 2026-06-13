@@ -2,27 +2,8 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class SpeechInputContractTests
 {
-    private static string RepoRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var d = new DirectoryInfo(AppContext.BaseDirectory);
-        while (d != null)
-        {
-            if (File.Exists(Path.Combine(d.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(d.FullName, "src")))
-                return d.FullName;
-            d = d.Parent;
-        }
-
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
-    }
-
     private static string Read(params string[] parts)
-        => File.ReadAllText(Path.Combine(new[] { RepoRoot() }.Concat(parts).ToArray()));
+        => File.ReadAllText(Path.Combine(new[] { TestRepositoryPaths.GetRepositoryRoot() }.Concat(parts).ToArray()));
 
     [Fact]
     public void VoiceService_DoesNotLoadNativeVad_OnRecordStartup()

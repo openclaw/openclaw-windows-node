@@ -8,26 +8,6 @@ public sealed class VersioningContractTests
         @"<Version>\s*\d+\.\d+\.\d+[^<]*</Version>",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    private static string GetRepositoryRoot()
-    {
-        var envRepoRoot = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(envRepoRoot) && Directory.Exists(envRepoRoot))
-            return envRepoRoot;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if ((Directory.Exists(Path.Combine(directory.FullName, ".git")) ||
-                 File.Exists(Path.Combine(directory.FullName, ".git"))) &&
-                File.Exists(Path.Combine(directory.FullName, "README.md")))
-                return directory.FullName;
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
-    }
-
     private static bool IsGeneratedOrIgnoredPath(string path)
     {
         var segments = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -39,7 +19,7 @@ public sealed class VersioningContractTests
     [Fact]
     public void ProductProjects_DoNotHardcodeReleaseVersion()
     {
-        var repoRoot = GetRepositoryRoot();
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
         var projectFiles = Directory.EnumerateFiles(
             Path.Combine(repoRoot, "src"),
             "*.csproj",
@@ -61,7 +41,7 @@ public sealed class VersioningContractTests
     [Fact]
     public void GitVersion_MainBranchPreservesAlphaReleaseTags()
     {
-        var repoRoot = GetRepositoryRoot();
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
         var configPath = Path.Combine(repoRoot, "GitVersion.yml");
         var config = File.ReadAllText(configPath);
         var mainBranchMatch = Regex.Match(
@@ -78,7 +58,7 @@ public sealed class VersioningContractTests
     [Fact]
     public void ActiveCodeAndTests_DoNotContainStaleReleaseVersion()
     {
-        var repoRoot = GetRepositoryRoot();
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
         var staleBareVersion = string.Concat("0.", "4.7");
         var staleDisplayVersion = "v" + staleBareVersion;
         var searchableExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

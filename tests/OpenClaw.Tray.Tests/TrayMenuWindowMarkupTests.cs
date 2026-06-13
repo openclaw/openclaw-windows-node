@@ -8,7 +8,7 @@ public class TrayMenuWindowMarkupTests
     public void TrayMenuWindow_UsesAutoVerticalScrollbar()
     {
         var xamlPath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -25,7 +25,7 @@ public class TrayMenuWindowMarkupTests
     public void CanvasWindow_BridgeValidatesOriginAndPostsOnDispatcher()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -47,7 +47,7 @@ public class TrayMenuWindowMarkupTests
     public void CanvasWindow_CleansUpGatewayAuthWebResourceHandler()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -68,7 +68,7 @@ public class TrayMenuWindowMarkupTests
     [Fact]
     public void Source_DoesNotDeclareAsyncVoidHandlers()
     {
-        var sourceRoot = Path.Combine(GetRepositoryRoot(), "src");
+        var sourceRoot = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src");
         var offenders = Directory
             .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
             .SelectMany(file =>
@@ -94,7 +94,7 @@ public class TrayMenuWindowMarkupTests
         // to the appropriate page (channels by default, sessions/usage/instances
         // when a matching filter is present). The case label is still present.
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Services",
@@ -111,7 +111,7 @@ public class TrayMenuWindowMarkupTests
     {
         // Notification/history deep links now redirect to Channels.
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Services",
@@ -128,7 +128,7 @@ public class TrayMenuWindowMarkupTests
     public void DeepLinkHandler_HasTrayUtilityEntryPoints()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Services",
@@ -148,7 +148,7 @@ public class TrayMenuWindowMarkupTests
     public void DeepLinkHandler_HasSupportDebugEntryPoints()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Services",
@@ -188,7 +188,7 @@ public class TrayMenuWindowMarkupTests
     public void TrayMenuWindow_SupportsFlyoutMenuItems()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -212,7 +212,7 @@ public class TrayMenuWindowMarkupTests
     public void CommandCenterTextHelper_SupportContextIncludesRedactedTopology()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Helpers",
@@ -241,7 +241,7 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains(@"topology.Host", source);
         Assert.DoesNotContain("RedactSupportValue(topology.Host)", source);
         var portDiagnosticsSourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Services",
@@ -255,7 +255,7 @@ public class TrayMenuWindowMarkupTests
     public void CommandCenterTextHelper_NodeInventoryIncludesDiagnostics()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Helpers",
@@ -277,7 +277,7 @@ public class TrayMenuWindowMarkupTests
     public void SetupWizard_HasPairingExpectationGuidance()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -295,7 +295,7 @@ public class TrayMenuWindowMarkupTests
     public void SetupWizard_DetectsExpiredSetupCodes()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -314,7 +314,7 @@ public class TrayMenuWindowMarkupTests
     public void SetupWizard_HasNodeModeSecurityWarning()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -331,7 +331,7 @@ public class TrayMenuWindowMarkupTests
     public void ChatWindow_RequestsChatInputFocusWhenShownAndLoaded()
     {
         var sourcePath = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Windows",
@@ -358,22 +358,6 @@ public class TrayMenuWindowMarkupTests
         Assert.True(navigationCompleted.Success);
     }
 
-    private static string GetRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not find repository root.");
-    }
 
     private static int LineNumber(string source, int index) =>
         source.AsSpan(0, index).Count('\n') + 1;

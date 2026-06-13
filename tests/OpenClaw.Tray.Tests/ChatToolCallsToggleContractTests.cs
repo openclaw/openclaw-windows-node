@@ -8,7 +8,7 @@ public sealed class ChatToolCallsToggleContractTests
     public void ProductionTimeline_HonorsComposerToolCallVisibilityToggle()
     {
         var source = File.ReadAllText(Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
@@ -29,7 +29,7 @@ public sealed class ChatToolCallsToggleContractTests
     public void TaskListToolBurst_LabelsHeaderAndExpandedBodyForScreenReaders()
     {
         var source = File.ReadAllText(Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
@@ -46,24 +46,4 @@ public sealed class ChatToolCallsToggleContractTests
             source);
     }
 
-    private static string GetRepositoryRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not find repository root.");
-    }
 }

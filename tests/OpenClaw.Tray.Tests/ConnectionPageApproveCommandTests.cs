@@ -21,64 +21,9 @@ public sealed class ConnectionPageApproveCommandTests
     private static string ReadPlanSource()
     {
         var path = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPagePlan.cs");
         return File.ReadAllText(path);
-    }
-
-    private static string GetRepositoryRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        // Walk up from the test binary location until we hit the solution
-        // file. Works for `dotnet test` and IDE runs out of the box.
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        // CI artifact-copy fallback: this test file is colocated with other
-        // tests under tests/OpenClaw.Tray.Tests; AppContext.BaseDirectory in
-        // those layouts points at a copied bin folder that does not include
-        // the solution file. As a last resort, inspect the source-file path
-        // baked into this assembly's debug info via [CallerFilePath] — we
-        // captured it at compile time below — and walk up from there.
-        var callerFile = ThisFile.Path;
-        if (!string.IsNullOrEmpty(callerFile) && File.Exists(callerFile))
-        {
-            var probe = new DirectoryInfo(Path.GetDirectoryName(callerFile)!);
-            while (probe != null)
-            {
-                if (File.Exists(Path.Combine(probe.FullName, "openclaw-windows-node.slnx")) &&
-                    Directory.Exists(Path.Combine(probe.FullName, "src")))
-                {
-                    return probe.FullName;
-                }
-                probe = probe.Parent;
-            }
-        }
-
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
-    }
-
-    // Captures this test file's source path at compile time so the test can
-    // locate the repo even when run from a copied artifact layout where
-    // AppContext.BaseDirectory has no ancestor containing the .slnx.
-    private static class ThisFile
-    {
-        public static readonly string Path = Capture();
-        private static string Capture([System.Runtime.CompilerServices.CallerFilePath] string filePath = "")
-            => filePath;
     }
 
     [Fact]
