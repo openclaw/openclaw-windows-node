@@ -280,7 +280,13 @@ public sealed partial class ConnectionPage : Page
             _appState?.Nodes, CurrentApp.NodeFullDeviceId);
 
         var plan = ConnectionPagePlan.Build(
-            effective, activeRecord, self, settings, savedCount, localNode, _userIntent);
+            effective,
+            activeRecord,
+            self,
+            settings,
+            savedCount,
+            userIntent: _userIntent,
+            localNode: localNode);
 
         _currentPlan = plan;
         ApplyPlan(plan);

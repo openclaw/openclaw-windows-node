@@ -170,16 +170,16 @@ internal sealed record ConnectionPagePlan
     /// <param name="self">Hello-ok response from the gateway (null until connected).</param>
     /// <param name="settings">App settings (capability flags, etc.).</param>
     /// <param name="savedGatewayCount">Total saved gateways (governs Welcome vs Cockpit).</param>
-    /// <param name="localNode">Gateway-reported local node record, including effective and pending approval surfaces.</param>
     /// <param name="userIntent">User-driven mode override ("adding"); pass <c>UserIntent.None</c> for default.</param>
+    /// <param name="localNode">Gateway-reported local node record, including effective and pending approval surfaces.</param>
     public static ConnectionPagePlan Build(
         GatewayConnectionSnapshot snap,
         GatewayRecord? activeRecord,
         GatewaySelfInfo? self,
         SettingsManager? settings,
         int savedGatewayCount,
-        GatewayNodeInfo? localNode,
-        UserIntent userIntent = UserIntent.None)
+        UserIntent userIntent = UserIntent.None,
+        GatewayNodeInfo? localNode = null)
     {
         var displayName = activeRecord?.FriendlyName
             ?? activeRecord?.Url
@@ -524,15 +524,15 @@ internal sealed record ConnectionPagePlan
             NodeCardState.OnHealthy or
             NodeCardState.OnPermissionsIncomplete or
             NodeCardState.OnNodePairingRequired;
-        // Only an explicitly typed device-pair request may retain role-pairing UI.
-        // Snapshot state owns the trust fallback; node.list enriches it when available.
+        // Authoritative node-list trust can override any non-device-pair card.
+        // Snapshot fallback is narrower: Unknown stays on discovery-only pairing UI.
         var nodeListTrustOwnsApprovalUx =
             isPendingTrustApproval &&
             nodeCardAllowsTrustOverride &&
             pairingApprovalKind != PairingApprovalKind.DevicePair;
         var snapshotTrustOwnsApprovalUx =
             plan.NodeCard == NodeCardState.OnNodePairingRequired &&
-            pairingApprovalKind != PairingApprovalKind.DevicePair;
+            pairingApprovalKind == PairingApprovalKind.NodePair;
         var nodeTrustOwnsApprovalUx =
             nodeListTrustOwnsApprovalUx ||
             snapshotTrustOwnsApprovalUx;
@@ -613,9 +613,8 @@ internal sealed record ConnectionPagePlan
         var reqId = !string.IsNullOrEmpty(snap.NodePairingRequestId)
             ? ConnectionCardPlanSanitizer.Sanitize(snap.NodePairingRequestId!, maxLen: 64)
             : null;
-        // Node WebSocket role-upgrade requests are device-pair approvals even
-        // though they surface on the node card; gateway-owned command-trust
-        // requests are node-pair approvals.
+        // Exact approval commands require an explicit kind. Unknown legacy
+        // events stay discovery-only so operators can classify the request.
         // Missing requestId is a real-world case on older gateway builds:
         // emit a single discovery command the
         // user can paste verbatim into any shell — they then pick a
@@ -636,9 +635,14 @@ internal sealed record ConnectionPagePlan
                     : "openclaw devices list";
         }
 
-        return reqId != null
-            ? $"openclaw nodes approve {reqId}"
-            : "openclaw nodes pending";
+        if (snap.NodePairingApprovalKind == PairingApprovalKind.NodePair)
+        {
+            return reqId != null
+                ? $"openclaw nodes approve {reqId}"
+                : "openclaw nodes pending";
+        }
+
+        return "openclaw devices list";
     }
 
     private static string? BuildDevicePairingApproveCommand(GatewayConnectionSnapshot snap)

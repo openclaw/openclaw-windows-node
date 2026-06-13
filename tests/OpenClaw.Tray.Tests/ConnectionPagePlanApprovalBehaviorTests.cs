@@ -75,21 +75,26 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
         Assert.False(plan.NodeTrustCommandApprovesRequest);
     }
 
-    [Theory]
-    [InlineData(PairingApprovalKind.NodePair, "trust-request", "openclaw nodes approve trust-request", true)]
-    [InlineData(PairingApprovalKind.Unknown, null, "openclaw nodes pending", false)]
-    public void SnapshotNodeTrust_OwnsCopyOnlyApprovalBeforeNodeListArrives(
-        PairingApprovalKind approvalKind,
-        string? requestId,
-        string expectedCommand,
-        bool commandApprovesRequest)
+    [Fact]
+    public void SnapshotNodeTrust_OwnsCopyOnlyApprovalBeforeNodeListArrives()
     {
-        var plan = Build(approvalKind, localNode: null, requestId: requestId);
+        var plan = Build(PairingApprovalKind.NodePair, localNode: null, requestId: "trust-request");
 
         Assert.Equal(NodeCardState.OnNodeApprovalRequired, plan.NodeCard);
         Assert.Null(plan.NodeApproveCommand);
-        Assert.Equal(expectedCommand, plan.NodeTrustApproveCommand);
-        Assert.Equal(commandApprovesRequest, plan.NodeTrustCommandApprovesRequest);
+        Assert.Equal("openclaw nodes approve trust-request", plan.NodeTrustApproveCommand);
+        Assert.True(plan.NodeTrustCommandApprovesRequest);
+    }
+
+    [Fact]
+    public void UnknownSnapshotWithoutNodeList_UsesDiscoveryWithoutExactApproval()
+    {
+        var plan = Build(PairingApprovalKind.Unknown, localNode: null, requestId: "ambiguous-request");
+
+        Assert.Equal(NodeCardState.OnNodePairingRequired, plan.NodeCard);
+        Assert.Equal("openclaw devices list", plan.NodeApproveCommand);
+        Assert.Null(plan.NodeTrustApproveCommand);
+        Assert.False(plan.NodeTrustCommandApprovesRequest);
     }
 
     [Fact]
@@ -115,6 +120,20 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
         Assert.Equal(["system"], plan.NodeEffectiveCapabilities);
         Assert.Equal(["system.notify"], plan.NodeEffectiveCommands);
         Assert.True(plan.NodeEffectivePermissions["system.notify"]);
+    }
+
+    [Fact]
+    public void ExistingPositionalUserIntentCall_RemainsSourceCompatible()
+    {
+        var plan = ConnectionPagePlan.Build(
+            GatewayConnectionSnapshot.Idle,
+            null,
+            null,
+            null,
+            0,
+            UserIntent.AddingGateway);
+
+        Assert.Equal(ConnectionPageMode.AddGateway, plan.Mode);
     }
 
     [Fact]

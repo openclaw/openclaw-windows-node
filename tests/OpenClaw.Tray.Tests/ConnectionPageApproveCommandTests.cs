@@ -41,10 +41,20 @@ public sealed class ConnectionPageApproveCommandTests
         Assert.Equal("openclaw devices approve operator-req-123", plan.RecoveryApproveCommand);
     }
 
+    [Fact]
+    public void UnknownNodePairingKind_UsesDiscoveryEvenWithRequestId()
+    {
+        var plan = BuildNodePairingPlan("ambiguous-request", PairingApprovalKind.Unknown);
+
+        AssertShellSafeCommand("openclaw devices list", plan.NodeApproveCommand);
+        Assert.Null(plan.NodeTrustApproveCommand);
+        Assert.False(plan.NodeTrustCommandApprovesRequest);
+    }
+
     [Theory]
     [InlineData(PairingApprovalKind.DevicePair, null, "openclaw devices list")]
     [InlineData(PairingApprovalKind.DevicePair, "node-device-789", "openclaw devices approve node-device-789")]
-    public void MissingNodeRequestId_EmitsShellSafeDiscoveryCommand_NotBareApprove(
+    public void MissingDevicePairRequestId_EmitsShellSafeDiscoveryCommand_NotBareApprove(
         PairingApprovalKind approvalKind,
         string? nodeDeviceId,
         string expected)
