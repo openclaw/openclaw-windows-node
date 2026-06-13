@@ -44,14 +44,20 @@ internal static class NodeCapabilityGating
     /// <returns>The capability list, or <c>null</c> when the node info is not yet available.</returns>
     public static System.Collections.Generic.IReadOnlyList<string>? GetLocalNodeCapabilities(
         OpenClaw.Shared.GatewayNodeInfo[]? nodes, string? localDeviceId)
+        => GetLocalNodeInfo(nodes, localDeviceId)?.Capabilities?.ToArray();
+
+    /// <summary>
+    /// Resolve the complete local node record so visible surfaces can preserve
+    /// the gateway's effective-versus-pending approval boundary.
+    /// </summary>
+    public static OpenClaw.Shared.GatewayNodeInfo? GetLocalNodeInfo(
+        OpenClaw.Shared.GatewayNodeInfo[]? nodes, string? localDeviceId)
     {
         if (string.IsNullOrEmpty(localDeviceId) || nodes == null || nodes.Length == 0)
             return null;
 
-        var localNode = System.Array.Find(nodes, n =>
+        return System.Array.Find(nodes, n =>
             string.Equals(n.NodeId, localDeviceId, System.StringComparison.OrdinalIgnoreCase));
-
-        return localNode?.Capabilities?.ToArray();
     }
 
     public static bool ShouldRegisterSystemRun(SettingsManager? s)    => s?.NodeSystemRunEnabled    != false;

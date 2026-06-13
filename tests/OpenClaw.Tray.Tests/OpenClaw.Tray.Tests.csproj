@@ -61,6 +61,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationService.cs" Link="Services\AppNotificationService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayDashboardUrlBuilder.cs" Link="Helpers\GatewayDashboardUrlBuilder.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPagePlan.cs" Link="Pages\ConnectionPagePlan.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayStateSnapshot.cs" Link="Services\TrayStateSnapshot.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayTooltipBuilder.cs" Link="Services\TrayTooltipBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" Link="Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" />

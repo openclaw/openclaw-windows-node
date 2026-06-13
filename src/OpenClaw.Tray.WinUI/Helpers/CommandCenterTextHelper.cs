@@ -244,12 +244,28 @@ internal static class CommandCenterTextHelper
         {
             var displayName = string.IsNullOrWhiteSpace(node.DisplayName) ? node.NodeId : node.DisplayName;
             builder.AppendLine($"- {displayName} ({node.Platform ?? "unknown"}, {(node.IsOnline ? "online" : "offline")})");
-            builder.AppendLine($"  declared commands: {FormatCommandList(node.Commands)}");
-            builder.AppendLine($"  safe companion commands: {FormatCommandList(node.SafeDeclaredCommands)}");
-            builder.AppendLine($"  privacy-sensitive opt-ins: {FormatCommandList(node.DangerousDeclaredCommands)}");
-            builder.AppendLine($"  browser proxy commands: {FormatCommandList(node.BrowserDeclaredCommands)}");
-            builder.AppendLine($"  Windows-specific commands: {FormatCommandList(node.WindowsSpecificDeclaredCommands)}");
-            builder.AppendLine($"  filtered by gateway policy: {FormatCommandList(node.BlockedDeclaredCommands)}");
+            builder.AppendLine($"  approval state: {FormatApprovalState(node.ApprovalState)}");
+            builder.AppendLine($"  approved/effective capabilities: {FormatCommandList(node.Capabilities)}");
+            builder.AppendLine($"  approved/effective commands: {FormatCommandList(node.Commands)}");
+            builder.AppendLine($"  approved/effective permissions: {FormatPermissions(node.Permissions)}");
+            builder.AppendLine($"  pending declared capabilities: {FormatCommandList(node.PendingDeclaredCapabilities)}");
+            builder.AppendLine($"  pending declared commands: {FormatCommandList(node.PendingDeclaredCommands)}");
+            builder.AppendLine($"  pending declared permissions: {FormatPermissions(node.PendingDeclaredPermissions)}");
+            builder.AppendLine($"  local declared/unverified capabilities: {FormatCommandList(node.LocalDeclaredCapabilities)}");
+            builder.AppendLine($"  local declared/unverified commands: {FormatCommandList(node.LocalDeclaredCommands)}");
+            builder.AppendLine($"  local declared/unverified permissions: {FormatPermissions(node.LocalDeclaredPermissions)}");
+            if (IsApprovalPending(node.ApprovalState))
+            {
+                if (CommandCenterDiagnostics.TryBuildNodeApprovalCommand(node.PendingRequestId, out var approvalCommand))
+                    builder.AppendLine($"  approval command: {approvalCommand}");
+                else
+                    builder.AppendLine("  pending request discovery command: openclaw nodes pending");
+            }
+            builder.AppendLine($"  safe approved commands: {FormatCommandList(node.SafeApprovedCommands)}");
+            builder.AppendLine($"  privacy-sensitive approved commands: {FormatCommandList(node.PrivacySensitiveApprovedCommands)}");
+            builder.AppendLine($"  browser proxy approved commands: {FormatCommandList(node.BrowserApprovedCommands)}");
+            builder.AppendLine($"  Windows-specific approved commands: {FormatCommandList(node.WindowsSpecificApprovedCommands)}");
+            builder.AppendLine($"  denied by effective permissions: {FormatCommandList(node.PermissionBlockedCommands)}");
             builder.AppendLine($"  disabled in Settings: {FormatCommandList(node.DisabledBySettingsCommands)}");
             builder.AppendLine($"  missing safe allowlist: {FormatCommandList(node.MissingSafeAllowlistCommands)}");
             builder.AppendLine($"  missing privacy-sensitive allowlist: {FormatCommandList(node.MissingDangerousAllowlistCommands)}");
@@ -313,11 +329,11 @@ internal static class CommandCenterTextHelper
         foreach (var node in nodes.OrderBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
             builder.AppendLine(BuildNodeSummary(node).TrimEnd());
-            builder.AppendLine($"Safe companion commands: {FormatCommandList(node.SafeDeclaredCommands)}");
-            builder.AppendLine($"Privacy-sensitive commands: {FormatCommandList(node.DangerousDeclaredCommands)}");
-            builder.AppendLine($"Browser proxy commands: {FormatCommandList(node.BrowserDeclaredCommands)}");
-            builder.AppendLine($"Windows-specific commands: {FormatCommandList(node.WindowsSpecificDeclaredCommands)}");
-            builder.AppendLine($"Filtered by gateway policy: {FormatCommandList(node.BlockedDeclaredCommands)}");
+            builder.AppendLine($"Safe approved commands: {FormatCommandList(node.SafeApprovedCommands)}");
+            builder.AppendLine($"Privacy-sensitive approved commands: {FormatCommandList(node.PrivacySensitiveApprovedCommands)}");
+            builder.AppendLine($"Browser proxy approved commands: {FormatCommandList(node.BrowserApprovedCommands)}");
+            builder.AppendLine($"Windows-specific approved commands: {FormatCommandList(node.WindowsSpecificApprovedCommands)}");
+            builder.AppendLine($"Denied by effective permissions: {FormatCommandList(node.PermissionBlockedCommands)}");
             builder.AppendLine($"Missing browser proxy allowlist: {FormatCommandList(node.MissingBrowserAllowlistCommands)}");
             builder.AppendLine($"Disabled in Settings: {FormatCommandList(node.DisabledBySettingsCommands)}");
             builder.AppendLine($"Missing Mac parity: {FormatCommandList(node.MissingMacParityCommands)}");
@@ -536,6 +552,28 @@ internal static class CommandCenterTextHelper
         return ordered.Count == 0 ? "none" : string.Join(", ", ordered);
     }
 
+    private static string FormatPermissions(IReadOnlyDictionary<string, bool> permissions)
+    {
+        if (permissions.Count == 0)
+            return "none";
+
+        return string.Join(", ", permissions
+            .OrderBy(permission => permission.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(permission => $"{permission.Key}={permission.Value.ToString().ToLowerInvariant()}"));
+    }
+
+    private static bool IsApprovalPending(GatewayNodeApprovalState approvalState) =>
+        approvalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval;
+
+    private static string FormatApprovalState(GatewayNodeApprovalState approvalState) => approvalState switch
+    {
+        GatewayNodeApprovalState.Approved => "approved",
+        GatewayNodeApprovalState.PendingApproval => "pending-approval",
+        GatewayNodeApprovalState.PendingReapproval => "pending-reapproval",
+        GatewayNodeApprovalState.Unapproved => "unapproved",
+        _ => "unknown"
+    };
+
     private static string BuildActivityDetail(CommandCenterActivityInfo activity)
     {
         var details = new List<string>();
@@ -564,8 +602,23 @@ internal static class CommandCenterTextHelper
         builder.AppendLine($"Node ID: {node.NodeId}");
         builder.AppendLine($"Platform: {node.Platform ?? "unknown"}");
         builder.AppendLine($"Status: {(node.IsOnline ? "online" : "offline")}");
-        builder.AppendLine($"Capabilities: {string.Join(", ", node.Capabilities.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))}");
-        builder.AppendLine($"Commands: {string.Join(", ", node.Commands.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))}");
+        builder.AppendLine($"Approval state: {FormatApprovalState(node.ApprovalState)}");
+        builder.AppendLine($"Approved/effective capabilities: {FormatCommandList(node.Capabilities)}");
+        builder.AppendLine($"Approved/effective commands: {FormatCommandList(node.Commands)}");
+        builder.AppendLine($"Approved/effective permissions: {FormatPermissions(node.Permissions)}");
+        builder.AppendLine($"Pending declared capabilities: {FormatCommandList(node.PendingDeclaredCapabilities)}");
+        builder.AppendLine($"Pending declared commands: {FormatCommandList(node.PendingDeclaredCommands)}");
+        builder.AppendLine($"Pending declared permissions: {FormatPermissions(node.PendingDeclaredPermissions)}");
+        builder.AppendLine($"Local declared/unverified capabilities: {FormatCommandList(node.LocalDeclaredCapabilities)}");
+        builder.AppendLine($"Local declared/unverified commands: {FormatCommandList(node.LocalDeclaredCommands)}");
+        builder.AppendLine($"Local declared/unverified permissions: {FormatPermissions(node.LocalDeclaredPermissions)}");
+        if (IsApprovalPending(node.ApprovalState))
+        {
+            if (CommandCenterDiagnostics.TryBuildNodeApprovalCommand(node.PendingRequestId, out var approvalCommand))
+                builder.AppendLine($"Approval command: {approvalCommand}");
+            else
+                builder.AppendLine("Pending request discovery command: openclaw nodes pending");
+        }
         if (node.DisabledBySettingsCommands.Count > 0)
             builder.AppendLine($"Disabled in Settings: {string.Join(", ", node.DisabledBySettingsCommands)}");
         if (node.Warnings.Count > 0)

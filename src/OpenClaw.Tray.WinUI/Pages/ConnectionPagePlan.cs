@@ -88,6 +88,8 @@ internal enum NodeCardState
     Off,
     OnHealthy,
     OnPermissionsIncomplete,
+    OnNodeApprovalRequired,
+    OnNodeReapprovalRequired,
     OnNodePairingRequired,
     OnNodeRejected,
     OnNodeRateLimited,
@@ -129,6 +131,19 @@ internal sealed record ConnectionPagePlan
     public NodeCardState NodeCard { get; init; } = NodeCardState.Hidden;
     /// <summary>For OnNodePairingRequired — the exact CLI command to copy/paste.</summary>
     public string? NodeApproveCommand { get; init; }
+    /// <summary>Copy-only command for node-list command-trust approval or reapproval.</summary>
+    public string? NodeTrustApproveCommand { get; init; }
+    /// <summary>True only when the trust command approves the reported request; false for discovery commands.</summary>
+    public bool NodeTrustCommandApprovesRequest { get; init; }
+    public GatewayNodeApprovalState NodeApprovalState { get; init; }
+    public IReadOnlyList<string> NodeEffectiveCapabilities { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> NodeEffectiveCommands { get; init; } = Array.Empty<string>();
+    public IReadOnlyDictionary<string, bool> NodeEffectivePermissions { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyList<string> NodePendingDeclaredCapabilities { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> NodePendingDeclaredCommands { get; init; } = Array.Empty<string>();
+    public IReadOnlyDictionary<string, bool> NodePendingDeclaredPermissions { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     /// <summary>For OnNodeError — sanitized error string.</summary>
     public string? NodeErrorDetail { get; init; }
 
@@ -155,6 +170,7 @@ internal sealed record ConnectionPagePlan
     /// <param name="self">Hello-ok response from the gateway (null until connected).</param>
     /// <param name="settings">App settings (capability flags, etc.).</param>
     /// <param name="savedGatewayCount">Total saved gateways (governs Welcome vs Cockpit).</param>
+    /// <param name="localNode">Gateway-reported local node record, including effective and pending approval surfaces.</param>
     /// <param name="userIntent">User-driven mode override ("adding"); pass <c>UserIntent.None</c> for default.</param>
     public static ConnectionPagePlan Build(
         GatewayConnectionSnapshot snap,
@@ -162,26 +178,23 @@ internal sealed record ConnectionPagePlan
         GatewaySelfInfo? self,
         SettingsManager? settings,
         int savedGatewayCount,
+        GatewayNodeInfo? localNode,
         UserIntent userIntent = UserIntent.None)
     {
-        var hasActive = activeRecord != null;
         var displayName = activeRecord?.FriendlyName
             ?? activeRecord?.Url
             ?? snap.GatewayName
             ?? "gateway";
 
+        var plan = BuildDerived(snap, activeRecord, self, settings, savedGatewayCount, displayName);
+
         // ─── User-intent override: AddGateway sub-view ───
         // Keeps Operator/Node cards visible in the strip+roles area while the
         // bottom section is swapped to the Add form.
         if (userIntent == UserIntent.AddingGateway)
-        {
-            // Inherit the snap-derived status strip so the user keeps context,
-            // but force the bottom section to the Add form.
-            var inner = BuildDerived(snap, activeRecord, self, settings, savedGatewayCount, displayName);
-            return inner with { Mode = ConnectionPageMode.AddGateway };
-        }
+            plan = plan with { Mode = ConnectionPageMode.AddGateway };
 
-        return BuildDerived(snap, activeRecord, self, settings, savedGatewayCount, displayName);
+        return ApplyNodeListApproval(plan, localNode, snap.NodePairingApprovalKind);
     }
 
     private static ConnectionPagePlan BuildDerived(
@@ -493,6 +506,66 @@ internal sealed record ConnectionPagePlan
     // ───────────────────────────────────────────────────────────────────
     // Card state helpers
     // ───────────────────────────────────────────────────────────────────
+
+    private static ConnectionPagePlan ApplyNodeListApproval(
+        ConnectionPagePlan plan,
+        GatewayNodeInfo? localNode,
+        PairingApprovalKind pairingApprovalKind)
+    {
+        if (localNode == null)
+            return plan;
+
+        var isPendingTrustApproval = localNode.ApprovalState is
+            GatewayNodeApprovalState.PendingApproval or
+            GatewayNodeApprovalState.PendingReapproval;
+        var nodeCardAllowsTrustOverride = plan.NodeCard is
+            NodeCardState.OnHealthy or
+            NodeCardState.OnPermissionsIncomplete or
+            NodeCardState.OnNodePairingRequired;
+        var nodeListTrustOwnsApprovalUx =
+            isPendingTrustApproval &&
+            nodeCardAllowsTrustOverride &&
+            pairingApprovalKind != PairingApprovalKind.DevicePair;
+        var nodeCard = plan.NodeCard;
+        if (nodeListTrustOwnsApprovalUx)
+        {
+            nodeCard = localNode.ApprovalState switch
+            {
+                GatewayNodeApprovalState.PendingApproval => NodeCardState.OnNodeApprovalRequired,
+                GatewayNodeApprovalState.PendingReapproval => NodeCardState.OnNodeReapprovalRequired,
+                _ => nodeCard
+            };
+        }
+
+        var approvalCommand = "";
+        var hasApprovalCommand = nodeListTrustOwnsApprovalUx &&
+            CommandCenterDiagnostics.TryBuildNodeApprovalCommand(
+                localNode.PendingRequestId,
+                out approvalCommand);
+
+        return plan with
+        {
+            NodeCard = nodeCard,
+            NodeApproveCommand = nodeListTrustOwnsApprovalUx ? null : plan.NodeApproveCommand,
+            NodeApprovalState = localNode.ApprovalState,
+            NodeTrustApproveCommand = nodeListTrustOwnsApprovalUx
+                ? hasApprovalCommand
+                    ? approvalCommand
+                    : "openclaw nodes pending"
+                : null,
+            NodeTrustCommandApprovesRequest = hasApprovalCommand,
+            NodeEffectiveCapabilities = localNode.Capabilities.ToArray(),
+            NodeEffectiveCommands = localNode.Commands.ToArray(),
+            NodeEffectivePermissions = new Dictionary<string, bool>(
+                localNode.Permissions,
+                StringComparer.OrdinalIgnoreCase),
+            NodePendingDeclaredCapabilities = localNode.PendingDeclaredCapabilities.ToArray(),
+            NodePendingDeclaredCommands = localNode.PendingDeclaredCommands.ToArray(),
+            NodePendingDeclaredPermissions = new Dictionary<string, bool>(
+                localNode.PendingDeclaredPermissions,
+                StringComparer.OrdinalIgnoreCase)
+        };
+    }
 
     private static NodeCardState BuildNodeCardState(GatewayConnectionSnapshot snap, SettingsManager? settings)
     {

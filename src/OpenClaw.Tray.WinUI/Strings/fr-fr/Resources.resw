@@ -5785,4 +5785,49 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
   <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
     <value>Activées ({0})</value>
   </data>
+  <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_NodeApprovalRequired" xml:space="preserve">
+    <value>Node approval required</value>
+  </data>
+  <data name="ConnectionPage_NodeReapprovalRequired" xml:space="preserve">
+    <value>Node reapproval required</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyApprovalRequired" xml:space="preserve">
+    <value>Pending declarations are not effective until this request is approved and the node reconnects.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyReapprovalRequired" xml:space="preserve">
+    <value>Current approved access remains effective. Approve the pending declaration changes, then reconnect.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustApprovalHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to approve the pending declarations. The tray will not approve automatically.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustDiscoveryHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to list pending requests. Then approve a valid request explicitly. This command does not approve anything.</value>
+  </data>
+  <data name="ConnectionPage_NodeReconnectAfterApproval" xml:space="preserve">
+    <value>Reconnect after approval</value>
+  </data>
+  <data name="ConnectionPage_NodeSurfaceNone" xml:space="preserve">
+    <value>none</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCapabilities" xml:space="preserve">
+    <value>Approved/effective capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCommands" xml:space="preserve">
+    <value>Approved/effective commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectivePermissions" xml:space="preserve">
+    <value>Approved/effective permissions: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCapabilities" xml:space="preserve">
+    <value>Pending declared capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCommands" xml:space="preserve">
+    <value>Pending declared commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
+    <value>Pending declared permissions: {0}</value>
+  </data>
 </root>

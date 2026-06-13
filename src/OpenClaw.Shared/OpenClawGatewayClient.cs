@@ -2159,7 +2159,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         var isPairingRequired = details.TryGetProperty("code", out var code)
             && code.ValueKind == JsonValueKind.String
             && string.Equals(code.GetString(), "PAIRING_REQUIRED", StringComparison.Ordinal);
-        var requestId = TryGetSafePairingRequestId(details);
+        var requestId = GetSafeRequestId(details, "requestId");
         return new PairingConnectErrorDetails(isPairingRequired, requestId);
     }
 
@@ -2179,9 +2179,9 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         return false;
     }
 
-    private static string? TryGetSafePairingRequestId(JsonElement details)
+    private static string? GetSafeRequestId(JsonElement parent, string property)
     {
-        if (!details.TryGetProperty("requestId", out var requestId) || requestId.ValueKind != JsonValueKind.String)
+        if (!parent.TryGetProperty(property, out var requestId) || requestId.ValueKind != JsonValueKind.String)
             return null;
 
         var value = requestId.GetString()?.Trim();
@@ -3475,14 +3475,15 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 var connected = GetOptionalBool(nodeElement, "connected");
                 var online = GetOptionalBool(nodeElement, "online");
                 var paired = GetOptionalBool(nodeElement, "paired");
-                var capabilities = GetStringArray(nodeElement, "caps");
-                if (capabilities.Length == 0)
-                    capabilities = GetStringArray(nodeElement, "capabilities");
-                var commands = GetStringArray(nodeElement, "declaredCommands");
-                if (commands.Length == 0)
-                    commands = GetStringArray(nodeElement, "commands");
+                var capabilities = nodeElement.TryGetProperty("caps", out _)
+                    ? GetStringArray(nodeElement, "caps")
+                    : GetStringArray(nodeElement, "capabilities");
+                var commands = GetStringArray(nodeElement, "commands");
                 var disabledCommands = GetStringArray(nodeElement, "disabledCommands");
                 var permissions = GetBoolDictionary(nodeElement, "permissions");
+                var pendingDeclaredCapabilities = GetStringArray(nodeElement, "pendingDeclaredCaps");
+                var pendingDeclaredCommands = GetStringArray(nodeElement, "pendingDeclaredCommands");
+                var pendingDeclaredPermissions = GetBoolDictionary(nodeElement, "pendingDeclaredPermissions");
 
                 var clientMode = GetString(nodeElement, "clientMode");
 
@@ -3531,6 +3532,11 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                     Permissions = permissions,
                     CapabilityCount = capabilities.Length,
                     CommandCount = commands.Length,
+                    ApprovalState = ParseNodeApprovalState(nodeElement),
+                    PendingRequestId = GetSafeRequestId(nodeElement, "pendingRequestId"),
+                    PendingDeclaredCapabilities = pendingDeclaredCapabilities.ToList(),
+                    PendingDeclaredCommands = pendingDeclaredCommands.ToList(),
+                    PendingDeclaredPermissions = pendingDeclaredPermissions,
                     Version = GetString(nodeElement, "version"),
                     CoreVersion = GetString(nodeElement, "coreVersion"),
                     UiVersion = GetString(nodeElement, "uiVersion"),
@@ -3902,6 +3908,22 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         }
 
         return count == 0 ? [] : buffer[..count];
+    }
+
+    private static GatewayNodeApprovalState ParseNodeApprovalState(JsonElement node)
+    {
+        var value = GetString(node, "approvalState");
+        if (value is null)
+            return GatewayNodeApprovalState.Unknown;
+
+        return value.ToLowerInvariant() switch
+        {
+            "approved" => GatewayNodeApprovalState.Approved,
+            "pending-approval" => GatewayNodeApprovalState.PendingApproval,
+            "pending-reapproval" => GatewayNodeApprovalState.PendingReapproval,
+            "unapproved" => GatewayNodeApprovalState.Unapproved,
+            _ => GatewayNodeApprovalState.Unknown
+        };
     }
 
     private static Dictionary<string, bool> GetBoolDictionary(JsonElement parent, string property)

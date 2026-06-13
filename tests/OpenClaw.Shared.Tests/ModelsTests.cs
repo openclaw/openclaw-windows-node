@@ -953,6 +953,11 @@ public class GatewayNodeInfoTests
         Assert.Empty(node.Capabilities);
         Assert.Empty(node.Commands);
         Assert.Empty(node.Permissions);
+        Assert.Equal(GatewayNodeApprovalState.Unknown, node.ApprovalState);
+        Assert.Null(node.PendingRequestId);
+        Assert.Empty(node.PendingDeclaredCapabilities);
+        Assert.Empty(node.PendingDeclaredCommands);
+        Assert.Empty(node.PendingDeclaredPermissions);
     }
 }
 
@@ -1072,11 +1077,11 @@ public class CommandCenterModelTests
 
         var info = NodeCapabilityHealthInfo.FromNode(node);
 
-        Assert.Contains("canvas.a2ui.pushJSONL", info.SafeDeclaredCommands);
-        Assert.Contains("device.info", info.SafeDeclaredCommands);
-        Assert.Contains("camera.snap", info.DangerousDeclaredCommands);
-        Assert.Contains("screen.record", info.DangerousDeclaredCommands);
-        Assert.Contains("system.execApprovals.get", info.WindowsSpecificDeclaredCommands);
+        Assert.Contains("canvas.a2ui.pushJSONL", info.SafeApprovedCommands);
+        Assert.Contains("device.info", info.SafeApprovedCommands);
+        Assert.Contains("camera.snap", info.PrivacySensitiveApprovedCommands);
+        Assert.Contains("screen.record", info.PrivacySensitiveApprovedCommands);
+        Assert.Contains("system.execApprovals.get", info.WindowsSpecificApprovedCommands);
         Assert.True(info.Permissions["screen.record"]);
         Assert.Empty(info.MissingDangerousAllowlistCommands);
         Assert.Contains("browser.proxy", info.MissingMacParityCommands);
@@ -1099,6 +1104,130 @@ public class CommandCenterModelTests
 
         Assert.Contains(info.Warnings, w => w.Title == "Node offline" && w.Severity == GatewayDiagnosticSeverity.Warning);
         Assert.Contains(info.Warnings, w => w.Title == "No node commands visible" && w.Category == "allowlist");
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_PendingReapprovalKeepsDeclarationsSeparateAndActionable()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            ApprovalState = GatewayNodeApprovalState.PendingReapproval,
+            PendingRequestId = "request-123",
+            PendingDeclaredCapabilities = ["system", "camera"],
+            PendingDeclaredCommands = ["system.notify", "camera.snap"],
+            PendingDeclaredPermissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["system.notify"] = true,
+                ["camera.snap"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Empty(info.Capabilities);
+        Assert.Empty(info.Commands);
+        Assert.Empty(info.Permissions);
+        Assert.Equal(["system", "camera"], info.PendingDeclaredCapabilities);
+        Assert.Equal(["system.notify", "camera.snap"], info.PendingDeclaredCommands);
+        Assert.False(info.PendingDeclaredPermissions["camera.snap"]);
+        Assert.Contains(info.Warnings, warning =>
+            warning.Title == "Node reapproval required" &&
+            warning.CopyText == "openclaw nodes approve request-123" &&
+            warning.Detail.Contains("permissions", StringComparison.Ordinal));
+        Assert.DoesNotContain(info.Warnings, warning => warning.Title == "No node commands visible");
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_PendingApprovalWithUnsafeRequestIdFallsBackToPendingList()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            ApprovalState = GatewayNodeApprovalState.PendingApproval,
+            PendingRequestId = "request-1; Remove-Item C:\\",
+            PendingDeclaredCommands = ["system.notify"]
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Contains(info.Warnings, warning =>
+            warning.Title == "Node approval required" &&
+            warning.RepairAction == "Copy pending approvals command" &&
+            warning.CopyText == "openclaw nodes pending" &&
+            warning.Detail.Contains("discover the request", StringComparison.Ordinal));
+        Assert.DoesNotContain(info.Warnings, warning =>
+            warning.CopyText != null &&
+            warning.CopyText.Contains("Remove-Item", StringComparison.Ordinal));
+        Assert.DoesNotContain(info.Warnings, warning => warning.Title == "No node commands visible");
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_ApprovedReconnectHasEffectiveCommandsWithoutPendingWarning()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-1",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            ApprovalState = GatewayNodeApprovalState.Approved,
+            Capabilities = ["system"],
+            Commands = ["system.notify"]
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+
+        Assert.Equal(["system"], info.Capabilities);
+        Assert.Equal(["system.notify"], info.Commands);
+        Assert.DoesNotContain(info.Warnings, warning =>
+            warning.Title is "Node approval required" or "Node reapproval required");
+        Assert.DoesNotContain(info.Warnings, warning => warning.Title == "No node commands visible");
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_LocalDeclarationsFallback_IsNotEffectiveOrPending()
+    {
+        var localNode = new GatewayNodeInfo
+        {
+            NodeId = "local-node",
+            DisplayName = "Local Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            ApprovalState = GatewayNodeApprovalState.Unknown,
+            Capabilities = ["system", "camera"],
+            Commands = ["system.notify", "camera.snap"],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["system.notify"] = true,
+                ["camera.snap"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromLocalDeclarations(localNode);
+
+        Assert.Equal(GatewayNodeApprovalState.Unknown, info.ApprovalState);
+        Assert.Empty(info.Capabilities);
+        Assert.Empty(info.Commands);
+        Assert.Empty(info.Permissions);
+        Assert.Empty(info.PendingDeclaredCapabilities);
+        Assert.Empty(info.PendingDeclaredCommands);
+        Assert.Empty(info.PendingDeclaredPermissions);
+        Assert.Equal(["system", "camera"], info.LocalDeclaredCapabilities);
+        Assert.Equal(["system.notify", "camera.snap"], info.LocalDeclaredCommands);
+        Assert.False(info.LocalDeclaredPermissions["camera.snap"]);
+        Assert.Empty(info.SafeApprovedCommands);
+        Assert.Empty(info.PrivacySensitiveApprovedCommands);
+        Assert.Contains(info.Warnings, warning =>
+            warning.Title == "Local node declarations are unverified" &&
+            warning.Detail.Contains("not approved/effective", StringComparison.Ordinal));
+        Assert.DoesNotContain(info.Warnings, warning => warning.Title == "No node commands visible");
     }
 
     [Fact]
@@ -1173,7 +1302,7 @@ public class CommandCenterModelTests
 
         var info = NodeCapabilityHealthInfo.FromNode(node);
 
-        Assert.Contains("browser.proxy", info.BrowserDeclaredCommands);
+        Assert.Contains("browser.proxy", info.BrowserApprovedCommands);
         Assert.Contains("browser.proxy", info.MissingBrowserAllowlistCommands);
         Assert.DoesNotContain("browser.proxy", info.MissingMacParityCommands);
         Assert.Contains(info.Warnings, w =>
@@ -1237,6 +1366,34 @@ public class CommandCenterModelTests
             ["screen.snapshot", "canvas.present", "screen.snapshot"]);
 
         Assert.Equal("openclaw config set gateway.nodes.allowCommands '[\"canvas.present\",\"screen.snapshot\"]'", command);
+    }
+
+    [Theory]
+    [InlineData("request-123", "openclaw nodes approve request-123")]
+    [InlineData(" request:123 ", "openclaw nodes approve request:123")]
+    [InlineData(null, "openclaw nodes pending")]
+    [InlineData("", "openclaw nodes pending")]
+    [InlineData("request-1;whoami", "openclaw nodes pending")]
+    [InlineData("<requestId>", "openclaw nodes pending")]
+    public void BuildNodeApprovalRepairCommand_ValidatesRequestId(
+        string? requestId,
+        string expected)
+    {
+        Assert.Equal(expected, CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(requestId));
+    }
+
+    [Fact]
+    public void TryBuildNodeApprovalCommand_DistinguishesApprovalFromDiscovery()
+    {
+        Assert.True(CommandCenterDiagnostics.TryBuildNodeApprovalCommand(
+            "request-123",
+            out var approvalCommand));
+        Assert.Equal("openclaw nodes approve request-123", approvalCommand);
+
+        Assert.False(CommandCenterDiagnostics.TryBuildNodeApprovalCommand(
+            "request-1;whoami",
+            out var unsafeApprovalCommand));
+        Assert.Empty(unsafeApprovalCommand);
     }
 
     [Fact]
@@ -1373,9 +1530,9 @@ public class CommandCenterModelTests
 
         var info = NodeCapabilityHealthInfo.FromNode(node);
 
-        // Should be in BlockedDeclaredCommands but NOT in safe/dangerous missing lists
-        Assert.Contains("system.notify", info.BlockedDeclaredCommands);
-        Assert.Contains("system.run", info.BlockedDeclaredCommands);
+        // Should be in PermissionBlockedCommands but NOT in safe/dangerous missing lists
+        Assert.Contains("system.notify", info.PermissionBlockedCommands);
+        Assert.Contains("system.run", info.PermissionBlockedCommands);
         Assert.Empty(info.MissingSafeAllowlistCommands);
         Assert.Empty(info.MissingDangerousAllowlistCommands);
 

@@ -276,9 +276,11 @@ public sealed partial class ConnectionPage : Page
         var activeRecord = _gatewayRegistry?.GetActive();
         var self = CurrentApp.AppState?.GatewaySelf;
         var settings = CurrentApp.Settings;
+        var localNode = NodeCapabilityGating.GetLocalNodeInfo(
+            _appState?.Nodes, CurrentApp.NodeFullDeviceId);
 
         var plan = ConnectionPagePlan.Build(
-            effective, activeRecord, self, settings, savedCount, _userIntent);
+            effective, activeRecord, self, settings, savedCount, localNode, _userIntent);
 
         _currentPlan = plan;
         ApplyPlan(plan);
@@ -764,15 +766,13 @@ public sealed partial class ConnectionPage : Page
 
         var settings = CurrentApp.Settings;
 
-        // Read capability list from the same GatewayNodeInfo source used by
-        // the tray menu and instances page — single source of truth.
-        var nodeCapabilities = NodeCapabilityGating.GetLocalNodeCapabilities(
-            _appState?.Nodes, CurrentApp.NodeFullDeviceId);
-        var capCount = nodeCapabilities?.Count ?? 0;
+        var capCount = plan.NodeEffectiveCapabilities.Count;
 
         // Body text (warning/error detail under the status text) only surfaces
         // for warning/error/pairing states.
         bool showBody = plan.NodeCard is NodeCardState.OnPermissionsIncomplete
+                                       or NodeCardState.OnNodeApprovalRequired
+                                       or NodeCardState.OnNodeReapprovalRequired
                                        or NodeCardState.OnNodePairingRequired
                                        or NodeCardState.OnNodeRejected
                                        or NodeCardState.OnNodeRateLimited
@@ -780,6 +780,8 @@ public sealed partial class ConnectionPage : Page
         var bodyText = plan.NodeCard switch
         {
             NodeCardState.OnPermissionsIncomplete => LocalizationHelper.GetString("ConnectionPage_NodeBodyNoCapabilities"),
+            NodeCardState.OnNodeApprovalRequired  => LocalizationHelper.GetString("ConnectionPage_NodeBodyApprovalRequired"),
+            NodeCardState.OnNodeReapprovalRequired => LocalizationHelper.GetString("ConnectionPage_NodeBodyReapprovalRequired"),
             NodeCardState.OnNodePairingRequired   => LocalizationHelper.GetString("ConnectionPage_NodeBodyAwaitingApproval"),
             NodeCardState.OnNodeRejected          => LocalizationHelper.GetString("ConnectionPage_NodeBodyPairingRejected"),
             NodeCardState.OnNodeRateLimited       => LocalizationHelper.GetString("ConnectionPage_NodeBodyRateLimited"),
@@ -806,6 +808,14 @@ public sealed partial class ConnectionPage : Page
                 Helpers.FluentIconCatalog.StatusWarn,
                 "SystemFillColorCautionBrush",
                 LocalizationHelper.GetString("ConnectionPage_NodeActiveNoCapabilities")),
+            NodeCardState.OnNodeApprovalRequired => (
+                Helpers.FluentIconCatalog.Lock,
+                "SystemFillColorCautionBrush",
+                LocalizationHelper.GetString("ConnectionPage_NodeApprovalRequired")),
+            NodeCardState.OnNodeReapprovalRequired => (
+                Helpers.FluentIconCatalog.Lock,
+                "SystemFillColorCautionBrush",
+                LocalizationHelper.GetString("ConnectionPage_NodeReapprovalRequired")),
             NodeCardState.OnNodePairingRequired => (
                 Helpers.FluentIconCatalog.Lock,
                 "SystemFillColorCautionBrush",
@@ -838,17 +848,47 @@ public sealed partial class ConnectionPage : Page
             ? ResolveBrush("SystemFillColorCriticalBrush")
             : ResolveBrush("TextFillColorPrimaryBrush");
 
-        // Canonical capability list per design naming.md:
-        //   "Providing N capabilities: browser, camera, canvas, …"
-        //   Empty list renders as "Providing no capabilities".
-        // Hidden when Node mode is off (no concept of a "list" then).
-        // Reads from the same GatewayNodeInfo source as tray/instances.
-        bool showCaps = settings != null && plan.NodeCard != NodeCardState.Off
-                                         && plan.NodeCard != NodeCardState.Hidden;
-        NodeCapabilityText.Visibility = showCaps ? Visibility.Visible : Visibility.Collapsed;
-        if (showCaps)
+        // The gateway's node-list contract owns this boundary. Pending
+        // declarations are visible for approval context but never counted or
+        // labeled as approved/effective.
+        bool showSurfaces = settings != null && plan.NodeCard != NodeCardState.Off
+                                             && plan.NodeCard != NodeCardState.Hidden;
+        NodeCapabilityText.Visibility = showSurfaces ? Visibility.Visible : Visibility.Collapsed;
+        NodeCommandText.Visibility = showSurfaces ? Visibility.Visible : Visibility.Collapsed;
+        NodePermissionText.Visibility = showSurfaces ? Visibility.Visible : Visibility.Collapsed;
+        if (showSurfaces)
         {
-            NodeCapabilityText.Text = BuildCapabilityListString(nodeCapabilities);
+            NodeCapabilityText.Text = BuildNodeSurfaceListString(
+                "ConnectionPage_NodeEffectiveCapabilities",
+                plan.NodeEffectiveCapabilities);
+            NodeCommandText.Text = BuildNodeSurfaceListString(
+                "ConnectionPage_NodeEffectiveCommands",
+                plan.NodeEffectiveCommands);
+            NodePermissionText.Text = BuildNodePermissionListString(
+                "ConnectionPage_NodeEffectivePermissions",
+                plan.NodeEffectivePermissions);
+        }
+
+        var showPendingDeclarations = showSurfaces &&
+            (plan.NodeApprovalState is GatewayNodeApprovalState.PendingApproval or
+                GatewayNodeApprovalState.PendingReapproval ||
+             plan.NodePendingDeclaredCapabilities.Count > 0 ||
+             plan.NodePendingDeclaredCommands.Count > 0 ||
+             plan.NodePendingDeclaredPermissions.Count > 0);
+        NodePendingDeclarationsPanel.Visibility = showPendingDeclarations
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (showPendingDeclarations)
+        {
+            NodePendingCapabilityText.Text = BuildNodeSurfaceListString(
+                "ConnectionPage_NodePendingDeclaredCapabilities",
+                plan.NodePendingDeclaredCapabilities);
+            NodePendingCommandText.Text = BuildNodeSurfaceListString(
+                "ConnectionPage_NodePendingDeclaredCommands",
+                plan.NodePendingDeclaredCommands);
+            NodePendingPermissionText.Text = BuildNodePermissionListString(
+                "ConnectionPage_NodePendingDeclaredPermissions",
+                plan.NodePendingDeclaredPermissions);
         }
 
         // Sync toggle from current settings (suppress event)
@@ -856,16 +896,53 @@ public sealed partial class ConnectionPage : Page
         if (settings != null) NodeModeToggle.IsOn = settings.EnableNodeMode;
         _suppressNodeModeToggle = false;
 
-        // Approve command box + connect button (only when pairing required)
-        if (plan.NodeCard == NodeCardState.OnNodePairingRequired && plan.NodeApproveCommand != null)
+        // Command-trust actions are always copy-only. Exact commands approve
+        // one validated request; discovery commands only list pending requests.
+        // This page never auto-approves.
+        if (!string.IsNullOrEmpty(plan.NodeTrustApproveCommand))
+        {
+            NodeTrustApproveCmdBox.Visibility = Visibility.Visible;
+            NodeTrustApproveHelpText.Text = LocalizationHelper.GetString(
+                plan.NodeTrustCommandApprovesRequest
+                    ? "ConnectionPage_NodeTrustApprovalHelp"
+                    : "ConnectionPage_NodeTrustDiscoveryHelp");
+            NodeTrustApproveCmdText.Text = plan.NodeTrustApproveCommand;
+        }
+        else
+        {
+            NodeTrustApproveCmdBox.Visibility = Visibility.Collapsed;
+            NodeTrustApproveCmdText.Text = "";
+        }
+
+        // Role pairing and node-list trust approval share the same explicit
+        // reconnect action, but only role pairing uses the pairing command box.
+        var isNodePairingRequired =
+            plan.NodeCard == NodeCardState.OnNodePairingRequired &&
+            plan.NodeApproveCommand != null;
+        var canReconnectAfterNodeTrustApproval =
+            plan.NodeTrustCommandApprovesRequest &&
+            plan.NodeCard is NodeCardState.OnNodeApprovalRequired or
+                NodeCardState.OnNodeReapprovalRequired;
+        if (isNodePairingRequired)
         {
             NodeApproveCmdBox.Visibility = Visibility.Visible;
             NodeApproveCmdText.Text = plan.NodeApproveCommand;
-            NodeReconnectButton.Visibility = Visibility.Visible;
         }
         else
         {
             NodeApproveCmdBox.Visibility = Visibility.Collapsed;
+        }
+
+        if (isNodePairingRequired || canReconnectAfterNodeTrustApproval)
+        {
+            NodeReconnectButton.Content = LocalizationHelper.GetString(
+                canReconnectAfterNodeTrustApproval
+                    ? "ConnectionPage_NodeReconnectAfterApproval"
+                    : "ConnectionPage_Connect2.Content");
+            NodeReconnectButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
             NodeReconnectButton.Visibility = Visibility.Collapsed;
         }
 
@@ -873,14 +950,16 @@ public sealed partial class ConnectionPage : Page
         // be identical. Fingerprint includes the full capability list from
         // the gateway (same source as tray/instances) so new capabilities
         // trigger a rebuild automatically.
-        var capNames = nodeCapabilities != null
-            ? string.Join(",", nodeCapabilities.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))
-            : "";
+        var capNames = string.Join(
+            ",",
+            plan.NodeEffectiveCapabilities.OrderBy(c => c, StringComparer.OrdinalIgnoreCase));
         var capFp = $"{plan.NodeCard}|{capNames}";
         if (_capabilityChipsFingerprint != capFp)
         {
             _capabilityChipsFingerprint = capFp;
-            NodeCapabilityChipsHost.ItemsSource = BuildCapabilityChips(nodeCapabilities, plan.NodeCard);
+            NodeCapabilityChipsHost.ItemsSource = BuildCapabilityChips(
+                plan.NodeEffectiveCapabilities,
+                plan.NodeCard);
         }
 
         // Permissions link is always visible (entry point even when sharing is off);
@@ -1054,17 +1133,30 @@ public sealed partial class ConnectionPage : Page
     }
 
     /// <summary>
-    /// Canonical "Providing N capabilities: …" line per design naming.md.
-    /// Reads from the gateway-reported capability list (same source as
-    /// tray menu and instances page). Empty → "Providing no capabilities".
+    /// Formats one gateway-reported node surface while preserving the
+    /// approved/effective versus pending-declared label chosen by the caller.
     /// </summary>
-    private static string BuildCapabilityListString(IReadOnlyList<string>? capabilities)
+    private static string BuildNodeSurfaceListString(
+        string resourceKey,
+        IReadOnlyList<string> values)
     {
-        if (capabilities == null || capabilities.Count == 0)
-            return LocalizationHelper.GetString("ConnectionPage_ProvidingNoCapabilities");
-        return capabilities.Count == 1
-            ? string.Format(LocalizationHelper.GetString("ConnectionPage_ProvidingCapabilitiesSingular"), string.Join(", ", capabilities))
-            : string.Format(LocalizationHelper.GetString("ConnectionPage_ProvidingCapabilitiesPlural"), capabilities.Count, string.Join(", ", capabilities));
+        var display = values.Count == 0
+            ? LocalizationHelper.GetString("ConnectionPage_NodeSurfaceNone")
+            : string.Join(", ", values);
+        return LocalizationHelper.Format(resourceKey, display);
+    }
+
+    private static string BuildNodePermissionListString(
+        string resourceKey,
+        IReadOnlyDictionary<string, bool> permissions)
+    {
+        var display = permissions.Count == 0
+            ? LocalizationHelper.GetString("ConnectionPage_NodeSurfaceNone")
+            : string.Join(", ", permissions
+                .OrderBy(permission => permission.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(permission =>
+                    $"{permission.Key}={permission.Value.ToString().ToLowerInvariant()}"));
+        return LocalizationHelper.Format(resourceKey, display);
     }
 
 
@@ -1761,6 +1853,12 @@ public sealed partial class ConnectionPage : Page
     {
         if (!string.IsNullOrEmpty(NodeApproveCmdText.Text))
             ClipboardHelper.CopyText(NodeApproveCmdText.Text);
+    }
+
+    private void OnCopyNodeTrustApproveCommand(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(NodeTrustApproveCmdText.Text))
+            ClipboardHelper.CopyText(NodeTrustApproveCmdText.Text);
     }
 
     // ─── Recovery actions ────────────────────────────────────────────
@@ -2778,6 +2876,9 @@ public sealed partial class ConnectionPage : Page
                     var snapshot = _connectionManager?.CurrentSnapshot ?? GatewayConnectionSnapshot.Idle;
                     _lastSnapshot = snapshot;
                     RefreshFromSnapshot(snapshot);
+                    break;
+                case nameof(AppState.Nodes):
+                    RefreshFromSnapshot(_connectionManager?.CurrentSnapshot ?? _lastSnapshot);
                     break;
                 case nameof(AppState.NodePairList):
                     if (_appState?.NodePairList != null) UpdatePairingRequests(_appState.NodePairList);

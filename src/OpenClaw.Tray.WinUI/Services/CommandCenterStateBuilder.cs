@@ -22,7 +22,7 @@ internal sealed class CommandCenterStateBuilder
         var nodes = _snapshot.Nodes.Select(NodeCapabilityHealthInfo.FromNode).ToList();
         if (nodes.Count == 0 && _snapshot.NodeService?.GetLocalNodeInfo() is { } localNode)
         {
-            nodes.Add(NodeCapabilityHealthInfo.FromNode(localNode));
+            nodes.Add(NodeCapabilityHealthInfo.FromLocalDeclarations(localNode));
         }
 
         var topology = GatewayTopologyClassifier.Classify(
@@ -36,6 +36,13 @@ internal sealed class CommandCenterStateBuilder
         ApplyDetectedSshForwardTopology(topology, portDiagnostics);
         var runtime = BuildGatewayRuntimeInfo(portDiagnostics);
         var warnings = nodes.SelectMany(n => n.Warnings).ToList();
+        var localNodeId = _snapshot.NodeService?.FullDeviceId;
+        var hasAuthoritativePendingLocalNodeTrust =
+            !string.IsNullOrWhiteSpace(localNodeId) &&
+            nodes.Any(node =>
+                string.Equals(node.NodeId, localNodeId, StringComparison.OrdinalIgnoreCase) &&
+                node.ApprovalState is GatewayNodeApprovalState.PendingApproval or
+                    GatewayNodeApprovalState.PendingReapproval);
         warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
         warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel));
         warnings.AddRange(BuildBrowserProxyAuthWarnings(nodes));
@@ -51,7 +58,9 @@ internal sealed class CommandCenterStateBuilder
             });
         }
 
-        if (_snapshot.NodeService?.IsPendingApproval == true && !string.IsNullOrWhiteSpace(_snapshot.NodeService.FullDeviceId))
+        if (!hasAuthoritativePendingLocalNodeTrust &&
+            _snapshot.NodeService?.IsPendingApproval == true &&
+            !string.IsNullOrWhiteSpace(_snapshot.NodeService.FullDeviceId))
         {
             var approvalCommand = $"openclaw devices approve {_snapshot.NodeService.FullDeviceId}";
             warnings.Add(new GatewayDiagnosticWarning
@@ -187,7 +196,7 @@ internal sealed class CommandCenterStateBuilder
     private IEnumerable<GatewayDiagnosticWarning> BuildBrowserProxyAuthWarnings(IReadOnlyList<NodeCapabilityHealthInfo> nodes)
     {
         if (_snapshot.Settings?.NodeBrowserProxyEnabled == false ||
-            !nodes.Any(node => node.BrowserDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
+            !nodes.Any(node => node.BrowserApprovedCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
         {
             yield break;
         }
