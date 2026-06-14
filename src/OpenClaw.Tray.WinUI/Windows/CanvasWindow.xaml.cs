@@ -5,8 +5,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
@@ -14,6 +16,7 @@ using OpenClawTray.Services;
 using WinUIEx;
 using Windows.Foundation;
 using Windows.Storage.Streams;
+using Windows.System;
 
 namespace OpenClawTray.Windows;
 
@@ -39,6 +42,7 @@ public sealed partial class CanvasWindow : WindowEx
     private const uint SWP_SHOWWINDOW = 0x0040;
 
     private bool _isWebViewInitialized;
+    private bool _isFullScreen;
     private string? _pendingUrl;
     private string? _pendingHtml;
     private readonly TaskCompletionSource<bool> _webViewReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -235,7 +239,30 @@ public sealed partial class CanvasWindow : WindowEx
         this.SetIcon("Assets\\openclaw.ico");
         _dispatcherQueue = DispatcherQueue;
         this.Closed += OnWindowClosed;
-        
+
+        // F11 toggles borderless fullscreen; Escape exits it.
+        // KeyboardAccelerators on the root content get first-class handling
+        // when focus is in the XAML tree (title bar, toolbar, etc.).
+        // When focus is inside the WebView2, F11/Escape are also intercepted
+        // via an injected content script that posts bridge messages.
+        if (this.Content is FrameworkElement contentRoot)
+        {
+            var f11Accel = new KeyboardAccelerator { Key = VirtualKey.F11 };
+            f11Accel.Invoked += (_, args) =>
+            {
+                args.Handled = true;
+                ToggleFullScreen();
+            };
+            var escAccel = new KeyboardAccelerator { Key = VirtualKey.Escape };
+            escAccel.Invoked += (_, args) =>
+            {
+                if (_isFullScreen) { args.Handled = true; ExitFullScreen(); }
+            };
+            contentRoot.KeyboardAccelerators.Add(f11Accel);
+            contentRoot.KeyboardAccelerators.Add(escAccel);
+            contentRoot.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+        }
+
         // Initialize WebView2
         InitializeWebViewAsync();
     }
@@ -284,6 +311,24 @@ public sealed partial class CanvasWindow : WindowEx
             CanvasWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             CanvasWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
 
+            // Inject F11/Escape fullscreen bridge: intercepts these keys when
+            // WebView2 content has focus and routes them as bridge messages so
+            // the native window can toggle its presenter the same way the XAML
+            // keyboard accelerators do when focus is in the title bar.
+            await CanvasWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("""
+                (function () {
+                    document.addEventListener('keydown', function (e) {
+                        if (!window.chrome || !window.chrome.webview) return;
+                        if (e.key === 'F11') {
+                            e.preventDefault();
+                            window.chrome.webview.postMessage(JSON.stringify({ type: 'fullscreen-toggle' }));
+                        } else if (e.key === 'Escape') {
+                            window.chrome.webview.postMessage(JSON.stringify({ type: 'fullscreen-exit' }));
+                        }
+                    }, true);
+                })();
+                """);
+
             // Wire the bidirectional native↔SPA bridge
             // SPA → native: window.chrome.webview.postMessage({ type, payload })
             _webMessageReceivedHandler = (s, e) =>
@@ -297,6 +342,19 @@ public sealed partial class CanvasWindow : WindowEx
                 var msg = WebBridgeMessage.TryParse(e.WebMessageAsJson);
                 if (msg != null)
                 {
+                    // Fullscreen control messages are handled natively and not
+                    // forwarded to external bridge subscribers.
+                    if (msg.Type == "fullscreen-toggle")
+                    {
+                        _dispatcherQueue?.TryEnqueue(ToggleFullScreen);
+                        return;
+                    }
+                    if (msg.Type == "fullscreen-exit")
+                    {
+                        _dispatcherQueue?.TryEnqueue(ExitFullScreen);
+                        return;
+                    }
+
                     Logger.Debug($"[Canvas] bridge message from SPA, type={SanitizeBridgeLogValue(msg.Type)}");
                     BridgeMessageReceived?.Invoke(this, msg);
                 }
@@ -473,6 +531,7 @@ public sealed partial class CanvasWindow : WindowEx
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        ExitFullScreen();
         _gatewayToken = null;
 
         if (CanvasWebView.CoreWebView2 != null)
@@ -659,6 +718,30 @@ public sealed partial class CanvasWindow : WindowEx
         }
     }
     
+    // ── Fullscreen ──────────────────────────────────────────────────────────
+
+    /// <summary>Toggle borderless fullscreen on F11.</summary>
+    public void ToggleFullScreen()
+    {
+        if (_isFullScreen) ExitFullScreen();
+        else EnterFullScreen();
+    }
+
+    private void EnterFullScreen()
+    {
+        _isFullScreen = true;
+        try { AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen); }
+        catch (Exception ex) { Logger.Debug($"[Canvas] EnterFullScreen failed: {ex.Message}"); }
+    }
+
+    private void ExitFullScreen()
+    {
+        if (!_isFullScreen) return;
+        _isFullScreen = false;
+        try { AppWindow.SetPresenter(AppWindowPresenterKind.Default); }
+        catch (Exception ex) { Logger.Debug($"[Canvas] ExitFullScreen failed: {ex.Message}"); }
+    }
+
     public async Task EnsureA2UIHostAsync(string url)
     {
         await EnsureWebViewReadyAsync();
