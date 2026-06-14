@@ -143,7 +143,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private GatewayService? _gatewayService;
     private CancellationTokenSource? _deepLinkCts;
     private bool _isExiting;
-    
+
     /// <summary>
     /// Cached connection status — sole writer is OnManagerStateChanged.
     /// Reads are safe from any thread; derives from the connection manager's state machine.
@@ -176,9 +176,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private DiagnosticsClipboardService? _diagnosticsClipboard;
     private ToastService? _toastService;
     private AppNotificationService? _appNotificationService;
-    
+
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
+
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
     private SetupWindow? _setupWindow;
@@ -232,10 +233,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         GatewayHostAccessLocalization.Format = (key, args) => LocalizationHelper.Format(key, args);
 
         InitializeComponent();
-        
+
         s_runMarker.Check();
         s_runMarker.MarkStarted();
-        
+
         // Hook up crash handlers
         this.UnhandledException += OnUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -293,7 +294,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
-        _crashLogger.Log("DomainUnhandledException", e.ExceptionObject as Exception);
+        var ex = e.ExceptionObject as Exception;
+        _crashLogger.Log("DomainUnhandledException", ex);
+
+        // Log SherpaOnnx finalizer errors clearly so they are visible in diagnostics.
+        // The actual crash prevention is handled by the exe.config
+        // legacyUnhandledExceptionPolicy setting and the GC.SuppressFinalize
+        // call in PiperTextToSpeechClient.Dispose().
+        if (ex is DllNotFoundException dllEx &&
+            dllEx.Message.Contains("sherpa-onnx", StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.Warn($"SherpaOnnx native DLL unavailable: {dllEx.Message}");
+        }
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
@@ -301,7 +313,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _crashLogger.Log("UnobservedTaskException", e.Exception);
         e.SetObserved(); // Prevent crash
     }
-    
+
     private void OnProcessExit(object? sender, EventArgs e)
     {
         s_runMarker.MarkEnded();
@@ -676,7 +688,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _keepAliveWindow = new Window();
         _keepAliveWindow.Content = new Microsoft.UI.Xaml.Controls.Grid();
         _keepAliveWindow.AppWindow.IsShownInSwitchers = false;
-        
+
         // Move off-screen and set minimal size
         _keepAliveWindow.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(-32000, -32000, 1, 1));
     }
@@ -685,10 +697,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         // Initialize keep-alive window first to anchor WinUI runtime
         InitializeKeepAliveWindow();
-        
+
         // Pre-create tray menu window at startup to avoid creation crashes later
         InitializeTrayMenuWindow();
-        
+
         var iconPath = IconHelper.GetStatusIconPath(ConnectionStatus.Disconnected);
         _trayIcon = new TrayIcon(1, iconPath, BuildTrayTooltip());
         _trayIcon.IsVisible = true;
@@ -999,15 +1011,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 break;
         }
     }
-    
+
     private void CopyDeviceIdToClipboard()
     {
         if (_nodeService?.FullDeviceId == null) return;
-        
+
         try
         {
             CopyTextToClipboard(_nodeService.FullDeviceId);
-            
+
             // Show toast confirming copy
             _toastService!.ShowToast(new ToastContentBuilder()
                 .AddText(LocalizationHelper.GetString("Toast_DeviceIdCopied"))
@@ -2028,7 +2040,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         Logger.Info($"Node status: {status}");
         AddRecentActivity($"Node mode {status}", category: "node", dashboardPath: "nodes");
-        
+
         // In node-only mode, surface node connection in main status indicator
         if (_settings?.EnableNodeMode == true)
         {
@@ -2036,7 +2048,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             UpdateTrayIcon();
             OnUiThread(UpdateStatusDetailWindow);
         }
-        
+
         // Don't show "connected" toast if waiting for pairing - we'll show pairing status instead
         var nodeService = _nodeService;
         if (status == ConnectionStatus.Connected && nodeService?.IsPaired == true)
@@ -2067,7 +2079,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private void OnPairingStatusChanged(object? sender, OpenClaw.Shared.PairingStatusEventArgs args)
     {
         Logger.Info($"Pairing status: {args.Status}");
-        
+
         try
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
@@ -2169,7 +2181,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "node-pairing-pending",
             deviceId);
     }
-    
+
     private void OnNodeNotificationRequested(object? sender, OpenClaw.Shared.Capabilities.SystemNotifyArgs args)
     {
         AddRecentActivity(args.Title, category: "node", dashboardPath: "nodes", details: args.Body);
@@ -3283,7 +3295,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 await client.StartChannelAsync(channelName);
                 AddRecentActivity($"Started channel: {channelName}", category: "channel", dashboardPath: "settings");
             }
-             
+
             // Refresh health
             await RunHealthCheckAsync();
         }
@@ -3395,7 +3407,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         _deepLinkCts = new CancellationTokenSource();
         var token = _deepLinkCts.Token;
-        
+
         Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
