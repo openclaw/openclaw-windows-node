@@ -28,7 +28,7 @@ public partial class App
                 },
                 OpenDashboard = () => OpenDashboard(),
                 OpenSettings = ShowSettings,
-                OpenChat = ShowWebChat,
+                OpenChat = sessionKey => ShowWebChat(sessionKey),
                 OpenActivity = () => ShowHub("channels"),
                 CopyPairingCommand = command =>
                 {
