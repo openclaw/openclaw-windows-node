@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -13,6 +14,8 @@ namespace OpenClawTray.Pages;
 public sealed partial class SandboxPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
+    private static string L(string key) => LocalizationHelper.GetString(key);
+    private static string Lf(string key, params object?[] args) => LocalizationHelper.Format(key, args);
     private bool _suppress;
     private bool _dialogOpen;
     private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;
@@ -159,8 +162,8 @@ public sealed partial class SandboxPage : Page
         if (!available)
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox unavailable — commands run uncontained";
-            SandboxStatusSubtext.Text = "Containment isn't available on this PC, so commands run without sandbox protection.";
+            SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableTitle");
+            SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableSubtext");
             SandboxEnabledToggle.Visibility = Visibility.Collapsed;
             return;
         }
@@ -170,14 +173,14 @@ public sealed partial class SandboxPage : Page
         if (enabled)
         {
             SandboxStatusIcon.Text = "🛡";
-            SandboxStatusTitle.Text = "Node Sandbox is on";
-            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are contained.";
+            SandboxStatusTitle.Text = L("SandboxPage_StatusOnTitle");
+            SandboxStatusSubtext.Text = L("SandboxPage_StatusOnSubtext");
         }
         else
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox is off — high risk";
-            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are not contained.";
+            SandboxStatusTitle.Text = L("SandboxPage_StatusOffTitle");
+            SandboxStatusSubtext.Text = L("SandboxPage_StatusOffSubtext");
         }
     }
 
@@ -199,7 +202,7 @@ public sealed partial class SandboxPage : Page
         var reasons = availability.UnsupportedReasons;
         var reasonText = reasons.Count > 0
             ? string.Join("  ·  ", reasons)
-            : "MXC sandboxing primitives are not available on this machine.";
+            : L("SandboxPage_UnavailableDefaultReason");
 
         var isWindowsIssue = reasons.Any(r =>
             r.Contains("Windows build", StringComparison.OrdinalIgnoreCase) ||
@@ -209,28 +212,23 @@ public sealed partial class SandboxPage : Page
 
         if (isWindowsIssue)
         {
-            UnavailableActionBar.Title = "Your Windows version doesn't support sandboxing yet";
-            UnavailableActionMessage.Text =
-                $"{reasonText}\n\nCommands run uncontained on this machine — sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
-                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.";
-            UnavailablePrimaryButton.Content = "Open Windows Update";
+            UnavailableActionBar.Title = L("SandboxPage_WindowsUnsupportedTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_WindowsUnsupportedMessageFormat", reasonText);
+            UnavailablePrimaryButton.Content = L("SandboxPage_OpenWindowsUpdate");
             UnavailablePrimaryButton.Tag = "windowsupdate";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else if (isSetupIssue)
         {
-            UnavailableActionBar.Title = "Sandboxing components are missing";
-            UnavailableActionMessage.Text =
-                $"{reasonText}\n\nThe wxc-exec binary couldn't be located, so commands run uncontained. " +
-                "If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. " +
-                "Otherwise reinstall the companion app to restore sandboxing.";
-            UnavailablePrimaryButton.Content = "Show install instructions";
+            UnavailableActionBar.Title = L("SandboxPage_ComponentsMissingTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_ComponentsMissingMessageFormat", reasonText);
+            UnavailablePrimaryButton.Content = L("SandboxPage_ShowInstallInstructions");
             UnavailablePrimaryButton.Tag = "install";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else
         {
-            UnavailableActionBar.Title = "Sandbox unavailable — commands run uncontained";
+            UnavailableActionBar.Title = L("SandboxPage_UnavailableTitle");
             UnavailableActionMessage.Text = reasonText;
             UnavailablePrimaryButton.Visibility = Visibility.Collapsed;
         }
@@ -456,6 +454,7 @@ public sealed partial class SandboxPage : Page
     {
         if (_suppress) return;
         CurrentApp.Settings?.Save();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
         UpdatePresetHighlight();
     }
 

@@ -140,6 +140,14 @@ public sealed partial class CronPage : Page
                 DispatcherQueue?.TryEnqueue(() =>
                 {
                     _runningJobIds.Remove(jobId);
+                    var detail = t.IsFaulted
+                        ? t.Exception?.GetBaseException().Message ?? LocalizationHelper.GetString("AppNotification_CronRunFailed_DefaultDetail")
+                        : LocalizationHelper.GetString("AppNotification_CronRunRejectedDetail");
+                    ShowCronAppNotification(
+                        LocalizationHelper.GetString("AppNotification_CronRunFailed_Title"),
+                        LocalizationHelper.Format("AppNotification_CronRunFailed_MessageFormat", vm?.Name ?? jobId, detail),
+                        AppNotificationSeverity.Error,
+                        $"cron:{jobId}:run-failed");
                     var client = CurrentApp.GatewayClient;
                     if (client != null) _ = client.RequestCronListAsync();
                 });
@@ -527,6 +535,24 @@ public sealed partial class CronPage : Page
         });
     }
 
+    private static void ShowCronAppNotification(
+        string title,
+        string message,
+        AppNotificationSeverity severity,
+        string dedupeKey)
+    {
+        AppNotificationPublisher.Show(
+            CurrentApp.AppNotifications,
+            title,
+            message,
+            "cron",
+            "jobs",
+            severity,
+            dedupeKey,
+            "cron",
+            LocalizationHelper.GetString("AppNotification_ActionOpenCron"));
+    }
+
     private static string? GetSelectedTag(ComboBox combo)
     {
         return (combo.SelectedItem as ComboBoxItem)?.Tag as string;
@@ -846,7 +872,7 @@ public sealed partial class CronPage : Page
                 ? (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"]
                 : (Brush)Application.Current.Resources["SystemFillColorNeutralBrush"];
             StorePathText.Text = storePath;
-            NextWakeText.Text = $"· Next wake: {nextWake}";
+            NextWakeText.Text = LocalizationHelper.Format("CronPage_NextWakeFormat", nextWake);
         });
     }
 

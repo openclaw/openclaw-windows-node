@@ -235,7 +235,7 @@ public sealed partial class ChatWindow : WindowEx
         WebView.Visibility = Visibility.Collapsed;
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Visible;
-        ErrorText.Text = "Unable to load chat. The gateway URL or token is not available.";
+        ErrorText.Text = LocalizationHelper.GetString("ChatWindow_UnableToLoadChatCredentials");
     }
 
     private void StopWebViewNavigation()
@@ -283,7 +283,7 @@ public sealed partial class ChatWindow : WindowEx
                 LoadingRing.Visibility = Visibility.Collapsed;
                 WebView.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
-                ErrorText.Text = "Unable to load chat. The gateway URL or token is not available.";
+                ErrorText.Text = LocalizationHelper.GetString("ChatWindow_UnableToLoadChatCredentials");
                 return;
             }
 
@@ -301,7 +301,7 @@ public sealed partial class ChatWindow : WindowEx
                 LoadingRing.Visibility = Visibility.Collapsed;
                 WebView.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
-                ErrorText.Text = $"Unable to load chat. Please try again. ({ex.Message})";
+                ErrorText.Text = LocalizationHelper.Format("ChatWindow_UnableToLoadChatRetryFormat", ex.Message);
                 Logger.Warn($"ChatWindow.RefreshCredentials navigate failed: {ex.Message}");
             }
         }
@@ -368,7 +368,7 @@ public sealed partial class ChatWindow : WindowEx
             LoadingRing.Visibility = Visibility.Collapsed;
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Visible;
-            ErrorText.Text = $"WebView2 failed: {ex.Message}";
+            ErrorText.Text = LocalizationHelper.Format("ChatWindow_WebViewFailedFormat", ex.Message);
         }
     }
 

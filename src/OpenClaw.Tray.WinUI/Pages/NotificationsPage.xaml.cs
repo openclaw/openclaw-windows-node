@@ -122,8 +122,25 @@ public sealed partial class NotificationsPage : Page
         private static string? LocalizeMetadataValue(string? value) => value switch
         {
             null or "" => null,
+            "authentication" => LocalizationHelper.GetString("NotificationsPage_MetadataAuthentication"),
+            "bindings" => LocalizationHelper.GetString("NotificationsPage_MetadataBindings"),
+            "channels" => LocalizationHelper.GetString("NotificationsPage_MetadataChannels"),
+            "config" => LocalizationHelper.GetString("NotificationsPage_MetadataConfig"),
+            "connection" => LocalizationHelper.GetString("NotificationsPage_MetadataConnection"),
+            "cron" => LocalizationHelper.GetString("NotificationsPage_MetadataCron"),
             "exec-approval" => LocalizationHelper.GetString("NotificationsPage_MetadataSourceExecApproval"),
+            "gateway" => LocalizationHelper.GetString("NotificationsPage_MetadataGateway"),
+            "jobs" => LocalizationHelper.GetString("NotificationsPage_MetadataJobs"),
+            "load" => LocalizationHelper.GetString("NotificationsPage_MetadataLoad"),
+            "lifecycle" => LocalizationHelper.GetString("NotificationsPage_MetadataLifecycle"),
+            "local-gateway" => LocalizationHelper.GetString("NotificationsPage_MetadataLocalGateway"),
             "node.invoke" => LocalizationHelper.GetString("NotificationsPage_MetadataCategoryNodeInvoke"),
+            "node" => LocalizationHelper.GetString("NotificationsPage_MetadataNode"),
+            "pairing" => LocalizationHelper.GetString("NotificationsPage_MetadataPairing"),
+            "sandbox" => LocalizationHelper.GetString("NotificationsPage_MetadataSandbox"),
+            "settings" => LocalizationHelper.GetString("NotificationsPage_MetadataSettings"),
+            "status" => LocalizationHelper.GetString("NotificationsPage_MetadataStatus"),
+            "system.run" => LocalizationHelper.GetString("NotificationsPage_MetadataSystemRun"),
             _ => value
         };
     }

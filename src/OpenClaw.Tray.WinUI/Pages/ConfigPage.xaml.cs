@@ -27,6 +27,8 @@ public sealed partial class ConfigPage : Page
     private const double JsonPreviewMinWidth = 340;
 
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
+    private static string L(string key) => LocalizationHelper.GetString(key);
+    private static string Lf(string key, params object?[] args) => LocalizationHelper.Format(key, args);
     private AppState? _appState;
     private JsonElement? _lastConfig;
     private JsonElement? _lastSchema;
@@ -147,7 +149,7 @@ public sealed partial class ConfigPage : Page
 
                 if (configSnapshot.TryGetProperty("path", out var pathEl) &&
                     pathEl.ValueKind == JsonValueKind.String)
-                    ConfigSubtitle.Text = $"Editing {pathEl.GetString()} via schema-guided form.";
+                    ConfigSubtitle.Text = Lf("ConfigPage_EditingPathFormat", pathEl.GetString());
 
                 _loading = false;
                 SetInfoBarOpen(ConnectionInfoBar, CurrentApp.GatewayClient == null);
@@ -160,7 +162,9 @@ public sealed partial class ConfigPage : Page
             catch (Exception ex)
             {
                 Logger.Error($"[ConfigPage] Failed to render config: {ex}");
-                ShowConfigRenderError("Config unavailable", "The gateway config could not be rendered. Refresh and try again.");
+                ShowConfigRenderError(
+                    L("ConfigPage_RenderConfigUnavailableTitle"),
+                    L("ConfigPage_RenderConfigUnavailableMessage"));
             }
         });
     }
@@ -191,7 +195,9 @@ public sealed partial class ConfigPage : Page
             catch (Exception ex)
             {
                 Logger.Error($"[ConfigPage] Failed to render config schema: {ex}");
-                ShowConfigRenderError("Schema unavailable", "The gateway schema could not be rendered. Raw JSON remains available as a read-only preview.");
+                ShowConfigRenderError(
+                    L("ConfigPage_RenderSchemaUnavailableTitle"),
+                    L("ConfigPage_RenderSchemaUnavailableMessage"));
             }
         });
     }
@@ -213,7 +219,10 @@ public sealed partial class ConfigPage : Page
                 var configPermissionState = GetConfigPermissionState();
                 if (configPermissionState == ConfigPermissionState.Disconnected && _refreshConfigAfterReconnect)
                 {
-                    ShowStatus("Gateway restarting", "Saving changes. The gateway is restarting and will reconnect automatically.", InfoBarSeverity.Informational);
+                    ShowStatus(
+                        L("ConfigPage_StatusGatewayRestartingTitle"),
+                        L("ConfigPage_StatusGatewayRestartingMessage"),
+                        InfoBarSeverity.Informational);
                     ShowReconnectDialog(LocalizationHelper.GetString("ConfigPage_ReconnectDialogWaiting"));
                 }
                 else if (_refreshConfigAfterReconnect &&
@@ -479,14 +488,20 @@ public sealed partial class ConfigPage : Page
 
         if (_pendingChanges.Count == 0)
         {
-            ShowStatus("No changes", "There is nothing to save.", InfoBarSeverity.Informational);
+            ShowStatus(
+                L("ConfigPage_StatusNoChangesTitle"),
+                L("ConfigPage_StatusNoChangesMessage"),
+                InfoBarSeverity.Informational);
             return;
         }
 
         if (_validationErrors.Count > 0)
         {
             var first = _validationErrors.First();
-            ShowStatus("Fix validation errors", $"{first.Key}: {first.Value}", InfoBarSeverity.Error);
+            ShowStatus(
+                L("ConfigPage_StatusFixValidationErrorsTitle"),
+                Lf("ConfigPage_StatusValidationErrorMessageFormat", first.Key, first.Value),
+                InfoBarSeverity.Error);
             UpdateMetaAndButtons();
             return;
         }
@@ -494,14 +509,20 @@ public sealed partial class ConfigPage : Page
         var client = CurrentApp.GatewayClient;
         if (client == null)
         {
-            ShowStatus("Not connected", "Connect to a gateway before saving config.", InfoBarSeverity.Error);
+            ShowStatus(
+                L("ConfigPage_StatusNotConnectedTitle"),
+                L("ConfigPage_StatusNotConnectedMessage"),
+                InfoBarSeverity.Error);
             UpdateMetaAndButtons();
             return;
         }
 
         if (!OperatorScopeHelper.CanWriteConfig(client.GrantedOperatorScopes))
         {
-            ShowStatus("Config is read-only", "This operator token does not have operator.write permission, so config changes cannot be saved.", InfoBarSeverity.Warning);
+            ShowStatus(
+                L("ConfigPage_ConfigIsReadOnly"),
+                L("ConfigPage_StatusReadOnlyMessage"),
+                InfoBarSeverity.Warning);
             UpdatePermissionBanner();
             UpdateMetaAndButtons();
             return;
@@ -510,14 +531,20 @@ public sealed partial class ConfigPage : Page
         var saveBase = _editSnapshot.HasRoot ? _editSnapshot : _serverSnapshot;
         if (!saveBase.HasRoot)
         {
-            ShowStatus("Config not loaded", "Refresh the gateway config before saving.", InfoBarSeverity.Error);
+            ShowStatus(
+                L("ConfigPage_StatusConfigNotLoadedTitle"),
+                L("ConfigPage_StatusConfigNotLoadedMessage"),
+                InfoBarSeverity.Error);
             UpdateMetaAndButtons();
             return;
         }
 
         _saving = true;
         UpdateMetaAndButtons();
-        ShowStatus("Saving config…", $"Writing {_pendingChanges.Count} change(s) to the gateway.", InfoBarSeverity.Informational);
+        ShowStatus(
+            L("ConfigPage_StatusSavingConfigTitle"),
+            Lf("ConfigPage_StatusSavingConfigMessageFormat", _pendingChanges.Count),
+            InfoBarSeverity.Informational);
 
         try
         {
@@ -530,15 +557,17 @@ public sealed partial class ConfigPage : Page
                     _editSnapshot = ConfigEditorSnapshot.Empty;
                     _ = client.RequestConfigAsync();
                     ShowStatus(
-                        "Gateway config changed elsewhere",
-                        $"Your edits are preserved. The latest config is being refreshed; review the form and try Save again. Details: {result.Error ?? "stale config hash"}",
+                        L("ConfigPage_StatusStaleConfigTitle"),
+                        Lf(
+                            "ConfigPage_StatusStaleConfigMessageFormat",
+                            result.Error ?? L("ConfigPage_StatusStaleConfigDefaultDetail")),
                         InfoBarSeverity.Warning);
                 }
                 else
                 {
                     ShowStatus(
-                        "Save failed",
-                        result.Error ?? "The gateway rejected the config update. Your changes are preserved.",
+                        L("ConfigPage_StatusSaveFailedTitle"),
+                        result.Error ?? L("ConfigPage_StatusSaveRejectedMessage"),
                         InfoBarSeverity.Error);
                 }
                 return;
@@ -550,7 +579,10 @@ public sealed partial class ConfigPage : Page
             _refreshConfigAfterReconnect = true;
             _refreshConfigWhenGatewayAvailable = true;
             ShowReconnectDialog(LocalizationHelper.GetString("ConfigPage_ReconnectDialogAccepted"));
-            ShowStatus("Gateway restarting", "Saving changes. The gateway is restarting and will reconnect automatically.", InfoBarSeverity.Informational);
+            ShowStatus(
+                L("ConfigPage_StatusGatewayRestartingTitle"),
+                L("ConfigPage_StatusGatewayRestartingMessage"),
+                InfoBarSeverity.Informational);
             _reconnectCompletionTimer.Stop();
             _reconnectCompletionTimer.Start();
             _reconnectTimeoutTimer.Stop();
@@ -558,7 +590,10 @@ public sealed partial class ConfigPage : Page
         }
         catch (Exception ex)
         {
-            ShowStatus("Save failed", $"{ex.Message} Your changes are preserved.", InfoBarSeverity.Error);
+            ShowStatus(
+                L("ConfigPage_StatusSaveFailedTitle"),
+                Lf("ConfigPage_StatusSaveExceptionMessageFormat", ex.Message),
+                InfoBarSeverity.Error);
         }
         finally
         {
@@ -589,7 +624,7 @@ public sealed partial class ConfigPage : Page
         if (permissionState == ConfigPermissionState.Checking)
         {
             _loading = false;
-            SaveStatus.Text = "Checking config permissions…";
+            SaveStatus.Text = L("ConfigPage_SaveStatusCheckingConfigPermissions");
             UpdatePermissionBanner();
             UpdateMetaAndButtons();
             return;
@@ -605,7 +640,7 @@ public sealed partial class ConfigPage : Page
 
         _loading = true;
         LoadingState.Visibility = Visibility.Visible;
-        SaveStatus.Text = "Refreshing…";
+        SaveStatus.Text = L("ConfigPage_SaveStatusRefreshing");
         UpdatePermissionBanner();
         _ = CurrentApp.GatewayClient.RequestConfigSchemaAsync();
         _ = CurrentApp.GatewayClient.RequestConfigAsync();
@@ -629,7 +664,10 @@ public sealed partial class ConfigPage : Page
         _pendingChanges.Clear();
         _validationErrors.Clear();
         _editSnapshot = ConfigEditorSnapshot.Empty;
-        ShowStatus("Changes discarded", "The form is back to the last config loaded from the gateway.", InfoBarSeverity.Informational);
+        ShowStatus(
+            L("ConfigPage_StatusChangesDiscardedTitle"),
+            L("ConfigPage_StatusChangesDiscardedMessage"),
+            InfoBarSeverity.Informational);
         RenderTree();
         RestoreSelectedDetail();
         UpdateSelectedJsonPreviewForCurrentSelection();
@@ -640,8 +678,11 @@ public sealed partial class ConfigPage : Page
     {
         RemoveSectionEntries(_selectedPath, _pendingChanges);
         RemoveSectionEntries(_selectedPath, _validationErrors);
-        var sectionLabel = string.IsNullOrEmpty(_selectedPath) ? "Full config" : _selectedPath;
-        ShowStatus("Section reset", $"{sectionLabel} is back to the last loaded gateway value.", InfoBarSeverity.Informational);
+        var sectionLabel = string.IsNullOrEmpty(_selectedPath) ? L("ConfigPage_FullConfig") : _selectedPath;
+        ShowStatus(
+            L("ConfigPage_StatusSectionResetTitle"),
+            Lf("ConfigPage_StatusSectionResetMessageFormat", sectionLabel),
+            InfoBarSeverity.Informational);
         RenderTree();
         RestoreSelectedDetail();
         UpdateSelectedJsonPreviewForCurrentSelection();
@@ -663,7 +704,10 @@ public sealed partial class ConfigPage : Page
         var package = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
         package.SetText(_selectedJsonCopyText);
         global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-        ShowStatus("Copied JSON diff", "The selected section diff was copied to the clipboard.", InfoBarSeverity.Success);
+        ShowStatus(
+            L("ConfigPage_StatusCopiedJsonDiffTitle"),
+            L("ConfigPage_StatusCopiedJsonDiffMessage"),
+            InfoBarSeverity.Success);
     }
 
     private void OnToggleJsonPreview(object sender, RoutedEventArgs e)
@@ -840,9 +884,10 @@ public sealed partial class ConfigPage : Page
         var canWriteConfig = permissionState == ConfigPermissionState.ReadWrite;
         var editingLocked = IsConfigEditingLocked(permissionState);
         ConfigMetaText.Text = dirtyCount == 0
-            ? "No unsaved changes."
-            : $"{dirtyCount} unsaved change{(dirtyCount == 1 ? "" : "s")}" +
-              (invalidCount > 0 ? $" · {invalidCount} validation issue{(invalidCount == 1 ? "" : "s")}" : "");
+            ? L("ConfigPage_MetaNoUnsavedChanges")
+            : invalidCount > 0
+                ? Lf("ConfigPage_MetaUnsavedChangesWithValidationFormat", dirtyCount, invalidCount)
+                : Lf("ConfigPage_MetaUnsavedChangesFormat", dirtyCount);
 
         SaveStatus.Text = BuildSaveStatusText(permissionState, dirtyCount, invalidCount);
         SaveStatusIcon.Glyph = BuildSaveStatusGlyph(permissionState, dirtyCount, invalidCount);
@@ -871,20 +916,22 @@ public sealed partial class ConfigPage : Page
     private string BuildSaveStatusText(ConfigPermissionState permissionState, int dirtyCount, int invalidCount)
     {
         if (_saving)
-            return "Saving…";
+            return L("ConfigPage_SaveStatusSaving");
         if (permissionState == ConfigPermissionState.Disconnected)
-            return _refreshConfigAfterReconnect ? "Gateway restarting…" : "Connect to a gateway to edit";
+            return _refreshConfigAfterReconnect
+                ? L("ConfigPage_SaveStatusGatewayRestarting")
+                : L("ConfigPage_SaveStatusConnectToGateway");
         if (permissionState == ConfigPermissionState.Checking)
-            return "Checking permissions…";
+            return L("ConfigPage_SaveStatusCheckingPermissions");
         if (permissionState == ConfigPermissionState.NoRead)
-            return "Config unavailable: missing operator.read";
+            return L("ConfigPage_SaveStatusMissingRead");
         if (permissionState == ConfigPermissionState.ReadOnly && dirtyCount > 0)
-            return "Read-only: missing operator.write";
+            return L("ConfigPage_SaveStatusReadOnlyMissingWrite");
         if (invalidCount > 0)
-            return "Fix validation errors before saving";
+            return L("ConfigPage_SaveStatusFixValidationBeforeSaving");
         if (dirtyCount > 0)
-            return "Unsaved changes";
-        return "No unsaved changes";
+            return L("ConfigPage_SaveStatusUnsavedChanges");
+        return L("ConfigPage_SaveStatusNoUnsavedChanges");
     }
 
     private string BuildSaveStatusGlyph(ConfigPermissionState permissionState, int dirtyCount, int invalidCount)
@@ -910,10 +957,10 @@ public sealed partial class ConfigPage : Page
         _reconnectTimeoutTimer.Stop();
         DismissReconnectDialog();
         ShowStatus(
-            "Gateway reconnected",
+            L("ConfigPage_StatusGatewayReconnectedTitle"),
             refreshLatestConfig
-                ? "Configuration saved and the gateway connection is back. Refreshing the latest config."
-                : "Configuration saved and the latest gateway config is loaded.",
+                ? L("ConfigPage_StatusGatewayReconnectedRefreshingMessage")
+                : L("ConfigPage_StatusGatewayReconnectedLoadedMessage"),
             InfoBarSeverity.Success);
 
         if (refreshLatestConfig)
@@ -943,8 +990,8 @@ public sealed partial class ConfigPage : Page
         _reconnectCompletionTimer.Stop();
         DismissReconnectDialog();
         ShowStatus(
-            "Gateway still reconnecting",
-            "The config save was accepted, but the gateway has not reconnected yet. You can keep this page open or use Connection to check status.",
+            L("ConfigPage_StatusGatewayStillReconnectingTitle"),
+            L("ConfigPage_StatusGatewayStillReconnectingMessage"),
             InfoBarSeverity.Warning);
         UpdateMetaAndButtons();
     }
@@ -1054,18 +1101,18 @@ public sealed partial class ConfigPage : Page
     {
         var access = permissionState switch
         {
-            ConfigPermissionState.Disconnected => "Disconnected",
-            ConfigPermissionState.Checking => "Checking access",
-            ConfigPermissionState.NoRead => "No config read access",
-            ConfigPermissionState.ReadOnly => "Read-only access",
-            ConfigPermissionState.ReadWrite => "Read/write access",
-            _ => "Unknown access"
+            ConfigPermissionState.Disconnected => L("ConfigPage_AccessDisconnected"),
+            ConfigPermissionState.Checking => L("ConfigPage_AccessChecking"),
+            ConfigPermissionState.NoRead => L("ConfigPage_AccessNoRead"),
+            ConfigPermissionState.ReadOnly => L("ConfigPage_AccessReadOnly"),
+            ConfigPermissionState.ReadWrite => L("ConfigPage_AccessReadWrite"),
+            _ => L("ConfigPage_AccessUnknown")
         };
-        var changes = $"{dirtyCount} change{(dirtyCount == 1 ? "" : "s")}";
+        var changes = Lf("ConfigPage_AccessChangesFormat", dirtyCount);
         var validation = invalidCount == 0
-            ? "Local validation clean"
-            : $"{invalidCount} validation issue{(invalidCount == 1 ? "" : "s")}";
-        return $"{access} · {changes} · {validation}";
+            ? L("ConfigPage_AccessValidationClean")
+            : Lf("ConfigPage_AccessValidationIssuesFormat", invalidCount);
+        return Lf("ConfigPage_AccessSummaryFormat", access, changes, validation);
     }
 
     private void ShowConfigRenderError(string title, string message)
@@ -1134,20 +1181,20 @@ public sealed partial class ConfigPage : Page
         {
             case ConfigPermissionState.Checking:
                 PermissionInfoBar.Title = LocalizationHelper.GetString("ConfigPage_CheckingConfigPermissions");
-                PermissionInfoBar.Message = "Waiting for the gateway to report this operator's permissions.";
+                PermissionInfoBar.Message = L("ConfigPage_CheckingConfigPermissionsMessage");
                 PermissionInfoBar.Severity = InfoBarSeverity.Informational;
                 SetInfoBarOpen(PermissionInfoBar, true);
                 break;
             case ConfigPermissionState.NoRead:
                 ClearConfigViewForNoRead();
                 PermissionInfoBar.Title = LocalizationHelper.GetString("ConfigPage_ConfigUnavailable");
-                PermissionInfoBar.Message = "This operator token lacks operator.read permission, so the gateway config cannot be loaded here.";
+                PermissionInfoBar.Message = L("ConfigPage_ConfigUnavailableMessage");
                 PermissionInfoBar.Severity = InfoBarSeverity.Error;
                 SetInfoBarOpen(PermissionInfoBar, true);
                 break;
             case ConfigPermissionState.ReadOnly:
                 PermissionInfoBar.Title = LocalizationHelper.GetString("ConfigPage_ConfigIsReadOnly");
-                PermissionInfoBar.Message = "This operator token can read config but lacks operator.write permission. You can inspect and validate drafts, but Save is disabled.";
+                PermissionInfoBar.Message = L("ConfigPage_ConfigIsReadOnlyMessage");
                 PermissionInfoBar.Severity = InfoBarSeverity.Warning;
                 SetInfoBarOpen(PermissionInfoBar, true);
                 break;
