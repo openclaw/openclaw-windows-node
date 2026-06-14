@@ -50,6 +50,7 @@ public static class SetupStepFactory
             new CreateWslInstanceStep(),
             new ConfigureWslInstanceStep(),
             new ValidateWslLockdownStep(),
+            new ImportWindowsCaCertsStep(),
             new InstallCliStep(),
             new ConfigureGatewayStep(),
             new InstallGatewayServiceStep(),
