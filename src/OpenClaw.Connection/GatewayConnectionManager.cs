@@ -298,11 +298,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (Interlocked.Read(ref _generation) != gen) return;
                 _ = HandleNodePairListUpdatedAsync(list, gen);
             };
-            lifecycle.DataClient.DevicePairListUpdated += (s, list) =>
-            {
-                if (Interlocked.Read(ref _generation) != gen) return;
-                _ = HandleDevicePairListUpdatedAsync(list, gen);
-            };
             lifecycle.DataClient.V2SignatureFallback += (s, _) =>
             {
                 if (Interlocked.Read(ref _generation) != gen) return;
@@ -1466,11 +1461,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
 
         return Task.CompletedTask;
-    }
-
-    private async Task HandleDevicePairListUpdatedAsync(DevicePairingListInfo list, long gen)
-    {
-        await Task.CompletedTask;
     }
 
     // Auto-approve only explicitly typed device-pair role upgrades. Gateway-owned

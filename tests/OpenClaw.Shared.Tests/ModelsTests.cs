@@ -1405,6 +1405,20 @@ public class CommandCenterModelTests
         Assert.Equal(expected, CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(requestId));
     }
 
+    [Theory]
+    [InlineData("request-123", "openclaw devices approve request-123")]
+    [InlineData(" request:123 ", "openclaw devices approve request:123")]
+    [InlineData(null, "openclaw devices list")]
+    [InlineData("", "openclaw devices list")]
+    [InlineData("request-1;whoami", "openclaw devices list")]
+    [InlineData("<requestId>", "openclaw devices list")]
+    public void BuildDeviceApprovalRepairCommand_ValidatesRequestId(
+        string? requestId,
+        string expected)
+    {
+        Assert.Equal(expected, CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(requestId));
+    }
+
     [Fact]
     public void BuildUnknownPairingDiscoveryCommands_IncludesBothApprovalQueues()
     {

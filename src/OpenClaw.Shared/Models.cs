@@ -1243,11 +1243,30 @@ public static class CommandCenterDiagnostics
             : "openclaw nodes pending";
     }
 
+    public static string BuildDeviceApprovalRepairCommand(string? pendingRequestId)
+    {
+        return TryBuildPairingApprovalCommand(
+            pendingRequestId,
+            "openclaw devices approve",
+            out var approvalCommand)
+            ? approvalCommand
+            : "openclaw devices list";
+    }
+
     public static string BuildUnknownPairingDiscoveryCommands() =>
         string.Join(Environment.NewLine, "openclaw nodes pending", "openclaw devices list");
 
     public static bool TryBuildNodeApprovalCommand(
         string? pendingRequestId,
+        out string approvalCommand) =>
+        TryBuildPairingApprovalCommand(
+            pendingRequestId,
+            "openclaw nodes approve",
+            out approvalCommand);
+
+    private static bool TryBuildPairingApprovalCommand(
+        string? pendingRequestId,
+        string commandPrefix,
         out string approvalCommand)
     {
         var requestId = pendingRequestId?.Trim();
@@ -1262,7 +1281,7 @@ public static class CommandCenterDiagnostics
             return false;
         }
 
-        approvalCommand = $"openclaw nodes approve {requestId}";
+        approvalCommand = $"{commandPrefix} {requestId}";
         return true;
     }
 

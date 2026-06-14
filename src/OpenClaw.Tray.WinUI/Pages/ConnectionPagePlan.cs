@@ -633,14 +633,7 @@ internal sealed record ConnectionPagePlan
         // Windows-cmd users.
         if (snap.NodePairingApprovalKind == PairingApprovalKind.DevicePair)
         {
-            var deviceId = !string.IsNullOrEmpty(snap.NodeDeviceId)
-                ? ConnectionCardPlanSanitizer.Sanitize(snap.NodeDeviceId!, maxLen: 128)
-                : null;
-            return reqId != null
-                ? $"openclaw devices approve {reqId}"
-                : deviceId != null
-                    ? $"openclaw devices approve {deviceId}"
-                    : "openclaw devices list";
+            return CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(reqId);
         }
 
         if (snap.NodePairingApprovalKind == PairingApprovalKind.NodePair)

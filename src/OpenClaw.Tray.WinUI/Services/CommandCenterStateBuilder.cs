@@ -67,7 +67,8 @@ internal sealed class CommandCenterStateBuilder
         {
             var approvalCommand = _snapshot.NodePairingApprovalKind switch
             {
-                PairingApprovalKind.DevicePair => $"openclaw devices approve {_snapshot.NodeService.FullDeviceId}",
+                PairingApprovalKind.DevicePair => CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(
+                    _snapshot.NodePairingRequestId),
                 PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId),
                 _ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()
             };

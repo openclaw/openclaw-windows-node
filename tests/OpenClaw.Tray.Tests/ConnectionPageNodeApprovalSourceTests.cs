@@ -22,6 +22,9 @@ public sealed class ConnectionPageNodeApprovalSourceTests
         Assert.Contains("if (shouldShowPendingLocalNodeApproval &&", builderSource);
         Assert.Contains("_snapshot.NodePairingApprovalKind switch", builderSource);
         Assert.Contains(
+            "PairingApprovalKind.DevicePair => CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(",
+            builderSource);
+        Assert.Contains(
             "PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId)",
             builderSource);
         Assert.Contains("_ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()", builderSource);

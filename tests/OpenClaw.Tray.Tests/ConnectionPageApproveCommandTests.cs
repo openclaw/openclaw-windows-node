@@ -54,16 +54,14 @@ public sealed class ConnectionPageApproveCommandTests
     }
 
     [Theory]
-    [InlineData(PairingApprovalKind.DevicePair, null, "openclaw devices list")]
-    [InlineData(PairingApprovalKind.DevicePair, "node-device-789", "openclaw devices approve node-device-789")]
-    public void MissingDevicePairRequestId_EmitsShellSafeDiscoveryCommand_NotBareApprove(
-        PairingApprovalKind approvalKind,
-        string? nodeDeviceId,
-        string expected)
+    [InlineData(null)]
+    [InlineData("node-device-789")]
+    public void MissingDevicePairRequestId_EmitsDiscoveryCommand_NotDeviceId(
+        string? nodeDeviceId)
     {
-        var plan = BuildNodePairingPlan(null, approvalKind, nodeDeviceId);
+        var plan = BuildNodePairingPlan(null, PairingApprovalKind.DevicePair, nodeDeviceId);
 
-        AssertShellSafeCommand(expected, plan.NodeApproveCommand);
+        AssertShellSafeCommand("openclaw devices list", plan.NodeApproveCommand);
     }
 
     [Fact]
