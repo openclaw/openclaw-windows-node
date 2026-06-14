@@ -1,8 +1,8 @@
 {
   "last_run": "2026-06-14",
-  "last_run_id": "27484722532",
+  "last_run_id": "27499556644",
   "monthly_activity_issue": 618,
-  "backlog_comment_cursor": 729,
+  "backlog_comment_cursor": 724,
   "open_repo_assist_prs": [
     "#717",
     "#718",
@@ -22,80 +22,31 @@
     "734": "clean",
     "735": "unknown (duplicate, should close)",
     "738": "clean",
-    "743": "dirty - merge conflict in SetupStepsTests.cs; push blocked by protected-files (3 attempts); maintainer comment left 2026-06-14",
+    "743": "clean - merge conflict resolved 2026-06-14 via append-only push (cherry-picked ValidateWslLockdown test from main); 2 commits on branch now",
     "747": "clean",
     "749": "clean",
     "750": "clean"
   },
   "comments_made": {
-    "641": {
-      "date": "2026-06-10",
-      "note": "Pointed to PR #648 for Teams channel timeout fix."
-    },
-    "661": {
-      "date": "2026-06-13",
-      "note": "Noted v0.6.3 runtime verification by TurboTheTurtle; suggested closure."
-    },
-    "662": {
-      "date": "2026-06-11",
-      "note": "Root cause: PairOperatorStep missing Windows-side health check. Fix PR #743 submitted."
-    },
-    "667": {
-      "date": "2026-06-12",
-      "note": "Summarized connection/pairing (PR #741) and TTS crash (PR #745) fixes."
-    },
-    "669": {
-      "date": "2026-06-10",
-      "note": "Draft PR submitted implementing F11/Esc fullscreen for both Canvas windows."
-    },
-    "677": {
-      "date": "2026-06-11",
-      "note": "Identified device-pair plugin not loaded in gateway CLI <2026.6.0. Fix PR submitted."
-    },
-    "682": {
-      "date": "2026-06-13",
-      "note": "Root cause is gateway-side (unbound method in LM Studio wizard). Upstream PR at openclaw/openclaw#90429."
-    },
-    "688": {
-      "date": "2026-06-08",
-      "note": "Explained Back button architecture constraint."
-    },
-    "696": {
-      "date": "2026-06-10",
-      "note": "Documented WebSocketClientBase reconnect-loop root cause."
-    },
-    "703": {
-      "date": "2026-06-07",
-      "note": "Root cause confirmed, fix PR #712 submitted. Superseded by maintainer PR #713."
-    },
-    "709": {
-      "date": "2026-06-08",
-      "note": "Root cause confirmed. Fix PR #717 and #718 submitted."
-    },
-    "710": {
-      "date": "2026-06-13",
-      "note": "Summarized what PR #741 covers (scoping, stuck UI, token forwarding) vs. remaining gateway-side work."
-    },
-    "720": {
-      "date": "2026-06-08",
-      "note": "Root cause confirmed: GatewayClientFactory.Create() bootstrapPairAsNode issue. PR #721 closed. fuller-stack-dev verified fixed by #741 on 2026-06-12."
-    },
-    "727": {
-      "date": "2026-06-11",
-      "note": "Follow-up: asked which setup step fails on v0.6.3. User confirmed v0.6.3, no further response."
-    },
-    "729": {
-      "date": "2026-06-10",
-      "note": "Fix PR submitted (bootstrap guard). Tray tests: 996 passed."
-    },
-    "730": {
-      "date": "2026-06-09",
-      "note": "Confirmed root cause. Issue closed by maintainer."
-    },
-    "743": {
-      "date": "2026-06-14",
-      "note": "PR maintenance comment: explained protected-files block, gave manual rebase instructions."
-    }
+    "641": {"date": "2026-06-10", "note": "Pointed to PR #648 for Teams channel timeout fix."},
+    "654": {"date": "2026-06-14", "note": "Explained Copilot auth workaround: wizard path works, CLI auth stuck; let device code expire to unblock."},
+    "661": {"date": "2026-06-13", "note": "Noted v0.6.3 runtime verification by TurboTheTurtle; suggested closure."},
+    "662": {"date": "2026-06-11", "note": "Root cause: PairOperatorStep missing Windows-side health check. Fix PR #743 submitted."},
+    "667": {"date": "2026-06-12", "note": "Summarized connection/pairing (PR #741) and TTS crash (PR #745) fixes."},
+    "669": {"date": "2026-06-10", "note": "Draft PR submitted implementing F11/Esc fullscreen for both Canvas windows."},
+    "677": {"date": "2026-06-11", "note": "Identified device-pair plugin not loaded in gateway CLI <2026.6.0. Fix PR submitted."},
+    "682": {"date": "2026-06-13", "note": "Root cause is gateway-side (unbound method in LM Studio wizard). Upstream PR at openclaw/openclaw#90429."},
+    "688": {"date": "2026-06-08", "note": "Explained Back button architecture constraint."},
+    "696": {"date": "2026-06-10", "note": "Documented WebSocketClientBase reconnect-loop root cause."},
+    "703": {"date": "2026-06-07", "note": "Root cause confirmed, fix PR #712 submitted. Superseded by maintainer PR #713."},
+    "709": {"date": "2026-06-08", "note": "Root cause confirmed. Fix PR #717 and #718 submitted."},
+    "710": {"date": "2026-06-13", "note": "Summarized what PR #741 covers (scoping, stuck UI, token forwarding) vs. remaining gateway-side work."},
+    "720": {"date": "2026-06-08", "note": "Root cause confirmed: GatewayClientFactory.Create() bootstrapPairAsNode issue. PR #721 closed. fuller-stack-dev verified fixed by #741 on 2026-06-12."},
+    "724": {"date": "2026-06-14", "note": "Explained fail-open device-code behavior: expired code retry used cached auth. Workaround confirmed."},
+    "727": {"date": "2026-06-11", "note": "Follow-up: asked which setup step fails on v0.6.3. User confirmed v0.6.3, no further response."},
+    "729": {"date": "2026-06-10", "note": "Fix PR submitted (bootstrap guard). Tray tests: 996 passed."},
+    "730": {"date": "2026-06-09", "note": "Confirmed root cause. Issue closed by maintainer."},
+    "743": {"date": "2026-06-14", "note": "PR maintenance comment: explained protected-files block; now resolved via append-only push."}
   },
   "fix_attempts": {
     "709": {
@@ -124,7 +75,7 @@
       "pr": 743,
       "status": "open",
       "date": "2026-06-11",
-      "note": "Merge conflict in SetupStepsTests.cs (resolved locally 2026-06-14, rebased to ff38d84). Push repeatedly blocked by protected-files check (3 runs). Maintainer comment left 2026-06-14 with manual force-push instructions. Tests: SetupEngine 248 passed, Shared 2229 passed, Tray 1049 passed."
+      "note": "Merge conflict resolved 2026-06-14 via append-only push (cherry-picked ValidateWslLockdown test + TimedOut() helper). 2 commits on branch. Tests: 249 SetupEngine (1 pre-existing failure), 1071 Tray."
     },
     "677": {
       "branch": "repo-assist/eng-device-pair-plugin-not-found-2026-06-11-8f330ecd7f643284",
@@ -152,5 +103,5 @@
     "661": "fixed in PR #666 (merged), verified in v0.6.3 by TurboTheTurtle on 2026-06-13",
     "720": "fixed in PR #741 (merged), verified by fuller-stack-dev on 2026-06-12"
   },
-  "notes": "Run 2026-06-14 (27484722532): Task 6 - checked all 10 Repo Assist PRs: #718,#728,#734,#738,#747,#749,#750 are clean; #743 dirty (merge conflict). PR #743 rebase blocked 3x by protected-files; commented with manual fix instructions. Issues #661 and #720 are fixed on main and in v0.6.3 - ready for maintainer closure. #717 and #735 are duplicates waiting to be closed. Task 3 - no new fixable issues (all fixable ones have open PRs)."
+  "notes": "Run 2026-06-14 (27499556644): Task 6 - PR #743 merge conflict resolved via append-only push: cherry-picked ValidateWslLockdown_RetriesWslConfReadAfterStartupTimeout test and TimedOut() helper from main into branch (these were added to main since PR was created, causing SetupStepsTests.cs conflict). Branch now has 2 commits. Task 2 - commented on #654 (Copilot CLI auth stuck, wizard works; let code expire workaround) and #724 (fail-open device-code behavior explanation)."
 }
