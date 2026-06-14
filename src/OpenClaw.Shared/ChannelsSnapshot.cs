@@ -234,22 +234,12 @@ public sealed class IMessageChannelStatus
 
 // ─── Web login (QR linking) ──────────────────────────────────────────────────
 
-/// <summary>Result of <c>web.login.start</c> — a QR or status for a channel.</summary>
-public sealed class WebLoginStartResult
-{
-    public string? Message { get; init; }
-    public string? QrDataUrl { get; init; }
-    public bool Connected { get; init; }
-
-    /// <summary>Gateway-side error message when the call failed (ok=false), or transport exception. Null on success.</summary>
-    public string? Error { get; init; }
-
-    /// <summary>Raw JSON of the gateway response (or stringified exception). Used by the diagnostic disclosure in the UI.</summary>
-    public string? RawResponse { get; init; }
-}
-
-/// <summary>Result of <c>web.login.wait</c> — long-poll outcome.</summary>
-public sealed class WebLoginWaitResult
+/// <summary>
+/// Result of a QR/web-login RPC call (<c>web.login.start</c> or <c>web.login.wait</c>).
+/// Both calls return an identical wire shape; a single type removes duplication while
+/// the calling method name already distinguishes the two flows.
+/// </summary>
+public sealed class WebLoginResult
 {
     public string? Message { get; init; }
     public string? QrDataUrl { get; init; }

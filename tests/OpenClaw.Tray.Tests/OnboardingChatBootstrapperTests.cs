@@ -200,8 +200,8 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task<bool> StopChannelAsync(string channelName) => Task.FromResult(false);
         public Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000) => Task.FromResult<ChannelsStatusSnapshot?>(null);
         public Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000) => Task.FromResult(false);
-        public Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000) => Task.FromResult<WebLoginStartResult?>(null);
-        public Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000) => Task.FromResult<WebLoginWaitResult?>(null);
+        public Task<WebLoginResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000) => Task.FromResult<WebLoginResult?>(null);
+        public Task<WebLoginResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000) => Task.FromResult<WebLoginResult?>(null);
         public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) => Task.FromResult(default(JsonElement));
     }
 #pragma warning restore CS0067
