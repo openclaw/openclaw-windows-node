@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+using Xunit.Abstractions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.ExecApprovals;
 
@@ -19,11 +20,13 @@ namespace OpenClaw.Shared.Tests;
 public class ExecApprovalsCoordinatorTests : IDisposable
 {
     private readonly string _dir;
+    private readonly ITestOutputHelper _output;
 
-    public ExecApprovalsCoordinatorTests()
+    public ExecApprovalsCoordinatorTests(ITestOutputHelper output)
     {
         _dir = Path.Combine(Path.GetTempPath(), $"oca-coord-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dir);
+        _output = output;
     }
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
@@ -477,6 +480,221 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
         Assert.Equal("unexpected-exception", result.Reason);
         Assert.Contains(log.Errors, e => e.Contains("unexpected-exception"));
+    }
+
+    // ── PR8: allowlist persistence and use recording ──────────────────────────
+
+    // A. AllowAlways + security=allowlist → entry persisted in store.
+    [Fact]
+    public async Task AllowAlways_Allowlist_PersistsEntry()
+    {
+        WriteStoreFile("""{"version":1,"agents":{"main":{"security":"allowlist","ask":"always"}}}""");
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways))
+            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-A");
+
+        Assert.True(result.IsAllow);
+        var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+        Assert.NotNull(resolved.Allowlist[0].Pattern);
+        Assert.Contains("cmd", resolved.Allowlist[0].Pattern, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // B. AllowAlways + security=full → guard fails, no allowlist entry written.
+    [Fact]
+    public async Task AllowAlways_SecurityFull_DoesNotPersist()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways))
+            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-B");
+
+        Assert.True(result.IsAllow);
+        var json = File.ReadAllText(Path.Combine(_dir, "exec-approvals.json"));
+        Assert.DoesNotContain("allowlist", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // C. Pre-approved path (pass1 = Allow) → RecordAllowlistUse fires and updates LastUsedAt.
+    [Fact]
+    public async Task AllowPreapproved_RecordsAllowlistUse()
+    {
+        WriteStoreFile("""
+        {
+          "version": 1,
+          "agents": {
+            "main": {
+              "security": "allowlist",
+              "ask": "off",
+              "allowlist": [{ "pattern": "**/cmd.exe" }]
+            }
+          }
+        }
+        """);
+        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-C");
+
+        Assert.True(result.IsAllow);
+        var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+        Assert.NotNull(resolved.Allowlist[0].LastUsedAt);
+    }
+
+    // D. AllowOnce → persistAllowlistEntry=false, no entry written.
+    [Fact]
+    public async Task AllowOnce_DoesNotPersistEntry()
+    {
+        WriteStoreFile("""{"version":1,"agents":{"main":{"security":"allowlist","ask":"always"}}}""");
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
+            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-D");
+
+        Assert.True(result.IsAllow);
+        var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
+        Assert.Empty(resolved.Allowlist);
+    }
+
+    // E. AllowAlways called twice for the same command → exactly one entry (dedup in store).
+    [Fact]
+    public async Task AllowAlways_Idempotent_SingleEntry()
+    {
+        WriteStoreFile("""{"version":1,"agents":{"main":{"security":"allowlist","ask":"always"}}}""");
+        var coordinator = MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways));
+
+        await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-E1");
+        await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-E2");
+
+        var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+    }
+
+    // F. Prompt path (ask=always + AllowlistSatisfied=true + AllowOnce) →
+    //    RecordAllowlistUse fires in the post-pass2 branch (not just the pass1 branch).
+    [Fact]
+    public async Task AllowOnce_AllowlistSatisfied_RecordsUseInPostPass2Branch()
+    {
+        WriteStoreFile("""
+        {
+          "version": 1,
+          "agents": {
+            "main": {
+              "security": "allowlist",
+              "ask": "always",
+              "allowlist": [{ "pattern": "**/cmd.exe" }]
+            }
+          }
+        }
+        """);
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
+            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-F");
+
+        Assert.True(result.IsAllow);
+        var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+        Assert.NotNull(resolved.Allowlist[0].LastUsedAt);
+    }
+
+    // G. Fallback path (canPresent=false) + AllowlistSatisfied=true → RecordAllowlistUse fires.
+    [Fact]
+    public async Task Fallback_AllowlistSatisfied_RecordsUse()
+    {
+        // askFallback=off → FallbackDecision=AllowOnce → pass2=Allow. AllowlistSatisfied=true
+        // because cmd.exe resolves and **/cmd.exe matches. RecordAllowlistUsageAsync must fire.
+        WriteStoreFile("""
+        {
+          "version": 1,
+          "agents": {
+            "main": {
+              "security": "allowlist",
+              "ask": "always",
+              "askFallback": "off",
+              "allowlist": [{ "pattern": "**/cmd.exe" }]
+            }
+          }
+        }
+        """);
+        // canPresent=false (default) → fallback path; askFallback=off → AllowOnce → Allow
+        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-G");
+
+        Assert.True(result.IsAllow);
+        var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
+        Assert.Single(resolved.Allowlist);
+        Assert.NotNull(resolved.Allowlist[0].LastUsedAt);
+    }
+
+    // End-to-end coordinator/store runtime proof using real filesystem I/O.
+    // Demonstrates the two side-effect paths via ITestOutputHelper, so the
+    // resulting JSON appears in `dotnet test ... --logger "console;verbosity=detailed"`:
+    //   - AllowAlways persists a new allowlist entry into exec-approvals.json
+    //   - A later allowlist hit records lastUsed* metadata
+    [Fact]
+    public async Task RuntimeProof_AllowAlways_PersistsAndRecordsLastUsed()
+    {
+        var filePath = Path.Combine(_dir, "exec-approvals.json");
+
+        WriteStoreFile("""{"version":1,"agents":{"main":{"security":"allowlist","ask":"always"}}}""");
+        _output.WriteLine("=== Initial exec-approvals.json ===");
+        _output.WriteLine(File.ReadAllText(filePath));
+
+        var coordinator = MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways));
+
+        // Step 1: AllowAlways → entry persisted (no lastUsed* yet).
+        var first = await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "proof-1");
+        Assert.True(first.IsAllow);
+
+        _output.WriteLine("");
+        _output.WriteLine("=== After AllowAlways (correlationId=proof-1) ===");
+        _output.WriteLine(File.ReadAllText(filePath));
+
+        // Step 2: Same command again → allowlist hit, lastUsed* recorded.
+        var second = await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "proof-2");
+        Assert.True(second.IsAllow);
+
+        _output.WriteLine("");
+        _output.WriteLine("=== After allowlist hit (correlationId=proof-2) ===");
+        _output.WriteLine(File.ReadAllText(filePath));
+
+        var resolvedAfter = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
+        Assert.Single(resolvedAfter.Allowlist);
+        Assert.NotNull(resolvedAfter.Allowlist[0].Pattern);
+        Assert.NotNull(resolvedAfter.Allowlist[0].LastUsedAt);
+        Assert.NotNull(resolvedAfter.Allowlist[0].LastResolvedPath);
+    }
+
+    // Regression: wildcard-authorized hit must record lastUsed* on the wildcard bucket entry.
+    // ResolveReadOnly merges agents["*"] into the resolved allowlist for any concrete agent,
+    // so a request from "main" can be allow-matched by an entry living under "*". The store's
+    // record path must follow the same source — otherwise wildcard-authorized executions never
+    // accumulate usage metadata.
+    [Fact]
+    public async Task WildcardAllowlistHit_RecordsUseOnWildcardBucketEntry()
+    {
+        WriteStoreFile("""
+        {
+          "version": 1,
+          "agents": {
+            "*": {
+              "security": "allowlist",
+              "ask": "off",
+              "allowlist": [{ "pattern": "**/cmd.exe" }]
+            }
+          }
+        }
+        """);
+
+        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["cmd"]}"""), "wildcard-1");
+
+        Assert.True(result.IsAllow);
+        var json = File.ReadAllText(Path.Combine(_dir, "exec-approvals.json"));
+        Assert.Contains("\"lastUsedAt\"", json);
+        Assert.Contains("\"lastResolvedPath\"", json);
     }
 
     // ── Test doubles ──────────────────────────────────────────────────────────

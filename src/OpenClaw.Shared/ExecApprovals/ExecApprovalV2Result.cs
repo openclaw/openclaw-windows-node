@@ -1,7 +1,7 @@
 namespace OpenClaw.Shared.ExecApprovals;
 
 /// <summary>
-/// Stable result codes for the V2 exec approval path (rail 7).
+/// Stable result codes for the V2 exec approval path.
 /// </summary>
 public enum ExecApprovalV2Code
 {
