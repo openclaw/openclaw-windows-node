@@ -3,10 +3,9 @@
     Verifies native release payload dependencies needed on clean Windows hosts.
 
 .DESCRIPTION
-    The Windows node uses NSec.Cryptography, which loads libsodium.dll. The
-    NuGet-provided Windows libsodium binary imports the Visual C++ runtime, so
-    app-local/installer payloads must make that runtime available before the
-    tray can generate or load device keys.
+    The Windows node ships native speech dependencies that import the Visual C++
+    runtime. Release payloads and installers must make that runtime available on
+    clean Windows hosts before the tray initializes those native components.
 #>
 [CmdletBinding()]
 param(
@@ -100,7 +99,6 @@ function Get-NativeLoadProbeFiles {
     )
 
     @(
-        Get-ChildItem -LiteralPath $Directory -File -Filter "libsodium.dll"
         Get-ChildItem -LiteralPath $Directory -File -Filter "onnxruntime.dll"
         Get-ChildItem -LiteralPath $Directory -File -Filter "sherpa-onnx.dll"
         Get-ChildItem -LiteralPath $Directory -File -Filter "sherpa-onnx-c-api.dll"
@@ -293,26 +291,15 @@ function Add-VCRuntimeVersionFloorErrors {
     }
 }
 
-$libsodiumFiles = @(
-    Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Filter libsodium.dll |
-        Sort-Object FullName
-)
-
-if ($libsodiumFiles.Count -eq 0) {
-    $errors.Add("Missing libsodium.dll under $payloadRoot.")
-}
-
-foreach ($libsodium in $libsodiumFiles) {
-    $runtimePath = Join-Path $libsodium.DirectoryName "vcruntime140.dll"
-    if ($RequireAppLocalVCRuntime -and -not (Test-Path -LiteralPath $runtimePath)) {
-        $errors.Add("Missing app-local vcruntime140.dll next to $(Get-RelativePath -Root $payloadRoot -Path $libsodium.FullName).")
+if ($RequireAppLocalVCRuntime) {
+    $runtimePath = Join-Path $payloadRoot "vcruntime140.dll"
+    if (-not (Test-Path -LiteralPath $runtimePath)) {
+        $errors.Add("Missing app-local vcruntime140.dll under $payloadRoot.")
     }
 
-    if ($RequireAppLocalVCRuntime) {
-        foreach ($runtimeFile in Get-VCRuntimeFiles -Directory $libsodium.DirectoryName) {
-            Add-MicrosoftSignatureErrors -File $runtimeFile
-            Add-VCRuntimeVersionFloorErrors -File $runtimeFile
-        }
+    foreach ($runtimeFile in Get-VCRuntimeFiles -Directory $payloadRoot) {
+        Add-MicrosoftSignatureErrors -File $runtimeFile
+        Add-VCRuntimeVersionFloorErrors -File $runtimeFile
     }
 }
 

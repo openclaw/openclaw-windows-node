@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
   <!-- Audio / Speech-to-Text (platform-agnostic components) -->
@@ -24,5 +24,4 @@
   </ItemGroup>
 
 </Project>
-
 

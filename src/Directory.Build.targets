@@ -49,9 +49,8 @@
       major version (Microsoft.VC143.CRT for VS 2022, Microsoft.VC145.CRT for
       VS 18). There is at most one Microsoft.VC*.CRT subdir per arch per redist
       version, so the * collapses to a single match. We limit to
-      vcruntime140*.dll + msvcp140*.dll to match the file set the x64 NuGet
-      ships (concrt140/vccorlib140/vcruntime140_threads aren't needed by
-      libsodium and aren't in the x64 payload either).
+      vcruntime140*.dll + msvcp140*.dll to match the file set required by the
+      native speech stack without carrying unrelated CRT DLLs.
 
       For x64 this replaces the stale NuGet-sourced items so publish always
       ships current DLLs from the VS install.
@@ -102,7 +101,7 @@
           AfterTargets="CopyOpenClawVCRuntimeToPublish"
           Condition="'$(PublishDir)' != '' and '$(OpenClawVCRuntimeArch)' != ''">
     <Error Condition="!Exists('$(PublishDir)vcruntime140.dll')"
-           Text="vcruntime140.dll missing from $(PublishDir). Clean Windows installs cannot load libsodium.dll without the VC runtime." />
+           Text="vcruntime140.dll missing from $(PublishDir). Clean Windows installs cannot load native speech dependencies without the VC runtime." />
   </Target>
 
 </Project>

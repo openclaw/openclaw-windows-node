@@ -82,7 +82,7 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("Get-AuthenticodeSignature -LiteralPath $File.FullName", verifier);
         Assert.Contains("Get-VCRuntimeFiles", verifier);
         Assert.Contains("vcruntime140.dll", verifier);
-        Assert.Contains("libsodium.dll", verifier);
+        Assert.DoesNotContain("libsodium.dll", verifier);
         Assert.Contains("OpenClawNativeDependencyProbe", verifier);
         Assert.Contains("Microsoft.ML.OnnxRuntime.dll", verifier);
         Assert.Contains("onnxruntime.dll", verifier);

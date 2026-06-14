@@ -408,9 +408,9 @@ jobs:
       if: matrix.rid == 'win-arm64'
       shell: pwsh
       # -SkipNativeLoadProbe: an ARM64 runner CAN LoadLibrary ARM64 DLLs, but
-      # libsodium pulls in a long native dependency chain that may not all be
-      # in the payload here (WindowsAppSDK pieces, etc.). The probe is for x64
-      # parity; signature + presence is what we actually care about.
+      # the full tray native dependency chain may include components that are
+      # not in this payload here (WindowsAppSDK pieces, etc.). The probe is for
+      # x64 parity; signature + presence is what we actually care about.
       run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe
 
     - name: Verify GitVersion assembly metadata
@@ -646,8 +646,8 @@ jobs:
         }
 
     # Create ZIP files for Updatum auto-update (asset name must contain the RID).
-    # We ship both x64 and arm64 portables now that the build job produces a
-    # libsodium-compatible app-local VC runtime for both architectures (the
+    # We ship both x64 and arm64 portables now that the build job produces an
+    # app-local VC runtime for both architectures (the
     # arm64 leg sources its loose Microsoft.VC*.CRT DLLs from the VS install
     # on the windows-11-arm runner; see src/Directory.Build.targets).
     - name: Create x64 Release ZIP
