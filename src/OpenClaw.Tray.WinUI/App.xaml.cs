@@ -1722,7 +1722,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 () => _keepAliveWindow?.Content as FrameworkElement,
                 settings,
                 enableMcpServer: settings.EnableMcpServer,
-                identityDataPath: IdentityDataPath);
+                identityDataPath: IdentityDataPath,
+                sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;

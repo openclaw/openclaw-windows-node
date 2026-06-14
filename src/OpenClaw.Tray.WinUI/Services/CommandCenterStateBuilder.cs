@@ -196,8 +196,8 @@ internal sealed class CommandCenterStateBuilder
         {
             Severity = GatewayDiagnosticSeverity.Info,
             Category = "browser",
-            Title = "Browser proxy auth may need a gateway token",
-            Detail = "This Windows node is advertising browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
+            Title = "Browser proxy auth",
+            Detail = "browser.proxy requires a shared gateway token to authenticate with the browser control host. QR/bootstrap pairing alone does not provide this token; it must be saved in Settings > Gateway Token.",
             RepairAction = "Copy browser proxy auth guidance",
             CopyText = "If browser.proxy returns an auth error, enter the gateway shared token in Settings > Gateway Token, or configure the browser-control host to use auth compatible with the Windows node. Do not paste QR bootstrap tokens into the normal gateway token field."
         };
