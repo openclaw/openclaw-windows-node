@@ -39,14 +39,6 @@ public sealed partial class SessionsPage : Page
         _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
 
-        // Show "← Back to Connection" only when the user arrived from
-        // Connection's cross-page link; staying hidden when the rail nav
-        // is used keeps the page chrome quiet for direct navigation.
-        var hub = CurrentApp.ActiveHubWindow as HubWindow;
-        BackToConnectionLink.Visibility = hub?.LastNavigationOrigin == "connection"
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
         var client = CurrentApp.GatewayClient;
         if (client == null)
         {
@@ -74,9 +66,6 @@ public sealed partial class SessionsPage : Page
         _ = client.RequestSessionsAsync();
         _ = client.RequestModelsListAsync();
     }
-
-    private void OnBackToConnectionClicked(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
         => ((IAppCommands)CurrentApp).Navigate("connection");
@@ -247,7 +236,7 @@ public sealed partial class SessionsPage : Page
             {
                 hub.PendingChatSessionKey = key;
             }
-            // No origin tag: opening chat should not surface a "Back to Sessions" link.
+            // The native title-bar back button handles returning to Sessions.
             ((IAppCommands)CurrentApp).Navigate("chat");
         }
     }

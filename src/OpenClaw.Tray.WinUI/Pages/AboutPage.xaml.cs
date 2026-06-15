@@ -154,7 +154,7 @@ public sealed partial class AboutPage : Page
 
     private void OnMoreDiagnosticsClick(object sender, RoutedEventArgs e)
     {
-        ((IAppCommands)CurrentApp).Navigate("debug", "info");
+        ((IAppCommands)CurrentApp).Navigate("debug");
     }
 
     private void OnDocumentationClick(object sender, RoutedEventArgs e)

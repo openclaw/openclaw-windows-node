@@ -157,31 +157,6 @@ public sealed partial class ConnectionPage : Page
             UpdatePairingRequests(existingNode);
         if (_appState?.DevicePairList is { } existingDevice)
             UpdateDevicePairingRequests(existingDevice);
-
-        RefreshBackOriginLink();
-    }
-
-    private string? _backOriginTag;
-
-    private void RefreshBackOriginLink()
-    {
-        var hub = CurrentApp.ActiveHubWindow as OpenClawTray.Windows.HubWindow;
-        var origin = hub?.LastNavigationOrigin;
-        if (string.IsNullOrEmpty(origin))
-        {
-            _backOriginTag = null;
-            BackOriginLink.Visibility = Visibility.Collapsed;
-            return;
-        }
-        _backOriginTag = origin;
-        BackOriginText.Text = Helpers.NavOriginLabels.BackToLabel(origin);
-        BackOriginLink.Visibility = Visibility.Visible;
-    }
-
-    private void OnBackOriginClicked(object sender, RoutedEventArgs e)
-    {
-        if (!string.IsNullOrEmpty(_backOriginTag))
-            ((IAppCommands)CurrentApp).Navigate(_backOriginTag);
     }
 
     private void OnPageUnloaded(object sender, RoutedEventArgs e)
@@ -1873,12 +1848,12 @@ public sealed partial class ConnectionPage : Page
 
     // ─── Operator card navigation ────────────────────────────────────
 
-    private void OnOpenSessions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("sessions", "connection");
-    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("instances", "connection");
+    private void OnOpenSessions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("sessions");
+    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("instances");
 
     // ─── Node card navigation ────────────────────────────────────────
 
-    private void OnOpenPermissions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("permissions", "connection");
+    private void OnOpenPermissions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("permissions");
 
     private void OnCopyNodeApproveCommand(object sender, RoutedEventArgs e)
     {

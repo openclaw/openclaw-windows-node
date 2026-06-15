@@ -9,18 +9,6 @@
     <Grid HorizontalAlignment="Stretch">
         <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <!-- Inline "Back to {origin}" link; visible only when arriving via a cross-page link. -->
-            <HyperlinkButton x:Name="BackOriginLink"
-                             Click="OnBackOriginClicked"
-                             Padding="0" Margin="0,0,0,-8"
-                             Visibility="Collapsed"
-                             AutomationProperties.AutomationId="BackOriginLink">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Back, Mode=OneTime}" FontSize="12"/>
-                    <TextBlock x:Uid="BackToOriginGeneric" x:Name="BackOriginText" Text="Back"/>
-                </StackPanel>
-            </HyperlinkButton>
-
             <TextBlock x:Uid="VoiceSettingsPage_PageTitle" x:Name="PageTitleText" Text="Voice &amp; Audio" Style="{StaticResource TitleTextBlockStyle}"/>
             <TextBlock x:Uid="VoiceSettingsPage_PageDescription" x:Name="PageDescriptionText"
                        Text="Configure speech-to-text and voice interaction settings. All speech processing runs locally on your device."

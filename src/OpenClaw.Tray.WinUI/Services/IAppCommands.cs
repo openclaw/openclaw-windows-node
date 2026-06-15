@@ -9,7 +9,6 @@ internal interface IAppCommands
 {
     void OpenDashboard(string? path = null);
     void Navigate(string pageTag);
-    void Navigate(string pageTag, string? originTag);
     void Reconnect();
     void Disconnect();
     void ShowVoiceOverlay();

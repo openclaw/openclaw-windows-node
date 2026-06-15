@@ -1346,7 +1346,7 @@ public sealed partial class ChannelsPage : Page
         {
             Content = LocalizationHelper.GetString("ChannelsPage_OpenConfigPage"),
         };
-        openConfigBtn.Click += (_, _) => ((IAppCommands)CurrentApp).Navigate("config", "channels");
+        openConfigBtn.Click += (_, _) => ((IAppCommands)CurrentApp).Navigate("config");
         actionRow.Children.Add(saveBtn);
         actionRow.Children.Add(openConfigBtn);
         stack.Children.Add(actionRow);
@@ -1946,7 +1946,7 @@ public sealed partial class ChannelsPage : Page
         };
         btn.Click += (_, _) =>
         {
-            ((IAppCommands)CurrentApp).Navigate("config", "channels");
+            ((IAppCommands)CurrentApp).Navigate("config");
         };
         stack.Children.Add(btn);
         return stack;

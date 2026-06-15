@@ -6,20 +6,6 @@
     <Grid HorizontalAlignment="Stretch">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <!-- Inline back link — only shown when the user arrived via a
-                 cross-page link from Connection. Set by InstancesPage.Initialize
-                 based on HubWindow.LastNavigationOrigin. -->
-            <HyperlinkButton x:Name="BackToConnectionLink"
-                             Click="OnBackToConnectionClicked"
-                             Padding="0" Margin="0,0,0,-8"
-                             Visibility="Collapsed"
-                             AutomationProperties.AutomationId="BackToConnectionLink">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xE72B;" FontSize="12"/>
-                    <TextBlock x:Uid="InstancesPage_BackToConnectionText" Text="Back to Connection"/>
-                </StackPanel>
-            </HyperlinkButton>
-
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>

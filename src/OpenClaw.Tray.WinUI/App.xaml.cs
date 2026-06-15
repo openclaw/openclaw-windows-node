@@ -2678,7 +2678,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #region Window Management
 
-    internal void ShowHub(string? navigateTo = null, bool activate = true, string? originTag = null)
+    internal void ShowHub(string? navigateTo = null, bool activate = true)
     {
         if (_hubWindow == null || _hubWindow.IsClosed)
         {
@@ -2729,7 +2729,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         if (navigateTo != null)
         {
-            _hubWindow.NavigateTo(navigateTo, originTag);
+            _hubWindow.NavigateTo(navigateTo);
         }
         if (activate)
         {
@@ -3242,7 +3242,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     void IAppCommands.OpenDashboard(string? path) => OpenDashboard(path);
     void IAppCommands.Navigate(string pageTag) => ShowHub(pageTag);
-    void IAppCommands.Navigate(string pageTag, string? originTag) => ShowHub(pageTag, originTag: originTag);
     void IAppCommands.Reconnect() => _ = _connectionManager?.ReconnectAsync();
     void IAppCommands.Disconnect()
     {

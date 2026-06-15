@@ -339,6 +339,31 @@ public sealed partial class HubWindow : WindowEx
         NavView.IsPaneOpen = !NavView.IsPaneOpen;
     }
 
+    // ── Back navigation (title-bar back button + Alt+Left) ──────────────────
+    //
+    // We host a single native-style back button in the custom title bar and
+    // drive it off ContentFrame's real back stack. NavigationView's own back
+    // button is collapsed because its chrome is hoisted into the custom title
+    // bar; this button is the equivalent affordance.
+
+    private void OnBackRequested(object sender, RoutedEventArgs e) => GoBack();
+
+    private void GoBack()
+    {
+        if (ContentFrame.CanGoBack)
+            ContentFrame.GoBack();
+    }
+
+    /// <summary>
+    /// Enable/disable the title-bar back button to mirror ContentFrame's back
+    /// stack (greyed out at the root, exactly like NavigationView's native
+    /// back button). Called after every navigation.
+    /// </summary>
+    private void UpdateBackButton()
+    {
+        NavBackButton.IsEnabled = ContentFrame.CanGoBack;
+    }
+
     /// <summary>
     /// Navigate to the default page. Call after setting AppModel.
     /// </summary>
@@ -357,45 +382,19 @@ public sealed partial class HubWindow : WindowEx
     // (rather than relying on NavView.SelectedItem) so navigation identity
     // includes the tag — important for agent-scoped pages where several tags
     // map to the same Page type (e.g. "sessions" vs "agent:main:sessions"
-    // both → SessionsPage), and for the per-page "Back to ..." link logic
-    // that needs to know whether the user arrived via a cross-page link.
+    // both → SessionsPage).
     private string? _currentNavTag;
 
     // Set true while a programmatic SelectedItem update is in flight, to
     // suppress the resulting SelectionChanged from re-entering NavigateInternal.
     private bool _syncingNavSelection;
 
-    // Set by NavigateTo(tag, originTag); consumed by OnContentFrameNavigated
-    // when the new page is initialized, then surfaced as LastNavigationOrigin
-    // so destination pages can decide whether to show an inline back link.
-    private string? _pendingNavigationOrigin;
-
-    /// <summary>
-    /// Tag of the page the user navigated FROM on the most recent navigation,
-    /// or <c>null</c> if the navigation didn't declare an origin (e.g. rail
-    /// click, deep link, app start). Destination pages read this in
-    /// <c>Initialize</c> to decide whether to surface a "Back to X" affordance.
-    /// </summary>
-    public string? LastNavigationOrigin { get; private set; }
-
     /// <summary>
     /// Navigate to a specific page by tag name (e.g. "connection", "sessions", "channels").
+    /// Cross-page links and the rail both flow through here; the resulting
+    /// <see cref="ContentFrame"/> back-stack entry powers the title-bar back button.
     /// </summary>
-    public void NavigateTo(string tag) => NavigateTo(tag, null);
-
-    /// <summary>
-    /// Navigate to a specific page by tag, declaring which logical surface
-    /// initiated the navigation. The destination page can read this via
-    /// <see cref="LastNavigationOrigin"/> to render an inline "Back to ..."
-    /// link — used by cross-page links on the Connection page so users have
-    /// a one-click return path without relying on the rail or a chrome back
-    /// button.
-    /// </summary>
-    public void NavigateTo(string tag, string? originTag)
-    {
-        _pendingNavigationOrigin = originTag;
-        NavigateInternal(NormalizeNavTag(tag));
-    }
+    public void NavigateTo(string tag) => NavigateInternal(NormalizeNavTag(tag));
 
     private string NormalizeNavTag(string tag)
     {
@@ -414,14 +413,7 @@ public sealed partial class HubWindow : WindowEx
     private void NavigateInternal(string tag)
     {
         var pageType = TagToPageType(tag);
-        if (pageType == null)
-        {
-            // Unknown tag: nothing to navigate, but we still need to discard
-            // any pending origin so it doesn't leak into the next real
-            // navigation (where it would surface a wrong "Back to ..." link).
-            _pendingNavigationOrigin = null;
-            return;
-        }
+        if (pageType == null) return;
 
         // Identity dedupe: navigation identity = (PageType, normalized tag).
         // Page-type-only dedupe would collapse distinct logical destinations
@@ -431,22 +423,29 @@ public sealed partial class HubWindow : WindowEx
         if (ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
             _contentReady = CreateCompletedContentReady();
-            // Same as above: Frame.Navigate is skipped, so
-            // OnContentFrameNavigated won't run to consume the origin. If the
-            // caller changed origin context, refresh the active page so inline
-            // back-link state stays accurate.
-            var pendingOrigin = _pendingNavigationOrigin;
-            _pendingNavigationOrigin = null;
-            if (!string.Equals(LastNavigationOrigin, pendingOrigin, StringComparison.Ordinal))
-            {
-                LastNavigationOrigin = pendingOrigin;
-                InitializeCurrentPage();
-            }
             return;
         }
 
-        // Best-effort rail highlight. Suppress the selection-changed callback
-        // so this programmatic update doesn't re-enter NavigateInternal.
+        // Best-effort rail highlight before the page swaps in.
+        SyncNavSelection(tag);
+
+        // Pass the tag as the navigation parameter so OnContentFrameNavigated
+        // can recover the canonical destination on Back/Forward.
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _contentReady = ready;
+        if (!ContentFrame.Navigate(pageType, tag))
+            CompleteContentReady(ready);
+    }
+
+    /// <summary>
+    /// Reflect <paramref name="tag"/> in the NavigationView rail. Suppresses the
+    /// resulting SelectionChanged so this programmatic update does not re-enter
+    /// <see cref="NavigateInternal"/> (which would push a duplicate back-stack
+    /// entry). This matters when called from Back/Forward in OnContentFrameNavigated.
+    /// </summary>
+    private void SyncNavSelection(string? tag)
+    {
+        if (tag == null) return;
         var item = FindNavItemForTag(NavView.MenuItems, tag)
                 ?? FindNavItemForTag(NavView.FooterMenuItems, tag);
         if (item != null && !ReferenceEquals(NavView.SelectedItem, item))
@@ -455,13 +454,6 @@ public sealed partial class HubWindow : WindowEx
             try { NavView.SelectedItem = item; }
             finally { _syncingNavSelection = false; }
         }
-
-        // Pass the tag as the navigation parameter so OnContentFrameNavigated
-        // can recover the canonical destination on Back/Forward.
-        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _contentReady = ready;
-        if (!ContentFrame.Navigate(pageType, tag))
-            CompleteContentReady(ready);
     }
 
     public async Task WaitForCurrentContentReadyAsync()
@@ -679,17 +671,15 @@ public sealed partial class HubWindow : WindowEx
 
     /// <summary>
     /// Authoritative post-navigation hook. Runs for every successful
-    /// Frame.Navigate, so it's the single place that rebuilds
-    /// <see cref="_currentNavTag"/> / <see cref="_currentAgentId"/> /
-    /// <see cref="LastNavigationOrigin"/> and re-runs
+    /// Frame.Navigate (including Back/Forward), so it's the single place that
+    /// rebuilds <see cref="_currentNavTag"/> / <see cref="_currentAgentId"/>,
+    /// re-syncs the rail + back button, and re-runs
     /// <see cref="InitializeCurrentPage"/> for the page that's now visible.
     /// </summary>
     private void OnContentFrameNavigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         var tag = e.Parameter as string;
         _currentNavTag = tag;
-        LastNavigationOrigin = _pendingNavigationOrigin;
-        _pendingNavigationOrigin = null;
 
         // Keep _currentAgentId aligned with the page that's now visible.
         if (tag != null && tag.StartsWith("agent:"))
@@ -701,6 +691,12 @@ public sealed partial class HubWindow : WindowEx
                 _cachedCommands = null;
             }
         }
+
+        // Reflect the restored page in the rail. Back/Forward don't route
+        // through NavigateInternal, so this is the only place the rail
+        // highlight gets re-synced for them.
+        SyncNavSelection(tag);
+        UpdateBackButton();
 
         InitializeCurrentPage();
         UpdateAppNotificationActionEnabledState();
@@ -894,6 +890,18 @@ public sealed partial class HubWindow : WindowEx
             e.Handled = true;
             TitleSearchBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
             TitleSearchBox.Text = "";
+            return;
+        }
+
+        // Alt+Left → back, matching the shell-wide navigation gesture and
+        // NavigationView's built-in keyboard accelerator.
+        var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(
+            global::Windows.System.VirtualKey.Menu).HasFlag(
+            global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (alt && e.Key == global::Windows.System.VirtualKey.Left && ContentFrame.CanGoBack)
+        {
+            e.Handled = true;
+            GoBack();
         }
     }
 
