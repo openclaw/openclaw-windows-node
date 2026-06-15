@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
@@ -23,15 +24,18 @@ namespace OpenClawTray.Services;
 /// </summary>
 public sealed class PiperTextToSpeechClient : IDisposable
 {
+    private const string SherpaNativeLibrary = "sherpa-onnx-c-api";
+    private static readonly object s_nativeLibraryLock = new();
+    private static IntPtr s_nativeLibraryHandle;
+
     private readonly IOpenClawLogger _logger;
     private readonly string _voiceId;
-    private OfflineTts? _tts;
+    private readonly OfflineTts _tts;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _disposed;
-    private bool _ttsAvailable;
 
     public string VoiceId => _voiceId;
-    public int SampleRate => _tts?.SampleRate ?? 22050;
+    public int SampleRate => _tts.SampleRate;
 
     public PiperTextToSpeechClient(IOpenClawLogger logger, PiperVoiceManager voices, string voiceId)
     {
@@ -54,18 +58,9 @@ public sealed class PiperTextToSpeechClient : IDisposable
         config.Model.Debug = 0;
         config.MaxNumSentences = 2;
 
-        try
-        {
-            _tts = new OfflineTts(config);
-            _ttsAvailable = true;
-            _logger.Info($"Piper voice '{_voiceId}' loaded (sample rate {_tts.SampleRate} Hz, {config.Model.NumThreads} threads)");
-        }
-        catch (DllNotFoundException ex)
-        {
-            _logger.Warn($"Piper voice '{_voiceId}' unavailable: sherpa-onnx native library could not be loaded. TTS will be disabled. ({ex.Message})");
-            _tts = null;
-            _ttsAvailable = false;
-        }
+        EnsureNativeLibraryLoaded();
+        _tts = new OfflineTts(config);
+        _logger.Info($"Piper voice '{_voiceId}' loaded (sample rate {_tts.SampleRate} Hz, {config.Model.NumThreads} threads)");
     }
 
     /// <summary>
@@ -76,8 +71,6 @@ public sealed class PiperTextToSpeechClient : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(PiperTextToSpeechClient));
         if (string.IsNullOrWhiteSpace(text)) throw new ArgumentException("text must be non-empty", nameof(text));
-        if (!_ttsAvailable || _tts == null)
-            throw new InvalidOperationException("Piper TTS is not available: sherpa-onnx native library could not be loaded.");
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -139,23 +132,33 @@ public sealed class PiperTextToSpeechClient : IDisposable
         return ms.ToArray();
     }
 
+    private static void EnsureNativeLibraryLoaded()
+    {
+        lock (s_nativeLibraryLock)
+        {
+            if (s_nativeLibraryHandle != IntPtr.Zero)
+                return;
+
+            if (!NativeLibrary.TryLoad(
+                    SherpaNativeLibrary,
+                    typeof(OfflineTts).Assembly,
+                    DllImportSearchPath.SafeDirectories,
+                    out s_nativeLibraryHandle))
+            {
+                throw new DllNotFoundException("Piper TTS native library could not be loaded.");
+            }
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        // SherpaOnnx suppresses its finalizer only after native cleanup succeeds.
+        // Suppress first so a cleanup failure cannot retry from the finalizer thread.
+        GC.SuppressFinalize(_tts);
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-        try
-        {
-            if (_tts != null)
-            {
-                _tts.Dispose();
-                // CRITICAL: Suppress the finalizer to prevent SherpaOnnxDestroyOfflineTts
-                // from being called during GC, which crashes the app when the native DLL
-                // is unavailable (DllNotFoundException in finalizer = instant crash).
-                GC.SuppressFinalize(_tts);
-            }
-        }
-        catch { /* swallow */ }
+        try { _tts.Dispose(); } catch { /* swallow */ }
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _gate.Dispose(); } catch { /* swallow */ }
     }
