@@ -109,6 +109,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly HashSet<string> _locallyInitiatedThreads = new();
     // Per-thread retry count for LoadHistoryAsync to prevent unbounded retry loops.
     private readonly Dictionary<string, int> _historyRetryCount = new();
+    private readonly HashSet<string> _sessionRefreshRequestedThreads = new();
     private const int MaxHistoryRetries = 3;
     private static readonly TimeSpan LocalEchoSuppressionWindow = TimeSpan.FromSeconds(30);
     private readonly record struct LocalSentText(string Text, DateTimeOffset SentAt);
@@ -205,12 +206,39 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         cancellationToken.ThrowIfCancellationRequested();
         // Seed from whatever the bridge already knows about.
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
+        string[] threadsToLoad;
+        ChatDataSnapshot snapshot;
         lock (_gate)
         {
             _sessions = sessions;
+            if (sessions.Length > 0)
+                _sessionsListReceived = true;
+            _sessionRefreshRequestedThreads.Clear();
             EnsureTimelinesForSessionsLocked();
-            return Task.FromResult(BuildSnapshotLocked());
+            snapshot = BuildSnapshotLocked();
+
+            if (_status == ConnectionStatus.Connected)
+            {
+                var toLoad = new List<string>();
+                foreach (var key in _timelines.Keys)
+                {
+                    if (!_historyLoaded.Contains(key) && !_historyInFlight.Contains(key))
+                        toLoad.Add(key);
+                }
+                threadsToLoad = toLoad.Count > 0 ? toLoad.ToArray() : Array.Empty<string>();
+            }
+            else
+            {
+                threadsToLoad = Array.Empty<string>();
+            }
         }
+
+        foreach (var threadId in threadsToLoad)
+        {
+            _ = LoadHistoryAsync(threadId, force: false);
+        }
+
+        return Task.FromResult(snapshot);
     }
 
     // Explicit interface implementation (no attachments).
@@ -1099,6 +1127,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             _sessions = sessions ?? Array.Empty<SessionInfo>();
             _sessionsListReceived = true;
+            _sessionRefreshRequestedThreads.Clear();
             EnsureTimelinesForSessionsLocked();
             snapshot = BuildSnapshotLocked();
 
@@ -1196,6 +1225,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // Suppress chat messages for threads that were aborted by the user.
         // Chat messages don't carry a runId, so we use thread-level suppression.
         var msgThreadId = message.SessionKey;
+        RequestSessionRefreshIfUnknownThread(msgThreadId);
         lock (_gate)
         {
             if (_abortedThreads.Contains(msgThreadId))
@@ -1360,6 +1390,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
         var threadId = evt.SessionKey;
+        RequestSessionRefreshIfUnknownThread(threadId);
 
         // Always update run tracking first (state maintenance must not be skipped).
         UpdateActiveRunId(evt, threadId);
@@ -2777,6 +2808,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             : (DateTimeOffset?)DateTimeOffset.Now;
         var session = Array.Find(_sessions, s => s.Key == threadId);
         return new ChatEntryMetadata(ts, session?.Model);
+    }
+
+    private void RequestSessionRefreshIfUnknownThread(string threadId)
+    {
+        if (string.IsNullOrWhiteSpace(threadId))
+            return;
+
+        bool shouldRefresh;
+        lock (_gate)
+        {
+            shouldRefresh = !_sessions.Any(s => string.Equals(s.Key, threadId, StringComparison.Ordinal))
+                && _sessionRefreshRequestedThreads.Add(threadId);
+        }
+
+        if (!shouldRefresh)
+            return;
+
+        Logger.Info($"[ChatProvider] Requesting sessions.list after event for unknown thread '{threadId}'");
+        try { _bridge.StartProactiveBootstrap(); }
+        catch (Exception ex) { Logger.Warn($"[ChatProvider] sessions.list refresh failed: {ex.Message}"); }
     }
 
     private ChatTimelineState GetOrCreateTimelineLocked(string threadId)

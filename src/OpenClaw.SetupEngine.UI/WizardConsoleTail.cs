@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine.UI;
@@ -20,6 +22,9 @@ internal sealed class WizardConsoleTail : IDisposable
 {
     private const string DefaultDistroName = "OpenClawGateway";
     private const string LogGlob = "/tmp/openclaw/openclaw-*.log";
+    private static readonly Regex s_ansiEscapeRegex = new(
+        @"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)|[PX^_].*?\x1B\\|[@-Z\\-_])",
+        RegexOptions.Compiled | RegexOptions.Singleline);
 
     private readonly string _distroName;
     private readonly IOpenClawLogger _logger;
@@ -51,6 +56,8 @@ internal sealed class WizardConsoleTail : IDisposable
                 FileName = "wsl.exe",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
@@ -179,12 +186,50 @@ internal sealed class WizardConsoleTail : IDisposable
             if (!root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.String)
                 return null;
 
-            var text = message.GetString();
+            var text = NormalizeConsoleMessage(message.GetString());
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    internal static string? NormalizeConsoleMessage(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        return s_ansiEscapeRegex.Replace(text, "");
+    }
+
+    internal static bool LooksLikeTerminalQrArt(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var lines = text
+            .Replace("\r\n", "\n")
+            .Split('\n')
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToArray();
+        if (lines.Length < 10)
+            return false;
+
+        var qrGlyphCount = 0;
+        var wideLineCount = 0;
+        foreach (var line in lines)
+        {
+            if (line.Length >= 30)
+                wideLineCount++;
+
+            foreach (var ch in line)
+            {
+                if (ch is '█' or '▄' or '▀')
+                    qrGlyphCount++;
+            }
+        }
+
+        return wideLineCount >= 10 && qrGlyphCount >= 100;
     }
 }

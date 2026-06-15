@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
@@ -603,6 +604,7 @@ public sealed partial class WizardPage : Page
         {
             Text = trimmed,
             FontSize = fontSize,
+            FontFamily = new FontFamily("Consolas"),
             Opacity = opacity,
             TextWrapping = TextWrapping.Wrap,
             IsTextSelectionEnabled = true
@@ -648,6 +650,13 @@ public sealed partial class WizardPage : Page
         if (string.IsNullOrWhiteSpace(message))
             return;
 
+        if (WizardConsoleTail.LooksLikeTerminalQrArt(message))
+        {
+            AppendQrConsoleBlock(message);
+            ConsoleBanner.Visibility = Visibility.Visible;
+            return;
+        }
+
         foreach (var line in message.Split('\n'))
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -659,6 +668,37 @@ public sealed partial class WizardPage : Page
         ConsoleBanner.Visibility = Visibility.Visible;
     }
 
+    private void AppendQrConsoleBlock(string message)
+    {
+        var text = message.Replace("\r\n", "\n").TrimEnd('\r', '\n');
+        var qrText = new TextBlock
+        {
+            Text = text,
+            FontSize = 9,
+            LineHeight = 9,
+            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            Foreground = new SolidColorBrush(Microsoft.UI.Colors.Black),
+            TextWrapping = TextWrapping.NoWrap,
+            IsTextSelectionEnabled = true
+        };
+
+        var qrSurface = new Border
+        {
+            Background = new SolidColorBrush(Microsoft.UI.Colors.White),
+            Padding = new Thickness(12),
+            Child = qrText
+        };
+
+        ConsoleBannerLines.Children.Add(new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Auto,
+            VerticalScrollMode = ScrollMode.Disabled,
+            Content = qrSurface
+        });
+    }
+
     private void ClearConsoleBanner()
     {
         ConsoleBannerLines.Children.Clear();
@@ -667,26 +707,31 @@ public sealed partial class WizardPage : Page
 
     private static FrameworkElement BuildLinkLine(string line, string urlText, Uri uri)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        var prefix = line[..line.IndexOf(urlText, StringComparison.Ordinal)];
-        if (!string.IsNullOrEmpty(prefix))
-            panel.Children.Add(new TextBlock { Text = prefix, FontSize = 14, Opacity = 0.82, VerticalAlignment = VerticalAlignment.Center });
-
-        var button = new HyperlinkButton
+        var textBlock = new TextBlock
         {
-            Content = urlText,
-            NavigateUri = uri,
-            Padding = new Thickness(0),
             FontSize = 14,
-            VerticalAlignment = VerticalAlignment.Center
+            Opacity = 0.82,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true
         };
-        panel.Children.Add(button);
 
-        var suffix = line[(line.IndexOf(urlText, StringComparison.Ordinal) + urlText.Length)..];
+        var urlIndex = line.IndexOf(urlText, StringComparison.Ordinal);
+        var prefix = line[..urlIndex];
+        if (!string.IsNullOrEmpty(prefix))
+            textBlock.Inlines.Add(new Run { Text = prefix });
+
+        var link = new Hyperlink
+        {
+            NavigateUri = uri
+        };
+        link.Inlines.Add(new Run { Text = urlText });
+        textBlock.Inlines.Add(link);
+
+        var suffix = line[(urlIndex + urlText.Length)..];
         if (!string.IsNullOrEmpty(suffix))
-            panel.Children.Add(new TextBlock { Text = suffix, FontSize = 14, Opacity = 0.82, VerticalAlignment = VerticalAlignment.Center });
+            textBlock.Inlines.Add(new Run { Text = suffix });
 
-        return panel;
+        return textBlock;
     }
 
     private static FrameworkElement BuildCodeRow(string prefix, string code)

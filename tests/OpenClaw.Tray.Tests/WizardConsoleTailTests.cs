@@ -36,6 +36,51 @@ public class WizardConsoleTailTests
     }
 
     [Fact]
+    public void StripsAnsiSequencesFromQrConsoleOutput()
+    {
+        var line = """
+            {"_meta":{"name":"openclaw","logLevelName":"INFO","path":{"method":"console.log"}},"message":"\u001b[47m\u001b[30m██  ▄▄  ██\u001b[0m"}
+            """;
+
+        var extracted = WizardConsoleTail.TryExtractConsoleMessage(line);
+
+        Assert.Equal("██  ▄▄  ██", extracted);
+    }
+
+    [Fact]
+    public void PreservesUtf8QrBlockCharacters()
+    {
+        var line = """
+            {"_meta":{"name":"openclaw","logLevelName":"INFO","path":{"method":"console.log"}},"message":"Open WhatsApp and scan:\n████ ▄▄ ████"}
+            """;
+
+        var extracted = WizardConsoleTail.TryExtractConsoleMessage(line);
+
+        Assert.NotNull(extracted);
+        Assert.Contains("████ ▄▄ ████", extracted);
+    }
+
+    [Fact]
+    public void DetectsTerminalQrArt()
+    {
+        var qr = string.Join('\n', Enumerable.Repeat(" ███████  ▄▄▄  ▄▄▄      ▄  ▄  ▄▄   ▄    ▄  ▄▄   ▄▄▄ ", 12));
+
+        Assert.True(WizardConsoleTail.LooksLikeTerminalQrArt(qr));
+    }
+
+    [Fact]
+    public void DoesNotTreatRegularMultilineConsoleOutputAsQrArt()
+    {
+        var message = """
+            Waiting for WhatsApp connection...
+            Open the WhatsApp app, go to Linked Devices, then scan this QR:
+            Docs: https://docs.openclaw.ai/whatsapp
+            """;
+
+        Assert.False(WizardConsoleTail.LooksLikeTerminalQrArt(message));
+    }
+
+    [Fact]
     public void IgnoresStructuredSubsystemLogs()
     {
         // openclaw/auth, openclaw/ws, gateway/ws etc. write structured records
