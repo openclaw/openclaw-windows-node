@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
-using OpenClawTray.Chat.Explorations;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -128,13 +127,8 @@ public sealed partial class ChatWindow : WindowEx
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed += OnDebugOverrideChanged;
 
-        // ChatExploration backdrop / theme — re-apply when toggled live.
-        ChatExplorationState.Changed -= OnExplorationChanged;
-        ChatExplorationState.Changed += OnExplorationChanged;
-
         ApplyChatSurface();
         ApplySystemBackdrop();
-        ApplyPreviewTheme();
     }
 
     private const int DefaultChatWidth = 480;
@@ -163,39 +157,9 @@ public sealed partial class ChatWindow : WindowEx
 
     private void OnDebugOverrideChanged(object? sender, EventArgs e) => ApplyChatSurface();
 
-    private void OnExplorationChanged(object? sender, EventArgs e)
-    {
-        // Marshal back to UI thread — Changed may fire from anywhere.
-        DispatcherQueue?.TryEnqueue(() =>
-        {
-            ApplySystemBackdrop();
-            ApplyPreviewTheme();
-        });
-    }
-
-    /// <summary>
-    /// Swap <see cref="Window.SystemBackdrop"/> based on
-    /// <see cref="ChatExplorationState.BackdropMode"/>. When
-    /// <see cref="ChatExplorationState.UsesHostBackdrop"/> is true (embedded
-    /// chat scenarios), leave whatever the host already set in place.
-    /// </summary>
     private void ApplySystemBackdrop()
     {
-        if (ChatExplorationState.UsesHostBackdrop) return;
-
-        SystemBackdrop = ChatExplorationState.BackdropMode switch
-        {
-            ChatBackdropMode.Mica     => new MicaBackdrop { Kind = MicaKind.Base },
-            ChatBackdropMode.MicaAlt  => new MicaBackdrop { Kind = MicaKind.BaseAlt },
-            ChatBackdropMode.Acrylic  => new DesktopAcrylicBackdrop(),
-            _ /* Solid */             => null!,
-        };
-    }
-
-    private void ApplyPreviewTheme()
-    {
-        if (Content is FrameworkElement root)
-            root.RequestedTheme = ChatVisualResolver.ResolvePreviewTheme();
+        SystemBackdrop = new DesktopAcrylicBackdrop();
     }
 
     private void ApplyChatSurface()
@@ -773,7 +737,6 @@ public sealed partial class ChatWindow : WindowEx
             app.SpeakerMuteChanged -= OnSpeakerMuteChanged;
         }
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
-        ChatExplorationState.Changed -= OnExplorationChanged;
         IsClosed = true;
         DisposeFunctionalHost();
         Close();

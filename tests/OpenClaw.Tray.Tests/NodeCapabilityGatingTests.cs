@@ -241,4 +241,25 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.NotNull(result);
         Assert.Empty(result);
     }
+
+    [Fact]
+    public void GetLocalNodeInfo_PreservesEffectiveAndPendingApprovalSurfaces()
+    {
+        var expected = new GatewayNodeInfo
+        {
+            NodeId = "device-1",
+            ApprovalState = GatewayNodeApprovalState.PendingReapproval,
+            PendingRequestId = "request-123",
+            Capabilities = ["system"],
+            Commands = ["system.notify"],
+            PendingDeclaredCapabilities = ["system", "camera"],
+            PendingDeclaredCommands = ["system.notify", "camera.snap"]
+        };
+
+        var result = NodeCapabilityGating.GetLocalNodeInfo([expected], "DEVICE-1");
+
+        Assert.Same(expected, result);
+        Assert.Equal(["system"], result!.Capabilities);
+        Assert.Equal(["system", "camera"], result.PendingDeclaredCapabilities);
+    }
 }

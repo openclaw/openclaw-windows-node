@@ -4,13 +4,10 @@ using OpenClawTray.Helpers;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
-using OpenClawTray.Chat.Explorations;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.UI;
@@ -66,6 +63,8 @@ public record OpenClawComposerProps(
     float VoiceAudioLevel = 0f,
     Action<Action>? RegisterVoiceStarter = null,
     Action<ChatAttachment>? OnAttachmentPasted = null,
+    bool ShowToolCalls = true,
+    Action<bool>? OnShowToolCallsChanged = null,
     bool IsCompact = false);
 
 public sealed class OpenClawComposer : Component<OpenClawComposerProps>
@@ -84,28 +83,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         var inputRef = UseRef("");
         var hasTextState = UseState(false, threadSafe: true);
 
-        // Subscribe to ChatExplorationState so toggles re-render the composer.
-        // Inline because UseState/UseEffect are protected on Component (can't
-        // be called from an extension method). Same pattern in
-        // OpenClawChatTimeline + OpenClawChatRoot.
-        var explorationRev = UseState(0, threadSafe: true);
-        var explorationRevRef = UseRef(0);
-        UseEffect((Func<Action>)(() =>
-        {
-            EventHandler h = (_, _) =>
-            {
-                explorationRevRef.Current++;
-                explorationRev.Set(explorationRevRef.Current);
-            };
-            ChatExplorationState.Changed += h;
-            return () => ChatExplorationState.Changed -= h;
-        }));
-
-        // Live values from ChatExplorationState (composer group E + brushes F).
-        var composerCornerRadius = ChatVisualResolver.ComposerCornerRadius();
-        var composerIconSize     = ChatVisualResolver.ComposerIconSize();
-        var sendButtonSize       = ChatVisualResolver.SendButtonSize();
-        var composerLayout       = ChatExplorationState.ComposerLayout;
+        var composerCornerRadius = new CornerRadius(8);
+        const double composerIconSize = 16;
+        const double sendButtonSize = 40;
 
         // Version bump triggers a re-render on send so the cleared ref value
         // is pushed to the TextBox control.
@@ -311,19 +291,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 cb.HorizontalAlignment = HorizontalAlignment.Stretch;
             }).VAlign(VerticalAlignment.Center);
 
-        // ComposerLayout 분기: ThreeRow = 3개 다 보임, InlinePill = 모델만, Minimal = 숨김.
-        Element dropdownsRow = composerLayout switch
-        {
-            ChatComposerLayout.Minimal    => Empty(),
-            ChatComposerLayout.InlinePill => Grid([GridSize.Star()], [GridSize.Auto],
-                modelCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0)
-            ).HAlign(HorizontalAlignment.Stretch),
-            _                             => Grid([GridSize.Star(1.2), GridSize.Star(), GridSize.Star(0.62)], [GridSize.Auto],
-                channelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0),
-                modelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 1),
-                reasoningCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 2)
-            ).HAlign(HorizontalAlignment.Stretch),
-        };
+        Element dropdownsRow = Grid([GridSize.Star(1.2), GridSize.Star(), GridSize.Star(0.62)], [GridSize.Auto],
+            channelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0),
+            modelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 1),
+            reasoningCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 2)
+        ).HAlign(HorizontalAlignment.Stretch);
 
         // ── Row 2: multi-line composer textbox ─────────────────────────
         var recording = isRecording.Value;
@@ -736,14 +708,10 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             .AutomationName(tip)
             .SetToolTip(tip);
 
-        // 5 icons (Send/Stop/Attach/Voice/More) honor ChatExplorationState
-        // Show + Glyph overrides set from the explorations panel.
-        var attachBtn = ChatExplorationState.AttachIconShow
-            ? IconButton(NonEmptyGlyph(ChatExplorationState.AttachIconGlyph, "\uE723"), LocalizationHelper.GetString("Chat_Composer_Tooltip_Attach"), () =>
-            {
-                Props.OnAttachClick?.Invoke();
-            })
-            : Empty();
+        var attachBtn = IconButton("\uE723", LocalizationHelper.GetString("Chat_Composer_Tooltip_Attach"), () =>
+        {
+            Props.OnAttachClick?.Invoke();
+        });
 
         // Voice recording: three-button model
         // - Not recording: mic button starts recording
@@ -751,31 +719,28 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         //   plus a cancel (✕) button that discards
         Element voiceBtn = Empty();
         Element voiceCancelBtn = Empty();
-        if (ChatExplorationState.VoiceIconShow)
+        if (isRecording.Value)
         {
-            if (isRecording.Value)
+            // Stop button — ends recording and keeps the transcript
+            voiceBtn = IconButton("\uE15B", "Stop recording", () =>
             {
-                // Stop button — ends recording and keeps the transcript
-                voiceBtn = IconButton("\uE15B", "Stop recording", () =>
-                {
-                    voiceStoppedRef.Current = true;
-                    voiceCtsRef.Current?.Cancel();
-                }, foreground: new SolidColorBrush(Microsoft.UI.Colors.Red));
+                voiceStoppedRef.Current = true;
+                voiceCtsRef.Current?.Cancel();
+            }, foreground: new SolidColorBrush(Microsoft.UI.Colors.Red));
 
-                // Cancel button — discards recording entirely
-                voiceCancelBtn = IconButton("\uE711", "Cancel recording", () =>
-                {
-                    voiceStoppedRef.Current = false;
-                    voiceCtsRef.Current?.Cancel();
-                });
-            }
-            else
+            // Cancel button — discards recording entirely
+            voiceCancelBtn = IconButton("\uE711", "Cancel recording", () =>
             {
-                voiceBtn = IconButton(
-                    NonEmptyGlyph(ChatExplorationState.VoiceIconGlyph, "\uE720"),
-                    LocalizationHelper.GetString("Chat_Composer_Tooltip_Voice"),
-                    startVoiceRecording);
-            }
+                voiceStoppedRef.Current = false;
+                voiceCtsRef.Current?.Cancel();
+            });
+        }
+        else
+        {
+            voiceBtn = IconButton(
+                "\uE720",
+                LocalizationHelper.GetString("Chat_Composer_Tooltip_Voice"),
+                startVoiceRecording);
         }
         var speakerBtn = Props.OnSpeakerToggle is not null
             ? IconButton(
@@ -786,85 +751,68 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // Toggle tool-call visibility. Same wrench icon in both states;
         // reduced opacity when tool calls are hidden to indicate "off"
         // without looking disabled. Tooltip clarifies the action.
-        var showTools = ChatExplorationState.ShowToolCalls;
+        var showTools = Props.ShowToolCalls;
         var toolToggleBtn = IconButton(
             "\uE90F",  // Wrench
-            showTools ? "Hide tool calls" : "Show tool calls",
-            () =>
-            {
-                var next = !ChatExplorationState.ShowToolCalls;
-                if (!next)
-                    ChatExplorationState.CollapseToolChipsVersion++;
-                ChatExplorationState.ShowToolCalls = next;
-            })
+            showTools ? "Hide tool calls & usage" : "Show tool calls & usage",
+            () => Props.OnShowToolCallsChanged?.Invoke(!Props.ShowToolCalls))
             .Set(b => b.Opacity = showTools ? 1.0 : 0.55);
 
         // Send button — always present so the user can queue follow-up messages
         // even while the assistant is responding.
-        var defaultSendBrush = ChatVisualResolver.UserBubbleBrush(
-            (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"]);
-        var sendBrush = ChatVisualResolver.SendButtonBrush(defaultSendBrush);
+        var sendBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
+        const string sendGlyph = "\uE724";
+        const string stopGlyph = "\uE71A";
 
-        var sendGlyph = NonEmptyGlyph(ChatExplorationState.SendIconGlyph, "\uE724");
-        var stopGlyph = NonEmptyGlyph(ChatExplorationState.StopIconGlyph, "\uE71A");
-
-        Element actionBtn;
-        if (ChatExplorationState.SendIconShow)
-        {
-            var hasText = hasTextState.Value || Props.PendingAttachment is not null;
-            var sendTooltip = LocalizationHelper.GetString("Chat_Composer_Tooltip_Send");
-            var glyphBrush = hasText
-                ? (Brush)new SolidColorBrush(Colors.White)
-                : (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
-            actionBtn = Button(
-                TextBlock(sendGlyph)
-                    .Set(t =>
-                    {
-                        t.FontFamily = new FontFamily("Segoe Fluent Icons");
-                        t.FontSize = composerIconSize;
-                    })
-                    .Foreground(glyphBrush),
-                sendAction
-            ).Set(b =>
-            {
-                b.Padding = new Thickness(10, 4, 10, 4);
-                b.MinWidth = sendButtonSize + 4; b.MinHeight = sendButtonSize - 4;
-                b.CornerRadius = composerCornerRadius;
-                b.IsEnabled = isConnected;
-                b.Background = hasText ? sendBrush : new SolidColorBrush(Colors.Transparent);
-            })
-            .Resources(r =>
-            {
-                if (hasText)
+        var hasText = hasTextState.Value || Props.PendingAttachment is not null;
+        var sendTooltip = LocalizationHelper.GetString("Chat_Composer_Tooltip_Send");
+        var glyphBrush = hasText
+            ? (Brush)new SolidColorBrush(Colors.White)
+            : (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
+        var actionBtn = Button(
+            TextBlock(sendGlyph)
+                .Set(t =>
                 {
-                    r.Set("ButtonBackgroundPointerOver", Ref("AccentFillColorSecondaryBrush"));
-                    r.Set("ButtonBackgroundPressed",    Ref("AccentFillColorTertiaryBrush"));
-                    r.Set("ButtonBorderBrush",            new SolidColorBrush(Colors.Transparent));
-                    r.Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent));
-                    r.Set("ButtonBorderBrushPressed",     new SolidColorBrush(Colors.Transparent));
-                }
-                else
-                {
-                    r.Set("ButtonBackground",             new SolidColorBrush(Colors.Transparent));
-                    r.Set("ButtonBackgroundPointerOver",  Ref("SubtleFillColorSecondaryBrush"));
-                    r.Set("ButtonBackgroundPressed",      Ref("SubtleFillColorTertiaryBrush"));
-                    r.Set("ButtonBorderBrush",            new SolidColorBrush(Colors.Transparent));
-                    r.Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent));
-                    r.Set("ButtonBorderBrushPressed",     new SolidColorBrush(Colors.Transparent));
-                }
-            })
-            .AutomationName(sendTooltip)
-            .SetToolTip(sendTooltip);
-        }
-        else
+                    t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                    t.FontSize = composerIconSize;
+                })
+                .Foreground(glyphBrush),
+            sendAction
+        ).Set(b =>
         {
-            actionBtn = Empty();
-        }
+            b.Padding = new Thickness(10, 4, 10, 4);
+            b.MinWidth = sendButtonSize + 4; b.MinHeight = sendButtonSize - 4;
+            b.CornerRadius = composerCornerRadius;
+            b.IsEnabled = isConnected;
+            b.Background = hasText ? sendBrush : new SolidColorBrush(Colors.Transparent);
+        })
+        .Resources(r =>
+        {
+            if (hasText)
+            {
+                r.Set("ButtonBackgroundPointerOver", Ref("AccentFillColorSecondaryBrush"));
+                r.Set("ButtonBackgroundPressed",    Ref("AccentFillColorTertiaryBrush"));
+                r.Set("ButtonBorderBrush",            new SolidColorBrush(Colors.Transparent));
+                r.Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent));
+                r.Set("ButtonBorderBrushPressed",     new SolidColorBrush(Colors.Transparent));
+            }
+            else
+            {
+                r.Set("ButtonBackground",             new SolidColorBrush(Colors.Transparent));
+                r.Set("ButtonBackgroundPointerOver",  Ref("SubtleFillColorSecondaryBrush"));
+                r.Set("ButtonBackgroundPressed",      Ref("SubtleFillColorTertiaryBrush"));
+                r.Set("ButtonBorderBrush",            new SolidColorBrush(Colors.Transparent));
+                r.Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent));
+                r.Set("ButtonBorderBrushPressed",     new SolidColorBrush(Colors.Transparent));
+            }
+        })
+        .AutomationName(sendTooltip)
+        .SetToolTip(sendTooltip);
 
         // Stop button — shown inline NEXT TO the send button (to its right)
         // when the assistant is responding, matching the gateway web UI pattern.
         Element stopBtn = Empty();
-        if (Props.TurnActive && ChatExplorationState.StopIconShow)
+        if (Props.TurnActive)
         {
             var stopTooltip = LocalizationHelper.GetString("Chat_Composer_Tooltip_Stop");
             stopBtn = Button(
@@ -903,138 +851,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // history records every approval (and its decided/expired badge)
         // in chronological order. See OpenClawChatTimeline.RenderPermissionEntry.
 
-        // ── ComposerLayout 분기 ───────────────────────────────────────
-        // ThreeRow:    [3 dropdowns] [textbox] [attach/voice/more ... send]
-        // Minimal:     [textbox] [send]
-        // InlinePill:  [textbox] then BELOW: [chevron pill] ... [attach/voice/more] [send]
-        if (composerLayout == ChatComposerLayout.InlinePill)
-        {
-            // Borderless "{Channel} · {Model} ⌄" pill that opens a single
-            // MenuFlyout with three sections (Channel / Model / Thinking),
-            // each using RadioMenuItem so the active selection is obvious.
-            var channelLabel = Props.ChannelLabel ?? "main";
-            var modelLabel = Props.CurrentModel ?? "model";
-            double pillTextSize = Math.Max(10, composerIconSize - 2);
-            double chevronSize = Math.Max(8, composerIconSize - 4);
-
-            // Build three groups of RadioMenuItem entries. Section headers are
-            // disabled, semibold, indented further toward the menu's left edge
-            // so they read as labels rather than rows.
-            var menuItems = new List<OpenClawTray.FunctionalUI.Core.MenuFlyoutItemBase>();
-            // Header items: shift LEFT toward the dot column by zeroing the outer
-            // padding (default ≈11px). Combined with SemiBold + slightly smaller
-            // size they read as section labels rather than rows.
-            var headerPad = new Thickness(0, 6, 8, 2);
-            var headerWeight = Microsoft.UI.Text.FontWeights.SemiBold;
-
-            menuItems.Add(MenuItem("Channel") with { IsEnabled = false, Padding = headerPad, FontWeight = headerWeight });
-            foreach (var group in Props.AvailableChannels)
-            {
-                if (Props.AvailableChannels.Length > 1)
-                {
-                    menuItems.Add(MenuItem($"  {group.AgentLabel}") with
-                    {
-                        IsEnabled = false,
-                        Padding = new Thickness(0, 2, 8, 0),
-                        FontWeight = Microsoft.UI.Text.FontWeights.Normal,
-                    });
-                }
-                foreach (var ch in group.Sessions)
-                {
-                    var id = ch.Id;
-                    menuItems.Add(RadioMenuItem(
-                        ch.Title,
-                        "channel",
-                        isChecked: id == (Props.ChannelId ?? ""),
-                        onClick: () => Props.OnChannelChanged(id)));
-                }
-            }
-
-            menuItems.Add(MenuSeparator());
-            menuItems.Add(MenuItem("Model") with { IsEnabled = false, Padding = headerPad, FontWeight = headerWeight });
-            foreach (var m in modelDisplay)
-            {
-                var name = m;
-                menuItems.Add(RadioMenuItem(
-                    name,
-                    "model",
-                    isChecked: name == modelLabel,
-                    onClick: () => { if (models is { Length: > 0 } && Array.IndexOf(models, name) >= 0) Props.OnModelChanged(name); }));
-            }
-
-            menuItems.Add(MenuSeparator());
-            menuItems.Add(MenuItem("Thinking") with { IsEnabled = false, Padding = headerPad, FontWeight = headerWeight });
-            for (int i = 0; i < ThinkingLevelIds.Length; i++)
-            {
-                var id = ThinkingLevelIds[i];
-                var label = ThinkingLevelLabels[i];
-                menuItems.Add(RadioMenuItem(
-                    label,
-                    "reasoning",
-                    isChecked: id == thinkingLevel,
-                    onClick: () => Props.OnThinkingLevelChanged(id)));
-            }
-
-            var combinedPill = Button(
-                (FlexRow(
-                    TextBlock($"{channelLabel} · {modelLabel}")
-                        .Set(t =>
-                        {
-                            t.FontSize = pillTextSize;
-                            t.VerticalAlignment = VerticalAlignment.Center;
-                        }),
-                    TextBlock("\uE70D") // chevron down
-                        .Set(t =>
-                        {
-                            t.FontFamily = new FontFamily("Segoe MDL2 Assets, Segoe Fluent Icons");
-                            t.FontSize = chevronSize;
-                            t.VerticalAlignment = VerticalAlignment.Center;
-                            t.Margin = new Thickness(0, 1, 0, 0);
-                        })
-                ) with { ColumnGap = 6 }),
-                () => { /* opens via attached flyout */ })
-                .Set(b =>
-                {
-                    b.Padding = new Thickness(8, 4, 8, 4);
-                    b.MinHeight = 28;
-                    // WinUI Button default MinWidth is 120 (from ButtonStyle).
-                    // Reset to 0 so hover background only paints the chevron-pill width.
-                    b.MinWidth = 0;
-                    b.CornerRadius = composerCornerRadius;
-                    b.HorizontalAlignment = HorizontalAlignment.Left;
-                })
-                .Resources(r => r
-                    .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBackgroundPointerOver", Ref("SubtleFillColorSecondaryBrush"))
-                    .Set("ButtonBackgroundPressed", Ref("SubtleFillColorTertiaryBrush"))
-                    .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)))
-                .WithFlyout(MenuItems(FlyoutPlacementMode.Top, menuItems.ToArray()));
-
-            // Put combinedPill directly into the Grid cell with HAlign(Left).
-            // Wrapping in FlexRow caused the Button to stretch to the Star column width.
-            var bottomRow = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                combinedPill.HAlign(HorizontalAlignment.Left).Grid(row: 0, column: 0),
-                (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn) with { ColumnGap = 4 })
-                    .HAlign(HorizontalAlignment.Right)
-                    .Grid(row: 0, column: 1)
-            );
-
-            return VStack(0,
-                workingBanner,
-                Border(
-                    VStack(8, composerInput, bottomRow)
-                ).Padding(16, 12, 16, 12)
-                 .Set(b =>
-                 {
-                     b.BorderThickness = new Thickness(0, 1, 0, 0);
-                     b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SurfaceStrokeColorDefaultBrush"];
-                 })
-            );
-        }
-
         var actionsRow = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            Empty().Grid(row: 0, column: 0),
             (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)
@@ -1057,9 +875,6 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
              })
         );
     }
-
-    private static string NonEmptyGlyph(string? glyph, string fallback)
-        => string.IsNullOrEmpty(glyph) ? fallback : glyph!;
 
     /// <summary>
     /// Synchronously builds a <see cref="Microsoft.UI.Xaml.Media.Imaging.BitmapImage"/>

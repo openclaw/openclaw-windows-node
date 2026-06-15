@@ -296,6 +296,28 @@ public class DeepLinkParserTests
         Assert.Equal(expectedAction, invoked);
     }
 
+    [Theory]
+    [InlineData("openclaw://activity", "channels")]
+    [InlineData("openclaw://activity?filter=usage", "usage")]
+    [InlineData("openclaw://activity?filter=session", "sessions")]
+    [InlineData("openclaw://activity?filter=node", "instances")]
+    [InlineData("openclaw://history", "channels")]
+    [InlineData("openclaw://notification-history", "channels")]
+    [InlineData("openclaw://commandcenter", "connection")]
+    [InlineData("openclaw://command-center", "connection")]
+    public void Handle_HubRouteAliases_OpenExpectedHubTag(string uri, string expectedHubTag)
+    {
+        string? hubTag = null;
+        var actions = new DeepLinkActions
+        {
+            OpenHub = tag => hubTag = tag
+        };
+
+        DeepLinkHandler.Handle(uri, actions);
+
+        Assert.Equal(expectedHubTag, hubTag);
+    }
+
     [Fact]
     public void Handle_DashboardSubpath_PassesPath()
     {

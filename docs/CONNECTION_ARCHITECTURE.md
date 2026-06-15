@@ -166,7 +166,7 @@ Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `Set
 5. Gateway returns `hello-ok.auth.deviceToken` after pairing
 6. Connection manager persists the device token to the identity file
 
-**Auto-approval**: When the node requires pairing and the operator has `operator.admin` or `operator.pairing` scope, `GatewayConnectionManager` automatically approves the node pairing request, waits 1 second, then reconnects the node.
+**Approval boundaries**: `GatewayConnectionManager` leaves node-pair command-trust requests and reapproval pending for explicit operator approval. It may automatically approve and reconnect only an explicitly typed device-pair request used for a device role upgrade.
 
 ## SSH tunnel integration
 
@@ -224,7 +224,7 @@ Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 - `GatewayRegistryTests` / `GatewayRegistryMigrationTests` — persistence, migration
 - `InteractiveGatewayCredentialResolverTests` — HTTP credential resolution
 - `NodeConnectorTests` — node client lifecycle
-- `PairingFlowTests` / `NodePairAutoApproveTests` — pairing lifecycle, auto-approve
+- `PairingFlowTests` / `NodePairAutoApproveTests` — pairing lifecycle, device role-upgrade auto-approval, and manual node command-trust boundary
 - `SetupCodeFlowTests` / `SetupCodeDecoderTests` — QR code → connect flow
 - `StaleEventGuardTests` — generation-guarded event handling
 - `SettingsChangeImpactTests` — settings change classification
@@ -232,4 +232,3 @@ Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 - `ConnectionDiagnosticsTests` — ring buffer diagnostics
 
 The heaviest remaining gap is Windows shell UI behavior (tray clicks, tooltip visibility, WinUI menu routing). Cover pure decision logic in unit tests; use manual or integration smoke tests for shell behavior.
-

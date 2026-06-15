@@ -44,12 +44,7 @@ public sealed class ExistingConfigDetector
             {
                 var output = proc.StandardOutput.ReadToEnd();
                 proc.WaitForExit(5000);
-                var distros = output.Replace("\0", string.Empty)
-                    .Replace("\uFEFF", string.Empty)
-                    .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-                    .Select(d => d.Trim())
-                    .Where(d => d.Length > 0);
-                hasDistro = distros.Any(d => d.Equals(targetDistroName, StringComparison.OrdinalIgnoreCase));
+                hasDistro = WslInstallSupport.ContainsDistro(output, targetDistroName);
             }
         }
         catch (Exception ex)

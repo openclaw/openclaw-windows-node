@@ -11,6 +11,8 @@ public sealed class NodeConnector : INodeConnector
 {
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
+    private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
+    private readonly object _clientLifecycleLock = new();
     private WindowsNodeClient? _client;
     private long _clientGeneration;
     private bool _disposed;
@@ -40,14 +42,50 @@ public sealed class NodeConnector : INodeConnector
     /// <summary>The underlying node client, for capability registration by NodeService.</summary>
     public WindowsNodeClient? Client => _client;
 
-    public async Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)
+    public Task ConnectAsync(
+        string gatewayUrl,
+        GatewayCredential credential,
+        string identityPath,
+        bool useV2Signature = false) =>
+        ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature, CancellationToken.None);
+
+    public async Task ConnectAsync(
+        string gatewayUrl,
+        GatewayCredential credential,
+        string identityPath,
+        bool useV2Signature,
+        CancellationToken cancellationToken)
     {
         if (_disposed) return;
 
-        DisconnectInternal();
-        var generation = Interlocked.Increment(ref _clientGeneration);
+        await _connectSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await ConnectCoreAsync(
+                gatewayUrl,
+                credential,
+                identityPath,
+                useV2Signature,
+                cancellationToken);
+        }
+        finally
+        {
+            _connectSemaphore.Release();
+        }
+    }
 
-        Mode = NodeConnectionMode.Gateway;
+    private async Task ConnectCoreAsync(
+        string gatewayUrl,
+        GatewayCredential credential,
+        string identityPath,
+        bool useV2Signature,
+        CancellationToken cancellationToken)
+    {
+        if (_disposed) return;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        DisconnectCurrentClient();
+
         _logger.Info($"[NodeConnector] Connecting to {gatewayUrl}");
 
         // Use a diagnostic tee logger so node handshake logs appear in the Connection Status timeline
@@ -55,7 +93,7 @@ public sealed class NodeConnector : INodeConnector
             ? new DiagnosticTeeLogger(_logger, _diagnostics)
             : _logger;
 
-        _client = new WindowsNodeClient(
+        var client = new WindowsNodeClient(
             gatewayUrl,
             credential.IsBootstrapToken ? "" : credential.Token,
             identityPath,
@@ -64,7 +102,27 @@ public sealed class NodeConnector : INodeConnector
 
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
         if (useV2Signature)
-            _client.UseV2Signature = true;
+            client.UseV2Signature = true;
+
+        long generation;
+        lock (_clientLifecycleLock)
+        {
+            if (_disposed || cancellationToken.IsCancellationRequested)
+            {
+                try { client.Dispose(); }
+                catch (Exception ex) { _logger.Warn($"[NodeConnector] Candidate dispose error: {ex.Message}"); }
+                cancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
+
+            generation = Interlocked.Increment(ref _clientGeneration);
+            _client = client;
+            Mode = NodeConnectionMode.Gateway;
+        }
+
+        using var cancellationRegistration = cancellationToken.Register(
+            () => DisconnectIfCurrent(generation));
+        cancellationToken.ThrowIfCancellationRequested();
 
         // CRITICAL: fire ClientCreated BEFORE await _client.ConnectAsync() so subscribers
         // (NodeService) can register capabilities synchronously. WindowsNodeClient
@@ -73,32 +131,48 @@ public sealed class NodeConnector : INodeConnector
         // the gateway sees an empty caps array for this session.
         try
         {
-            ClientCreated?.Invoke(
-                this,
-                new NodeClientCreatedEventArgs(
-                    _client,
-                    credential.IsBootstrapToken ? null : credential.Token));
+            lock (_clientLifecycleLock)
+            {
+                ThrowIfNotCurrent(client, generation, cancellationToken);
+                ClientCreated?.Invoke(
+                    this,
+                    new NodeClientCreatedEventArgs(
+                        client,
+                        credential.IsBootstrapToken ? null : credential.Token));
+            }
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested ||
+            !IsCurrentClient(client, generation))
+        {
+            throw;
         }
         catch (Exception ex)
         {
+            if (cancellationToken.IsCancellationRequested ||
+                !IsCurrentClient(client, generation))
+            {
+                return;
+            }
+
             _logger.Warn($"[NodeConnector] ClientCreated handler threw: {ex.Message}");
             _diagnostics?.Record("node", "ClientCreated handler failed; node connection aborted before handshake", ex.Message);
-            DisconnectInternal();
+            DisconnectCurrentClient();
             StatusChanged?.Invoke(this, ConnectionStatus.Error);
             return;
         }
 
-        _client.StatusChanged += (s, e) =>
+        client.StatusChanged += (s, e) =>
         {
             if (IsCurrentClient(s, generation))
                 StatusChanged?.Invoke(this, e);
         };
-        _client.PairingStatusChanged += (s, e) =>
+        client.PairingStatusChanged += (s, e) =>
         {
             if (IsCurrentClient(s, generation))
                 PairingStatusChanged?.Invoke(this, e);
         };
-        _client.DeviceTokenReceived += (s, e) =>
+        client.DeviceTokenReceived += (s, e) =>
         {
             if (IsCurrentClient(s, generation))
                 DeviceTokenReceived?.Invoke(this, e);
@@ -106,25 +180,68 @@ public sealed class NodeConnector : INodeConnector
 
         try
         {
-            await _client.ConnectAsync();
+            Task connectTask;
+            lock (_clientLifecycleLock)
+            {
+                ThrowIfNotCurrent(client, generation, cancellationToken);
+                connectTask = client.ConnectAsync();
+            }
+            await connectTask;
+            lock (_clientLifecycleLock)
+                ThrowIfNotCurrent(client, generation, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
+            if (cancellationToken.IsCancellationRequested ||
+                !IsCurrentClient(client, generation))
+            {
+                return;
+            }
+
             _logger.Error($"[NodeConnector] Connect failed: {ex.Message}");
         }
     }
 
     public Task DisconnectAsync()
     {
-        DisconnectInternal();
+        DisconnectCurrentClient();
         return Task.CompletedTask;
     }
 
-    private bool IsCurrentClient(object? sender, long generation) =>
-        Interlocked.Read(ref _clientGeneration) == generation &&
-        ReferenceEquals(sender, _client);
+    private bool IsCurrentClient(object? sender, long generation)
+    {
+        lock (_clientLifecycleLock)
+        {
+            return Interlocked.Read(ref _clientGeneration) == generation &&
+                ReferenceEquals(sender, _client);
+        }
+    }
+
+    private void DisconnectIfCurrent(long generation)
+    {
+        lock (_clientLifecycleLock)
+        {
+            if (Interlocked.Read(ref _clientGeneration) == generation)
+                DisconnectInternalCore();
+        }
+    }
+
+    private void DisconnectCurrentClient()
+    {
+        DisconnectInternal();
+    }
 
     private void DisconnectInternal()
+    {
+        lock (_clientLifecycleLock)
+            DisconnectInternalCore();
+    }
+
+    private void DisconnectInternalCore()
     {
         Interlocked.Increment(ref _clientGeneration);
         var old = _client;
@@ -137,10 +254,26 @@ public sealed class NodeConnector : INodeConnector
         Mode = NodeConnectionMode.Disabled;
     }
 
+    private void ThrowIfNotCurrent(
+        WindowsNodeClient client,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Interlocked.Read(ref _clientGeneration) != generation ||
+            !ReferenceEquals(client, _client))
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+    }
+
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        DisconnectInternal();
+        lock (_clientLifecycleLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            DisconnectInternalCore();
+        }
     }
 }

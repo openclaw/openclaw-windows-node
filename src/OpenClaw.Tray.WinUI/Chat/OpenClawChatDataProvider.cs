@@ -533,7 +533,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     var ts = msg.Ts > 0
                         ? DateTimeOffset.FromUnixTimeMilliseconds(msg.Ts).ToLocalTime()
                         : (DateTimeOffset?)null;
-                    var msgMeta = new ChatEntryMetadata(ts, modelAtLoad);
+                    var msgMeta = new ChatEntryMetadata(
+                        ts,
+                        modelAtLoad,
+                        msg.InputTokens,
+                        msg.OutputTokens,
+                        msg.ResponseTokens,
+                        msg.ContextPercent);
 
                     // Cap per-message text up front so heuristics, logging,
                     // and the reducer all see the same bounded value
@@ -1127,10 +1133,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string[] newThreadsToLoad;
         lock (_gate)
         {
+            var previousUsage = _sessions
+                .Where(s => !string.IsNullOrEmpty(s.Key))
+                .ToDictionary(s => s.Key, s => (s.InputTokens, s.OutputTokens, s.TotalTokens, s.ContextTokens));
             _sessions = sessions ?? Array.Empty<SessionInfo>();
             SeedSessionIdsFromSessionsLocked(_sessions);
             _sessionsListReceived = true;
             EnsureTimelinesForSessionsLocked();
+            foreach (var s in _sessions)
+            {
+                if (string.IsNullOrEmpty(s.Key)) continue;
+                var currentUsage = (s.InputTokens, s.OutputTokens, s.TotalTokens, s.ContextTokens);
+                var usageChanged = !previousUsage.TryGetValue(s.Key, out var prevUsage)
+                    || prevUsage != currentUsage;
+                if (usageChanged)
+                    SnapshotLatestAssistantUsageLocked(s, ResolveTimelineKeyForSessionLocked(s));
+            }
             snapshot = BuildSnapshotLocked();
 
             // When sessions arrive while connected, eagerly load history
@@ -1383,21 +1401,25 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         var threadId = message.SessionKey;
         ChatEntryMetadata? meta;
+        var cappedAssistantText = RepairContentBlockSeams(TruncateForChatEntry(message.Text));
+        var hasUsage = message.InputTokens is not null || message.OutputTokens is not null
+            || message.ResponseTokens is not null || message.ContextPercent is not null;
         lock (_gate)
         {
             meta = BuildLiveMetaLocked(threadId, message.Ts);
             // If the gateway included a usage block on this chat event,
             // attach it so the assistant footer pills (↑/↓/R/ctx%) can
             // render. Mostly arrives on state="final" frames.
-            if (message.InputTokens is not null || message.OutputTokens is not null
-                || message.ResponseTokens is not null || message.ContextPercent is not null)
+            if (hasUsage)
             {
+                var session = Array.Find(_sessions, s => s.Key == threadId);
                 meta = meta with
                 {
                     InputTokens = message.InputTokens ?? meta.InputTokens,
                     OutputTokens = message.OutputTokens ?? meta.OutputTokens,
                     ResponseTokens = message.ResponseTokens ?? meta.ResponseTokens,
-                    ContextPercent = message.ContextPercent ?? meta.ContextPercent
+                    ContextPercent = message.ContextPercent ?? meta.ContextPercent,
+                    ContextTokens = session?.ContextTokens > 0 ? session.ContextTokens : meta.ContextTokens
                 };
             }
         }
@@ -1421,13 +1443,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         ApplyEventAndPublish(
             threadId,
             new ChatMessageEvent(
-                RepairContentBlockSeams(TruncateForChatEntry(message.Text)),
+                cappedAssistantText,
                 ReconcilePrevious: true,
                 IsStreaming: !message.IsFinal),
             meta);
 
+        if (hasUsage)
+            SnapshotAssistantUsageContribution(threadId, meta);
+
         if (message.IsFinal)
         {
+            SnapshotLatestAssistantUsage(threadId);
             ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
             RaiseNotification(new ChatProviderNotification(
                 ChatProviderNotificationKind.TurnComplete, threadId, LocalizationHelper.GetString("Chat_Notification_AssistantReplied")));
@@ -3288,6 +3314,83 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return false;
     }
 
+    private void SnapshotLatestAssistantUsage(string threadId)
+    {
+        ChatDataSnapshot? snapshot = null;
+        lock (_gate)
+        {
+            var session = ResolveSessionForThreadLocked(threadId);
+            if (session is null) return;
+            if (SnapshotLatestAssistantUsageLocked(session, threadId))
+                snapshot = BuildSnapshotLocked();
+        }
+
+        if (snapshot is not null)
+            Publish(snapshot);
+    }
+
+    private void SnapshotAssistantUsageContribution(string threadId, ChatEntryMetadata meta)
+    {
+        ChatDataSnapshot? snapshot = null;
+        lock (_gate)
+        {
+            if (SnapshotAssistantUsageContributionLocked(threadId, meta))
+                snapshot = BuildSnapshotLocked();
+        }
+
+        if (snapshot is not null)
+            Publish(snapshot);
+    }
+
+    private bool SnapshotAssistantUsageContributionLocked(string threadId, ChatEntryMetadata meta)
+    {
+        var currentUsage = UsageValue(meta);
+        if (currentUsage is null || currentUsage <= 0)
+            return false;
+
+        if (!_timelines.TryGetValue(threadId, out var timeline))
+            return false;
+
+        var contextTokens = meta.ContextTokens;
+        if ((contextTokens is null || contextTokens <= 0)
+            && _sessions.FirstOrDefault(s => string.Equals(s.Key, threadId, StringComparison.Ordinal)) is { ContextTokens: > 0 } session)
+        {
+            contextTokens = session.ContextTokens;
+        }
+
+        for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+        {
+            var entry = timeline.Entries[i];
+            if (entry.Kind != ChatTimelineItemKind.Assistant)
+                continue;
+
+            var threadMeta = GetOrCreateThreadMetaLocked(threadId);
+            threadMeta.TryGetValue(entry.Id, out var existing);
+            var previousUsage = LatestAssistantUsageBeforeLocked(timeline, threadMeta, i);
+            var candidateUsage = (previousUsage ?? 0) + currentUsage.Value;
+            var cumulativeUsage = Math.Max(candidateUsage, existing?.ResponseTokens ?? 0);
+            if (existing?.ResponseTokens == cumulativeUsage
+                && existing.UsageContributionTokens == currentUsage
+                && existing.ContextTokens == contextTokens)
+            {
+                return false;
+            }
+
+            threadMeta[entry.Id] = (existing ?? BuildLiveMetaLocked(threadId)) with
+            {
+                InputTokens = meta.InputTokens ?? existing?.InputTokens,
+                OutputTokens = meta.OutputTokens ?? existing?.OutputTokens,
+                ResponseTokens = cumulativeUsage,
+                ContextPercent = meta.ContextPercent ?? existing?.ContextPercent,
+                ContextTokens = contextTokens ?? existing?.ContextTokens,
+                UsageContributionTokens = currentUsage,
+            };
+            return true;
+        }
+
+        return false;
+    }
+
     private void OpenResetGateForLifecycleStartLocked(string threadId, AgentEventInfo evt)
     {
         _resetAwaitingUserMessage.Remove(threadId);
@@ -3365,6 +3468,114 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         return false;
     }
+
+    private static int? LatestAssistantUsageBeforeLocked(ChatTimelineState timeline, Dictionary<string, ChatEntryMetadata> threadMeta, int beforeIndex)
+    {
+        for (var i = beforeIndex - 1; i >= 0; i--)
+        {
+            var entry = timeline.Entries[i];
+            if (entry.Kind != ChatTimelineItemKind.Assistant)
+                continue;
+
+            if (!threadMeta.TryGetValue(entry.Id, out var meta))
+                continue;
+
+            var usage = UsageValue(meta);
+            if (usage is null)
+                continue;
+
+            return usage;
+        }
+
+        return null;
+    }
+
+    private static int? UsageValue(ChatEntryMetadata meta)
+        => meta.ResponseTokens
+           ?? (meta.InputTokens is int input && meta.OutputTokens is int output
+               ? input + output
+               : null);
+
+    private bool SnapshotLatestAssistantUsageLocked(SessionInfo session, string? timelineKey = null)
+    {
+        if (string.IsNullOrEmpty(session.Key)) return false;
+
+        var usedTokens = session.TotalTokens;
+        if (usedTokens <= 0)
+            usedTokens = session.InputTokens + session.OutputTokens;
+        if (usedTokens <= 0) return false;
+
+        timelineKey ??= session.Key;
+        if (string.IsNullOrEmpty(timelineKey)) return false;
+        if (!_timelines.TryGetValue(timelineKey, out var timeline)) return false;
+
+        for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+        {
+            var entry = timeline.Entries[i];
+            if (entry.Kind != ChatTimelineItemKind.Assistant) continue;
+
+            var threadMeta = GetOrCreateThreadMetaLocked(timelineKey);
+            threadMeta.TryGetValue(entry.Id, out var existing);
+            var usageSnapshot = Math.Max(usedTokens, existing?.ResponseTokens ?? 0);
+            var usageSnapshotTokens = ToIntIfPositive(usageSnapshot);
+            var contextSnapshot = session.ContextTokens > 0 ? session.ContextTokens : existing?.ContextTokens;
+            if (existing is not null
+                && existing.ResponseTokens == usageSnapshotTokens
+                && existing.ContextTokens == contextSnapshot)
+                return false;
+
+            threadMeta[entry.Id] = (existing ?? BuildLiveMetaLocked(timelineKey)) with
+            {
+                InputTokens = ToIntIfPositive(session.InputTokens),
+                OutputTokens = ToIntIfPositive(session.OutputTokens),
+                ResponseTokens = usageSnapshotTokens,
+                ContextTokens = contextSnapshot,
+                ContextPercent = existing?.ContextPercent,
+                UsageContributionTokens = existing?.UsageContributionTokens
+            };
+            return true;
+        }
+
+        return false;
+    }
+
+    private SessionInfo? ResolveSessionForThreadLocked(string threadId)
+    {
+        var session = Array.Find(_sessions, s => string.Equals(s.Key, threadId, StringComparison.Ordinal));
+        if (session is not null) return session;
+
+        if (string.Equals(threadId, "main", StringComparison.Ordinal)
+            && _bridge.MainSessionKey is { Length: > 0 } mainKey)
+        {
+            session = Array.Find(_sessions, s => string.Equals(s.Key, mainKey, StringComparison.Ordinal));
+            if (session is not null) return session;
+        }
+
+        if (string.Equals(threadId, "main", StringComparison.Ordinal))
+            return Array.Find(_sessions, s => s.IsMain);
+
+        return null;
+    }
+
+    private string ResolveTimelineKeyForSessionLocked(SessionInfo session)
+    {
+        if (session.IsMain && _timelines.TryGetValue("main", out var mainTimeline)
+            && mainTimeline.Entries.Count > 0)
+        {
+            return "main";
+        }
+
+        if (!string.IsNullOrEmpty(session.Key) && _timelines.ContainsKey(session.Key))
+            return session.Key;
+
+        if (session.IsMain && _timelines.ContainsKey("main"))
+            return "main";
+
+        return session.Key;
+    }
+
+    private static int? ToIntIfPositive(long value)
+        => value > 0 && value <= int.MaxValue ? (int)value : null;
 
     private ChatEntryMetadata BuildLiveMetaLocked(string threadId, long? tsMs = null)
     {
@@ -3534,6 +3745,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Workspace = s.Channel,
             Model = s.Model,
             ThinkingLevel = s.ThinkingLevel,
+            InputTokens = s.InputTokens,
+            OutputTokens = s.OutputTokens,
+            TotalTokens = s.TotalTokens,
+            ContextTokens = s.ContextTokens,
             CreatedAt = s.StartedAt is { } st ? ToOffset(st) : null,
             UpdatedAt = s.UpdatedAt is { } ut ? ToOffset(ut) : null,
         };

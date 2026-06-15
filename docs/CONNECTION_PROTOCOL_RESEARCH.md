@@ -403,11 +403,11 @@ Windows implications:
   when system capability is enabled. Those requests require admin to approve.
 - A bounded QR/bootstrap operator token should not auto-approve node command
   trust.
-- Auto-approval diagnostics must report missing `operator.admin` vs missing
-  `operator.pairing` instead of a generic failure.
-- `_lastAutoApprovedRequestId` must not permanently suppress recovery if the
-  approve RPC succeeded but the post-approval reconnect failed or the gateway
-  reuses the same request id.
+- `GatewayConnectionManager` only auto-approves explicitly typed device-pair
+  role upgrades. Node-pair command trust, including reapproval, remains pending
+  for an explicit operator decision.
+- Device role-upgrade auto-approval diagnostics must report missing
+  `operator.admin` instead of a generic failure.
 
 ## Flow 7: local WSL setup-engine flow
 
@@ -454,7 +454,7 @@ Reliability risks:
 | QR bootstrap immediate credential | `ApplySetupCodeAsync`, `CredentialResolver` | Preserved shared token can win over fresh bootstrap token. | Fixed | Force the fresh bootstrap token for the immediate setup-code connect. |
 | QR post-bootstrap operator reconnect | `GatewayConnectionManager` | LKG gateway may return only node token on bootstrap; operator must reconnect via preserved shared token. | Fixed | Schedule post-bootstrap operator reconnect using durable operator token or preserved shared token. |
 | Node token parsing | `WindowsNodeClient` | Parses direct `auth.deviceToken` for node. | Aligned for direct node connect | Validate post-approval reconnect. |
-| Node command trust | `GatewayConnectionManager.OnNodePairingStatusChangedAsync` | Auto-approves when request id and approval scope helper allow it. | Likely surgical fix | Separate node-pair authority and missing-scope handling. |
+| Node command trust | `GatewayConnectionManager.OnNodePairingStatusChangedAsync` | Explicit node-pair and unknown requests remain pending; only explicitly typed device-pair role upgrades may auto-approve. | Fixed | Preserve explicit operator approval for command trust and reapproval. |
 | Approval scope helper | `OperatorScopeHelper.CanApproveDevices` | Checks only admin/pairing. | Needs protocol-specific split | Do not add `operator.approvals` for `node.pair.*`; add clearer helpers. |
 | Capability registration | `NodeConnector`, `App.xaml.cs`, `NodeService` | Event-before-connect pattern exists; app warns if binding unavailable. | Likely surgical fix | Fail/hold/reconnect on binding miss instead of silently connecting with no commands. |
 | Stale node events | `GatewayConnectionManager` node handlers | Operator events are generation-guarded; node handlers are not equivalently guarded. | Likely surgical fix | Add generation or client-instance stale-event guard. |
@@ -502,8 +502,10 @@ Existing coverage:
     HTML for token/auth error markers, not just HTTP status.
   - `app.status` validation includes negotiated operator scopes and asserts the
     operator has `operator.admin` and `operator.pairing` on the normal local
-    setup/shared-token path so Windows node command-trust auto-approval can
-    complete without a leftover approval banner.
+    setup/shared-token path. Explicitly configured SetupEngine onboarding may
+    use those scopes to approve command trust without a leftover approval
+    banner; `GatewayConnectionManager` runtime leaves command-trust approval
+    pending for the operator.
 - Test coverage docs explicitly call out that full live gateway/node pairing
   against a remote gateway and long-running reconnect soak behavior are not
   fully covered by automated tests.

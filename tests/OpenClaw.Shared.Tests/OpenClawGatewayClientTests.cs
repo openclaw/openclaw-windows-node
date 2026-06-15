@@ -1509,7 +1509,7 @@ public class OpenClawGatewayClientTests
                   "status": "connected",
                    "platform": "windows",
                    "mode": "node",
-                   "declaredCommands": ["system.run", "canvas.present"],
+                   "commands": ["system.run", "canvas.present"],
                    "caps": ["system"],
                    "permissions": { "screen.record": true, "camera.snap": false },
                    "lastSeenAt": 1739760000000
@@ -1618,6 +1618,11 @@ public class OpenClawGatewayClientTests
                   "commands": ["system.run"],
                   "disabledCommands": ["camera.recordVideo"],
                   "permissions": { "screen.record": true, "camera.snap": false },
+                  "approvalState": "pending-reapproval",
+                  "pendingRequestId": "req-node-rich",
+                  "pendingDeclaredCaps": ["camera", "screen", "location"],
+                  "pendingDeclaredCommands": ["system.run", "location.get"],
+                  "pendingDeclaredPermissions": { "system.run": true, "location.get": false },
                   "paired": true,
                   "connected": true,
                   "connectedAtMs": 1739760000000,
@@ -1646,6 +1651,12 @@ public class OpenClawGatewayClientTests
         Assert.Equal(["camera", "screen"], n.Capabilities);
         Assert.Equal(["system.run"], n.Commands);
         Assert.Equal(["camera.recordVideo"], n.DisabledCommands);
+        Assert.Equal(GatewayNodeApprovalState.PendingReapproval, n.ApprovalState);
+        Assert.Equal("req-node-rich", n.PendingRequestId);
+        Assert.Equal(["camera", "screen", "location"], n.PendingDeclaredCapabilities);
+        Assert.Equal(["system.run", "location.get"], n.PendingDeclaredCommands);
+        Assert.True(n.PendingDeclaredPermissions["system.run"]);
+        Assert.False(n.PendingDeclaredPermissions["location.get"]);
         Assert.True(n.IsPaired);
         Assert.True(n.IsOnline);
         Assert.True(n.Permissions["screen.record"]);
@@ -1665,6 +1676,110 @@ public class OpenClawGatewayClientTests
         Assert.Equal(
             DateTimeOffset.FromUnixTimeMilliseconds(1739760123456).UtcDateTime,
             n.LastSeen!.Value);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_PendingDeclarationsNeverPopulateEffectiveFieldsOrCounts()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                {
+                  "nodeId": "pending-node",
+                  "approvalState": "pending-reapproval",
+                  "pendingRequestId": "request-123",
+                  "caps": ["system"],
+                  "commands": ["system.notify"],
+                  "declaredCommands": ["system.notify", "camera.snap", "legacy.unsafe"],
+                  "permissions": { "system.notify": true },
+                  "pendingDeclaredCaps": ["system", "camera"],
+                  "pendingDeclaredCommands": ["system.notify", "camera.snap"],
+                  "pendingDeclaredPermissions": {
+                    "system.notify": true,
+                    "camera.snap": false
+                  }
+                }
+              ]
+            }
+            """);
+
+        var node = Assert.Single(nodes);
+        Assert.Equal(GatewayNodeApprovalState.PendingReapproval, node.ApprovalState);
+        Assert.Equal("request-123", node.PendingRequestId);
+        Assert.Equal(["system"], node.Capabilities);
+        Assert.Equal(["system.notify"], node.Commands);
+        Assert.Equal(1, node.CapabilityCount);
+        Assert.Equal(1, node.CommandCount);
+        Assert.True(node.Permissions["system.notify"]);
+        Assert.Equal(["system", "camera"], node.PendingDeclaredCapabilities);
+        Assert.Equal(["system.notify", "camera.snap"], node.PendingDeclaredCommands);
+        Assert.False(node.PendingDeclaredPermissions["camera.snap"]);
+        Assert.Empty(node.UnverifiedDeclaredCommands);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_LegacyDeclaredCommandsNeverBecomeEffective()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                {
+                  "nodeId": "legacy-node",
+                  "declaredCommands": ["system.run", "camera.snap"]
+                }
+              ]
+            }
+            """);
+
+        var node = Assert.Single(nodes);
+        Assert.Empty(node.Commands);
+        Assert.Equal(0, node.CommandCount);
+        Assert.Empty(node.PendingDeclaredCommands);
+        Assert.Equal(["system.run", "camera.snap"], node.UnverifiedDeclaredCommands);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_EmptyAuthoritativeCapsNeverFallsBackToLegacyCapabilities()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                {
+                  "nodeId": "authoritative-empty",
+                  "caps": [],
+                  "capabilities": ["camera", "screen"]
+                }
+              ]
+            }
+            """);
+
+        var node = Assert.Single(nodes);
+        Assert.Empty(node.Capabilities);
+        Assert.Equal(0, node.CapabilityCount);
+    }
+
+    [Fact]
+    public void ParseNodeListPayload_UnsafePendingRequestIdIsNotExposed()
+    {
+        var helper = new GatewayClientTestHelper();
+        var nodes = helper.ParseNodeListPayload("""
+            {
+              "nodes": [
+                {
+                  "nodeId": "unsafe-request",
+                  "approvalState": "pending-approval",
+                  "pendingRequestId": "request-1; Remove-Item C:\\"
+                }
+              ]
+            }
+            """);
+
+        var node = Assert.Single(nodes);
+        Assert.Equal(GatewayNodeApprovalState.PendingApproval, node.ApprovalState);
+        Assert.Null(node.PendingRequestId);
     }
 
     [Fact]
@@ -1723,6 +1838,12 @@ public class OpenClawGatewayClientTests
         Assert.False(n.IsPaired);
         Assert.False(n.HasExplicitDisplayName);
         Assert.Empty(n.DisabledCommands);
+        Assert.Equal(GatewayNodeApprovalState.Unknown, n.ApprovalState);
+        Assert.Null(n.PendingRequestId);
+        Assert.Empty(n.PendingDeclaredCapabilities);
+        Assert.Empty(n.PendingDeclaredCommands);
+        Assert.Empty(n.PendingDeclaredPermissions);
+        Assert.Empty(n.UnverifiedDeclaredCommands);
     }
 
     [Fact]

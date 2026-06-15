@@ -525,9 +525,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // async boundary so onboarding failures are logged instead of escaping
         // before the tray ever initializes.
         InitializeTrayIcon();
-        // Apply the user's saved default chat preset (if any) before any chat
-        // surface mounts so initial render uses their preferred styling.
-        OpenClawTray.Chat.Explorations.ChatExplorationPresetStore.ApplyDefaultIfPresent();
         ShowSurfaceImprovementsTipIfNeeded();
 
         // Initialize connection manager before setup flow.
@@ -2087,7 +2084,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
             {
-                ShowPairingPendingNotification(args.DeviceId);
+                var approvalCommand = args.ApprovalKind switch
+                {
+                    OpenClaw.Shared.PairingApprovalKind.DevicePair => BuildPairingApprovalCommand(args.DeviceId),
+                    OpenClaw.Shared.PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId),
+                    _ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()
+                };
+                ShowPairingPendingNotification(args.DeviceId, approvalCommand);
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
@@ -3005,6 +3008,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         LastUpdateInfo = _appState!.UpdateInfo,
         Settings = _settings,
         NodeService = _nodeService,
+        NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind
+            ?? PairingApprovalKind.Unknown,
+        NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId,
         SshTunnelSnapshot = _sshTunnelService?.CreateSnapshot(),
         HasGatewayClient = _connectionManager?.OperatorClient != null
     };
