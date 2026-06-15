@@ -6,9 +6,8 @@
     xmlns:winex="using:WinUIEx"
     Title="OpenClaw Chat">
 
-    <!-- SystemBackdrop is set in code-behind from ChatExplorationState.BackdropMode
-         so it tracks the active preset. Do NOT set it here in XAML — the XAML
-         value would override the code-behind set on first paint. -->
+    <!-- SystemBackdrop is set in code-behind. Do NOT set it here in XAML —
+         the XAML value would override the code-behind set on first paint. -->
 
     <Grid>
         <Grid.RowDefinitions>

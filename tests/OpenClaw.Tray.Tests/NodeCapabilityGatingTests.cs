@@ -78,6 +78,26 @@ public sealed class NodeCapabilityGatingTests : IDisposable
     }
 
     [Fact]
+    public void BrowserProxyGatewayRegistration_RequiresGatewayClientAndSharedToken()
+    {
+        var s = NewSettings();
+
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: null, hasGatewayClient: true));
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "   ", hasGatewayClient: true));
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: false));
+        Assert.True(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: true));
+    }
+
+    [Fact]
+    public void BrowserProxyGatewayRegistration_RespectsUserToggle()
+    {
+        var s = NewSettings();
+        s.NodeBrowserProxyEnabled = false;
+
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: true));
+    }
+
+    [Fact]
     public void SystemRun_OnlyDisabledWhenExplicitlySetToFalse()
     {
         var s = NewSettings();
@@ -220,5 +240,26 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         var result = NodeCapabilityGating.GetLocalNodeCapabilities(nodes, "device-1");
         Assert.NotNull(result);
         Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GetLocalNodeInfo_PreservesEffectiveAndPendingApprovalSurfaces()
+    {
+        var expected = new GatewayNodeInfo
+        {
+            NodeId = "device-1",
+            ApprovalState = GatewayNodeApprovalState.PendingReapproval,
+            PendingRequestId = "request-123",
+            Capabilities = ["system"],
+            Commands = ["system.notify"],
+            PendingDeclaredCapabilities = ["system", "camera"],
+            PendingDeclaredCommands = ["system.notify", "camera.snap"]
+        };
+
+        var result = NodeCapabilityGating.GetLocalNodeInfo([expected], "DEVICE-1");
+
+        Assert.Same(expected, result);
+        Assert.Equal(["system"], result!.Capabilities);
+        Assert.Equal(["system", "camera"], result.PendingDeclaredCapabilities);
     }
 }

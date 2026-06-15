@@ -282,7 +282,17 @@ jobs:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: setup-connect
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests
+          - name: revocation-recovery
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
+          - name: network-recovery
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
     - name: Fail if repo hygiene failed
       if: ${{ needs.repo-hygiene.result != 'success' }}
@@ -323,7 +333,7 @@ jobs:
     - name: Build E2E Tests
       run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
 
-    - name: Run E2E Tests
+    - name: Run E2E Tests (${{ matrix.name }})
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -334,14 +344,15 @@ jobs:
           -r win-x64 `
           --verbosity normal `
           --results-directory TestResults/E2E `
-          --logger "trx;LogFileName=OpenClaw.E2ETests.trx" `
-          --logger "console;verbosity=detailed"
+          --logger "trx;LogFileName=OpenClaw.E2ETests.${{ matrix.name }}.trx" `
+          --logger "console;verbosity=detailed" `
+          --filter "${{ matrix.filter }}"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-        [xml]$trx = Get-Content TestResults\E2E\OpenClaw.E2ETests.trx
+        [xml]$trx = Get-Content "TestResults\E2E\OpenClaw.E2ETests.${{ matrix.name }}.trx"
         $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
         if ($executed -lt 1) {
-          Write-Error "E2E test run executed zero tests. Check OPENCLAW_RUN_E2E gating before merging."
+          Write-Error "E2E shard '${{ matrix.name }}' executed zero tests. Check OPENCLAW_RUN_E2E gating/filter before merging."
           exit 1
         }
 
@@ -349,7 +360,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results
+        name: e2e-test-results-${{ matrix.name }}
         path: |
           TestResults/E2E/
         if-no-files-found: warn

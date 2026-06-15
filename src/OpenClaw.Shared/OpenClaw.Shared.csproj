@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
+    <InternalsVisibleTo Include="OpenClaw.Tray.WinUI" />
   </ItemGroup>
 
   <ItemGroup>

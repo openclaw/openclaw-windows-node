@@ -34,7 +34,7 @@ public sealed class FluentIconCatalogTests
     private static string ReadCatalogSource()
     {
         var path = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Helpers", "FluentIconCatalog.cs");
         return File.ReadAllText(path);
     }
@@ -95,27 +95,6 @@ public sealed class FluentIconCatalogTests
         Assert.Contains("SymbolThemeFontFamily", src);
     }
 
-    private static string GetRepositoryRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
-    }
 }
 
 /// <summary>
@@ -128,7 +107,7 @@ public sealed class TrayMenuPopupCompositionTests
     private static string ReadAppXaml()
     {
         var path = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
         return File.ReadAllText(path);
     }
@@ -136,7 +115,7 @@ public sealed class TrayMenuPopupCompositionTests
     private static string ReadStateBuilder()
     {
         var path = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Services", "TrayMenuStateBuilder.cs");
         return File.ReadAllText(path);
     }
@@ -144,7 +123,7 @@ public sealed class TrayMenuPopupCompositionTests
     private static string ReadHubWindowXaml()
     {
         var path = Path.Combine(
-            GetRepositoryRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
         return File.ReadAllText(path);
     }
@@ -273,25 +252,4 @@ public sealed class TrayMenuPopupCompositionTests
         Assert.True(selectIndex >= 0, "NavigateInternal must select a nav item by tag before falling back to direct navigation.");
     }
 
-    private static string GetRepositoryRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
-    }
 }

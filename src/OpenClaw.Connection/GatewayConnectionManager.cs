@@ -23,19 +23,33 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly Func<TimeSpan, Task> _reconnectDelay;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
+    private readonly SemaphoreSlim _nodeStartSemaphore = new(1, 1);
+    private readonly object _nodeOperationLock = new();
+    private readonly object _devicePairReconnectLock = new();
     private readonly object _disposeLock = new();
 
     private long _generation;
     private CancellationTokenSource? _operationCts;
+    private long _nodeConnectionGeneration;
+    private CancellationTokenSource? _nodeOperationCts;
     private IGatewayClientLifecycle? _activeLifecycle;
     private string? _activeIdentityPath; // identity directory for the active connection
     private string? _activeGatewayRecordId; // gateway record ID for node credential resolution
+    private SshTunnelConfig? _activeSshTunnel;
     private bool _disposed;
     private Task? _disposeTask;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
     private string? _operatorTokenRecoveryAttemptedGatewayId;
-    private string? _lastAutoApprovedRequestId; // prevent auto-approve loops
-    private string? _autoApproveInFlight; // atomic guard against concurrent approval of same requestId
+    private string? _lastAutoApprovedDevicePairRequestId; // prevent role-upgrade auto-approve loops
+    private string? _devicePairAutoApproveInFlight; // atomic guard against concurrent approval of same requestId
+    private bool _devicePairReconnectInFlight;
+    private readonly Dictionary<string, int> _devicePairReconnectAttempts = new(StringComparer.Ordinal);
+    private string? _queuedDevicePairReconnectRequestId;
+    private long _queuedDevicePairReconnectGeneration;
+    private long _queuedDevicePairReconnectNodeGeneration;
+    private string? _forceBootstrapForGatewayRecordId;
+    private bool _activeConnectUsedBootstrapToken;
+    private bool _postBootstrapOperatorReconnectScheduled;
 
     public event EventHandler<GatewayConnectionSnapshot>? StateChanged;
     public event EventHandler<ConnectionDiagnosticEvent>? DiagnosticEvent;
@@ -73,6 +87,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _nodeConnector.StatusChanged += OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged += OnNodePairingStatusChanged;
+            _nodeConnector.DeviceTokenReceived += OnNodeDeviceTokenReceived;
         }
     }
 
@@ -105,23 +120,23 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         ThrowIfDisposed();
         var prevState = _stateMachine.Current.OverallState;
-        var prepared = false;
+        long? preparedGeneration = null;
 
         await _transitionSemaphore.WaitAsync();
         try
         {
-            prepared = await PrepareNodeOnlyConnectCoreAsync(gatewayId);
+            preparedGeneration = await PrepareNodeOnlyConnectCoreAsync(gatewayId);
         }
         finally
         {
             _transitionSemaphore.Release();
         }
 
-        if (!prepared)
+        if (!preparedGeneration.HasValue)
             return;
 
-        var started = await StartNodeConnectionAsync();
-        if (started)
+        var startedGeneration = await StartNodeConnectionAsync(preparedGeneration.Value);
+        if (startedGeneration.HasValue)
             EmitStateChanged(prevState);
     }
 
@@ -171,9 +186,21 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 Directory.CreateDirectory(perGatewayIdentityDir);
 
             var credential = _credentialResolver.ResolveOperator(record, perGatewayIdentityDir);
+            if (_forceBootstrapForGatewayRecordId == record.Id &&
+                !string.IsNullOrWhiteSpace(record.BootstrapToken))
+            {
+                credential = new GatewayCredential(
+                    record.BootstrapToken!,
+                    IsBootstrapToken: true,
+                    CredentialResolver.SourceBootstrapToken);
+                _forceBootstrapForGatewayRecordId = null;
+            }
+            _activeConnectUsedBootstrapToken = credential?.IsBootstrapToken == true;
+            _postBootstrapOperatorReconnectScheduled = false;
             _diagnostics.RecordCredentialResolution(credential);
             _activeIdentityPath = perGatewayIdentityDir;
             _activeGatewayRecordId = record.Id;
+            _activeSshTunnel = record.SshTunnel;
             _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
 
             if (credential == null)
@@ -266,6 +293,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (Interlocked.Read(ref _generation) != gen) return;
                 _ = HandlePairingRequiredAsync(requestId, gen);
             };
+            lifecycle.DataClient.NodePairListUpdated += (s, list) =>
+            {
+                if (Interlocked.Read(ref _generation) != gen) return;
+                _ = HandleNodePairListUpdatedAsync(list, gen);
+            };
             lifecycle.DataClient.V2SignatureFallback += (s, _) =>
             {
                 if (Interlocked.Read(ref _generation) != gen) return;
@@ -289,8 +321,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 {
                     await lifecycle.ConnectAsync(ct);
                 }
-                // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException) { /* Expected: connect was cancelled. */ }
                 catch (Exception ex)
                 {
                     _logger.Error($"[ConnMgr] Connect failed: {ex.Message}");
@@ -303,20 +334,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     /// durable tray restart path for already-paired Windows nodes whose registry
     /// record only has a persisted NodeDeviceToken.
     /// </summary>
-    private async Task<bool> PrepareNodeOnlyConnectCoreAsync(string? gatewayId = null)
+    private async Task<long?> PrepareNodeOnlyConnectCoreAsync(string? gatewayId = null)
     {
         var id = gatewayId ?? _registry.ActiveGatewayId;
         if (id == null)
         {
             _logger.Warn("[ConnMgr] No gateway ID specified and no active gateway for node-only connect");
-            return false;
+            return null;
         }
 
         var record = _registry.GetById(id);
         if (record == null)
         {
             _logger.Warn($"[ConnMgr] Gateway {id} not found in registry for node-only connect");
-            return false;
+            return null;
         }
 
         var perGatewayIdentityDir = _registry.GetIdentityDirectory(record.Id);
@@ -328,18 +359,31 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _logger.Warn("[ConnMgr] No node credential available for node-only connect");
             _diagnostics.Record("node", "No node credential available for node-only connect");
-            return false;
+            return null;
         }
 
-        var gen = Interlocked.Increment(ref _generation);
-        var oldCts = Interlocked.Exchange(ref _operationCts, new CancellationTokenSource());
-        oldCts?.Cancel();
-        oldCts?.Dispose();
+        // Same-gateway node reapproval reconnects keep the operator alive so it can
+        // request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
+        var preservesOperatorConnection =
+            _activeLifecycle != null &&
+            _stateMachine.Current.OperatorState == RoleConnectionState.Connected &&
+            string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
+            string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
+            Equals(_activeSshTunnel, record.SshTunnel);
+        var gen = Interlocked.Read(ref _generation);
+        if (!preservesOperatorConnection)
+        {
+            gen = Interlocked.Increment(ref _generation);
+            var oldCts = Interlocked.Exchange(ref _operationCts, new CancellationTokenSource());
+            oldCts?.Cancel();
+            oldCts?.Dispose();
 
-        await DisposeActiveClientAsync();
+            await DisposeActiveClientAsync();
+        }
 
         _activeIdentityPath = perGatewayIdentityDir;
         _activeGatewayRecordId = record.Id;
+        _activeSshTunnel = record.SshTunnel;
         _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
         _stateMachine.Current = _stateMachine.Current with
         {
@@ -352,10 +396,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
             $"Credential source: {nodeCredential.Source}");
 
-        if (!await TryStartTunnelForNodeOnlyAsync(record))
-            return false;
+        if (!preservesOperatorConnection && !await TryStartTunnelForNodeOnlyAsync(record))
+            return null;
 
-        return Interlocked.Read(ref _generation) == gen;
+        return Interlocked.Read(ref _generation) == gen ? gen : null;
     }
 
     private async Task<bool> TryStartTunnelForNodeOnlyAsync(GatewayRecord record)
@@ -411,6 +455,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
     private async Task DisconnectCoreAsync()
     {
+        Interlocked.Increment(ref _generation);
+        var oldCts = Interlocked.Exchange(ref _operationCts, null);
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+
         var prev = _stateMachine.Current.OverallState;
         await DisposeActiveClientAsync();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
@@ -480,13 +529,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         // 3. Disconnect current gateway if any
         await DisconnectAsync();
 
+        var existing = _registry.FindByUrl(gatewayUrl);
+
         // New gateway URL → reset v2 signature flag (new gateway might support v3)
-        var isNewGateway = _registry.FindByUrl(gatewayUrl) == null;
+        var isNewGateway = existing == null;
         if (isNewGateway)
             _gatewayNeedsV2Signature = false;
 
         // 4. Create or update gateway record
-        var existing = _registry.FindByUrl(gatewayUrl);
         var recordId = existing?.Id ?? Guid.NewGuid().ToString();
 
         // Setup codes from `openclaw qr` always provide bootstrap tokens.
@@ -513,6 +563,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _diagnostics.Record("setup", $"Setup code applied for {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
 
         // 5. Connect to new gateway
+        if (!string.IsNullOrWhiteSpace(decoded.Token))
+            _forceBootstrapForGatewayRecordId = recordId;
         await ConnectAsync(recordId);
 
         return new SetupCodeResult(SetupCodeOutcome.Success, GatewayUrl: gatewayUrl);
@@ -526,22 +578,38 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
             return new SetupCodeResult(SetupCodeOutcome.InvalidUrl, "Invalid gateway URL");
 
-        // Disconnect current gateway if any
-        await DisconnectAsync();
-
         // Find or create gateway record (dedup by URL)
         var existing = _registry.FindByUrl(gatewayUrl);
         var recordId = existing?.Id ?? Guid.NewGuid().ToString();
+        var identityDir = _registry.GetIdentityDirectory(recordId);
+        var hasDurableTokens =
+            DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "operator", _logger) ||
+            DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", _logger);
+
+        if (existing != null && hasDurableTokens)
+        {
+            var validation = await ValidateSharedTokenBeforeReplacementAsync(
+                gatewayUrl,
+                token,
+                identityDir,
+                existing);
+            if (validation.Outcome != SetupCodeOutcome.Success)
+                return validation;
+        }
+
+        // Disconnect current gateway only after replacement credentials have been validated.
+        await DisconnectAsync();
+
         var record = (existing ?? new GatewayRecord { Id = recordId }) with
         {
             Url = gatewayUrl,
             SharedGatewayToken = token,
+            BootstrapToken = null,
             SshTunnel = sshTunnel,
         };
         _registry.AddOrUpdate(record);
 
         // Clear stored device tokens so the shared token is used
-        var identityDir = _registry.GetIdentityDirectory(recordId);
         if (!Directory.Exists(identityDir))
             Directory.CreateDirectory(identityDir);
         DeviceIdentityStore.ClearStoredTokens(identityDir, _logger);
@@ -559,6 +627,57 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _logger.Error($"[ConnMgr] ConnectWithSharedToken failed: {ex.Message}");
             return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, ex.Message);
+        }
+    }
+
+    private async Task<SetupCodeResult> ValidateSharedTokenBeforeReplacementAsync(
+        string gatewayUrl,
+        string token,
+        string identityDir,
+        GatewayRecord existing)
+    {
+        Directory.CreateDirectory(identityDir);
+        var diagLogger = new DiagnosticTeeLogger(_logger, _diagnostics);
+        using var client = new OpenClawGatewayClient(
+            gatewayUrl,
+            token,
+            diagLogger,
+            tokenIsBootstrapToken: false,
+            bootstrapPairAsNode: false,
+            identityPath: identityDir,
+            ignoreStoredDeviceToken: true)
+        {
+            UseV2Signature = existing.IsLocal || existing.RequiresV2Signature
+        };
+
+        var completion = new TaskCompletionSource<SetupCodeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeSucceeded += (_, _) =>
+            completion.TrySetResult(new SetupCodeResult(SetupCodeOutcome.Success, GatewayUrl: gatewayUrl));
+        client.AuthenticationFailed += (_, message) =>
+            completion.TrySetResult(new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, message));
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Error)
+                completion.TrySetResult(new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, "Shared token validation failed"));
+        };
+
+        try
+        {
+            await client.ConnectAsync();
+            var completed = await Task.WhenAny(completion.Task, Task.Delay(TimeSpan.FromSeconds(15)));
+            if (completed != completion.Task)
+                return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, "Timed out validating shared gateway token");
+
+            return await completion.Task;
+        }
+        catch (Exception ex)
+        {
+            return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, ex.Message);
+        }
+        finally
+        {
+            try { await client.DisconnectAsync(); }
+            catch (Exception ex) { _logger.Warn($"[ConnMgr] Shared-token validation disconnect failed: {ex.Message}"); }
         }
     }
 
@@ -647,21 +766,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _operatorTokenRecoveryAttemptedGatewayId = _activeGatewayRecordId;
         _diagnostics.Record("credential", "Cleared stale operator device token; reconnecting with bootstrap token");
 
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _reconnectDelay(TimeSpan.FromMilliseconds(200));
-                if (Interlocked.Read(ref _generation) != gen || _disposed) return;
-                await ReconnectAsync();
-            }
-            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
-            catch (ObjectDisposedException) { }
-            catch (Exception ex)
-            {
-                _logger.Warn($"[ConnMgr] Operator token recovery reconnect failed: {ex.Message}");
-            }
-        });
+        ScheduleDelayedReconnect(gen, "[ConnMgr] Operator token recovery reconnect failed");
 
         return true;
     }
@@ -716,7 +821,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         // Start node connection outside the semaphore to avoid deadlocks
         if (_nodeConnector != null && ShouldStartNodeConnection())
         {
-            await StartNodeConnectionAsync();
+            await StartNodeConnectionAsync(gen);
         }
     }
 
@@ -738,18 +843,93 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
         }
 
-        // Clear bootstrap token after NODE gets its device token — both roles are now paired.
-        // Don't clear after operator: the node still needs bootstrap for its role-upgrade pairing.
-        if (e.Role == "node" && _activeGatewayRecordId != null)
+        TryClearBootstrapTokenAfterDurablePairing();
+        TrySchedulePostBootstrapOperatorReconnect(e);
+    }
+
+    private void TryClearBootstrapTokenAfterDurablePairing()
+    {
+        if (_activeGatewayRecordId == null || _activeIdentityPath == null)
+            return;
+
+        var record = _registry.GetById(_activeGatewayRecordId);
+        if (record?.BootstrapToken == null)
+            return;
+
+        var hasOperatorToken = DeviceIdentity.HasStoredDeviceTokenForRole(_activeIdentityPath, "operator", _logger);
+        var hasNodeToken = DeviceIdentity.HasStoredDeviceTokenForRole(_activeIdentityPath, "node", _logger);
+        if (!hasOperatorToken || !hasNodeToken)
         {
-            var record = _registry.GetById(_activeGatewayRecordId);
-            if (record?.BootstrapToken != null)
-            {
-                _registry.AddOrUpdate(record with { BootstrapToken = null });
-                _registry.Save();
-                _diagnostics.Record("credential", "Cleared bootstrap token — both roles paired");
-            }
+            _diagnostics.Record(
+                "credential",
+                "Retaining bootstrap token until role tokens are durable",
+                $"operatorToken={hasOperatorToken}; nodeToken={hasNodeToken}");
+            return;
         }
+
+        _registry.AddOrUpdate(record with { BootstrapToken = null });
+        _registry.Save();
+        _diagnostics.Record("credential", "Cleared bootstrap token — operator and node tokens are durable");
+    }
+
+    private void TrySchedulePostBootstrapOperatorReconnect(DeviceTokenReceivedEventArgs e)
+    {
+        if (!_activeConnectUsedBootstrapToken ||
+            _postBootstrapOperatorReconnectScheduled ||
+            _activeIdentityPath == null ||
+            _activeGatewayRecordId == null)
+        {
+            return;
+        }
+
+        var hasOperatorToken = !string.IsNullOrWhiteSpace(
+            DeviceIdentity.TryReadStoredDeviceTokenForRole(_activeIdentityPath, "operator", _logger));
+        var record = _registry.GetById(_activeGatewayRecordId);
+        var canReconnectWithSharedToken = !string.IsNullOrWhiteSpace(record?.SharedGatewayToken);
+
+        if (!hasOperatorToken && !canReconnectWithSharedToken)
+            return;
+
+        if (e.Role != "operator" && !(e.Role == "node" && !hasOperatorToken && canReconnectWithSharedToken))
+            return;
+
+        _postBootstrapOperatorReconnectScheduled = true;
+        var reconnectGeneration = Interlocked.Read(ref _generation);
+        var detail = hasOperatorToken
+            ? "using persisted operator device token"
+            : "using preserved shared gateway token";
+        RememberGatewayNeedsV2Signature(_activeGatewayRecordId);
+        _diagnostics.Record("credential", "Bootstrap handoff complete — reconnecting operator role", detail);
+
+        ScheduleDelayedReconnect(
+            reconnectGeneration,
+            "[ConnMgr] Post-bootstrap operator reconnect failed",
+            ex => _diagnostics.Record("credential", "Post-bootstrap operator reconnect failed", ex.Message));
+    }
+
+    private void ScheduleDelayedReconnect(
+        long generation,
+        string warningPrefix,
+        Action<Exception>? onFailure = null)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _reconnectDelay(TimeSpan.FromMilliseconds(200));
+                if (_disposed || Interlocked.Read(ref _generation) != generation)
+                    return;
+
+                await ReconnectAsync();
+            }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
+            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                _logger.Warn($"{warningPrefix}: {ex.Message}");
+                onFailure?.Invoke(ex);
+            }
+        });
     }
 
     private void RememberGatewayNeedsV2Signature(string? gatewayRecordId)
@@ -843,19 +1023,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node connection failed."));
                     break;
-                // PairingRequired / Connecting / Idle — keep waiting; the manager's
-                // existing auto-approve flow (OnNodePairingStatusChanged) handles the
-                // node.pair.approve case when operator has admin/pairing scope. The
-                // role-upgrade pending-device-pair case surfaces as a timeout (the
-                // gateway parks the connect without responding) — caller catches and
-                // runs the WSL CLI device-approver before retrying.
+                // PairingRequired / Connecting / Idle — keep waiting. Gateway-owned
+                // node command trust requires explicit operator approval. Explicitly
+                // typed device-pair role upgrades may auto-approve; other pending
+                // device-pair cases surface as a timeout so the caller can run the
+                // WSL CLI device-approver before retrying.
             }
         }
 
         StateChanged += Handler;
         try
         {
-            var startAttempted = await StartNodeConnectionAsync();
+            var startAttempted = (await StartNodeConnectionAsync(Interlocked.Read(ref _generation))).HasValue;
 
             if (!startAttempted)
             {
@@ -908,8 +1087,109 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         return _isNodeEnabled?.Invoke() ?? false;
     }
 
-    private async Task<bool> StartNodeConnectionAsync()
+    private bool IsCurrentNodeAttempt(long lifecycleGeneration, long nodeGeneration) =>
+        !_disposed &&
+        Interlocked.Read(ref _generation) == lifecycleGeneration &&
+        Interlocked.Read(ref _nodeConnectionGeneration) == nodeGeneration;
+
+    private async Task<long?> StartNodeConnectionAsync(
+        long expectedLifecycleGeneration,
+        long? expectedNodeGeneration = null)
     {
+        CancellationTokenSource nodeOperationCts;
+        CancellationToken nodeOperationToken;
+        long nodeGeneration;
+
+        await _nodeStartSemaphore.WaitAsync();
+        try
+        {
+            CancellationTokenSource? oldNodeOperationCts;
+            lock (_nodeOperationLock)
+            {
+                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, expectedNodeGeneration))
+                    return null;
+
+                oldNodeOperationCts = _nodeOperationCts;
+                _nodeOperationCts = null;
+                oldNodeOperationCts?.Cancel();
+            }
+
+            if (_nodeConnector != null)
+            {
+                try
+                {
+                    if (!await WaitWithTimeoutAsync(
+                            _nodeConnector.DisconnectAsync(),
+                            TimeSpan.FromSeconds(2),
+                            "Previous node disconnect"))
+                    {
+                        _diagnostics.Record("node", "Previous node disconnect timed out");
+                        return null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"[ConnMgr] Previous node disconnect failed: {ex.Message}");
+                    _diagnostics.Record("node", "Previous node disconnect failed", ex.Message);
+                    return null;
+                }
+            }
+
+            lock (_nodeOperationLock)
+            {
+                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, expectedNodeGeneration))
+                    return null;
+
+                nodeOperationCts = new CancellationTokenSource();
+                nodeOperationToken = nodeOperationCts.Token;
+                nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
+                _nodeOperationCts = nodeOperationCts;
+            }
+        }
+        finally
+        {
+            _nodeStartSemaphore.Release();
+        }
+
+        try
+        {
+            return await StartNodeConnectionCoreAsync(nodeGeneration, nodeOperationToken)
+                ? nodeGeneration
+                : null;
+        }
+        catch (OperationCanceledException) when (nodeOperationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        finally
+        {
+            lock (_nodeOperationLock)
+            {
+                if (ReferenceEquals(_nodeOperationCts, nodeOperationCts))
+                    _nodeOperationCts = null;
+            }
+            nodeOperationCts.Dispose();
+        }
+    }
+
+    private bool IsExpectedNodeStartCurrent(
+        long expectedLifecycleGeneration,
+        long? expectedNodeGeneration) =>
+        !_disposed &&
+        Interlocked.Read(ref _generation) == expectedLifecycleGeneration &&
+        (!expectedNodeGeneration.HasValue ||
+         Interlocked.Read(ref _nodeConnectionGeneration) == expectedNodeGeneration.Value);
+
+    private async Task<bool> StartNodeConnectionCoreAsync(
+        long nodeGeneration,
+        CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested ||
+            Interlocked.Read(ref _nodeConnectionGeneration) != nodeGeneration)
+        {
+            return false;
+        }
+
         if (_nodeConnector == null || _activeGatewayRecordId == null || _activeIdentityPath == null) return false;
 
         var record = _registry.GetById(_activeGatewayRecordId);
@@ -930,7 +1210,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         // Mark node as enabled in the state machine so UI reflects node state
         // State machine is not thread-safe — acquire semaphore for mutation
-        await _transitionSemaphore.WaitAsync();
+        await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
             _stateMachine.SetNodeEnabled(true);
@@ -938,6 +1218,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         finally
         {
             _transitionSemaphore.Release();
+        }
+
+        if (cancellationToken.IsCancellationRequested ||
+            Interlocked.Read(ref _nodeConnectionGeneration) != nodeGeneration)
+        {
+            return false;
         }
 
         var nodeConnectUrl = record.SshTunnel != null
@@ -950,15 +1236,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             await _nodeConnector.ConnectAsync(nodeConnectUrl, nodeCredential, _activeIdentityPath,
-                useV2Signature: _gatewayNeedsV2Signature);
+                useV2Signature: _gatewayNeedsV2Signature,
+                cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
         }
         catch (Exception ex)
         {
+            if (cancellationToken.IsCancellationRequested ||
+                Interlocked.Read(ref _nodeConnectionGeneration) != nodeGeneration)
+            {
+                return false;
+            }
+
             _logger.Error($"[ConnMgr] Node connect failed: {ex.Message}");
             _diagnostics.Record("node", "Node connect failed", ex.Message);
         }
 
-        return true;
+        return !cancellationToken.IsCancellationRequested &&
+            Interlocked.Read(ref _nodeConnectionGeneration) == nodeGeneration;
     }
 
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status) =>
@@ -967,6 +1265,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _logger,
             nameof(OnNodeStatusChanged),
             ex => _diagnostics.Record("node", "Node status handler failed", ex.Message));
+
+    private void OnNodeDeviceTokenReceived(object? sender, DeviceTokenReceivedEventArgs e)
+    {
+        _diagnostics.Record("credential", $"Node connector device token received for {e.Role}",
+            $"Scopes={string.Join(",", e.Scopes ?? [])}");
+        TryClearBootstrapTokenAfterDurablePairing();
+    }
 
     private async Task OnNodeStatusChangedAsync(ConnectionStatus status)
     {
@@ -1005,9 +1310,23 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Update node state in snapshot
             if (_nodeConnector != null)
             {
-                _stateMachine.SetNodeInfo(_nodeConnector.NodeDeviceId, _nodeConnector.PairingStatus);
+                var current = _stateMachine.Current;
+                if (_nodeConnector.PairingStatus == PairingStatus.Pending &&
+                    !string.IsNullOrWhiteSpace(current.NodePairingRequestId))
+                {
+                    _stateMachine.SetNodeInfo(
+                        _nodeConnector.NodeDeviceId,
+                        _nodeConnector.PairingStatus,
+                        current.NodePairingRequestId,
+                        current.NodePairingApprovalKind);
+                }
+                else
+                {
+                    _stateMachine.SetNodeInfo(_nodeConnector.NodeDeviceId, _nodeConnector.PairingStatus);
+                }
             }
 
+            TryClearBootstrapTokenAfterDurablePairing();
             EmitStateChanged(prev);
         }
         finally
@@ -1016,25 +1335,46 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e) =>
+    private void OnNodePairingStatusChanged(object? sender, PairingStatusEventArgs e)
+    {
+        var lifecycleGeneration = Interlocked.Read(ref _generation);
+        var nodeGeneration = Interlocked.Read(ref _nodeConnectionGeneration);
         AsyncEventHandlerGuard.Run(
-            () => OnNodePairingStatusChangedAsync(e),
+            () => OnNodePairingStatusChangedAsync(e, lifecycleGeneration, nodeGeneration),
             _logger,
             nameof(OnNodePairingStatusChanged),
             ex => _diagnostics.Record("node", "Node pairing handler failed", ex.Message));
+    }
 
-    private async Task OnNodePairingStatusChangedAsync(PairingStatusEventArgs e)
+    private async Task OnNodePairingStatusChangedAsync(
+        PairingStatusEventArgs e,
+        long lifecycleGeneration,
+        long nodeGeneration)
     {
+        if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+            return;
+
         _diagnostics.Record("node", $"Node pairing: {e.Status}");
 
         await _transitionSemaphore.WaitAsync();
         try
         {
+            if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+                return;
+
             var prev = _stateMachine.Current.OverallState;
             switch (e.Status)
             {
                 case PairingStatus.Paired:
                     _stateMachine.TryTransition(ConnectionTrigger.NodePaired);
+                    Interlocked.Exchange(ref _lastAutoApprovedDevicePairRequestId, null);
+                    lock (_devicePairReconnectLock)
+                    {
+                        _devicePairReconnectAttempts.Clear();
+                        _queuedDevicePairReconnectRequestId = null;
+                        _queuedDevicePairReconnectGeneration = 0;
+                        _queuedDevicePairReconnectNodeGeneration = 0;
+                    }
                     break;
                 case PairingStatus.Pending:
                     _stateMachine.TryTransition(ConnectionTrigger.NodePairingRequired);
@@ -1047,9 +1387,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Update snapshot
             if (_nodeConnector != null)
             {
-                _stateMachine.SetNodeInfo(_nodeConnector.NodeDeviceId, _nodeConnector.PairingStatus, e.RequestId);
+                _stateMachine.SetNodeInfo(
+                    _nodeConnector.NodeDeviceId,
+                    _nodeConnector.PairingStatus,
+                    e.RequestId,
+                    e.ApprovalKind);
             }
 
+            TryClearBootstrapTokenAfterDurablePairing();
             EmitStateChanged(prev);
         }
         finally
@@ -1057,71 +1402,278 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
 
-        // Auto-approve node pairing if operator has admin/pairing scope.
-        // _autoApproveInFlight is a CAS guard scoped to JUST the approve RPC —
-        // we release it before the reconnect delay so unrelated approvals
-        // (different requestIds) aren't starved while we wait for the gateway
-        // and node-reconnect handshake to settle (which can take 5–30s on
-        // first connect via WSL cold-start).
-        if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId)
-            && e.RequestId != _lastAutoApprovedRequestId)
+        if (e.Status == PairingStatus.Pending && !string.IsNullOrWhiteSpace(e.RequestId))
         {
-            if (Interlocked.CompareExchange(ref _autoApproveInFlight, e.RequestId, null) != null)
-            {
+            if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
                 return;
-            }
 
-            var approvalGeneration = Interlocked.Read(ref _generation);
-            bool attemptedApprove = false;
-            bool approved = false;
-            try
+            if (e.ApprovalKind == PairingApprovalKind.DevicePair)
             {
-                var operatorClient = _activeLifecycle?.DataClient;
-                if (operatorClient?.IsConnectedToGateway == true)
+                _diagnostics.Record("node", "Node device role-upgrade pending", $"requestId={e.RequestId}");
+                if (e.RequestId != _lastAutoApprovedDevicePairRequestId)
                 {
-                    var scopes = operatorClient.GrantedOperatorScopes;
-                    var canApprove = OperatorScopeHelper.CanApproveDevices(scopes);
-
-                    if (canApprove)
-                    {
-                        _diagnostics.Record("node", $"Auto-approving node pairing (requestId={e.RequestId})");
-                        try
-                        {
-                            attemptedApprove = true;
-                            approved = await operatorClient.NodePairApproveAsync(e.RequestId);
-                            if (!approved)
-                                _diagnostics.Record("node", "Node auto-approval failed");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Warn($"[ConnMgr] Node auto-approve failed: {ex.Message}");
-                            _diagnostics.Record("node", $"Auto-approve error: {ex.Message}");
-                        }
-                    }
+                    await AutoApproveDevicePairingRequestAsync(
+                        e.RequestId,
+                        lifecycleGeneration,
+                        nodeGeneration);
+                }
+                else
+                {
+                    await ReconnectAfterApprovedDevicePairAsync(
+                        e.RequestId,
+                        lifecycleGeneration,
+                        nodeGeneration);
                 }
             }
-            finally
+            else
             {
-                // Only dedupe after an actual approve attempt. If the operator
-                // client was disconnected or lacked scope, do not burn the
-                // requestId; a later Pending event can still retry once the
-                // operator client is ready or has approval scope.
-                if (attemptedApprove && Interlocked.Read(ref _generation) == approvalGeneration)
-                    _lastAutoApprovedRequestId = e.RequestId;
-                Interlocked.Exchange(ref _autoApproveInFlight, null);
-            }
-
-            // Post-approve reconnect happens OUTSIDE the CAS guard so it
-            // doesn't block unrelated approvals.
-            if (approved)
-            {
-                _diagnostics.Record("node", "Node pairing auto-approved — reconnecting node");
-                await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
-                if (Interlocked.Read(ref _generation) == approvalGeneration)
-                    await StartNodeConnectionAsync();
+                _diagnostics.Record(
+                    "node",
+                    "Node command-trust request is awaiting explicit operator approval",
+                    $"requestId={e.RequestId}");
             }
         }
     }
+
+    private Task HandleNodePairListUpdatedAsync(PairingListInfo list, long gen)
+    {
+        var nodeDeviceId = _nodeConnector?.NodeDeviceId;
+        if (string.IsNullOrWhiteSpace(nodeDeviceId))
+            return Task.CompletedTask;
+
+        var request = list.Pending.FirstOrDefault(p =>
+            !string.IsNullOrWhiteSpace(p.RequestId) &&
+            string.Equals(p.NodeId, nodeDeviceId, StringComparison.OrdinalIgnoreCase));
+        if (request == null || Interlocked.Read(ref _generation) != gen)
+            return Task.CompletedTask;
+
+        _diagnostics.Record(
+            "node",
+            "Local node command-trust request is awaiting explicit operator approval",
+            $"requestId={request.RequestId}");
+
+        var operatorClient = _activeLifecycle?.DataClient;
+        if (operatorClient?.IsConnectedToGateway == true)
+        {
+            ObserveBackgroundFault(
+                operatorClient.RequestNodesAsync(),
+                "[ConnMgr] Node list refresh failed after local node trust request");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // Auto-approve only explicitly typed device-pair role upgrades. Gateway-owned
+    // node command trust always remains pending for explicit operator approval.
+    // _devicePairAutoApproveInFlight is a CAS guard scoped to JUST the approve RPC —
+    // we release it before the reconnect delay so unrelated approvals
+    // (different requestIds) aren't starved while we wait for the gateway
+    // and node-reconnect handshake to settle (which can take 5–30s on
+    // first connect via WSL cold-start).
+    private async Task AutoApproveDevicePairingRequestAsync(
+        string requestId,
+        long approvalGeneration,
+        long approvalNodeGeneration)
+    {
+        if (requestId == _lastAutoApprovedDevicePairRequestId ||
+            !IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _devicePairAutoApproveInFlight, requestId, null) != null)
+            return;
+
+        bool attemptedApprove = false;
+        bool approved = false;
+        try
+        {
+            if (!IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+                return;
+
+            var operatorClient = _activeLifecycle?.DataClient;
+            if (operatorClient?.IsConnectedToGateway == true)
+            {
+                var scopes = operatorClient.GrantedOperatorScopes;
+                var canApprove = OperatorScopeHelper.HasAdminScope(scopes);
+
+                if (canApprove)
+                {
+                    _diagnostics.Record("node", $"Auto-approving device role-upgrade pairing (requestId={requestId})");
+                    try
+                    {
+                        attemptedApprove = true;
+                        approved = await operatorClient.DevicePairApproveAsync(requestId);
+                        if (!approved)
+                            _diagnostics.Record("node", "Device role-upgrade auto-approval failed", BuildDeviceAutoApprovalFailureDetail(scopes));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warn($"[ConnMgr] Device role-upgrade auto-approve failed: {ex.Message}");
+                        _diagnostics.Record("node", $"Device role-upgrade auto-approve error: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    _diagnostics.Record("node", "Device role-upgrade auto-approval skipped", BuildDeviceAutoApprovalFailureDetail(scopes));
+                }
+            }
+        }
+        finally
+        {
+            // Only dedupe successful approvals. If the gateway rejects,
+            // times out, or throws while the same request is still pending,
+            // a later Pending event must be able to retry the same requestId.
+            if (attemptedApprove &&
+                approved &&
+                IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+            {
+                _lastAutoApprovedDevicePairRequestId = requestId;
+            }
+            Interlocked.Exchange(ref _devicePairAutoApproveInFlight, null);
+        }
+
+        // Post-approve reconnect happens OUTSIDE the CAS guard so it
+        // doesn't block unrelated approvals.
+        if (approved && IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+        {
+            await ReconnectAfterApprovedDevicePairAsync(
+                requestId,
+                approvalGeneration,
+                approvalNodeGeneration);
+        }
+    }
+
+    private async Task ReconnectAfterApprovedDevicePairAsync(
+        string requestId,
+        long approvalGeneration,
+        long approvalNodeGeneration)
+    {
+        if (!IsCurrentNodeAttempt(approvalGeneration, approvalNodeGeneration))
+            return;
+
+        var ownsReconnect = false;
+        var queuedRetry = false;
+        lock (_devicePairReconnectLock)
+        {
+            _devicePairReconnectAttempts.TryGetValue(requestId, out var attemptCount);
+            if (attemptCount >= 2)
+                return;
+
+            if (_devicePairReconnectInFlight)
+            {
+                if (_queuedDevicePairReconnectRequestId == null)
+                {
+                    _devicePairReconnectAttempts[requestId] = attemptCount + 1;
+                    _queuedDevicePairReconnectRequestId = requestId;
+                    _queuedDevicePairReconnectGeneration = approvalGeneration;
+                    _queuedDevicePairReconnectNodeGeneration = approvalNodeGeneration;
+                    queuedRetry = true;
+                }
+            }
+            else
+            {
+                _devicePairReconnectAttempts[requestId] = attemptCount + 1;
+                _devicePairReconnectInFlight = true;
+                ownsReconnect = true;
+            }
+        }
+
+        if (!ownsReconnect)
+        {
+            if (queuedRetry)
+                _diagnostics.Record("node", "Device role-upgrade reconnect retry queued");
+            return;
+        }
+
+        var guardOwned = true;
+        try
+        {
+            var startedNodeGeneration = await RunDevicePairReconnectAttemptAsync(
+                approvalGeneration,
+                approvalNodeGeneration);
+            AdvanceQueuedDevicePairReconnectNodeGeneration(
+                approvalNodeGeneration,
+                startedNodeGeneration);
+
+            while (true)
+            {
+                string? retryRequestId;
+                long retryGeneration;
+                long retryNodeGeneration;
+                lock (_devicePairReconnectLock)
+                {
+                    retryRequestId = _queuedDevicePairReconnectRequestId;
+                    retryGeneration = _queuedDevicePairReconnectGeneration;
+                    retryNodeGeneration = _queuedDevicePairReconnectNodeGeneration;
+                    _queuedDevicePairReconnectRequestId = null;
+                    _queuedDevicePairReconnectGeneration = 0;
+                    _queuedDevicePairReconnectNodeGeneration = 0;
+                    if (retryRequestId == null)
+                    {
+                        _devicePairReconnectInFlight = false;
+                        guardOwned = false;
+                        return;
+                    }
+                }
+
+                _diagnostics.Record(
+                    "node",
+                    "Retrying device role-upgrade reconnect after repeated pending signal",
+                    $"requestId={retryRequestId}");
+                startedNodeGeneration = await RunDevicePairReconnectAttemptAsync(
+                    retryGeneration,
+                    retryNodeGeneration);
+                AdvanceQueuedDevicePairReconnectNodeGeneration(
+                    retryNodeGeneration,
+                    startedNodeGeneration);
+            }
+        }
+        finally
+        {
+            if (guardOwned)
+            {
+                lock (_devicePairReconnectLock)
+                {
+                    _devicePairReconnectInFlight = false;
+                    _queuedDevicePairReconnectRequestId = null;
+                    _queuedDevicePairReconnectGeneration = 0;
+                    _queuedDevicePairReconnectNodeGeneration = 0;
+                }
+            }
+        }
+    }
+
+    private void AdvanceQueuedDevicePairReconnectNodeGeneration(
+        long previousNodeGeneration,
+        long? startedNodeGeneration)
+    {
+        if (!startedNodeGeneration.HasValue)
+            return;
+
+        lock (_devicePairReconnectLock)
+        {
+            if (_queuedDevicePairReconnectRequestId != null &&
+                _queuedDevicePairReconnectNodeGeneration == previousNodeGeneration)
+            {
+                _queuedDevicePairReconnectNodeGeneration = startedNodeGeneration.Value;
+            }
+        }
+    }
+
+    private async Task<long?> RunDevicePairReconnectAttemptAsync(
+        long approvalGeneration,
+        long approvalNodeGeneration)
+    {
+        _diagnostics.Record("node", "Device role-upgrade pairing approved — reconnecting node");
+        await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
+        return await StartNodeConnectionAsync(approvalGeneration, approvalNodeGeneration);
+    }
+
+    private static string BuildDeviceAutoApprovalFailureDetail(IReadOnlyList<string> scopes) =>
+        OperatorScopeHelper.HasAdminScope(scopes)
+            ? "Gateway rejected device.pair.approve; check requestId and gateway device-pair state."
+            : "Operator token lacks operator.admin for device.pair.approve role-upgrade approval.";
 
     // ─── Helpers ───
 
@@ -1136,19 +1688,41 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private async Task DisposeActiveClientAsync()
     {
-        // Disconnect node first, but do not block the caller thread; shutdown
-        // and reconnect paths await this with a bounded timeout.
-        if (_nodeConnector != null)
+        await _nodeStartSemaphore.WaitAsync();
+        try
         {
-            try { await WaitWithTimeoutAsync(_nodeConnector.DisconnectAsync(), TimeSpan.FromSeconds(2), "Node disconnect"); }
-            catch (Exception ex) { _logger.Warn($"[ConnMgr] Node disconnect error: {ex.Message}"); }
+            CancelNodeConnectionOperation();
+
+            // Retire the connector before advancing the manager generation so
+            // events from the old client cannot be tagged as belonging to the
+            // replacement attempt.
+            if (_nodeConnector != null)
+            {
+                try { await WaitWithTimeoutAsync(_nodeConnector.DisconnectAsync(), TimeSpan.FromSeconds(2), "Node disconnect"); }
+                catch (Exception ex) { _logger.Warn($"[ConnMgr] Node disconnect error: {ex.Message}"); }
+            }
+
+            lock (_nodeOperationLock)
+                Interlocked.Increment(ref _nodeConnectionGeneration);
+        }
+        finally
+        {
+            _nodeStartSemaphore.Release();
         }
 
         var old = _activeLifecycle;
         _activeLifecycle = null;
         _activeGatewayRecordId = null;
-        _lastAutoApprovedRequestId = null;
-        Interlocked.Exchange(ref _autoApproveInFlight, null);
+        _activeSshTunnel = null;
+        _lastAutoApprovedDevicePairRequestId = null;
+        Interlocked.Exchange(ref _devicePairAutoApproveInFlight, null);
+        lock (_devicePairReconnectLock)
+        {
+            _devicePairReconnectAttempts.Clear();
+            _queuedDevicePairReconnectRequestId = null;
+            _queuedDevicePairReconnectGeneration = 0;
+            _queuedDevicePairReconnectNodeGeneration = 0;
+        }
         if (old != null)
         {
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs
@@ -1160,16 +1734,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private async Task WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
+    private void CancelNodeConnectionOperation()
+    {
+        lock (_nodeOperationLock)
+        {
+            var nodeOperationCts = _nodeOperationCts;
+            _nodeOperationCts = null;
+            nodeOperationCts?.Cancel();
+        }
+    }
+
+    private async Task<bool> WaitWithTimeoutAsync(Task task, TimeSpan timeout, string operation)
     {
         var completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
         if (completed != task)
         {
             _logger.Warn($"[ConnMgr] {operation} timed out after {timeout.TotalSeconds:F1}s");
-            return;
+            return false;
         }
 
         await task.ConfigureAwait(false);
+        return true;
     }
 
     private void ThrowIfDisposed()
@@ -1208,6 +1793,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _nodeConnector.StatusChanged -= OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged -= OnNodePairingStatusChanged;
+            _nodeConnector.DeviceTokenReceived -= OnNodeDeviceTokenReceived;
         }
         // Acquire semaphore briefly to ensure no in-flight reconnect/switch is mid-transition.
         // Use a short timeout — if something is stuck, proceed with disposal anyway,
@@ -1241,8 +1827,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (semaphoreEntered)
             {
-                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-                try { _transitionSemaphore.Release(); } catch { }
+                try { _transitionSemaphore.Release(); }
+                catch (Exception ex) { _logger.Debug($"[ConnMgr] Dispose: transition semaphore release failed: {ex.Message}"); }
                 _transitionSemaphore.Dispose();
             }
 
@@ -1311,6 +1897,8 @@ internal sealed class DiagnosticTeeLogger : IOpenClawLogger
     }
 
     public void Debug(string message) => _inner.Debug(message);
+
+    public void Trace(string message) => _inner.Trace(message);
 
     public void Warn(string message)
     {

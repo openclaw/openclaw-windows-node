@@ -179,8 +179,41 @@ public sealed class GatewayRegistry
     public GatewayRecord? FindByUrl(string url)
     {
         lock (_lock) return _records.Find(r =>
-            string.Equals(r.Url, url, StringComparison.OrdinalIgnoreCase));
+            GatewayUrlsEquivalent(r.Url, url));
     }
+
+    private static bool GatewayUrlsEquivalent(string? left, string? right)
+    {
+        if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(left, out var normalizedLeft) ||
+            !GatewayUrlHelper.TryNormalizeWebSocketUrl(right, out var normalizedRight))
+        {
+            return false;
+        }
+
+        if (string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!Uri.TryCreate(normalizedLeft, UriKind.Absolute, out var leftUri) ||
+            !Uri.TryCreate(normalizedRight, UriKind.Absolute, out var rightUri))
+        {
+            return false;
+        }
+
+        return string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            leftUri.Port == rightUri.Port &&
+            IsLoopbackHost(leftUri.Host) &&
+            IsLoopbackHost(rightUri.Host) &&
+            string.Equals(leftUri.PathAndQuery, rightUri.PathAndQuery, StringComparison.Ordinal);
+    }
+
+    private static bool IsLoopbackHost(string host) =>
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("::1", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("[::1]", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Migrate credentials from legacy SettingsManager fields to GatewayRecord.

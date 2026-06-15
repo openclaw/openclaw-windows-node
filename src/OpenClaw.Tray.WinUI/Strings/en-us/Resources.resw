@@ -1501,7 +1501,7 @@ On your gateway host (Mac/Linux), run:
     <value>OpenClaw Hub</value>
   </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+    <value>.NET / WinUI / Windows App SDK</value>
   </data>
   <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
     <value>Gateway Info</value>
@@ -1510,7 +1510,7 @@ On your gateway host (Mac/Linux), run:
     <value>Version:</value>
   </data>
   <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>Model:</value>
+    <value>Protocol:</value>
   </data>
   <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
     <value>Auth mode:</value>
@@ -1537,7 +1537,7 @@ On your gateway host (Mac/Linux), run:
     <value>Links</value>
   </data>
   <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → openclaw.ai/docs</value>
+    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
   </data>
   <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
     <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
@@ -2346,6 +2346,9 @@ On your gateway host (Mac/Linux), run:
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissions</value>
   </data>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Diagnostics</value>
   </data>
@@ -3030,6 +3033,54 @@ On your gateway host (Mac/Linux), run:
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>Expired</value>
   </data>
+  <data name="AppNotification_LocalCommandDenied_Title" xml:space="preserve">
+    <value>Windows companion blocked a local command</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_CommandSubjectFormat" xml:space="preserve">
+    <value>Command "{0}"</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_UnknownCommandSubject" xml:space="preserve">
+    <value>A local command</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageFormat" xml:space="preserve">
+    <value>{0} was denied by local exec policy: {1}.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageNoReasonFormat" xml:space="preserve">
+    <value>{0} was denied by local exec policy.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
+    <value>Matched pattern: {0}.</value>
+  </data>
+  <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
+    <value>{0}x</value>
+  </data>
+  <data name="AppNotification_ShowMore" xml:space="preserve">
+    <value>Show more</value>
+  </data>
+  <data name="NotificationsPage_Title.Text" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
+    <value>Review and clear active OpenClaw notifications.</value>
+  </data>
+  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>No notifications</value>
+  </data>
+  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
+    <value>New app notifications will appear here until you dismiss or clear them.</value>
+  </data>
+  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
+    <value>Dismiss {0}</value>
+  </data>
+  <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
+    <value>Exec approval</value>
+  </data>
+  <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
+    <value>Node command</value>
+  </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Exec approval needed</value>
   </data>
@@ -3650,15 +3701,6 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
     <value>Tray chat popup</value>
-  </data>
-  <data name="DiagnosticsPage_Card_ChatExplorations.Header" xml:space="preserve">
-    <value>Open chat explorations</value>
-  </data>
-  <data name="DiagnosticsPage_Card_ChatExplorations.Description" xml:space="preserve">
-    <value>Engineering preview of chat bubble and tool-card rendering.</value>
-  </data>
-  <data name="DiagnosticsPage_OpenChatExplorationsButton.Content" xml:space="preserve">
-    <value>Open</value>
   </data>
   <data name="DiagnosticsPage_Card_Reconfigure.Header" xml:space="preserve">
     <value>Reconfigure…</value>
@@ -5593,6 +5635,12 @@ Check your connection settings and try again.</value>
   <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
     <value>Go to Diagnostics</value>
   </data>
+  <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
+    <value>Review active app notifications</value>
+  </data>
+  <data name="Command_GoToNotifications_Title" xml:space="preserve">
+    <value>Go to Notifications</value>
+  </data>
   <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
     <value>About this app</value>
   </data>
@@ -5775,5 +5823,50 @@ Check your connection settings and try again.</value>
   </data>
   <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
     <value>Enabled ({0})</value>
+  </data>
+  <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_NodeApprovalRequired" xml:space="preserve">
+    <value>Node approval required</value>
+  </data>
+  <data name="ConnectionPage_NodeReapprovalRequired" xml:space="preserve">
+    <value>Node reapproval required</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyApprovalRequired" xml:space="preserve">
+    <value>Pending declarations are not effective until this request is approved and the node reconnects.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyReapprovalRequired" xml:space="preserve">
+    <value>Current approved access remains effective. Approve the pending declaration changes, then reconnect.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustApprovalHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to approve the pending declarations. The tray will not approve automatically.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustDiscoveryHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to list pending requests. Then approve a valid request explicitly. This command does not approve anything.</value>
+  </data>
+  <data name="ConnectionPage_NodeReconnectAfterApproval" xml:space="preserve">
+    <value>Reconnect after approval</value>
+  </data>
+  <data name="ConnectionPage_NodeSurfaceNone" xml:space="preserve">
+    <value>none</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCapabilities" xml:space="preserve">
+    <value>Approved/effective capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCommands" xml:space="preserve">
+    <value>Approved/effective commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectivePermissions" xml:space="preserve">
+    <value>Approved/effective permissions: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCapabilities" xml:space="preserve">
+    <value>Pending declared capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCommands" xml:space="preserve">
+    <value>Pending declared commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
+    <value>Pending declared permissions: {0}</value>
   </data>
 </root>

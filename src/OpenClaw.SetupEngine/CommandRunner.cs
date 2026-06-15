@@ -176,8 +176,12 @@ public sealed class CommandRunner : ICommandRunner
 
     private static void TryKill(Process process)
     {
-        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-        try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+        try { process.Kill(entireProcessTree: true); }
+        catch (Exception ex)
+        {
+            // Best effort — process may already be exiting; no logger in this static helper.
+            Trace.WriteLine($"CommandRunner.TryKill: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private sealed class BoundedOutputBuffer(int maxChars)

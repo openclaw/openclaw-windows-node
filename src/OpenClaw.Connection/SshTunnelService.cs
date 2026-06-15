@@ -106,8 +106,8 @@ public sealed class SshTunnelService : ISshTunnelManager
         }
         finally
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { _process.Dispose(); } catch { }
+            try { _process.Dispose(); }
+            catch (Exception disposeEx) { _logger.Debug($"SshTunnelService.Stop: process dispose failed: {disposeEx.Message}"); }
             _process = null;
             _lastSpec = null;
             CurrentBrowserProxyLocalPort = 0;
@@ -173,8 +173,8 @@ public sealed class SshTunnelService : ISshTunnelManager
                 LastError = $"SSH tunnel exited unexpectedly with code {exitCode}.";
                 StartedAtUtc = null;
                 Status = TunnelStatus.Failed;
-                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-                try { process.Dispose(); } catch { }
+                try { process.Dispose(); }
+                catch (Exception disposeEx) { _logger.Debug($"SshTunnelService: process dispose after unexpected exit failed: {disposeEx.Message}"); }
                 _process = null;
                 _lastSpec = null;
                 CurrentBrowserProxyLocalPort = 0;

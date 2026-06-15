@@ -53,7 +53,8 @@ internal static class AtomicFile
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to delete temporary file '{tempPath}': {ex.Message}");
+            // Best-effort temp cleanup; no logger available in this static helper.
+            System.Diagnostics.Trace.WriteLine($"AtomicFile.TryDeleteTemp('{tempPath}'): {ex.GetType().Name}: {ex.Message}");
         }
     }
 }

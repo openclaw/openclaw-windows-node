@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.Win32;
+using OpenClawTray.Services;
 using Windows.UI;
 
 namespace OpenClawTray.Helpers;
@@ -17,8 +18,9 @@ public static class ThemeHelper
             var value = key?.GetValue("AppsUseLightTheme");
             return value is int i && i == 0;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Debug($"ThemeHelper: Failed to read Windows dark-mode setting: {ex.Message}");
             return false;
         }
     }
@@ -46,8 +48,10 @@ public static class ThemeHelper
                 return Color.FromArgb(255, r, g, b);
             }
         }
-        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Debug($"ThemeHelper: Failed to read Windows accent color: {ex.Message}");
+        }
         return Color.FromArgb(255, 0, 120, 212); // #0078D4 — WinUI default accent
     }
 

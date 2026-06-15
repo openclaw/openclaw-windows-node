@@ -18,6 +18,7 @@ public interface INodeConnector : IDisposable
     // ─── Events ───
     event EventHandler<ConnectionStatus> StatusChanged;
     event EventHandler<PairingStatusEventArgs> PairingStatusChanged;
+    event EventHandler<DeviceTokenReceivedEventArgs> DeviceTokenReceived;
 
     /// <summary>
     /// Raised right after a new <see cref="WindowsNodeClient"/> is constructed
@@ -34,6 +35,18 @@ public interface INodeConnector : IDisposable
 
     // ─── Lifecycle ───
     Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false);
+
+    /// <summary>
+    /// Starts a cancellable node connection attempt. Implementations must stop the
+    /// superseded attempt and must not forward events from its retired client.
+    /// </summary>
+    Task ConnectAsync(
+        string gatewayUrl,
+        GatewayCredential credential,
+        string identityPath,
+        bool useV2Signature,
+        CancellationToken cancellationToken);
+
     Task DisconnectAsync();
 }
 

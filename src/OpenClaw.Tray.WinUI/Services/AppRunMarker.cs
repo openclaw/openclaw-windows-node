@@ -20,10 +20,7 @@ internal sealed class AppRunMarker
                 File.Delete(_path);
             }
         }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Run marker check failed: {ex.Message}");
-        }
+        catch (Exception ex) { Logger.Debug($"AppRunMarker.Check failed: {ex.Message}"); }
     }
 
     public void MarkStarted()
@@ -35,10 +32,7 @@ internal sealed class AppRunMarker
                 Directory.CreateDirectory(dir);
             File.WriteAllText(_path, DateTime.Now.ToString("O"));
         }
-        catch (Exception ex)
-        {
-            Logger.Debug($"Run marker could not be written: {ex.Message}");
-        }
+        catch (Exception ex) { Logger.Debug($"AppRunMarker.MarkStarted failed: {ex.Message}"); }
     }
 
     public void MarkEnded()
@@ -48,9 +42,6 @@ internal sealed class AppRunMarker
             if (File.Exists(_path))
                 File.Delete(_path);
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine($"[OpenClaw RunMarker] Could not clear run marker: {ex.Message}");
-        }
+        catch (Exception ex) { Logger.Debug($"AppRunMarker.MarkEnded failed: {ex.Message}"); }
     }
 }

@@ -28,6 +28,8 @@ public class ExecApprovalsStoreTests : IDisposable
 
     private ExecApprovalsStore Store() => new(_dir, _log);
 
+    private ExecApprovalsStore Store(string stateDir) => new(_dir, _log, stateDir);
+
     private string FilePath => Path.Combine(_dir, "exec-approvals.json");
 
     private void WriteFile(string json) => File.WriteAllText(FilePath, json);
@@ -42,7 +44,7 @@ public class ExecApprovalsStoreTests : IDisposable
         Assert.Equal("main", resolved.AgentId);
         Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
         Assert.Equal(ExecAsk.OnMiss, resolved.Defaults.Ask);
-        Assert.Equal(ExecAsk.Deny, resolved.Defaults.AskFallback);
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.AskFallback);
         Assert.False(resolved.Defaults.AutoAllowSkills);
         Assert.Empty(resolved.Allowlist);
         Assert.Null(resolved.SocketToken);
@@ -130,7 +132,7 @@ public class ExecApprovalsStoreTests : IDisposable
 
         Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.Security);
         Assert.Equal(ExecAsk.OnMiss, resolved.Defaults.Ask);
-        Assert.Equal(ExecAsk.Deny, resolved.Defaults.AskFallback);
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.AskFallback);
     }
 
     [Fact]
@@ -213,7 +215,7 @@ public class ExecApprovalsStoreTests : IDisposable
 
         Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
         Assert.Equal(ExecAsk.OnMiss, resolved.Defaults.Ask);
-        Assert.Equal(ExecAsk.Deny, resolved.Defaults.AskFallback);
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.AskFallback);
         Assert.False(resolved.Defaults.AutoAllowSkills);
     }
 
@@ -492,6 +494,105 @@ public class ExecApprovalsStoreTests : IDisposable
         Assert.Empty(temps);
     }
 
+    [Fact]
+    public void ResolveReadOnly_CustomStateDir_FailsClosedUntilMigration()
+    {
+        WriteFile(MinimalFileWithAgent("main", "allowlist"));
+        var stateDir = Path.Combine(_dir, "custom-state");
+
+        var resolved = Store(stateDir).ResolveReadOnly("main");
+
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Equal(ExecAsk.Always, resolved.Defaults.Ask);
+        Assert.False(File.Exists(Path.Combine(stateDir, "exec-approvals.json")));
+        Assert.True(File.Exists(FilePath));
+        Assert.False(File.Exists($"{FilePath}.migrated"));
+        Assert.DoesNotContain(_log.Infos, message => message.Contains("Migrated"));
+    }
+
+    [Fact]
+    public void MigrateLegacyFileIfNeeded_CustomStateDir_MigratesLegacyFile()
+    {
+        WriteFile("""
+        {
+          "version": 1,
+          "socket": { "path": "legacy.sock", "token": "socket-token" },
+          "defaults": { "askFallback": "off" },
+          "agents": {
+            "main": {
+              "security": "allowlist",
+              "allowlist": [{ "pattern": "tool.exe", "argPattern": "^safe$" }]
+            }
+          }
+        }
+        """);
+        var stateDir = Path.Combine(_dir, "custom-state");
+
+        var store = Store(stateDir);
+        store.MigrateLegacyFileIfNeeded();
+        var resolved = store.ResolveReadOnly("main");
+
+        Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.Security);
+        Assert.Equal(ExecSecurity.Full, resolved.Defaults.AskFallback);
+        Assert.Equal("socket-token", resolved.SocketToken);
+        Assert.True(File.Exists(Path.Combine(stateDir, "exec-approvals.json")));
+        Assert.Contains("\"argPattern\": \"^safe$\"", File.ReadAllText(Path.Combine(stateDir, "exec-approvals.json")));
+        Assert.False(File.Exists(FilePath));
+        Assert.True(File.Exists($"{FilePath}.migrated"));
+        Assert.Contains(_log.Infos, message => message.Contains("Migrated"));
+    }
+
+    [Fact]
+    public void ResolveReadOnly_CustomStateDir_TargetWinsOverLegacyFile()
+    {
+        WriteFile(MinimalFileWithAgent("main", "deny"));
+        var stateDir = Path.Combine(_dir, "custom-state");
+        Directory.CreateDirectory(stateDir);
+        File.WriteAllText(
+            Path.Combine(stateDir, "exec-approvals.json"),
+            MinimalFileWithAgent("main", "full"));
+
+        var resolved = Store(stateDir).ResolveReadOnly("main");
+
+        Assert.Equal(ExecSecurity.Full, resolved.Defaults.Security);
+        Assert.True(File.Exists(FilePath));
+        Assert.False(File.Exists($"{FilePath}.migrated"));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_CustomStateDir_InvalidLegacyFile_FailsClosedWithoutReplacement()
+    {
+        WriteFile("{ bad json }");
+        var stateDir = Path.Combine(_dir, "custom-state");
+
+        var resolved = await Store(stateDir).ResolveAsync("main");
+
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Equal(ExecAsk.Always, resolved.Defaults.Ask);
+        Assert.False(File.Exists(Path.Combine(stateDir, "exec-approvals.json")));
+        Assert.Equal("{ bad json }", File.ReadAllText(FilePath));
+        Assert.Contains(_log.Warnings, message => message.Contains("could not be migrated"));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_HomeRelativeStateDir_UsesOpenClawHome()
+    {
+        WriteFile(MinimalFileWithAgent("main", "full"));
+        var openClawHome = Path.Combine(_dir, "effective-home");
+        var stateDirOverride = $"~{Path.DirectorySeparatorChar}custom-state";
+        var store = new ExecApprovalsStore(
+            _dir,
+            _log,
+            stateDirOverride,
+            openClawHomeOverride: openClawHome,
+            osHomeOverride: Path.Combine(_dir, "os-home"));
+
+        var resolved = await store.ResolveAsync("main");
+
+        Assert.Equal(ExecSecurity.Full, resolved.Defaults.Security);
+        Assert.True(File.Exists(Path.Combine(openClawHome, "custom-state", "exec-approvals.json")));
+    }
+
     // ── AutoAllowSkills ───────────────────────────────────────────────────────
 
     [Fact]
@@ -520,7 +621,7 @@ public class ExecApprovalsStoreTests : IDisposable
             {
                 Security = ExecSecurity.Allowlist,
                 Ask = ExecAsk.OnMiss,
-                AskFallback = ExecAsk.Off,
+                AskFallback = ExecSecurity.Full,
                 AutoAllowSkills = false,
             },
             Agents = [],
@@ -530,7 +631,7 @@ public class ExecApprovalsStoreTests : IDisposable
 
         Assert.Contains("\"allowlist\"", json);
         Assert.Contains("\"on-miss\"", json);
-        Assert.Contains("\"off\"", json);
+        Assert.Contains("\"full\"", json);
     }
 
     [Fact]
@@ -573,7 +674,7 @@ public class ExecApprovalsStoreTests : IDisposable
         WriteFile("""
         {
           "version": 1,
-          "defaults": { "security": "full", "ask": "always", "askFallback": "on-miss", "autoAllowSkills": true },
+          "defaults": { "security": "full", "ask": "always", "askFallback": "allowlist", "autoAllowSkills": true },
           "agents": {}
         }
         """);
@@ -582,7 +683,7 @@ public class ExecApprovalsStoreTests : IDisposable
 
         Assert.Equal(ExecSecurity.Full, resolved.Defaults.Security);
         Assert.Equal(ExecAsk.Always, resolved.Defaults.Ask);
-        Assert.Equal(ExecAsk.OnMiss, resolved.Defaults.AskFallback);
+        Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.AskFallback);
         Assert.True(resolved.Defaults.AutoAllowSkills);
     }
 
@@ -626,14 +727,14 @@ public class ExecApprovalsStoreTests : IDisposable
         WriteFile("""
         {
           "version": 1,
-          "agents": { "*": { "ask": "always", "askFallback": "on-miss", "autoAllowSkills": true } }
+          "agents": { "*": { "ask": "always", "askFallback": "allowlist", "autoAllowSkills": true } }
         }
         """);
 
         var resolved = Store().ResolveReadOnly("any-agent");
 
         Assert.Equal(ExecAsk.Always, resolved.Defaults.Ask);
-        Assert.Equal(ExecAsk.OnMiss, resolved.Defaults.AskFallback);
+        Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.AskFallback);
         Assert.True(resolved.Defaults.AutoAllowSkills);
     }
 
@@ -707,9 +808,22 @@ public class ExecApprovalsStoreTests : IDisposable
     [Fact]
     public void JsonOptions_ExecAskDeny_SerializesAsDeny()
     {
-        var defaults = new ExecApprovalsDefaults { AskFallback = ExecAsk.Deny };
+        var defaults = new ExecApprovalsDefaults { AskFallback = ExecSecurity.Deny };
         var json = JsonSerializer.Serialize(defaults, ExecApprovalsStore.JsonOptions);
         Assert.Contains("\"deny\"", json);
+    }
+
+    [Theory]
+    [InlineData("off", ExecSecurity.Full)]
+    [InlineData("on-miss", ExecSecurity.Allowlist)]
+    [InlineData("always", ExecSecurity.Deny)]
+    public void ResolveReadOnly_LegacyAskFallback_MapsToSecurity(string legacyValue, ExecSecurity expected)
+    {
+        WriteFile($"{{\"version\":1,\"defaults\":{{\"askFallback\":\"{legacyValue}\"}},\"agents\":{{}}}}");
+
+        var resolved = Store().ResolveReadOnly("main");
+
+        Assert.Equal(expected, resolved.Defaults.AskFallback);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

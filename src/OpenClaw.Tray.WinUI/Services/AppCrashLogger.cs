@@ -1,3 +1,5 @@
+using OpenClaw.Shared;
+
 namespace OpenClawTray.Services;
 
 /// <summary>
@@ -19,11 +21,16 @@ internal sealed class AppCrashLogger
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            var message = $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n";
+            var message = TokenSanitizer.SanitizeLogMessage($"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}\n{ex}\n");
             File.AppendAllText(_path, message);
         }
-        // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
-        catch { /* Can't log the crash logger crash */ }
+        catch (Exception fileEx)
+        {
+            // Crash logger itself crashed (disk full, ACL, etc.). Try a Trace
+            // breadcrumb so it's at least visible in attached debuggers.
+            try { System.Diagnostics.Trace.WriteLine($"AppCrashLogger.Log: failed to write crash log: {fileEx.GetType().Name}: {fileEx.Message}"); }
+            catch (Exception) { /* Trace itself failed — nothing left to call. */ }
+        }
 
         try
         {
@@ -36,7 +43,11 @@ internal sealed class AppCrashLogger
                 Logger.Error($"CRASH {source}");
             }
         }
-        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-        catch { /* Ignore logging failures */ }
+        catch (Exception logEx)
+        {
+            // Logger.Error itself crashed (e.g., writer torn down mid-shutdown).
+            try { System.Diagnostics.Trace.WriteLine($"AppCrashLogger.Log: failed to log crash via Logger: {logEx.GetType().Name}: {logEx.Message}"); }
+            catch (Exception) { /* Trace itself failed — nothing left to call. */ }
+        }
     }
 }

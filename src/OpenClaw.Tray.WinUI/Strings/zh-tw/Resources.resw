@@ -1453,7 +1453,7 @@
     <value>OpenClaw Hub</value>
   </data>
   <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET 10 / WinUI 3 / WinAppSDK 1.8</value>
+    <value>.NET / WinUI / Windows App SDK</value>
   </data>
   <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
     <value>閘道資訊</value>
@@ -1462,7 +1462,7 @@
     <value>版本：</value>
   </data>
   <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>模型：</value>
+    <value>通訊協定：</value>
   </data>
   <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
     <value>驗證模式：</value>
@@ -1489,7 +1489,7 @@
     <value>連結</value>
   </data>
   <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → openclaw.ai/docs</value>
+    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
   </data>
   <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
     <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
@@ -2301,6 +2301,9 @@
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>偵錯</value>
   </data>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>通知</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
     <value>資訊</value>
   </data>
@@ -2982,6 +2985,54 @@
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>已過期</value>
   </data>
+  <data name="AppNotification_LocalCommandDenied_Title" xml:space="preserve">
+    <value>Windows 伴侶已阻止本機命令</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_CommandSubjectFormat" xml:space="preserve">
+    <value>命令「{0}」</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_UnknownCommandSubject" xml:space="preserve">
+    <value>本機命令</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageFormat" xml:space="preserve">
+    <value>{0} 已被本機執行策略拒絕：{1}。</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageNoReasonFormat" xml:space="preserve">
+    <value>{0} 已被本機執行策略拒絕。</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
+    <value>比對模式：{0}。</value>
+  </data>
+  <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
+    <value>{0} 次</value>
+  </data>
+  <data name="AppNotification_ShowMore" xml:space="preserve">
+    <value>顯示更多</value>
+  </data>
+  <data name="NotificationsPage_Title.Text" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
+    <value>檢閱並清除作用中的 OpenClaw 通知。</value>
+  </data>
+  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>沒有通知</value>
+  </data>
+  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
+    <value>新的應用程式通知會顯示在這裡，直到您關閉或清除它們。</value>
+  </data>
+  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
+    <value>關閉 {0}</value>
+  </data>
+  <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
+    <value>執行核准</value>
+  </data>
+  <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
+    <value>節點命令</value>
+  </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>需要執行核准</value>
   </data>
@@ -3602,15 +3653,6 @@
   </data>
   <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
     <value>Tray chat popup</value>
-  </data>
-  <data name="DiagnosticsPage_Card_ChatExplorations.Header" xml:space="preserve">
-    <value>Open chat explorations</value>
-  </data>
-  <data name="DiagnosticsPage_Card_ChatExplorations.Description" xml:space="preserve">
-    <value>Engineering preview of chat bubble and tool-card rendering.</value>
-  </data>
-  <data name="DiagnosticsPage_OpenChatExplorationsButton.Content" xml:space="preserve">
-    <value>Open</value>
   </data>
   <data name="DiagnosticsPage_Card_Reconfigure.Header" xml:space="preserve">
     <value>Reconfigure…</value>
@@ -5552,6 +5594,12 @@
   <data name="Command_GoToInfo_Title" xml:space="preserve">
     <value>Go to Info</value>
   </data>
+  <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
+    <value>檢閱作用中的應用程式通知</value>
+  </data>
+  <data name="Command_GoToNotifications_Title" xml:space="preserve">
+    <value>前往通知</value>
+  </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
   </data>
@@ -5728,5 +5776,50 @@
   </data>
   <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
     <value>已啟用 ({0})</value>
+  </data>
+  <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_NodeApprovalRequired" xml:space="preserve">
+    <value>Node approval required</value>
+  </data>
+  <data name="ConnectionPage_NodeReapprovalRequired" xml:space="preserve">
+    <value>Node reapproval required</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyApprovalRequired" xml:space="preserve">
+    <value>Pending declarations are not effective until this request is approved and the node reconnects.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyReapprovalRequired" xml:space="preserve">
+    <value>Current approved access remains effective. Approve the pending declaration changes, then reconnect.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustApprovalHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to approve the pending declarations. The tray will not approve automatically.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustDiscoveryHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to list pending requests. Then approve a valid request explicitly. This command does not approve anything.</value>
+  </data>
+  <data name="ConnectionPage_NodeReconnectAfterApproval" xml:space="preserve">
+    <value>Reconnect after approval</value>
+  </data>
+  <data name="ConnectionPage_NodeSurfaceNone" xml:space="preserve">
+    <value>none</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCapabilities" xml:space="preserve">
+    <value>Approved/effective capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCommands" xml:space="preserve">
+    <value>Approved/effective commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectivePermissions" xml:space="preserve">
+    <value>Approved/effective permissions: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCapabilities" xml:space="preserve">
+    <value>Pending declared capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCommands" xml:space="preserve">
+    <value>Pending declared commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
+    <value>Pending declared permissions: {0}</value>
   </data>
 </root>

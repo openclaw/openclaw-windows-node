@@ -233,17 +233,10 @@ public sealed partial class UsagePage : Page
 
     private bool ShouldApplyUsageCost(GatewayCostUsageInfo cost)
     {
-        if (cost.Days <= 0)
-            return true;
-
-        // The gateway can compute the requested range inclusively (e.g. 8
-        // for a 7-day request). Allow ±1 so valid responses are not dropped.
-        if (Math.Abs(cost.Days - _currentPeriodDays) <= 1)
-            return true;
-
-        // If nothing has ever loaded, accept a mismatched period rather than
-        // leaving the page spinning forever when an older gateway ignores days.
-        return !_dailyCostLoading.HasLoaded;
+        return UsageCostApplicationPolicy.ShouldApply(
+            cost.Days,
+            _currentPeriodDays,
+            _dailyCostLoading.HasLoaded);
     }
 
     private void SyncSelectorToServerDays(int days)

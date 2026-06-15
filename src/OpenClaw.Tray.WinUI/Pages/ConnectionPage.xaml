@@ -430,6 +430,32 @@
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap"
                                            Visibility="Collapsed"/>
+                                <TextBlock x:Name="NodeCommandText"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                                <TextBlock x:Name="NodePermissionText"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                                <StackPanel x:Name="NodePendingDeclarationsPanel"
+                                            Spacing="2"
+                                            Visibility="Collapsed">
+                                    <TextBlock x:Name="NodePendingCapabilityText"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="NodePendingCommandText"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="NodePendingPermissionText"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
                                 <TextBlock x:Name="NodeBodyText" Text=""
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
@@ -437,6 +463,37 @@
                                            Visibility="Collapsed"/>
                             </StackPanel>
                         </Grid>
+
+                        <!-- Pending node-list command-trust approval. Copy-only:
+                             users explicitly run the validated command on the
+                             gateway host; the tray never auto-approves. -->
+                        <Border x:Name="NodeTrustApproveCmdBox" Visibility="Collapsed"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="8">
+                            <StackPanel Spacing="6">
+                                <TextBlock x:Name="NodeTrustApproveHelpText"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               x:Name="NodeTrustApproveCmdText"
+                                               FontFamily="Consolas" FontSize="12"
+                                               IsTextSelectionEnabled="True"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"/>
+                                    <Button x:Uid="ConnectionPage_CopyTrustApproval" Grid.Column="1" Content="Copy"
+                                            Click="OnCopyNodeTrustApproveCommand"
+                                            ToolTipService.ToolTip="Copy command"
+                                            AutomationProperties.Name="Copy node approval command"
+                                            AutomationProperties.AutomationId="NodeTrustApproveCopyAction"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
 
                         <!-- Pairing approve command (only when OnNodePairingRequired) -->
                         <Border x:Name="NodeApproveCmdBox" Visibility="Collapsed"

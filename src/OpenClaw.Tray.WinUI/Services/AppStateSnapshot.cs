@@ -21,6 +21,8 @@ internal sealed record AppStateSnapshot
     public UpdateCommandCenterInfo LastUpdateInfo { get; init; } = new();
     public SettingsManager? Settings            { get; init; }
     public NodeService? NodeService             { get; init; }
+    public PairingApprovalKind NodePairingApprovalKind { get; init; }
+    public string? NodePairingRequestId         { get; init; }
     public SshTunnelSnapshot? SshTunnelSnapshot   { get; init; }
     public bool HasGatewayClient               { get; init; }
 }

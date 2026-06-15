@@ -26,7 +26,7 @@ public sealed partial class WizardPage : Page
     private int _operationGeneration;
     private int _wizardStepCount;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<WizardOption> _options = [];
+    private readonly List<WizardOptionValue> _options = [];
     // Tails the WSL gateway log and surfaces openclaw plugin console.log output
     // (OAuth URLs, install fallback messages, etc) inline on the active step.
     // wizard.payload frames don't carry this content.
@@ -261,22 +261,7 @@ public sealed partial class WizardPage : Page
             return true;
 
         _options.Clear();
-        if (step.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var option in options.EnumerateArray())
-            {
-                var value = option.ValueKind == JsonValueKind.Object && option.TryGetProperty("value", out var valueProp)
-                    ? valueProp.ToString()
-                    : option.ToString();
-                var label = option.ValueKind == JsonValueKind.Object && option.TryGetProperty("label", out var labelProp)
-                    ? labelProp.ToString()
-                    : value;
-                var hint = option.ValueKind == JsonValueKind.Object && option.TryGetProperty("hint", out var hintProp)
-                    ? hintProp.ToString()
-                    : "";
-                _options.Add(new(value, label, hint));
-            }
-        }
+        _options.AddRange(WizardAnswerBuilder.ReadOptions(step));
 
         if (!WizardSelection.HasSelectableOptions(_stepType, _options.Select(o => o.Value).ToArray()))
         {
@@ -292,7 +277,7 @@ public sealed partial class WizardPage : Page
                 SelectOptions.Children.Add(new RadioButton
                 {
                     Content = BuildOptionContent(option),
-                    Tag = option.Value,
+                    Tag = option,
                     GroupName = $"wizard-step-{_stepId}",
                     Padding = new Thickness(8, 6, 8, 6),
                     Margin = new Thickness(0, 0, 0, 2),
@@ -301,7 +286,7 @@ public sealed partial class WizardPage : Page
                 });
             }
 
-            var initialValue = initial.ValueKind == JsonValueKind.String ? initial.GetString() : null;
+            var initialValue = WizardAnswerBuilder.ValueKeys(initial).FirstOrDefault();
             var index = WizardSelection.SelectedIndex(initialValue, _options.Select(o => o.Value).ToArray());
             if (index >= 0 && index < SelectOptions.Children.Count && SelectOptions.Children[index] is RadioButton radio)
                 radio.IsChecked = true;
@@ -315,14 +300,14 @@ public sealed partial class WizardPage : Page
         {
             MultiOptions.Visibility = Visibility.Visible;
             var initialValues = initial.ValueKind == JsonValueKind.Array
-                ? initial.EnumerateArray().Select(v => v.ToString()).ToHashSet(StringComparer.Ordinal)
+                ? initial.EnumerateArray().Select(WizardAnswerBuilder.ValueKey).ToHashSet(StringComparer.Ordinal)
                 : [];
             foreach (var option in _options)
             {
                 var checkBox = new CheckBox
                 {
                     Content = BuildOptionContent(option),
-                    Tag = option.Value,
+                    Tag = option,
                     IsChecked = initialValues.Contains(option.Value),
                     Padding = new Thickness(8, 6, 8, 6),
                     Margin = new Thickness(0, 0, 0, 2),
@@ -340,7 +325,7 @@ public sealed partial class WizardPage : Page
         return true;
     }
 
-    private static FrameworkElement BuildOptionContent(WizardOption option)
+    private static FrameworkElement BuildOptionContent(WizardOptionValue option)
     {
         var panel = new StackPanel
         {
@@ -493,11 +478,14 @@ public sealed partial class WizardPage : Page
             "confirm" => true,
             "select" => SelectOptions.Children.OfType<RadioButton>()
                 .FirstOrDefault(r => r.IsChecked == true)
-                ?.Tag?.ToString() ?? "",
+                ?.Tag is WizardOptionValue option
+                    ? option.RawValue
+                    : "",
             "multiselect" => MultiOptions.Children.OfType<CheckBox>()
                 .Where(c => c.IsChecked == true)
-                .Select(c => c.Tag?.ToString() ?? "")
-                .Where(v => v.Length > 0)
+                .Select(c => c.Tag as WizardOptionValue)
+                .OfType<WizardOptionValue>()
+                .Select(option => option.RawValue)
                 .ToArray(),
             "text" => _sensitive ? SecretInput.Password : TextInput.Text,
             _ => "true"
@@ -518,12 +506,12 @@ public sealed partial class WizardPage : Page
         {
             "select" => SelectOptions.Children.OfType<RadioButton>()
                 .Where(r => r.IsChecked == true)
-                .Select(r => r.Tag?.ToString() ?? "")
+                .Select(r => r.Tag is WizardOptionValue option ? option.Value : "")
                 .Where(v => v.Length > 0)
                 .ToArray(),
             "multiselect" => MultiOptions.Children.OfType<CheckBox>()
                 .Where(c => c.IsChecked == true)
-                .Select(c => c.Tag?.ToString() ?? "")
+                .Select(c => c.Tag is WizardOptionValue option ? option.Value : "")
                 .Where(v => v.Length > 0)
                 .ToArray(),
             _ => []
@@ -871,6 +859,4 @@ public sealed partial class WizardPage : Page
         "text" => "Enter value",
         _ => "Setup"
     };
-
-    private sealed record WizardOption(string Value, string Label, string Hint);
 }

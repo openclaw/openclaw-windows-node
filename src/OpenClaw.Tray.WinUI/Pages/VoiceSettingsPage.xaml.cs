@@ -454,8 +454,8 @@ public sealed partial class VoiceSettingsPage : Page
     {
         if (_inlineTestVoiceService != null && _inlineTestListening)
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { await _inlineTestVoiceService.StopAsync(); } catch { }
+            try { await _inlineTestVoiceService.StopAsync(); }
+            catch (Exception ex) { Logger.Debug($"VoiceSettingsPage: inline test StopAsync failed: {ex.Message}"); }
         }
         _inlineTestListening = false;
         InlineTestBtnIcon.Glyph = "\uE720";
@@ -651,8 +651,8 @@ public sealed partial class VoiceSettingsPage : Page
 
         // Cancel any prior Piper download (only). Whisper downloads are
         // independent and continue running.
-        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-        try { _piperDownloadCts?.Cancel(); } catch { /* swallow */ }
+        try { _piperDownloadCts?.Cancel(); }
+        catch (Exception ex) { Logger.Debug($"VoiceSettingsPage: cancel prior Piper download failed: {ex.Message}"); }
         _piperDownloadCts = new CancellationTokenSource();
         var ct = _piperDownloadCts.Token;
 

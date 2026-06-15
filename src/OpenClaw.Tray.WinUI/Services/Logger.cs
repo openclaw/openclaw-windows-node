@@ -71,22 +71,36 @@ public static class Logger
                 s_channel.Writer.TryComplete();
                 s_writerTask.Wait(TimeSpan.FromSeconds(2));
             }
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            catch { /* shutdown — nothing to do */ }
+            catch (Exception ex)
+            {
+                // Logger is self-referential — must not call Logger.* here (recursion
+                // risk if the logger itself is the thing that failed). Trace is the
+                // documented fallback for this file.
+                System.Diagnostics.Trace.WriteLine($"Logger.ProcessExit: flush failed: {ex.GetType().Name}: {ex.Message}");
+            }
         };
     }
 
     public static string LogFilePath => _logFilePath;
 
+    // OPENCLAW_TRAY_TRACE=1 surfaces verbose protocol traces that are normally
+    // suppressed (e.g. per-event kind/phase dumps from the gateway client).
+    // Off by default so day-to-day logs aren't drowned in low-signal lines;
+    // diagnosis sessions can opt in without rebuilding.
+    private static readonly bool s_traceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_TRACE"), "1", StringComparison.Ordinal) ||
+        string.Equals(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_TRACE"), "true", StringComparison.OrdinalIgnoreCase);
+
     public static void Info(string message) => Log("INFO", message);
     public static void Warn(string message) => Log("WARN", message);
     public static void Error(string message) => Log("ERROR", message);
     public static void Debug(string message) => Log("DEBUG", message);
+    public static void Trace(string message) { if (s_traceEnabled) Log("TRACE", message); }
 
     private static void Log(string level, string message)
     {
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-        var line = $"[{timestamp}] [{level}] {TokenSanitizer.Sanitize(message)}";
+        var line = $"[{timestamp}] [{level}] {TokenSanitizer.SanitizeLogMessage(message)}";
 
         // TryWrite is non-blocking. With DropOldest semantics the call should
         // never fail unless the writer has been completed (process shutdown).
@@ -156,10 +170,11 @@ public static class Logger
     private static void ReportWriteFailure(string detail)
     {
         LastWriteError = detail;
-        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
-        try { System.Diagnostics.Trace.WriteLine($"[OpenClaw Logger] {detail}"); } catch { }
+        try { System.Diagnostics.Trace.WriteLine($"[OpenClaw Logger] {detail}"); }
+        catch (Exception) { /* fallback diagnostics in the logger itself — cannot recurse into Log(). */ }
 #if DEBUG
-        try { System.Diagnostics.Debug.WriteLine($"[OpenClaw Logger] {detail}"); } catch { }
+        try { System.Diagnostics.Debug.WriteLine($"[OpenClaw Logger] {detail}"); }
+        catch (Exception) { /* see above. */ }
 #endif
     }
 }

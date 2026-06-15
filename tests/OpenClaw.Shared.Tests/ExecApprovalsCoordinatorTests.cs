@@ -96,17 +96,17 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     {
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"deny"}}""");
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "c4");
-        // FallbackDecision(ExecAsk.Deny) → ExecApprovalDecision.Deny → pass2 step2 → UserDenied
+        // FallbackDecision(ExecSecurity.Deny) → ExecApprovalDecision.Deny → pass2 step2 → UserDenied
         Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
         Assert.Equal("user-denied", result.Reason);
     }
 
-    // ── 5. ask=always, canPresent=false, askFallback=off → Allow ─────────────
+    // ── 5. ask=always, canPresent=false, askFallback=full → Allow ────────────
 
     [Fact]
-    public async Task AskAlways_CannotPresent_FallbackOff_ReturnsAllow()
+    public async Task AskAlways_CannotPresent_FallbackFull_ReturnsAllow()
     {
-        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"off"}}""");
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"full"}}""");
         var log = new CapturingLogger();
         var result = await MakeCoordinator(logger: log).HandleAsync(DefaultReq(), "c5");
         Assert.True(result.IsAllow);
@@ -208,14 +208,14 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Equal(ExecApprovalV2Code.AllowlistMiss, result.Code);
     }
 
-    // ── 13. FallbackDecision(ask=Always) → Deny, not AllowOnce ───────────────
+    // ── 13. FallbackDecision(deny) → Deny, not AllowOnce ────────────────────
 
     [Fact]
-    public async Task FallbackDecision_AskFallbackAlways_ReturnsDeny()
+    public async Task FallbackDecision_AskFallbackDeny_ReturnsDeny()
     {
-        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"always"}}""");
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"deny"}}""");
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "c13");
-        // ExecAsk.Always → ExecApprovalDecision.Deny → pass2 → UserDenied (fail-safe)
+        // ExecSecurity.Deny → ExecApprovalDecision.Deny → pass2 → UserDenied (fail-safe)
         Assert.False(result.IsAllow);
         Assert.NotEqual(ExecApprovalV2Code.Allow, result.Code);
     }
@@ -416,17 +416,51 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.True(id.All(c => char.IsAsciiHexDigit(c)), $"Expected 32 hex chars, got: {id}");
     }
 
-    // ── 23. FallbackDecision(OnMiss, AllowlistSatisfied=false) → Deny ─────────
+    // ── 23. FallbackDecision(Allowlist, unsatisfied) → Deny ──────────────────
 
     [Fact]
-    public async Task FallbackDecision_AskFallbackOnMiss_NotSatisfied_ReturnsDeny()
+    public async Task FallbackDecision_AskFallbackAllowlist_NotSatisfied_ReturnsDeny()
     {
         // security=full, ask=always → RequiresPrompt in pass1
-        // canPresent=false → FallbackDecision(context, ExecAsk.OnMiss)
+        // canPresent=false → FallbackDecision(context, ExecSecurity.Allowlist)
         // AllowlistSatisfied=false (security=Full, not Allowlist) → Deny
-        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"on-miss"}}""");
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"allowlist"}}""");
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "c23");
         Assert.False(result.IsAllow);
+    }
+
+    [Fact]
+    public async Task FallbackDecision_AskFallbackAllowlist_Matched_ReturnsAllow()
+    {
+        WriteStoreFile("""
+        {
+          "version": 1,
+          "defaults": { "security": "full", "ask": "always", "askFallback": "allowlist" },
+          "agents": { "main": { "allowlist": [{ "pattern": "**/where.exe" }] } }
+        }
+        """);
+
+        var result = await MakeCoordinator().HandleAsync(
+            Req("""{"command":["where.exe","cmd.exe"]}"""),
+            "c23-match");
+
+        Assert.True(result.IsAllow);
+    }
+
+    [Fact]
+    public async Task FallbackDecision_FullFallback_DoesNotBypassAllowlistSecurity()
+    {
+        WriteStoreFile("""
+        {
+          "version": 1,
+          "defaults": { "security": "allowlist", "ask": "always", "askFallback": "full" }
+        }
+        """);
+
+        var result = await MakeCoordinator().HandleAsync(DefaultReq(), "c23-clamp");
+
+        Assert.False(result.IsAllow);
+        Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
     }
 
     // ── 24. Outer safety net — CanPresent throws → InternalError, not exception ───
