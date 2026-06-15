@@ -18,18 +18,8 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Page header (with optional back-link when arriving via cross-page nav) -->
+            <!-- Page header -->
             <StackPanel Grid.Row="0" Spacing="4">
-                <HyperlinkButton x:Name="BackOriginLink"
-                                 Click="OnBackOriginClicked"
-                                 Padding="0" Margin="0"
-                                 Visibility="Collapsed"
-                                 AutomationProperties.AutomationId="BackOriginLink">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Back, Mode=OneTime}" FontSize="12"/>
-                        <TextBlock x:Uid="BackToOriginGeneric" x:Name="BackOriginText" Text="Back"/>
-                    </StackPanel>
-                </HyperlinkButton>
                 <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>

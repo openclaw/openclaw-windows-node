@@ -35,8 +35,6 @@ public sealed partial class ConfigPage : Page
     private ConfigEditorSnapshot _editSnapshot = ConfigEditorSnapshot.Empty;
     private IOperatorGatewayClient? _permissionClient;
 
-    private string? _backOriginTag;
-
     private string _selectedPath = "";
     private string _searchText = "";
     private bool _showSchemaFallback;
@@ -109,7 +107,6 @@ public sealed partial class ConfigPage : Page
 
         _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
-        RefreshBackOriginLink();
         SubscribePermissionClient(CurrentApp.GatewayClient);
         Logger.Info("[ConfigPage] Initialize");
         if (CompleteReconnectIfReady())
@@ -126,27 +123,6 @@ public sealed partial class ConfigPage : Page
             UpdatePermissionBanner();
             UpdateMetaAndButtons();
         }
-    }
-
-    private void RefreshBackOriginLink()
-    {
-        var hub = CurrentApp.ActiveHubWindow as HubWindow;
-        var origin = hub?.LastNavigationOrigin;
-        if (string.IsNullOrEmpty(origin))
-        {
-            _backOriginTag = null;
-            BackOriginLink.Visibility = Visibility.Collapsed;
-            return;
-        }
-        _backOriginTag = origin;
-        BackOriginText.Text = NavOriginLabels.BackToLabel(origin);
-        BackOriginLink.Visibility = Visibility.Visible;
-    }
-
-    private void OnBackOriginClicked(object sender, RoutedEventArgs e)
-    {
-        if (!string.IsNullOrEmpty(_backOriginTag))
-            ((IAppCommands)CurrentApp).Navigate(_backOriginTag);
     }
 
     public void UpdateConfig(JsonElement config)
@@ -675,7 +651,7 @@ public sealed partial class ConfigPage : Page
 
     private void OnOpenConnection(object sender, RoutedEventArgs e)
     {
-        ((IAppCommands)CurrentApp).Navigate("connection", "config");
+        ((IAppCommands)CurrentApp).Navigate("connection");
     }
 
     private void OnOpenDashboard(object sender, RoutedEventArgs e)

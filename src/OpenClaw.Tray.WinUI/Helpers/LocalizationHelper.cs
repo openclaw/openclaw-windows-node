@@ -43,20 +43,9 @@ public static class LocalizationHelper
     {
         try
         {
-            var value = GetResourceValue(resourceKey);
-            if (!string.IsNullOrEmpty(value))
-                return value;
-
-            var propertySeparatorIndex = resourceKey.LastIndexOf('.');
-            if (propertySeparatorIndex > 0 && propertySeparatorIndex < resourceKey.Length - 1)
-            {
-                var propertyResourceKey = resourceKey[..propertySeparatorIndex] + "/" + resourceKey[(propertySeparatorIndex + 1)..];
-                value = GetResourceValue(propertyResourceKey);
-                if (!string.IsNullOrEmpty(value))
-                    return value;
-            }
-
-            return resourceKey;
+            var candidate = Manager.MainResourceMap.GetValue($"Resources/{resourceKey}", GetContext());
+            var value = candidate?.ValueAsString;
+            return string.IsNullOrEmpty(value) ? resourceKey : value;
         }
         catch (Exception ex)
         {
@@ -73,19 +62,6 @@ public static class LocalizationHelper
                 Logger.Warn("LocalizationHelper: Resource lookup failure log limit reached; suppressing additional unique resource lookup failures");
             }
             return resourceKey;
-        }
-    }
-
-    private static string? GetResourceValue(string resourceKey)
-    {
-        try
-        {
-            var candidate = Manager.MainResourceMap.GetValue($"Resources/{resourceKey}", GetContext());
-            return candidate?.ValueAsString;
-        }
-        catch
-        {
-            return null;
         }
     }
 

@@ -57,7 +57,7 @@ public sealed partial class BindingsPage : Page
     }
 
     private void OnOpenConnectionClick(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection", "bindings");
+        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {

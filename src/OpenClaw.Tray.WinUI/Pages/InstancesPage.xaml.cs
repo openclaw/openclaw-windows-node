@@ -41,14 +41,6 @@ public sealed partial class InstancesPage : Page
     /// <summary>Called by HubWindow when this page becomes the navigation target.</summary>
     public void Initialize()
     {
-        // Show "← Back to Connection" only when the user arrived from
-        // Connection's cross-page link; staying hidden when the rail nav
-        // is used keeps the page chrome quiet for direct navigation.
-        var hub = CurrentApp.ActiveHubWindow as HubWindow;
-        BackToConnectionLink.Visibility = hub?.LastNavigationOrigin == "connection"
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
@@ -70,9 +62,6 @@ public sealed partial class InstancesPage : Page
             });
         }
     }
-
-    private void OnBackToConnectionClicked(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -126,7 +115,7 @@ public sealed partial class InstancesPage : Page
     }
 
     private void OnPendingPairBannerClicked(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection", "instances");
+        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     public void UpdateNodes(GatewayNodeInfo[] nodes)
     {
