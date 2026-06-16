@@ -133,6 +133,11 @@ public sealed class AppRefactorContractTests
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
         Assert.Contains("ShowGatewayWizardAsync", source);
         Assert.Contains("setupWindow.NavigateToWizard()", source);
+        // Direct onboarding must not hijack an already-open setup window: it
+        // only navigates a freshly created window so it cannot cancel an
+        // in-progress install running on ProgressPage.
+        Assert.Contains("EnsureSetupWindowAsync", source);
+        Assert.Contains("if (!createdNew)", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
