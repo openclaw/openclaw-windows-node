@@ -4417,6 +4417,15 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
     <value>Setup openen</value>
   </data>
+  <data name="SettingsPage_OnboardWizard_Header.Text" xml:space="preserve">
+    <value>OpenClaw Onboard</value>
+  </data>
+  <data name="SettingsPage_OnboardWizard_Description.Text" xml:space="preserve">
+    <value>Open de OpenClaw onboarding op een geïnstalleerde lokale gateway. Slaat de WSL-installatie over en gaat direct naar de configuratie.</value>
+  </data>
+  <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
+    <value>Onboarding openen</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>MSIX-installatie gedetecteerd</value>
   </data>

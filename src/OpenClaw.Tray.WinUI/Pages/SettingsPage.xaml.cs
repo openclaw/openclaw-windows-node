@@ -230,6 +230,11 @@ public sealed partial class SettingsPage : Page
         ((IAppCommands)CurrentApp).ShowOnboarding();
     }
 
+    private void OnOpenGatewayWizard(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).ShowGatewayWizard();
+    }
+
     private void OnTestNotification(object sender, RoutedEventArgs e)
     {
         try

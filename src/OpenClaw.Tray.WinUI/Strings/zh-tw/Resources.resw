@@ -4416,6 +4416,15 @@
   <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
     <value>開啟設定</value>
   </data>
+  <data name="SettingsPage_OnboardWizard_Header.Text" xml:space="preserve">
+    <value>OpenClaw Onboard</value>
+  </data>
+  <data name="SettingsPage_OnboardWizard_Description.Text" xml:space="preserve">
+    <value>在已安裝的本機閘道上開啟 OpenClaw 引導。略過 WSL 安裝，直接進入設定。</value>
+  </data>
+  <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
+    <value>開啟引導</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>偵測到 MSIX 安裝</value>
   </data>

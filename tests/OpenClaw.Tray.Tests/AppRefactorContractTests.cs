@@ -131,6 +131,8 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("new SetupWindow()", source);
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
+        Assert.Contains("ShowGatewayWizardAsync", source);
+        Assert.Contains("setupWindow.NavigateToWizard()", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);

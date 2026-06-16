@@ -3054,6 +3054,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
+    private async Task ShowGatewayWizardAsync()
+    {
+        await ShowOnboardingAsync();
+        var setupWindow = _setupWindow;
+        if (setupWindow == null)
+            return;
+
+        await setupWindow.WaitForInitialContentReadyAsync();
+        if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
+            setupWindow.NavigateToWizard();
+    }
+
     private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)
     {
         ShowHub("connection");
@@ -3252,6 +3264,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.ShowChat() => ShowChatWindow();
     void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
+    void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
 
