@@ -4377,6 +4377,15 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
     <value>Ouvrir la configuration</value>
   </data>
+  <data name="SettingsPage_OnboardWizard_Header.Text" xml:space="preserve">
+    <value>OpenClaw Onboard</value>
+  </data>
+  <data name="SettingsPage_OnboardWizard_Description.Text" xml:space="preserve">
+    <value>Ouvrez l'intégration OpenClaw sur une passerelle locale installée. Ignore l'installation de WSL et passe directement à la configuration.</value>
+  </data>
+  <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
+    <value>Ouvrir l'intégration</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Installation MSIX détectée</value>
   </data>
