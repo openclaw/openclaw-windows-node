@@ -22,7 +22,14 @@ on:
 
 timeout-minutes: 60
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  discussions: read
+  issues: read
+  pull-requests: read
+  security-events: read
+  copilot-requests: write
 
 network:
   allowed:
@@ -57,13 +64,14 @@ safe-outputs:
     hide-older-comments: true
   create-pull-request:
     draft: true
+    base-branch: main
     title-prefix: "[Repo Assist] "
     labels: [automation, repo-assist]
     protected-files: fallback-to-issue
     max: 4
   push-to-pull-request-branch:
     target: "*"
-    title-prefix: "[Repo Assist] "
+    required-title-prefix: "[Repo Assist] "
     max: 4
     protected-files: fallback-to-issue
   create-issue:
