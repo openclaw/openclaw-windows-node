@@ -63,6 +63,31 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void DebugPage_GatewayDoctorCard_IsGatedOnWslControlAndRunsDoctor()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+
+        // Whole-row clickable card that runs the doctor handler and uses the
+        // catalog Doctor glyph (not a literal or chevron).
+        Assert.Matches(
+            new System.Text.RegularExpressions.Regex(
+                @"x:Uid=""DiagnosticsPage_Card_Doctor""[\s\S]{0,500}IsClickEnabled=""True""[\s\S]{0,200}Click=""OnRunGatewayDoctor"""),
+            xaml);
+        Assert.Contains("FluentIconCatalog.Doctor", xaml);
+
+        // Section is collapsed by default; visibility is driven by the
+        // app-managed-WSL control gate (CanControlWslGateway), and the handler
+        // launches a terminal via OpenGatewayDoctor rather than capturing output.
+        Assert.Matches(
+            new System.Text.RegularExpressions.Regex(
+                @"x:Name=""GatewayDoctorSection""[\s\S]{0,200}Visibility=""Collapsed"""),
+            xaml);
+        Assert.Contains("CanControlWslGateway", cs);
+        Assert.Contains("OpenGatewayDoctor", cs);
+    }
+
+    [Fact]
     public void DebugPage_SurfacesAllExistingDiagnosticCommands()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");

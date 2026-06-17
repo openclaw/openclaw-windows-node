@@ -85,6 +85,32 @@
                         </controls:InfoBar.Content>
                     </controls:InfoBar>
 
+                    <!-- Gateway — shown only when the active gateway is an
+                         app-managed WSL distro we can run commands in
+                         (CanControlWslGateway). Hidden for SSH/remote
+                         gateways. Visibility is driven from code-behind in
+                         UpdateGatewayDoctorCard(). -->
+                    <StackPanel x:Name="GatewayDoctorSection"
+                                Spacing="{StaticResource DiagSettingsCardSpacing}"
+                                Visibility="Collapsed">
+                        <TextBlock x:Uid="DiagnosticsPage_Section_Gateway"
+                                   Text="Gateway"
+                                   Style="{StaticResource DiagSectionHeaderTextBlockStyle}"/>
+
+                        <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_Doctor"
+                                              x:Name="GatewayDoctorCard"
+                                              Header="Run gateway doctor"
+                                              Description="Opens a terminal and runs openclaw doctor to check the local gateway for problems."
+                                              IsClickEnabled="True"
+                                              Click="OnRunGatewayDoctor"
+                                              AutomationProperties.AutomationId="DiagnosticsRunGatewayDoctor">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Doctor, Mode=OneTime}"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                            </toolkit:SettingsCard.HeaderIcon>
+                        </toolkit:SettingsCard>
+                    </StackPanel>
+
                     <!-- Share diagnostics with support -->
                     <TextBlock x:Uid="DiagnosticsPage_Section_Share"
                                Text="Share diagnostics with support"
