@@ -509,7 +509,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// </summary>
     private ICommandRunner BuildSystemRunRunner()
     {
-        var availability = _mxcAvailability ??= MxcAvailability.Probe(_logger);
+        var availability = GetOrProbeMxcAvailability();
         var hostRunner = new LocalCommandRunner(_logger);
         var executor = new DirectAppContainerExecutor(availability, _logger);
 
@@ -535,9 +535,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             hostRunner,
             () => SnapshotSettings(),
             () => settingsDirectory,
-            // Re-probe on demand if the cache was invalidated by a prior
-            // SandboxUnavailableException (see invalidateAvailability below).
-            () => (_mxcAvailability ??= MxcAvailability.Probe(_logger)).HasAnyBackend,
+            // Re-probe on demand when sandbox availability is checked: returns the
+            // cached definitive verdict, or re-probes after a transient error /
+            // a prior SandboxUnavailableException-driven invalidation.
+            () => GetOrProbeMxcAvailability().HasAnyBackend,
             invalidateAvailability: () => _mxcAvailability = null,
             _logger);
     }
@@ -577,6 +578,35 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     }
 
     private MxcAvailability? _mxcAvailability;
+    private DateTime _mxcAvailabilityProbedAtUtc;
+
+    /// <summary>
+    /// Minimum interval before re-probing after a transient probe error. Bounds the
+    /// cost of re-spawning <c>wxc-exec --probe</c> on every command while a probe
+    /// error persists, while still letting a momentary glitch self-heal quickly.
+    /// </summary>
+    private static readonly TimeSpan MxcProbeRetryInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Return the cached MXC availability, re-probing when needed. Definitive
+    /// verdicts (supported / host-unsupported) are cached for the process lifetime;
+    /// a transient probe error (<see cref="MxcAvailability.ProbeErrored"/>) is NOT
+    /// cached permanently — we re-probe (throttled by <see cref="MxcProbeRetryInterval"/>)
+    /// so a momentary glitch doesn't pin the whole process to uncontained execution.
+    /// </summary>
+    private MxcAvailability GetOrProbeMxcAvailability()
+    {
+        if (_mxcAvailability is { ProbeErrored: false } cached)
+            return cached;
+
+        if (_mxcAvailability is { ProbeErrored: true }
+            && DateTime.UtcNow - _mxcAvailabilityProbedAtUtc < MxcProbeRetryInterval)
+            return _mxcAvailability;
+
+        _mxcAvailability = MxcAvailability.Probe(_logger);
+        _mxcAvailabilityProbedAtUtc = DateTime.UtcNow;
+        return _mxcAvailability;
+    }
 
     private void StartMcpServer()
     {

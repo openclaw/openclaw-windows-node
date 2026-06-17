@@ -33,7 +33,10 @@ public sealed partial class SandboxPage : Page
     /// </summary>
     private async System.Threading.Tasks.Task RefreshAvailabilityAsync()
     {
-        if (_cachedAvailability is not null) return;
+        // Re-probe when we have no result yet, or the last one was a transient
+        // probe error. A definitive verdict (supported / host-unsupported) is kept
+        // for the page-instance lifetime.
+        if (_cachedAvailability is { ProbeErrored: false }) return;
 
         var availability = await System.Threading.Tasks.Task.Run(
             static () => OpenClaw.Shared.Mxc.MxcAvailability.Probe());
@@ -207,8 +210,21 @@ public sealed partial class SandboxPage : Page
         if (enabled)
         {
             SandboxStatusIcon.Text = "🛡";
-            SandboxStatusTitle.Text = "Node Sandbox is on";
-            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are contained.";
+            if (availability.IsDegradedContainment)
+            {
+                // Contained, but only via a weaker, last-resort isolation tier
+                // (e.g. DACL augmentation). Surface as a caution rather than a block.
+                SandboxStatusTitle.Text = "Node Sandbox is on — limited containment";
+                SandboxStatusSubtext.Text =
+                    "Programs the agent runs are contained, but this PC only supports a fallback isolation tier" +
+                    $"{(string.IsNullOrEmpty(availability.IsolationTier) ? "" : $" ({availability.IsolationTier})")}. " +
+                    "Containment is weaker than on a fully supported build; install the latest Windows updates to strengthen it.";
+            }
+            else
+            {
+                SandboxStatusTitle.Text = "Node Sandbox is on";
+                SandboxStatusSubtext.Text = "Programs the agent runs on this PC are contained.";
+            }
         }
         else
         {

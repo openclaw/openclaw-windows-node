@@ -46,10 +46,41 @@ public sealed class MxcAvailability
     public string? WxcExecPath { get; }
 
     /// <summary>
+    /// True when the availability verdict came from a <em>probe error</em>
+    /// (timeout, failure to launch <c>wxc-exec</c>, or unparseable output) rather
+    /// than a definitive answer (supported, or the host reporting unsupported).
+    /// Callers should treat an errored verdict as transient — re-probe instead of
+    /// caching it for the process lifetime — so a momentary glitch doesn't pin the
+    /// whole process to uncontained execution.
+    /// </summary>
+    public bool ProbeErrored { get; }
+
+    /// <summary>
+    /// Isolation tier the probe selected for this host (e.g. <c>base-container</c>,
+    /// <c>appcontainer-bfs</c>, <c>appcontainer-dacl</c>), or null when unsupported
+    /// / not probed. Informational; <see cref="IsDegradedContainment"/> is the
+    /// derived signal UX should react to.
+    /// </summary>
+    public string? IsolationTier { get; }
+
+    /// <summary>
+    /// True when the probe indicated the host needs host-DACL augmentation to
+    /// contain (a weaker, last-resort path).
+    /// </summary>
+    public bool NeedsDaclAugmentation { get; }
+
+    /// <summary>
     /// Human-readable list of reasons MXC may not be available. Empty when fully supported.
     /// Surface to UX so users know why the sandbox toggle is disabled.
     /// </summary>
     public IReadOnlyList<string> UnsupportedReasons { get; }
+
+    /// <summary>Tiers we consider full-strength containment. Anything else that
+    /// still contains (e.g. <c>appcontainer-dacl</c>, or an unrecognized future
+    /// tier string) is treated as degraded so UX can warn without dropping the
+    /// host all the way to uncontained.</summary>
+    private static readonly HashSet<string> FullStrengthTiers =
+        new(StringComparer.OrdinalIgnoreCase) { "base-container", "appcontainer-bfs" };
 
     /// <summary>True iff at least one MXC backend is supported AND
     /// <c>wxc-exec.exe</c> is resolvable. (Without wxc-exec the executor will refuse
@@ -58,18 +89,36 @@ public sealed class MxcAvailability
         (IsAppContainerAvailable || IsIsolationSessionAvailable)
         && IsWxcExecResolvable;
 
+    /// <summary>
+    /// True when MXC is available but only via a weaker, last-resort isolation tier
+    /// (DACL augmentation, or a tier we don't recognize as full-strength). Still
+    /// contained — surface as a warning, not a block; refusing would drop the host
+    /// to fully uncontained execution, which is strictly worse.
+    /// </summary>
+    public bool IsDegradedContainment =>
+        HasAnyBackend
+        && (NeedsDaclAugmentation
+            || string.IsNullOrEmpty(IsolationTier)
+            || !FullStrengthTiers.Contains(IsolationTier));
+
     public MxcAvailability(
         bool isAppContainerAvailable,
         bool isIsolationSessionAvailable,
         bool isWxcExecResolvable,
         string? wxcExecPath,
-        IReadOnlyList<string> unsupportedReasons)
+        IReadOnlyList<string> unsupportedReasons,
+        bool probeErrored = false,
+        string? isolationTier = null,
+        bool needsDaclAugmentation = false)
     {
         IsAppContainerAvailable = isAppContainerAvailable;
         IsIsolationSessionAvailable = isIsolationSessionAvailable;
         IsWxcExecResolvable = isWxcExecResolvable;
         WxcExecPath = wxcExecPath;
         UnsupportedReasons = unsupportedReasons;
+        ProbeErrored = probeErrored;
+        IsolationTier = isolationTier;
+        NeedsDaclAugmentation = needsDaclAugmentation;
     }
 
     /// <summary>
@@ -132,8 +181,11 @@ public sealed class MxcAvailability
             "IsolationProxy.exe");
         var isIsolationSessionSupported = isAppContainerSupported && File.Exists(isolationProxyPath);
 
+        var probeErrored = probe.Outcome == MxcProbeOutcome.ProbeError;
+
         log.Info(
             $"[mxc] availability: supported={isAppContainerSupported} " +
+            $"outcome={probe.Outcome} " +
             $"tier={probe.Tier ?? "<none>"} needsDaclAugmentation={probe.NeedsDaclAugmentation} " +
             $"isolation_session={isIsolationSessionSupported} " +
             $"wxc-exec={wxcPath} " +
@@ -145,30 +197,47 @@ public sealed class MxcAvailability
             isIsolationSessionSupported,
             isWxcExecResolvable: true,
             wxcPath,
-            reasons);
+            reasons,
+            probeErrored: probeErrored,
+            isolationTier: probe.Tier,
+            needsDaclAugmentation: probe.NeedsDaclAugmentation);
     }
 
     /// <summary>
-    /// Parse the JSON emitted by <c>wxc-exec --probe</c> into a support verdict.
-    /// A non-zero exit, empty/garbage output, or a missing isolation tier all
-    /// mean the host cannot run the sandbox. Exposed for unit testing.
+    /// Parse the JSON emitted by <c>wxc-exec --probe</c> into a support verdict,
+    /// classifying the outcome as <see cref="MxcProbeOutcome.Supported"/>,
+    /// <see cref="MxcProbeOutcome.UnsupportedHost"/> (the binary ran and reported
+    /// no usable tier), or <see cref="MxcProbeOutcome.ProbeError"/> (we could not
+    /// get a verdict — our timeout/launch sentinel, or exit 0 with no usable
+    /// output). Probe errors are transient and should be re-probed, not cached.
+    /// Exposed for unit testing.
     /// </summary>
     internal static MxcProbeResult ParseProbeOutput(int exitCode, string? stdout, string? stderr)
     {
+        // Negative exit codes are our own sentinels (timeout / failed to launch)
+        // set by RunWxcExecProbe and Probe's catch — we never actually ran the
+        // probe to a verdict, so treat as a transient error rather than a
+        // definitive "unsupported host".
+        if (exitCode < 0)
+        {
+            var detail = FirstNonEmpty(stderr, stdout);
+            return Error(
+                $"Could not determine MXC sandbox support (wxc-exec --probe did not complete{(detail is null ? "" : $": {Summarize(detail)}")}).");
+        }
+
+        // A positive non-zero exit is the binary running and reporting that this
+        // host cannot sandbox — a definitive, non-retryable verdict.
         if (exitCode != 0)
         {
             var detail = FirstNonEmpty(stderr, stdout);
-            return new MxcProbeResult(
-                Supported: false,
-                Tier: null,
-                NeedsDaclAugmentation: false,
-                Warnings: Array.Empty<string>(),
-                FailureReason: $"This Windows host does not support the MXC sandbox (wxc-exec --probe exited {exitCode}{(detail is null ? "" : $": {Summarize(detail)}")}).");
+            return Unsupported(
+                $"This Windows host does not support the MXC sandbox (wxc-exec --probe exited {exitCode}{(detail is null ? "" : $": {Summarize(detail)}")}).");
         }
 
+        // Exit 0 but no/garbled output is a binary anomaly, not a clear answer —
+        // treat as a (retryable) probe error rather than silently "unsupported".
         if (string.IsNullOrWhiteSpace(stdout))
-            return new MxcProbeResult(false, null, false, Array.Empty<string>(),
-                "This Windows host does not support the MXC sandbox (wxc-exec --probe returned no output).");
+            return Error("Could not determine MXC sandbox support (wxc-exec --probe returned no output).");
 
         try
         {
@@ -179,8 +248,7 @@ public sealed class MxcAvailability
                 || tierEl.ValueKind != JsonValueKind.String
                 || string.IsNullOrWhiteSpace(tierEl.GetString()))
             {
-                return new MxcProbeResult(false, null, false, Array.Empty<string>(),
-                    "This Windows host does not support the MXC sandbox (wxc-exec --probe did not report an isolation tier).");
+                return Error("Could not determine MXC sandbox support (wxc-exec --probe did not report an isolation tier).");
             }
 
             var needsDacl = root.TryGetProperty("needsDaclAugmentation", out var d)
@@ -197,13 +265,18 @@ public sealed class MxcAvailability
                 }
             }
 
-            return new MxcProbeResult(true, tierEl.GetString(), needsDacl, warnings, null);
+            return new MxcProbeResult(MxcProbeOutcome.Supported, tierEl.GetString(), needsDacl, warnings, null);
         }
         catch (JsonException ex)
         {
-            return new MxcProbeResult(false, null, false, Array.Empty<string>(),
-                $"This Windows host does not support the MXC sandbox (wxc-exec --probe returned unparseable output: {ex.Message}).");
+            return Error($"Could not determine MXC sandbox support (wxc-exec --probe returned unparseable output: {ex.Message}).");
         }
+
+        static MxcProbeResult Unsupported(string reason) =>
+            new(MxcProbeOutcome.UnsupportedHost, null, false, Array.Empty<string>(), reason);
+
+        static MxcProbeResult Error(string reason) =>
+            new(MxcProbeOutcome.ProbeError, null, false, Array.Empty<string>(), reason);
     }
 
     private static string? FirstNonEmpty(params string?[] values)
@@ -266,8 +339,8 @@ public sealed class MxcAvailability
         catch (AggregateException)
         {
             // A pipe read faulted (e.g. stream disposed). Treat as no output;
-            // ParseProbeOutput will fall back to "unsupported" for exit 0 with
-            // empty stdout, and surface stderr if the exit code was non-zero.
+            // ParseProbeOutput classifies exit 0 with empty stdout as a (retryable)
+            // probe error, and surfaces stderr if the exit code was non-zero.
         }
 
         return new WxcProbeInvocation(
@@ -343,10 +416,32 @@ public sealed class MxcAvailability
 /// <summary>Raw result of invoking <c>wxc-exec --probe</c>.</summary>
 internal readonly record struct WxcProbeInvocation(int ExitCode, string StdOut, string StdErr);
 
+/// <summary>
+/// Classification of a <c>wxc-exec --probe</c> attempt.
+/// </summary>
+internal enum MxcProbeOutcome
+{
+    /// <summary>The probe ran and reported a usable isolation tier.</summary>
+    Supported,
+
+    /// <summary>The probe ran and definitively reported the host cannot sandbox.</summary>
+    UnsupportedHost,
+
+    /// <summary>
+    /// We could not obtain a verdict (timeout, failure to launch, or exit 0 with
+    /// no usable output). Transient/indeterminate — should be re-probed, not cached.
+    /// </summary>
+    ProbeError,
+}
+
 /// <summary>Parsed host-support verdict derived from <c>wxc-exec --probe</c> output.</summary>
 internal sealed record MxcProbeResult(
-    bool Supported,
+    MxcProbeOutcome Outcome,
     string? Tier,
     bool NeedsDaclAugmentation,
     IReadOnlyList<string> Warnings,
-    string? FailureReason);
+    string? FailureReason)
+{
+    /// <summary>Convenience: true only for <see cref="MxcProbeOutcome.Supported"/>.</summary>
+    public bool Supported => Outcome == MxcProbeOutcome.Supported;
+}

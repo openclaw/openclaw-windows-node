@@ -72,6 +72,7 @@ public class MxcAvailabilityTests
             stdout: "{\"tier\":\"base-container\",\"needsDaclAugmentation\":false,\"warnings\":[]}",
             stderr: "");
 
+        Assert.Equal(MxcProbeOutcome.Supported, result.Outcome);
         Assert.True(result.Supported);
         Assert.Equal("base-container", result.Tier);
         Assert.False(result.NeedsDaclAugmentation);
@@ -87,6 +88,7 @@ public class MxcAvailabilityTests
             stdout: "{\"tier\":\"appcontainer-dacl\",\"needsDaclAugmentation\":true,\"warnings\":[\"fell back to dacl\"]}",
             stderr: "");
 
+        Assert.Equal(MxcProbeOutcome.Supported, result.Outcome);
         Assert.True(result.Supported);
         Assert.Equal("appcontainer-dacl", result.Tier);
         Assert.True(result.NeedsDaclAugmentation);
@@ -94,17 +96,34 @@ public class MxcAvailabilityTests
     }
 
     [Fact]
-    public void ParseProbeOutput_NonZeroExit_ReportsUnsupported()
+    public void ParseProbeOutput_PositiveNonZeroExit_ReportsUnsupportedHost()
     {
         var result = MxcAvailability.ParseProbeOutput(
             exitCode: 1,
             stdout: "",
             stderr: "unsupported os");
 
+        // The binary ran and returned a definitive negative — not a probe error.
+        Assert.Equal(MxcProbeOutcome.UnsupportedHost, result.Outcome);
         Assert.False(result.Supported);
         Assert.Null(result.Tier);
         Assert.NotNull(result.FailureReason);
         Assert.Contains("does not support", result.FailureReason!);
+    }
+
+    [Theory]
+    [InlineData(-1, "wxc-exec --probe timed out.")]
+    [InlineData(-1, "Failed to launch wxc-exec --probe: access denied")]
+    public void ParseProbeOutput_NegativeExitSentinel_ReportsProbeError(int exitCode, string stderr)
+    {
+        // Negative exit is our own timeout/launch sentinel — we never got a verdict,
+        // so it's a transient probe error, NOT a definitive "unsupported host".
+        var result = MxcAvailability.ParseProbeOutput(exitCode, stdout: "", stderr: stderr);
+
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
+        Assert.False(result.Supported);
+        Assert.NotNull(result.FailureReason);
+        Assert.Contains("Could not determine", result.FailureReason!);
     }
 
     [Theory]
@@ -113,13 +132,53 @@ public class MxcAvailabilityTests
     [InlineData("{\"needsDaclAugmentation\":false}")]
     [InlineData("{\"tier\":\"\"}")]
     [InlineData("not json at all")]
-    public void ParseProbeOutput_MissingOrInvalidTier_ReportsUnsupported(string stdout)
+    public void ParseProbeOutput_ExitZeroButNoUsableOutput_ReportsProbeError(string stdout)
     {
+        // Exit 0 with missing/garbled output is a binary anomaly, not a clear
+        // "unsupported" verdict — treat as retryable probe error.
         var result = MxcAvailability.ParseProbeOutput(exitCode: 0, stdout: stdout, stderr: "");
 
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
         Assert.False(result.Supported);
         Assert.Null(result.Tier);
         Assert.NotNull(result.FailureReason);
+    }
+
+    [Theory]
+    [InlineData("base-container", false, false)]
+    [InlineData("appcontainer-bfs", false, false)]
+    [InlineData("appcontainer-dacl", false, true)]
+    [InlineData("base-container", true, true)]   // needsDaclAugmentation forces degraded
+    [InlineData("some-future-tier", false, true)] // unrecognized tier => degraded
+    public void IsDegradedContainment_ReflectsTierAndDaclFlag(string tier, bool needsDacl, bool expectedDegraded)
+    {
+        var availability = new MxcAvailability(
+            isAppContainerAvailable: true,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: "C:\\fake\\wxc-exec.exe",
+            unsupportedReasons: Array.Empty<string>(),
+            isolationTier: tier,
+            needsDaclAugmentation: needsDacl);
+
+        Assert.True(availability.HasAnyBackend);
+        Assert.Equal(expectedDegraded, availability.IsDegradedContainment);
+    }
+
+    [Fact]
+    public void IsDegradedContainment_FalseWhenNoBackend()
+    {
+        var availability = new MxcAvailability(
+            isAppContainerAvailable: false,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: "C:\\fake\\wxc-exec.exe",
+            unsupportedReasons: new[] { "nope" },
+            isolationTier: "appcontainer-dacl",
+            needsDaclAugmentation: true);
+
+        Assert.False(availability.HasAnyBackend);
+        Assert.False(availability.IsDegradedContainment);
     }
 
     [Fact]
@@ -141,6 +200,9 @@ public class MxcAvailabilityTests
             Assert.True(availability.IsWxcExecResolvable);
             Assert.Equal(fakeExe, availability.WxcExecPath);
             Assert.Empty(availability.UnsupportedReasons);
+            Assert.False(availability.ProbeErrored);
+            Assert.Equal("base-container", availability.IsolationTier);
+            Assert.False(availability.IsDegradedContainment);
         }
         finally
         {
@@ -164,11 +226,75 @@ public class MxcAvailabilityTests
                 NullLogger.Instance,
                 _ => new WxcProbeInvocation(1, string.Empty, "unsupported os build"));
 
-            // wxc-exec is present, but the host probe said no → not a setup issue.
+            // wxc-exec is present, but the host probe said no → not a setup issue,
+            // and a definitive verdict (exit 1) is NOT a transient probe error.
             Assert.True(availability.IsWxcExecResolvable);
             Assert.False(availability.IsAppContainerAvailable);
             Assert.False(availability.HasAnyBackend);
             Assert.NotEmpty(availability.UnsupportedReasons);
+            Assert.False(availability.ProbeErrored);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
+            try { File.Delete(fakeExe); } catch { /* best-effort */ }
+        }
+    }
+
+    [Fact]
+    public void Probe_WhenProbeTimesOut_ReportsProbeErrored()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var fakeExe = Path.Combine(Path.GetTempPath(), $"wxc-fake-{Guid.NewGuid():N}.exe");
+        File.WriteAllText(fakeExe, string.Empty);
+        try
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, fakeExe);
+
+            // Negative exit = our timeout/launch sentinel → transient probe error.
+            var availability = MxcAvailability.Probe(
+                NullLogger.Instance,
+                _ => new WxcProbeInvocation(-1, string.Empty, "wxc-exec --probe timed out."));
+
+            Assert.True(availability.IsWxcExecResolvable);
+            Assert.False(availability.IsAppContainerAvailable);
+            Assert.False(availability.HasAnyBackend);
+            Assert.True(availability.ProbeErrored);
+            Assert.NotEmpty(availability.UnsupportedReasons);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
+            try { File.Delete(fakeExe); } catch { /* best-effort */ }
+        }
+    }
+
+    [Fact]
+    public void Probe_WhenProbeReportsDaclTier_ReportsDegraded()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var fakeExe = Path.Combine(Path.GetTempPath(), $"wxc-fake-{Guid.NewGuid():N}.exe");
+        File.WriteAllText(fakeExe, string.Empty);
+        try
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, fakeExe);
+
+            var availability = MxcAvailability.Probe(
+                NullLogger.Instance,
+                _ => new WxcProbeInvocation(
+                    0,
+                    "{\"tier\":\"appcontainer-dacl\",\"needsDaclAugmentation\":true,\"warnings\":[\"fallback\"]}",
+                    string.Empty));
+
+            // Still contained (don't downgrade to uncontained), but flagged degraded.
+            Assert.True(availability.IsAppContainerAvailable);
+            Assert.True(availability.HasAnyBackend);
+            Assert.True(availability.IsDegradedContainment);
+            Assert.Equal("appcontainer-dacl", availability.IsolationTier);
+            Assert.True(availability.NeedsDaclAugmentation);
+            Assert.False(availability.ProbeErrored);
         }
         finally
         {
