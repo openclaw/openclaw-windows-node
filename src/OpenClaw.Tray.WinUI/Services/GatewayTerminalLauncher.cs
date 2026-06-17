@@ -7,6 +7,8 @@ namespace OpenClawTray.Services;
 internal interface IGatewayTerminalLauncher
 {
     void Open(GatewayHostAccessPlan accessPlan);
+
+    void OpenGatewayDoctor(GatewayHostAccessPlan accessPlan);
 }
 
 internal sealed record GatewayTerminalLaunchCommand(
@@ -29,6 +31,61 @@ internal static class GatewayTerminalLaunchCommandBuilder
             GatewayTerminalTarget.Ssh => BuildSshCommand(accessPlan, windowsTerminalPath),
             _ => throw new InvalidOperationException("Gateway terminal access is not available.")
         };
+    }
+
+    // Runs `openclaw doctor` in the app-managed WSL gateway, then `exec bash`
+    // so the terminal stays interactive after doctor exits. doctor is a rich
+    // terminal TUI and frequently exits non-zero for advisory findings, so we
+    // neither capture its output nor gate the keep-open on its exit code — the
+    // `|| true` absorbs the non-zero exit and `exec bash` always runs.
+    //
+    // IMPORTANT: the keep-open uses `&&` / `|| true &&`, NOT `;`. Windows Terminal
+    // treats `;` in its command line as a tab/pane delimiter and splits on it even
+    // inside a quoted argument, so `openclaw doctor; exec bash` breaks (wt tries to
+    // launch " exec bash" → error 0x80070002). `&&` / `||` are not wt delimiters,
+    // so the command passes through wt intact (verified with the app's
+    // ProcessStartInfo.ArgumentList quoting), letting doctor open in a themed
+    // Windows Terminal tab — matching the Connection page's Open terminal action.
+    public static GatewayTerminalLaunchCommand BuildGatewayDoctor(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
+    {
+        if (accessPlan.TerminalTarget != GatewayTerminalTarget.Wsl || string.IsNullOrWhiteSpace(accessPlan.DistroName))
+        {
+            throw new InvalidOperationException("Running gateway doctor requires an app-managed WSL gateway.");
+        }
+
+        var distroName = accessPlan.DistroName!;
+        var script = $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw doctor || true && exec bash";
+
+        if (!string.IsNullOrWhiteSpace(windowsTerminalPath))
+        {
+            return new GatewayTerminalLaunchCommand(
+                windowsTerminalPath,
+                new ReadOnlyCollection<string>([
+                    "new-tab",
+                    "--title",
+                    $"OpenClaw doctor ({distroName})",
+                    "wsl.exe",
+                    "-d",
+                    distroName,
+                    "--",
+                    "bash",
+                    "-lc",
+                    script
+                ]),
+                true);
+        }
+
+        return new GatewayTerminalLaunchCommand(
+            "wsl.exe",
+            new ReadOnlyCollection<string>([
+                "-d",
+                distroName,
+                "--",
+                "bash",
+                "-lc",
+                script
+            ]),
+            false);
     }
 
     private static GatewayTerminalLaunchCommand BuildWslCommand(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
@@ -105,6 +162,23 @@ internal sealed class GatewayTerminalLauncher(IOpenClawLogger logger) : IGateway
         }
     }
 
+    public void OpenGatewayDoctor(GatewayHostAccessPlan accessPlan)
+    {
+        // Mirror Open(): prefer a Windows Terminal tab, fall back to direct wsl.exe.
+        var terminalPath = TryFindWindowsTerminalPath();
+        var command = GatewayTerminalLaunchCommandBuilder.BuildGatewayDoctor(accessPlan, terminalPath);
+
+        try
+        {
+            Start(command);
+        }
+        catch (Exception ex) when (command.UsesWindowsTerminal)
+        {
+            logger.Warn($"Windows Terminal launch failed; falling back to direct terminal process: {ex.Message}");
+            Start(GatewayTerminalLaunchCommandBuilder.BuildGatewayDoctor(accessPlan, null));
+        }
+    }
+
     internal static string? TryFindWindowsTerminalPath()
     {
         foreach (var candidate in GetWindowsTerminalCandidates().Distinct(StringComparer.OrdinalIgnoreCase))
@@ -138,7 +212,11 @@ internal sealed class GatewayTerminalLauncher(IOpenClawLogger logger) : IGateway
         var startInfo = new ProcessStartInfo
         {
             FileName = command.FileName,
-            UseShellExecute = false
+            // Direct console apps (wsl.exe / ssh.exe — the doctor terminal and the
+            // Open-terminal fallback) need ShellExecute so Windows allocates a
+            // visible console window. Windows Terminal opens its own window, so it
+            // keeps the lighter CreateProcess path.
+            UseShellExecute = !command.UsesWindowsTerminal
         };
 
         foreach (var argument in command.Arguments)
