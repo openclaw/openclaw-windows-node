@@ -36,7 +36,7 @@ public class DirectAppContainerExecutorTests
             isWxcExecResolvable: false,
             wxcExecPath: null,
             unsupportedReasons: new[] { "test reason" });
-        var executor = new DirectAppContainerExecutor(availability, NullLogger.Instance);
+        var executor = new DirectAppContainerExecutor(() => availability, NullLogger.Instance);
 
         var ex = await Assert.ThrowsAsync<SandboxUnavailableException>(() => executor.ExecuteAsync(NewRequest()));
         Assert.Contains("test reason", ex.Message);
@@ -51,7 +51,7 @@ public class DirectAppContainerExecutorTests
             isWxcExecResolvable: false,
             wxcExecPath: null,
             unsupportedReasons: Array.Empty<string>());
-        var executor = new DirectAppContainerExecutor(availability, NullLogger.Instance);
+        var executor = new DirectAppContainerExecutor(() => availability, NullLogger.Instance);
 
         var ex = await Assert.ThrowsAsync<SandboxUnavailableException>(() => executor.ExecuteAsync(NewRequest()));
         Assert.Contains("wxc-exec.exe not found", ex.Message);
@@ -66,17 +66,54 @@ public class DirectAppContainerExecutorTests
             isWxcExecResolvable: true,
             wxcExecPath: "C:\\does\\not\\exist\\wxc-exec.exe",
             unsupportedReasons: Array.Empty<string>());
-        var executor = new DirectAppContainerExecutor(availability, NullLogger.Instance);
+        var executor = new DirectAppContainerExecutor(() => availability, NullLogger.Instance);
 
         // MxcExecutor's ctor throws FileNotFoundException → wrapped in SandboxUnavailableException.
         await Assert.ThrowsAsync<SandboxUnavailableException>(() => executor.ExecuteAsync(NewRequest()));
     }
 
     [Fact]
+    public async Task ExecuteAsync_ResolvesAvailabilityPerCall_PicksUpRecovery()
+    {
+        // Simulates a transient startup probe error that later recovers. The executor
+        // must read the provider on each call, not freeze the first snapshot — else a
+        // momentary startup glitch would pin it to "unavailable" for its lifetime.
+        var calls = 0;
+        var unavailable = new MxcAvailability(
+            isAppContainerAvailable: false,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: null,
+            unsupportedReasons: new[] { "transient probe error" },
+            probeErrored: true);
+        var recoveredButPathMissing = new MxcAvailability(
+            isAppContainerAvailable: true,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: "C:\\does\\not\\exist\\wxc-exec.exe",
+            unsupportedReasons: Array.Empty<string>());
+
+        var executor = new DirectAppContainerExecutor(
+            () => { calls++; return calls == 1 ? unavailable : recoveredButPathMissing; },
+            NullLogger.Instance);
+
+        // First call: unavailable → throws with the transient reason.
+        var ex1 = await Assert.ThrowsAsync<SandboxUnavailableException>(() => executor.ExecuteAsync(NewRequest()));
+        Assert.Contains("transient probe error", ex1.Message);
+
+        // Second call: provider now reports available (path just doesn't exist on
+        // disk). The DIFFERENT failure proves the executor re-resolved availability
+        // instead of reusing the first (unavailable) snapshot.
+        var ex2 = await Assert.ThrowsAsync<SandboxUnavailableException>(() => executor.ExecuteAsync(NewRequest()));
+        Assert.Contains("wxc-exec.exe not found at", ex2.Message);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
     public void Name_IsStableForTelemetry()
     {
         var availability = new MxcAvailability(false, false, false, null, Array.Empty<string>());
-        var executor = new DirectAppContainerExecutor(availability, NullLogger.Instance);
+        var executor = new DirectAppContainerExecutor(() => availability, NullLogger.Instance);
         Assert.Equal("mxc-direct-appc", executor.Name);
         Assert.True(executor.IsContained);
     }

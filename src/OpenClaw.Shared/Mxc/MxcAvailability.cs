@@ -166,10 +166,10 @@ public sealed class MxcAvailability
         }
         catch (Exception ex)
         {
-            invocation = new WxcProbeInvocation(-1, string.Empty, $"Failed to launch wxc-exec --probe: {ex.Message}");
+            invocation = new WxcProbeInvocation(WxcProbeStatus.LaunchFailed, 0, string.Empty, $"Failed to launch wxc-exec --probe: {ex.Message}");
         }
 
-        var probe = ParseProbeOutput(invocation.ExitCode, invocation.StdOut, invocation.StdErr);
+        var probe = ParseProbeOutput(invocation.Status, invocation.ExitCode, invocation.StdOut, invocation.StdErr);
         var isAppContainerSupported = probe.Supported;
         if (!isAppContainerSupported)
             reasons.Add(probe.FailureReason ?? "This Windows host does not support the MXC sandbox (wxc-exec --probe reported no usable tier).");
@@ -204,29 +204,30 @@ public sealed class MxcAvailability
     }
 
     /// <summary>
-    /// Parse the JSON emitted by <c>wxc-exec --probe</c> into a support verdict,
+    /// Parse the result of a <c>wxc-exec --probe</c> attempt into a support verdict,
     /// classifying the outcome as <see cref="MxcProbeOutcome.Supported"/>,
-    /// <see cref="MxcProbeOutcome.UnsupportedHost"/> (the binary ran and reported
-    /// no usable tier), or <see cref="MxcProbeOutcome.ProbeError"/> (we could not
-    /// get a verdict — our timeout/launch sentinel, or exit 0 with no usable
+    /// <see cref="MxcProbeOutcome.UnsupportedHost"/> (the binary ran to completion and
+    /// reported no usable tier), or <see cref="MxcProbeOutcome.ProbeError"/> (we could
+    /// not get a verdict: timeout, launch failure, or a completed run with no usable
     /// output). Probe errors are transient and should be re-probed, not cached.
     /// Exposed for unit testing.
     /// </summary>
-    internal static MxcProbeResult ParseProbeOutput(int exitCode, string? stdout, string? stderr)
+    internal static MxcProbeResult ParseProbeOutput(WxcProbeStatus status, int exitCode, string? stdout, string? stderr)
     {
-        // Negative exit codes are our own sentinels (timeout / failed to launch)
-        // set by RunWxcExecProbe and Probe's catch — we never actually ran the
-        // probe to a verdict, so treat as a transient error rather than a
-        // definitive "unsupported host".
-        if (exitCode < 0)
+        // We never obtained a verdict — our own infrastructure failure, not a host
+        // decision. Always transient/retryable, regardless of any exit code.
+        if (status != WxcProbeStatus.Completed)
         {
             var detail = FirstNonEmpty(stderr, stdout);
+            var what = status == WxcProbeStatus.TimedOut ? "timed out" : "could not be launched";
             return Error(
-                $"Could not determine MXC sandbox support (wxc-exec --probe did not complete{(detail is null ? "" : $": {Summarize(detail)}")}).");
+                $"Could not determine MXC sandbox support (wxc-exec --probe {what}{(detail is null ? "" : $": {Summarize(detail)}")}).");
         }
 
-        // A positive non-zero exit is the binary running and reporting that this
-        // host cannot sandbox — a definitive, non-retryable verdict.
+        // The process ran to completion. A non-zero exit is the binary reporting that
+        // this host cannot sandbox — a definitive, non-retryable verdict. (Genuine
+        // infrastructure failures — timeout / failed launch — are captured above via
+        // status, so they never reach this branch and get cached as "unsupported".)
         if (exitCode != 0)
         {
             var detail = FirstNonEmpty(stderr, stdout);
@@ -344,6 +345,7 @@ public sealed class MxcAvailability
         }
 
         return new WxcProbeInvocation(
+            WxcProbeStatus.Completed,
             process.ExitCode,
             stdoutTask.Status == TaskStatus.RanToCompletion ? stdoutTask.Result : string.Empty,
             stderrTask.Status == TaskStatus.RanToCompletion ? stderrTask.Result : string.Empty);
@@ -359,7 +361,7 @@ public sealed class MxcAvailability
         try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
         ObserveQuietly(stdoutTask);
         ObserveQuietly(stderrTask);
-        return new WxcProbeInvocation(-1, string.Empty, "wxc-exec --probe timed out.");
+        return new WxcProbeInvocation(WxcProbeStatus.TimedOut, 0, string.Empty, "wxc-exec --probe timed out.");
     }
 
     private static void ObserveQuietly(Task task) =>
@@ -413,8 +415,24 @@ public sealed class MxcAvailability
     };
 }
 
-/// <summary>Raw result of invoking <c>wxc-exec --probe</c>.</summary>
-internal readonly record struct WxcProbeInvocation(int ExitCode, string StdOut, string StdErr);
+/// <summary>Outcome of attempting to run <c>wxc-exec --probe</c> (distinct from the
+/// host verdict it produces). Lets us tell our own infrastructure failures
+/// (timeout / launch failure) apart from a process that actually completed.</summary>
+internal enum WxcProbeStatus
+{
+    /// <summary>The process ran to completion; <c>ExitCode</c> and output are meaningful.</summary>
+    Completed,
+
+    /// <summary>The process did not exit within the timeout and was killed.</summary>
+    TimedOut,
+
+    /// <summary>The process could not be started at all.</summary>
+    LaunchFailed,
+}
+
+/// <summary>Raw result of invoking <c>wxc-exec --probe</c>. <c>ExitCode</c> is only
+/// meaningful when <c>Status</c> is <see cref="WxcProbeStatus.Completed"/>.</summary>
+internal readonly record struct WxcProbeInvocation(WxcProbeStatus Status, int ExitCode, string StdOut, string StdErr);
 
 /// <summary>
 /// Classification of a <c>wxc-exec --probe</c> attempt.

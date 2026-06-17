@@ -68,6 +68,7 @@ public class MxcAvailabilityTests
     public void ParseProbeOutput_ValidTier_ReportsSupported()
     {
         var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
             exitCode: 0,
             stdout: "{\"tier\":\"base-container\",\"needsDaclAugmentation\":false,\"warnings\":[]}",
             stderr: "");
@@ -84,6 +85,7 @@ public class MxcAvailabilityTests
     public void ParseProbeOutput_CapturesWarningsAndDaclFlag()
     {
         var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
             exitCode: 0,
             stdout: "{\"tier\":\"appcontainer-dacl\",\"needsDaclAugmentation\":true,\"warnings\":[\"fell back to dacl\"]}",
             stderr: "");
@@ -96,14 +98,15 @@ public class MxcAvailabilityTests
     }
 
     [Fact]
-    public void ParseProbeOutput_PositiveNonZeroExit_ReportsUnsupportedHost()
+    public void ParseProbeOutput_CompletedNonZeroExit_ReportsUnsupportedHost()
     {
         var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
             exitCode: 1,
             stdout: "",
             stderr: "unsupported os");
 
-        // The binary ran and returned a definitive negative — not a probe error.
+        // The binary ran to completion and returned a definitive negative — not a probe error.
         Assert.Equal(MxcProbeOutcome.UnsupportedHost, result.Outcome);
         Assert.False(result.Supported);
         Assert.Null(result.Tier);
@@ -111,19 +114,44 @@ public class MxcAvailabilityTests
         Assert.Contains("does not support", result.FailureReason!);
     }
 
-    [Theory]
-    [InlineData(-1, "wxc-exec --probe timed out.")]
-    [InlineData(-1, "Failed to launch wxc-exec --probe: access denied")]
-    public void ParseProbeOutput_NegativeExitSentinel_ReportsProbeError(int exitCode, string stderr)
+    [Fact]
+    public void ParseProbeOutput_TimedOutStatus_ReportsProbeError()
     {
-        // Negative exit is our own timeout/launch sentinel — we never got a verdict,
-        // so it's a transient probe error, NOT a definitive "unsupported host".
-        var result = MxcAvailability.ParseProbeOutput(exitCode, stdout: "", stderr: stderr);
+        // Timeout is our own infrastructure failure — transient, regardless of exit code.
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.TimedOut, exitCode: 0, stdout: "", stderr: "wxc-exec --probe timed out.");
 
         Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
         Assert.False(result.Supported);
         Assert.NotNull(result.FailureReason);
         Assert.Contains("Could not determine", result.FailureReason!);
+    }
+
+    [Fact]
+    public void ParseProbeOutput_LaunchFailedStatus_ReportsProbeError()
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.LaunchFailed, exitCode: 0, stdout: "", stderr: "Failed to launch wxc-exec --probe: access denied");
+
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
+        Assert.False(result.Supported);
+        Assert.NotNull(result.FailureReason);
+        Assert.Contains("Could not determine", result.FailureReason!);
+    }
+
+    [Fact]
+    public void ParseProbeOutput_NonCompletedStatus_IgnoresExitCode()
+    {
+        // Even a "successful-looking" exit code must not flip a timeout/launch failure
+        // into a definitive verdict — the status wins.
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.TimedOut,
+            exitCode: 0,
+            stdout: "{\"tier\":\"base-container\"}",
+            stderr: "");
+
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
+        Assert.Null(result.Tier);
     }
 
     [Theory]
@@ -132,11 +160,11 @@ public class MxcAvailabilityTests
     [InlineData("{\"needsDaclAugmentation\":false}")]
     [InlineData("{\"tier\":\"\"}")]
     [InlineData("not json at all")]
-    public void ParseProbeOutput_ExitZeroButNoUsableOutput_ReportsProbeError(string stdout)
+    public void ParseProbeOutput_CompletedExitZeroButNoUsableOutput_ReportsProbeError(string stdout)
     {
         // Exit 0 with missing/garbled output is a binary anomaly, not a clear
         // "unsupported" verdict — treat as retryable probe error.
-        var result = MxcAvailability.ParseProbeOutput(exitCode: 0, stdout: stdout, stderr: "");
+        var result = MxcAvailability.ParseProbeOutput(WxcProbeStatus.Completed, exitCode: 0, stdout: stdout, stderr: "");
 
         Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
         Assert.False(result.Supported);
@@ -194,7 +222,7 @@ public class MxcAvailabilityTests
 
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
-                _ => new WxcProbeInvocation(0, "{\"tier\":\"base-container\",\"warnings\":[]}", string.Empty));
+                _ => new WxcProbeInvocation(WxcProbeStatus.Completed, 0, "{\"tier\":\"base-container\",\"warnings\":[]}", string.Empty));
 
             Assert.True(availability.IsAppContainerAvailable);
             Assert.True(availability.IsWxcExecResolvable);
@@ -224,7 +252,7 @@ public class MxcAvailabilityTests
 
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
-                _ => new WxcProbeInvocation(1, string.Empty, "unsupported os build"));
+                _ => new WxcProbeInvocation(WxcProbeStatus.Completed, 1, string.Empty, "unsupported os build"));
 
             // wxc-exec is present, but the host probe said no → not a setup issue,
             // and a definitive verdict (exit 1) is NOT a transient probe error.
@@ -252,10 +280,10 @@ public class MxcAvailabilityTests
         {
             Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, fakeExe);
 
-            // Negative exit = our timeout/launch sentinel → transient probe error.
+            // TimedOut status → transient probe error.
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
-                _ => new WxcProbeInvocation(-1, string.Empty, "wxc-exec --probe timed out."));
+                _ => new WxcProbeInvocation(WxcProbeStatus.TimedOut, 0, string.Empty, "wxc-exec --probe timed out."));
 
             Assert.True(availability.IsWxcExecResolvable);
             Assert.False(availability.IsAppContainerAvailable);
@@ -284,6 +312,7 @@ public class MxcAvailabilityTests
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
                 _ => new WxcProbeInvocation(
+                    WxcProbeStatus.Completed,
                     0,
                     "{\"tier\":\"appcontainer-dacl\",\"needsDaclAugmentation\":true,\"warnings\":[\"fallback\"]}",
                     string.Empty));

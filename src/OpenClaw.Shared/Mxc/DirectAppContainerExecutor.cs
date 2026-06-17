@@ -43,12 +43,18 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
     /// </summary>
     private const int Base64ConfigCharLimit = 25_000;
 
-    private readonly MxcAvailability _availability;
+    private readonly Func<MxcAvailability> _availabilityProvider;
     private readonly IOpenClawLogger _logger;
 
-    public DirectAppContainerExecutor(MxcAvailability availability, IOpenClawLogger? logger = null)
+    /// <summary>
+    /// Resolves availability lazily via <paramref name="availabilityProvider"/> so the
+    /// executor always sees the current probe verdict. A fixed snapshot would freeze a
+    /// startup probe error for the executor's lifetime even after the host recovers
+    /// (the re-probe would update the caller's gate but not this executor).
+    /// </summary>
+    public DirectAppContainerExecutor(Func<MxcAvailability> availabilityProvider, IOpenClawLogger? logger = null)
     {
-        _availability = availability;
+        _availabilityProvider = availabilityProvider ?? throw new ArgumentNullException(nameof(availabilityProvider));
         _logger = logger ?? NullLogger.Instance;
     }
 
@@ -56,11 +62,15 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         SandboxExecutionRequest request,
         CancellationToken ct = default)
     {
-        if (!_availability.IsAppContainerAvailable)
-            throw new SandboxUnavailableException(
-                _availability.UnsupportedReasons.FirstOrDefault() ?? "AppContainer unavailable");
+        // Resolve the live availability for THIS invocation so a transient startup
+        // probe error that has since recovered doesn't permanently fail us closed.
+        var availability = _availabilityProvider();
 
-        if (!_availability.IsWxcExecResolvable || string.IsNullOrEmpty(_availability.WxcExecPath))
+        if (!availability.IsAppContainerAvailable)
+            throw new SandboxUnavailableException(
+                availability.UnsupportedReasons.FirstOrDefault() ?? "AppContainer unavailable");
+
+        if (!availability.IsWxcExecResolvable || string.IsNullOrEmpty(availability.WxcExecPath))
             throw new SandboxUnavailableException("wxc-exec.exe not found");
 
         var capBytes = request.MaxOutputBytes is > 0 ? request.MaxOutputBytes.Value : DefaultMaxOutputBytes;
@@ -78,16 +88,16 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
                 : config.Process.Cwd;
 
             WarnIfUnsupportedVolume(config);
-            LogConfig(config, configJson, request);
+            LogConfig(config, configJson, request, availability.WxcExecPath);
 
             MxcExecutor executor;
             try
             {
-                executor = new MxcExecutor(_availability.WxcExecPath, stdoutCapBytes: capInt, stderrCapBytes: capInt);
+                executor = new MxcExecutor(availability.WxcExecPath, stdoutCapBytes: capInt, stderrCapBytes: capInt);
             }
             catch (FileNotFoundException ex)
             {
-                throw new SandboxUnavailableException($"wxc-exec.exe not found at {_availability.WxcExecPath}", ex);
+                throw new SandboxUnavailableException($"wxc-exec.exe not found at {availability.WxcExecPath}", ex);
             }
 
             // Local timeout + caller cancellation. Mirror the builder's
@@ -178,7 +188,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch { /* best-effort */ }
     }
 
-    private void LogConfig(MxcConfig config, string configJson, SandboxExecutionRequest request)
+    private void LogConfig(MxcConfig config, string configJson, SandboxExecutionRequest request, string? wxcExecPath)
     {
         // Default: redacted summary. Field counts only; no paths, no command line,
         // no env values. Useful for verifying Sandbox UI settings round-tripped
@@ -190,7 +200,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
 
         var summary =
             "[mxc] wxc-exec config (redacted) " +
-            $"wxcExec={_availability.WxcExecPath}; configBytes={Encoding.UTF8.GetByteCount(configJson)}; " +
+            $"wxcExec={wxcExecPath}; configBytes={Encoding.UTF8.GetByteCount(configJson)}; " +
             $"containerId={config.ContainerId}; version={config.Version}; " +
             $"commandLineLength={config.Process.CommandLine?.Length ?? 0}; " +
             $"cwd={(string.IsNullOrEmpty(config.Process.Cwd) ? "<null>" : "<set>")}; " +

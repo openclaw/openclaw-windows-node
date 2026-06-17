@@ -50,7 +50,7 @@ public class MxcCommandRunnerIntegrationTests
             return null;
         }
 
-        var executor = new DirectAppContainerExecutor(availability, new ConsoleLogger());
+        var executor = new DirectAppContainerExecutor(() => availability, new ConsoleLogger());
 
         var settings = new SettingsData
         {

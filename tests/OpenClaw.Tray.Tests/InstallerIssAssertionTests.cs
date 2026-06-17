@@ -195,7 +195,7 @@ public sealed class InstallerIssAssertionTests
 
         Assert.Contains("private ICommandRunner BuildSystemRunRunner()", nodeService);
         Assert.Contains("MxcAvailability.Probe(_logger)", nodeService);
-        Assert.Contains("new DirectAppContainerExecutor(availability, _logger)", nodeService);
+        Assert.Contains("new DirectAppContainerExecutor(GetOrProbeMxcAvailability, _logger)", nodeService);
         Assert.Contains("return new MxcCommandRunner(", nodeService);
     }
 

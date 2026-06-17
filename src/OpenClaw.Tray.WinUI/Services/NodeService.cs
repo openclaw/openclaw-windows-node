@@ -511,7 +511,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         var availability = GetOrProbeMxcAvailability();
         var hostRunner = new LocalCommandRunner(_logger);
-        var executor = new DirectAppContainerExecutor(availability, _logger);
+        var executor = new DirectAppContainerExecutor(GetOrProbeMxcAvailability, _logger);
 
         if (availability.HasAnyBackend)
         {
@@ -539,7 +539,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // cached definitive verdict, or re-probes after a transient error /
             // a prior SandboxUnavailableException-driven invalidation.
             () => GetOrProbeMxcAvailability().HasAnyBackend,
-            invalidateAvailability: () => _mxcAvailability = null,
+            invalidateAvailability: InvalidateMxcAvailability,
             _logger);
     }
 
@@ -579,6 +579,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
     private MxcAvailability? _mxcAvailability;
     private DateTime _mxcAvailabilityProbedAtUtc;
+    private readonly object _mxcAvailabilityLock = new();
 
     /// <summary>
     /// Minimum interval before re-probing after a transient probe error. Bounds the
@@ -593,19 +594,31 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// a transient probe error (<see cref="MxcAvailability.ProbeErrored"/>) is NOT
     /// cached permanently — we re-probe (throttled by <see cref="MxcProbeRetryInterval"/>)
     /// so a momentary glitch doesn't pin the whole process to uncontained execution.
+    /// Serialized by <see cref="_mxcAvailabilityLock"/> so concurrent <c>system.run</c>
+    /// calls can't spawn a storm of probe processes; the retry timestamp is set
+    /// before probing so a slow (timeout) probe doesn't let waiters pile on more.
     /// </summary>
     private MxcAvailability GetOrProbeMxcAvailability()
     {
-        if (_mxcAvailability is { ProbeErrored: false } cached)
-            return cached;
+        lock (_mxcAvailabilityLock)
+        {
+            if (_mxcAvailability is { ProbeErrored: false } cached)
+                return cached;
 
-        if (_mxcAvailability is { ProbeErrored: true }
-            && DateTime.UtcNow - _mxcAvailabilityProbedAtUtc < MxcProbeRetryInterval)
+            if (_mxcAvailability is { ProbeErrored: true }
+                && DateTime.UtcNow - _mxcAvailabilityProbedAtUtc < MxcProbeRetryInterval)
+                return _mxcAvailability;
+
+            _mxcAvailabilityProbedAtUtc = DateTime.UtcNow;
+            _mxcAvailability = MxcAvailability.Probe(_logger);
             return _mxcAvailability;
+        }
+    }
 
-        _mxcAvailability = MxcAvailability.Probe(_logger);
-        _mxcAvailabilityProbedAtUtc = DateTime.UtcNow;
-        return _mxcAvailability;
+    private void InvalidateMxcAvailability()
+    {
+        lock (_mxcAvailabilityLock)
+            _mxcAvailability = null;
     }
 
     private void StartMcpServer()
