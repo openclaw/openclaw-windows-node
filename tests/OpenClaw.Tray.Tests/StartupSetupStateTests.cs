@@ -274,6 +274,7 @@ public class StartupSetupStateTests
             Id = "local-gateway",
             Url = "ws://localhost:18789",
             IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
             SharedGatewayToken = "shared-token"
         });
         var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
@@ -286,6 +287,32 @@ public class StartupSetupStateTests
             localDataPath: temp.Path);
 
         Assert.Equal(SetupExistingGatewayKind.AppOwnedLocalWsl, kind);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_TreatsNativeLoopbackGatewayAsExternalOnly_EvenWhenOpenClawGatewayDistroExists()
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "native-gateway",
+            Url = "wss://127.0.0.1:18789",
+            FriendlyName = "Desktop-A Native Gateway",
+            IsLocal = true,
+            SharedGatewayToken = "shared-token"
+        });
+        var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
+
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: temp.Path);
+
+        Assert.Equal(SetupExistingGatewayKind.ExternalOnly, kind);
     }
 
     [Fact]

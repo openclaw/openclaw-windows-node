@@ -106,10 +106,7 @@ public static class SetupExistingGatewayClassifier
     private static bool HasLocalSetupEvidence(GatewayRegistry? registry, string localDataPath)
     {
         if (registry is not null
-            && registry.GetAll().Any(record =>
-                record.IsLocal
-                && record.SshTunnel is null
-                && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url)))
+            && registry.GetAll().Any(WslKeepAlivePolicy.IsSetupManagedLocalRecord))
         {
             return true;
         }

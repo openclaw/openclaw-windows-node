@@ -20,6 +20,20 @@ public class WslKeepAlivePolicyTests
     }
 
     [Fact]
+    public void ShouldStart_DoesNotStartForManualNativeLocalRecord()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "native-local",
+            Url = "wss://127.0.0.1:18789",
+            FriendlyName = "Desktop-A Native Gateway",
+            IsLocal = true,
+        };
+
+        Assert.False(WslKeepAlivePolicy.ShouldStart(record, legacyGatewayUrl: null));
+    }
+
+    [Fact]
     public void ShouldStart_DoesNotFallBackToLegacyLocalUrl_WhenActiveRecordIsRemote()
     {
         var record = new GatewayRecord
@@ -47,9 +61,9 @@ public class WslKeepAlivePolicyTests
     }
 
     [Fact]
-    public void ShouldStart_FallsBackToLegacyLocalUrl_WhenNoActiveRecordExists()
+    public void ShouldStart_DoesNotFallBackToLegacyLocalUrl_WhenNoActiveRecordExists()
     {
-        Assert.True(WslKeepAlivePolicy.ShouldStart(activeRecord: null, "ws://127.0.0.1:18789"));
+        Assert.False(WslKeepAlivePolicy.ShouldStart(activeRecord: null, "ws://127.0.0.1:18789"));
     }
 
     [Fact]
