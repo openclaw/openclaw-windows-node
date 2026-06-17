@@ -648,6 +648,75 @@ Utilisez l'une de ces options :
   <data name="Toast_PairingCommandCopied" xml:space="preserve">
     <value>Commande de jumelage copiée</value>
   </data>
+  <data name="Toast_PairingRequestTitle" xml:space="preserve">
+    <value>Demande de jumelage</value>
+  </data>
+  <data name="Toast_PairingRequestBody" xml:space="preserve">
+    <value>{0} souhaite se connecter</value>
+  </data>
+  <data name="Toast_PairingRequestBodyNode" xml:space="preserve">
+    <value>{0} souhaite se connecter en tant que nœud</value>
+  </data>
+  <data name="Toast_PairingReview" xml:space="preserve">
+    <value>Examiner</value>
+  </data>
+  <data name="Toast_PairingApprovedTitle" xml:space="preserve">
+    <value>Jumelage approuvé</value>
+  </data>
+  <data name="Toast_PairingApprovedBody" xml:space="preserve">
+    <value>{0} peut désormais se connecter</value>
+  </data>
+  <data name="Toast_PairingRejectedTitle" xml:space="preserve">
+    <value>Jumelage refusé</value>
+  </data>
+  <data name="Toast_PairingRejectedBody" xml:space="preserve">
+    <value>{0} n'a pas été autorisé à se connecter</value>
+  </data>
+  <data name="PairingApproval_WindowTitle" xml:space="preserve">
+    <value>Demande de jumelage</value>
+  </data>
+  <data name="PairingApproval_DeviceHeading" xml:space="preserve">
+    <value>Un appareil souhaite se connecter</value>
+  </data>
+  <data name="PairingApproval_NodeHeading" xml:space="preserve">
+    <value>Un nœud souhaite se connecter</value>
+  </data>
+  <data name="PairingApproval_Subtitle" xml:space="preserve">
+    <value>N'approuvez que si vous reconnaissez cette demande. Vous pourrez la supprimer plus tard dans les paramètres de connexion.</value>
+  </data>
+  <data name="PairingApproval_AccessRequested" xml:space="preserve">
+    <value>Accès demandé</value>
+  </data>
+  <data name="PairingApproval_RepairBadge" xml:space="preserve">
+    <value>Demande de réappairage — le jeton de l'appareil sera renouvelé.</value>
+  </data>
+  <data name="PairingApproval_Approve" xml:space="preserve">
+    <value>Approuver</value>
+  </data>
+  <data name="PairingApproval_ApproveDevice" xml:space="preserve">
+    <value>Approuver l'appareil</value>
+  </data>
+  <data name="PairingApproval_ApproveNode" xml:space="preserve">
+    <value>Approuver le nœud</value>
+  </data>
+  <data name="PairingApproval_Reject" xml:space="preserve">
+    <value>Refuser</value>
+  </data>
+  <data name="PairingApproval_Later" xml:space="preserve">
+    <value>Décider plus tard</value>
+  </data>
+  <data name="PairingApproval_MoreWaiting" xml:space="preserve">
+    <value>{0} en attente</value>
+  </data>
+  <data name="PairingApproval_ApproveHint" xml:space="preserve">
+    <value>L'approbation sera disponible dans un instant</value>
+  </data>
+  <data name="PairingApproval_UnknownDevice" xml:space="preserve">
+    <value>Appareil inconnu</value>
+  </data>
+  <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
+    <value>Plateforme inconnue</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Noeud appairé!</value>
   </data>

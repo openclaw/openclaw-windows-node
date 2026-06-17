@@ -648,6 +648,75 @@
   <data name="Toast_PairingCommandCopied" xml:space="preserve">
     <value>配对命令已复制</value>
   </data>
+  <data name="Toast_PairingRequestTitle" xml:space="preserve">
+    <value>配对请求</value>
+  </data>
+  <data name="Toast_PairingRequestBody" xml:space="preserve">
+    <value>{0} 想要连接</value>
+  </data>
+  <data name="Toast_PairingRequestBodyNode" xml:space="preserve">
+    <value>{0} 想要作为节点连接</value>
+  </data>
+  <data name="Toast_PairingReview" xml:space="preserve">
+    <value>查看</value>
+  </data>
+  <data name="Toast_PairingApprovedTitle" xml:space="preserve">
+    <value>配对已批准</value>
+  </data>
+  <data name="Toast_PairingApprovedBody" xml:space="preserve">
+    <value>{0} 现在可以连接</value>
+  </data>
+  <data name="Toast_PairingRejectedTitle" xml:space="preserve">
+    <value>配对已拒绝</value>
+  </data>
+  <data name="Toast_PairingRejectedBody" xml:space="preserve">
+    <value>{0} 未获允许连接</value>
+  </data>
+  <data name="PairingApproval_WindowTitle" xml:space="preserve">
+    <value>配对请求</value>
+  </data>
+  <data name="PairingApproval_DeviceHeading" xml:space="preserve">
+    <value>有设备想要连接</value>
+  </data>
+  <data name="PairingApproval_NodeHeading" xml:space="preserve">
+    <value>有节点想要连接</value>
+  </data>
+  <data name="PairingApproval_Subtitle" xml:space="preserve">
+    <value>仅在您认识此请求时才批准。稍后可在“连接”设置中将其移除。</value>
+  </data>
+  <data name="PairingApproval_AccessRequested" xml:space="preserve">
+    <value>请求的访问权限</value>
+  </data>
+  <data name="PairingApproval_RepairBadge" xml:space="preserve">
+    <value>重新配对请求——设备令牌将轮换。</value>
+  </data>
+  <data name="PairingApproval_Approve" xml:space="preserve">
+    <value>批准</value>
+  </data>
+  <data name="PairingApproval_ApproveDevice" xml:space="preserve">
+    <value>批准设备</value>
+  </data>
+  <data name="PairingApproval_ApproveNode" xml:space="preserve">
+    <value>批准节点</value>
+  </data>
+  <data name="PairingApproval_Reject" xml:space="preserve">
+    <value>拒绝</value>
+  </data>
+  <data name="PairingApproval_Later" xml:space="preserve">
+    <value>稍后决定</value>
+  </data>
+  <data name="PairingApproval_MoreWaiting" xml:space="preserve">
+    <value>还有 {0} 个等待</value>
+  </data>
+  <data name="PairingApproval_ApproveHint" xml:space="preserve">
+    <value>批准将在稍后可用</value>
+  </data>
+  <data name="PairingApproval_UnknownDevice" xml:space="preserve">
+    <value>未知设备</value>
+  </data>
+  <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
+    <value>未知平台</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ 节点已配对！</value>
   </data>

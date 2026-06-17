@@ -58,6 +58,19 @@ public sealed class ToastActivationRouterTests
     }
 
     [Fact]
+    public void Route_ReviewPairing_InvokesReviewAction()
+    {
+        var calls = new List<string>();
+
+        ToastActivationRouter.Route(
+            "review_pairing",
+            _ => null,
+            BuildActions(calls));
+
+        Assert.Equal(["review"], calls);
+    }
+
+    [Fact]
     public void Route_UnknownAction_NoOps()
     {
         var calls = new List<string>();
@@ -77,6 +90,7 @@ public sealed class ToastActivationRouterTests
         OpenSettings = () => calls.Add("settings"),
         OpenChat = () => calls.Add("chat"),
         OpenActivity = () => calls.Add("activity"),
-        CopyPairingCommand = command => calls.Add($"copy:{command}")
+        CopyPairingCommand = command => calls.Add($"copy:{command}"),
+        ReviewPairing = () => calls.Add("review")
     };
 }

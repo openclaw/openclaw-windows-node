@@ -649,6 +649,75 @@ Gebruik een van deze opties:
   <data name="Toast_PairingCommandCopied" xml:space="preserve">
     <value>Koppelingsopdracht gekopieerd</value>
   </data>
+  <data name="Toast_PairingRequestTitle" xml:space="preserve">
+    <value>Koppelingsverzoek</value>
+  </data>
+  <data name="Toast_PairingRequestBody" xml:space="preserve">
+    <value>{0} wil verbinding maken</value>
+  </data>
+  <data name="Toast_PairingRequestBodyNode" xml:space="preserve">
+    <value>{0} wil verbinding maken als node</value>
+  </data>
+  <data name="Toast_PairingReview" xml:space="preserve">
+    <value>Bekijken</value>
+  </data>
+  <data name="Toast_PairingApprovedTitle" xml:space="preserve">
+    <value>Koppeling goedgekeurd</value>
+  </data>
+  <data name="Toast_PairingApprovedBody" xml:space="preserve">
+    <value>{0} kan nu verbinding maken</value>
+  </data>
+  <data name="Toast_PairingRejectedTitle" xml:space="preserve">
+    <value>Koppeling geweigerd</value>
+  </data>
+  <data name="Toast_PairingRejectedBody" xml:space="preserve">
+    <value>{0} mocht geen verbinding maken</value>
+  </data>
+  <data name="PairingApproval_WindowTitle" xml:space="preserve">
+    <value>Koppelingsverzoek</value>
+  </data>
+  <data name="PairingApproval_DeviceHeading" xml:space="preserve">
+    <value>Een apparaat wil verbinding maken</value>
+  </data>
+  <data name="PairingApproval_NodeHeading" xml:space="preserve">
+    <value>Een node wil verbinding maken</value>
+  </data>
+  <data name="PairingApproval_Subtitle" xml:space="preserve">
+    <value>Keur dit alleen goed als je dit verzoek herkent. Je kunt het later verwijderen in de verbindingsinstellingen.</value>
+  </data>
+  <data name="PairingApproval_AccessRequested" xml:space="preserve">
+    <value>Gevraagde toegang</value>
+  </data>
+  <data name="PairingApproval_RepairBadge" xml:space="preserve">
+    <value>Verzoek om opnieuw te koppelen — het apparaattoken wordt vernieuwd.</value>
+  </data>
+  <data name="PairingApproval_Approve" xml:space="preserve">
+    <value>Goedkeuren</value>
+  </data>
+  <data name="PairingApproval_ApproveDevice" xml:space="preserve">
+    <value>Apparaat goedkeuren</value>
+  </data>
+  <data name="PairingApproval_ApproveNode" xml:space="preserve">
+    <value>Node goedkeuren</value>
+  </data>
+  <data name="PairingApproval_Reject" xml:space="preserve">
+    <value>Weigeren</value>
+  </data>
+  <data name="PairingApproval_Later" xml:space="preserve">
+    <value>Later beslissen</value>
+  </data>
+  <data name="PairingApproval_MoreWaiting" xml:space="preserve">
+    <value>Nog {0} in wachtrij</value>
+  </data>
+  <data name="PairingApproval_ApproveHint" xml:space="preserve">
+    <value>Goedkeuren komt zo beschikbaar</value>
+  </data>
+  <data name="PairingApproval_UnknownDevice" xml:space="preserve">
+    <value>Onbekend apparaat</value>
+  </data>
+  <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
+    <value>Onbekend platform</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node gekoppeld!</value>
   </data>

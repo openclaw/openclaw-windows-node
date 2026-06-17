@@ -138,6 +138,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private AppState? _appState;
     internal AppState? AppState => _appState;
     private GatewayService? _gatewayService;
+    private PairingApprovalCoordinator? _pairingApprovalCoordinator;
+    private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pairingApprovalPollTimer;
     private CancellationTokenSource? _deepLinkCts;
     private bool _isExiting;
     
@@ -431,6 +434,28 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
+
+        // Inbound pairing approvals: surface a focused dialog + awareness toast when another
+        // device/node requests pairing (Mac-parity). Getters are lazy so this can be created
+        // before the connection manager / node service exist.
+        _pairingApprovalCoordinator = new PairingApprovalCoordinator(
+            getClient: () => _connectionManager?.OperatorClient,
+            getOwnNodeDeviceId: () => _nodeService?.FullDeviceId,
+            isPromptEnabled: () => _settings?.ShowPairingApprovalDialog ?? true,
+            logger: new AppLogger());
+        _pairingApprovalCoordinator.ApprovalRequested += OnPairingApprovalRequested;
+        _pairingApprovalCoordinator.DecisionCompleted += OnPairingDecisionCompleted;
+        _gatewayService.PairListsChanged += OnPairListsChanged;
+
+        // Safety-net poll: the gateway broadcasts pair requests with dropIfSlow=true, so a busy
+        // socket can silently drop a "device wants to connect" event and the operator would never
+        // be prompted. A periodic reconcile recovers any missed request. RefreshFromGatewayAsync
+        // no-ops unless connected with approval scope, so this is idle-cheap.
+        _pairingApprovalPollTimer = _dispatcherQueue!.CreateTimer();
+        _pairingApprovalPollTimer.Interval = TimeSpan.FromSeconds(20);
+        _pairingApprovalPollTimer.IsRepeating = true;
+        _pairingApprovalPollTimer.Tick += (_, _) => _ = _pairingApprovalCoordinator?.RefreshFromGatewayAsync();
+        _pairingApprovalPollTimer.Start();
 
         DiagnosticsJsonlService.Write("app.start", new
         {
@@ -1643,6 +1668,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         else
         {
             _chatCoordinator?.SetOperatorClient(null);
+            _pairingApprovalCoordinator?.Reset();
         }
 
         RaiseChatProviderChanged();
@@ -2185,7 +2211,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private void OnPairingStatusChanged(object? sender, OpenClaw.Shared.PairingStatusEventArgs args)
     {
         Logger.Info($"Pairing status: {args.Status}");
-        
+
+        // The local node's own device id may have just become known. Re-run the
+        // approval reconcile so the own-node filter drops any self pairing request
+        // rather than prompting the operator to approve their own machine.
+        OnUiThread(() => _pairingApprovalCoordinator?.OnPairListsUpdated(
+            _appState?.DevicePairList, _appState?.NodePairList));
+
         try
         {
             if (args.Status == OpenClaw.Shared.PairingStatus.Pending)
@@ -2912,6 +2944,84 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _gatewayRegistry,
             _connectionManager);
         _connectionStatusWindow.Activate();
+    }
+
+    // ─── Inbound pairing approvals ───────────────────────────────────────
+
+    /// <summary>Feeds fresh device/node pending pair-lists into the approval coordinator.</summary>
+    private void OnPairListsChanged(object? sender, EventArgs e)
+    {
+        _pairingApprovalCoordinator?.OnPairListsUpdated(_appState?.DevicePairList, _appState?.NodePairList);
+    }
+
+    /// <summary>A new inbound pairing request arrived — present the focused dialog and an awareness toast.</summary>
+    private void OnPairingApprovalRequested(object? sender, PendingApproval approval)
+    {
+        OnUiThread(() =>
+        {
+            ShowPairingApprovalDialog();
+
+            var name = string.IsNullOrWhiteSpace(approval.DisplayName)
+                ? approval.DeviceId
+                : approval.DisplayName!;
+            AddRecentActivity(
+                LocalizationHelper.GetString("Toast_PairingRequestTitle"),
+                category: "pairing",
+                dashboardPath: "connection",
+                details: name);
+
+            var bodyKey = approval.Kind == PairingApprovalKind.Node
+                ? "Toast_PairingRequestBodyNode"
+                : "Toast_PairingRequestBody";
+            _toastService?.ShowToast(new ToastContentBuilder()
+                .AddText(LocalizationHelper.GetString("Toast_PairingRequestTitle"))
+                .AddText(string.Format(LocalizationHelper.GetString(bodyKey), name))
+                .AddButton(new ToastButton()
+                    .SetContent(LocalizationHelper.GetString("Toast_PairingReview"))
+                    .AddArgument("action", "review_pairing")),
+                "pairing-request",
+                approval.DecisionId);
+        });
+    }
+
+    /// <summary>After a decision succeeds, confirm with a toast + activity entry.</summary>
+    private void OnPairingDecisionCompleted(object? sender, PairingDecisionResult result)
+    {
+        if (!result.Success) return; // failures are retried in the dialog
+        OnUiThread(() =>
+        {
+            var name = string.IsNullOrWhiteSpace(result.Approval.DisplayName)
+                ? result.Approval.DeviceId
+                : result.Approval.DisplayName!;
+            var titleKey = result.Approved ? "Toast_PairingApprovedTitle" : "Toast_PairingRejectedTitle";
+            var bodyKey = result.Approved ? "Toast_PairingApprovedBody" : "Toast_PairingRejectedBody";
+            AddRecentActivity(
+                LocalizationHelper.GetString(titleKey),
+                category: "pairing",
+                dashboardPath: "connection",
+                details: name);
+            _toastService?.ShowToast(new ToastContentBuilder()
+                .AddText(LocalizationHelper.GetString(titleKey))
+                .AddText(string.Format(LocalizationHelper.GetString(bodyKey), name)),
+                "pairing-decided",
+                result.Approval.DecisionId);
+        });
+    }
+
+    /// <summary>Opens (or re-focuses) the inbound pairing approval dialog when there is something to decide.</summary>
+    private void ShowPairingApprovalDialog()
+    {
+        if (_pairingApprovalCoordinator == null) return;
+        if (_pairingApprovalCoordinator.Current.Count == 0) return;
+
+        if (_pairingApprovalDialog is { IsClosed: false } existing)
+        {
+            existing.ShowForeground();
+            return;
+        }
+
+        _pairingApprovalDialog = new OpenClawTray.Dialogs.PairingApprovalDialog(_pairingApprovalCoordinator);
+        _pairingApprovalDialog.ShowForeground();
     }
 
     private void RestartSshTunnel()
@@ -4162,6 +4272,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             _sshTunnelService?.Dispose();
             _sshTunnelService = null;
+        });
+
+        SafeShutdownStep("pairing approval", () =>
+        {
+            _pairingApprovalPollTimer?.Stop();
+            _pairingApprovalPollTimer = null;
+            _pairingApprovalDialog?.Close();
+            _pairingApprovalDialog = null;
         });
 
         // Close windows explicitly for deterministic shutdown tracing.
