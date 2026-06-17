@@ -15,18 +15,36 @@ public sealed partial class SandboxPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private bool _suppress;
     private bool _dialogOpen;
-    private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;
 
     public ObservableCollection<CustomFolderRow> CustomFolders { get; } = new();
 
     /// <summary>
-    /// Cached MxcAvailability for the lifetime of this page instance. Probe() does
-    /// registry reads and filesystem walks; we don't need to repeat that work on every
-    /// toggle/preset change. The result is stable as long as the OS doesn't change
-    /// under us, which is fine for a settings page.
+    /// Cached MxcAvailability for the lifetime of this page instance, or null until
+    /// the first background probe completes. Probe() spawns <c>wxc-exec --probe</c>
+    /// (up to ~15s on a misbehaving host) plus filesystem walks, so we never run it
+    /// on the UI thread; <see cref="RefreshAvailabilityAsync"/> populates this
+    /// off-thread and re-renders. Availability-driven UI treats null as "checking".
     /// </summary>
-    private OpenClaw.Shared.Mxc.MxcAvailability GetAvailability()
-        => _cachedAvailability ??= OpenClaw.Shared.Mxc.MxcAvailability.Probe();
+    private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;
+
+    /// <summary>
+    /// Probe MXC availability off the UI thread (once), cache it, then refresh the
+    /// availability-driven UI. No-op once a result is cached.
+    /// </summary>
+    private async System.Threading.Tasks.Task RefreshAvailabilityAsync()
+    {
+        if (_cachedAvailability is not null) return;
+
+        var availability = await System.Threading.Tasks.Task.Run(
+            static () => OpenClaw.Shared.Mxc.MxcAvailability.Probe());
+
+        _cachedAvailability = availability;
+
+        // await resumed us on the UI thread (DispatcherQueue sync context), so it
+        // is safe to touch controls here. Re-render the bits that depend on the probe.
+        UpdateSandboxStatusCard();
+        UpdateControlsEnabledState();
+    }
 
     // ── Quick-preset definitions ─────────────────────────────────────
     //
@@ -90,6 +108,15 @@ public sealed partial class SandboxPage : Page
         LoadState();
         ProbeStatus();
         UpdateControlsEnabledState();
+
+        // Kick off the (potentially slow) MXC probe off the UI thread. The page
+        // renders a neutral "checking" state until it completes, then re-renders
+        // with the real availability — so the settings UI never blocks on
+        // wxc-exec --probe.
+        AsyncEventHandlerGuard.Run(
+            RefreshAvailabilityAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(RefreshAvailabilityAsync));
     }
 
     // ── Load + probe ─────────────────────────────────────────────────
@@ -150,12 +177,22 @@ public sealed partial class SandboxPage : Page
     /// </summary>
     private void UpdateSandboxStatusCard()
     {
-        var availability = GetAvailability();
+        var availability = _cachedAvailability;
         var enabled = SandboxEnabledToggle.IsOn;
-        var available = availability.HasAnyBackend;
 
         UpdateUnavailableActionBar(availability);
 
+        if (availability is null)
+        {
+            // Probe still running on the background thread — neutral interim state.
+            SandboxStatusIcon.Text = "⏳";
+            SandboxStatusTitle.Text = "Checking sandbox availability…";
+            SandboxStatusSubtext.Text = "Verifying that this PC can contain commands the agent runs.";
+            SandboxEnabledToggle.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var available = availability.HasAnyBackend;
         if (!available)
         {
             SandboxStatusIcon.Text = "⚠";
@@ -188,9 +225,10 @@ public sealed partial class SandboxPage : Page
     ///   - wxc-exec.exe missing → "Show install instructions"
     ///   - Anything else → no primary action, just the learn-more hyperlink
     /// </summary>
-    private void UpdateUnavailableActionBar(OpenClaw.Shared.Mxc.MxcAvailability availability)
+    private void UpdateUnavailableActionBar(OpenClaw.Shared.Mxc.MxcAvailability? availability)
     {
-        if (availability.HasAnyBackend)
+        // Null = still probing; hide the bar until we have a verdict.
+        if (availability is null || availability.HasAnyBackend)
         {
             UnavailableActionBar.IsOpen = false;
             return;
@@ -201,9 +239,9 @@ public sealed partial class SandboxPage : Page
             ? string.Join("  ·  ", reasons)
             : "MXC sandboxing primitives are not available on this machine.";
 
-        var isWindowsIssue = reasons.Any(r =>
-            r.Contains("Windows build", StringComparison.OrdinalIgnoreCase) ||
-            r.Contains("Windows UBR", StringComparison.OrdinalIgnoreCase));
+        // wxc-exec is present but the host probe reported no usable tier → the
+        // Windows host itself doesn't support the sandbox (vs. a missing binary).
+        var isWindowsIssue = availability.IsWxcExecResolvable && !availability.IsAppContainerAvailable;
 
         var isSetupIssue = !availability.IsWxcExecResolvable;
 
@@ -273,8 +311,9 @@ public sealed partial class SandboxPage : Page
     /// </summary>
     private void UpdateControlsEnabledState()
     {
-        var availability = GetAvailability();
-        var available = availability.HasAnyBackend;
+        // Null availability = still probing; treat as not-yet-active so the
+        // controls stay dimmed until the background probe resolves.
+        var available = _cachedAvailability?.HasAnyBackend ?? false;
         var sandboxOn = SandboxEnabledToggle.IsOn;
         var active = available && sandboxOn;
 

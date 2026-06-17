@@ -173,7 +173,7 @@ public class MxcConfigBuilderTests
     {
         var policy = BalancedPolicy();
         var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
-        Assert.Contains("internetClient", config.AppContainer!.Capabilities!);
+        Assert.Contains("internetClient", config.ProcessContainer!.Capabilities!);
         Assert.Equal("allow", config.Network!.DefaultPolicy);
     }
 
@@ -182,7 +182,7 @@ public class MxcConfigBuilderTests
     {
         var policy = LockedDownPolicy();
         var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
-        Assert.DoesNotContain("internetClient", config.AppContainer!.Capabilities!);
+        Assert.DoesNotContain("internetClient", config.ProcessContainer!.Capabilities!);
         Assert.Equal("block", config.Network!.DefaultPolicy);
     }
 
@@ -428,14 +428,14 @@ public class MxcConfigBuilderTests
     {
         // commandLine/cwd/env/timeoutMs live under "process" — the SDK leaves
         // process empty when called with createConfigFromPolicy and we add
-        // these ourselves. appContainer.name is a per-invocation random hex
+        // these ourselves. processContainer.name is a per-invocation random hex
         // that we stripped from the goldens.
         return fullPath is
             "$.process.commandLine" or
             "$.process.cwd" or
             "$.process.env" or
             "$.process.timeoutMs" or
-            "$.appContainer.name";
+            "$.processContainer.name";
     }
 
     private static void AssertNodeEqual(object? expected, object? actual, string path)

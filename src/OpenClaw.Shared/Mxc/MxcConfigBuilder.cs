@@ -116,7 +116,7 @@ public static class MxcConfigBuilder
             Injection = false,
         };
 
-        var appContainerUi = new MxcBaseProcessUi
+        var processContainerUi = new MxcBaseProcessUi
         {
             Isolation = "container",
             DesktopSystemControl = false,
@@ -129,7 +129,7 @@ public static class MxcConfigBuilder
             Version = MxcPolicyBuilder.SupportedPolicyVersion,
             ContainerId = containerId ?? Guid.NewGuid().ToString("N"),
             // Top-level "containment" is intentionally omitted; the SDK doesn't
-            // emit it either. Isolation lives in appContainer.ui.isolation.
+            // emit it either. Isolation lives in processContainer.ui.isolation.
             Process = new MxcProcess
             {
                 CommandLine = commandLine,
@@ -137,11 +137,11 @@ public static class MxcConfigBuilder
                 Env = env,
                 TimeoutMs = timeoutMs,
             },
-            AppContainer = new MxcAppContainer
+            ProcessContainer = new MxcProcessContainer
             {
                 LeastPrivilege = false,
                 Capabilities = capabilities.ToArray(),
-                Ui = appContainerUi,
+                Ui = processContainerUi,
             },
             Filesystem = new MxcFilesystem
             {

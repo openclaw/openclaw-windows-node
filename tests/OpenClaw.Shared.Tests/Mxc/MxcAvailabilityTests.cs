@@ -64,30 +64,116 @@ public class MxcAvailabilityTests
         Assert.True(availability.HasAnyBackend);
     }
 
-    [Theory]
-    [InlineData(26299, 9999, "is not MXC supported build 26300")]
-    [InlineData(26300, 8288, "Windows UBR 8288 below MXC minimum 8289")]
-    [InlineData(26301, 9999, "is not MXC supported build 26300")]
-    [InlineData(27999, 9999, "is not MXC supported build 26300")]
-    [InlineData(28000, 9999, "is not MXC supported build 26300")]
-    public void GetWindowsBuildUnsupportedReason_RejectsUnsupportedBuilds(
-        int build,
-        int ubr,
-        string expectedReason)
+    [Fact]
+    public void ParseProbeOutput_ValidTier_ReportsSupported()
     {
-        var reason = MxcAvailability.GetWindowsBuildUnsupportedReason(build, ubr);
+        var result = MxcAvailability.ParseProbeOutput(
+            exitCode: 0,
+            stdout: "{\"tier\":\"base-container\",\"needsDaclAugmentation\":false,\"warnings\":[]}",
+            stderr: "");
 
-        Assert.NotNull(reason);
-        Assert.Contains(expectedReason, reason);
+        Assert.True(result.Supported);
+        Assert.Equal("base-container", result.Tier);
+        Assert.False(result.NeedsDaclAugmentation);
+        Assert.Empty(result.Warnings);
+        Assert.Null(result.FailureReason);
+    }
+
+    [Fact]
+    public void ParseProbeOutput_CapturesWarningsAndDaclFlag()
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            exitCode: 0,
+            stdout: "{\"tier\":\"appcontainer-dacl\",\"needsDaclAugmentation\":true,\"warnings\":[\"fell back to dacl\"]}",
+            stderr: "");
+
+        Assert.True(result.Supported);
+        Assert.Equal("appcontainer-dacl", result.Tier);
+        Assert.True(result.NeedsDaclAugmentation);
+        Assert.Equal(new[] { "fell back to dacl" }, result.Warnings);
+    }
+
+    [Fact]
+    public void ParseProbeOutput_NonZeroExit_ReportsUnsupported()
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            exitCode: 1,
+            stdout: "",
+            stderr: "unsupported os");
+
+        Assert.False(result.Supported);
+        Assert.Null(result.Tier);
+        Assert.NotNull(result.FailureReason);
+        Assert.Contains("does not support", result.FailureReason!);
     }
 
     [Theory]
-    [InlineData(26300, 8289)]
-    [InlineData(26300, 9999)]
-    public void GetWindowsBuildUnsupportedReason_AllowsSupportedBuilds(int build, int ubr)
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("{\"needsDaclAugmentation\":false}")]
+    [InlineData("{\"tier\":\"\"}")]
+    [InlineData("not json at all")]
+    public void ParseProbeOutput_MissingOrInvalidTier_ReportsUnsupported(string stdout)
     {
-        var reason = MxcAvailability.GetWindowsBuildUnsupportedReason(build, ubr);
+        var result = MxcAvailability.ParseProbeOutput(exitCode: 0, stdout: stdout, stderr: "");
 
-        Assert.Null(reason);
+        Assert.False(result.Supported);
+        Assert.Null(result.Tier);
+        Assert.NotNull(result.FailureReason);
+    }
+
+    [Fact]
+    public void Probe_WhenProbeReportsTier_ReportsAvailable()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var fakeExe = Path.Combine(Path.GetTempPath(), $"wxc-fake-{Guid.NewGuid():N}.exe");
+        File.WriteAllText(fakeExe, string.Empty);
+        try
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, fakeExe);
+
+            var availability = MxcAvailability.Probe(
+                NullLogger.Instance,
+                _ => new WxcProbeInvocation(0, "{\"tier\":\"base-container\",\"warnings\":[]}", string.Empty));
+
+            Assert.True(availability.IsAppContainerAvailable);
+            Assert.True(availability.IsWxcExecResolvable);
+            Assert.Equal(fakeExe, availability.WxcExecPath);
+            Assert.Empty(availability.UnsupportedReasons);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
+            try { File.Delete(fakeExe); } catch { /* best-effort */ }
+        }
+    }
+
+    [Fact]
+    public void Probe_WhenProbeReportsNoTier_ReportsUnavailableWithReason()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var fakeExe = Path.Combine(Path.GetTempPath(), $"wxc-fake-{Guid.NewGuid():N}.exe");
+        File.WriteAllText(fakeExe, string.Empty);
+        try
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, fakeExe);
+
+            var availability = MxcAvailability.Probe(
+                NullLogger.Instance,
+                _ => new WxcProbeInvocation(1, string.Empty, "unsupported os build"));
+
+            // wxc-exec is present, but the host probe said no → not a setup issue.
+            Assert.True(availability.IsWxcExecResolvable);
+            Assert.False(availability.IsAppContainerAvailable);
+            Assert.False(availability.HasAnyBackend);
+            Assert.NotEmpty(availability.UnsupportedReasons);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
+            try { File.Delete(fakeExe); } catch { /* best-effort */ }
+        }
     }
 }

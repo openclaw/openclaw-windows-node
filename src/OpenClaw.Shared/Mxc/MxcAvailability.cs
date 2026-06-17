@@ -1,4 +1,6 @@
-using Microsoft.Win32;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -8,9 +10,12 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Backends checked:
 /// <list type="bullet">
-/// <item><see cref="IsAppContainerAvailable"/> — Windows 11 build 26300 with UBR &gt;= 8289, x64 / arm64.</item>
+/// <item><see cref="IsAppContainerAvailable"/> — the native <c>wxc-exec --probe</c>
+///   reports a usable isolation tier on this host. This is the source of truth
+///   for "does this machine support the sandbox", replacing the old hardcoded
+///   Windows build/UBR table.</item>
 /// <item><see cref="IsWxcExecResolvable"/> — wxc-exec.exe found in the shipped tray output layout or via override.</item>
-/// <item><see cref="IsIsolationSessionAvailable"/> — requires AppContainer plus IsolationProxy.exe in System32.</item>
+/// <item><see cref="IsIsolationSessionAvailable"/> — requires a supported host plus IsolationProxy.exe in System32.</item>
 /// </list>
 /// </remarks>
 public sealed class MxcAvailability
@@ -22,14 +27,18 @@ public sealed class MxcAvailability
     /// </summary>
     public const string WxcExecOverrideEnvVar = "OPENCLAW_WXC_EXEC";
 
-    private const int SupportedBuild = 26300;
-
-    // TODO: This is all temporary and a moment in time; feature gate this correctly ASAP.
     /// <summary>
-    /// Temporary MXC support table: only build 26300 with UBR 8289+ is enabled.
-    /// All other builds are blocked until validated and the table is updated.
+    /// Bound on how long we wait for <c>wxc-exec --probe</c> before treating the
+    /// host as unable to run the sandbox.
     /// </summary>
-    private const int MinSupportedUbr = 8289;
+    private const int ProbeTimeoutMs = 15_000;
+
+    /// <summary>
+    /// Minimum time allowed for draining stdout/stderr after the probe process
+    /// exits, so a process that exits right at the deadline doesn't false-timeout
+    /// while its (tiny) output is still being read.
+    /// </summary>
+    private const int MinReadDrainMs = 2_000;
 
     public bool IsAppContainerAvailable { get; }
     public bool IsIsolationSessionAvailable { get; }
@@ -65,9 +74,21 @@ public sealed class MxcAvailability
 
     /// <summary>
     /// Probe the running environment. Designed to be called once at app startup
-    /// and the result cached.
+    /// and the result cached. Host support is determined by the native
+    /// <c>wxc-exec --probe</c> command rather than a hardcoded build/UBR table,
+    /// so newer Windows builds light up automatically without a code change.
     /// </summary>
     public static MxcAvailability Probe(IOpenClawLogger? logger = null)
+        => Probe(logger, probeRunner: null);
+
+    /// <summary>
+    /// Test seam for <see cref="Probe(IOpenClawLogger?)"/>. <paramref name="probeRunner"/>
+    /// substitutes the <c>wxc-exec --probe</c> invocation; production passes
+    /// <c>null</c> to spawn the real process.
+    /// </summary>
+    internal static MxcAvailability Probe(
+        IOpenClawLogger? logger,
+        Func<string, WxcProbeInvocation>? probeRunner)
     {
         var log = logger ?? NullLogger.Instance;
         var reasons = new List<string>();
@@ -78,79 +99,202 @@ public sealed class MxcAvailability
             return new MxcAvailability(false, false, false, null, reasons);
         }
 
-        var (build, ubr) = ReadWindowsBuildAndUbr();
-        var windowsSupportReason = GetWindowsBuildUnsupportedReason(build, ubr);
-        if (windowsSupportReason is not null)
-            reasons.Add(windowsSupportReason);
-
-        var isAppContainerSupported = windowsSupportReason is null;
-
+        // wxc-exec is the source of truth for host support, so resolve it first.
+        // Without the binary we cannot probe and therefore report unavailable.
         var (wxcResolvable, wxcPath) = ResolveWxcExec();
-        if (!wxcResolvable)
+        if (!wxcResolvable || string.IsNullOrEmpty(wxcPath))
+        {
             reasons.Add($"wxc-exec.exe not found. Set {WxcExecOverrideEnvVar} or build the tray app to copy it into the output folder.");
+            return new MxcAvailability(false, false, false, null, reasons);
+        }
+
+        // Ask the native binary whether this host can run the sandbox and at what
+        // isolation tier. Replaces the old hardcoded build 26300 / UBR 8289 gate.
+        WxcProbeInvocation invocation;
+        try
+        {
+            invocation = (probeRunner ?? RunWxcExecProbe)(wxcPath);
+        }
+        catch (Exception ex)
+        {
+            invocation = new WxcProbeInvocation(-1, string.Empty, $"Failed to launch wxc-exec --probe: {ex.Message}");
+        }
+
+        var probe = ParseProbeOutput(invocation.ExitCode, invocation.StdOut, invocation.StdErr);
+        var isAppContainerSupported = probe.Supported;
+        if (!isAppContainerSupported)
+            reasons.Add(probe.FailureReason ?? "This Windows host does not support the MXC sandbox (wxc-exec --probe reported no usable tier).");
 
         // isolation_session additionally requires Feature_IsoBrokerSessionApis on the OS
         // and IsolationProxy.exe in System32. We currently only check file presence.
         var isolationProxyPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.System),
             "IsolationProxy.exe");
-        var isIsolationSessionSupported = isAppContainerSupported
-            && wxcResolvable
-            && File.Exists(isolationProxyPath);
+        var isIsolationSessionSupported = isAppContainerSupported && File.Exists(isolationProxyPath);
 
         log.Info(
-            $"[mxc] availability: appcontainer={isAppContainerSupported} " +
+            $"[mxc] availability: supported={isAppContainerSupported} " +
+            $"tier={probe.Tier ?? "<none>"} needsDaclAugmentation={probe.NeedsDaclAugmentation} " +
             $"isolation_session={isIsolationSessionSupported} " +
-            $"wxc-exec={(wxcResolvable ? wxcPath : "<missing>")} " +
+            $"wxc-exec={wxcPath} " +
+            $"warnings=[{string.Join(", ", probe.Warnings)}] " +
             $"reasons=[{string.Join(", ", reasons)}]");
 
         return new MxcAvailability(
             isAppContainerSupported,
             isIsolationSessionSupported,
-            wxcResolvable,
+            isWxcExecResolvable: true,
             wxcPath,
             reasons);
     }
 
-    internal static string? GetWindowsBuildUnsupportedReason(int build, int ubr)
+    /// <summary>
+    /// Parse the JSON emitted by <c>wxc-exec --probe</c> into a support verdict.
+    /// A non-zero exit, empty/garbage output, or a missing isolation tier all
+    /// mean the host cannot run the sandbox. Exposed for unit testing.
+    /// </summary>
+    internal static MxcProbeResult ParseProbeOutput(int exitCode, string? stdout, string? stderr)
     {
-        if (build != SupportedBuild)
-            return $"Windows build {build} is not MXC supported build {SupportedBuild}.";
-
-        if (ubr < MinSupportedUbr)
+        if (exitCode != 0)
         {
-            return
-                $"Windows UBR {ubr} below MXC minimum {MinSupportedUbr} " +
-                $"(for build {SupportedBuild}). " +
-                "Install latest cumulative update.";
+            var detail = FirstNonEmpty(stderr, stdout);
+            return new MxcProbeResult(
+                Supported: false,
+                Tier: null,
+                NeedsDaclAugmentation: false,
+                Warnings: Array.Empty<string>(),
+                FailureReason: $"This Windows host does not support the MXC sandbox (wxc-exec --probe exited {exitCode}{(detail is null ? "" : $": {Summarize(detail)}")}).");
         }
 
-        return null;
-    }
-
-    private static (int build, int ubr) ReadWindowsBuildAndUbr()
-    {
-        var build = Environment.OSVersion.Version.Build;
-        var ubr = 0;
-        if (!OperatingSystem.IsWindows())
-            return (build, ubr);
+        if (string.IsNullOrWhiteSpace(stdout))
+            return new MxcProbeResult(false, null, false, Array.Empty<string>(),
+                "This Windows host does not support the MXC sandbox (wxc-exec --probe returned no output).");
 
         try
         {
-#pragma warning disable CA1416 // OperatingSystem.IsWindows() guard above; analyzer doesn't recognize it through callee.
-            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
-            var value = key?.GetValue("UBR");
-            if (value is int ubrInt)
-                ubr = ubrInt;
-#pragma warning restore CA1416
+            using var doc = JsonDocument.Parse(stdout);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("tier", out var tierEl)
+                || tierEl.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(tierEl.GetString()))
+            {
+                return new MxcProbeResult(false, null, false, Array.Empty<string>(),
+                    "This Windows host does not support the MXC sandbox (wxc-exec --probe did not report an isolation tier).");
+            }
+
+            var needsDacl = root.TryGetProperty("needsDaclAugmentation", out var d)
+                && d.ValueKind == JsonValueKind.True;
+
+            var warnings = new List<string>();
+            if (root.TryGetProperty("warnings", out var w) && w.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in w.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.String) continue;
+                    var s = item.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) warnings.Add(s);
+                }
+            }
+
+            return new MxcProbeResult(true, tierEl.GetString(), needsDacl, warnings, null);
         }
-        catch
+        catch (JsonException ex)
         {
-            // Best-effort registry read; failure leaves ubr = 0 which fails the gate.
+            return new MxcProbeResult(false, null, false, Array.Empty<string>(),
+                $"This Windows host does not support the MXC sandbox (wxc-exec --probe returned unparseable output: {ex.Message}).");
+        }
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var v in values)
+            if (!string.IsNullOrWhiteSpace(v)) return v!.Trim();
+        return null;
+    }
+
+    private static string Summarize(string text)
+    {
+        var collapsed = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        return collapsed.Length <= 200 ? collapsed : collapsed[..200] + "…";
+    }
+
+    /// <summary>
+    /// Spawn <c>wxc-exec --probe</c> and capture its exit code and output.
+    /// Bounded by <see cref="ProbeTimeoutMs"/>; a timeout reports a non-zero exit.
+    /// </summary>
+    private static WxcProbeInvocation RunWxcExecProbe(string wxcExecPath)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = wxcExecPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+            },
+        };
+        process.StartInfo.ArgumentList.Add("--probe");
+
+        process.Start();
+        // Read both pipes async to avoid a full-pipe deadlock.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        var sw = Stopwatch.StartNew();
+        if (!process.WaitForExit(ProbeTimeoutMs))
+            return KillAndTimeout(process, stdoutTask, stderrTask);
+
+        // WaitForExit(int) returns as soon as the immediate child exits, but the
+        // async readers only complete once the WRITE end of each pipe closes. If
+        // wxc-exec spawned a descendant that inherited the redirected handles
+        // (the SDK ships sandbox daemon/guest helpers), the pipes can stay open
+        // after the child exits and an unbounded GetResult() would hang past the
+        // timeout. So bound the drain with whatever time is left in the budget
+        // (with a small floor so a near-deadline exit doesn't false-timeout).
+        var elapsedMs = (int)Math.Min(sw.ElapsedMilliseconds, ProbeTimeoutMs);
+        var drainBudgetMs = Math.Max(ProbeTimeoutMs - elapsedMs, MinReadDrainMs);
+        try
+        {
+            if (!Task.WhenAll(stdoutTask, stderrTask).Wait(drainBudgetMs))
+                return KillAndTimeout(process, stdoutTask, stderrTask);
+        }
+        catch (AggregateException)
+        {
+            // A pipe read faulted (e.g. stream disposed). Treat as no output;
+            // ParseProbeOutput will fall back to "unsupported" for exit 0 with
+            // empty stdout, and surface stderr if the exit code was non-zero.
         }
 
-        return (build, ubr);
+        return new WxcProbeInvocation(
+            process.ExitCode,
+            stdoutTask.Status == TaskStatus.RanToCompletion ? stdoutTask.Result : string.Empty,
+            stderrTask.Status == TaskStatus.RanToCompletion ? stderrTask.Result : string.Empty);
     }
+
+    /// <summary>
+    /// Kill the probe process tree and return a timeout invocation. Observes the
+    /// abandoned read tasks so a later fault doesn't surface as an unobserved
+    /// task exception when the process/streams are disposed.
+    /// </summary>
+    private static WxcProbeInvocation KillAndTimeout(Process process, Task stdoutTask, Task stderrTask)
+    {
+        try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+        ObserveQuietly(stdoutTask);
+        ObserveQuietly(stderrTask);
+        return new WxcProbeInvocation(-1, string.Empty, "wxc-exec --probe timed out.");
+    }
+
+    private static void ObserveQuietly(Task task) =>
+        _ = task.ContinueWith(
+            static t => { _ = t.Exception; },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
     private static (bool resolvable, string? path) ResolveWxcExec()
     {
@@ -195,3 +339,14 @@ public sealed class MxcAvailability
         _ => "x64",
     };
 }
+
+/// <summary>Raw result of invoking <c>wxc-exec --probe</c>.</summary>
+internal readonly record struct WxcProbeInvocation(int ExitCode, string StdOut, string StdErr);
+
+/// <summary>Parsed host-support verdict derived from <c>wxc-exec --probe</c> output.</summary>
+internal sealed record MxcProbeResult(
+    bool Supported,
+    string? Tier,
+    bool NeedsDaclAugmentation,
+    IReadOnlyList<string> Warnings,
+    string? FailureReason);

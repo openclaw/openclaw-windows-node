@@ -196,7 +196,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
             $"cwd={(string.IsNullOrEmpty(config.Process.Cwd) ? "<null>" : "<set>")}; " +
             $"envKeys=[{string.Join(",", envKeys)}]; " +
             $"timeoutMs={config.Process.TimeoutMs?.ToString() ?? "<null>"}; " +
-            $"capabilities=[{string.Join(",", config.AppContainer?.Capabilities ?? Array.Empty<string>())}]; " +
+            $"capabilities=[{string.Join(",", config.ProcessContainer?.Capabilities ?? Array.Empty<string>())}]; " +
             $"readonlyCount={config.Filesystem?.ReadonlyPaths?.Length ?? 0}; " +
             $"readwriteCount={config.Filesystem?.ReadwritePaths?.Length ?? 0}; " +
             $"deniedCount={config.Filesystem?.DeniedPaths?.Length ?? 0}; " +

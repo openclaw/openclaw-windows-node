@@ -30,7 +30,7 @@
     "defaultPolicy": "block",
     "enforcementMode": "capabilities"
   },
-  "appContainer": {
+  "processContainer": {
     "leastPrivilege": false,
     "capabilities": [],
     "ui": {
