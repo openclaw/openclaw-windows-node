@@ -20,7 +20,7 @@ namespace OpenClaw.Shared.Mxc;
 public sealed class MxcCommandRunner : ICommandRunner
 {
     public string Name => "mxc";
-    private const string DefaultSandboxShell = "powershell";
+    private const string DefaultSandboxShell = "cmd";
 
     private readonly ISandboxExecutor _executor;
     private readonly ICommandRunner _hostFallback;

@@ -113,7 +113,7 @@ public class MxcConfigBuilderTests
         // boundary explicit and bootstraps shell env in commandLine; the
         // harness stripped process.* (commandLine, cwd, env, timeout), so do
         // the same on the C# side before comparing. Use cmd so this pure
-        // policy golden does not inherit the PowerShell-specific UI exception.
+        // policy golden stays independent from shell command-line encoding.
         using var argsDoc = JsonDocument.Parse("""{"shell":"cmd"}""");
         var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
         var config = MxcConfigBuilder.Build(
@@ -466,21 +466,42 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void Build_DefaultShell_UsesWindowsPowerShellAndEnablesWindowsUi()
+    public void Build_DefaultShell_UsesCmdAndPreservesUiDeny()
     {
-        using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi"}""");
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo hi"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
         var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
 
-        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
-            ?? Environment.GetEnvironmentVariable("windir");
-        var expected = string.IsNullOrWhiteSpace(systemRoot)
-            ? "powershell.exe"
-            : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+        var expected = Environment.GetEnvironmentVariable("ComSpec")
+            ?? Path.Combine(
+                Environment.GetEnvironmentVariable("SystemRoot")
+                    ?? Environment.GetEnvironmentVariable("windir")
+                    ?? string.Empty,
+                "System32",
+                "cmd.exe");
+        if (string.IsNullOrWhiteSpace(expected) || expected.StartsWith("System32", StringComparison.OrdinalIgnoreCase))
+            expected = "cmd.exe";
 
         Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_PowerShellShell_WhenPolicyAllowsWindows_EnablesDesktopIsolation()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"powershell"}""");
+        var policy = BalancedPolicy() with
+        {
+            Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+        };
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+
         Assert.False(config.Ui!.Disable);
         Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
     }
@@ -511,7 +532,7 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void Build_PwshShell_UsesPwshAndEnablesWindowsUi()
+    public void Build_PwshShell_UsesPwshAndPreservesUiDeny()
     {
         using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
@@ -520,8 +541,8 @@ public class MxcConfigBuilderTests
 
         Assert.StartsWith("pwsh.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
-        Assert.False(config.Ui!.Disable);
-        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
     }
 
     [Fact]
@@ -540,8 +561,8 @@ public class MxcConfigBuilderTests
 
         Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
-        Assert.False(config.Ui!.Disable);
-        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
     }
 
     [Fact]

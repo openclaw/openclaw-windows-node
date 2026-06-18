@@ -34,12 +34,12 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public void ResolveEffectiveShell_DefaultsToSandboxPowerShell_WhenSandboxEnabled()
+    public void ResolveEffectiveShell_DefaultsToSandboxCmd_WhenSandboxEnabled()
     {
         var fallback = new FakeCommandRunner { EffectiveShellForNull = "pwsh" };
         var runner = NewRunner(new FakeSandboxExecutor(), fallback, NewSettings(sandboxEnabled: true));
 
-        Assert.Equal("powershell", runner.ResolveEffectiveShell(null));
+        Assert.Equal("cmd", runner.ResolveEffectiveShell(null));
         Assert.Equal("cmd", runner.ResolveEffectiveShell(" cmd "));
     }
 
@@ -209,7 +209,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_DefaultShell_UsesWindowsPowerShellForMxcProcessContainer()
+    public async Task RunAsync_DefaultShell_UsesCmdForMxcProcessContainer()
     {
         var executor = new FakeSandboxExecutor
         {
@@ -228,7 +228,7 @@ public class MxcCommandRunnerTests
 
         Assert.NotNull(executor.LastRequest);
         var args = executor.LastRequest!.Args;
-        Assert.Equal("powershell", args.GetProperty("shell").GetString());
+        Assert.Equal("cmd", args.GetProperty("shell").GetString());
     }
 
     [Fact]

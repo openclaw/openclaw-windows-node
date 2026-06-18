@@ -33,11 +33,11 @@ namespace OpenClaw.Shared.Mxc;
 /// </remarks>
 public static class MxcConfigBuilder
 {
-    // MXC processcontainer default stays on Windows PowerShell 5.1 for now.
-    // PowerShell 7 (pwsh) 7.6 currently requires a root-drive readonly grant
-    // on this MXC 0.7 AppContainer+DACL tier; request.Cwd grants the working
-    // directory but does not satisfy that root-drive startup probe.
-    private const string DefaultShell = "powershell";
+    // MXC processcontainer defaults to cmd because it starts inside the
+    // AppContainer while preserving the default UI-deny boundary. PowerShell
+    // remains available when explicitly requested, but it must not silently
+    // relax UI containment.
+    private const string DefaultShell = "cmd";
 
     /// <summary>
     /// Default per-process timeout when the caller doesn't supply one.
@@ -84,8 +84,7 @@ public static class MxcConfigBuilder
         // commandLine — shell-quoted, with PATH/TEMP/TMP/TMPDIR bootstrapped
         // inside the shell because MXC 0.7 rejects non-empty process.env.
         var commandLine = ShellCommandLine.Build(args.Shell, args.Command, args.Argv, scratchDir, pathDirs);
-        var shellRequiresWindowsUi = ShellCommandLine.RequiresWindowsUi(args.Shell);
-        var allowWindows = policy?.Ui?.AllowWindows == true || shellRequiresWindowsUi;
+        var allowWindows = policy?.Ui?.AllowWindows == true;
 
         // readwrite = UI grants + scratch dir.
         var rwFromPolicy = (policy?.Filesystem?.ReadwritePaths ?? Array.Empty<string>()).ToList();
@@ -145,11 +144,7 @@ public static class MxcConfigBuilder
 
         var processContainerUi = new MxcBaseProcessUi
         {
-            // PowerShell initializes desktop/USER handle state even for
-            // non-interactive commands. MXC's documented workaround is to relax
-            // handle/atom isolation to desktop while keeping clipboard,
-            // injection, system settings, IME, and desktop control locked down.
-            Isolation = shellRequiresWindowsUi ? "desktop" : "container",
+            Isolation = allowWindows ? "desktop" : "container",
             DesktopSystemControl = false,
             SystemSettings = "none",
             Ime = false,
@@ -450,12 +445,6 @@ public static class MxcConfigBuilder
 /// </summary>
 internal static class ShellCommandLine
 {
-    public static bool RequiresWindowsUi(string? shell)
-    {
-        var normalized = (shell ?? "cmd").Trim().ToLowerInvariant();
-        return normalized != "cmd";
-    }
-
     public static string Build(
         string shell,
         string command,
