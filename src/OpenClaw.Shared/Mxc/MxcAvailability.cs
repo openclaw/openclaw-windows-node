@@ -5,15 +5,15 @@ using System.Text.Json;
 namespace OpenClaw.Shared.Mxc;
 
 /// <summary>
-/// Per-backend availability probe for MXC. Cached for the process lifetime.
+/// Per-backend availability probe for MXC. <see cref="Probe"/> is intended to be
+/// called once and its result cached by the caller (see NodeService).
 /// </summary>
 /// <remarks>
 /// Backends checked:
 /// <list type="bullet">
 /// <item><see cref="IsAppContainerAvailable"/> — the native <c>wxc-exec --probe</c>
 ///   reports a usable isolation tier on this host. This is the source of truth
-///   for "does this machine support the sandbox", replacing the old hardcoded
-///   Windows build/UBR table.</item>
+///   for "does this machine support the sandbox".</item>
 /// <item><see cref="IsWxcExecResolvable"/> — wxc-exec.exe found in the shipped tray output layout or via override.</item>
 /// <item><see cref="IsIsolationSessionAvailable"/> — requires a supported host plus IsolationProxy.exe in System32.</item>
 /// </list>
@@ -158,7 +158,7 @@ public sealed class MxcAvailability
         }
 
         // Ask the native binary whether this host can run the sandbox and at what
-        // isolation tier. Replaces the old hardcoded build 26300 / UBR 8289 gate.
+        // isolation tier.
         WxcProbeInvocation invocation;
         try
         {

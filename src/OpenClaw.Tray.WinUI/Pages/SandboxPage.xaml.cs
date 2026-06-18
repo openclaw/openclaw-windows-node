@@ -256,7 +256,7 @@ public sealed partial class SandboxPage : Page
     /// Shows or hides the prominent "Sandbox unavailable" InfoBar based on availability,
     /// and categorizes the failure mode so we can suggest a relevant action:
     ///   - probe errored (transient) → "Retry"
-    ///   - Windows build/UBR too old → "Open Windows Update"
+    ///   - host doesn't support sandboxing → "Open Windows Update"
     ///   - wxc-exec.exe missing → "Show install instructions"
     ///   - Anything else → no primary action, just the learn-more hyperlink
     /// </summary>
