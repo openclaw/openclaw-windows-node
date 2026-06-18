@@ -44,20 +44,27 @@ public sealed partial class SandboxPage : Page
         _availabilityProbeInFlight = true;
         try
         {
-            var availability = await System.Threading.Tasks.Task.Run(
+            _cachedAvailability = await System.Threading.Tasks.Task.Run(
                 static () => OpenClaw.Shared.Mxc.MxcAvailability.Probe());
-
-            _cachedAvailability = availability;
+        }
+        catch (Exception)
+        {
+            // Probe() is designed not to throw, but never leave the page stuck in
+            // "Checking…": synthesize an errored result so the UI shows Retry.
+            _cachedAvailability = new OpenClaw.Shared.Mxc.MxcAvailability(
+                false, false, false, null,
+                new[] { "Couldn't check sandbox availability." }, probeErrored: true);
         }
         finally
         {
             _availabilityProbeInFlight = false;
-        }
 
-        // await resumed us on the UI thread (DispatcherQueue sync context), so it
-        // is safe to touch controls here. Re-render the bits that depend on the probe.
-        UpdateSandboxStatusCard();
-        UpdateControlsEnabledState();
+            // await resumed us on the UI thread (DispatcherQueue sync context), so it
+            // is safe to touch controls here. Always re-render — on both the happy
+            // path and the failure path — so the page never stays in "Checking…".
+            UpdateSandboxStatusCard();
+            UpdateControlsEnabledState();
+        }
     }
 
     // ── Quick-preset definitions ─────────────────────────────────────
