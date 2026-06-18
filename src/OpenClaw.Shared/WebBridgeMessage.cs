@@ -46,6 +46,12 @@ public sealed record WebBridgeMessage
     /// <summary>Sent SPA→native when the SPA is fully initialised and ready for messages.</summary>
     public const string TypeReady = "ready";
 
+    /// <summary>Sent SPA→native to toggle the owning canvas window fullscreen state.</summary>
+    public const string TypeFullscreenToggle = "fullscreen-toggle";
+
+    /// <summary>Sent SPA→native to exit fullscreen on the owning canvas window.</summary>
+    public const string TypeFullscreenExit = "fullscreen-exit";
+
     // ── parsing ────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -61,6 +67,9 @@ public sealed record WebBridgeMessage
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
 
             if (!root.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String)
                 return null;

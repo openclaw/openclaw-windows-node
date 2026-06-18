@@ -54,6 +54,16 @@ public class WebBridgeMessageTests
     }
 
     [Fact]
+    public void TryParse_StringRoot_ReturnsNull()
+    {
+        var jsonStringRoot = """
+            "{\"type\":\"fullscreen-toggle\"}"
+            """;
+
+        Assert.Null(WebBridgeMessage.TryParse(jsonStringRoot));
+    }
+
+    [Fact]
     public void TryParse_TypeIsNotString_ReturnsNull()
     {
         var msg = WebBridgeMessage.TryParse("""{"type":42,"payload":{}}""");
@@ -129,6 +139,8 @@ public class WebBridgeMessageTests
     [InlineData(WebBridgeMessage.TypeVoiceStart)]
     [InlineData(WebBridgeMessage.TypeVoiceStop)]
     [InlineData(WebBridgeMessage.TypeReady)]
+    [InlineData(WebBridgeMessage.TypeFullscreenToggle)]
+    [InlineData(WebBridgeMessage.TypeFullscreenExit)]
     public void RoundTrip_WellKnownTypes_PreserveType(string type)
     {
         var original = new WebBridgeMessage(type);
