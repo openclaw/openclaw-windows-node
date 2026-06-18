@@ -10,7 +10,7 @@ namespace OpenClaw.Shared.Mxc;
 public sealed record MxcConfig
 {
     [JsonPropertyName("version")]
-    public string Version { get; init; } = "0.4.0-alpha";
+    public string Version { get; init; } = "0.7.0-alpha";
 
     [JsonPropertyName("containerId")]
     public required string ContainerId { get; init; }

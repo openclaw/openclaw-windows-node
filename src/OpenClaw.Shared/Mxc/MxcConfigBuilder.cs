@@ -11,12 +11,14 @@ namespace OpenClaw.Shared.Mxc;
 /// <list type="bullet">
 /// <item>Translates <see cref="SandboxPolicy"/> (from the Sandbox page) and the
 ///   agent's request into the JSON shape wxc-exec consumes.</item>
-/// <item><see cref="ResolvePathDirsForReadonly"/> — grants every existing
-///   <c>$PATH</c> directory as readonly so command-line tools (git, node,
-///   python, ...) can be read from inside the sandbox. Drive roots skipped.</item>
+/// <item><see cref="ResolvePathDirsForReadonly"/> — grants existing
+///   user-writable <c>$PATH</c> directories as readonly so command-line tools
+///   can be read from inside the sandbox without asking the DACL fallback to
+///   mutate protected system directories.</item>
 /// <item>Scratch dir injection — adds the per-invocation scratch dir as
-///   readwrite and forces <c>TEMP</c>/<c>TMP</c>/<c>TMPDIR</c> at it so
-///   commands don't write to the user's real <c>%TEMP%</c>.</item>
+///   readwrite. Explicit <c>process.env</c> injection is intentionally
+///   disabled for the current Windows MXC 0.7 processcontainer backend because
+///   non-empty env entries fail process creation.</item>
 /// <item>Cwd auto-grant — adds <c>request.Cwd</c> as readonly when not already
 ///   covered by an allow grant. AppContainer does NOT auto-grant cwd, so this
 ///   is required for commands to even start.</item>
@@ -25,7 +27,8 @@ namespace OpenClaw.Shared.Mxc;
 ///   <c>-EncodedCommand</c>).</item>
 /// </list>
 /// Env scrubbing happens upstream in <c>SystemCapability.HandleRunAsync</c>
-/// via <c>ExecEnvSanitizer.Sanitize</c>; this class doesn't scrub env.
+/// via <c>ExecEnvSanitizer.Sanitize</c>; this class rejects explicit env until
+/// the backend accepts it.
 /// </remarks>
 public static class MxcConfigBuilder
 {
@@ -52,6 +55,11 @@ public static class MxcConfigBuilder
 
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
+        if (request.Env is { Count: > 0 })
+        {
+            throw new NotSupportedException(
+                "Explicit environment variables are not supported by the Windows MXC 0.7 processcontainer backend.");
+        }
 
         // commandLine — shell-quoted.
         var commandLine = ShellCommandLine.Build(args.Shell, args.Command, args.Argv);
@@ -69,7 +77,6 @@ public static class MxcConfigBuilder
         var rwFromPolicy = (policy?.Filesystem?.ReadwritePaths ?? Array.Empty<string>()).ToList();
         if (!rwFromPolicy.Contains(scratchDir, StringComparer.OrdinalIgnoreCase))
             rwFromPolicy.Add(scratchDir);
-        AddCompatibilityReadonlyPaths(roFromPolicy, roFromPolicy.Concat(rwFromPolicy).ToArray());
 
         // denied list from policy (settings dir, ~/.ssh, browser profiles, ...).
         var denied = (policy?.Filesystem?.DeniedPaths ?? Array.Empty<string>()).ToList();
@@ -90,10 +97,11 @@ public static class MxcConfigBuilder
         roFromPolicy = FilterOutDenied(roFromPolicy, denied);
         rwFromPolicy = FilterOutDenied(rwFromPolicy, denied);
 
-        // env — agent-supplied vars (already scrubbed upstream by
-        // ExecEnvSanitizer in SystemCapability) plus TEMP/TMP/TMPDIR forced
-        // to scratch.
-        var env = BuildEnv(request.Env, scratchDir, pathDirs);
+        // env — intentionally omitted when empty. MXC 0.7 processcontainer
+        // currently fails process creation when a non-empty process.env array is
+        // supplied, so custom env requests are rejected above rather than
+        // silently ignored.
+        var env = BuildEnv(request.Env);
 
         // timeout — caller-supplied or default.
         var timeoutMs = request.TimeoutMs > 0 ? request.TimeoutMs : DefaultProcessTimeoutMs;
@@ -182,6 +190,7 @@ public static class MxcConfigBuilder
         foreach (var dir in pathDirs)
         {
             if (IsDriveRoot(dir)) continue;
+            if (IsProtectedSystemPath(dir)) continue;
             try
             {
                 if (!Directory.Exists(dir)) continue;
@@ -212,76 +221,54 @@ public static class MxcConfigBuilder
         }
     }
 
-    private static void AddCompatibilityReadonlyPaths(List<string> readonlyPaths, IEnumerable<string> grantedPaths)
+    private static bool IsProtectedSystemPath(string dir)
     {
-        foreach (var path in grantedPaths)
-            AddCompatibilityReadonlyPath(readonlyPaths, path);
+        if (!OperatingSystem.IsWindows())
+            return false;
 
-        AddCompatibilityReadonlyPath(readonlyPaths, Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-        AddCompatibilityReadonlyPath(readonlyPaths, Environment.GetEnvironmentVariable("SystemDrive") ?? string.Empty);
+        var normalized = NormalizePath(dir);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        foreach (var root in ProtectedSystemRoots())
+        {
+            var protectedRoot = NormalizePath(root);
+            if (!string.IsNullOrWhiteSpace(protectedRoot) &&
+                IsSameOrNested(normalized, protectedRoot))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    private static void AddCompatibilityReadonlyPath(List<string> readonlyPaths, string path)
+    private static IEnumerable<string> ProtectedSystemRoots()
     {
-        string? root;
-        try { root = Path.GetPathRoot(Path.GetFullPath(path)); }
-        catch { return; }
-
-        if (string.IsNullOrWhiteSpace(root))
-            return;
-
-        if (!readonlyPaths.Contains(root, StringComparer.OrdinalIgnoreCase))
-            readonlyPaths.Add(root);
+        yield return Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        yield return Environment.GetEnvironmentVariable("SystemRoot") ?? string.Empty;
+        yield return Environment.GetEnvironmentVariable("windir") ?? string.Empty;
+        yield return Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        yield return Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        yield return Environment.GetEnvironmentVariable("ProgramW6432") ?? string.Empty;
+        yield return Environment.GetEnvironmentVariable("ProgramData") ?? string.Empty;
     }
 
     /// <summary>
     /// Build the env array (KEY=VALUE strings) the wxc-exec sandbox will inherit.
     /// </summary>
     /// <remarks>
-    /// Env from the agent has already been scrubbed upstream in
-    /// <c>SystemCapability.HandleRunAsync</c> via
-    /// <c>ExecEnvSanitizer.Sanitize</c> (which rejects the whole command if
-    /// anything dangerous is present). We pass the surviving entries through
-    /// and force <c>TEMP</c>/<c>TMP</c>/<c>TMPDIR</c> to <paramref name="scratchDir"/>
-    /// so tools inside the sandbox don't write into the user's real <c>%TEMP%</c>.
+    /// Current MXC 0.7 Windows processcontainer rejects non-empty process env
+    /// entries at <c>CreateProcessW</c>. Keep the serialized field absent for
+    /// normal requests and fail explicitly for env-bearing requests.
     /// </remarks>
-    public static IReadOnlyList<string> BuildEnv(
-        IReadOnlyDictionary<string, string>? requestEnv,
-        string scratchDir,
-        IReadOnlyList<string>? pathDirs = null)
+    public static IReadOnlyList<string>? BuildEnv(IReadOnlyDictionary<string, string>? requestEnv)
     {
-        // Windows env vars are case-insensitive — use OrdinalIgnoreCase so
-        // duplicate-case agent entries don't end up as separate strings.
-        var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (requestEnv is null || requestEnv.Count == 0)
+            return null;
 
-        if (requestEnv is not null)
-        {
-            foreach (var (name, value) in requestEnv)
-            {
-                if (string.IsNullOrEmpty(name) || value is null) continue;
-                // Reject names with NUL/CR/LF/'=' so an agent can't smuggle
-                // a second KEY=VALUE pair into a single name field.
-                bool malformed = false;
-                foreach (var ch in name)
-                {
-                    if (ch == '=' || ch == '\0' || ch == '\r' || ch == '\n')
-                    {
-                        malformed = true;
-                        break;
-                    }
-                }
-                if (malformed) continue;
-                env[name] = value;
-            }
-        }
-
-        env["TEMP"] = scratchDir;
-        env["TMP"] = scratchDir;
-        env["TMPDIR"] = scratchDir;
-        if (pathDirs is { Count: > 0 })
-            env["PATH"] = string.Join(Path.PathSeparator, pathDirs);
-
-        return env.Select(kvp => $"{kvp.Key}={kvp.Value}").ToList();
+        throw new NotSupportedException(
+            "Explicit environment variables are not supported by the Windows MXC 0.7 processcontainer backend.");
     }
 
     private static List<string> FilterOutDenied(List<string> allowed, List<string> denied)
@@ -395,8 +382,8 @@ internal static class ShellCommandLine
         return normalized switch
         {
             "cmd" => BuildCmd(command, argv),
-            "pwsh" or "powershell" => BuildPowershell(normalized == "pwsh" ? "pwsh.exe" : "powershell.exe", command, argv),
-            _ => BuildPowershell("powershell.exe", command, argv),
+            "pwsh" or "powershell" => BuildPowershell(normalized == "pwsh" ? "pwsh.exe" : ResolveWindowsPowerShellExe(), command, argv),
+            _ => BuildPowershell(ResolveWindowsPowerShellExe(), command, argv),
         };
     }
 
@@ -404,7 +391,8 @@ internal static class ShellCommandLine
     {
         // cmd /S /C "<command> [args]" — /S strips outer quotes so cmd treats
         // everything after /C as the command line verbatim.
-        var sb = new StringBuilder("cmd.exe /S /C \"");
+        var sb = new StringBuilder(QuoteProcessPath(ResolveCmdExe()));
+        sb.Append(" /S /C \"");
         sb.Append(command);
         foreach (var a in argv)
         {
@@ -427,7 +415,37 @@ internal static class ShellCommandLine
         }
         var script = sb.ToString();
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-        return $"{exe} -NoProfile -NonInteractive -EncodedCommand {encoded}";
+        return $"{QuoteProcessPath(exe)} -NoProfile -NonInteractive -EncodedCommand {encoded}";
+    }
+
+    private static string ResolveCmdExe()
+    {
+        var comSpec = Environment.GetEnvironmentVariable("ComSpec");
+        if (!string.IsNullOrWhiteSpace(comSpec))
+            return comSpec;
+
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        return string.IsNullOrWhiteSpace(systemRoot)
+            ? "cmd.exe"
+            : Path.Combine(systemRoot, "System32", "cmd.exe");
+    }
+
+    private static string ResolveWindowsPowerShellExe()
+    {
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        return string.IsNullOrWhiteSpace(systemRoot)
+            ? "powershell.exe"
+            : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    }
+
+    private static string QuoteProcessPath(string path)
+    {
+        if (path.Length > 0 && path.IndexOfAny(new[] { ' ', '\t', '"' }) < 0)
+            return path;
+
+        return "\"" + path.Replace("\"", "\\\"") + "\"";
     }
 
     private static string QuoteForCmd(string arg)

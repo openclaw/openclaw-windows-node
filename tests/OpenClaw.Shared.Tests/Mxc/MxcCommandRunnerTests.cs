@@ -85,6 +85,25 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_SandboxEnabled_RejectsCustomEnvWithoutHostFallback()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            Env = new Dictionary<string, string> { ["FOO"] = "bar" },
+        });
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("custom environment variables", result.Stderr);
+        Assert.Null(executor.LastRequest);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Fact]
     public async Task RunAsync_MxcUnavailable_FallsBackToHost_WithSandboxToggleOff()
     {
         // Issue #494: on hosts where MXC is unavailable (Windows 10 / old build /

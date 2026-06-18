@@ -25,11 +25,11 @@ namespace OpenClaw.Shared.Mxc;
 public static class MxcPolicyBuilder
 {
     /// <summary>
-    /// Policy schema version. @microsoft/mxc-sdk 0.7.0 still lists 0.4.0-alpha as a
-    /// supported (stable) config schema; keep the documented 0.4.0-alpha schema
-    /// until we intentionally adopt a newer MXC policy contract.
+    /// Policy schema version emitted to <c>wxc-exec</c>. @microsoft/mxc-sdk
+    /// 0.7.0 emits and accepts the 0.7.0-alpha contract used by
+    /// processcontainer/AppContainer execution on Windows build 26100+.
     /// </summary>
-    public const string SupportedPolicyVersion = "0.4.0-alpha";
+    public const string SupportedPolicyVersion = "0.7.0-alpha";
 
     /// <summary>
     /// Build the policy for a system.run invocation given current settings.
@@ -47,26 +47,26 @@ public static class MxcPolicyBuilder
 
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var sshPath = Path.Combine(userProfile, ".ssh");
-        if (!string.IsNullOrWhiteSpace(sshPath))
-            deniedPaths.Add(sshPath);
+        AddDeniedPathIfExists(deniedPaths, sshPath);
 
         // Always-blocked browser profile roots. Cookies, saved passwords, autofill,
         // and session tokens live here — they must remain unreachable even if the
         // user (or a malicious settings.json) tries to grant a parent folder.
-        // Add these regardless of whether the browser is installed; the AppContainer
-        // policy treats nonexistent denies as a no-op.
+        // With the MXC 0.7 AppContainer+DACL fallback, nonexistent deny paths are
+        // not a no-op: wxc-exec attempts to apply DACLs and fails before running
+        // the command. Only emit deny roots that exist for this invocation.
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         if (!string.IsNullOrWhiteSpace(localAppData))
         {
-            deniedPaths.Add(Path.Combine(localAppData, "Google", "Chrome", "User Data"));
-            deniedPaths.Add(Path.Combine(localAppData, "Microsoft", "Edge", "User Data"));
-            deniedPaths.Add(Path.Combine(localAppData, "BraveSoftware", "Brave-Browser", "User Data"));
+            AddDeniedPathIfExists(deniedPaths, Path.Combine(localAppData, "Google", "Chrome", "User Data"));
+            AddDeniedPathIfExists(deniedPaths, Path.Combine(localAppData, "Microsoft", "Edge", "User Data"));
+            AddDeniedPathIfExists(deniedPaths, Path.Combine(localAppData, "BraveSoftware", "Brave-Browser", "User Data"));
         }
         if (!string.IsNullOrWhiteSpace(appData))
         {
-            deniedPaths.Add(Path.Combine(appData, "Mozilla", "Firefox", "Profiles"));
-            deniedPaths.Add(Path.Combine(appData, "Microsoft", "Windows", "PowerShell", "PSReadLine"));
+            AddDeniedPathIfExists(deniedPaths, Path.Combine(appData, "Mozilla", "Firefox", "Profiles"));
+            AddDeniedPathIfExists(deniedPaths, Path.Combine(appData, "Microsoft", "Windows", "PowerShell", "PSReadLine"));
         }
 
         var readonlyPaths = new List<string>();
@@ -114,6 +114,23 @@ public static class MxcPolicyBuilder
                 Clipboard: MapClipboard(settings.SandboxClipboard),
                 AllowInputInjection: false),
             TimeoutMs: settings.SandboxTimeoutMs > 0 ? settings.SandboxTimeoutMs : null);
+    }
+
+    private static void AddDeniedPathIfExists(List<string> deniedPaths, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            if (Directory.Exists(path))
+                deniedPaths.Add(path);
+        }
+        catch
+        {
+            // If the host cannot even probe this path, avoid making the whole
+            // sandbox launch fail while preparing DACLs for an unverified path.
+        }
     }
 
     /// <summary>

@@ -345,4 +345,29 @@ public class MxcAvailabilityTests
             try { File.Delete(fakeExe); } catch { /* best-effort */ }
         }
     }
+
+    [Theory]
+    [InlineData(26200, 9999, "Windows build 26200 is not an MXC isolation_session supported build")]
+    [InlineData(26300, 8552, "Windows UBR 8552 below MXC isolation_session minimum 8553")]
+    [InlineData(26301, 9999, "Windows build 26301 is not an MXC isolation_session supported build")]
+    public void GetIsolationSessionUnsupportedReason_RejectsUnsupportedBuilds(
+        int build,
+        int ubr,
+        string expectedReason)
+    {
+        var reason = MxcAvailability.GetIsolationSessionUnsupportedReason(build, ubr);
+
+        Assert.NotNull(reason);
+        Assert.Contains(expectedReason, reason);
+    }
+
+    [Theory]
+    [InlineData(26300, 8553)]
+    [InlineData(26300, 9999)]
+    public void GetIsolationSessionUnsupportedReason_AllowsSdkSupportedBuilds(int build, int ubr)
+    {
+        var reason = MxcAvailability.GetIsolationSessionUnsupportedReason(build, ubr);
+
+        Assert.Null(reason);
+    }
 }

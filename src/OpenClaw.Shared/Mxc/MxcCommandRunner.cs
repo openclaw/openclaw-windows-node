@@ -91,6 +91,23 @@ public sealed class MxcCommandRunner : ICommandRunner
             };
         }
 
+        if (request.Env is { Count: > 0 })
+        {
+            const string message =
+                "Sandboxed system.run does not currently support custom environment variables " +
+                "with the Windows MXC 0.7 processcontainer backend. Remove env from the request " +
+                "or explicitly disable sandboxing if uncontained host execution is acceptable.";
+            _logger.Warn("[mxc] system.run denied: custom env is unsupported by MXC processcontainer");
+            return new CommandResult
+            {
+                Stdout = string.Empty,
+                Stderr = message,
+                ExitCode = -1,
+                TimedOut = false,
+                DurationMs = 0,
+            };
+        }
+
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
         var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectoryPath);
         var argsJson = SerializeArgs(request);

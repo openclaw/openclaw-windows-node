@@ -43,8 +43,11 @@ public class MxcPolicyBuilderTests
 
         Assert.NotNull(policy.Filesystem);
         Assert.NotNull(policy.Filesystem!.DeniedPaths);
-        // .ssh path is the home-relative one; verify it's present and ends with ".ssh".
-        Assert.Contains(policy.Filesystem.DeniedPaths!, p => p.EndsWith(".ssh"));
+        var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
+        if (Directory.Exists(expected))
+            Assert.Contains(policy.Filesystem.DeniedPaths!, p => string.Equals(p, expected, StringComparison.OrdinalIgnoreCase));
+        else
+            Assert.DoesNotContain(policy.Filesystem.DeniedPaths!, p => p.EndsWith(".ssh", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -179,20 +182,28 @@ public class MxcPolicyBuilderTests
     [Fact]
     public void ForSystemRun_BrowserProfileDirectories_AreDenied()
     {
-        // The UI claims SSH keys, browser profiles, and OpenClaw's own settings
-        // are always blocked. Verify the policy backs that claim for browsers —
-        // these paths must always appear in DeniedPaths regardless of settings,
-        // even if the browser isn't installed (the AppContainer policy treats
-        // nonexistent denies as a no-op).
+        // Existing browser/profile roots should be denied. Missing roots are not
+        // emitted because the MXC 0.7 AppContainer+DACL fallback fails if asked
+        // to mutate DACLs for nonexistent paths.
         var settings = new SettingsData();
         var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
 
         var denied = policy.Filesystem!.DeniedPaths!;
-        Assert.Contains(denied, p => p.EndsWith("Google\\Chrome\\User Data", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(denied, p => p.EndsWith("Microsoft\\Edge\\User Data", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(denied, p => p.EndsWith("Mozilla\\Firefox\\Profiles", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(denied, p => p.EndsWith("BraveSoftware\\Brave-Browser\\User Data", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(denied, p => p.EndsWith("Microsoft\\Windows\\PowerShell\\PSReadLine", StringComparison.OrdinalIgnoreCase));
+        AssertExistingPathPolicy(denied, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Google", "Chrome", "User Data"));
+        AssertExistingPathPolicy(denied, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Microsoft", "Edge", "User Data"));
+        AssertExistingPathPolicy(denied, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Mozilla", "Firefox", "Profiles"));
+        AssertExistingPathPolicy(denied, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "BraveSoftware", "Brave-Browser", "User Data"));
+        AssertExistingPathPolicy(denied, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Microsoft", "Windows", "PowerShell", "PSReadLine"));
     }
 
     [Fact]
@@ -200,22 +211,28 @@ public class MxcPolicyBuilderTests
     {
         // A user (or malicious settings.json) can't punch through the always-denied
         // list by adding a custom folder grant equal to one of the denies.
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var sshPath = Path.Combine(userProfile, ".ssh");
+        var settingsDir = CreateTempDeniedDir();
         var settings = new SettingsData
         {
             SandboxCustomFolders = new()
             {
-                new SandboxCustomFolder { Path = sshPath, Access = SandboxFolderAccess.ReadWrite },
+                new SandboxCustomFolder { Path = settingsDir, Access = SandboxFolderAccess.ReadWrite },
             },
         };
 
-        var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
+        try
+        {
+            var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDir);
 
-        Assert.DoesNotContain(policy.Filesystem!.ReadwritePaths!, p =>
-            string.Equals(Path.GetFullPath(p), Path.GetFullPath(sshPath), StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(policy.Filesystem.ReadonlyPaths!, p =>
-            string.Equals(Path.GetFullPath(p), Path.GetFullPath(sshPath), StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(policy.Filesystem!.ReadwritePaths!, p =>
+                string.Equals(Path.GetFullPath(p), Path.GetFullPath(settingsDir), StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(policy.Filesystem.ReadonlyPaths!, p =>
+                string.Equals(Path.GetFullPath(p), Path.GetFullPath(settingsDir), StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDeleteTempDir(settingsDir);
+        }
     }
 
     [Fact]
@@ -224,40 +241,55 @@ public class MxcPolicyBuilderTests
         // Even subdirectories of denied paths must be stripped — a grant of
         // ~\.ssh\config or %LOCALAPPDATA%\Google\Chrome\User Data\Default
         // can't bleed through.
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var sshConfig = Path.Combine(userProfile, ".ssh", "config");
+        var settingsDir = CreateTempDeniedDir();
+        var nested = Path.Combine(settingsDir, "nested");
         var settings = new SettingsData
         {
             SandboxCustomFolders = new()
             {
-                new SandboxCustomFolder { Path = sshConfig, Access = SandboxFolderAccess.ReadOnly },
+                new SandboxCustomFolder { Path = nested, Access = SandboxFolderAccess.ReadOnly },
             },
         };
 
-        var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
+        try
+        {
+            var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDir);
 
-        Assert.DoesNotContain(policy.Filesystem!.ReadonlyPaths!, p =>
-            Path.GetFullPath(p).StartsWith(
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(userProfile, ".ssh"))),
-                StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(policy.Filesystem!.ReadonlyPaths!, p =>
+                Path.GetFullPath(p).StartsWith(
+                    Path.TrimEndingDirectorySeparator(Path.GetFullPath(settingsDir)),
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDeleteTempDir(settingsDir);
+        }
     }
 
     [Fact]
     public void ForSystemRun_CustomFolder_ParentOfDeniedPath_FilteredOut()
     {
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var settingsDir = CreateTempDeniedDir();
+        var parent = Directory.GetParent(settingsDir)!.FullName;
         var settings = new SettingsData
         {
             SandboxCustomFolders = new()
             {
-                new SandboxCustomFolder { Path = userProfile, Access = SandboxFolderAccess.ReadWrite },
+                new SandboxCustomFolder { Path = parent, Access = SandboxFolderAccess.ReadWrite },
             },
         };
 
-        var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
+        try
+        {
+            var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDir);
 
-        Assert.DoesNotContain(policy.Filesystem!.ReadwritePaths!, p =>
-            string.Equals(Path.GetFullPath(p), Path.GetFullPath(userProfile), StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(policy.Filesystem!.ReadwritePaths!, p =>
+                string.Equals(Path.GetFullPath(p), Path.GetFullPath(parent), StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDeleteTempDir(settingsDir);
+        }
     }
 
     [Fact]
@@ -275,6 +307,34 @@ public class MxcPolicyBuilderTests
         var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
 
         Assert.Contains("D:\\code\\my-project", policy.Filesystem!.ReadwritePaths!);
+    }
+
+    private static void AssertExistingPathPolicy(IReadOnlyList<string> denied, string path)
+    {
+        if (Directory.Exists(path))
+            Assert.Contains(denied, p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        else
+            Assert.DoesNotContain(denied, p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string CreateTempDeniedDir()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "openclaw-denied-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private static void TryDeleteTempDir(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // Test cleanup is best-effort and should not hide the assertion result.
+        }
     }
 
     private static string GetExpectedDownloadsPath()
