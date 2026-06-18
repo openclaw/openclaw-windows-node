@@ -213,6 +213,60 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task WaitForPortFree_ReturnsImmediately_WhenPortIsAlreadyFree()
+    {
+        var port = GetFreeTcpPort();
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+
+        // Should complete well within 1 second because the port is already free
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await PreflightPortStep.WaitForPortFreeAsync(port, "loopback", logger, cts.Token, maxWaitSeconds: 10);
+        // No assertion needed — completing without cancellation/timeout is the success condition
+    }
+
+    [Fact]
+    public async Task WaitForPortFree_PollsUntilPortReleased()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+
+        // Release the port after a short delay (simulates WSL proxy teardown lag)
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(400);
+            listener.Stop();
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await PreflightPortStep.WaitForPortFreeAsync(port, "loopback", logger, cts.Token, maxWaitSeconds: 5);
+
+        // Port should now be free
+        Assert.True(PreflightPortStep.CanBind(IPAddress.Loopback, port, out _));
+    }
+
+    [Fact]
+    public async Task PreflightPort_Loopback_SucceedsAfterPortReleasedDuringPoll()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        // Release after 300ms — simulates a slow WSL proxy shutdown
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            listener.Stop();
+        });
+
+        var ctx = CreateContext(new SetupConfig { GatewayPort = port });
+        var result = await new PreflightPortStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
     public async Task InstallCli_RejectsHttpUrl()
     {
         var ctx = CreateContext(new SetupConfig

@@ -276,7 +276,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
 
             // Wait for port to be released
             ctx.Logger.Info("Waiting for port release after distro termination...");
-            await Task.Delay(3000, ct);
+            await PreflightPortStep.WaitForPortFreeAsync(ctx.Config.GatewayPort, ctx.Config.Gateway.Bind, ctx.Logger, ct);
             return StepResult.Ok($"Unregistered stale distro '{distro}'");
         }
 
@@ -596,23 +596,61 @@ public sealed class PreflightPortStep : SetupStep
     public override string DisplayName => "Check gateway port available";
     public override bool CanRetry => false;
 
-    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var port = ctx.Config.GatewayPort;
         var addresses = ctx.Config.Gateway.Bind.Equals("lan", StringComparison.OrdinalIgnoreCase)
             ? new[] { IPAddress.Any, IPAddress.IPv6Any }
             : [IPAddress.Loopback];
 
+        // Poll briefly in case WSL port forwarding proxy hasn't fully released the
+        // port yet (e.g. after wsl --shutdown in a prior cleanup step).
+        await WaitForPortFreeAsync(port, ctx.Config.Gateway.Bind, ctx.Logger, ct, maxWaitSeconds: 10);
+
         foreach (var address in addresses)
         {
             if (!CanBind(address, port, out var error))
-                return Task.FromResult(StepResult.Fail($"Port {port} is already in use for {DescribeBind(address)} ({error.SocketErrorCode})"));
+                return StepResult.Fail($"Port {port} is already in use for {DescribeBind(address)} ({error.SocketErrorCode})");
         }
 
-        return Task.FromResult(StepResult.Ok($"Port {port} is available"));
+        return StepResult.Ok($"Port {port} is available");
     }
 
-    private static bool CanBind(IPAddress address, int port, out SocketException error)
+    /// <summary>
+    /// Polls until all required addresses for <paramref name="port"/> can be bound,
+    /// or until <paramref name="maxWaitSeconds"/> elapses.  Silently returns if the
+    /// port never frees — <see cref="ExecuteAsync"/> will still hard-fail in that case.
+    /// </summary>
+    internal static async Task WaitForPortFreeAsync(
+        int port, string bind, SetupLogger logger, CancellationToken ct,
+        int maxWaitSeconds = 20)
+    {
+        var addresses = bind.Equals("lan", StringComparison.OrdinalIgnoreCase)
+            ? new[] { IPAddress.Any, IPAddress.IPv6Any }
+            : [IPAddress.Loopback];
+
+        var deadline = DateTime.UtcNow.AddSeconds(maxWaitSeconds);
+        var attempt = 0;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (addresses.All(a => CanBind(a, port, out _)))
+            {
+                if (attempt > 0)
+                    logger.Info($"Port {port} became free after {attempt * 500}ms");
+                return;
+            }
+
+            attempt++;
+            await Task.Delay(500, ct);
+        }
+
+        logger.Warn($"Port {port} still in use after {maxWaitSeconds}s poll — proceeding to hard check");
+    }
+
+    internal static bool CanBind(IPAddress address, int port, out SocketException error)
     {
         var listener = new TcpListener(address, port)
         {
