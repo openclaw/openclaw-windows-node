@@ -57,6 +57,18 @@ public interface ICommandRunner
 {
     /// <summary>Human-readable name of this runner (e.g., "local", "docker", "wsl")</summary>
     string Name { get; }
+
+    /// <summary>
+    /// Resolve the shell that will actually execute the request. Approval checks
+    /// must use this value so shell-scoped rules cannot approve one shell while
+    /// the runner executes another.
+    /// </summary>
+    string ResolveEffectiveShell(string? requestedShell)
+    {
+        return string.IsNullOrWhiteSpace(requestedShell)
+            ? "powershell"
+            : requestedShell.Trim();
+    }
     
     /// <summary>Execute a command and return the result.</summary>
     Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default);

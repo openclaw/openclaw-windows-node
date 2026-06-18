@@ -88,6 +88,8 @@
     <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == 'win-x64'">x64</MxcArch>
     <MxcArch Condition="'$(MxcArch)' == '' And '$(PlatformTarget)' == 'ARM64'">arm64</MxcArch>
     <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == ''">x64</MxcArch>
+    <MxcSdkExpectedVersion>0.7.0</MxcSdkExpectedVersion>
+    <MxcSdkPackageJson>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json</MxcSdkPackageJson>
     <MxcSdkBinDir>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\bin\$(MxcArch)\</MxcSdkBinDir>
     <MxcSdkExpectedVersion>0.7.0</MxcSdkExpectedVersion>
     <MxcSdkPackageJson>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json</MxcSdkPackageJson>

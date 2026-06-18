@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared.Mxc;
@@ -107,11 +108,14 @@ public class MxcConfigBuilderTests
         };
 
         // The golden test reproduces the exact harness recipe: no commandLine,
-        // no cwd, no PATH-resolved tool dirs. We pass an empty PATH and no
+        // no cwd, no shell PATH dirs. We pass an empty PATH and no
         // caller env. The C# config still emits env: [] to make the sandbox env
-        // boundary explicit; the harness stripped process.* (commandLine, cwd,
-        // env, timeout), so do the same on the C# side before comparing.
-        var request = RequestFor(policy);
+        // boundary explicit and bootstraps shell env in commandLine; the
+        // harness stripped process.* (commandLine, cwd, env, timeout), so do
+        // the same on the C# side before comparing. Use cmd so this pure
+        // policy golden does not inherit the PowerShell-specific UI exception.
+        using var argsDoc = JsonDocument.Parse("""{"shell":"cmd"}""");
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
         var config = MxcConfigBuilder.Build(
             request,
             scratchDir: P.Scratch,
@@ -264,15 +268,48 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void ResolvePathDirsForReadonly_ReturnsExistingPathDirs()
+    public void Build_FiltersHostProfileDeniedPathsBeforeBackendEmissionButStillFiltersAllows()
     {
-        // Synthesize an existing dir on PATH; ensure it shows up as a readonly
-        // grant candidate. No tool-name filter — every existing PATH dir
-        // counts (mirrors the SDK's getAvailableToolsPolicy behavior).
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData))
+            return;
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfile))
+            return;
+
+        var chromeProfile = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+        var sshPath = Path.Combine(userProfile, ".ssh");
+        var settingsDeny = Path.Combine(P.Settings, "openclaw-settings");
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: new[] { chromeProfile, userProfile },
+                ReadonlyPaths: Array.Empty<string>(),
+                DeniedPaths: new[] { chromeProfile, sshPath, settingsDeny },
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
+
+        Assert.DoesNotContain(chromeProfile, config.Filesystem!.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(userProfile, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(chromeProfile, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(sshPath, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(settingsDeny, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolvePathDirsForShellPath_ReturnsExistingPathDirs()
+    {
+        // Synthesize an existing dir on PATH; ensure it shows up in the shell
+        // PATH bootstrap.
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-tool-test-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
-            var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: tempDir);
+            var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: tempDir);
             Assert.Contains(tempDir, dirs);
         }
         finally
@@ -283,15 +320,24 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void Build_GrantsPathDirsAndEmitsEmptyProcessEnv()
+    public void Build_BootstrapsShellPathAndGrantsBackendSafePathDirsReadonly()
     {
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-test-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
-            var config = MxcConfigBuilder.Build(RequestFor(BalancedPolicy()), P.Scratch, pathEnvVar: tempDir);
+            using var argsDoc = JsonDocument.Parse("""{"command":"git --version","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: tempDir);
+
             Assert.NotNull(config.Process.Env);
             Assert.Empty(config.Process.Env);
             Assert.Contains(tempDir, config.Filesystem!.ReadonlyPaths!);
+            Assert.Contains($"set \"TEMP={P.Scratch}\"", config.Process.CommandLine);
+            Assert.Contains($"set \"TMP={P.Scratch}\"", config.Process.CommandLine);
+            Assert.Contains($"set \"TMPDIR={P.Scratch}\"", config.Process.CommandLine);
+            Assert.Contains($"set \"PATH={tempDir}\"", config.Process.CommandLine);
+            Assert.Contains("git --version", config.Process.CommandLine);
         }
         finally
         {
@@ -338,22 +384,22 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void ResolvePathDirsForReadonly_SkipsNonExistentDirs()
+    public void ResolvePathDirsForShellPath_SkipsNonExistentDirs()
     {
         var fake = Path.Combine(Path.GetTempPath(), "definitely-not-real-xyzqq-" + Guid.NewGuid().ToString("N"));
-        var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: fake);
+        var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: fake);
         Assert.Empty(dirs);
     }
 
     [Fact]
-    public void ResolvePathDirsForReadonly_SkipsDriveRoots()
+    public void ResolvePathDirsForShellPath_SkipsDriveRoots()
     {
-        var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: "C:\\");
+        var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: "C:\\");
         Assert.Empty(dirs);
     }
 
     [Fact]
-    public void ResolvePathDirsForReadonly_SkipsProtectedSystemDirs()
+    public void ResolvePathDirsForShellPath_KeepsProtectedDirsInPathOnly()
     {
         if (!OperatingSystem.IsWindows())
             return;
@@ -362,8 +408,27 @@ public class MxcConfigBuilderTests
         if (string.IsNullOrWhiteSpace(programFiles))
             return;
 
-        var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: programFiles);
-        Assert.DoesNotContain(programFiles, dirs, StringComparer.OrdinalIgnoreCase);
+        var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: programFiles);
+        Assert.Contains(programFiles, dirs, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_BootstrapsProtectedPathDirsWithoutGrantingThem()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (string.IsNullOrWhiteSpace(programFiles))
+            return;
+
+        using var argsDoc = JsonDocument.Parse("""{"command":"tool --version","shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: programFiles);
+
+        Assert.Contains($"set \"PATH={programFiles}\"", config.Process.CommandLine);
+        Assert.DoesNotContain(programFiles, config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -401,6 +466,26 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
+    public void Build_DefaultShell_UsesWindowsPowerShellAndEnablesWindowsUi()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        var expected = string.IsNullOrWhiteSpace(systemRoot)
+            ? "powershell.exe"
+            : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+
+        Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
     public void Build_CmdShell_UsesResolvedCmdExe()
     {
         using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"cmd"}""");
@@ -419,7 +504,24 @@ public class MxcConfigBuilderTests
             expected = "cmd.exe";
 
         Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(" /S /C \"echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_PwshShell_UsesPwshAndEnablesWindowsUi()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+
+        Assert.StartsWith("pwsh.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
     }
 
     [Fact]
@@ -438,9 +540,45 @@ public class MxcConfigBuilderTests
 
         Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_PowerShellShell_QuotesPathBootstrapValue()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-pwsh-path-test-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var dir1 = Directory.CreateDirectory(Path.Combine(tempRoot, "bin1")).FullName;
+            var dir2 = Directory.CreateDirectory(Path.Combine(tempRoot, "bin2")).FullName;
+            var pathEnv = string.Join(Path.PathSeparator, dir1, dir2);
+            using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output $env:PATH","shell":"powershell"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: pathEnv);
+            var script = DecodePowershellEncodedCommand(config.Process.CommandLine);
+
+            Assert.Contains("$env:PATH = '" + pathEnv.Replace("'", "''") + "';", script);
+            Assert.DoesNotContain("$env:PATH = " + pathEnv + ";", script);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
     }
 
     // ---- helpers for tolerant JSON comparison ----
+
+    private static string DecodePowershellEncodedCommand(string commandLine)
+    {
+        const string marker = " -EncodedCommand ";
+        var markerIndex = commandLine.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        Assert.True(markerIndex >= 0, commandLine);
+        var encoded = commandLine[(markerIndex + marker.Length)..].Trim();
+        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
+    }
 
     private static void AssertJsonEqual(JsonObjectNode expected, JsonObjectNode actual, string path)
     {

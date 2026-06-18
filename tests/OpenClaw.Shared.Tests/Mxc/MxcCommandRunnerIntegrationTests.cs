@@ -91,20 +91,19 @@ public class MxcCommandRunnerIntegrationTests
     }
 
     [IntegrationFact]
-    public async Task SystemRun_PowerShell_ReturnsStdout()
+    public async Task SystemRun_DefaultShell_ExecutesInsideAppContainer()
     {
         var runner = TryBuildRunner();
         if (runner is null) return; // skip — MXC unavailable on this host
 
         var result = await runner.RunAsync(new CommandRequest
         {
-            Command = "Write-Output 'pwsh-from-mxc'",
-            Shell = "powershell",
+            Command = "echo hello-default-mxc",
             TimeoutMs = 30_000,
         });
 
         Assert.True(
-            result.ExitCode == 0 && result.Stdout.Contains("pwsh-from-mxc"),
+            result.ExitCode == 0 && result.Stdout.Contains("hello-default-mxc"),
             $"ExitCode={result.ExitCode}\nStdout={result.Stdout}\nStderr={result.Stderr}\nTimedOut={result.TimedOut}\nDurationMs={result.DurationMs}");
     }
 

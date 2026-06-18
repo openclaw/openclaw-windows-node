@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace OpenClaw.Shared;
 
 /// <summary>
-/// Executes commands locally via Process.Start (pwsh.exe / cmd.exe).
+/// Executes commands locally via Process.Start (pwsh.exe / powershell.exe / cmd.exe).
 /// This is the default runner. Swap with DockerCommandRunner, WslCommandRunner, etc.
 /// </summary>
 public class LocalCommandRunner : ICommandRunner
@@ -22,6 +22,8 @@ public class LocalCommandRunner : ICommandRunner
     {
         _logger = logger ?? NullLogger.Instance;
     }
+
+    public string ResolveEffectiveShell(string? requestedShell) => ResolveEffectiveShellName(requestedShell);
     
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
     {
@@ -234,7 +236,8 @@ public class LocalCommandRunner : ICommandRunner
 
     private static (string fileName, string arguments) BuildProcessArgs(CommandRequest request)
     {
-        var shell = request.Shell ?? "powershell";
+        var defaultShell = string.IsNullOrWhiteSpace(request.Shell);
+        var shell = ResolveEffectiveShellName(request.Shell);
         var command = request.Command;
         var isCmd = shell.Equals("cmd", StringComparison.OrdinalIgnoreCase);
         
@@ -249,8 +252,54 @@ public class LocalCommandRunner : ICommandRunner
         if (isCmd)
             return ("cmd.exe", $"/C {command}");
         if (shell.Equals("pwsh", StringComparison.OrdinalIgnoreCase))
-            return ("pwsh.exe", $"-NoProfile -NonInteractive -Command {command}");
-        return ("powershell.exe", $"-NoProfile -NonInteractive -Command {command}");
+        {
+            var pwshPath = ResolveOnPath("pwsh.exe");
+            if (pwshPath is not null || !defaultShell)
+                return (pwshPath ?? "pwsh.exe", $"-NoProfile -NonInteractive -Command {command}");
+        }
+
+        return (ResolveWindowsPowerShellExe(), $"-NoProfile -NonInteractive -Command {command}");
+    }
+
+    internal static string ResolveEffectiveShellName(string? requestedShell)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedShell))
+            return requestedShell.Trim();
+
+        return ResolveOnPath("pwsh.exe") is not null ? "pwsh" : "powershell";
+    }
+
+    private static string? ResolveOnPath(string executableName)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH")
+            ?? Environment.GetEnvironmentVariable("Path");
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(dir, executableName);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch
+            {
+                // Ignore malformed PATH entries.
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolveWindowsPowerShellExe()
+    {
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        return string.IsNullOrWhiteSpace(systemRoot)
+            ? "powershell.exe"
+            : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
     }
     
     /// <summary>

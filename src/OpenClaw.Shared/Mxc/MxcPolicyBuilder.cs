@@ -10,16 +10,19 @@ namespace OpenClaw.Shared.Mxc;
 /// Policy decisions:
 /// <list type="bullet">
 /// <item><c>readonlyPaths</c> — populated from user-granted folders (Documents,
-/// Downloads, Desktop, custom). The MXC config builder additionally merges
-/// PATH-specific tool directories so spawned shells can find git/node/python/etc.</item>
+/// Downloads, Desktop, custom). The MXC config builder also grants
+/// backend-safe host PATH directories as readonly so PATH-resolved user tools
+/// can execute inside AppContainer.</item>
 /// <item><c>readwritePaths</c> — user-granted read+write folders. The MXC config
-/// builder adds a per-invocation scratch directory and rewrites TEMP/TMP/TMPDIR
-/// to point at it, so the user's real %TEMP% stays out of reach.</item>
+/// builder adds a per-invocation scratch directory and bootstraps
+/// TEMP/TMP/TMPDIR inside the launched shell so the user's real %TEMP% stays
+/// out of reach.</item>
 /// <item><c>deniedPaths</c> — settings directory (protect MCP token, gateway
 /// credentials, ElevenLabs key), <c>~/.ssh</c>, and the common browser profile
 /// roots (Chrome / Edge / Firefox / Brave). Always blocked regardless of grants.</item>
 /// <item><c>network.allowOutbound</c> — bound by <see cref="SettingsData.SystemRunAllowOutbound"/>.</item>
-/// <item><c>ui</c> — default-deny across the board; shell exec doesn't need windows.</item>
+/// <item><c>ui</c> — default-deny in policy; the config builder may relax UI
+/// for PowerShell-family shells that need desktop isolation to start under MXC.</item>
 /// </list>
 /// </remarks>
 public static class MxcPolicyBuilder
@@ -42,31 +45,31 @@ public static class MxcPolicyBuilder
     public static SandboxPolicy ForSystemRun(SettingsData settings, string settingsDirectoryPath)
     {
         var deniedPaths = new List<string>();
-        if (!string.IsNullOrWhiteSpace(settingsDirectoryPath))
-            deniedPaths.Add(settingsDirectoryPath);
+        AddDeniedPathIfExists(deniedPaths, settingsDirectoryPath);
 
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var sshPath = Path.Combine(userProfile, ".ssh");
-        AddDeniedPathIfExists(deniedPaths, sshPath);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+            AddDeniedPath(deniedPaths, Path.Combine(userProfile, ".ssh"));
 
         // Always-blocked browser profile roots. Cookies, saved passwords, autofill,
         // and session tokens live here — they must remain unreachable even if the
         // user (or a malicious settings.json) tries to grant a parent folder.
-        // With the MXC 0.7 AppContainer+DACL fallback, nonexistent deny paths are
-        // not a no-op: wxc-exec attempts to apply DACLs and fails before running
-        // the command. Only emit deny roots that exist for this invocation.
+        // Keep these paths in the logical deny list even when they do not
+        // exist yet, so parent-folder grants cannot create sensitive roots. The
+        // config builder filters host-profile roots before backend emission
+        // because MXC 0.7 AppContainer+DACL fails on some nonexistent paths.
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         if (!string.IsNullOrWhiteSpace(localAppData))
         {
-            AddDeniedPathIfExists(deniedPaths, Path.Combine(localAppData, "Google", "Chrome", "User Data"));
-            AddDeniedPathIfExists(deniedPaths, Path.Combine(localAppData, "Microsoft", "Edge", "User Data"));
-            AddDeniedPathIfExists(deniedPaths, Path.Combine(localAppData, "BraveSoftware", "Brave-Browser", "User Data"));
+            AddDeniedPath(deniedPaths, Path.Combine(localAppData, "Google", "Chrome", "User Data"));
+            AddDeniedPath(deniedPaths, Path.Combine(localAppData, "Microsoft", "Edge", "User Data"));
+            AddDeniedPath(deniedPaths, Path.Combine(localAppData, "BraveSoftware", "Brave-Browser", "User Data"));
         }
         if (!string.IsNullOrWhiteSpace(appData))
         {
-            AddDeniedPathIfExists(deniedPaths, Path.Combine(appData, "Mozilla", "Firefox", "Profiles"));
-            AddDeniedPathIfExists(deniedPaths, Path.Combine(appData, "Microsoft", "Windows", "PowerShell", "PSReadLine"));
+            AddDeniedPath(deniedPaths, Path.Combine(appData, "Mozilla", "Firefox", "Profiles"));
+            AddDeniedPath(deniedPaths, Path.Combine(appData, "Microsoft", "Windows", "PowerShell", "PSReadLine"));
         }
 
         var readonlyPaths = new List<string>();
@@ -131,6 +134,12 @@ public static class MxcPolicyBuilder
             // If the host cannot even probe this path, avoid making the whole
             // sandbox launch fail while preparing DACLs for an unverified path.
         }
+    }
+
+    private static void AddDeniedPath(List<string> deniedPaths, string path)
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+            deniedPaths.Add(path);
     }
 
     /// <summary>

@@ -567,8 +567,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// Build the <see cref="ICommandRunner"/> for system.run. Returns an
     /// <see cref="MxcCommandRunner"/> wrapping <see cref="DirectAppContainerExecutor"/>.
     /// The runner honors <see cref="SettingsData.SystemRunSandboxEnabled"/>
-    /// and, per issue #494, falls back to <see cref="LocalCommandRunner"/>
-    /// at runtime when MXC isn't available on this host.
+    /// by denying sandboxed commands when MXC is unavailable. Host execution is
+    /// only used when the operator explicitly disables sandboxing.
     /// </summary>
     private ICommandRunner BuildSystemRunRunner()
     {
@@ -597,11 +597,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         else
         {
             // MXC unavailable on this host. The runner's top-level
-            // !_isSandboxAvailable() guard will route to the host fallback
-            // for every call; the executor is constructed only to satisfy
+            // !_isSandboxAvailable() guard will deny calls while sandboxing
+            // remains enabled; the executor is constructed only to satisfy
             // the constructor contract and is never invoked.
             var reason = string.Join("; ", peeked.UnsupportedReasons);
-            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable, commands will run uncontained: {reason})");
+            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable, sandboxed commands will be blocked: {reason})");
         }
 
         var settingsDirectory = SettingsManager.SettingsDirectoryPath;

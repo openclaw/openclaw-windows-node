@@ -28,11 +28,35 @@ public class MxcPolicyBuilderTests
     public void ForSystemRun_DeniesSettingsDirectoryPath()
     {
         var settings = new SettingsData();
-        var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\Users\\test\\AppData\\OpenClawTray");
+        var settingsDir = CreateTempDeniedDir();
+
+        try
+        {
+            var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDir);
+
+            Assert.NotNull(policy.Filesystem);
+            Assert.NotNull(policy.Filesystem!.DeniedPaths);
+            Assert.Contains(policy.Filesystem.DeniedPaths!, p =>
+                string.Equals(p, settingsDir, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDeleteTempDir(settingsDir);
+        }
+    }
+
+    [Fact]
+    public void ForSystemRun_SkipsMissingSettingsDirectoryPath()
+    {
+        var settings = new SettingsData();
+        var missingSettingsDir = Path.Combine(Path.GetTempPath(), "openclaw-missing-settings-" + Guid.NewGuid().ToString("N"));
+
+        var policy = MxcPolicyBuilder.ForSystemRun(settings, missingSettingsDir);
 
         Assert.NotNull(policy.Filesystem);
         Assert.NotNull(policy.Filesystem!.DeniedPaths);
-        Assert.Contains("C:\\Users\\test\\AppData\\OpenClawTray", policy.Filesystem.DeniedPaths!);
+        Assert.DoesNotContain(policy.Filesystem.DeniedPaths!, p =>
+            string.Equals(p, missingSettingsDir, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -44,10 +68,7 @@ public class MxcPolicyBuilderTests
         Assert.NotNull(policy.Filesystem);
         Assert.NotNull(policy.Filesystem!.DeniedPaths);
         var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
-        if (Directory.Exists(expected))
-            Assert.Contains(policy.Filesystem.DeniedPaths!, p => string.Equals(p, expected, StringComparison.OrdinalIgnoreCase));
-        else
-            Assert.DoesNotContain(policy.Filesystem.DeniedPaths!, p => p.EndsWith(".ssh", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(policy.Filesystem.DeniedPaths!, p => string.Equals(p, expected, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -182,28 +203,50 @@ public class MxcPolicyBuilderTests
     [Fact]
     public void ForSystemRun_BrowserProfileDirectories_AreDenied()
     {
-        // Existing browser/profile roots should be denied. Missing roots are not
-        // emitted because the MXC 0.7 AppContainer+DACL fallback fails if asked
-        // to mutate DACLs for nonexistent paths.
+        // These roots stay in the logical deny list even when absent so parent
+        // grants cannot create sensitive profile directories. Backend emission
+        // is filtered later by MxcConfigBuilder for MXC 0.7 DACL safety.
         var settings = new SettingsData();
         var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
 
         var denied = policy.Filesystem!.DeniedPaths!;
-        AssertExistingPathPolicy(denied, Path.Combine(
+        AssertDeniedPath(denied, Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Google", "Chrome", "User Data"));
-        AssertExistingPathPolicy(denied, Path.Combine(
+        AssertDeniedPath(denied, Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Microsoft", "Edge", "User Data"));
-        AssertExistingPathPolicy(denied, Path.Combine(
+        AssertDeniedPath(denied, Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Mozilla", "Firefox", "Profiles"));
-        AssertExistingPathPolicy(denied, Path.Combine(
+        AssertDeniedPath(denied, Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "BraveSoftware", "Brave-Browser", "User Data"));
-        AssertExistingPathPolicy(denied, Path.Combine(
+        AssertDeniedPath(denied, Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Microsoft", "Windows", "PowerShell", "PSReadLine"));
+    }
+
+    [Fact]
+    public void ForSystemRun_UserProfileGrant_FilteredBecauseItContainsSsh()
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfile))
+            return;
+
+        var settings = new SettingsData
+        {
+            SandboxCustomFolders = new()
+            {
+                new SandboxCustomFolder { Path = userProfile, Access = SandboxFolderAccess.ReadWrite },
+            },
+        };
+
+        var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
+
+        AssertDeniedPath(policy.Filesystem!.DeniedPaths!, Path.Combine(userProfile, ".ssh"));
+        Assert.DoesNotContain(policy.Filesystem.ReadwritePaths!, p =>
+            string.Equals(Path.GetFullPath(p), Path.GetFullPath(userProfile), StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -309,12 +352,12 @@ public class MxcPolicyBuilderTests
         Assert.Contains("D:\\code\\my-project", policy.Filesystem!.ReadwritePaths!);
     }
 
-    private static void AssertExistingPathPolicy(IReadOnlyList<string> denied, string path)
+    private static void AssertDeniedPath(IReadOnlyList<string> denied, string path)
     {
-        if (Directory.Exists(path))
-            Assert.Contains(denied, p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
-        else
-            Assert.DoesNotContain(denied, p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        Assert.Contains(denied, p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string CreateTempDeniedDir()

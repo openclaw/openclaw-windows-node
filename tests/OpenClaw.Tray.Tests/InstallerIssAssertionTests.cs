@@ -145,8 +145,12 @@ public sealed class InstallerIssAssertionTests
         var iss = File.ReadAllText(Path.Combine(repositoryRoot, "installer.iss"));
 
         Assert.Contains(@"""@microsoft/mxc-sdk""", packageJson);
+        Assert.Contains(@"""@microsoft/mxc-sdk"": ""^0.7.0""", packageJson);
+        Assert.Contains("<MxcSdkExpectedVersion>0.7.0</MxcSdkExpectedVersion>", trayProject);
+        Assert.Contains("MxcSdkInstalledVersion", trayProject);
         Assert.Contains("RestoreMxcNodeBridge", trayProject);
         Assert.Contains("npm ci --no-audit --no-fund", trayProject);
+        Assert.Contains("'$(MxcSdkInstalledVersion)' != '$(MxcSdkExpectedVersion)'", trayProject);
         Assert.Contains("CopyWxcExecToOutput", trayProject);
         Assert.Contains("CopyWxcExecToPublish", trayProject);
         Assert.Contains("ValidateWxcExecShipped", trayProject);

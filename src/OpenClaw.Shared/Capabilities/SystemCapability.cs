@@ -400,14 +400,15 @@ public class SystemCapability : NodeCapabilityBase
         var fullCommand = args != null
             ? FormatExecCommand([command!, ..args])
             : command;
+        var effectiveShell = _commandRunner.ResolveEffectiveShell(shell);
         
-        Logger.Info($"system.run: {fullCommand} (shell={shell ?? "auto"}, timeout={timeoutMs}ms)");
+        Logger.Info($"system.run: {fullCommand} (shell={effectiveShell}, requestedShell={shell ?? "auto"}, timeout={timeoutMs}ms)");
         
         // Check exec approval policy
         if (_approvalPolicy != null)
         {
-            var approval = _approvalPolicy.Evaluate(fullCommand, shell);
-            var approvalCheck = await EnsureApprovedAsync(fullCommand, shell, approval, sessionKey, correlationId);
+            var approval = _approvalPolicy.Evaluate(fullCommand, effectiveShell);
+            var approvalCheck = await EnsureApprovedAsync(fullCommand, effectiveShell, approval, sessionKey, correlationId);
             if (!approvalCheck.Allowed)
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
@@ -418,7 +419,7 @@ public class SystemCapability : NodeCapabilityBase
                 approvalCheck.PromptDecisionKind != null ||
                 IsExactAllowRuleForCommand(approval, fullCommand);
 
-            var parseResult = ExecShellWrapperParser.Expand(fullCommand, shell);
+            var parseResult = ExecShellWrapperParser.Expand(fullCommand, effectiveShell);
             if (!string.IsNullOrWhiteSpace(parseResult.Error))
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({parseResult.Error})");
@@ -453,7 +454,7 @@ public class SystemCapability : NodeCapabilityBase
             {
                 Command = command,
                 Args = args,
-                Shell = shell,
+                Shell = effectiveShell,
                 Cwd = cwd,
                 TimeoutMs = timeoutMs,
                 Env = env
