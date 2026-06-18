@@ -149,12 +149,11 @@ public sealed class DiagnosticsPageContractTests
             xaml);
         Assert.DoesNotContain("DiagnosticsPage_OpenRecentLogButton", xaml);
 
-        // Open chat explorations: inner Button shape — the row is no
-        // longer the click target. Mirrors the popup-launching shape
-        // of the Connection event timeline card.
+        // Connection event timeline: inner Button shape because it opens
+        // a popup window rather than swapping the in-page detail view.
         Assert.Matches(
             new System.Text.RegularExpressions.Regex(
-                @"x:Uid=""DiagnosticsPage_Card_ChatExplorations""[\s\S]{0,600}<Button[\s\S]{0,200}Click=""OnOpenChatExplorations"""),
+                @"x:Uid=""DiagnosticsPage_Card_EventTimeline""[\s\S]{0,600}<Button[\s\S]{0,200}Click=""OnOpenEventTimeline"""),
             xaml);
     }
 
