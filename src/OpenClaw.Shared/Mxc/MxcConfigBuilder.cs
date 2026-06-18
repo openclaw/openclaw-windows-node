@@ -255,17 +255,19 @@ public static class MxcConfigBuilder
     }
 
     /// <summary>
-    /// Build the env array (KEY=VALUE strings) the wxc-exec sandbox will inherit.
+    /// Build the env array (KEY=VALUE strings) for the wxc-exec sandbox.
     /// </summary>
     /// <remarks>
-    /// Current MXC 0.7 Windows processcontainer rejects non-empty process env
-    /// entries at <c>CreateProcessW</c>. Keep the serialized field absent for
-    /// normal requests and fail explicitly for env-bearing requests.
+    /// Current MXC 0.7 Windows processcontainer accepts an empty env array but
+    /// rejects non-empty entries at <c>CreateProcessW</c>. Emit an explicit
+    /// empty array for normal requests so the config does not rely on implicit
+    /// host-environment inheritance semantics, and fail explicitly for
+    /// env-bearing requests.
     /// </remarks>
     public static IReadOnlyList<string>? BuildEnv(IReadOnlyDictionary<string, string>? requestEnv)
     {
         if (requestEnv is null || requestEnv.Count == 0)
-            return null;
+            return Array.Empty<string>();
 
         throw new NotSupportedException(
             "Explicit environment variables are not supported by the Windows MXC 0.7 processcontainer backend.");

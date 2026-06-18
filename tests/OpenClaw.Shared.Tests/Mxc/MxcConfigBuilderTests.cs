@@ -107,9 +107,10 @@ public class MxcConfigBuilderTests
         };
 
         // The golden test reproduces the exact harness recipe: no commandLine,
-        // no env, no cwd, no PATH-resolved tool dirs. We pass an empty PATH and
-        // an empty agent env. The harness stripped process.* (commandLine, cwd,
-        // env, timeout) too; do the same on the C# side before comparing.
+        // no cwd, no PATH-resolved tool dirs. We pass an empty PATH and no
+        // caller env. The C# config still emits env: [] to make the sandbox env
+        // boundary explicit; the harness stripped process.* (commandLine, cwd,
+        // env, timeout), so do the same on the C# side before comparing.
         var request = RequestFor(policy);
         var config = MxcConfigBuilder.Build(
             request,
@@ -282,13 +283,14 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void Build_GrantsPathDirsWithoutSynthesizingProcessEnv()
+    public void Build_GrantsPathDirsAndEmitsEmptyProcessEnv()
     {
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-test-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
             var config = MxcConfigBuilder.Build(RequestFor(BalancedPolicy()), P.Scratch, pathEnvVar: tempDir);
-            Assert.Null(config.Process.Env);
+            Assert.NotNull(config.Process.Env);
+            Assert.Empty(config.Process.Env);
             Assert.Contains(tempDir, config.Filesystem!.ReadonlyPaths!);
         }
         finally
