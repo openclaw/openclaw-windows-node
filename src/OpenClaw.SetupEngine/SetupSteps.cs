@@ -1660,6 +1660,28 @@ public sealed class MintBootstrapTokenStep : SetupStep
     }
 }
 
+internal static class WindowsGatewayReachability
+{
+    public static async Task<StepResult> VerifyAsync(SetupContext ctx, string pairingRole, CancellationToken ct)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
+            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
+            return StepResult.Ok();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Gateway not reachable before {pairingRole} pairing: {ex.Message}");
+        }
+    }
+}
+
 public sealed class PairOperatorStep : SetupStep
 {
     public override string Id => "pair-operator";
@@ -1715,6 +1737,10 @@ public sealed class PairOperatorStep : SetupStep
         identity.Initialize();
         ctx.Logger.Info($"Device identity initialized: {identity.DeviceId[..16]}...");
         ctx.OperatorDeviceId = identity.DeviceId;
+
+        var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "operator", ct);
+        if (!reachability.IsSuccess)
+            return reachability;
 
         // Connect operator WebSocket — handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
@@ -2104,17 +2130,9 @@ public sealed class PairNodeStep : SetupStep
 
         var identityPath = registry.GetIdentityDirectory(record.Id);
 
-        // Verify gateway is reachable before connecting
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
-            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
-        }
-        catch (Exception ex)
-        {
-            return StepResult.Fail($"Gateway not reachable before node pairing: {ex.Message}");
-        }
+        var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "node", ct);
+        if (!reachability.IsSuccess)
+            return reachability;
 
         var drainResult = await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, ct);
         if (!drainResult.IsSuccess)

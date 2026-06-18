@@ -1273,6 +1273,25 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(2, catAttempts);
     }
 
+    // ─── PairOperatorStep: Windows-side gateway health check ───
+
+    [Fact]
+    public async Task PairOperatorStep_FailsWhenGatewayNotReachableFromWindows()
+    {
+        // Allocate a port and immediately release it so nothing is listening on it.
+        var port = GetFreeTcpPort();
+
+        var config = new SetupConfig { GatewayPort = port };
+        var ctx = CreateContext(config);
+        ctx.SharedGatewayToken = "test-shared-token";
+
+        var step = new PairOperatorStep();
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static CommandResult Ok(string stdout = "", string stderr = "")
         => new(0, stdout, stderr, TimeSpan.Zero, TimedOut: false);
 
