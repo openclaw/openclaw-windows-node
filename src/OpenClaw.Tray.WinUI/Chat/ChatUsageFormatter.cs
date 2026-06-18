@@ -1,6 +1,7 @@
 using OpenClaw.Chat;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace OpenClawTray.Chat;
 
@@ -93,13 +94,13 @@ public static class ChatUsageFormatter
         {
             var millions = value / 1_000_000d;
             return millions % 1d == 0d
-                ? $"{millions:0}M"
-                : $"{millions:0.#}M";
+                ? millions.ToString("0", CultureInfo.InvariantCulture) + "M"
+                : millions.ToString("0.#", CultureInfo.InvariantCulture) + "M";
         }
 
         if (value >= 1_000)
-            return $"{value / 1_000d:0.0}K";
+            return (value / 1_000d).ToString("0.0", CultureInfo.InvariantCulture) + "K";
 
-        return value.ToString();
+        return value.ToString(CultureInfo.InvariantCulture);
     }
 }

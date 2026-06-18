@@ -12,6 +12,7 @@ using Xunit;
 
 namespace OpenClaw.Shared.Tests;
 
+[Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
     [Theory]
