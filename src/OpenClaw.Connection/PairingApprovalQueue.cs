@@ -34,7 +34,7 @@ public sealed class PairingApprovalDelta
 /// device/node pair-list snapshots (the gateway re-sends the full list on every
 /// <c>*.pair.requested</c>/<c>*.pair.resolved</c> event) into add/resolve deltas the
 /// presentation layer can act on without re-prompting for requests it has already shown
-/// or already decided.
+/// or that are awaiting resolution of a submitted decision.
 ///
 /// Responsibilities:
 /// <list type="bullet">

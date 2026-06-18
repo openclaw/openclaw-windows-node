@@ -6,7 +6,7 @@ using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
-/// <summary>Outcome of a single approve/reject decision, surfaced for confirmation toasts/activity.</summary>
+/// <summary>Outcome of a confirmed approve/reject decision, surfaced for confirmation toasts/activity.</summary>
 public sealed class PairingDecisionResult
 {
     public required PendingApproval Approval { get; init; }
@@ -14,7 +14,7 @@ public sealed class PairingDecisionResult
     /// <summary>True when the user approved, false when rejected.</summary>
     public required bool Approved { get; init; }
 
-    /// <summary>True when the gateway RPC succeeded.</summary>
+    /// <summary>True when the gateway confirmed the decision (the request left the pending list).</summary>
     public required bool Success { get; init; }
 }
 
@@ -28,7 +28,8 @@ public sealed class PairingDecisionResult
 ///         the approval window + an awareness toast (gated by scope and the user setting).</item>
 ///   <item>Raises <see cref="ApprovalsChanged"/> whenever the actionable set changes so an open
 ///         window refreshes.</item>
-///   <item>Executes approve/reject via the operator client and reports <see cref="DecisionCompleted"/>.</item>
+///   <item>Executes approve/reject via the operator client and, once the gateway confirms the
+///         decision (the request leaves the pending list), reports <see cref="DecisionCompleted"/>.</item>
 /// </list>
 /// All members are expected to be invoked on the UI dispatcher thread (the gateway service marshals
 /// list updates there), so no internal locking is required.
@@ -70,12 +71,10 @@ public sealed class PairingApprovalCoordinator
     /// <summary>The current actionable approvals, oldest first.</summary>
     public IReadOnlyList<PendingApproval> Current => _queue.Current;
 
-    /// <summary>True when the connected operator can approve pairings (has admin/pairing scope).</summary>
-    public bool CanApprove => CanApproveWith(_getClient());
-
     /// <summary>
     /// Feed a fresh device/node pair-list snapshot. Diffs against prior state and raises the
-    /// appropriate presentation events. Safe to call with nulls (treated as empty lists).
+    /// appropriate presentation events. A null list for a kind means "no fresh snapshot for that
+    /// kind" — its prior entries are carried forward rather than treated as resolved.
     /// </summary>
     public void OnPairListsUpdated(DevicePairingListInfo? devices, PairingListInfo? nodes)
     {
@@ -185,9 +184,6 @@ public sealed class PairingApprovalCoordinator
     /// <summary>Reject the request identified by <paramref name="key"/>.</summary>
     public Task<bool> RejectAsync(string key) => DecideAsync(key, approve: false);
 
-    /// <summary>Look up a tracked approval by key (for the window to render details).</summary>
-    public PendingApproval? Find(string key) => _queue.Find(key);
-
     /// <summary>Clear all tracked state (e.g. on disconnect or gateway switch).</summary>
     public void Reset()
     {
@@ -202,7 +198,7 @@ public sealed class PairingApprovalCoordinator
         var approval = _queue.Find(key);
         if (approval == null)
         {
-            _logger.Info($"[PairApproval] Decision for unknown/decided key '{key}' ignored");
+            _logger.Info($"[PairApproval] Decision for unknown or already-submitted key '{key}' ignored");
             return false;
         }
 

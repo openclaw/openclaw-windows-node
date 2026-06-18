@@ -3004,10 +3004,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         });
     }
 
-    /// <summary>After a decision succeeds, confirm with a toast + activity entry.</summary>
+    /// <summary>After a decision is confirmed by the gateway, surface a confirmation toast + activity entry.</summary>
     private void OnPairingDecisionCompleted(object? sender, PairingDecisionResult result)
     {
-        if (!result.Success) return; // failures are retried in the dialog
+        if (!result.Success) return; // defensive — the coordinator only raises this for confirmed decisions
         OnUiThread(() =>
         {
             var name = string.IsNullOrWhiteSpace(result.Approval.DisplayName)
