@@ -644,6 +644,22 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_DetectsUnsupportedMachineConfigurationStatus()
+    {
+        var status = NulSeparated("Default Version: 2\r\n\r\n"
+            + "WSL2 is not supported with your current machine configuration.\r\n\r\n"
+            + "Please enable the \"Virtual Machine Platform\" optional component and ensure virtualization is enabled in the BIOS.\r\n\r\n"
+            + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
+            + "For information please visit https://aka.ms/enablevirtualization\r\n");
+
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(status, out var message));
+        Assert.Contains("Virtual Machine Platform", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", message);
+        Assert.Contains("reboot", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WslInstallSupport_TryGetEnvironmentIssue_ReturnsFalseForHealthyStatus()
     {
         Assert.False(WslInstallSupport.TryGetEnvironmentIssue(
@@ -697,6 +713,33 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("Virtual Machine Platform", result.Message);
         Assert.Contains("wsl --install --no-distribution", result.Message);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_FailsTerminalWhenStatusReportsUnsupportedMachineConfiguration()
+    {
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args is ["--version"])
+                return Ok("WSL version: 2.5.9.0\n");
+            if (args is ["--status"])
+                return Ok(NulSeparated(
+                    "Default Version: 2\r\n\r\n"
+                    + "WSL2 is not supported with your current machine configuration.\r\n\r\n"
+                    + "Please enable the \"Virtual Machine Platform\" optional component and ensure virtualization is enabled in the BIOS.\r\n\r\n"
+                    + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
+                    + "For information please visit https://aka.ms/enablevirtualization\r\n"));
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Virtual Machine Platform", result.Message);
+        Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", result.Message);
+        Assert.DoesNotContain(commands.Calls, c => c.Arguments.Contains("--install"));
     }
 
     [Fact]
@@ -1281,6 +1324,9 @@ public class SetupStepsTests : IDisposable
 
     private static CommandResult TimedOut()
         => new(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
+
+    private static string NulSeparated(string value)
+        => string.Join("\0", value.ToCharArray()) + "\0";
 
     private sealed class FakeCommandRunner(
         Func<string[], CommandResult> run,

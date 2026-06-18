@@ -137,6 +137,19 @@ internal static class WslInstallSupport
             return true;
         }
 
+        // Observed from `wsl --status` when WSL2 cannot start because the
+        // host still needs Virtual Machine Platform and/or firmware
+        // virtualization enabled, even though `wsl --version` succeeds.
+        if (Contains(text, "WSL2 is not supported with your current machine configuration"))
+        {
+            message = "WSL2 is not supported with the current machine configuration. "
+                + "Enable the Windows 'Virtual Machine Platform' support by running "
+                + "`wsl --install --no-distribution` from an elevated PowerShell (or enable "
+                + "'Virtual Machine Platform' under 'Turn Windows features on or off'), ensure "
+                + "hardware virtualization is enabled in BIOS/UEFI, reboot, then retry setup.";
+            return true;
+        }
+
         // Required Windows feature missing (Virtual Machine Platform and/or
         // Hyper-V). 0x80370102 = HCS_E_SERVICE_NOT_AVAILABLE, emitted verbatim
         // by wsl.exe as "The virtual machine could not be started because a
