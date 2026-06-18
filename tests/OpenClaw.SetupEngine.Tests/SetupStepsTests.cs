@@ -12,6 +12,8 @@ public class SetupStepsTests : IDisposable
     private readonly string _localTempDir;
     private readonly string? _prevDataDir;
     private readonly string? _prevLocalDataDir;
+    private const string DevicePairPluginNotFoundOutput = "plugins.entries.device-pair: plugin not found: device-pair";
+    private const string OtherPluginNotFoundOutput = "plugins.entries.other-plugin: plugin not found: other-plugin";
 
     public SetupStepsTests()
     {
@@ -1180,6 +1182,75 @@ public class SetupStepsTests : IDisposable
             "OpenClawGateway"));
     }
 
+    [Fact]
+    public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, "device-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApprovePairing_KeepsOtherMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, "device-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Device approval failed", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_ReturnsTerminalWhenPendingListReportsDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_KeepsOtherPendingListMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not list pending node pairing requests", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_ReturnsTerminalWhenApproveReportsDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "node-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_KeepsOtherApproveMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "node-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Node approval failed", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
     // ─── Bind validation ───
 
     [Fact]
@@ -1279,8 +1350,22 @@ public class SetupStepsTests : IDisposable
     private static CommandResult Fail(string stderr = "")
         => new(1, "", stderr, TimeSpan.Zero, TimedOut: false);
 
+    private static CommandResult FailWithStdout(string stdout)
+        => new(1, stdout, "", TimeSpan.Zero, TimedOut: false);
+
     private static CommandResult TimedOut()
         => new(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
+
+    private SetupContext CreatePairingContext(string failureStdout)
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => FailWithStdout(failureStdout));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "shared-token";
+        return ctx;
+    }
 
     private sealed class FakeCommandRunner(
         Func<string[], CommandResult> run,

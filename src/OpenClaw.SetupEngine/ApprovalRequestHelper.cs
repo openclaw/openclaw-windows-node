@@ -24,7 +24,8 @@ internal static partial class ApprovalRequestHelper
     // versions that ship without the device-pair plugin bundle or don't load it. Detecting this
     // lets callers return a Terminal (non-retriable) failure with actionable upgrade guidance.
     internal static bool IsPluginNotFoundError(string output)
-        => output.Contains("plugin not found", StringComparison.OrdinalIgnoreCase);
+        => output.Contains("plugin not found", StringComparison.OrdinalIgnoreCase)
+            && output.Contains("device-pair", StringComparison.OrdinalIgnoreCase);
 
     internal const string PluginNotFoundMessage =
         "The gateway device-pair plugin is not loaded. " +
