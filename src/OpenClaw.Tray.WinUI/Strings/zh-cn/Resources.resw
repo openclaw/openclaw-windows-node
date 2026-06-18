@@ -3568,10 +3568,10 @@
     <value>Gateway</value>
   </data>
   <data name="DiagnosticsPage_Card_Doctor.Header" xml:space="preserve">
-    <value>Run gateway doctor</value>
+    <value>运行 Gateway 诊断</value>
   </data>
   <data name="DiagnosticsPage_Card_Doctor.Description" xml:space="preserve">
-    <value>Opens a terminal and runs openclaw doctor to check the local gateway for problems.</value>
+    <value>打开终端并运行 openclaw doctor，以检查本地 Gateway 是否存在问题。</value>
   </data>
   <data name="DiagnosticsPage_Section_Share.Text" xml:space="preserve">
     <value>Share diagnostics with support</value>

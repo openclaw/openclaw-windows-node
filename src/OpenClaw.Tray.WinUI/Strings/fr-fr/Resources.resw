@@ -3568,10 +3568,10 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Gateway</value>
   </data>
   <data name="DiagnosticsPage_Card_Doctor.Header" xml:space="preserve">
-    <value>Run gateway doctor</value>
+    <value>Exécuter le diagnostic de la Gateway</value>
   </data>
   <data name="DiagnosticsPage_Card_Doctor.Description" xml:space="preserve">
-    <value>Opens a terminal and runs openclaw doctor to check the local gateway for problems.</value>
+    <value>Ouvre un terminal et exécute openclaw doctor pour vérifier si la Gateway locale présente des problèmes.</value>
   </data>
   <data name="DiagnosticsPage_Section_Share.Text" xml:space="preserve">
     <value>Share diagnostics with support</value>
