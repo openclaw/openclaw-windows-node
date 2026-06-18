@@ -144,10 +144,24 @@ public class PairingApprovalQueueTests
     public void Reconcile_FiltersOwnNodeRequest()
     {
         var q = new PairingApprovalQueue();
-        var delta = q.Reconcile(null, Nodes(Node("self", nodeId: "MY-NODE"), Node("other", nodeId: "OTHER")), ownNodeDeviceId: "my-node");
+        var delta = q.Reconcile(null, Nodes(Node("self", nodeId: "MY-NODE"), Node("other", nodeId: "OTHER")), ownNodeDeviceIds: new[] { "my-node" });
 
         Assert.Single(delta.Added);
         Assert.Equal("other", delta.Added[0].RequestId);
+    }
+
+    [Fact]
+    public void Reconcile_FiltersOwnNodeByAnyAdvertisedId()
+    {
+        var q = new PairingApprovalQueue();
+        // The own node may surface under its device id OR its gateway node id — both must filter.
+        var delta = q.Reconcile(
+            null,
+            Nodes(Node("a", nodeId: "device-fingerprint"), Node("b", nodeId: "gateway-node-id"), Node("c", nodeId: "remote")),
+            ownNodeDeviceIds: new[] { "device-fingerprint", "gateway-node-id" });
+
+        Assert.Single(delta.Added);
+        Assert.Equal("c", delta.Added[0].RequestId);
     }
 
     [Fact]
@@ -236,17 +250,39 @@ public class PairingApprovalQueueTests
     }
 
     [Fact]
-    public void Reconcile_DefersNodeRequestsWhenAsked()
+    public void Reconcile_NullListForKind_CarriesForwardAndDoesNotConfirm()
     {
         var q = new PairingApprovalQueue();
-        var deferred = q.Reconcile(Devices(Device("dev")), Nodes(Node("n1")), deferNodeRequests: true);
-        Assert.Single(deferred.Added); // only the device
-        Assert.Equal("dev", deferred.Added[0].RequestId);
+        // Two kinds present.
+        var first = q.Reconcile(Devices(Device("dev")), Nodes(Node("n1")), nowMs: 0);
+        Assert.Equal(2, first.Current.Count);
 
-        // Once no longer deferred, the node request surfaces.
-        var resumed = q.Reconcile(Devices(Device("dev")), Nodes(Node("n1")), deferNodeRequests: false);
-        Assert.Single(resumed.Added);
-        Assert.Equal(PairingApprovalKind.Node, resumed.Added[0].Kind);
+        // Submit the device decision (optimistic-pending).
+        var dev = first.Added.First(a => a.Kind == PairingApprovalKind.Device);
+        q.MarkSubmitted(dev, approved: true, nowMs: 0);
+
+        // A node-only update arrives (device list is null = no fresh device snapshot). The device
+        // submission must NOT be confirmed by its absence, and the node entry must survive.
+        var nodeOnly = q.Reconcile(null, Nodes(Node("n1")), nowMs: 100);
+        Assert.Empty(nodeOnly.ConfirmedDecisions);
+        Assert.Contains(nodeOnly.Current, a => a.Kind == PairingApprovalKind.Node);
+
+        // When the device list genuinely returns without the request, it confirms.
+        var deviceResolved = q.Reconcile(Devices(), Nodes(Node("n1")), nowMs: 200);
+        Assert.Single(deviceResolved.ConfirmedDecisions);
+        Assert.Equal("dev", deviceResolved.ConfirmedDecisions[0].Approval.RequestId);
+    }
+
+    [Fact]
+    public void Reconcile_NullNodeList_DoesNotDropExistingNodeRequests()
+    {
+        var q = new PairingApprovalQueue();
+        q.Reconcile(Devices(Device("dev")), Nodes(Node("n1")));
+
+        // Device-only refresh (node list null): the node request must not vanish.
+        var delta = q.Reconcile(Devices(Device("dev")), null);
+        Assert.Contains(delta.Current, a => a.Kind == PairingApprovalKind.Node && a.RequestId == "n1");
+        Assert.DoesNotContain("Node:n1", delta.ResolvedKeys);
     }
 
     [Fact]

@@ -440,8 +440,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // before the connection manager / node service exist.
         _pairingApprovalCoordinator = new PairingApprovalCoordinator(
             getClient: () => _connectionManager?.OperatorClient,
-            getOwnNodeDeviceId: () => _nodeService?.FullDeviceId,
-            isLocalNodeActive: () => _settings?.EnableNodeMode == true,
+            getOwnNodeIds: BuildOwnNodeIds,
             isPromptEnabled: () => _settings?.ShowPairingApprovalDialog ?? true,
             logger: new AppLogger());
         _pairingApprovalCoordinator.ApprovalRequested += OnPairingApprovalRequested;
@@ -2953,6 +2952,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private void OnPairListsChanged(object? sender, EventArgs e)
     {
         _pairingApprovalCoordinator?.OnPairListsUpdated(_appState?.DevicePairList, _appState?.NodePairList);
+    }
+
+    /// <summary>
+    /// All identifiers the local Windows node may be known by in the gateway's pending node list,
+    /// so the approval coordinator never prompts the operator to approve their own machine. The node
+    /// advertises itself as <c>NodeId ?? FullDeviceId</c>; we offer both so the own-node filter is
+    /// robust to either identifier space.
+    /// </summary>
+    private IReadOnlyCollection<string> BuildOwnNodeIds()
+    {
+        var ids = new List<string>(2);
+        var fullDeviceId = _nodeService?.FullDeviceId;
+        if (!string.IsNullOrWhiteSpace(fullDeviceId)) ids.Add(fullDeviceId);
+        var nodeId = _nodeService?.NodeId;
+        if (!string.IsNullOrWhiteSpace(nodeId) && !ids.Contains(nodeId)) ids.Add(nodeId);
+        return ids;
     }
 
     /// <summary>A new inbound pairing request arrived — present the focused dialog and an awareness toast.</summary>

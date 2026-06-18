@@ -39,21 +39,18 @@ public sealed class PairingApprovalCoordinator
     private readonly HashSet<string> _inFlight = new(StringComparer.Ordinal);
     private bool _pollInFlight;
     private readonly Func<IOperatorGatewayClient?> _getClient;
-    private readonly Func<string?> _getOwnNodeDeviceId;
-    private readonly Func<bool> _isLocalNodeActive;
+    private readonly Func<IReadOnlyCollection<string>?> _getOwnNodeIds;
     private readonly Func<bool> _isPromptEnabled;
     private readonly IOpenClawLogger _logger;
 
     public PairingApprovalCoordinator(
         Func<IOperatorGatewayClient?> getClient,
-        Func<string?> getOwnNodeDeviceId,
-        Func<bool> isLocalNodeActive,
+        Func<IReadOnlyCollection<string>?> getOwnNodeIds,
         Func<bool> isPromptEnabled,
         IOpenClawLogger logger)
     {
         _getClient = getClient ?? throw new ArgumentNullException(nameof(getClient));
-        _getOwnNodeDeviceId = getOwnNodeDeviceId ?? throw new ArgumentNullException(nameof(getOwnNodeDeviceId));
-        _isLocalNodeActive = isLocalNodeActive ?? throw new ArgumentNullException(nameof(isLocalNodeActive));
+        _getOwnNodeIds = getOwnNodeIds ?? throw new ArgumentNullException(nameof(getOwnNodeIds));
         _isPromptEnabled = isPromptEnabled ?? throw new ArgumentNullException(nameof(isPromptEnabled));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -92,16 +89,11 @@ public sealed class PairingApprovalCoordinator
             return;
         }
 
-        // While the local node is active but its own device id is not yet known, exclude node
-        // requests entirely so we never prompt the operator to approve their own machine before
-        // the own-node filter can recognize it. They re-surface once the id is known.
-        var ownNodeId = _getOwnNodeDeviceId();
-        var deferNodes = _isLocalNodeActive() && string.IsNullOrEmpty(ownNodeId);
-
         PairingApprovalDelta delta;
         try
         {
-            delta = _queue.Reconcile(devices, nodes, ownNodeId, Environment.TickCount64, deferNodes);
+            // A null list for a kind = no fresh snapshot (carried forward), not "now empty".
+            delta = _queue.Reconcile(devices, nodes, _getOwnNodeIds(), Environment.TickCount64);
         }
         catch (Exception ex)
         {
@@ -137,7 +129,7 @@ public sealed class PairingApprovalCoordinator
             return;
 
         // Only prompt when the user hasn't opted out and we actually have the scope to act.
-        if (!_isPromptEnabled() || !CanApprove)
+        if (!_isPromptEnabled() || !CanApproveWith(client))
             return;
 
         foreach (var added in delta.Added)
@@ -264,6 +256,17 @@ public sealed class PairingApprovalCoordinator
             if (ok)
             {
                 // Send-ack only means the frame left the socket, NOT that the gateway accepted it.
+                // But first re-validate the connection: a disconnect may have raced the await (and
+                // already Reset() the queue). Recording a submission now would strand a likely-dropped
+                // frame and risk a later false confirmation, so treat it as not completed instead —
+                // the request re-surfaces on reconnect for a clean retry.
+                var liveClient = _getClient();
+                if (liveClient is not { IsConnectedToGateway: true })
+                {
+                    _logger.Info("[PairApproval] Connection lost during decision; not recording optimistic submission");
+                    return false;
+                }
+
                 // Record the decision as optimistic-pending so the UI advances, but defer the
                 // success confirmation until the gateway drops the request from the pending list
                 // (surfaced as a ConfirmedDecision on a later reconcile). If it never does, the
@@ -274,9 +277,9 @@ public sealed class PairingApprovalCoordinator
                 try
                 {
                     if (approval.Kind == PairingApprovalKind.Device)
-                        await client.RequestDevicePairListAsync();
+                        await liveClient.RequestDevicePairListAsync();
                     else
-                        await client.RequestNodePairListAsync();
+                        await liveClient.RequestNodePairListAsync();
                 }
                 catch (Exception ex)
                 {

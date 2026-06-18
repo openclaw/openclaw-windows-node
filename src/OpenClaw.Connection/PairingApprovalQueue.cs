@@ -38,15 +38,18 @@ public sealed class PairingApprovalDelta
 ///
 /// Responsibilities:
 /// <list type="bullet">
-///   <item>Merge device + node pending lists into a single ordered queue (oldest first).</item>
+///   <item>Merge device + node pending lists into a single ordered queue (oldest first). A null
+///         list for a kind means "no update for that kind" (its prior entries are carried forward),
+///         NOT "that kind is now empty" — so a partial snapshot never silently drops or confirms.</item>
 ///   <item>Filter out the local node's own pairing request (handled by the auto-approve path)
-///         so the operator is never prompted to approve their own machine.</item>
+///         so the operator is never prompted to approve their own machine. Matches against any of
+///         the node's advertised identifiers (device id and/or gateway node id).</item>
 ///   <item>Drop entries with no usable id and de-duplicate by <see cref="PendingApproval.Key"/>.</item>
 ///   <item>Treat a submitted approve/reject as <em>optimistic-pending</em> — suppress it from the
 ///         actionable set, but only report it <see cref="PairingApprovalDelta.ConfirmedDecisions">
-///         confirmed</see> once the gateway actually drops it from the pending list. If the gateway
-///         never acts within <see cref="SubmissionResolveTimeoutMs"/>, re-surface the request so a
-///         lost decision is retried rather than hidden forever (and no false success is reported).</item>
+///         confirmed</see> once the gateway actually drops it from a provided list for that kind. If
+///         the gateway never acts within <see cref="SubmissionResolveTimeoutMs"/>, re-surface the
+///         request so a lost decision is retried rather than hidden forever.</item>
 /// </list>
 /// Not thread-safe; the coordinator marshals all calls onto a single dispatcher thread.
 /// </summary>
@@ -72,37 +75,50 @@ public sealed class PairingApprovalQueue
     public bool IsEmpty => Current.Count == 0;
 
     /// <summary>
-    /// Reconcile a fresh snapshot. <paramref name="ownNodeDeviceId"/>, when provided, filters out the
-    /// local Windows node's own pending node request. <paramref name="nowMs"/> is a monotonic timestamp
-    /// (e.g. <see cref="Environment.TickCount64"/>) used to expire stale submissions. When
-    /// <paramref name="deferNodeRequests"/> is true, node requests are excluded entirely (used while
-    /// the local node's own device id is not yet known, so we never prompt for our own machine).
+    /// Reconcile a fresh snapshot. <paramref name="ownNodeDeviceIds"/>, when provided, filters out the
+    /// local Windows node's own pending node request (matched against any advertised id).
+    /// <paramref name="nowMs"/> is a monotonic timestamp (e.g. <see cref="Environment.TickCount64"/>)
+    /// used to expire stale submissions. A null <paramref name="devices"/> or <paramref name="nodes"/>
+    /// means that kind has no fresh snapshot: its existing entries are carried forward and its
+    /// submissions are neither confirmed nor expired this round.
     /// </summary>
     public PairingApprovalDelta Reconcile(
         DevicePairingListInfo? devices,
         PairingListInfo? nodes,
-        string? ownNodeDeviceId = null,
-        long nowMs = 0,
-        bool deferNodeRequests = false)
+        IReadOnlyCollection<string>? ownNodeDeviceIds = null,
+        long nowMs = 0)
     {
-        var incoming = BuildIncoming(devices, nodes, ownNodeDeviceId, deferNodeRequests);
+        var devicesProvided = devices is not null;
+        var nodesProvided = nodes is not null;
+        bool KindProvided(PairingApprovalKind kind) =>
+            kind == PairingApprovalKind.Device ? devicesProvided : nodesProvided;
+
+        var incoming = BuildIncoming(devices, nodes, ownNodeDeviceIds);
         var incomingByKey = new Dictionary<string, PendingApproval>(StringComparer.Ordinal);
         foreach (var item in incoming)
             incomingByKey[item.Key] = item; // last wins on duplicate ids
 
-        // Confirmed resolutions: decisions we submitted whose request has now left the pending list.
+        // Carry forward prior entries whose kind had NO fresh snapshot — a missing list is "no
+        // update", not "now empty", so we never drop or resolve a kind we didn't actually hear about.
+        foreach (var kv in _current)
+            if (!KindProvided(kv.Value.Kind) && !incomingByKey.ContainsKey(kv.Key))
+                incomingByKey[kv.Key] = kv.Value;
+
+        // Confirmed resolutions: decisions we submitted whose request has now left a PROVIDED list.
         // This — not the send-ack — is the authoritative "the gateway accepted it" signal.
         var confirmed = new List<PairingApprovalResolution>();
         foreach (var sub in _submitted.Values)
-            if (!incomingByKey.ContainsKey(sub.Approval.Key))
+            if (KindProvided(sub.Approval.Kind) && !incomingByKey.ContainsKey(sub.Approval.Key))
                 confirmed.Add(new PairingApprovalResolution(sub.Approval, sub.Approved));
         foreach (var c in confirmed)
             _submitted.Remove(c.Approval.Key);
 
-        // Expire submissions the gateway hasn't acted on in time → drop suppression so they re-surface
-        // (a lost/rejected decision is retried instead of being hidden indefinitely).
+        // Expire submissions the gateway hasn't acted on in time (in a provided list) → drop
+        // suppression so they re-surface (a lost/rejected decision is retried, not hidden forever).
         var expired = _submitted
-            .Where(kv => incomingByKey.ContainsKey(kv.Key) && nowMs - kv.Value.SubmittedAtMs >= SubmissionResolveTimeoutMs)
+            .Where(kv => KindProvided(kv.Value.Approval.Kind)
+                && incomingByKey.ContainsKey(kv.Key)
+                && nowMs - kv.Value.SubmittedAtMs >= SubmissionResolveTimeoutMs)
             .Select(kv => kv.Key)
             .ToArray();
         foreach (var k in expired)
@@ -125,7 +141,7 @@ public sealed class PairingApprovalQueue
             .Where(key => !incomingByKey.ContainsKey(key))
             .ToArray();
 
-        // Swap in the new snapshot.
+        // Swap in the new snapshot (includes carried-forward entries for non-provided kinds).
         _current.Clear();
         foreach (var kvp in incomingByKey)
             _current[kvp.Key] = kvp.Value;
@@ -165,8 +181,7 @@ public sealed class PairingApprovalQueue
     private static List<PendingApproval> BuildIncoming(
         DevicePairingListInfo? devices,
         PairingListInfo? nodes,
-        string? ownNodeDeviceId,
-        bool deferNodeRequests)
+        IReadOnlyCollection<string>? ownNodeDeviceIds)
     {
         var list = new List<PendingApproval>();
 
@@ -180,13 +195,13 @@ public sealed class PairingApprovalQueue
             }
         }
 
-        if (!deferNodeRequests && nodes?.Pending is { Count: > 0 })
+        if (nodes?.Pending is { Count: > 0 })
         {
             foreach (var req in nodes.Pending)
             {
                 var approval = PendingApproval.FromNode(req);
                 if (!approval.IsActionable) continue;
-                if (IsOwnNode(approval, ownNodeDeviceId)) continue;
+                if (IsOwnNode(approval, ownNodeDeviceIds)) continue;
                 list.Add(approval);
             }
         }
@@ -194,8 +209,13 @@ public sealed class PairingApprovalQueue
         return list;
     }
 
-    private static bool IsOwnNode(PendingApproval approval, string? ownNodeDeviceId) =>
-        !string.IsNullOrWhiteSpace(ownNodeDeviceId)
-        && !string.IsNullOrEmpty(approval.DeviceId)
-        && approval.DeviceId.Equals(ownNodeDeviceId, StringComparison.OrdinalIgnoreCase);
+    private static bool IsOwnNode(PendingApproval approval, IReadOnlyCollection<string>? ownNodeDeviceIds)
+    {
+        if (ownNodeDeviceIds is null || ownNodeDeviceIds.Count == 0) return false;
+        if (string.IsNullOrEmpty(approval.DeviceId)) return false;
+        foreach (var id in ownNodeDeviceIds)
+            if (!string.IsNullOrWhiteSpace(id) && approval.DeviceId.Equals(id, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
 }
