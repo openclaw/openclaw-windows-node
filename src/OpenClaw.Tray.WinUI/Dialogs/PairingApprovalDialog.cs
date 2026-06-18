@@ -200,12 +200,15 @@ public sealed class PairingApprovalDialog : WindowEx
 
     private void OnApprovalsChanged(object? sender, EventArgs e)
     {
+        if (IsClosed) return;
         if (DispatcherQueue.HasThreadAccess) Render();
         else DispatcherQueue.TryEnqueue(Render);
     }
 
     private void Render()
     {
+        if (IsClosed) return;
+
         var current = _coordinator.Current;
         if (current.Count == 0)
         {
@@ -391,32 +394,42 @@ public sealed class PairingApprovalDialog : WindowEx
     private async System.Threading.Tasks.Task DecideAsync(bool approve)
     {
         if (_busy || _currentKey == null) return;
+        var decisionKey = _currentKey;
         _busy = true;
         _approveButton.IsEnabled = false;
         _rejectButton.IsEnabled = false;
         _laterButton.IsEnabled = false;
+
+        bool ok;
         try
         {
             // Success drives a coordinator ApprovalsChanged -> Render() which advances or closes.
-            var ok = approve
-                ? await _coordinator.ApproveAsync(_currentKey)
-                : await _coordinator.RejectAsync(_currentKey);
-            if (!ok)
-            {
-                // Re-enable so the user can retry; keep the approve guard satisfied (already shown a while).
-                _busy = false;
-                _approveButton.IsEnabled = true;
-                _rejectButton.IsEnabled = true;
-                _laterButton.IsEnabled = true;
-            }
+            ok = approve
+                ? await _coordinator.ApproveAsync(decisionKey)
+                : await _coordinator.RejectAsync(decisionKey);
         }
         catch
         {
+            ok = false;
+        }
+
+        // The window may have closed (disconnect -> Reset -> Close) or the queue may have advanced
+        // to a different request while the RPC was in flight. Only touch UI if we're still on a live
+        // window showing the same request — otherwise this stale continuation must not mutate state.
+        if (IsClosed || !string.Equals(_currentKey, decisionKey, StringComparison.Ordinal))
+            return;
+
+        if (!ok)
+        {
+            // Re-enable the secondary actions and RE-ARM the approve guard (don't force-enable
+            // Approve — that would defeat the anti-clickthrough delay on the retry).
             _busy = false;
-            _approveButton.IsEnabled = true;
             _rejectButton.IsEnabled = true;
             _laterButton.IsEnabled = true;
+            ArmApproveGuard();
         }
+        // On success, leave buttons disabled; the pending ApprovalsChanged -> Render() will advance
+        // to the next request (re-enabling) or close the dialog.
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)

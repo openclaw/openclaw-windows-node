@@ -441,6 +441,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _pairingApprovalCoordinator = new PairingApprovalCoordinator(
             getClient: () => _connectionManager?.OperatorClient,
             getOwnNodeDeviceId: () => _nodeService?.FullDeviceId,
+            isLocalNodeActive: () => _settings?.EnableNodeMode == true,
             isPromptEnabled: () => _settings?.ShowPairingApprovalDialog ?? true,
             logger: new AppLogger());
         _pairingApprovalCoordinator.ApprovalRequested += OnPairingApprovalRequested;
@@ -2959,7 +2960,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         OnUiThread(() =>
         {
-            ShowPairingApprovalDialog();
+            // Only steal foreground when the dialog isn't already open. On a reconnect burst the
+            // gateway re-pushes every pending request at once; the first opens + foregrounds the
+            // dialog, the rest just enqueue into it without repeated focus-stealing.
+            var alreadyOpen = _pairingApprovalDialog is { IsClosed: false };
+            ShowPairingApprovalDialog(bringToFront: !alreadyOpen);
 
             var name = string.IsNullOrWhiteSpace(approval.DisplayName)
                 ? approval.DeviceId
@@ -3009,14 +3014,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     }
 
     /// <summary>Opens (or re-focuses) the inbound pairing approval dialog when there is something to decide.</summary>
-    private void ShowPairingApprovalDialog()
+    private void ShowPairingApprovalDialog() => ShowPairingApprovalDialog(bringToFront: true);
+
+    private void ShowPairingApprovalDialog(bool bringToFront)
     {
         if (_pairingApprovalCoordinator == null) return;
         if (_pairingApprovalCoordinator.Current.Count == 0) return;
 
         if (_pairingApprovalDialog is { IsClosed: false } existing)
         {
-            existing.ShowForeground();
+            if (bringToFront) existing.ShowForeground();
             return;
         }
 

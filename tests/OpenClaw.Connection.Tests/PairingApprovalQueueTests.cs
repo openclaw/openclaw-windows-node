@@ -176,40 +176,89 @@ public class PairingApprovalQueueTests
     }
 
     [Fact]
-    public void MarkDecided_SuppressesReSurfacingWhileStillPending()
+    public void MarkSubmitted_SuppressesFromActionableSet()
     {
         var q = new PairingApprovalQueue();
         var first = q.Reconcile(Devices(Device("a")), null);
-        q.MarkDecided(first.Added[0].Key);
+        q.MarkSubmitted(first.Added[0], approved: true, nowMs: 1000);
 
-        var second = q.Reconcile(Devices(Device("a")), null); // gateway still echoes it
+        var second = q.Reconcile(Devices(Device("a")), null, nowMs: 1100); // gateway still echoes it
         Assert.Empty(second.Added);
-        Assert.Empty(second.Current); // decided => not actionable
+        Assert.Empty(second.Current); // submitted => not actionable
+        Assert.Empty(second.ConfirmedDecisions); // not yet resolved
     }
 
     [Fact]
-    public void MarkDecided_ForgottenAfterRequestLeaves_AllowsFutureReSurface()
+    public void MarkSubmitted_ConfirmsDecisionWhenRequestLeavesList()
     {
         var q = new PairingApprovalQueue();
         var first = q.Reconcile(Devices(Device("a")), null);
-        q.MarkDecided(first.Added[0].Key);
+        q.MarkSubmitted(first.Added[0], approved: true, nowMs: 1000);
 
-        q.Reconcile(Devices(), null);                 // request leaves -> decision forgotten
-        var third = q.Reconcile(Devices(Device("a")), null); // same id returns as genuinely new
-
-        Assert.Single(third.Added);
+        // Gateway accepted -> request drops from the pending list -> confirmed.
+        var delta = q.Reconcile(Devices(), null, nowMs: 1200);
+        Assert.Single(delta.ConfirmedDecisions);
+        Assert.True(delta.ConfirmedDecisions[0].Approved);
+        Assert.Equal("a", delta.ConfirmedDecisions[0].Approval.RequestId);
+        Assert.True(delta.HasChanges);
     }
 
     [Fact]
-    public void Find_ReturnsTrackedButNotDecided()
+    public void MarkSubmitted_ConfirmsRejectionWithCorrectFlag()
+    {
+        var q = new PairingApprovalQueue();
+        var first = q.Reconcile(Devices(Device("a")), null);
+        q.MarkSubmitted(first.Added[0], approved: false, nowMs: 0);
+
+        var delta = q.Reconcile(Devices(), null, nowMs: 100);
+        Assert.Single(delta.ConfirmedDecisions);
+        Assert.False(delta.ConfirmedDecisions[0].Approved);
+    }
+
+    [Fact]
+    public void MarkSubmitted_ReSurfacesAfterTimeoutWhenGatewayNeverActs()
+    {
+        var q = new PairingApprovalQueue();
+        var first = q.Reconcile(Devices(Device("a")), null, nowMs: 0);
+        q.MarkSubmitted(first.Added[0], approved: true, nowMs: 0);
+
+        // Still echoed, before timeout: suppressed, not re-added.
+        var before = q.Reconcile(Devices(Device("a")), null, nowMs: PairingApprovalQueue.SubmissionResolveTimeoutMs - 1);
+        Assert.Empty(before.Added);
+        Assert.Empty(before.Current);
+        Assert.Empty(before.ConfirmedDecisions);
+
+        // Past timeout, still echoed: re-surfaced for retry, NOT confirmed.
+        var after = q.Reconcile(Devices(Device("a")), null, nowMs: PairingApprovalQueue.SubmissionResolveTimeoutMs + 1);
+        Assert.Single(after.Added);
+        Assert.Single(after.Current);
+        Assert.Empty(after.ConfirmedDecisions);
+    }
+
+    [Fact]
+    public void Reconcile_DefersNodeRequestsWhenAsked()
+    {
+        var q = new PairingApprovalQueue();
+        var deferred = q.Reconcile(Devices(Device("dev")), Nodes(Node("n1")), deferNodeRequests: true);
+        Assert.Single(deferred.Added); // only the device
+        Assert.Equal("dev", deferred.Added[0].RequestId);
+
+        // Once no longer deferred, the node request surfaces.
+        var resumed = q.Reconcile(Devices(Device("dev")), Nodes(Node("n1")), deferNodeRequests: false);
+        Assert.Single(resumed.Added);
+        Assert.Equal(PairingApprovalKind.Node, resumed.Added[0].Kind);
+    }
+
+    [Fact]
+    public void Find_ReturnsTrackedButNotSubmitted()
     {
         var q = new PairingApprovalQueue();
         var delta = q.Reconcile(Devices(Device("a")), null);
-        var key = delta.Added[0].Key;
+        var approval = delta.Added[0];
 
-        Assert.NotNull(q.Find(key));
-        q.MarkDecided(key);
-        Assert.Null(q.Find(key));
+        Assert.NotNull(q.Find(approval.Key));
+        q.MarkSubmitted(approval, approved: true, nowMs: 0);
+        Assert.Null(q.Find(approval.Key));
     }
 
     [Fact]

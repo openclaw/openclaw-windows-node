@@ -40,17 +40,20 @@ public sealed class PairingApprovalCoordinator
     private bool _pollInFlight;
     private readonly Func<IOperatorGatewayClient?> _getClient;
     private readonly Func<string?> _getOwnNodeDeviceId;
+    private readonly Func<bool> _isLocalNodeActive;
     private readonly Func<bool> _isPromptEnabled;
     private readonly IOpenClawLogger _logger;
 
     public PairingApprovalCoordinator(
         Func<IOperatorGatewayClient?> getClient,
         Func<string?> getOwnNodeDeviceId,
+        Func<bool> isLocalNodeActive,
         Func<bool> isPromptEnabled,
         IOpenClawLogger logger)
     {
         _getClient = getClient ?? throw new ArgumentNullException(nameof(getClient));
         _getOwnNodeDeviceId = getOwnNodeDeviceId ?? throw new ArgumentNullException(nameof(getOwnNodeDeviceId));
+        _isLocalNodeActive = isLocalNodeActive ?? throw new ArgumentNullException(nameof(isLocalNodeActive));
         _isPromptEnabled = isPromptEnabled ?? throw new ArgumentNullException(nameof(isPromptEnabled));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -61,7 +64,10 @@ public sealed class PairingApprovalCoordinator
     /// <summary>Raised whenever the actionable approval set changes (add, resolve, or decision).</summary>
     public event EventHandler? ApprovalsChanged;
 
-    /// <summary>Raised after an approve/reject RPC completes (success or failure).</summary>
+    /// <summary>
+    /// Raised when a submitted approve/reject is CONFIRMED by the gateway (the request left the
+    /// pending list). This is the authoritative success signal — it does not fire on send-ack alone.
+    /// </summary>
     public event EventHandler<PairingDecisionResult>? DecisionCompleted;
 
     /// <summary>The current actionable approvals, oldest first.</summary>
@@ -76,10 +82,26 @@ public sealed class PairingApprovalCoordinator
     /// </summary>
     public void OnPairListsUpdated(DevicePairingListInfo? devices, PairingListInfo? nodes)
     {
+        // If we're not connected, an empty/missing list reflects lost visibility — NOT that
+        // requests resolved. Clearing silently here prevents a still-pending submitted decision
+        // from being mis-reported as a confirmed success on disconnect, and drops stale approvals.
+        var client = _getClient();
+        if (client is not { IsConnectedToGateway: true })
+        {
+            Reset();
+            return;
+        }
+
+        // While the local node is active but its own device id is not yet known, exclude node
+        // requests entirely so we never prompt the operator to approve their own machine before
+        // the own-node filter can recognize it. They re-surface once the id is known.
+        var ownNodeId = _getOwnNodeDeviceId();
+        var deferNodes = _isLocalNodeActive() && string.IsNullOrEmpty(ownNodeId);
+
         PairingApprovalDelta delta;
         try
         {
-            delta = _queue.Reconcile(devices, nodes, _getOwnNodeDeviceId());
+            delta = _queue.Reconcile(devices, nodes, ownNodeId, Environment.TickCount64, deferNodes);
         }
         catch (Exception ex)
         {
@@ -89,6 +111,25 @@ public sealed class PairingApprovalCoordinator
 
         if (!delta.HasChanges)
             return;
+
+        // A submitted decision the gateway has now confirmed (request left the pending list) is the
+        // authoritative success signal — report it so the app shows the "approved/rejected" toast.
+        foreach (var resolved in delta.ConfirmedDecisions)
+        {
+            try
+            {
+                DecisionCompleted?.Invoke(this, new PairingDecisionResult
+                {
+                    Approval = resolved.Approval,
+                    Approved = resolved.Approved,
+                    Success = true,
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[PairApproval] DecisionCompleted handler threw: {ex.Message}");
+            }
+        }
 
         ApprovalsChanged?.Invoke(this, EventArgs.Empty);
 
@@ -159,6 +200,8 @@ public sealed class PairingApprovalCoordinator
     public void Reset()
     {
         _queue.Reset();
+        _inFlight.Clear();
+        _pollInFlight = false;
         ApprovalsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -170,6 +213,12 @@ public sealed class PairingApprovalCoordinator
             _logger.Info($"[PairApproval] Decision for unknown/decided key '{key}' ignored");
             return false;
         }
+
+        // Legacy gateways may omit a request id; DecisionId then falls back to the device/node id.
+        // The gateway may ignore that, but the confirmed-resolution model handles it gracefully: the
+        // request simply isn't confirmed, expires, and re-surfaces — no permanent hide, no false toast.
+        if (string.IsNullOrEmpty(approval.RequestId))
+            _logger.Info($"[PairApproval] No request id; submitting decision with device/node id fallback for '{key}'");
 
         // Guard against a double decision for the same request — e.g. a stray
         // second click that slips through while the approve/reject RPC is still
@@ -214,8 +263,14 @@ public sealed class PairingApprovalCoordinator
 
             if (ok)
             {
-                _queue.MarkDecided(key);
-                // Nudge the gateway to re-send the list so the resolved entry drops promptly.
+                // Send-ack only means the frame left the socket, NOT that the gateway accepted it.
+                // Record the decision as optimistic-pending so the UI advances, but defer the
+                // success confirmation until the gateway drops the request from the pending list
+                // (surfaced as a ConfirmedDecision on a later reconcile). If it never does, the
+                // submission expires and the request re-surfaces for retry.
+                _queue.MarkSubmitted(approval, approve, Environment.TickCount64);
+
+                // Nudge the gateway to re-send the list so the resolved entry drops (and confirms) promptly.
                 try
                 {
                     if (approval.Kind == PairingApprovalKind.Device)
@@ -230,13 +285,6 @@ public sealed class PairingApprovalCoordinator
 
                 ApprovalsChanged?.Invoke(this, EventArgs.Empty);
             }
-
-            DecisionCompleted?.Invoke(this, new PairingDecisionResult
-            {
-                Approval = approval,
-                Approved = approve,
-                Success = ok,
-            });
 
             return ok;
         }
