@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.UI;
@@ -46,7 +47,7 @@ public record OpenClawComposerProps(
     string[] AvailableModels,
     string? CurrentModel,
     string? CurrentThinkingLevel,
-    Action<string, ChatAttachment?> OnSend,
+    Action<string, IReadOnlyList<ChatAttachment>> OnSend,
     Action OnStop,
     Action<string> OnChannelChanged,
     Action<string> OnModelChanged,
@@ -54,8 +55,8 @@ public record OpenClawComposerProps(
     Action<bool> OnPermissionsChanged,
     Func<CancellationToken, Action?, Task<string?>>? OnVoiceRequest = null,
     Action? OnAttachClick = null,
-    ChatAttachment? PendingAttachment = null,
-    Action? OnAttachmentRemoved = null,
+    IReadOnlyList<ChatAttachment>? PendingAttachments = null,
+    Action<ChatAttachment>? OnAttachmentRemoved = null,
     bool IsSpeakerMuted = false,
     Action? OnSpeakerToggle = null,
     Action? OnSettingsClick = null,
@@ -101,9 +102,16 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // One-time hook flag for the TextBox Paste event so we don't re-attach
         // the handler on every re-render (Set() runs each render).
         var pasteHookedRef = UseRef(false);
-        // Cache the BitmapImage built for the current attachment so we rebuild
-        // it only when the attachment instance changes (not on every render).
-        var attachmentImageRef = UseRef<(ChatAttachment? Att, Microsoft.UI.Xaml.Media.Imaging.BitmapImage? Bmp)>((null, null));
+        // Cache BitmapImages built for current attachments so we rebuild them
+        // only when an attachment is added or removed (not on every render).
+        var attachmentImagesRef = UseRef<Dictionary<ChatAttachment, Microsoft.UI.Xaml.Media.Imaging.BitmapImage?>>(new());
+        var pendingAttachments = Props.PendingAttachments ?? Array.Empty<ChatAttachment>();
+        var imageCache = attachmentImagesRef.Current;
+        foreach (var cachedAttachment in imageCache.Keys.ToArray())
+        {
+            if (!pendingAttachments.Contains(cachedAttachment))
+                imageCache.Remove(cachedAttachment);
+        }
 
         // Extracted voice-start action so it can be triggered programmatically (e.g. hotkey)
         Action startVoiceRecording = () =>
@@ -168,9 +176,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         var sendAction = () =>
         {
             var msg = inputRef.Current?.Trim();
-            var attachment = Props.PendingAttachment;
-            if (string.IsNullOrEmpty(msg) && attachment is null) return;
-            Props.OnSend(msg ?? "", attachment);
+            if (string.IsNullOrEmpty(msg) && pendingAttachments.Count == 0) return;
+            Props.OnSend(msg ?? "", pendingAttachments.ToArray());
             inputRef.Current = "";
             hasTextState.Set(false);
             sendVersion.Set(sendVersion.Value + 1);
@@ -417,45 +424,79 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // shown. The preview sits inside the same Border as the textbox so it
         // visually reads as part of the chat input.
         Element attachmentPreview = Empty();
-        if (Props.PendingAttachment is { } att)
+        if (pendingAttachments.Count > 0)
         {
-            var isImage = att.Type == "image";
-
-            Element removeBtn = Button(
+            Element BuildRemoveButton(ChatAttachment attachment, bool floating = false) => Button(
                     TextBlock("\uE711") // Cancel glyph
                         .Set(t =>
                         {
                             t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                             t.FontSize = 10;
+                            if (floating)
+                            {
+                                t.HorizontalAlignment = HorizontalAlignment.Center;
+                                t.VerticalAlignment = VerticalAlignment.Center;
+                            }
                         }),
-                    () => Props.OnAttachmentRemoved?.Invoke())
+                    () => Props.OnAttachmentRemoved?.Invoke(attachment))
                 .Set(b =>
                 {
-                    b.Padding = new Thickness(4, 2, 4, 2);
+                    if (floating)
+                    {
+                        b.Width = 22;
+                        b.Height = 22;
+                        b.Padding = new Thickness(0);
+                        b.CornerRadius = new CornerRadius(11);
+                        b.BorderThickness = new Thickness(1);
+                    }
+                    else
+                    {
+                        b.Padding = new Thickness(4, 2, 4, 2);
+                        b.CornerRadius = new CornerRadius(4);
+                    }
                     b.MinWidth = 0; b.MinHeight = 0;
-                    b.CornerRadius = new CornerRadius(4);
                 })
-                .Resources(r => r
-                    .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBackgroundPointerOver", Ref("SubtleFillColorSecondaryBrush"))
-                    .Set("ButtonBackgroundPressed", Ref("SubtleFillColorTertiaryBrush"))
-                    .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
-                    .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)))
+                .Resources(r =>
+                {
+                    if (floating)
+                    {
+                        r.Set("ButtonBackground", Ref("SolidBackgroundFillColorBaseBrush"));
+                        r.Set("ButtonBackgroundPointerOver", Ref("SolidBackgroundFillColorTertiaryBrush"));
+                        r.Set("ButtonBackgroundPressed", Ref("SolidBackgroundFillColorQuarternaryBrush"));
+                        r.Set("ButtonForeground", Ref("TextFillColorPrimaryBrush"));
+                        r.Set("ButtonForegroundPointerOver", Ref("TextFillColorPrimaryBrush"));
+                        r.Set("ButtonForegroundPressed", Ref("TextFillColorPrimaryBrush"));
+                        r.Set("ButtonBorderBrush", Ref("CardStrokeColorDefaultBrush"));
+                        r.Set("ButtonBorderBrushPointerOver", Ref("CardStrokeColorDefaultBrush"));
+                        r.Set("ButtonBorderBrushPressed", Ref("CardStrokeColorDefaultBrush"));
+                    }
+                    else
+                    {
+                        r.Set("ButtonBackground", new SolidColorBrush(Colors.Transparent));
+                        r.Set("ButtonBackgroundPointerOver", Ref("SubtleFillColorSecondaryBrush"));
+                        r.Set("ButtonBackgroundPressed", Ref("SubtleFillColorTertiaryBrush"));
+                        r.Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent));
+                        r.Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent));
+                        r.Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent));
+                    }
+
+                })
                 .AutomationName("Remove attachment");
+
+            Element BuildAttachmentPreview(ChatAttachment att)
+            {
+                var isImage = att.Type == "image";
 
             if (isImage)
             {
                 // Build (and cache) a BitmapImage from the base64 content.
-                // Rebuild only when the attachment instance changes — base64
+                // Rebuild only when the attachment instance changes; base64
                 // decode + stream copy is non-trivial work to repeat per
                 // keystroke re-render.
-                var cached = attachmentImageRef.Current;
-                Microsoft.UI.Xaml.Media.Imaging.BitmapImage? bmp = cached.Bmp;
-                if (!ReferenceEquals(cached.Att, att) || bmp is null)
+                if (!imageCache.TryGetValue(att, out var bmp))
                 {
                     bmp = TryCreateBitmapFromBase64(att.Content);
-                    attachmentImageRef.Current = (att, bmp);
+                    imageCache[att] = bmp;
                 }
 
                 Element thumb;
@@ -501,36 +542,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 // of the thumbnail. Distinct from the chip's flat removeBtn
                 // because we need an opaque background (so the × is readable
                 // over any image) and a contrast-friendly hover.
-                var floatingRemove = Button(
-                        TextBlock("\uE711")
-                            .Set(t =>
-                            {
-                                t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
-                                t.FontSize = 10;
-                                t.HorizontalAlignment = HorizontalAlignment.Center;
-                                t.VerticalAlignment = VerticalAlignment.Center;
-                            }),
-                        () => Props.OnAttachmentRemoved?.Invoke())
-                    .Set(b =>
-                    {
-                        b.Width = 22;
-                        b.Height = 22;
-                        b.MinWidth = 0; b.MinHeight = 0;
-                        b.Padding = new Thickness(0);
-                        b.CornerRadius = new CornerRadius(11);
-                        b.BorderThickness = new Thickness(1);
-                    })
-                    .Resources(r => r
-                        .Set("ButtonBackground", Ref("SolidBackgroundFillColorBaseBrush"))
-                        .Set("ButtonBackgroundPointerOver", Ref("SolidBackgroundFillColorTertiaryBrush"))
-                        .Set("ButtonBackgroundPressed", Ref("SolidBackgroundFillColorQuarternaryBrush"))
-                        .Set("ButtonForeground", Ref("TextFillColorPrimaryBrush"))
-                        .Set("ButtonForegroundPointerOver", Ref("TextFillColorPrimaryBrush"))
-                        .Set("ButtonForegroundPressed", Ref("TextFillColorPrimaryBrush"))
-                        .Set("ButtonBorderBrush", Ref("CardStrokeColorDefaultBrush"))
-                        .Set("ButtonBorderBrushPointerOver", Ref("CardStrokeColorDefaultBrush"))
-                        .Set("ButtonBorderBrushPressed", Ref("CardStrokeColorDefaultBrush")))
-                    .AutomationName("Remove attachment")
+                var floatingRemove = BuildRemoveButton(att, floating: true)
                     .HAlign(HorizontalAlignment.Right)
                     .VAlign(VerticalAlignment.Top)
                     .Margin(0, -8, -8, 0);
@@ -544,12 +556,12 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     floatingRemove.Grid(row: 0, column: 0)
                 ).HAlign(HorizontalAlignment.Left);
 
-                attachmentPreview = Border(thumbWithClose)
+                return Border(thumbWithClose)
                     .Padding(8, 12, 8, 4);
             }
             else
             {
-                attachmentPreview = Border(
+                return Border(
                     Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                         TextBlock("\uE8A5") // Page glyph
                             .Set(t =>
@@ -568,10 +580,13 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                                 t.Margin = new Thickness(6, 0, 0, 0);
                             })
                             .Grid(row: 0, column: 1),
-                        removeBtn.Grid(row: 0, column: 2)
+                        BuildRemoveButton(att).Grid(row: 0, column: 2)
                     )
                 ).Padding(4, 4, 4, 0);
             }
+            }
+
+            attachmentPreview = VStack(6, pendingAttachments.Select(BuildAttachmentPreview).ToArray());
         }
 
         // Composer "card" — wraps the attachment preview (if any) and the
@@ -764,7 +779,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         const string sendGlyph = "\uE724";
         const string stopGlyph = "\uE71A";
 
-        var hasText = hasTextState.Value || Props.PendingAttachment is not null;
+        var hasText = hasTextState.Value || pendingAttachments.Count > 0;
         var sendTooltip = LocalizationHelper.GetString("Chat_Composer_Tooltip_Send");
         var glyphBrush = hasText
             ? (Brush)new SolidColorBrush(Colors.White)

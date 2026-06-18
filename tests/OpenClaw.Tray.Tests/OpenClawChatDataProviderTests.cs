@@ -16,6 +16,7 @@ public class OpenClawChatDataProviderTests
         public List<string> SentMessages { get; } = new();
         public List<string?> SentSessionKeys { get; } = new();
         public List<string?> SentSessionIds { get; } = new();
+        public List<IReadOnlyList<ChatAttachment>?> SentAttachments { get; } = new();
         public Queue<ChatSendResult> SendResults { get; } = new();
         public List<string> AbortedRunIds { get; } = new();
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
@@ -36,6 +37,7 @@ public class OpenClawChatDataProviderTests
             SentMessages.Add(message);
             SentSessionKeys.Add(sessionKey);
             SentSessionIds.Add(sessionId);
+            SentAttachments.Add(attachments?.ToArray());
             if (SendBehavior is not null)
                 await SendBehavior(message, sessionKey, sessionId);
 
@@ -2936,10 +2938,50 @@ public class OpenClawChatDataProviderTests
         await provider.SendMessageAsync("main", "Check this", default, new[] { attachment });
 
         Assert.Contains(bridge.SentMessages, m => m == "Check this");
+        var sentAttachment = Assert.Single(bridge.SentAttachments);
+        Assert.NotNull(sentAttachment);
+        Assert.Same(attachment, sentAttachment![0]);
         // The display text in the timeline should include the attachment indicator
         var timeline = snapshots[^1].Timelines["main"];
         var userEntry = timeline.Entries.Last(e => e.Kind == ChatTimelineItemKind.User);
         Assert.Contains("test.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithMultipleAttachments_SendsAndRendersAllMarkers()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        var fileAttachment = new ChatAttachment
+        {
+            Type = "file",
+            MimeType = "text/plain",
+            FileName = "notes.txt",
+            Content = Convert.ToBase64String(new byte[] { 1 }),
+            SizeBytes = 1
+        };
+        var imageAttachment = new ChatAttachment
+        {
+            Type = "image",
+            MimeType = "image/png",
+            FileName = "diagram.png",
+            Content = Convert.ToBase64String(new byte[] { 2, 3 }),
+            SizeBytes = 2
+        };
+
+        await provider.SendMessageAsync("main", "See both", default, new[] { fileAttachment, imageAttachment });
+
+        var sentAttachments = Assert.Single(bridge.SentAttachments);
+        Assert.NotNull(sentAttachments);
+        Assert.Collection(
+            sentAttachments!,
+            a => Assert.Same(fileAttachment, a),
+            a => Assert.Same(imageAttachment, a));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var userEntry = timeline.Entries.Last(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("See both\n\u200B📎 notes.txt\n\u200B🖼️ diagram.png", userEntry.Text);
     }
 
     [Fact]
@@ -2979,6 +3021,53 @@ public class OpenClawChatDataProviderTests
 
         var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
         Assert.Equal("Check this\n\u200B📎 test.txt", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_PersistsAndRehydratesMultipleAttachments()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "See both", default, new[]
+        {
+            new ChatAttachment
+            {
+                Type = "file",
+                MimeType = "text/plain",
+                FileName = "notes.txt",
+                Content = Convert.ToBase64String(new byte[] { 1 }),
+                SizeBytes = 1
+            },
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "diagram.png",
+                Content = Convert.ToBase64String(new byte[] { 2, 3 }),
+                SizeBytes = 2
+            }
+        });
+
+        var (bridge2, provider2, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "See both", State = "final", Ts = sentTs }
+            }
+        });
+
+        await provider2.LoadHistoryAsync("main");
+
+        var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("See both\n\u200B📎 notes.txt\n\u200B🖼️ diagram.png", userEntry.Text);
     }
 
     [Fact]

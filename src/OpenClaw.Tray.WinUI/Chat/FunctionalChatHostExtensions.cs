@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.FunctionalUI.Hosting;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Chat;
@@ -81,7 +82,10 @@ public sealed class MountedFunctionalChat(Border target, FunctionalHostControl h
     public OpenClawChatRoot ChatRoot => root;
 
     /// <summary>Push a picked file into the composer as a pending attachment.</summary>
-    public void AttachFile(ChatAttachment attachment) => root.OnFileAttached?.Invoke(attachment);
+    public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });
+
+    /// <summary>Push picked files into the composer as pending attachments.</summary>
+    public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) => root.OnFilesAttached?.Invoke(attachments);
 
     /// <summary>Push streaming voice transcript text into the composer.</summary>
     public void SetVoiceTranscript(string? text) => root.SetVoiceTranscript?.Invoke(text);

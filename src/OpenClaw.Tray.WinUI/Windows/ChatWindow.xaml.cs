@@ -9,6 +9,7 @@ using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -585,13 +586,16 @@ public sealed partial class ChatWindow : WindowEx
             ChatWindowPinState.IsPinned = true;
 
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle((Window)this);
-            var path = await Win32FilePickerHelper.PickSingleFileAsync(hwnd, "Attach file");
-            if (path is null) return;
-            Logger.Info($"[ChatWindow] File selected: {path}");
+            var paths = await Win32FilePickerHelper.PickMultipleFilesAsync(hwnd, "Attach files");
+            if (paths.Count == 0) return;
 
-            Logger.Info($"[ChatWindow] File selected: {path}");
-            var attachment = await ChatAttachment.FromFileAsync(path);
-            _functionalHost?.AttachFile(attachment);
+            var attachments = new List<ChatAttachment>(paths.Count);
+            foreach (var path in paths)
+            {
+                Logger.Info($"[ChatWindow] File selected: {path}");
+                attachments.Add(await ChatAttachment.FromFileAsync(path));
+            }
+            _functionalHost?.AttachFiles(attachments);
         }
         catch (InvalidOperationException ex)
         {

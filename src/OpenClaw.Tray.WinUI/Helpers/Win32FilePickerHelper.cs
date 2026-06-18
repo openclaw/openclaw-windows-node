@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,25 +19,57 @@ internal static class Win32FilePickerHelper
     /// Shows an "Open" dialog owned by <paramref name="ownerHwnd"/>.
     /// Returns the selected file path, or <c>null</c> if cancelled.
     /// </summary>
-    public static Task<string?> PickSingleFileAsync(IntPtr ownerHwnd, string title = "Open")
+    public static async Task<string?> PickSingleFileAsync(IntPtr ownerHwnd, string title = "Open")
     {
-        var tcs = new TaskCompletionSource<string?>();
+        var paths = await PickFilesAsync(ownerHwnd, title, allowMultiple: false);
+        return paths.Count > 0 ? paths[0] : null;
+    }
+
+    /// <summary>
+    /// Shows an "Open" dialog owned by <paramref name="ownerHwnd"/>.
+    /// Returns all selected file paths, or an empty list if cancelled.
+    /// </summary>
+    public static Task<IReadOnlyList<string>> PickMultipleFilesAsync(IntPtr ownerHwnd, string title = "Open")
+        => PickFilesAsync(ownerHwnd, title, allowMultiple: true);
+
+    private static Task<IReadOnlyList<string>> PickFilesAsync(IntPtr ownerHwnd, string title, bool allowMultiple)
+    {
+        var tcs = new TaskCompletionSource<IReadOnlyList<string>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var staThread = new Thread(() =>
         {
             try
             {
                 var dialog = (IFileOpenDialog)new FileOpenDialogClass();
-                dialog.SetOptions(FOS.FOS_FORCEFILESYSTEM | FOS.FOS_FILEMUSTEXIST);
+                var options = FOS.FOS_FORCEFILESYSTEM | FOS.FOS_FILEMUSTEXIST;
+                if (allowMultiple)
+                    options |= FOS.FOS_ALLOWMULTISELECT;
+                dialog.SetOptions(options);
                 dialog.SetTitle(title);
                 var hr = dialog.Show(ownerHwnd);
                 if (hr < 0)
                 {
-                    tcs.SetResult(null); // cancelled or error
+                    tcs.SetResult(Array.Empty<string>()); // cancelled or error
                     return;
                 }
-                dialog.GetResult(out var item);
-                item.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var filePath);
-                tcs.SetResult(filePath);
+
+                if (allowMultiple)
+                {
+                    dialog.GetResults(out var items);
+                    items.GetCount(out var count);
+                    var paths = new List<string>((int)count);
+                    for (uint i = 0; i < count; i++)
+                    {
+                        items.GetItemAt(i, out var multiItem);
+                        multiItem.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var multiFilePath);
+                        paths.Add(multiFilePath);
+                    }
+                    tcs.SetResult(paths);
+                    return;
+                }
+
+                dialog.GetResult(out var singleItem);
+                singleItem.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var singleFilePath);
+                tcs.SetResult(new[] { singleFilePath });
             }
             catch (Exception ex)
             {
@@ -82,8 +115,21 @@ internal static class Win32FilePickerHelper
         void SetClientGuid(ref Guid guid);
         void ClearClientData();
         void SetFilter(IntPtr pFilter);
-        void GetResults(out IntPtr ppenum);
+        void GetResults(out IShellItemArray ppenum);
         void GetSelectedItems(out IntPtr ppsai);
+    }
+
+    [ComImport, Guid("B63EA76D-1F85-456F-A19C-48159EFA858B")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItemArray
+    {
+        void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppvOut);
+        void GetPropertyStore(int flags, ref Guid riid, out IntPtr ppv);
+        void GetPropertyDescriptionList(IntPtr keyType, ref Guid riid, out IntPtr ppv);
+        void GetAttributes(int attribFlags, uint sfgaoMask, out uint psfgaoAttribs);
+        void GetCount(out uint pdwNumItems);
+        void GetItemAt(uint dwIndex, out IShellItem ppsi);
+        void EnumItems(out IntPtr ppenumShellItems);
     }
 
     [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE")]
@@ -101,6 +147,7 @@ internal static class Win32FilePickerHelper
     private enum FOS : uint
     {
         FOS_FORCEFILESYSTEM = 0x40,
+        FOS_ALLOWMULTISELECT = 0x200,
         FOS_FILEMUSTEXIST = 0x1000,
     }
 
