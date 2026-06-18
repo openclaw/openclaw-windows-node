@@ -1,5 +1,7 @@
 <Project>
 
+  <Import Project="..\Directory.Build.props" Condition="Exists('..\Directory.Build.props')" />
+
   <!--
     Shared configuration for all test projects under tests/.
     Individual projects only need to declare their <ProjectReference>.

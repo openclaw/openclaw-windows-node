@@ -60,7 +60,7 @@ src/OpenClaw.SetupEngine/
 └── default-config.json            # THE source of truth for all config values
 
 src/OpenClaw.SetupEngine.UI/
-├── OpenClaw.SetupEngine.UI.csproj # WinAppSDK 2.1.3 library referenced by tray
+├── OpenClaw.SetupEngine.UI.csproj # WinAppSDK library referenced by tray
 ├── SetupWindow.xaml / .xaml.cs    # 720×820 window, Mica, title bar, navigation, setup events
 └── Pages/
     ├── WelcomePage.xaml / .cs     # Logo, info card, Install button + ContentDialog
