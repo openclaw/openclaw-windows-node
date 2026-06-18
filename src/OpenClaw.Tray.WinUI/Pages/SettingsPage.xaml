@@ -284,10 +284,12 @@
                     </Grid>
                 </Border>
 
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                <Border x:Name="OpenClawOnboardCard"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8"
                         Padding="{StaticResource SettingsRowPadding}"
+                        Visibility="Collapsed"
                         AutomationProperties.AutomationId="OpenClawOnboardCard">
                     <Grid ColumnSpacing="14">
                         <Grid.ColumnDefinitions>

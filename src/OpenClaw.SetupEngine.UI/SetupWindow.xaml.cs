@@ -21,6 +21,7 @@ public sealed partial class SetupWindow : Window
     public event EventHandler? AdvancedSetupRequested;
     public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
     public bool IsClosed => _isClosed;
+    public bool CanNavigateToWizard => !_isClosed && _setupLock is not null;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -92,7 +93,20 @@ public sealed partial class SetupWindow : Window
 
     public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
-    public void NavigateToWizard() => RootFrame.Navigate(typeof(WizardPage), _config);
+    public bool TryNavigateToWizard()
+    {
+        if (!CanNavigateToWizard)
+            return false;
+
+        RootFrame.Navigate(typeof(WizardPage), _config);
+        return true;
+    }
+
+    public void NavigateToWizard()
+    {
+        if (!TryNavigateToWizard())
+            throw new InvalidOperationException("Setup window is not ready to navigate to the gateway wizard.");
+    }
     public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));

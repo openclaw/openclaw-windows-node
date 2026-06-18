@@ -350,8 +350,15 @@ public sealed partial class HubWindow : WindowEx
 
     private void GoBack()
     {
-        if (ContentFrame.CanGoBack)
-            ContentFrame.GoBack();
+        RemoveUnavailableGatewayBackStackEntries();
+
+        if (!ContentFrame.CanGoBack)
+        {
+            UpdateBackButton();
+            return;
+        }
+
+        ContentFrame.GoBack();
     }
 
     /// <summary>
@@ -361,6 +368,7 @@ public sealed partial class HubWindow : WindowEx
     /// </summary>
     private void UpdateBackButton()
     {
+        RemoveUnavailableGatewayBackStackEntries();
         NavBackButton.IsEnabled = ContentFrame.CanGoBack;
     }
 
@@ -603,8 +611,8 @@ public sealed partial class HubWindow : WindowEx
                 if (keepCurrentGatewayPageVisible)
                     return;
 
-                var gatewayTags = new HashSet<string> { "chat", "sessions", "skills", "channels", "instances", "agentevents", "bindings", "config", "usage", "cron", "workspace" };
-                if (currentTag != null && (gatewayTags.Contains(currentTag) || currentTag.StartsWith("agent:")))
+                RemoveUnavailableGatewayBackStackEntries();
+                if (GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(currentTag))
                 {
                     foreach (NavigationViewItem item in NavView!.MenuItems.OfType<NavigationViewItem>())
                     {
@@ -621,6 +629,21 @@ public sealed partial class HubWindow : WindowEx
         {
             Services.Logger.Warn($"[HubWindow] UpdateGatewayNavVisibility failed: {ex.Message}");
             throw;
+        }
+    }
+
+    private void RemoveUnavailableGatewayBackStackEntries()
+    {
+        if (AppModel?.Status == ConnectionStatus.Connected)
+            return;
+
+        for (var i = ContentFrame.BackStack.Count - 1; i >= 0; i--)
+        {
+            if (ContentFrame.BackStack[i].Parameter is string tag &&
+                GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(tag))
+            {
+                ContentFrame.BackStack.RemoveAt(i);
+            }
         }
     }
 

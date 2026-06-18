@@ -128,11 +128,14 @@ public sealed class AppRefactorContractTests
     public void Setup_IsHostedInTrayAndUsesSelfRestartAfterCompletion()
     {
         var source = ReadAppSources();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
         Assert.Contains("new SetupWindow()", source);
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
         Assert.Contains("ShowGatewayWizardAsync", source);
-        Assert.Contains("setupWindow.NavigateToWizard()", source);
+        Assert.Contains("setupWindow.TryNavigateToWizard()", source);
+        Assert.Contains("CanNavigateToWizard", setupWindow);
         // Direct onboarding must not hijack an already-open setup window: it
         // only navigates a freshly created window so it cannot cancel an
         // in-progress install running on ProgressPage.
@@ -148,6 +151,32 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("ResolveSetupEngineUiPath", source);
         Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);
         Assert.DoesNotContain("Process.GetProcessesByName(\"OpenClaw.SetupEngine.UI\")", source);
+    }
+
+    [Fact]
+    public void Settings_OnboardCardRequiresActiveManagedWslGateway()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+
+        Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
+        Assert.Contains("Visibility=\"Collapsed\"", xaml);
+        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
+    }
+
+    [Fact]
+    public void HubBackNavigation_PrunesUnavailableGatewayPages()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries", source);
+        Assert.Contains("ContentFrame.BackStack.RemoveAt(i)", source);
+        Assert.Contains("GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(tag)", source);
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "GoBack"));
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "UpdateGatewayNavVisibility"));
     }
 
     [Fact]

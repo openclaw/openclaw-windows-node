@@ -3080,7 +3080,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         await setupWindow.WaitForInitialContentReadyAsync();
         if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
-            setupWindow.NavigateToWizard();
+        {
+            if (!setupWindow.TryNavigateToWizard())
+                Logger.Warn("Setup window is not ready for direct gateway wizard navigation; leaving current setup page visible");
+        }
     }
 
     private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)
