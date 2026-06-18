@@ -87,7 +87,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     public async Task BootstrapAsync_SkipsPromptAndMarksBootstrapped_WhenRegistryHasExistingGatewayWithSharedToken()
     {
         var settings = new SettingsManager(_settingsDir);
-        var client = new FakeOperatorGatewayClient { IsConnectedToGateway = true };
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = CreateAgentFilesList("SOUL.md")
+        };
 
         var registryDir = Path.Combine(_settingsDir, "registry-existing");
         Directory.CreateDirectory(registryDir);
@@ -110,7 +114,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     public async Task BootstrapAsync_SkipsPromptAndMarksBootstrapped_WhenRegistryHasExistingGatewayWithBootstrapToken()
     {
         var settings = new SettingsManager(_settingsDir);
-        var client = new FakeOperatorGatewayClient { IsConnectedToGateway = true };
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = CreateAgentFilesList("MEMORY.md")
+        };
 
         var registryDir = Path.Combine(_settingsDir, "registry-bootstrap");
         Directory.CreateDirectory(registryDir);
@@ -126,6 +134,109 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
 
         Assert.True(result);
         Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenFreshSetupRegistryHasCredentialButWorkspaceIsEmpty()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-fresh-credentialed" },
+            AgentFilesListResponse = CreateAgentFilesList()
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-fresh-credentialed");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-fresh",
+            Url = "ws://localhost:18789",
+            BootstrapToken = "fresh-bootstrap-token",
+            IsLocal = true
+        });
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-fresh-credentialed");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenFreshSetupWorkspaceOnlyHasSeedSoulFile()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-fresh-seed-soul" },
+            AgentFilesListResponse = CreateAgentFilesList("soul.md")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-fresh-seed-soul");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-fresh-seed",
+            Url = "ws://localhost:18789",
+            BootstrapToken = "fresh-bootstrap-token",
+            IsLocal = true
+        });
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-fresh-seed-soul");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_IgnoresOtherAgentFileList_WhenCheckingForExistingWorkspace()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-main-empty" },
+            AgentFilesListResponses =
+            [
+                CreateAgentFilesListForAgent("sidecar", "SOUL.md"),
+                CreateAgentFilesList()
+            ]
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-agent-filter");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-filter",
+            Url = "ws://localhost:18789",
+            BootstrapToken = "fresh-bootstrap-token",
+            IsLocal = true
+        });
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-main-empty");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
         Assert.True(settings.HasInjectedFirstRunBootstrap);
     }
 
@@ -169,6 +280,17 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         Assert.True(settings.HasInjectedFirstRunBootstrap);
     }
 
+    private static JsonElement CreateAgentFilesList(params string[] fileNames)
+        => CreateAgentFilesListForAgent("main", fileNames);
+
+    private static JsonElement CreateAgentFilesListForAgent(string agentId, params string[] fileNames)
+    {
+        var files = string.Join(
+            ",",
+            fileNames.Select(name => $$"""{"name":{{JsonSerializer.Serialize(name)}},"exists":true}"""));
+        return JsonDocument.Parse($$"""{"agentId":{{JsonSerializer.Serialize(agentId)}},"files":[{{files}}]}""").RootElement.Clone();
+    }
+
 #pragma warning disable CS0067
     private sealed class FakeOperatorGatewayClient : IOperatorGatewayClient
     {
@@ -178,6 +300,8 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public ChatSendResult Result { get; init; } = new();
         public string? FinalRunIdRaisedDuringSend { get; init; }
         public bool IsConnectedToGateway { get; init; } = true;
+        public JsonElement? AgentFilesListResponse { get; init; }
+        public IReadOnlyList<JsonElement>? AgentFilesListResponses { get; init; }
         public string? OperatorDeviceId => "operator";
         public IReadOnlyList<string> GrantedOperatorScopes => Array.Empty<string>();
         public string? MainSessionKey { get; init; } = "main";
@@ -269,7 +393,21 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000) =>
             Task.FromResult(new ConfigPatchResult { Ok = false, Error = "stub" });
         public Task RequestAgentsListAsync() => Task.CompletedTask;
-        public Task RequestAgentFilesListAsync(string agentId = "main") => Task.CompletedTask;
+        public Task RequestAgentFilesListAsync(string agentId = "main")
+        {
+            if (AgentFilesListResponses is { Count: > 0 })
+            {
+                foreach (var listedResponse in AgentFilesListResponses)
+                {
+                    AgentFilesListUpdated?.Invoke(this, listedResponse.Clone());
+                }
+                return Task.CompletedTask;
+            }
+
+            if (AgentFilesListResponse is { } response)
+                AgentFilesListUpdated?.Invoke(this, response.Clone());
+            return Task.CompletedTask;
+        }
         public Task RequestAgentFileGetAsync(string agentId, string name) => Task.CompletedTask;
         public Task RequestModelsListAsync() => Task.CompletedTask;
         public Task RequestNodePairListAsync() => Task.CompletedTask;

@@ -2,6 +2,7 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,15 @@ namespace OpenClawTray.Services;
 public static class OnboardingChatBootstrapper
 {
     private static int s_inFlight;
+    private static readonly TimeSpan ExistingWorkspaceProbeTimeout = TimeSpan.FromSeconds(3);
+    private static readonly HashSet<string> ExistingWorkspaceMarkerFiles = new(StringComparer.Ordinal)
+    {
+        "SOUL.md",
+        "IDENTITY.md",
+        "USER.md",
+        "HEARTBEAT.md",
+        "MEMORY.md",
+    };
 
     public const string Message =
         "Hi! I just installed OpenClaw and you're my brand-new agent. " +
@@ -38,28 +48,36 @@ public static class OnboardingChatBootstrapper
         SettingsManager settings,
         TimeSpan? completionTimeout = null,
         CancellationToken cancellationToken = default,
-        GatewayRegistry? registry = null)
+        GatewayRegistry? registry = null,
+        TimeSpan? existingWorkspaceProbeTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
         if (settings.HasInjectedFirstRunBootstrap)
             return true;
 
-        // Guard: if the user already has a configured gateway, treat this as a non-first-run
-        // installation and silently consume the bootstrap gate without sending the prompt.
-        // This prevents the first-run ritual from firing against an already-configured workspace
-        // in cases where the HasInjectedFirstRunBootstrap flag was not persisted (e.g. fresh
-        // app install over an existing workspace, settings migration, or flag reset).
-        if (registry is not null && SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(
-                registry, settings, SettingsManager.SettingsDirectoryPath))
+        if (client == null || !client.IsConnectedToGateway)
+            return false;
+
+        // A saved gateway credential is not enough to suppress hatching: fresh local setup
+        // creates registry-backed credentials before the first-run prompt has been sent.
+        // Only consume the gate when the connected workspace already contains durable
+        // OpenClaw state that the bootstrap ritual would otherwise rewrite.
+        if (registry is not null &&
+            SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(
+                registry,
+                settings,
+                SettingsManager.SettingsDirectoryPath) &&
+            await HasExistingWorkspaceStateAsync(
+                client,
+                existingWorkspaceProbeTimeout ?? ExistingWorkspaceProbeTimeout,
+                cancellationToken).ConfigureAwait(true))
         {
             MarkBootstrapped(settings);
-            Logger.Info("[OnboardingChatBootstrapper] Existing gateway configuration detected; skipping first-run bootstrap prompt.");
+            Logger.Info("[OnboardingChatBootstrapper] Existing OpenClaw workspace state detected; skipping first-run bootstrap prompt.");
             return true;
         }
 
-        if (client == null || !client.IsConnectedToGateway)
-            return false;
         if (Interlocked.CompareExchange(ref s_inFlight, 1, 0) != 0)
         {
             Logger.Info("[OnboardingChatBootstrapper] Bootstrap skipped because another gateway send is in flight");
@@ -107,6 +125,116 @@ public static class OnboardingChatBootstrapper
         finally
         {
             Interlocked.Exchange(ref s_inFlight, 0);
+        }
+    }
+
+    private static async Task<bool> HasExistingWorkspaceStateAsync(
+        IOperatorGatewayClient client,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        const string agentId = "main";
+        using var observer = new AgentFilesListObserver(client, agentId);
+        try
+        {
+            await client.RequestAgentFilesListAsync(agentId).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[OnboardingChatBootstrapper] Workspace state probe failed: {ex.Message}");
+            return false;
+        }
+
+        var payload = await observer.WaitForFilesListAsync(
+            DateTimeOffset.UtcNow + timeout,
+            cancellationToken).ConfigureAwait(true);
+
+        if (payload is null)
+        {
+            Logger.Info("[OnboardingChatBootstrapper] Workspace state probe returned no file list; preserving first-run bootstrap path.");
+            return false;
+        }
+
+        return ContainsExistingWorkspaceMarker(payload.Value);
+    }
+
+    private static bool ContainsExistingWorkspaceMarker(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("files", out var filesEl) || filesEl.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var fileEl in filesEl.EnumerateArray())
+        {
+            var exists = !fileEl.TryGetProperty("exists", out var existsEl) ||
+                         existsEl.ValueKind != JsonValueKind.False;
+            if (!exists)
+                continue;
+
+            if (!fileEl.TryGetProperty("name", out var nameEl))
+                continue;
+
+            var name = nameEl.GetString();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            if (ExistingWorkspaceMarkerFiles.Contains(Path.GetFileName(name)))
+                return true;
+        }
+
+        return false;
+    }
+
+    private sealed class AgentFilesListObserver : IDisposable
+    {
+        private readonly IOperatorGatewayClient _client;
+        private readonly string _agentId;
+        private readonly TaskCompletionSource<JsonElement?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public AgentFilesListObserver(IOperatorGatewayClient client, string agentId)
+        {
+            _client = client;
+            _agentId = agentId;
+            _client.AgentFilesListUpdated += OnAgentFilesListUpdated;
+        }
+
+        public async Task<JsonElement?> WaitForFilesListAsync(
+            DateTimeOffset timeoutAt,
+            CancellationToken cancellationToken)
+        {
+            if (_completion.Task.IsCompleted)
+                return await _completion.Task.ConfigureAwait(true);
+
+            var remaining = timeoutAt - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                return null;
+
+            var completed = await Task.WhenAny(_completion.Task, Task.Delay(remaining, cancellationToken)).ConfigureAwait(true);
+            if (completed != _completion.Task)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return null;
+            }
+
+            return await _completion.Task.ConfigureAwait(true);
+        }
+
+        public void Dispose()
+        {
+            _client.AgentFilesListUpdated -= OnAgentFilesListUpdated;
+        }
+
+        private void OnAgentFilesListUpdated(object? sender, JsonElement payload)
+        {
+            if (sender != _client)
+                return;
+
+            if (payload.TryGetProperty("agentId", out var agentIdEl) &&
+                !string.Equals(agentIdEl.GetString(), _agentId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _completion.TrySetResult(payload.Clone());
         }
     }
 
