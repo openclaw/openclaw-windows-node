@@ -164,6 +164,8 @@ public sealed class AppRefactorContractTests
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
         Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
+        Assert.Contains("CurrentApp.Registry?.Load();", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
     }
 
     [Fact]

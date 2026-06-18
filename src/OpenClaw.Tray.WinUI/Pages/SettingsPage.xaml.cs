@@ -335,6 +335,8 @@ public sealed partial class SettingsPage : Page
 
             if (proc.ExitCode == 0)
             {
+                CurrentApp.Registry?.Load();
+                OpenClawOnboardCard.Visibility = Visibility.Collapsed;
                 ApplyUninstallUiState(UninstallUiState.Success);
                 UninstallResultBar.Severity = InfoBarSeverity.Success;
                 UninstallResultBar.Title = "Local gateway removed";
