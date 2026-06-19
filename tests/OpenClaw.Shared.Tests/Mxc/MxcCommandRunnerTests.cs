@@ -9,7 +9,7 @@ public class MxcCommandRunnerTests
 {
     private static SettingsData NewSettings(
         bool sandboxEnabled = true,
-        bool blockHostFallbackWhenMxcUnavailable = false)
+        bool blockHostFallbackWhenMxcUnavailable = true)
     {
         return new SettingsData
         {
@@ -57,13 +57,15 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public void ResolveEffectiveShell_DelegatesToHost_WhenMxcUnavailable()
+    public void ResolveEffectiveShell_DelegatesToHost_WhenMxcUnavailableAndCompatibilityFallbackEnabled()
     {
         var fallback = new FakeCommandRunner { EffectiveShellForNull = "pwsh" };
         var runner = NewRunner(
             new FakeSandboxExecutor(),
             fallback,
-            NewSettings(sandboxEnabled: true),
+            NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false),
             sandboxAvailable: false);
 
         Assert.Equal("pwsh", runner.ResolveEffectiveShell(null));
@@ -87,14 +89,19 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_FallsBackWhenExecutorIsUnavailable()
+    public async Task RunAsync_SandboxEnabled_FallsBackWhenExecutorIsUnavailableAndCompatibilityFallbackEnabled()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
         var fallback = new FakeCommandRunner
         {
             Result = new CommandResult { ExitCode = 0, Stdout = "host-ran" },
         };
-        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false));
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 
@@ -112,7 +119,12 @@ public class MxcCommandRunnerTests
         {
             Result = new CommandResult { ExitCode = 0, Stdout = "host-ran" },
         };
-        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false));
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
@@ -182,7 +194,9 @@ public class MxcCommandRunnerTests
         var runner = NewRunner(
             executor,
             fallback,
-            NewSettings(sandboxEnabled: true),
+            NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false),
             sandboxAvailable: false);
 
         var result = await runner.RunAsync(new CommandRequest
@@ -224,7 +238,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_MxcUnavailable_RoutesToHost_WithSandboxToggleOn()
+    public async Task RunAsync_MxcUnavailable_RoutesToHost_WhenCompatibilityFallbackEnabled()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "MXC missing" };
         var fallback = new FakeCommandRunner
@@ -234,7 +248,9 @@ public class MxcCommandRunnerTests
         var runner = NewRunner(
             executor,
             fallback,
-            NewSettings(sandboxEnabled: true),
+            NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false),
             sandboxAvailable: false);
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
@@ -369,7 +385,9 @@ public class MxcCommandRunnerTests
         var runner = new MxcCommandRunner(
             executor,
             fallback,
-            () => NewSettings(sandboxEnabled: true),
+            () => NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false),
             () => "C:\\test\\settings",
             () => true,
             invalidateAvailability: () => invalidationCount++,
@@ -397,7 +415,9 @@ public class MxcCommandRunnerTests
         var runner = new MxcCommandRunner(
             executor,
             fallback,
-            () => NewSettings(sandboxEnabled: true),
+            () => NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false),
             () => "C:\\test\\settings",
             () => sandboxAvailable,
             invalidateAvailability: () =>
@@ -659,7 +679,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_UnavailableExecutor_FallsBackToHost()
+    public async Task RunAsync_UnavailableExecutor_FallsBackToHost_WhenCompatibilityFallbackEnabled()
     {
         var executor = new FakeSandboxExecutor
         {
@@ -670,7 +690,12 @@ public class MxcCommandRunnerTests
         {
             Result = new CommandResult { ExitCode = 0, Stdout = "host" },
         };
-        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false));
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 

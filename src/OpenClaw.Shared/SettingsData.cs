@@ -8,6 +8,12 @@ namespace OpenClaw.Shared;
 /// </summary>
 public record class SettingsData
 {
+    /// <summary>
+    /// Version for settings-file migrations that need to distinguish legacy
+    /// serialized defaults from explicit operator choices.
+    /// </summary>
+    public int SettingsSchemaVersion { get; set; } = 1;
+
     public string? GatewayUrl { get; set; }
     public bool UseSshTunnel { get; set; } = false;
     public string? SshTunnelUser { get; set; }
@@ -126,19 +132,20 @@ public record class SettingsData
     // ── MXC sandbox ─────────────────────────────────────────────────────
     /// <summary>
     /// Master switch for system.run containment. When <c>true</c> (default),
-    /// system.run uses MXC containment when available and falls back to host
-    /// execution when MXC is unavailable. Unsupported sandbox request features
-    /// are rejected while sandboxing remains enabled. When <c>false</c>,
-    /// system.run always runs on the host as it did before MXC support was added.
+    /// system.run uses MXC containment when available and blocks when MXC is
+    /// unavailable unless host fallback has been explicitly allowed. Unsupported
+    /// sandbox request features are rejected while sandboxing remains enabled.
+    /// When <c>false</c>, system.run always runs on the host as it did before
+    /// MXC support was added.
     /// </summary>
     public bool SystemRunSandboxEnabled { get; set; } = true;
 
     /// <summary>
     /// When sandboxing is enabled but MXC is unavailable, block system.run
-    /// instead of using the compatibility host fallback. Default <c>false</c>
-    /// preserves the existing fallback requested for compatibility.
+    /// instead of using the compatibility host fallback. Default <c>true</c>
+    /// keeps the sandbox toggle fail-closed when containment is unavailable.
     /// </summary>
-    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get; set; } = false;
+    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get; set; } = true;
 
     /// <summary>
     /// When sandboxed, allow system.run commands to reach the public internet.
