@@ -580,7 +580,7 @@ public sealed class PreflightWslStep : SetupStep
     }
 
     private static string NormalizeWslOutput(string value)
-        => value.Replace("\0", "").Replace("\uFEFF", "");
+        => WslInstallSupport.Normalize(value);
 
     private static string FirstUsefulLine(CommandResult result)
     {
@@ -942,6 +942,8 @@ useWindowsTimezone={wsl.UseWindowsTimezone.ToString().ToLower()}
 
 public sealed class ValidateWslLockdownStep : SetupStep
 {
+    private const int MaxWslConfReadAttempts = 3;
+
     public override string Id => "validate-wsl-lockdown";
     public override string DisplayName => "Validate WSL lockdown";
     public override bool CanRetry => false;
@@ -951,7 +953,7 @@ public sealed class ValidateWslLockdownStep : SetupStep
         var distro = ctx.DistroName!;
         var wsl = ctx.Config.Wsl;
 
-        var readConf = await ctx.Commands.RunInWslAsync(distro, "cat /etc/wsl.conf", TimeSpan.FromSeconds(15), ct: ct);
+        var readConf = await ReadWslConfWithStartupRetryAsync(ctx, distro, ct);
         if (readConf.ExitCode != 0)
             return StepResult.Terminal("Cannot read /etc/wsl.conf - WSL configuration may not have been applied");
 
@@ -1020,6 +1022,34 @@ public sealed class ValidateWslLockdownStep : SetupStep
 
         ctx.Logger.Info("WSL lockdown validated: all invariants verified");
         return StepResult.Ok("WSL lockdown validated");
+    }
+
+    private static async Task<CommandResult> ReadWslConfWithStartupRetryAsync(
+        SetupContext ctx,
+        string distro,
+        CancellationToken ct)
+    {
+        CommandResult? last = null;
+        for (var attempt = 1; attempt <= MaxWslConfReadAttempts; attempt++)
+        {
+            last = await ctx.Commands.RunInWslAsync(
+                distro,
+                "cat /etc/wsl.conf",
+                TimeSpan.FromSeconds(30),
+                ct: ct);
+
+            if (last.ExitCode == 0)
+                return last;
+
+            if (attempt == MaxWslConfReadAttempts)
+                break;
+
+            ctx.Logger.Warn(
+                $"Reading /etc/wsl.conf failed after WSL restart (attempt {attempt}/{MaxWslConfReadAttempts}, timedOut={last.TimedOut}); retrying");
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
+
+        return last ?? new CommandResult(-1, "", "No WSL config read attempts were made.", TimeSpan.Zero, TimedOut: false);
     }
 
     internal static List<string> ValidateWslConf(string conf, WslConfig wsl)
@@ -1525,12 +1555,7 @@ public sealed class StartGatewayStep : SetupStep
 
         // Check if distro is running before trying systemctl stop
         var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
-        var distros = list.Stdout
-            .Replace("\0", "").Replace("\uFEFF", "")
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(d => d.Trim()).Where(d => d.Length > 0).ToList();
-
-        if (!distros.Any(d => d.Equals(distro, StringComparison.OrdinalIgnoreCase)))
+        if (!WslInstallSupport.ContainsDistro(list.Stdout, distro))
         {
             ctx.Logger.Info("[Uninstall] Distro not registered — skipping gateway stop");
             return;
@@ -1538,8 +1563,7 @@ public sealed class StartGatewayStep : SetupStep
 
         // Check distro state — only stop if Running
         var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
-        var isRunning = verbose.Stdout
-            .Replace("\0", "").Replace("\uFEFF", "")
+        var isRunning = WslInstallSupport.Normalize(verbose.Stdout)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Any(line => line.Contains(distro, StringComparison.OrdinalIgnoreCase)
                       && line.Contains("Running", StringComparison.OrdinalIgnoreCase));

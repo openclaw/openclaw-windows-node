@@ -128,9 +128,19 @@ public sealed class AppRefactorContractTests
     public void Setup_IsHostedInTrayAndUsesSelfRestartAfterCompletion()
     {
         var source = ReadAppSources();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
         Assert.Contains("new SetupWindow()", source);
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
+        Assert.Contains("ShowGatewayWizardAsync", source);
+        Assert.Contains("setupWindow.TryNavigateToWizard()", source);
+        Assert.Contains("CanNavigateToWizard", setupWindow);
+        // Direct onboarding must not hijack an already-open setup window: it
+        // only navigates a freshly created window so it cannot cancel an
+        // in-progress install running on ProgressPage.
+        Assert.Contains("EnsureSetupWindowAsync", source);
+        Assert.Contains("if (!createdNew)", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
@@ -144,9 +154,37 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void Settings_OnboardCardRequiresActiveManagedWslGateway()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+
+        Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
+        Assert.Contains("Visibility=\"Collapsed\"", xaml);
+        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
+        Assert.Contains("CurrentApp.Registry?.Load();", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
+    }
+
+    [Fact]
+    public void HubBackNavigation_PrunesUnavailableGatewayPages()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries", source);
+        Assert.Contains("ContentFrame.BackStack.RemoveAt(i)", source);
+        Assert.Contains("GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(tag)", source);
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "GoBack"));
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "UpdateGatewayNavVisibility"));
+    }
+
+    [Fact]
     public void SetupUiPages_DoNotOwnTrayProcessHandoff()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var setupUiDir = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI");
         var source = string.Join(
             "\n",
@@ -169,7 +207,7 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void SettingsLocalGatewayRemoval_UsesCancelableTrayChildProcess()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
 
         Assert.Contains("ResolveCurrentExecutablePath()", source);
@@ -183,7 +221,7 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void SetupUiImages_UseLibraryQualifiedAssetUris()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var setupUiDir = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI");
         var xaml = string.Join(
             "\n",
@@ -201,7 +239,7 @@ public sealed class AppRefactorContractTests
 
     private static string ReadAppSources()
     {
-        var root = GetRepositoryRoot();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
         var appDir = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
         return string.Join(
             "\n",
@@ -252,24 +290,4 @@ public sealed class AppRefactorContractTests
         }
     }
 
-    private static string GetRepositoryRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not find repository root.");
-    }
 }

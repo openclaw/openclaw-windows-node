@@ -214,14 +214,25 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
-    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.1, stable),
-    # which looks up the framework package by identity. The hosted windows-2025
-    # runner image doesn't preinstall it, so we install it explicitly here.
-    # Version pinned to match Microsoft.WindowsAppSDK 2.1.3 in the csprojs.
-    - name: Install WindowsAppRuntime 2.1.3
+    # framework MSIX. The hosted windows-2025 runner image doesn't preinstall it,
+    # so install the runtime that matches the repo-level WindowsAppSDK version.
+    - name: Install WindowsAppRuntime
       shell: pwsh
       run: |
-        $url = "https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe"
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
         $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
@@ -282,7 +293,17 @@ jobs:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: setup-connect
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests
+          - name: revocation-recovery
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
+          - name: network-recovery
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
     - name: Fail if repo hygiene failed
       if: ${{ needs.repo-hygiene.result != 'success' }}
@@ -323,7 +344,7 @@ jobs:
     - name: Build E2E Tests
       run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
 
-    - name: Run E2E Tests
+    - name: Run E2E Tests (${{ matrix.name }})
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -334,14 +355,15 @@ jobs:
           -r win-x64 `
           --verbosity normal `
           --results-directory TestResults/E2E `
-          --logger "trx;LogFileName=OpenClaw.E2ETests.trx" `
-          --logger "console;verbosity=detailed"
+          --logger "trx;LogFileName=OpenClaw.E2ETests.${{ matrix.name }}.trx" `
+          --logger "console;verbosity=detailed" `
+          --filter "${{ matrix.filter }}"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-        [xml]$trx = Get-Content TestResults\E2E\OpenClaw.E2ETests.trx
+        [xml]$trx = Get-Content "TestResults\E2E\OpenClaw.E2ETests.${{ matrix.name }}.trx"
         $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
         if ($executed -lt 1) {
-          Write-Error "E2E test run executed zero tests. Check OPENCLAW_RUN_E2E gating before merging."
+          Write-Error "E2E shard '${{ matrix.name }}' executed zero tests. Check OPENCLAW_RUN_E2E gating/filter before merging."
           exit 1
         }
 
@@ -349,7 +371,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results
+        name: e2e-test-results-${{ matrix.name }}
         path: |
           TestResults/E2E/
         if-no-files-found: warn

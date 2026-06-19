@@ -26,12 +26,14 @@ public static class FunctionalChatHostExtensions
     public static Action<Action> AsPost(this DispatcherQueue dispatcher) =>
         action =>
         {
-            if (dispatcher.HasThreadAccess)
-            {
-                action();
-                return;
-            }
-
+            // Always queue rather than invoking inline when we already hold
+            // the dispatcher thread. The synchronous shortcut would let a
+            // UI-thread Publish jump ahead of background-thread Publishes
+            // that were already enqueued, so an older snapshot built before
+            // ours could fire LAST and overwrite the latest state in the
+            // subscribers (observed with the local exec-approval deny card
+            // being clobbered by a stale 135-entry snapshot one ms later).
+            // FIFO dispatch order keeps "newest build wins" for free.
             if (!dispatcher.TryEnqueue(() => action()))
                 System.Diagnostics.Debug.WriteLine("Dropped chat UI update because DispatcherQueue rejected the work item.");
         };

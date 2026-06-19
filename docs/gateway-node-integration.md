@@ -78,18 +78,25 @@ After changing config:
 openclaw gateway restart
 ```
 
-After changing the node's command list (code change), you must **re-pair**:
+After changing the node's command list, approve the pending reapproval request:
 ```bash
-openclaw devices list          # find old device
-openclaw devices reject <id>   # reject the old pairing
-# Node will auto-reconnect and create a new pairing request
-openclaw devices list          # find new request
-openclaw devices approve <id>  # approve with updated commands
+openclaw nodes pending
+openclaw nodes approve <pendingRequestId>
 ```
 
-### 1.4 Why Re-Pairing is Needed
+`openclaw nodes pending` only discovers request IDs; it does not approve declarations.
 
-The gateway snapshots the node's declared `commands` array at **pairing approval time**. If you change the node's code to add new commands and restart it, the gateway still uses the old snapshot. You must reject the old pairing and approve a new one.
+Older gateways without pending reapproval support may still require rejecting and re-pairing the node.
+
+### 1.4 Why Reapproval is Needed
+
+The gateway snapshots the node's declared `commands` array at **pairing approval time**. When a newer gateway detects changed declarations, `node.list` and `node.describe` keep the existing `caps`, `commands`, and `permissions` as the approved/effective snapshot and report the proposed replacement under `pendingDeclaredCaps`, `pendingDeclaredCommands`, and `pendingDeclaredPermissions`. Approve the reported request explicitly:
+
+```powershell
+openclaw nodes approve <pendingRequestId>
+```
+
+Then reconnect the node and verify the effective command and capability counts update. Pending declarations are never effective before approval. Older gateways that do not report pending reapproval fields may still require rejecting and re-pairing the node.
 
 ### 1.5 `denyCommands`
 
@@ -313,7 +320,7 @@ For the first-party Windows companion node, the practical local solution is:
 1. Keep declaring the correct command names from the Windows node.
 2. Send canonical connect metadata: `platform: "windows"` and
    `deviceFamily: "Windows"`.
-3. Re-pair after command-list changes because the gateway snapshots commands at approval time.
+3. Reapprove command-list changes because the gateway snapshots commands at approval time; older gateways may require re-pairing.
 
 ### 5.1 Gateway Node Allowlist Configuration
 
@@ -333,7 +340,7 @@ camera.clip
 screen.record
 ```
 
-After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyCommands`, re-approve or re-pair the Windows node. Approved device records may keep a snapshot of the commands that were visible at approval time, so a gateway restart alone may not refresh existing approvals.
+After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyCommands`, check Command Center for `pending-reapproval`. Copy and run its exact `openclaw nodes approve <pendingRequestId>` command, reconnect the Windows node, and verify the effective command and capability counts update. A gateway restart alone does not approve pending declarations. Older gateways without pending reapproval diagnostics may still require re-pairing.
 
 ### 5.2 Immediate Code Fixes (This Branch)
 

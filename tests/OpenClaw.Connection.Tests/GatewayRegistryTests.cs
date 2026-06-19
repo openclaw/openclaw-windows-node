@@ -145,6 +145,48 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void FindByUrl_TreatsLoopbackLocalhostAnd127AsSameGateway()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-local", "ws://localhost:18789"));
+
+        var found = _registry.FindByUrl("ws://127.0.0.1:18789");
+
+        Assert.NotNull(found);
+        Assert.Equal("gw-local", found.Id);
+    }
+
+    [Fact]
+    public void FindByUrl_DoesNotMergeLoopbackUrlsWithDifferentQueryStrings()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-local", "ws://localhost:18789/ws?old"));
+
+        var found = _registry.FindByUrl("ws://127.0.0.1:18789/ws?new");
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public void FindByUrl_DoesNotMergeRemoteHostsWithSamePortAndPath()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-remote", "wss://gateway-one.example.com/ws?token=a"));
+
+        var found = _registry.FindByUrl("wss://gateway-two.example.com/ws?token=a");
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public void FindByUrl_NormalizesHttpAndHttpsSchemesForExactRemoteHostMatch()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-remote", "wss://gateway.example.com/ws?x=1"));
+
+        var found = _registry.FindByUrl("https://gateway.example.com/ws?x=1");
+
+        Assert.NotNull(found);
+        Assert.Equal("gw-remote", found.Id);
+    }
+
+    [Fact]
     public void FindByUrl_ReturnsNullIfNotFound()
     {
         Assert.Null(_registry.FindByUrl("wss://unknown"));
@@ -180,7 +222,13 @@ public class GatewayRegistryTests : IDisposable
     {
         var record = MakeRecord("gw-1", "wss://test1") with
         {
-            SshTunnel = new SshTunnelConfig("user", "host.example.com", 18789, 18789, SshPort: 2222)
+            SshTunnel = new SshTunnelConfig(
+                "user",
+                "host.example.com",
+                RemotePort: 18789,
+                LocalPort: 45678,
+                IncludeBrowserProxyForward: true,
+                SshPort: 2222)
         };
         _registry.AddOrUpdate(record);
         _registry.Save();
@@ -194,6 +242,8 @@ public class GatewayRegistryTests : IDisposable
         Assert.Equal("host.example.com", loaded.SshTunnel.Host);
         Assert.Equal(2222, loaded.SshTunnel.SshPort);
         Assert.Equal(18789, loaded.SshTunnel.RemotePort);
+        Assert.Equal(45678, loaded.SshTunnel.LocalPort);
+        Assert.True(loaded.SshTunnel.IncludeBrowserProxyForward);
     }
 
     [Fact]

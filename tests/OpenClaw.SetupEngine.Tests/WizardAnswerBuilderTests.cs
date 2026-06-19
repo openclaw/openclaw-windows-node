@@ -100,6 +100,117 @@ public class WizardAnswerBuilderTests
         Assert.Equal("""{"value":["__skip__"]}""", SerializeValue(wireValue));
     }
 
+    [Fact]
+    public void BuildWireValue_SelectFallsBackToString_WhenNoOptionMatch()
+    {
+        var options = ReadOptions("""{"options":[{"label":"Alpha","value":"alpha"}]}""");
+
+        // "beta" is not in the options list; should pass through as a plain string
+        var wireValue = WizardAnswerBuilder.BuildWireValue("select", "beta", options);
+
+        Assert.Equal("""{"value":"beta"}""", SerializeValue(wireValue));
+    }
+
+    [Fact]
+    public void BuildWireValue_MultiselectSplitsCommaString_WhenOptionsEmpty()
+    {
+        var wireValue = WizardAnswerBuilder.BuildWireValue("multiselect", "opt-a,opt-b,opt-c", []);
+
+        // No options list to resolve against, so falls back to SplitMultiSelect
+        Assert.Equal("""{"value":["opt-a","opt-b","opt-c"]}""", SerializeValue(wireValue));
+    }
+
+    [Fact]
+    public void BuildWireValue_MultiselectSplitsCommaString_WhenOptionNotInList()
+    {
+        var options = ReadOptions("""{"options":[{"label":"Alpha","value":"alpha"}]}""");
+
+        // "gamma" is not in the options list, so TryResolveOptions returns false; falls back to split
+        var wireValue = WizardAnswerBuilder.BuildWireValue("multiselect", "alpha,gamma", options);
+
+        Assert.Equal("""{"value":["alpha","gamma"]}""", SerializeValue(wireValue));
+    }
+
+    [Fact]
+    public void ReadOptions_ReturnsEmpty_ForNonObjectInput()
+    {
+        var arrayElement = ParseElement("""["a","b"]""");
+
+        var options = WizardAnswerBuilder.ReadOptions(arrayElement);
+
+        Assert.Empty(options);
+    }
+
+    [Fact]
+    public void ReadOptions_ReturnsEmpty_WhenOptionsPropertyMissing()
+    {
+        var step = ParseElement("""{"stepType":"select","id":"step-1"}""");
+
+        var options = WizardAnswerBuilder.ReadOptions(step);
+
+        Assert.Empty(options);
+    }
+
+    [Fact]
+    public void ReadOptions_ReturnsEmpty_WhenOptionsIsNotArray()
+    {
+        var step = ParseElement("""{"options":"not-an-array"}""");
+
+        var options = WizardAnswerBuilder.ReadOptions(step);
+
+        Assert.Empty(options);
+    }
+
+    [Fact]
+    public void ValueKeys_ReturnsEmptyArray_ForEmptyStringElement()
+    {
+        // JSON empty string "" → ValueKey returns "" → ValueKeys returns []
+        var element = ParseElement("\"\"");
+
+        var keys = WizardAnswerBuilder.ValueKeys(element);
+
+        Assert.Empty(keys);
+    }
+
+    [Fact]
+    public void ValueKeys_ReturnsSingleElementArray_ForNonArrayValue()
+    {
+        var element = ParseElement("42");
+
+        var keys = WizardAnswerBuilder.ValueKeys(element);
+
+        Assert.Equal(["42"], keys);
+    }
+
+    [Fact]
+    public void ValueKeys_ReturnsMultipleElements_ForJsonArray()
+    {
+        var element = ParseElement("""["a",42,true]""");
+
+        var keys = WizardAnswerBuilder.ValueKeys(element);
+
+        Assert.Equal(["a", "42", "true"], keys);
+    }
+
+    [Fact]
+    public void ReadOptions_OptionWithoutValueUsesLabelAsKey()
+    {
+        var step = ParseElement("""
+            {
+              "options": [
+                { "label": "My Label", "hint": "some hint" }
+              ]
+            }
+            """);
+
+        var options = WizardAnswerBuilder.ReadOptions(step);
+
+        var option = Assert.Single(options);
+        Assert.Equal("My Label", option.Value);
+        Assert.Equal("My Label", option.Label);
+        Assert.Equal("some hint", option.Hint);
+    }
+
     private static IReadOnlyList<WizardOptionValue> ReadOptions(string stepJson) =>
         WizardAnswerBuilder.ReadOptions(ParseElement(stepJson));
 

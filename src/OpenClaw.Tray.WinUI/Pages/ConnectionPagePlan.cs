@@ -88,6 +88,8 @@ internal enum NodeCardState
     Off,
     OnHealthy,
     OnPermissionsIncomplete,
+    OnNodeApprovalRequired,
+    OnNodeReapprovalRequired,
     OnNodePairingRequired,
     OnNodeRejected,
     OnNodeRateLimited,
@@ -129,6 +131,19 @@ internal sealed record ConnectionPagePlan
     public NodeCardState NodeCard { get; init; } = NodeCardState.Hidden;
     /// <summary>For OnNodePairingRequired — the exact CLI command to copy/paste.</summary>
     public string? NodeApproveCommand { get; init; }
+    /// <summary>Copy-only command for node-list command-trust approval or reapproval.</summary>
+    public string? NodeTrustApproveCommand { get; init; }
+    /// <summary>True only when the trust command approves the reported request; false for discovery commands.</summary>
+    public bool NodeTrustCommandApprovesRequest { get; init; }
+    public GatewayNodeApprovalState NodeApprovalState { get; init; }
+    public IReadOnlyList<string> NodeEffectiveCapabilities { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> NodeEffectiveCommands { get; init; } = Array.Empty<string>();
+    public IReadOnlyDictionary<string, bool> NodeEffectivePermissions { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyList<string> NodePendingDeclaredCapabilities { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> NodePendingDeclaredCommands { get; init; } = Array.Empty<string>();
+    public IReadOnlyDictionary<string, bool> NodePendingDeclaredPermissions { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     /// <summary>For OnNodeError — sanitized error string.</summary>
     public string? NodeErrorDetail { get; init; }
 
@@ -156,32 +171,34 @@ internal sealed record ConnectionPagePlan
     /// <param name="settings">App settings (capability flags, etc.).</param>
     /// <param name="savedGatewayCount">Total saved gateways (governs Welcome vs Cockpit).</param>
     /// <param name="userIntent">User-driven mode override ("adding"); pass <c>UserIntent.None</c> for default.</param>
+    /// <param name="localNode">Gateway-reported local node record, including effective and pending approval surfaces.</param>
     public static ConnectionPagePlan Build(
         GatewayConnectionSnapshot snap,
         GatewayRecord? activeRecord,
         GatewaySelfInfo? self,
         SettingsManager? settings,
         int savedGatewayCount,
-        UserIntent userIntent = UserIntent.None)
+        UserIntent userIntent = UserIntent.None,
+        GatewayNodeInfo? localNode = null)
     {
-        var hasActive = activeRecord != null;
         var displayName = activeRecord?.FriendlyName
             ?? activeRecord?.Url
             ?? snap.GatewayName
             ?? "gateway";
 
+        var plan = BuildDerived(snap, activeRecord, self, settings, savedGatewayCount, displayName);
+
         // ─── User-intent override: AddGateway sub-view ───
         // Keeps Operator/Node cards visible in the strip+roles area while the
         // bottom section is swapped to the Add form.
         if (userIntent == UserIntent.AddingGateway)
-        {
-            // Inherit the snap-derived status strip so the user keeps context,
-            // but force the bottom section to the Add form.
-            var inner = BuildDerived(snap, activeRecord, self, settings, savedGatewayCount, displayName);
-            return inner with { Mode = ConnectionPageMode.AddGateway };
-        }
+            plan = plan with { Mode = ConnectionPageMode.AddGateway };
 
-        return BuildDerived(snap, activeRecord, self, settings, savedGatewayCount, displayName);
+        return ApplyNodeListApproval(
+            plan,
+            localNode,
+            snap,
+            settings);
     }
 
     private static ConnectionPagePlan BuildDerived(
@@ -494,6 +511,90 @@ internal sealed record ConnectionPagePlan
     // Card state helpers
     // ───────────────────────────────────────────────────────────────────
 
+    private static ConnectionPagePlan ApplyNodeListApproval(
+        ConnectionPagePlan plan,
+        GatewayNodeInfo? localNode,
+        GatewayConnectionSnapshot snap,
+        SettingsManager? settings)
+    {
+        var pairingApprovalKind = snap.NodePairingApprovalKind;
+        var pairingRequestId = snap.NodePairingRequestId;
+        var isPendingTrustApproval = localNode?.ApprovalState is
+            GatewayNodeApprovalState.PendingApproval or
+            GatewayNodeApprovalState.PendingReapproval;
+        var nodeConnectingAllowsTrustOverride =
+            plan.NodeCard == NodeCardState.Hidden &&
+            settings?.EnableNodeMode == true &&
+            snap.OperatorState == RoleConnectionState.Connected &&
+            snap.NodeState == RoleConnectionState.Connecting;
+        var nodeCardAllowsTrustOverride = plan.NodeCard is
+            NodeCardState.OnHealthy or
+            NodeCardState.OnPermissionsIncomplete or
+            NodeCardState.OnNodePairingRequired ||
+            nodeConnectingAllowsTrustOverride;
+        // Authoritative node-list trust can override any non-device-pair card.
+        // Snapshot fallback is narrower: Unknown stays on discovery-only pairing UI.
+        var nodeListTrustOwnsApprovalUx =
+            isPendingTrustApproval &&
+            nodeCardAllowsTrustOverride &&
+            pairingApprovalKind != PairingApprovalKind.DevicePair;
+        var snapshotTrustOwnsApprovalUx =
+            plan.NodeCard == NodeCardState.OnNodePairingRequired &&
+            pairingApprovalKind == PairingApprovalKind.NodePair;
+        var nodeTrustOwnsApprovalUx =
+            nodeListTrustOwnsApprovalUx ||
+            snapshotTrustOwnsApprovalUx;
+        var nodeCard = plan.NodeCard;
+        if (nodeTrustOwnsApprovalUx)
+        {
+            nodeCard = localNode?.ApprovalState switch
+            {
+                GatewayNodeApprovalState.PendingReapproval => NodeCardState.OnNodeReapprovalRequired,
+                _ => NodeCardState.OnNodeApprovalRequired
+            };
+        }
+
+        var trustRequestId = isPendingTrustApproval
+            ? localNode!.PendingRequestId
+            : pairingRequestId;
+        var approvalCommand = "";
+        var hasApprovalCommand = nodeTrustOwnsApprovalUx &&
+            CommandCenterDiagnostics.TryBuildNodeApprovalCommand(
+                trustRequestId,
+                out approvalCommand);
+
+        return plan with
+        {
+            NodeCard = nodeCard,
+            NodeApproveCommand = nodeTrustOwnsApprovalUx ? null : plan.NodeApproveCommand,
+            NodeApprovalState = localNode?.ApprovalState ?? plan.NodeApprovalState,
+            NodeTrustApproveCommand = nodeTrustOwnsApprovalUx
+                ? hasApprovalCommand
+                    ? approvalCommand
+                    : "openclaw nodes pending"
+                : null,
+            NodeTrustCommandApprovesRequest = hasApprovalCommand,
+            NodeEffectiveCapabilities = localNode != null
+                ? localNode.Capabilities.ToArray()
+                : plan.NodeEffectiveCapabilities,
+            NodeEffectiveCommands = localNode != null
+                ? localNode.Commands.ToArray()
+                : plan.NodeEffectiveCommands,
+            NodeEffectivePermissions = localNode != null
+                ? new Dictionary<string, bool>(localNode.Permissions, StringComparer.OrdinalIgnoreCase)
+                : plan.NodeEffectivePermissions,
+            NodePendingDeclaredCapabilities = localNode != null
+                ? localNode.PendingDeclaredCapabilities.ToArray()
+                : plan.NodePendingDeclaredCapabilities,
+            NodePendingDeclaredCommands = localNode != null
+                ? localNode.PendingDeclaredCommands.ToArray()
+                : plan.NodePendingDeclaredCommands,
+            NodePendingDeclaredPermissions = localNode != null
+                ? new Dictionary<string, bool>(localNode.PendingDeclaredPermissions, StringComparer.OrdinalIgnoreCase)
+                : plan.NodePendingDeclaredPermissions
+        };
+    }
+
     private static NodeCardState BuildNodeCardState(GatewayConnectionSnapshot snap, SettingsManager? settings)
     {
         if (settings == null) return NodeCardState.Hidden;
@@ -520,21 +621,29 @@ internal sealed record ConnectionPagePlan
         var reqId = !string.IsNullOrEmpty(snap.NodePairingRequestId)
             ? ConnectionCardPlanSanitizer.Sanitize(snap.NodePairingRequestId!, maxLen: 64)
             : null;
-        // CLI is noun-first: `openclaw nodes approve <requestId>` (see
-        // openclaw/src/cli/nodes-cli/register.pairing.ts). The earlier
-        // `openclaw approve node …` form does not match any registered
-        // subcommand and silently failed when users pasted it.
+        // Exact approval commands require an explicit kind. Unknown legacy
+        // events stay discovery-only so operators can classify the request.
         // Missing requestId is a real-world case on older gateway builds:
-        // emit a single discovery command (`openclaw nodes pending`) the
+        // emit a single discovery command the
         // user can paste verbatim into any shell — they then pick a
         // requestId from its output and run approve manually. We avoid
         // embedding a "# then:" or "<requestId>" follow-up in the clipboard
         // text because `#` is treated as a literal arg by cmd.exe and `<`
         // is parsed as input redirection — pasting either breaks for
         // Windows-cmd users.
-        return reqId != null
-            ? $"openclaw nodes approve {reqId}"
-            : "openclaw nodes pending";
+        if (snap.NodePairingApprovalKind == PairingApprovalKind.DevicePair)
+        {
+            return CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(reqId);
+        }
+
+        if (snap.NodePairingApprovalKind == PairingApprovalKind.NodePair)
+        {
+            return reqId != null
+                ? $"openclaw nodes approve {reqId}"
+                : "openclaw nodes pending";
+        }
+
+        return CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands();
     }
 
     private static string? BuildDevicePairingApproveCommand(GatewayConnectionSnapshot snap)

@@ -14,6 +14,7 @@
     <Grid x:Name="RootGrid" PreviewKeyDown="OnRootPreviewKeyDown">
         <Grid.RowDefinitions>
             <RowDefinition Height="48"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -27,19 +28,36 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton" Grid.Column="0"
-                    AutomationProperties.Name="Toggle navigation pane"
-                    MinWidth="32" MinHeight="32"
-                    Padding="0" VerticalAlignment="Center"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
-                    BorderThickness="0"
-                    ToolTipService.ToolTip="Toggle navigation pane"
-                    Click="OnNavPaneToggleButtonClick">
-                <FontIcon Glyph="&#xE700;"
-                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="16"/>
-            </Button>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Uid="NavBackButton" x:Name="NavBackButton"
+                        AutomationProperties.Name="Back"
+                        MinWidth="32" MinHeight="32"
+                        Padding="0" VerticalAlignment="Center"
+                        IsEnabled="False"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Back"
+                        Click="OnBackRequested">
+                    <FontIcon Glyph="&#xE72B;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="16"/>
+                </Button>
+
+                <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton"
+                        AutomationProperties.Name="Toggle navigation pane"
+                        MinWidth="32" MinHeight="32"
+                        Padding="0" VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Toggle navigation pane"
+                        Click="OnNavPaneToggleButtonClick">
+                    <FontIcon Glyph="&#xE700;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="16"/>
+                </Button>
+            </StackPanel>
 
             <!-- Icon + Title -->
             <TextBlock Grid.Column="1" Text="🦞" FontSize="18" VerticalAlignment="Center" Margin="8,0,8,0" Translation="0,-1,0"/>
@@ -95,9 +113,34 @@
             </StackPanel>
         </Grid>
 
+        <InfoBar x:Name="AppNotificationInfoBar"
+                 Grid.Row="1"
+                 Margin="12,8,12,0"
+                 IsOpen="False"
+                 Visibility="Collapsed"
+                 IsClosable="True"
+                 Closed="OnAppNotificationInfoBarClosed">
+            <InfoBar.Content>
+                <Grid ColumnSpacing="12" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="AppNotificationMessageText"
+                               TextWrapping="WrapWholeWords"
+                               VerticalAlignment="Center"/>
+                    <Button x:Name="AppNotificationActionButton"
+                           Grid.Column="1"
+                           Visibility="Collapsed"
+                           VerticalAlignment="Center"
+                           Click="OnAppNotificationActionButtonClick"/>
+                </Grid>
+            </InfoBar.Content>
+        </InfoBar>
+
         <!-- Main Content -->
         <Grid x:Name="NavContentHost"
-              Grid.Row="1"
+              Grid.Row="2"
               SizeChanged="OnNavContentHostSizeChanged">
             <Grid.Clip>
                 <RectangleGeometry x:Name="NavContentClip"/>
@@ -146,6 +189,7 @@
                 <SvgImageSource x:Key="Permissions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Permissions.svg"/>
                 <SvgImageSource x:Key="Sandbox_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sandbox.svg"/>
                 <SvgImageSource x:Key="Activity_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Activity.svg"/>
+                <SvgImageSource x:Key="Notifications_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Notifications.svg"/>
                 <SvgImageSource x:Key="Debug_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Debug.svg"/>
                 <SvgImageSource x:Key="Info_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Info.svg"/>
             </NavigationView.Resources>
@@ -219,6 +263,9 @@
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Notifications" Tag="notifications" Content="Notifications">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Notifications_Icon}"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" Tag="debug" Content="Debug">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>

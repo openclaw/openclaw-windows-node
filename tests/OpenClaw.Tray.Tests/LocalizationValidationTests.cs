@@ -49,6 +49,12 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
+        // Product/feature name — "OpenClaw Onboard" is kept identical across
+        // all locales (the card's description and button are translated).
+        "SettingsPage_OnboardWizard_Header.Text",
+        // Technical product term — "Gateway" is kept in English across
+        // supported locales per onboarding terminology.
+        "DiagnosticsPage_Section_Gateway.Text",
         "PermissionsPage_TtsElevenLabsModel.PlaceholderText",
         "PermissionsPage_TtsProviderElevenLabs.Content",
         // Sample IDs / brand identifiers — same across locales.
@@ -148,6 +154,21 @@ public class LocalizationValidationTests
         "InstancesPage_UpdateReason_Tooltip_NoReason",
         "ConnectionPage_NodePairing_Title.Text",
         "ConnectionPage_NodePairing_Subtitle.Text",
+        "ConnectionPage_CopyTrustApproval.Content",
+        "ConnectionPage_NodeApprovalRequired",
+        "ConnectionPage_NodeReapprovalRequired",
+        "ConnectionPage_NodeBodyApprovalRequired",
+        "ConnectionPage_NodeBodyReapprovalRequired",
+        "ConnectionPage_NodeTrustApprovalHelp",
+        "ConnectionPage_NodeTrustDiscoveryHelp",
+        "ConnectionPage_NodeReconnectAfterApproval",
+        "ConnectionPage_NodeSurfaceNone",
+        "ConnectionPage_NodeEffectiveCapabilities",
+        "ConnectionPage_NodeEffectiveCommands",
+        "ConnectionPage_NodeEffectivePermissions",
+        "ConnectionPage_NodePendingDeclaredCapabilities",
+        "ConnectionPage_NodePendingDeclaredCommands",
+        "ConnectionPage_NodePendingDeclaredPermissions",
         "AboutPage_MoreDiagnosticsLink.Content",
         "ConnectionStatusWindow.Title",
         // Hard-coded XAML strings resolved by issue #491 — seeded English-only across
@@ -296,27 +317,8 @@ public class LocalizationValidationTests
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
 
-    private static string GetRepositoryRoot()
-    {
-        var envRepoRoot = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(envRepoRoot) && Directory.Exists(envRepoRoot))
-            return envRepoRoot;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) &&
-                File.Exists(Path.Combine(directory.FullName, "README.md")))
-                return directory.FullName;
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
-    }
-
     private static string GetStringsDirectory() =>
-        Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
+        Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
 
     private static Dictionary<string, string> LoadResw(string path)
     {
@@ -587,7 +589,7 @@ public class LocalizationValidationTests
     [Fact]
     public void XamlControlsWithXUid_HaveMatchingEnUsResources()
     {
-        var winUiRoot = Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var winUiRoot = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
         var resourceKeys = LoadResw(Path.Combine(GetStringsDirectory(), "en-us", "Resources.resw"))
             .Keys
             .ToHashSet(StringComparer.Ordinal);
@@ -597,7 +599,7 @@ public class LocalizationValidationTests
                      .Where(IsSourceXaml)
                      .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
-            var relativePath = Path.GetRelativePath(GetRepositoryRoot(), xamlPath);
+            var relativePath = Path.GetRelativePath(TestRepositoryPaths.GetRepositoryRoot(), xamlPath);
             var doc = XDocument.Load(xamlPath, LoadOptions.SetLineInfo);
 
             foreach (var element in doc.Descendants())
@@ -634,7 +636,7 @@ public class LocalizationValidationTests
 
     private static bool IsSourceXaml(string path)
     {
-        var relative = Path.GetRelativePath(GetRepositoryRoot(), path);
+        var relative = Path.GetRelativePath(TestRepositoryPaths.GetRepositoryRoot(), path);
         var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return !segments.Contains("bin", StringComparer.OrdinalIgnoreCase) &&
                !segments.Contains("obj", StringComparer.OrdinalIgnoreCase);

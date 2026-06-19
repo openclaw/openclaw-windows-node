@@ -1188,6 +1188,63 @@ public class ExecApprovalsStoreTests : IDisposable
         Assert.Contains(_log.Warnings, w => w.Contains("Refusing to write"));
     }
 
+    // ── State dir: tilde-only expansion ──────────────────────────────────────
+
+    /// <summary>
+    /// A stateDirOverride of exactly "~" (no trailing separator) must resolve to the
+    /// effective home directory.  This exercises the path == "~" branch of ExpandHomePrefix.
+    /// </summary>
+    [Fact]
+    public async Task ResolveAsync_TildeOnlyStateDir_ResolvesToEffectiveHome()
+    {
+        // Legacy file at _dir; stateDir = effectiveHome (via "~")
+        WriteFile(MinimalFileWithAgent("main", "full"));
+        var openClawHome = Path.Combine(_dir, "effective-home");
+        var osHome      = Path.Combine(_dir, "os-home");
+
+        var store = new ExecApprovalsStore(
+            _dir,
+            _log,
+            stateDirOverride:      "~",
+            openClawHomeOverride:  openClawHome,
+            osHomeOverride:        osHome);
+
+        var resolved = await store.ResolveAsync("main");
+
+        // Migration should have moved the legacy file to effectiveHome.
+        Assert.Equal(ExecSecurity.Full, resolved.Defaults.Security);
+        Assert.True(File.Exists(Path.Combine(openClawHome, "exec-approvals.json")),
+            "exec-approvals.json should have been migrated to the effective-home state dir");
+    }
+
+    /// <summary>
+    /// When openClawHomeOverride itself starts with "~/" it is expanded relative to
+    /// osHomeOverride before being used as the base for further tilde expansion in
+    /// stateDirOverride.
+    /// </summary>
+    [Fact]
+    public async Task ResolveAsync_TildePrefixedOpenClawHome_ExpandsRelativeToOsHome()
+    {
+        WriteFile(MinimalFileWithAgent("main", "allowlist"));
+        var osHome = Path.Combine(_dir, "os-home");
+        var sep    = Path.DirectorySeparatorChar;
+
+        var store = new ExecApprovalsStore(
+            _dir,
+            _log,
+            stateDirOverride:      $"~{sep}custom-state",
+            openClawHomeOverride:  $"~{sep}.openclaw",   // should expand to osHome/.openclaw
+            osHomeOverride:        osHome);
+
+        var resolved = await store.ResolveAsync("main");
+
+        // effectiveHome = osHome/.openclaw; stateDir = osHome/.openclaw/custom-state
+        var expectedFile = Path.Combine(osHome, ".openclaw", "custom-state", "exec-approvals.json");
+        Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.Security);
+        Assert.True(File.Exists(expectedFile),
+            $"exec-approvals.json should be at {expectedFile}");
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static string MinimalFile() => """{"version":1,"agents":{}}""";

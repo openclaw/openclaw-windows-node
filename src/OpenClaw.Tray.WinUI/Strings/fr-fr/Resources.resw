@@ -2235,6 +2235,12 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="NavPaneToggleButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Basculer le volet de navigation</value>
   </data>
+  <data name="NavBackButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Retour</value>
+  </data>
+  <data name="NavBackButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Retour</value>
+  </data>
   <data name="TitleStatusText.Text" xml:space="preserve">
     <value>Déconnecté</value>
   </data>
@@ -2300,6 +2306,9 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Débogage</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>Alertes</value>
   </data>
   <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
     <value>Informations</value>
@@ -2982,6 +2991,54 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Chat_Permission_DecisionExpired" xml:space="preserve">
     <value>Expiré</value>
   </data>
+  <data name="AppNotification_LocalCommandDenied_Title" xml:space="preserve">
+    <value>Le compagnon Windows a bloqué une commande locale</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_CommandSubjectFormat" xml:space="preserve">
+    <value>La commande « {0} »</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_UnknownCommandSubject" xml:space="preserve">
+    <value>Une commande locale</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageFormat" xml:space="preserve">
+    <value>{0} a été refusée par la stratégie d'exécution locale : {1}.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_MessageNoReasonFormat" xml:space="preserve">
+    <value>{0} a été refusée par la stratégie d'exécution locale.</value>
+  </data>
+  <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
+    <value>Motif correspondant : {0}.</value>
+  </data>
+  <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
+    <value>{0}×</value>
+  </data>
+  <data name="AppNotification_ShowMore" xml:space="preserve">
+    <value>Afficher plus</value>
+  </data>
+  <data name="NotificationsPage_Title.Text" xml:space="preserve">
+    <value>Alertes</value>
+  </data>
+  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
+    <value>Consultez et effacez les notifications OpenClaw actives.</value>
+  </data>
+  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
+    <value>Aucune notification</value>
+  </data>
+  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
+    <value>Les nouvelles notifications de l'application apparaissent ici jusqu'à ce que vous les ignoriez ou les effaciez.</value>
+  </data>
+  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
+    <value>Ignorer {0}</value>
+  </data>
+  <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
+    <value>Approbation d'exécution</value>
+  </data>
+  <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
+    <value>Commande du nœud</value>
+  </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Approbation d'exécution requise</value>
   </data>
@@ -3203,9 +3260,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
-  </data>
-  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
-    <value>Retour à la connexion</value>
   </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>
@@ -3510,6 +3564,15 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="DiagnosticsPage_ManageOnConnection.Content" xml:space="preserve">
     <value>Manage on Connection page</value>
   </data>
+  <data name="DiagnosticsPage_Section_Gateway.Text" xml:space="preserve">
+    <value>Gateway</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Doctor.Header" xml:space="preserve">
+    <value>Exécuter le diagnostic de la Gateway</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Doctor.Description" xml:space="preserve">
+    <value>Ouvre un terminal et exécute openclaw doctor pour vérifier si la Gateway locale présente des problèmes.</value>
+  </data>
   <data name="DiagnosticsPage_Section_Share.Text" xml:space="preserve">
     <value>Share diagnostics with support</value>
   </data>
@@ -3602,15 +3665,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
     <value>Tray chat popup</value>
-  </data>
-  <data name="DiagnosticsPage_Card_ChatExplorations.Header" xml:space="preserve">
-    <value>Open chat explorations</value>
-  </data>
-  <data name="DiagnosticsPage_Card_ChatExplorations.Description" xml:space="preserve">
-    <value>Engineering preview of chat bubble and tool-card rendering.</value>
-  </data>
-  <data name="DiagnosticsPage_OpenChatExplorationsButton.Content" xml:space="preserve">
-    <value>Open</value>
   </data>
   <data name="DiagnosticsPage_Card_Reconfigure.Header" xml:space="preserve">
     <value>Reconfigure…</value>
@@ -4095,9 +4149,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
     <value>Examiner sur la page Connexion</value>
   </data>
-  <data name="PermissionsPage_BackToConnection.Text" xml:space="preserve">
-    <value>Retour à la connexion</value>
-  </data>
   <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
     <value>Autorisations</value>
   </data>
@@ -4317,9 +4368,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
-  <data name="SessionsPage_BackToConnection.Text" xml:space="preserve">
-    <value>Retour à la connexion</value>
-  </data>
   <data name="SessionsPage_Sessions.Text" xml:space="preserve">
     <value>Mes sessions</value>
   </data>
@@ -4376,6 +4424,15 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
     <value>Ouvrir la configuration</value>
+  </data>
+  <data name="SettingsPage_OnboardWizard_Header.Text" xml:space="preserve">
+    <value>OpenClaw Onboard</value>
+  </data>
+  <data name="SettingsPage_OnboardWizard_Description.Text" xml:space="preserve">
+    <value>Ouvrez l'intégration OpenClaw sur une passerelle locale installée. Ignore l'installation de WSL et passe directement à la configuration.</value>
+  </data>
+  <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
+    <value>Ouvrir l'intégration</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Installation MSIX détectée</value>
@@ -5551,6 +5608,12 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
   <data name="Command_GoToInfo_Title" xml:space="preserve">
     <value>Go to Info</value>
   </data>
+  <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
+    <value>Consulter les notifications actives de l'application</value>
+  </data>
+  <data name="Command_GoToNotifications_Title" xml:space="preserve">
+    <value>Accéder à Notifications</value>
+  </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
   </data>
@@ -5727,5 +5790,50 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
   </data>
   <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
     <value>Activées ({0})</value>
+  </data>
+  <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ConnectionPage_NodeApprovalRequired" xml:space="preserve">
+    <value>Node approval required</value>
+  </data>
+  <data name="ConnectionPage_NodeReapprovalRequired" xml:space="preserve">
+    <value>Node reapproval required</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyApprovalRequired" xml:space="preserve">
+    <value>Pending declarations are not effective until this request is approved and the node reconnects.</value>
+  </data>
+  <data name="ConnectionPage_NodeBodyReapprovalRequired" xml:space="preserve">
+    <value>Current approved access remains effective. Approve the pending declaration changes, then reconnect.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustApprovalHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to approve the pending declarations. The tray will not approve automatically.</value>
+  </data>
+  <data name="ConnectionPage_NodeTrustDiscoveryHelp" xml:space="preserve">
+    <value>Run this command on the gateway host to list pending requests. Then approve a valid request explicitly. This command does not approve anything.</value>
+  </data>
+  <data name="ConnectionPage_NodeReconnectAfterApproval" xml:space="preserve">
+    <value>Reconnect after approval</value>
+  </data>
+  <data name="ConnectionPage_NodeSurfaceNone" xml:space="preserve">
+    <value>none</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCapabilities" xml:space="preserve">
+    <value>Approved/effective capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectiveCommands" xml:space="preserve">
+    <value>Approved/effective commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeEffectivePermissions" xml:space="preserve">
+    <value>Approved/effective permissions: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCapabilities" xml:space="preserve">
+    <value>Pending declared capabilities: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredCommands" xml:space="preserve">
+    <value>Pending declared commands: {0}</value>
+  </data>
+  <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
+    <value>Pending declared permissions: {0}</value>
   </data>
 </root>

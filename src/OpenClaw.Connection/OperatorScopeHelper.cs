@@ -2,18 +2,25 @@ namespace OpenClaw.Connection;
 
 public static class OperatorScopeHelper
 {
+    private const string AdminScope = "operator.admin";
+    private const string PairingScope = "operator.pairing";
+    private const string ReadScope = "operator.read";
+    private const string WriteScope = "operator.write";
+
     public static bool CanApproveDevices(IReadOnlyList<string> grantedScopes) =>
-        grantedScopes.Any(s =>
-            s.Equals("operator.admin", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("operator.pairing", StringComparison.OrdinalIgnoreCase));
+        HasAdminScope(grantedScopes) ||
+        HasScope(grantedScopes, PairingScope);
 
     public static bool CanReadConfig(IReadOnlyList<string> grantedScopes) =>
-        HasScope(grantedScopes, "operator.admin") ||
-        HasScope(grantedScopes, "operator.read");
+        HasAdminScope(grantedScopes) ||
+        HasScope(grantedScopes, ReadScope);
 
     public static bool CanWriteConfig(IReadOnlyList<string> grantedScopes) =>
-        HasScope(grantedScopes, "operator.admin") ||
-        HasScope(grantedScopes, "operator.write");
+        HasAdminScope(grantedScopes) ||
+        HasScope(grantedScopes, WriteScope);
+
+    public static bool HasAdminScope(IReadOnlyList<string> grantedScopes) =>
+        HasScope(grantedScopes, AdminScope);
 
     private static bool HasScope(IReadOnlyList<string> grantedScopes, string scope) =>
         grantedScopes.Any(s => s.Equals(scope, StringComparison.OrdinalIgnoreCase));

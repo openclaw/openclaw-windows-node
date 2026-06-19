@@ -268,6 +268,69 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ChatMessageReceived_DeltaAfterFinalAssistant_DoesNotReactivateTurn()
+    {
+        var (bridge, provider, _, notifications) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final answer",
+            State = "final"
+        });
+        notifications.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "late trailing frame",
+            State = "delta"
+        });
+
+        var timeline = (await provider.LoadAsync()).Timelines["main"];
+        var assistant = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal("final answer", assistant.Text);
+        Assert.False(assistant.IsStreaming);
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.TurnComplete);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_DeltaAfterFinalAssistantBeforeLifecycleEnd_DoesNotReactivateTurn()
+    {
+        var (bridge, provider, _, notifications) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final answer",
+            State = "final"
+        });
+        notifications.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "late trailing frame",
+            State = "delta"
+        });
+
+        var timeline = (await provider.LoadAsync()).Timelines["main"];
+        var assistant = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal("final answer", assistant.Text);
+        Assert.False(assistant.IsStreaming);
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.TurnComplete);
+    }
+
+    [Fact]
     public async Task ChatMessageReceived_UserEcho_Ignored()
     {
         // After sending a message locally, the SSE echo of that same text
@@ -373,7 +436,7 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task AgentEvent_JobDone_ClearsTurnActive()
     {
-        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
         // Kick off a turn
         _ = provider.SendMessageAsync("main", "hi");
@@ -1976,6 +2039,40 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_CapturesAssistantUsageMetadata()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "A",
+                    State = "final",
+                    Ts = 1714600001000,
+                    InputTokens = 10,
+                    OutputTokens = 20,
+                    ResponseTokens = 30,
+                    ContextPercent = 4,
+                },
+            }
+        });
+        await provider.LoadAsync();
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(10, meta[entry.Id].InputTokens);
+        Assert.Equal(20, meta[entry.Id].OutputTokens);
+        Assert.Equal(30, meta[entry.Id].ResponseTokens);
+        Assert.Equal(4, meta[entry.Id].ContextPercent);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_AssignsTimestampToLocalUserEntry()
     {
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
@@ -2057,6 +2154,292 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(34, meta[entry.Id].OutputTokens);
         Assert.Equal(46, meta[entry.Id].ResponseTokens);
         Assert.Equal(7, meta[entry.Id].ContextPercent);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_AssistantFinal_AccumulatesUsageAcrossAssistantMessages()
+    {
+        var session = new SessionInfo
+        {
+            Key = "main",
+            IsMain = true,
+            DisplayName = "Main session",
+            Status = "active",
+            ContextTokens = 144_000,
+        };
+        var (bridge, provider, _, _) = CreateProvider(new[] { session });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+        });
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "again",
+            State = "final",
+            Ts = 1714600005500,
+        });
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "second",
+            State = "final",
+            Ts = 1714600006000,
+            InputTokens = 20,
+            OutputTokens = 5,
+            ResponseTokens = 25,
+        });
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToArray();
+        Assert.Equal(2, entries.Length);
+
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(27, meta[entries[0].Id].ResponseTokens);
+        Assert.Equal(52, meta[entries[1].Id].ResponseTokens);
+        Assert.Equal(144_000, meta[entries[1].Id].ContextTokens);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_DuplicateAssistantFinal_DoesNotDoubleAccumulateUsage()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        var message = new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "same",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+        };
+
+        bridge.RaiseChat(message);
+        bridge.RaiseChat(message);
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(27, meta[entry.Id].ResponseTokens);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_SnapshotsThreadUsageOntoLatestAssistantWithoutOwnUsage()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600005000
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 200,
+                OutputTokens = 50,
+                TotalTokens = 999,
+                ContextTokens = 5_000,
+            }
+        });
+
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(999, meta[entry.Id].ResponseTokens);
+        Assert.Equal(5_000, meta[entry.Id].ContextTokens);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_OverwritesLatestAssistantResponseUsageWithCumulativeUsage()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 1_000,
+            OutputTokens = 500,
+            ResponseTokens = 1_500,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 20_000,
+                OutputTokens = 3_700,
+                TotalTokens = 23_500,
+                ContextTokens = 400_000,
+            }
+        });
+
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(23_500, meta[entry.Id].ResponseTokens);
+        Assert.Equal(400_000, meta[entry.Id].ContextTokens);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_DoesNotLowerExistingAssistantUsageSnapshot()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 5_000,
+            OutputTokens = 1_900,
+            ResponseTokens = 6_900,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 3_000,
+                OutputTokens = 1_100,
+                ContextTokens = 400_000,
+            }
+        });
+
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(6_900, meta[entry.Id].ResponseTokens);
+        Assert.Equal(400_000, meta[entry.Id].ContextTokens);
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 3_000,
+                OutputTokens = 1_100,
+                ContextTokens = 400_000,
+            }
+        });
+
+        meta = provider.GetEntryMetadata("main");
+        Assert.Equal(6_900, meta[entry.Id].ResponseTokens);
+        Assert.Equal(400_000, meta[entry.Id].ContextTokens);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_SnapshotsMainSessionUsageOntoLegacyMainTimeline()
+    {
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.HasHandshakeSnapshot = true;
+        bridge.MainSessionKey = "agent:main:main";
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 6,
+            ResponseTokens = 26,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "agent:main:main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 1_000,
+                OutputTokens = 100,
+                ContextTokens = 144_000,
+            }
+        });
+
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(1_100, meta[entry.Id].ResponseTokens);
+        Assert.Equal(144_000, meta[entry.Id].ContextTokens);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_Final_SnapshotsExistingThreadUsageOntoAssistant()
+    {
+        var session = new SessionInfo
+        {
+            Key = "main",
+            IsMain = true,
+            DisplayName = "Main session",
+            Status = "active",
+            InputTokens = 200,
+            OutputTokens = 50,
+            TotalTokens = 999,
+            ContextTokens = 5_000,
+        };
+        var (bridge, provider, _, _) = CreateProvider(new[] { session });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600005000
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(999, meta[entry.Id].ResponseTokens);
+        Assert.Equal(5_000, meta[entry.Id].ContextTokens);
     }
 
     [Fact]

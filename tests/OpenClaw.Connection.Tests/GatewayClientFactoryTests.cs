@@ -7,7 +7,7 @@ namespace OpenClaw.Connection.Tests;
 public sealed class GatewayClientFactoryTests
 {
     [Fact]
-    public void Create_BootstrapCredential_PairsAsNode()
+    public void Create_BootstrapCredential_PairsAsOperator()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-gateway-factory-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -20,7 +20,7 @@ public sealed class GatewayClientFactoryTests
                 tempDir,
                 NullLogger.Instance);
 
-            Assert.Equal("node", GetConnectRole(lifecycle.DataClient));
+            Assert.Equal("operator", GetConnectRole(lifecycle.DataClient));
         }
         finally
         {

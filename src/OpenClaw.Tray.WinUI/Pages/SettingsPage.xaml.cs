@@ -202,10 +202,13 @@ public sealed partial class SettingsPage : Page
     private void LoadGatewaySection(SettingsManager settings)
     {
         var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
+        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive());
 
         _localGatewayInstalled = File.Exists(setupStatePath)
             || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);
 
+        OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
+            ? Visibility.Visible : Visibility.Collapsed;
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
         // MSIX warning: Path A (conservative) — show when packaged AND gateway installed.
@@ -228,6 +231,11 @@ public sealed partial class SettingsPage : Page
     private void OnOpenLocalGatewaySetup(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).ShowOnboarding();
+    }
+
+    private void OnOpenGatewayWizard(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).ShowGatewayWizard();
     }
 
     private void OnTestNotification(object sender, RoutedEventArgs e)
@@ -327,6 +335,8 @@ public sealed partial class SettingsPage : Page
 
             if (proc.ExitCode == 0)
             {
+                CurrentApp.Registry?.Load();
+                OpenClawOnboardCard.Visibility = Visibility.Collapsed;
                 ApplyUninstallUiState(UninstallUiState.Success);
                 UninstallResultBar.Severity = InfoBarSeverity.Success;
                 UninstallResultBar.Title = "Local gateway removed";

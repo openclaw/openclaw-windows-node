@@ -8,6 +8,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Controls;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
