@@ -457,7 +457,7 @@ internal static class ShellCommandLine
         {
             "cmd" => BuildCmd(command, argv, scratchDir, pathDirs),
             "pwsh" or "powershell" => BuildPowershell(
-                normalized == "pwsh" ? "pwsh.exe" : ResolveWindowsPowerShellExe(),
+                normalized == "pwsh" ? ResolvePwshExe(pathDirs) : ResolveWindowsPowerShellExe(),
                 command,
                 argv,
                 scratchDir,
@@ -573,6 +573,27 @@ internal static class ShellCommandLine
         return string.IsNullOrWhiteSpace(systemRoot)
             ? "powershell.exe"
             : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    }
+
+    private static string ResolvePwshExe(IReadOnlyList<string> pathDirs)
+    {
+        const string executableName = "pwsh.exe";
+        foreach (var dir in pathDirs)
+        {
+            try
+            {
+                var candidate = Path.Combine(dir, executableName);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch
+            {
+                // Keep PATH resolution best-effort; launch will fail closed if
+                // pwsh is not resolvable on the host.
+            }
+        }
+
+        return executableName;
     }
 
     private static string QuoteProcessPath(string path)

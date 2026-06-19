@@ -546,6 +546,34 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
+    public void Build_PwshShell_ResolvesPwshFromPathBeforeClearingProcessEnvironment()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-pwsh-resolve-test-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var binDir = Directory.CreateDirectory(Path.Combine(tempRoot, "bin")).FullName;
+            var pwshPath = Path.Combine(binDir, "pwsh.exe");
+            File.WriteAllBytes(pwshPath, Array.Empty<byte>());
+            using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: binDir);
+
+            var expectedPrefix = pwshPath.IndexOfAny(new[] { ' ', '\t', '"' }) < 0
+                ? pwshPath
+                : "\"" + pwshPath.Replace("\"", "\\\"") + "\"";
+            Assert.StartsWith(expectedPrefix, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(config.Process.Env!);
+            Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Build_PowerShellShell_UsesResolvedWindowsPowerShellExe()
     {
         using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"powershell"}""");

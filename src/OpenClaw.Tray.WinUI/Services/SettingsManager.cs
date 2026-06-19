@@ -143,8 +143,10 @@ public class SettingsManager
     public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
-    /// <summary>Master switch for system.run containment. When true (default), system.run runs sandboxed and is denied if MXC is unavailable. When false, system.run runs on host like before.</summary>
+    /// <summary>Master switch for system.run containment. When true (default), system.run uses MXC when available and falls back to host execution when unavailable. When false, system.run runs on host like before.</summary>
     public bool SystemRunSandboxEnabled { get => _data.SystemRunSandboxEnabled; set => _data = _data with { SystemRunSandboxEnabled = value }; }
+    /// <summary>When true, sandbox-enabled system.run blocks instead of using the compatibility host fallback if MXC is unavailable. Default false.</summary>
+    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => _data.SystemRunBlockHostFallbackWhenMxcUnavailable; set => _data = _data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }; }
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
     public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
 
@@ -266,6 +268,7 @@ public class SettingsManager
         SkippedUpdateTag = "",
         PreferredGatewayId = null,
         SystemRunSandboxEnabled = true,
+        SystemRunBlockHostFallbackWhenMxcUnavailable = false,
         SystemRunAllowOutbound = false,
         SandboxClipboard = SandboxClipboardMode.None,
         SandboxDocumentsAccess = null,

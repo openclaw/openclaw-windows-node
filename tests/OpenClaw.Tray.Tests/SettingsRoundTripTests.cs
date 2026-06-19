@@ -56,6 +56,9 @@ public class SettingsRoundTripTests
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
             PreferStructuredCategories = true,
+            SystemRunSandboxEnabled = true,
+            SystemRunBlockHostFallbackWhenMxcUnavailable = true,
+            SystemRunAllowOutbound = true,
             UserRules = new List<UserNotificationRule>
             {
                 new() { Pattern = "build.*fail", IsRegex = true, Category = "urgent", Enabled = true }
@@ -111,6 +114,9 @@ public class SettingsRoundTripTests
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
+        Assert.Equal(original.SystemRunSandboxEnabled, restored.SystemRunSandboxEnabled);
+        Assert.Equal(original.SystemRunBlockHostFallbackWhenMxcUnavailable, restored.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.Equal(original.SystemRunAllowOutbound, restored.SystemRunAllowOutbound);
         Assert.NotNull(restored.UserRules);
         Assert.Single(restored.UserRules);
         Assert.Equal("build.*fail", restored.UserRules[0].Pattern);
@@ -176,6 +182,9 @@ public class SettingsRoundTripTests
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
+        Assert.True(settings.SystemRunSandboxEnabled);
+        Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.False(settings.SystemRunAllowOutbound);
         // HubNavPaneOpen defaults to true (NavView starts expanded for new
         // installs and for any settings file that predates the field).
         Assert.True(settings.HubNavPaneOpen);

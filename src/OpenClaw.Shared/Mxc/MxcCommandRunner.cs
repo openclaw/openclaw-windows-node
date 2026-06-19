@@ -13,8 +13,9 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Honors <see cref="SettingsData.SystemRunSandboxEnabled"/>:
 /// <list type="bullet">
-/// <item><c>true</c> (default) — sandbox via MXC; deny when MXC is unavailable.</item>
-/// <item><c>false</c> — explicit operator opt-out; route through the host runner.</item>
+/// <item><c>true</c> (default) — sandbox via MXC when available; fall back uncontained when MXC is unavailable.</item>
+/// <item><c>true</c> with <see cref="SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable"/> — deny when MXC is unavailable.</item>
+/// <item><c>false</c> — bypass MXC; route through the host runner.</item>
 /// </list>
 /// </remarks>
 public sealed class MxcCommandRunner : ICommandRunner
@@ -53,39 +54,25 @@ public sealed class MxcCommandRunner : ICommandRunner
         if (!string.IsNullOrWhiteSpace(requestedShell))
             return requestedShell.Trim();
 
-        return _settingsProvider().SystemRunSandboxEnabled
-            ? DefaultSandboxShell
-            : _hostFallback.ResolveEffectiveShell(requestedShell);
+        var settings = _settingsProvider();
+        if (!settings.SystemRunSandboxEnabled)
+            return _hostFallback.ResolveEffectiveShell(requestedShell);
+
+        if (_isSandboxAvailable() || settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+            return DefaultSandboxShell;
+
+        return _hostFallback.ResolveEffectiveShell(requestedShell);
     }
 
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
     {
         var settings = _settingsProvider();
+        var effectiveShell = ResolveEffectiveShell(request.Shell);
 
         if (!settings.SystemRunSandboxEnabled)
         {
             _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
-            return await _hostFallback.RunAsync(request, ct);
-        }
-
-        // Fail closed by default: if the operator enabled sandboxing, we must
-        // not silently downgrade to uncontained host execution when MXC is
-        // unavailable or disappears at runtime.
-        if (!_isSandboxAvailable())
-        {
-            const string message =
-                "Sandboxed system.run is enabled, but MXC is unavailable on this host. " +
-                "Update Windows or repair the MXC install, or explicitly disable sandboxing " +
-                "if uncontained host execution is acceptable.";
-            _logger.Warn("[mxc] system.run denied: sandbox enabled but MXC unavailable");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr = message,
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
+            return await RunHostFallbackAsync(request, effectiveShell, ct);
         }
 
         // A direct-argv request reaching the sandbox cannot be honored: the sandbox
@@ -122,6 +109,23 @@ public sealed class MxcCommandRunner : ICommandRunner
                 TimedOut = false,
                 DurationMs = 0,
             };
+        }
+
+        if (!_isSandboxAvailable())
+        {
+            if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+                return DenySandboxUnavailable(
+                    "Sandboxed system.run is enabled, but MXC is unavailable on this host and host fallback is blocked by settings. " +
+                    "Update Windows or repair MXC, or disable strict fallback blocking if uncontained host execution is acceptable.",
+                    "[mxc] system.run denied: sandbox unavailable and host fallback blocked by settings");
+
+            // Compatibility default: keep pre-MXC host execution on unsupported
+            // hosts. Operators that require fail-closed containment enable
+            // SystemRunBlockHostFallbackWhenMxcUnavailable.
+            _logger.Warn(
+                "[mxc] system.run UNCONTAINED: sandbox unavailable on this host; " +
+                "routing through host runner for compatibility.");
+            return await RunHostFallbackAsync(request, effectiveShell, ct);
         }
 
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
@@ -162,21 +166,20 @@ public sealed class MxcCommandRunner : ICommandRunner
         {
             // Invalidate any cached availability — what we thought was available
             // turned out not to be at runtime. Next command re-probes and the
-            // top-level !_isSandboxAvailable() branch will return a typed deny.
+            // top-level !_isSandboxAvailable() branch will use the compatibility
+            // fallback until MXC is available again.
             _invalidateAvailability?.Invoke();
 
-            _logger.Warn($"[mxc] system.run denied: sandbox became unavailable at runtime: {ex.Message}");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr =
-                    "Sandboxed system.run is enabled, but MXC became unavailable at runtime: " +
-                    $"{ex.Message}. Repair MXC or explicitly disable sandboxing if uncontained " +
-                    "host execution is acceptable.",
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
+            if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+                return DenySandboxUnavailable(
+                    "Sandboxed system.run is enabled, but MXC became unavailable at runtime and host fallback is blocked by settings: " +
+                    $"{ex.Message}. Repair MXC or disable strict fallback blocking if uncontained host execution is acceptable.",
+                    $"[mxc] system.run denied: sandbox became unavailable at runtime and host fallback is blocked by settings: {ex.Message}");
+
+            _logger.Warn(
+                $"[mxc] system.run UNCONTAINED: sandbox became unavailable at runtime ({ex.Message}); " +
+                "routing through host runner for compatibility.");
+            return await RunHostFallbackAsync(request, effectiveShell, ct);
         }
         catch (OperationCanceledException)
         {
@@ -202,6 +205,36 @@ public sealed class MxcCommandRunner : ICommandRunner
                 DurationMs = 0,
             };
         }
+    }
+
+    private CommandResult DenySandboxUnavailable(string stderr, string logMessage)
+    {
+        _logger.Warn(logMessage);
+        return new CommandResult
+        {
+            Stdout = string.Empty,
+            Stderr = stderr,
+            ExitCode = -1,
+            TimedOut = false,
+            DurationMs = 0,
+        };
+    }
+
+    private Task<CommandResult> RunHostFallbackAsync(CommandRequest request, string effectiveShell, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Shell))
+            return _hostFallback.RunAsync(request, ct);
+
+        var fallbackRequest = new CommandRequest
+        {
+            Command = request.Command,
+            Args = request.Args,
+            Shell = effectiveShell,
+            Cwd = request.Cwd,
+            TimeoutMs = request.TimeoutMs,
+            Env = request.Env,
+        };
+        return _hostFallback.RunAsync(fallbackRequest, ct);
     }
 
     private static JsonElement SerializeArgs(CommandRequest request)
@@ -247,6 +280,7 @@ public sealed class MxcCommandRunner : ICommandRunner
         return new
         {
             systemRunSandboxEnabled = settings.SystemRunSandboxEnabled,
+            systemRunBlockHostFallbackWhenMxcUnavailable = settings.SystemRunBlockHostFallbackWhenMxcUnavailable,
             systemRunAllowOutbound = settings.SystemRunAllowOutbound,
             sandboxClipboard = settings.SandboxClipboard,
             sandboxDocumentsAccess = settings.SandboxDocumentsAccess,
