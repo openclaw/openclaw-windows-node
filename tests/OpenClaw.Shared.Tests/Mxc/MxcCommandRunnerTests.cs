@@ -96,12 +96,29 @@ public class MxcCommandRunnerTests
         };
         var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
 
-        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("host-ran", result.Stdout);
         Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("cmd", fallback.LastRequest!.Shell);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+    }
+
+    [Fact]
+    public async Task RunAsync_SandboxEnabled_DeniesRuntimeFallbackWhenOmittedShellWouldChangeAfterApproval()
+    {
+        var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host-ran" },
+        };
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("pre-approved shell", result.Stderr);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
@@ -155,10 +172,13 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_MxcUnavailable_RejectsCustomEnvBeforeHostFallback()
+    public async Task RunAsync_SandboxEnabled_MxcUnavailable_PreservesCustomEnvOnHostFallback()
     {
         var executor = new FakeSandboxExecutor();
-        var fallback = new FakeCommandRunner();
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
+        };
         var runner = NewRunner(
             executor,
             fallback,
@@ -171,10 +191,12 @@ public class MxcCommandRunnerTests
             Env = new Dictionary<string, string> { ["FOO"] = "bar" },
         });
 
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("custom environment variables", result.Stderr);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
         Assert.Null(executor.LastRequest);
-        Assert.Null(fallback.LastRequest);
+        Assert.NotNull(fallback.LastRequest);
+        Assert.NotNull(fallback.LastRequest!.Env);
+        Assert.Equal("bar", fallback.LastRequest.Env["FOO"]);
     }
 
     [Fact]
@@ -353,13 +375,53 @@ public class MxcCommandRunnerTests
             invalidateAvailability: () => invalidationCount++,
             NullLogger.Instance);
 
-        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("host", result.Stdout);
         Assert.Equal(1, invalidationCount);
         Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("cmd", fallback.LastRequest!.Shell);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+    }
+
+    [Fact]
+    public async Task RunAsync_CustomEnv_ReprobesAvailabilityAndFallsBackWhenMxcBecameUnavailable()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
+        };
+        var sandboxAvailable = true;
+        var invalidationCount = 0;
+        var runner = new MxcCommandRunner(
+            executor,
+            fallback,
+            () => NewSettings(sandboxEnabled: true),
+            () => "C:\\test\\settings",
+            () => sandboxAvailable,
+            invalidateAvailability: () =>
+            {
+                invalidationCount++;
+                sandboxAvailable = false;
+            },
+            NullLogger.Instance);
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            Shell = "powershell",
+            Env = new Dictionary<string, string> { ["FOO"] = "bar" },
+        });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
+        Assert.Equal(1, invalidationCount);
+        Assert.Null(executor.LastRequest);
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.NotNull(fallback.LastRequest.Env);
+        Assert.Equal("bar", fallback.LastRequest.Env["FOO"]);
     }
 
     [Fact]
@@ -610,11 +672,11 @@ public class MxcCommandRunnerTests
         };
         var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
 
-        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("host", result.Stdout);
         Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("cmd", fallback.LastRequest!.Shell);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
     }
 }

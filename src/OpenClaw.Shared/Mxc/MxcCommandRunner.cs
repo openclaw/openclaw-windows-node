@@ -128,6 +128,42 @@ public sealed class MxcCommandRunner : ICommandRunner
             return await RunHostFallbackAsync(request, effectiveShell, ct);
         }
 
+        if (request.Env is { Count: > 0 })
+        {
+            _invalidateAvailability?.Invoke();
+            if (!_isSandboxAvailable())
+            {
+                if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+                    return DenySandboxUnavailable(
+                        "Sandboxed system.run is enabled, but MXC is unavailable on this host and host fallback is blocked by settings. " +
+                        "Update Windows or repair MXC, or disable strict fallback blocking if uncontained host execution is acceptable.",
+                        "[mxc] system.run denied: custom env requires host fallback, but sandbox is unavailable and host fallback is blocked by settings");
+
+                _logger.Warn(
+                    "[mxc] system.run UNCONTAINED: custom env is unsupported by MXC processcontainer " +
+                    "and MXC is unavailable after re-probe; routing through host runner for compatibility.");
+                var hostShell = ResolveHostFallbackShell(request.Shell);
+                if (FallbackWouldChangeApprovedShell(request, effectiveShell, hostShell))
+                    return DenyFallbackShellMismatch(effectiveShell, hostShell);
+
+                return await RunHostFallbackAsync(request, hostShell, ct);
+            }
+
+            const string message =
+                "Sandboxed system.run does not currently support custom environment variables " +
+                "with the Windows MXC 0.7 processcontainer backend. Remove env from the request " +
+                "or explicitly disable sandboxing if uncontained host execution is acceptable.";
+            _logger.Warn("[mxc] system.run denied: custom env is unsupported by MXC processcontainer");
+            return new CommandResult
+            {
+                Stdout = string.Empty,
+                Stderr = message,
+                ExitCode = -1,
+                TimedOut = false,
+                DurationMs = 0,
+            };
+        }
+
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
         var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectoryPath);
         var argsJson = SerializeArgs(request);
@@ -179,7 +215,11 @@ public sealed class MxcCommandRunner : ICommandRunner
             _logger.Warn(
                 $"[mxc] system.run UNCONTAINED: sandbox became unavailable at runtime ({ex.Message}); " +
                 "routing through host runner for compatibility.");
-            return await RunHostFallbackAsync(request, effectiveShell, ct);
+            var hostShell = ResolveHostFallbackShell(request.Shell);
+            if (FallbackWouldChangeApprovedShell(request, effectiveShell, hostShell))
+                return DenyFallbackShellMismatch(effectiveShell, hostShell);
+
+            return await RunHostFallbackAsync(request, hostShell, ct);
         }
         catch (OperationCanceledException)
         {
@@ -235,6 +275,36 @@ public sealed class MxcCommandRunner : ICommandRunner
             Env = request.Env,
         };
         return _hostFallback.RunAsync(fallbackRequest, ct);
+    }
+
+    private string ResolveHostFallbackShell(string? requestedShell) =>
+        string.IsNullOrWhiteSpace(requestedShell)
+            ? _hostFallback.ResolveEffectiveShell(requestedShell)
+            : requestedShell.Trim();
+
+    private static bool FallbackWouldChangeApprovedShell(
+        CommandRequest request,
+        string approvedShell,
+        string hostFallbackShell) =>
+        string.IsNullOrWhiteSpace(request.Shell)
+        && !string.Equals(approvedShell, hostFallbackShell, StringComparison.OrdinalIgnoreCase);
+
+    private CommandResult DenyFallbackShellMismatch(string approvedShell, string hostFallbackShell)
+    {
+        var message =
+            "Sandboxed system.run could not safely fall back to host execution because the " +
+            $"pre-approved shell was '{approvedShell}' but host fallback would execute with " +
+            $"'{hostFallbackShell}'. Retry with an explicit shell or after MXC availability " +
+            "has been re-probed.";
+        _logger.Warn("[mxc] system.run denied: host fallback shell would differ from approved shell");
+        return new CommandResult
+        {
+            Stdout = string.Empty,
+            Stderr = message,
+            ExitCode = -1,
+            TimedOut = false,
+            DurationMs = 0,
+        };
     }
 
     private static JsonElement SerializeArgs(CommandRequest request)
