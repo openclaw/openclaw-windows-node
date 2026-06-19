@@ -234,10 +234,10 @@ public class LocalCommandRunner : ICommandRunner
                 $"Direct-argv mode cannot guarantee argv fidelity for batch scripts: {executable}", nameof(executable));
     }
 
-    private static (string fileName, string arguments) BuildProcessArgs(CommandRequest request)
+    internal static (string fileName, string arguments) BuildProcessArgs(CommandRequest request, string? pathEnvVar = null)
     {
         var defaultShell = string.IsNullOrWhiteSpace(request.Shell);
-        var shell = ResolveEffectiveShellName(request.Shell);
+        var shell = ResolveEffectiveShellName(request.Shell, pathEnvVar);
         var command = request.Command;
         var isCmd = shell.Equals("cmd", StringComparison.OrdinalIgnoreCase);
         
@@ -253,7 +253,7 @@ public class LocalCommandRunner : ICommandRunner
             return ("cmd.exe", $"/C {command}");
         if (shell.Equals("pwsh", StringComparison.OrdinalIgnoreCase))
         {
-            var pwshPath = ResolveOnPath("pwsh.exe");
+            var pwshPath = ResolveOnPath("pwsh.exe", pathEnvVar);
             if (pwshPath is not null || !defaultShell)
                 return (pwshPath ?? "pwsh.exe", $"-NoProfile -NonInteractive -Command {command}");
         }
@@ -262,16 +262,20 @@ public class LocalCommandRunner : ICommandRunner
     }
 
     internal static string ResolveEffectiveShellName(string? requestedShell)
+        => ResolveEffectiveShellName(requestedShell, pathEnvVar: null);
+
+    private static string ResolveEffectiveShellName(string? requestedShell, string? pathEnvVar)
     {
         if (!string.IsNullOrWhiteSpace(requestedShell))
             return requestedShell.Trim();
 
-        return ResolveOnPath("pwsh.exe") is not null ? "pwsh" : "powershell";
+        return ResolveOnPath("pwsh.exe", pathEnvVar) is not null ? "pwsh" : "powershell";
     }
 
-    private static string? ResolveOnPath(string executableName)
+    private static string? ResolveOnPath(string executableName, string? pathEnvVar = null)
     {
-        var path = Environment.GetEnvironmentVariable("PATH")
+        var path = pathEnvVar
+            ?? Environment.GetEnvironmentVariable("PATH")
             ?? Environment.GetEnvironmentVariable("Path");
         if (string.IsNullOrWhiteSpace(path))
             return null;

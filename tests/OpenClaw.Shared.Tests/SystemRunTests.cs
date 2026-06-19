@@ -792,13 +792,6 @@ public class SystemRunTests
     }
 }
 
-[CollectionDefinition("EnvironmentMutation", DisableParallelization = true)]
-public sealed class EnvironmentMutationTestCollection
-{
-    public const string Name = "EnvironmentMutation";
-}
-
-[Collection(EnvironmentMutationTestCollection.Name)]
 public class LocalCommandRunnerTests
 {
     [Fact]
@@ -806,26 +799,20 @@ public class LocalCommandRunnerTests
     {
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "openclaw-pwsh-path-" + Guid.NewGuid().ToString("N"))).FullName;
         var fakePwsh = Path.Combine(tempDir, "pwsh.exe");
-        var originalPath = Environment.GetEnvironmentVariable("PATH");
-        var originalPathMixedCase = Environment.GetEnvironmentVariable("Path");
         try
         {
             File.WriteAllBytes(fakePwsh, Array.Empty<byte>());
-            Environment.SetEnvironmentVariable("PATH", tempDir);
-            Environment.SetEnvironmentVariable("Path", tempDir);
 
             var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
             {
                 Command = "Write-Output hi",
-            });
+            }, pathEnvVar: tempDir);
 
             Assert.Equal(fakePwsh, fileName);
             Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("PATH", originalPath);
-            Environment.SetEnvironmentVariable("Path", originalPathMixedCase);
             // slopwatch-ignore: SW003 Test cleanup is best-effort and must not hide assertion failures.
             try { Directory.Delete(tempDir, recursive: true); } catch { }
         }
@@ -834,52 +821,26 @@ public class LocalCommandRunnerTests
     [Fact]
     public void BuildProcessArgs_DefaultShellFallsBackToWindowsPowerShellWhenPwshMissing()
     {
-        var originalPath = Environment.GetEnvironmentVariable("PATH");
-        var originalPathMixedCase = Environment.GetEnvironmentVariable("Path");
-        try
+        var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
         {
-            Environment.SetEnvironmentVariable("PATH", string.Empty);
-            Environment.SetEnvironmentVariable("Path", string.Empty);
+            Command = "Write-Output hi",
+        }, pathEnvVar: string.Empty);
 
-            var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
-            {
-                Command = "Write-Output hi",
-            });
-
-            Assert.Equal(ExpectedWindowsPowerShellExe(), fileName);
-            Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("PATH", originalPath);
-            Environment.SetEnvironmentVariable("Path", originalPathMixedCase);
-        }
+        Assert.Equal(ExpectedWindowsPowerShellExe(), fileName);
+        Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
     }
 
     [Fact]
     public void BuildProcessArgs_ExplicitPwshDoesNotFallback()
     {
-        var originalPath = Environment.GetEnvironmentVariable("PATH");
-        var originalPathMixedCase = Environment.GetEnvironmentVariable("Path");
-        try
+        var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
         {
-            Environment.SetEnvironmentVariable("PATH", string.Empty);
-            Environment.SetEnvironmentVariable("Path", string.Empty);
+            Command = "Write-Output hi",
+            Shell = "pwsh",
+        }, pathEnvVar: string.Empty);
 
-            var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
-            {
-                Command = "Write-Output hi",
-                Shell = "pwsh",
-            });
-
-            Assert.Equal("pwsh.exe", fileName);
-            Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("PATH", originalPath);
-            Environment.SetEnvironmentVariable("Path", originalPathMixedCase);
-        }
+        Assert.Equal("pwsh.exe", fileName);
+        Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
     }
 
     [Fact]
