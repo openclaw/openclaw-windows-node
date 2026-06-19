@@ -45,7 +45,7 @@ public static class MxcPolicyBuilder
     public static SandboxPolicy ForSystemRun(SettingsData settings, string settingsDirectoryPath)
     {
         var deniedPaths = new List<string>();
-        AddDeniedPathIfExists(deniedPaths, settingsDirectoryPath);
+        AddDeniedPath(deniedPaths, settingsDirectoryPath);
 
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!string.IsNullOrWhiteSpace(userProfile))
@@ -117,23 +117,6 @@ public static class MxcPolicyBuilder
                 Clipboard: MapClipboard(settings.SandboxClipboard),
                 AllowInputInjection: false),
             TimeoutMs: settings.SandboxTimeoutMs > 0 ? settings.SandboxTimeoutMs : null);
-    }
-
-    private static void AddDeniedPathIfExists(List<string> deniedPaths, string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return;
-
-        try
-        {
-            if (Directory.Exists(path))
-                deniedPaths.Add(path);
-        }
-        catch
-        {
-            // If the host cannot even probe this path, avoid making the whole
-            // sandbox launch fail while preparing DACLs for an unverified path.
-        }
     }
 
     private static void AddDeniedPath(List<string> deniedPaths, string path)

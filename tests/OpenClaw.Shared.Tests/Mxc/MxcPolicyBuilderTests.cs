@@ -46,7 +46,7 @@ public class MxcPolicyBuilderTests
     }
 
     [Fact]
-    public void ForSystemRun_SkipsMissingSettingsDirectoryPath()
+    public void ForSystemRun_DeniesMissingSettingsDirectoryPath()
     {
         var settings = new SettingsData();
         var missingSettingsDir = Path.Combine(Path.GetTempPath(), "openclaw-missing-settings-" + Guid.NewGuid().ToString("N"));
@@ -55,7 +55,7 @@ public class MxcPolicyBuilderTests
 
         Assert.NotNull(policy.Filesystem);
         Assert.NotNull(policy.Filesystem!.DeniedPaths);
-        Assert.DoesNotContain(policy.Filesystem.DeniedPaths!, p =>
+        Assert.Contains(policy.Filesystem.DeniedPaths!, p =>
             string.Equals(p, missingSettingsDir, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -332,6 +332,34 @@ public class MxcPolicyBuilderTests
         finally
         {
             TryDeleteTempDir(settingsDir);
+        }
+    }
+
+    [Fact]
+    public void ForSystemRun_CustomFolder_ParentOfMissingSettingsDirectory_FilteredOut()
+    {
+        var parent = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "openclaw-settings-parent-" + Guid.NewGuid().ToString("N"))).FullName;
+        var missingSettingsDir = Path.Combine(parent, "OpenClawTray");
+        var settings = new SettingsData
+        {
+            SandboxCustomFolders = new()
+            {
+                new SandboxCustomFolder { Path = parent, Access = SandboxFolderAccess.ReadWrite },
+            },
+        };
+
+        try
+        {
+            var policy = MxcPolicyBuilder.ForSystemRun(settings, missingSettingsDir);
+
+            Assert.Contains(policy.Filesystem!.DeniedPaths!, p =>
+                string.Equals(Path.GetFullPath(p), Path.GetFullPath(missingSettingsDir), StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(policy.Filesystem.ReadwritePaths!, p =>
+                string.Equals(Path.GetFullPath(p), Path.GetFullPath(parent), StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            TryDeleteTempDir(parent);
         }
     }
 

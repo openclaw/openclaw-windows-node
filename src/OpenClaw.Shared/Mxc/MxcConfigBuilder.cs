@@ -55,10 +55,12 @@ public static class MxcConfigBuilder
         SandboxExecutionRequest request,
         string scratchDir,
         string? containerId = null,
-        string? pathEnvVar = null)
+        string? pathEnvVar = null,
+        Func<string, bool>? deniedPathExists = null)
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
         if (string.IsNullOrWhiteSpace(scratchDir)) throw new ArgumentException("scratchDir required", nameof(scratchDir));
+        deniedPathExists ??= PathExists;
 
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
@@ -97,7 +99,7 @@ public static class MxcConfigBuilder
         // cannot be prepared and make the sandbox fail before command launch.
         var deniedForFiltering = (policy?.Filesystem?.DeniedPaths ?? Array.Empty<string>()).ToList();
         var deniedForBackend = deniedForFiltering
-            .Where(ShouldEmitDeniedPathToBackend)
+            .Where(path => ShouldEmitDeniedPathToBackend(path, deniedPathExists))
             .ToList();
 
         // cwd auto-grant — AppContainer does not auto-grant the working
@@ -318,7 +320,7 @@ public static class MxcConfigBuilder
             .ToList();
     }
 
-    private static bool ShouldEmitDeniedPathToBackend(string path)
+    private static bool ShouldEmitDeniedPathToBackend(string path, Func<string, bool> pathExists)
     {
         var normalized = NormalizePath(path);
         if (string.IsNullOrWhiteSpace(normalized))
@@ -331,8 +333,20 @@ public static class MxcConfigBuilder
                 return false;
         }
 
+        try
+        {
+            if (!pathExists(normalized))
+                return false;
+        }
+        catch
+        {
+            return false;
+        }
+
         return true;
     }
+
+    private static bool PathExists(string path) => Directory.Exists(path) || File.Exists(path);
 
     private static IEnumerable<string> HostProfileDenyRoots()
     {

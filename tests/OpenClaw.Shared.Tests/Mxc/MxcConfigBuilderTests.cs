@@ -42,6 +42,8 @@ public class MxcConfigBuilderTests
         P.Settings, P.Ssh, P.Chrome, P.Edge, P.Brave, P.Firefox, P.PsRead,
     };
 
+    private static readonly Func<string, bool> DeniedPathExists = _ => true;
+
     private static SandboxPolicy LockedDownPolicy() => new(
         Version: MxcPolicyBuilder.SupportedPolicyVersion,
         Filesystem: new FilesystemPolicy(
@@ -92,6 +94,19 @@ public class MxcConfigBuilderTests
         Policy: policy,
         TimeoutMs: 0); // explicitly zero so timeout in builder uses request.TimeoutMs=0 → default 30s
 
+    private static MxcConfig BuildConfig(
+        SandboxExecutionRequest request,
+        string scratchDir = P.Scratch,
+        string? containerId = null,
+        string? pathEnvVar = "",
+        Func<string, bool>? deniedPathExists = null) =>
+        MxcConfigBuilder.Build(
+            request,
+            scratchDir,
+            containerId,
+            pathEnvVar,
+            deniedPathExists ?? DeniedPathExists);
+
     [Theory]
     [InlineData("locked-down", "LockedDown")]
     [InlineData("balanced", "Balanced")]
@@ -116,7 +131,7 @@ public class MxcConfigBuilderTests
         // policy golden stays independent from shell command-line encoding.
         using var argsDoc = JsonDocument.Parse("""{"shell":"cmd"}""");
         var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
-        var config = MxcConfigBuilder.Build(
+        var config = BuildConfig(
             request,
             scratchDir: P.Scratch,
             containerId: GoldenContainerId,
@@ -177,8 +192,8 @@ public class MxcConfigBuilderTests
     public void Build_OutboundOn_AddsInternetClientCapability()
     {
         var policy = BalancedPolicy();
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
-        Assert.Contains("internetClient", config.ProcessContainer!.Capabilities!);
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
+        Assert.Contains("internetClient", config.AppContainer!.Capabilities!);
         Assert.Equal("allow", config.Network!.DefaultPolicy);
     }
 
@@ -186,8 +201,8 @@ public class MxcConfigBuilderTests
     public void Build_OutboundOff_OmitsInternetClient_AndNetworkBlocks()
     {
         var policy = LockedDownPolicy();
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
-        Assert.DoesNotContain("internetClient", config.ProcessContainer!.Capabilities!);
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
+        Assert.DoesNotContain("internetClient", config.AppContainer!.Capabilities!);
         Assert.Equal("block", config.Network!.DefaultPolicy);
     }
 
@@ -199,14 +214,14 @@ public class MxcConfigBuilderTests
     public void Build_ClipboardMode_RoundTripsToWxcExecString(ClipboardPolicy mode, string expected)
     {
         var policy = LockedDownPolicy() with { Ui = new UiPolicy(false, mode, false) };
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
         Assert.Equal(expected, config.Ui!.Clipboard);
     }
 
     [Fact]
     public void Build_AddsScratchDirToReadwritePaths()
     {
-        var config = MxcConfigBuilder.Build(RequestFor(BalancedPolicy()), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(BalancedPolicy()), pathEnvVar: "");
         Assert.Contains(P.Scratch, config.Filesystem!.ReadwritePaths!);
     }
 
@@ -224,7 +239,7 @@ public class MxcConfigBuilderTests
         };
 
         var ex = Assert.Throws<NotSupportedException>(() =>
-            MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: ""));
+            BuildConfig(request, pathEnvVar: ""));
         Assert.Contains("Explicit environment variables", ex.Message);
     }
 
@@ -232,7 +247,7 @@ public class MxcConfigBuilderTests
     public void Build_AutoGrantsCwdAsReadonly_WhenNotAlreadyCovered()
     {
         var request = RequestFor(BalancedPolicy()) with { Cwd = "C:\\unrelated\\workdir" };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
         Assert.Contains("C:\\unrelated\\workdir", config.Filesystem!.ReadonlyPaths!);
         Assert.DoesNotContain("C:\\unrelated\\workdir", config.Filesystem!.ReadwritePaths!);
     }
@@ -242,7 +257,7 @@ public class MxcConfigBuilderTests
     {
         var policy = PermissivePolicy(); // Documents already in readwrite
         var request = RequestFor(policy) with { Cwd = Path.Combine(P.Documents, "subfolder") };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
 
         Assert.DoesNotContain(Path.Combine(P.Documents, "subfolder"), config.Filesystem!.ReadonlyPaths!);
         Assert.DoesNotContain(Path.Combine(P.Documents, "subfolder"), config.Filesystem!.ReadwritePaths!);
@@ -253,7 +268,7 @@ public class MxcConfigBuilderTests
     {
         var policy = BalancedPolicy(); // Documents already in readonly
         var request = RequestFor(policy) with { Cwd = Path.Combine(P.Documents, "subfolder") };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
         // Should not have added the subfolder explicitly (parent already grants).
         Assert.DoesNotContain(Path.Combine(P.Documents, "subfolder"), config.Filesystem!.ReadonlyPaths!);
     }
@@ -263,7 +278,7 @@ public class MxcConfigBuilderTests
     {
         var policy = BalancedPolicy();
         var request = RequestFor(policy) with { Cwd = Path.Combine(P.Ssh, "keys") };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
         Assert.DoesNotContain(Path.Combine(P.Ssh, "keys"), config.Filesystem!.ReadonlyPaths!);
     }
 
@@ -292,13 +307,38 @@ public class MxcConfigBuilderTests
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
 
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
 
         Assert.DoesNotContain(chromeProfile, config.Filesystem!.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain(userProfile, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain(chromeProfile, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain(sshPath, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
         Assert.Contains(settingsDeny, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_FiltersMissingDeniedPathsBeforeBackendEmissionButStillFiltersAllows()
+    {
+        var parent = "C:\\Users\\example\\AppData\\Roaming";
+        var missingSettingsDeny = Path.Combine(parent, "OpenClawTray");
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: new[] { parent },
+                ReadonlyPaths: Array.Empty<string>(),
+                DeniedPaths: new[] { missingSettingsDeny },
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var config = BuildConfig(
+            RequestFor(policy),
+            pathEnvVar: "",
+            deniedPathExists: _ => false);
+
+        Assert.DoesNotContain(parent, config.Filesystem!.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(missingSettingsDeny, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -328,7 +368,7 @@ public class MxcConfigBuilderTests
             using var argsDoc = JsonDocument.Parse("""{"command":"git --version","shell":"cmd"}""");
             var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-            var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: tempDir);
+            var config = BuildConfig(request, pathEnvVar: tempDir);
 
             Assert.NotNull(config.Process.Env);
             Assert.Empty(config.Process.Env);
@@ -360,7 +400,7 @@ public class MxcConfigBuilderTests
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
 
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
         Assert.DoesNotContain("C:\\", config.Filesystem!.ReadonlyPaths!);
     }
 
@@ -378,7 +418,7 @@ public class MxcConfigBuilderTests
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
 
-        var config = MxcConfigBuilder.Build(RequestFor(policy) with { Cwd = "C:\\workspace" }, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy) with { Cwd = "C:\\workspace" }, pathEnvVar: "");
         Assert.Contains("C:\\workspace", config.Filesystem!.ReadonlyPaths!);
         Assert.DoesNotContain("C:\\workspace", config.Filesystem!.ReadwritePaths!);
     }
@@ -425,7 +465,7 @@ public class MxcConfigBuilderTests
         using var argsDoc = JsonDocument.Parse("""{"command":"tool --version","shell":"cmd"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: programFiles);
+        var config = BuildConfig(request, pathEnvVar: programFiles);
 
         Assert.Contains($"set \"PATH={programFiles}\"", config.Process.CommandLine);
         Assert.DoesNotContain(programFiles, config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
@@ -445,7 +485,7 @@ public class MxcConfigBuilderTests
             Network: new NetworkPolicy(false, false),
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
         Assert.DoesNotContain(Path.Combine(P.Ssh, "keys"), config.Filesystem!.ReadwritePaths!);
         Assert.DoesNotContain(Path.Combine(P.Chrome, "Profile 1"), config.Filesystem!.ReadonlyPaths!);
     }
@@ -453,7 +493,7 @@ public class MxcConfigBuilderTests
     [Fact]
     public void Build_TimeoutDefaultsTo30sWhenRequestZero()
     {
-        var config = MxcConfigBuilder.Build(RequestFor(BalancedPolicy()), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(BalancedPolicy()), pathEnvVar: "");
         Assert.Equal(30_000, config.Process.TimeoutMs);
     }
 
@@ -461,7 +501,7 @@ public class MxcConfigBuilderTests
     public void Build_TimeoutHonorsRequestValue()
     {
         var req = RequestFor(BalancedPolicy()) with { TimeoutMs = 12_345 };
-        var config = MxcConfigBuilder.Build(req, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(req, pathEnvVar: "");
         Assert.Equal(12_345, config.Process.TimeoutMs);
     }
 
@@ -471,7 +511,7 @@ public class MxcConfigBuilderTests
         using var argsDoc = JsonDocument.Parse("""{"command":"echo hi"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
 
         var expected = Environment.GetEnvironmentVariable("ComSpec")
             ?? Path.Combine(
@@ -500,7 +540,7 @@ public class MxcConfigBuilderTests
         };
         var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
 
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
 
         Assert.False(config.Ui!.Disable);
         Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
@@ -512,7 +552,7 @@ public class MxcConfigBuilderTests
         using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"cmd"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
 
         var expected = Environment.GetEnvironmentVariable("ComSpec")
             ?? Path.Combine(
@@ -537,7 +577,7 @@ public class MxcConfigBuilderTests
         using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
 
         Assert.StartsWith("pwsh.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
@@ -557,7 +597,7 @@ public class MxcConfigBuilderTests
             using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
             var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-            var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: binDir);
+            var config = BuildConfig(request, pathEnvVar: binDir);
 
             var expectedPrefix = pwshPath.IndexOfAny(new[] { ' ', '\t', '"' }) < 0
                 ? pwshPath
@@ -579,7 +619,7 @@ public class MxcConfigBuilderTests
         using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"powershell"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
 
         var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
             ?? Environment.GetEnvironmentVariable("windir");
@@ -605,7 +645,7 @@ public class MxcConfigBuilderTests
             using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output $env:PATH","shell":"powershell"}""");
             var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-            var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: pathEnv);
+            var config = BuildConfig(request, pathEnvVar: pathEnv);
             var script = DecodePowershellEncodedCommand(config.Process.CommandLine);
 
             Assert.Contains("$env:PATH = '" + pathEnv.Replace("'", "''") + "';", script);
