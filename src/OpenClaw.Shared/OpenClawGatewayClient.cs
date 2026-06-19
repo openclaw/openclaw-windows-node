@@ -2522,6 +2522,7 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
                 }
                 break;
             case "chat":
+            case "session.message":
                 HandleChatEvent(root, rawMessageLength);
                 break;
             case "session":
@@ -2989,6 +2990,12 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
         // Try new format: payload.message.role + payload.message.content[].text
         if (payload.TryGetProperty("message", out var message))
         {
+            if (message.ValueKind != JsonValueKind.Object)
+            {
+                _logger.Warn("[GatewayClient] Chat event message payload was not an object; dropping frame.");
+                return;
+            }
+
             var role = message.TryGetProperty("role", out var roleProp) ? roleProp.GetString() ?? "" : "";
             var state = payload.TryGetProperty("state", out var stateProp) ? stateProp.GetString() : null;
             if (tsMs == 0)
@@ -2998,20 +3005,17 @@ public class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
             if (inTok is null && outTok is null && respTok is null && ctxPct is null)
                 (inTok, outTok, respTok, ctxPct) = ExtractChatUsage(message);
 
-            if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+            var text = ExtractMessageText(message);
+            if (string.IsNullOrEmpty(text)) return;
+
+            EmitChatMessageReceived(sessionKey, role, text, state, tsMs, inTok, outTok, respTok, ctxPct);
+
+            if (role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
-                var text = ExtractMessageText(message);
-                if (string.IsNullOrEmpty(text)) return;
-
-                EmitChatMessageReceived(sessionKey, role, text, state, tsMs, inTok, outTok, respTok, ctxPct);
-
-                if (role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
-                {
-                    // HIGH 4: log shape only — content previously
-                    // surfaced in the operator log.
-                    _logger.Info($"Assistant response: role={role} state={state} len={text.Length}");
-                    EmitChatNotification(text);
-                }
+                // HIGH 4: log shape only — content previously
+                // surfaced in the operator log.
+                _logger.Info($"Assistant response: role={role} state={state} len={text.Length}");
+                EmitChatNotification(text);
             }
         }
         

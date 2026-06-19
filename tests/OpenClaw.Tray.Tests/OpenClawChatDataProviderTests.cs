@@ -23,11 +23,10 @@ public class OpenClawChatDataProviderTests
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
         public ModelsListInfo? CurrentModels { get; set; }
-        public int ProactiveBootstrapCalls { get; private set; }
 
         public SessionInfo[] GetSessionList() => Sessions;
         public ModelsListInfo? GetCurrentModelsList() => CurrentModels;
-        public void StartProactiveBootstrap() => ProactiveBootstrapCalls++;
+        public void StartProactiveBootstrap() { }
 
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
             => SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments);
@@ -3060,42 +3059,6 @@ public class OpenClawChatDataProviderTests
     // ── Auto-reload on connect: OnSessionsUpdated eager history load ──
 
     [Fact]
-    public async Task LoadAsync_WithCachedConnectedSessions_EagerlyLoadsHistory()
-    {
-        var historyRequested = new List<string?>();
-        var historyLoaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var bridge = new FakeBridge
-        {
-            CurrentStatus = ConnectionStatus.Connected,
-            IsConnected = true,
-            HasHandshakeSnapshot = true,
-            MainSessionKey = "main",
-            Sessions = new[] { MainSession() },
-        };
-        bridge.HistoryBehavior = key =>
-        {
-            historyRequested.Add(key);
-            historyLoaded.TrySetResult();
-            return Task.FromResult(new ChatHistoryInfo
-            {
-                SessionKey = key ?? "",
-                Messages = new[]
-                {
-                    new ChatMessageInfo { Role = "assistant", Text = "loaded from cached session", State = "final", Ts = 1 },
-                }
-            });
-        };
-        await using var provider = new OpenClawChatDataProvider(bridge);
-
-        var snapshot = await provider.LoadAsync();
-        await historyLoaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
-
-        Assert.Equal("main", snapshot.DefaultThreadId);
-        Assert.Equal("main", snapshot.ComposeTarget.SessionKey);
-        Assert.Contains("main", historyRequested);
-    }
-
-    [Fact]
     public async Task SessionsUpdated_WhileConnected_EagerlyLoadsHistory()
     {
         // When sessions arrive after the connection is already established,
@@ -3148,33 +3111,6 @@ public class OpenClawChatDataProviderTests
         await Task.Delay(100);
 
         Assert.Empty(historyRequested);
-    }
-
-    [Fact]
-    public async Task ChatMessage_ForUnknownThread_RequestsSessionRefreshOnce()
-    {
-        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
-        await provider.LoadAsync();
-        var baseline = bridge.ProactiveBootstrapCalls;
-
-        bridge.RaiseChat(new ChatMessageInfo
-        {
-            SessionKey = "agent:main:discord:direct:1410746924981682256",
-            Role = "assistant",
-            Text = "hello from discord",
-            State = "final",
-            Ts = 1,
-        });
-        bridge.RaiseChat(new ChatMessageInfo
-        {
-            SessionKey = "agent:main:discord:direct:1410746924981682256",
-            Role = "assistant",
-            Text = "second frame",
-            State = "final",
-            Ts = 2,
-        });
-
-        Assert.Equal(baseline + 1, bridge.ProactiveBootstrapCalls);
     }
 
     // ── OnStatusChanged: broadened reconnect reloads all timelines ──

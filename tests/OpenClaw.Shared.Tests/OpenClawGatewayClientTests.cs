@@ -774,6 +774,131 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ProcessRawMessage_SessionMessageWithStringContent_EmitsChatMessage()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "agent:main:whatsapp:direct:+15551234567",
+            "message": {
+              "role": "user",
+              "content": "testing from whatsapp",
+              "timestamp": 1781631273567
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal("agent:main:whatsapp:direct:+15551234567", received!.SessionKey);
+        Assert.Equal("user", received.Role);
+        Assert.Equal("testing from whatsapp", received.Text);
+        Assert.Equal("final", received.State);
+        Assert.Equal(1781631273567, received.Ts);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_SessionMessageWithContentBlocks_EmitsChatMessage()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "agent:main:whatsapp:direct:+15551234567",
+            "message": {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "hello from assistant" }
+              ],
+              "timestamp": 1781631280633
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal("agent:main:whatsapp:direct:+15551234567", received!.SessionKey);
+        Assert.Equal("assistant", received.Role);
+        Assert.Equal("hello from assistant", received.Text);
+        Assert.Equal("final", received.State);
+        Assert.Equal(1781631280633, received.Ts);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_SessionMessageWithMalformedMessage_DropsFrame()
+    {
+        var logger = new TestLogger();
+        var helper = new GatewayClientTestHelper(logger);
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "agent:main:whatsapp:direct:+15551234567",
+            "message": "not-an-object",
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.Null(received);
+        Assert.Contains(logger.Logs, log => log.Contains("message payload was not an object", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("final", true)]
+    [InlineData("streaming", false)]
+    public void ProcessRawMessage_SessionMessageAssistantNotification_DependsOnFinalState(string state, bool expectNotification)
+    {
+        var helper = new GatewayClientTestHelper();
+        OpenClawNotification? notification = null;
+        helper.Client.NotificationReceived += (_, value) => notification = value;
+
+        helper.ProcessRawMessage($$"""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "agent:main:whatsapp:direct:+15551234567",
+            "message": {
+              "role": "assistant",
+              "content": "assistant reply",
+              "timestamp": 1781631280633
+            },
+            "state": "{{state}}"
+          }
+        }
+        """);
+
+        if (expectNotification)
+        {
+            Assert.NotNull(notification);
+            Assert.Equal("assistant reply", notification!.Message);
+            Assert.True(notification.IsChat);
+        }
+        else
+        {
+            Assert.Null(notification);
+        }
+    }
+
+    [Fact]
     public void ProcessRawMessage_AgentEventLogsRawLengthWithoutPayloadContent()
     {
         var logger = new TestLogger();
