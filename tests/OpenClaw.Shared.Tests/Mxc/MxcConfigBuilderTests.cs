@@ -581,14 +581,16 @@ public class MxcConfigBuilderTests
     [Theory]
     [InlineData("powershell")]
     [InlineData("pwsh")]
-    public void Build_PowerShellFamilyShell_WhenUiDenied_FailsClosed(string shell)
+    public void Build_PowerShellFamilyShell_WhenUiDenied_PreservesContainerIsolation(string shell)
     {
         using var argsDoc = JsonDocument.Parse($$"""{"command":"Write-Output hi","shell":"{{shell}}"}""");
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 
-        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+        var config = BuildConfig(request, pathEnvVar: "");
 
-        Assert.Contains("PowerShell-family shells require UI access", ex.Message);
+        Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
     }
 
     [Fact]
