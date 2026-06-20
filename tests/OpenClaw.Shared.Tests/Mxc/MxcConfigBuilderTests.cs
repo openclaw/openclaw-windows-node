@@ -103,9 +103,10 @@ public class MxcConfigBuilderTests
         MxcConfigBuilder.Build(
             request,
             scratchDir,
-            containerId,
-            pathEnvVar,
-            deniedPathExists ?? DeniedPathExists);
+            new MxcConfigBuildContext(
+                ContainerId: containerId,
+                PathEnvVar: pathEnvVar,
+                DeniedPathExists: deniedPathExists ?? DeniedPathExists));
 
     [Theory]
     [InlineData("locked-down", "LockedDown")]

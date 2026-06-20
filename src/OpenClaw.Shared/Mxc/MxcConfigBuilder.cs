@@ -49,18 +49,20 @@ public static class MxcConfigBuilder
     /// </summary>
     /// <param name="request">Capability invocation request.</param>
     /// <param name="scratchDir">Per-invocation scratch directory the executor created.</param>
-    /// <param name="containerId">Optional explicit container id (test/diagnostic use). Random GUID when null.</param>
-    /// <param name="pathEnvVar">Optional override for the PATH env-var contents (test use).</param>
     public static MxcConfig Build(
         SandboxExecutionRequest request,
+        string scratchDir) =>
+        Build(request, scratchDir, MxcConfigBuildContext.Default);
+
+    internal static MxcConfig Build(
+        SandboxExecutionRequest request,
         string scratchDir,
-        string? containerId = null,
-        string? pathEnvVar = null,
-        Func<string, bool>? deniedPathExists = null)
+        MxcConfigBuildContext context)
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
         if (string.IsNullOrWhiteSpace(scratchDir)) throw new ArgumentException("scratchDir required", nameof(scratchDir));
-        deniedPathExists ??= PathExists;
+        if (context is null) throw new ArgumentNullException(nameof(context));
+        var deniedPathExists = context.DeniedPathExists ?? PathExists;
 
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
@@ -75,7 +77,7 @@ public static class MxcConfigBuilder
         // directories are also granted readonly so PATH-resolved user tools can
         // actually be read/executed from inside AppContainer.
         var roFromPolicy = (policy?.Filesystem?.ReadonlyPaths ?? Array.Empty<string>()).ToList();
-        var pathDirs = ResolvePathDirsForShellPath(pathEnvVar);
+        var pathDirs = ResolvePathDirsForShellPath(context.PathEnvVar);
         foreach (var dir in pathDirs)
         {
             if (!IsBackendSafeReadonlyGrant(dir)) continue;
@@ -155,7 +157,7 @@ public static class MxcConfigBuilder
         return new MxcConfig
         {
             Version = MxcPolicyBuilder.SupportedPolicyVersion,
-            ContainerId = containerId ?? Guid.NewGuid().ToString("N"),
+            ContainerId = context.ContainerId ?? Guid.NewGuid().ToString("N"),
             // Top-level "containment" is intentionally omitted; the SDK doesn't
             // emit it either. Isolation lives in processContainer.ui.isolation.
             Process = new MxcProcess
@@ -449,6 +451,14 @@ public static class MxcConfigBuilder
     }
 
     private sealed record SystemRunArgs(string Command, string Shell, IReadOnlyList<string> Argv);
+}
+
+internal sealed record MxcConfigBuildContext(
+    string? ContainerId = null,
+    string? PathEnvVar = null,
+    Func<string, bool>? DeniedPathExists = null)
+{
+    public static MxcConfigBuildContext Default { get; } = new();
 }
 
 /// <summary>
