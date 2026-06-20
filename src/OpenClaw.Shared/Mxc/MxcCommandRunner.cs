@@ -165,6 +165,7 @@ public sealed class MxcCommandRunner : ICommandRunner
 
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
         var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectoryPath);
+        policy = ApplyShellRequiredPolicy(policy, effectiveShell);
         var argsJson = SerializeArgs(request, effectiveShell);
 
         // Compute the effective timeout: take the smaller of the agent-supplied
@@ -293,6 +294,24 @@ public sealed class MxcCommandRunner : ICommandRunner
             "powershell" => "powershell",
             _ => "powershell",
         };
+
+    private static SandboxPolicy ApplyShellRequiredPolicy(SandboxPolicy policy, string effectiveShell)
+    {
+        if (!MxcShellRequiresWindowsUi(effectiveShell))
+            return policy;
+
+        var ui = policy.Ui ?? new UiPolicy();
+        return policy with
+        {
+            Ui = ui with { AllowWindows = true },
+        };
+    }
+
+    private static bool MxcShellRequiresWindowsUi(string shell)
+    {
+        var normalized = shell.Trim().ToLowerInvariant();
+        return normalized is "powershell" or "pwsh";
+    }
 
     private string ResolveHostFallbackShell(string? requestedShell) =>
         _hostFallback.ResolveEffectiveShell(requestedShell);

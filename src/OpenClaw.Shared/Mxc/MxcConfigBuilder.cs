@@ -35,8 +35,9 @@ public static class MxcConfigBuilder
 {
     // MXC processcontainer defaults to cmd because it starts inside the
     // AppContainer while preserving the default UI-deny boundary. PowerShell
-    // remains available when explicitly requested, but it must not silently
-    // relax UI containment.
+    // remains available when explicitly requested, but callers must supply a
+    // policy with AllowWindows=true because MXC 0.7 requires UI access for
+    // PowerShell startup.
     private const string DefaultShell = "cmd";
 
     /// <summary>
@@ -66,6 +67,11 @@ public static class MxcConfigBuilder
 
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
+        if (IsPowerShellFamilyShell(args.Shell) && policy?.Ui?.AllowWindows != true)
+        {
+            throw new NotSupportedException(
+                "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend.");
+        }
 
         if (request.Env is { Count: > 0 })
         {
@@ -449,6 +455,12 @@ public static class MxcConfigBuilder
                 .ToArray();
         }
         return new SystemRunArgs(command, shell, argv);
+    }
+
+    private static bool IsPowerShellFamilyShell(string shell)
+    {
+        var normalized = shell.Trim().ToLowerInvariant();
+        return normalized is "powershell" or "pwsh";
     }
 
     private sealed record SystemRunArgs(string Command, string Shell, IReadOnlyList<string> Argv);
