@@ -533,6 +533,10 @@ internal static class ShellCommandLine
         string scratchDir,
         IReadOnlyList<string> pathDirs)
     {
+        ThrowIfCmdContainsLineBreak(command, nameof(command));
+        foreach (var arg in argv)
+            ThrowIfCmdContainsLineBreak(arg, "argv");
+
         // cmd /S /C "<command> [args]" — /S strips outer quotes so cmd treats
         // everything after /C as the command line verbatim. If the payload
         // references env vars we bootstrap in this same /C line, rewrite just
@@ -559,6 +563,15 @@ internal static class ShellCommandLine
         }
         sb.Append('"');
         return sb.ToString();
+    }
+
+    private static void ThrowIfCmdContainsLineBreak(string value, string fieldName)
+    {
+        if (value.IndexOfAny(new[] { '\r', '\n' }) >= 0)
+        {
+            throw new NotSupportedException(
+                $"cmd shell {fieldName} values cannot contain CR or LF characters with the Windows MXC 0.7 processcontainer backend.");
+        }
     }
 
     private static string RewriteCmdBootstrapEnvRefs(

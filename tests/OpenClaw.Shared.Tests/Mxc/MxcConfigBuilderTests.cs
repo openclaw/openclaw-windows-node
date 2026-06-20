@@ -607,6 +607,28 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
+    public void Build_CmdShell_CommandWithLineBreak_FailsClosed()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo ok\r\nwhoami","shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("cannot contain CR or LF", ex.Message);
+    }
+
+    [Fact]
+    public void Build_CmdShell_ArgvWithLineBreak_FailsClosed()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo","args":["ok\r\nwhoami"],"shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("cannot contain CR or LF", ex.Message);
+    }
+
+    [Fact]
     public void Build_CmdShell_IgnoresHostComSpec()
     {
         var previous = Environment.GetEnvironmentVariable("ComSpec");
