@@ -634,7 +634,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_LogsSandboxSettingsSnapshotAndPolicy()
+    public async Task RunAsync_LogsRedactedSandboxSettingsAndPolicySummary()
     {
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner();
@@ -652,14 +652,50 @@ public class MxcCommandRunnerTests
         await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
         var requestLog = Assert.Single(logger.DebugMessages, m => m.Contains("system.run sandbox request", StringComparison.Ordinal));
-        Assert.Contains("sandboxSettingsJson=", requestLog);
-        Assert.Contains("\"systemRunAllowOutbound\":true", requestLog);
-        Assert.Contains("\"sandboxClipboard\":\"both\"", requestLog);
-        Assert.Contains("\"path\":\"C:\\\\Code\\\\repo\"", requestLog);
-        Assert.Contains("\"access\":\"readWrite\"", requestLog);
-        Assert.Contains("policyJson=", requestLog);
-        Assert.Contains("\"network\":{\"allowOutbound\":true", requestLog);
-        Assert.Contains("\"readwritePaths\":[\"C:\\\\Code\\\\repo\"", requestLog);
+        Assert.Contains("sandboxSettings={enabled=True", requestLog);
+        Assert.Contains("allowOutbound=True", requestLog);
+        Assert.Contains("clipboard=Both", requestLog);
+        Assert.Contains("customFolderCount=1", requestLog);
+        Assert.Contains("settingsDirectoryPath=<set>", requestLog);
+        Assert.Contains("policy={readonlyCount=", requestLog);
+        Assert.Contains("readwriteCount=1", requestLog);
+        Assert.Contains("networkAllowOutbound=True", requestLog);
+        Assert.DoesNotContain("sandboxSettingsJson=", requestLog);
+        Assert.DoesNotContain("policyJson=", requestLog);
+        Assert.DoesNotContain("C:\\Code\\repo", requestLog, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("C:\\test\\settings", requestLog, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RunAsync_LogsFullSandboxSettingsAndPolicy_WhenFullConfigDiagnosticsEnabled()
+    {
+        var previous = Environment.GetEnvironmentVariable(DirectAppContainerExecutor.LogFullConfigEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(DirectAppContainerExecutor.LogFullConfigEnvVar, "1");
+            var executor = new FakeSandboxExecutor();
+            var fallback = new FakeCommandRunner();
+            var settings = NewSettings(sandboxEnabled: true);
+            settings.SystemRunAllowOutbound = true;
+            settings.SandboxCustomFolders = new()
+            {
+                new SandboxCustomFolder { Path = "C:\\Code\\repo", Access = SandboxFolderAccess.ReadWrite },
+            };
+            var logger = new CapturingLogger();
+            var runner = NewRunner(executor, fallback, settings, logger: logger);
+
+            await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+
+            var fullLog = Assert.Single(logger.DebugMessages, m => m.Contains("system.run sandbox request (full)", StringComparison.Ordinal));
+            Assert.Contains("sandboxSettingsJson=", fullLog);
+            Assert.Contains("policyJson=", fullLog);
+            Assert.Contains("\"path\":\"C:\\\\Code\\\\repo\"", fullLog);
+            Assert.Contains("\"readwritePaths\":[\"C:\\\\Code\\\\repo\"", fullLog);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(DirectAppContainerExecutor.LogFullConfigEnvVar, previous);
+        }
     }
 
     [Fact]

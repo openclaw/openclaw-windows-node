@@ -108,6 +108,15 @@ public class MxcConfigBuilderTests
                 PathEnvVar: pathEnvVar,
                 DeniedPathExists: deniedPathExists ?? DeniedPathExists));
 
+    private static string ExpectedSystemCmdExe()
+    {
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        return string.IsNullOrWhiteSpace(systemRoot)
+            ? "cmd.exe"
+            : Path.Combine(systemRoot, "System32", "cmd.exe");
+    }
+
     [Theory]
     [InlineData("locked-down", "LockedDown")]
     [InlineData("balanced", "Balanced")]
@@ -546,17 +555,7 @@ public class MxcConfigBuilderTests
 
         var config = BuildConfig(request, pathEnvVar: "");
 
-        var expected = Environment.GetEnvironmentVariable("ComSpec")
-            ?? Path.Combine(
-                Environment.GetEnvironmentVariable("SystemRoot")
-                    ?? Environment.GetEnvironmentVariable("windir")
-                    ?? string.Empty,
-                "System32",
-                "cmd.exe");
-        if (string.IsNullOrWhiteSpace(expected) || expected.StartsWith("System32", StringComparison.OrdinalIgnoreCase))
-            expected = "cmd.exe";
-
-        Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(ExpectedSystemCmdExe(), config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.True(config.Ui!.Disable);
@@ -587,21 +586,32 @@ public class MxcConfigBuilderTests
 
         var config = BuildConfig(request, pathEnvVar: "");
 
-        var expected = Environment.GetEnvironmentVariable("ComSpec")
-            ?? Path.Combine(
-                Environment.GetEnvironmentVariable("SystemRoot")
-                    ?? Environment.GetEnvironmentVariable("windir")
-                    ?? string.Empty,
-                "System32",
-                "cmd.exe");
-        if (string.IsNullOrWhiteSpace(expected) || expected.StartsWith("System32", StringComparison.OrdinalIgnoreCase))
-            expected = "cmd.exe";
-
-        Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(ExpectedSystemCmdExe(), config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.True(config.Ui!.Disable);
         Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_CmdShell_IgnoresHostComSpec()
+    {
+        var previous = Environment.GetEnvironmentVariable("ComSpec");
+        try
+        {
+            Environment.SetEnvironmentVariable("ComSpec", "C:\\malicious\\cmd.exe");
+            using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: "");
+
+            Assert.StartsWith(ExpectedSystemCmdExe(), config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("C:\\malicious\\cmd.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ComSpec", previous);
+        }
     }
 
     [Fact]

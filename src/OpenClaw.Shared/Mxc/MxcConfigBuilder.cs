@@ -647,10 +647,6 @@ internal static class ShellCommandLine
 
     private static string ResolveCmdExe()
     {
-        var comSpec = Environment.GetEnvironmentVariable("ComSpec");
-        if (!string.IsNullOrWhiteSpace(comSpec))
-            return comSpec;
-
         var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
             ?? Environment.GetEnvironmentVariable("windir");
         return string.IsNullOrWhiteSpace(systemRoot)

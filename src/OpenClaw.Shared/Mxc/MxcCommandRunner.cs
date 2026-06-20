@@ -329,19 +329,35 @@ public sealed class MxcCommandRunner : ICommandRunner
         string settingsDirectoryPath,
         SandboxPolicy policy)
     {
-        var settingsJson = JsonSerializer.Serialize(ToSandboxSettingsDiagnostic(settings, settingsDirectoryPath), DiagnosticJson);
-        var policyJson = JsonSerializer.Serialize(policy, DiagnosticJson);
+        var envKeys = commandRequest.Env?.Keys
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? Array.Empty<string>();
         var message =
             "[mxc] system.run sandbox request " +
             $"executor={_executor.Name}; contained={_executor.IsContained}; " +
-            $"sandboxSettingsJson={settingsJson}; " +
+            $"sandboxSettings={{enabled={settings.SystemRunSandboxEnabled},blockHostFallbackWhenMxcUnavailable={settings.SystemRunBlockHostFallbackWhenMxcUnavailable}," +
+            $"allowOutbound={settings.SystemRunAllowOutbound},clipboard={settings.SandboxClipboard},documents={settings.SandboxDocumentsAccess?.ToString() ?? "<null>"}," +
+            $"downloads={settings.SandboxDownloadsAccess?.ToString() ?? "<null>"},desktop={settings.SandboxDesktopAccess?.ToString() ?? "<null>"}," +
+            $"customFolderCount={settings.SandboxCustomFolders?.Count ?? 0},timeoutMs={settings.SandboxTimeoutMs},maxOutputBytes={settings.SandboxMaxOutputBytes}," +
+            $"settingsDirectoryPath={(string.IsNullOrWhiteSpace(settingsDirectoryPath) ? "<null>" : "<set>")}}}; " +
             $"shell={commandRequest.Shell ?? DefaultSandboxShell}; " +
             $"commandLength={commandRequest.Command?.Length ?? 0}; " +
             $"cwd={(string.IsNullOrEmpty(commandRequest.Cwd) ? "<null>" : "<set>")}; " +
-            $"envKeys=[{string.Join(",", commandRequest.Env?.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase) ?? Enumerable.Empty<string>())}]; " +
+            $"envKeys=[{string.Join(",", envKeys)}]; " +
             $"timeoutMs={sandboxRequest.TimeoutMs}; maxOutputBytes={sandboxRequest.MaxOutputBytes?.ToString() ?? "<default>"}; " +
-            $"policyJson={policyJson}";
+            $"policy={{readonlyCount={policy.Filesystem?.ReadonlyPaths?.Count ?? 0},readwriteCount={policy.Filesystem?.ReadwritePaths?.Count ?? 0}," +
+            $"deniedCount={policy.Filesystem?.DeniedPaths?.Count ?? 0},networkAllowOutbound={policy.Network?.AllowOutbound},uiAllowWindows={policy.Ui?.AllowWindows}," +
+            $"clipboard={policy.Ui?.Clipboard},timeoutMs={policy.TimeoutMs?.ToString() ?? "<null>"}}}";
         LogMxcDiagnostic(message);
+
+        if (string.Equals(Environment.GetEnvironmentVariable(DirectAppContainerExecutor.LogFullConfigEnvVar), "1", StringComparison.Ordinal))
+        {
+            var settingsJson = JsonSerializer.Serialize(ToSandboxSettingsDiagnostic(settings, settingsDirectoryPath), DiagnosticJson);
+            var policyJson = JsonSerializer.Serialize(policy, DiagnosticJson);
+            LogMxcDiagnostic(
+                "[mxc] system.run sandbox request (full) " +
+                $"sandboxSettingsJson={settingsJson}; policyJson={policyJson}");
+        }
     }
 
     private static object ToSandboxSettingsDiagnostic(SettingsData settings, string settingsDirectoryPath)
