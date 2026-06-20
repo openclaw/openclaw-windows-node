@@ -523,7 +523,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_PowerShellUiUnsupported_FallsBackWhenCompatibilityFallbackEnabled()
+    public async Task RunAsync_PowerShellUiUnsupported_DeniesEvenWhenCompatibilityFallbackEnabled()
     {
         var executor = new FakeSandboxExecutor
         {
@@ -540,10 +540,9 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "Write-Output hi", Shell = "powershell" });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host", result.Stdout);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("cannot execute PowerShell-family shells", result.Stderr);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
@@ -563,7 +562,6 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("cannot execute PowerShell-family shells", result.Stderr);
-        Assert.Contains("host fallback is blocked", result.Stderr);
         Assert.Null(fallback.LastRequest);
     }
 

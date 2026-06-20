@@ -243,20 +243,10 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
         {
             if (IsPowerShellUiUnsupported(ex))
             {
-                if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-                    return DenySandboxUnavailable(
-                        "Sandboxed system.run cannot execute PowerShell-family shells with the current MXC UI-deny policy, " +
-                        "and host fallback is blocked by settings. Retry with shell='cmd', disable strict fallback blocking, " +
-                        "or explicitly disable sandboxing if uncontained host execution is acceptable.",
-                        $"[mxc] system.run denied: PowerShell-family shell unsupported by MXC UI-deny policy and host fallback is blocked by settings: {ex.Message}");
-
-                _logger.Warn(
-                    $"[mxc] system.run UNCONTAINED: PowerShell-family shell unsupported by MXC UI-deny policy ({ex.Message}); " +
-                    "routing through host runner for compatibility.");
-                if (!TryResolveApprovedHostFallbackShell(request, effectiveShell, out var hostShell, out var deny))
-                    return deny!;
-
-                return await RunHostFallbackAsync(request, hostShell, ct);
+                return DenySandboxUnavailable(
+                    "Sandboxed system.run cannot execute PowerShell-family shells with the current MXC UI-deny policy. " +
+                    "Retry with shell='cmd' or explicitly disable sandboxing if uncontained host execution is acceptable.",
+                    $"[mxc] system.run denied: PowerShell-family shell unsupported by MXC UI-deny policy: {ex.Message}");
             }
 
             _logger.Warn($"[mxc] system.run denied: unsupported sandbox request: {ex.Message}");
