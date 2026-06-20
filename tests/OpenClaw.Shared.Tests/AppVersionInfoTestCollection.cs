@@ -2,7 +2,7 @@ using Xunit;
 
 namespace OpenClaw.Shared.Tests;
 
-[CollectionDefinition(Name, DisableParallelization = true)]
+[CollectionDefinition("AppVersionInfo", DisableParallelization = true)]
 public sealed class AppVersionInfoTestCollection
 {
     public const string Name = "AppVersionInfo";
