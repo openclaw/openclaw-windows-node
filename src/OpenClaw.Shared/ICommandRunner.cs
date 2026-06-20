@@ -65,9 +65,16 @@ public interface ICommandRunner
     /// </summary>
     string ResolveEffectiveShell(string? requestedShell)
     {
-        return string.IsNullOrWhiteSpace(requestedShell)
-            ? "powershell"
-            : requestedShell.Trim();
+        if (string.IsNullOrWhiteSpace(requestedShell))
+            return "powershell";
+
+        return requestedShell.Trim().ToLowerInvariant() switch
+        {
+            "cmd" => "cmd",
+            "pwsh" => "pwsh",
+            "powershell" => "powershell",
+            _ => "powershell",
+        };
     }
     
     /// <summary>Execute a command and return the result.</summary>

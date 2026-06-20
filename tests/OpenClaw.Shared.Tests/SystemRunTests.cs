@@ -553,6 +553,50 @@ public class SystemRunTests
     }
 
     [Fact]
+    public async Task SystemRun_WithPolicy_NormalizesUnsupportedExplicitShellBeforeApproval()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule
+                    {
+                        Pattern = "Get-Process",
+                        Action = ExecApprovalAction.Allow,
+                        Shells = new[] { "bash" }
+                    }
+                },
+                ExecApprovalAction.Deny);
+            var runner = new FakeCommandRunner();
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "unsupported-explicit-shell-policy",
+                Command = "system.run",
+                Args = Parse("""{"command":"Get-Process","shell":"bash"}""")
+            });
+
+            Assert.False(res.Ok);
+            Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(runner.LastRequest);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task SystemRun_WithPromptPolicy_PromptsOnceForShellWrapper_WhenUserApprovesOnce()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
@@ -755,9 +799,16 @@ public class SystemRunTests
 
         public string ResolveEffectiveShell(string? requestedShell)
         {
-            return string.IsNullOrWhiteSpace(requestedShell)
-                ? EffectiveShellForNull
-                : requestedShell.Trim();
+            if (string.IsNullOrWhiteSpace(requestedShell))
+                return EffectiveShellForNull;
+
+            return requestedShell.Trim().ToLowerInvariant() switch
+            {
+                "cmd" => "cmd",
+                "pwsh" => "pwsh",
+                "powershell" => "powershell",
+                _ => "powershell",
+            };
         }
 
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)

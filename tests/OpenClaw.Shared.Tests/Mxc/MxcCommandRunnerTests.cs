@@ -44,6 +44,7 @@ public class MxcCommandRunnerTests
 
         Assert.Equal("cmd", runner.ResolveEffectiveShell(null));
         Assert.Equal("cmd", runner.ResolveEffectiveShell(" cmd "));
+        Assert.Equal("powershell", runner.ResolveEffectiveShell("bash"));
     }
 
     [Fact]
@@ -54,6 +55,7 @@ public class MxcCommandRunnerTests
 
         Assert.Equal("pwsh", runner.ResolveEffectiveShell(null));
         Assert.Equal("powershell", runner.ResolveEffectiveShell(" powershell "));
+        Assert.Equal("powershell", runner.ResolveEffectiveShell("bash"));
     }
 
     [Fact]
@@ -70,6 +72,7 @@ public class MxcCommandRunnerTests
 
         Assert.Equal("pwsh", runner.ResolveEffectiveShell(null));
         Assert.Equal("powershell", runner.ResolveEffectiveShell(" powershell "));
+        Assert.Equal("powershell", runner.ResolveEffectiveShell("bash"));
     }
 
     [Fact]
@@ -86,6 +89,7 @@ public class MxcCommandRunnerTests
 
         Assert.Equal("cmd", runner.ResolveEffectiveShell(null));
         Assert.Equal("powershell", runner.ResolveEffectiveShell(" powershell "));
+        Assert.Equal("powershell", runner.ResolveEffectiveShell("bash"));
     }
 
     [Fact]
@@ -584,9 +588,16 @@ public class MxcCommandRunnerTests
 
         public string ResolveEffectiveShell(string? requestedShell)
         {
-            return string.IsNullOrWhiteSpace(requestedShell)
-                ? EffectiveShellForNull
-                : requestedShell.Trim();
+            if (string.IsNullOrWhiteSpace(requestedShell))
+                return EffectiveShellForNull;
+
+            return requestedShell.Trim().ToLowerInvariant() switch
+            {
+                "cmd" => "cmd",
+                "pwsh" => "pwsh",
+                "powershell" => "powershell",
+                _ => "powershell",
+            };
         }
 
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
@@ -631,6 +642,36 @@ public class MxcCommandRunnerTests
 
         Assert.NotNull(executor.LastRequest);
         Assert.Equal(16L * 1024L * 1024L, executor.LastRequest!.MaxOutputBytes);
+    }
+
+    [Fact]
+    public async Task RunAsync_SandboxRequestUsesNormalizedEffectiveShellForUnsupportedExplicitShell()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "bash" });
+
+        Assert.NotNull(executor.LastRequest);
+        Assert.Equal("powershell", executor.LastRequest!.Args.GetProperty("shell").GetString());
+    }
+
+    [Fact]
+    public async Task RunAsync_HostFallbackUsesNormalizedEffectiveShellForUnsupportedExplicitShell()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(sandboxEnabled: true, blockHostFallbackWhenMxcUnavailable: false),
+            sandboxAvailable: false);
+
+        await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "bash" });
+
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
     }
 
     [Fact]

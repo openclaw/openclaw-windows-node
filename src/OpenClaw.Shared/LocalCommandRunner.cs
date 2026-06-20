@@ -267,7 +267,15 @@ public class LocalCommandRunner : ICommandRunner
     private static string ResolveEffectiveShellName(string? requestedShell, string? pathEnvVar)
     {
         if (!string.IsNullOrWhiteSpace(requestedShell))
-            return requestedShell.Trim();
+        {
+            return requestedShell.Trim().ToLowerInvariant() switch
+            {
+                "cmd" => "cmd",
+                "pwsh" => "pwsh",
+                "powershell" => "powershell",
+                _ => "powershell",
+            };
+        }
 
         return ResolveOnPath("pwsh.exe", pathEnvVar) is not null ? "pwsh" : "powershell";
     }

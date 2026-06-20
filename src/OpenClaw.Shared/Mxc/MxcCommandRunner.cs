@@ -51,17 +51,17 @@ public sealed class MxcCommandRunner : ICommandRunner
 
     public string ResolveEffectiveShell(string? requestedShell)
     {
-        if (!string.IsNullOrWhiteSpace(requestedShell))
-            return requestedShell.Trim();
-
         var settings = _settingsProvider();
         if (!settings.SystemRunSandboxEnabled)
             return _hostFallback.ResolveEffectiveShell(requestedShell);
 
-        if (_isSandboxAvailable() || settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-            return DefaultSandboxShell;
+        if (!_isSandboxAvailable() && !settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+            return _hostFallback.ResolveEffectiveShell(requestedShell);
 
-        return _hostFallback.ResolveEffectiveShell(requestedShell);
+        if (!string.IsNullOrWhiteSpace(requestedShell))
+            return ResolveSandboxShell(requestedShell);
+
+        return DefaultSandboxShell;
     }
 
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
@@ -165,7 +165,7 @@ public sealed class MxcCommandRunner : ICommandRunner
 
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
         var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectoryPath);
-        var argsJson = SerializeArgs(request);
+        var argsJson = SerializeArgs(request, effectiveShell);
 
         // Compute the effective timeout: take the smaller of the agent-supplied
         // timeout (request.TimeoutMs) and the user's sandbox cap (policy.TimeoutMs).
@@ -185,7 +185,7 @@ public sealed class MxcCommandRunner : ICommandRunner
 
         try
         {
-            LogSandboxRequest(sandboxRequest, request, settings, settingsDirectoryPath, policy);
+            LogSandboxRequest(sandboxRequest, request, effectiveShell, settings, settingsDirectoryPath, policy);
             var sandboxed = await _executor.ExecuteAsync(sandboxRequest, ct);
             LogSandboxResult(sandboxed);
             return new CommandResult
@@ -261,9 +261,6 @@ public sealed class MxcCommandRunner : ICommandRunner
 
     private Task<CommandResult> RunHostFallbackAsync(CommandRequest request, string effectiveShell, CancellationToken ct)
     {
-        if (!string.IsNullOrWhiteSpace(request.Shell))
-            return _hostFallback.RunAsync(request, ct);
-
         var fallbackRequest = new CommandRequest
         {
             Command = request.Command,
@@ -276,10 +273,17 @@ public sealed class MxcCommandRunner : ICommandRunner
         return _hostFallback.RunAsync(fallbackRequest, ct);
     }
 
+    private static string ResolveSandboxShell(string requestedShell) =>
+        requestedShell.Trim().ToLowerInvariant() switch
+        {
+            "cmd" => "cmd",
+            "pwsh" => "pwsh",
+            "powershell" => "powershell",
+            _ => "powershell",
+        };
+
     private string ResolveHostFallbackShell(string? requestedShell) =>
-        string.IsNullOrWhiteSpace(requestedShell)
-            ? _hostFallback.ResolveEffectiveShell(requestedShell)
-            : requestedShell.Trim();
+        _hostFallback.ResolveEffectiveShell(requestedShell);
 
     private static bool FallbackWouldChangeApprovedShell(
         CommandRequest request,
@@ -306,12 +310,12 @@ public sealed class MxcCommandRunner : ICommandRunner
         };
     }
 
-    private static JsonElement SerializeArgs(CommandRequest request)
+    private static JsonElement SerializeArgs(CommandRequest request, string effectiveShell)
     {
         var payload = new
         {
             command = request.Command,
-            shell = request.Shell ?? DefaultSandboxShell,
+            shell = effectiveShell,
             args = request.Args ?? Array.Empty<string>(),
             cwd = request.Cwd,
             env = request.Env,
@@ -325,6 +329,7 @@ public sealed class MxcCommandRunner : ICommandRunner
     private void LogSandboxRequest(
         SandboxExecutionRequest sandboxRequest,
         CommandRequest commandRequest,
+        string effectiveShell,
         SettingsData settings,
         string settingsDirectoryPath,
         SandboxPolicy policy)
@@ -340,7 +345,7 @@ public sealed class MxcCommandRunner : ICommandRunner
             $"downloads={settings.SandboxDownloadsAccess?.ToString() ?? "<null>"},desktop={settings.SandboxDesktopAccess?.ToString() ?? "<null>"}," +
             $"customFolderCount={settings.SandboxCustomFolders?.Count ?? 0},timeoutMs={settings.SandboxTimeoutMs},maxOutputBytes={settings.SandboxMaxOutputBytes}," +
             $"settingsDirectoryPath={(string.IsNullOrWhiteSpace(settingsDirectoryPath) ? "<null>" : "<set>")}}}; " +
-            $"shell={commandRequest.Shell ?? DefaultSandboxShell}; " +
+            $"shell={effectiveShell}; requestedShell={(string.IsNullOrWhiteSpace(commandRequest.Shell) ? "<auto>" : "<set>")}; " +
             $"commandLength={commandRequest.Command?.Length ?? 0}; " +
             $"cwd={(string.IsNullOrEmpty(commandRequest.Cwd) ? "<null>" : "<set>")}; " +
             $"envKeys=[{string.Join(",", envKeys)}]; " +
