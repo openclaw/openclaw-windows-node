@@ -673,13 +673,13 @@ public class MxcCommandRunnerTests
 
         Assert.NotNull(executor.LastRequest);
         Assert.Equal("powershell", executor.LastRequest!.Args.GetProperty("shell").GetString());
-        Assert.True(executor.LastRequest.Policy.Ui!.AllowWindows);
+        Assert.False(executor.LastRequest.Policy.Ui!.AllowWindows);
     }
 
     [Theory]
     [InlineData("powershell")]
     [InlineData("pwsh")]
-    public async Task RunAsync_SandboxRequestAllowsWindowsForPowerShellFamilyShells(string shell)
+    public async Task RunAsync_SandboxRequestKeepsUiDeniedForPowerShellFamilyShells(string shell)
     {
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner();
@@ -688,7 +688,7 @@ public class MxcCommandRunnerTests
         await runner.RunAsync(new CommandRequest { Command = "Write-Output hi", Shell = shell });
 
         Assert.NotNull(executor.LastRequest);
-        Assert.True(executor.LastRequest!.Policy.Ui!.AllowWindows);
+        Assert.False(executor.LastRequest!.Policy.Ui!.AllowWindows);
     }
 
     [Fact]
