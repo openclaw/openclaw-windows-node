@@ -184,7 +184,7 @@ public class SettingsRoundTripTests
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
         Assert.True(settings.SystemRunSandboxEnabled);
-        Assert.True(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
         Assert.False(settings.SystemRunAllowOutbound);
         // HubNavPaneOpen defaults to true (NavView starts expanded for new
         // installs and for any settings file that predates the field).
@@ -205,7 +205,7 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_MigratesLegacySandboxFallbackDefaultToFailClosed()
+    public void SettingsManager_PreservesLegacySandboxFallbackDefault()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -222,13 +222,13 @@ public class SettingsRoundTripTests
             var settings = new SettingsManager(dir);
 
             Assert.True(settings.SystemRunSandboxEnabled);
-            Assert.True(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+            Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
 
             settings.Save();
 
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
             Assert.Equal(1, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
-            Assert.True(saved.RootElement.GetProperty(nameof(SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable)).GetBoolean());
+            Assert.False(saved.RootElement.GetProperty(nameof(SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable)).GetBoolean());
         }
         finally
         {
@@ -238,7 +238,7 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_PreservesVersionedSandboxFallbackOptIn()
+    public void SettingsManager_PreservesVersionedSandboxFallbackCompatibility()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -257,6 +257,34 @@ public class SettingsRoundTripTests
 
             Assert.True(settings.SystemRunSandboxEnabled);
             Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SettingsManager_PreservesVersionedStrictFallbackBlockingOptIn()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+                "SettingsSchemaVersion": 1,
+                "SystemRunSandboxEnabled": true,
+                "SystemRunBlockHostFallbackWhenMxcUnavailable": true
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.True(settings.SystemRunSandboxEnabled);
+            Assert.True(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
         }
         finally
         {

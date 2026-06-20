@@ -9,7 +9,7 @@ public class MxcCommandRunnerTests
 {
     private static SettingsData NewSettings(
         bool sandboxEnabled = true,
-        bool blockHostFallbackWhenMxcUnavailable = true)
+        bool blockHostFallbackWhenMxcUnavailable = false)
     {
         return new SettingsData
         {

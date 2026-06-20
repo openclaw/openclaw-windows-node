@@ -13,8 +13,8 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Honors <see cref="SettingsData.SystemRunSandboxEnabled"/>:
 /// <list type="bullet">
-/// <item><c>true</c> (default) — sandbox via MXC when available; deny when MXC is unavailable.</item>
-/// <item><c>true</c> with <see cref="SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable"/> set to <c>false</c> — fall back uncontained when MXC is unavailable.</item>
+/// <item><c>true</c> (default) — sandbox via MXC when available; fall back uncontained when MXC is unavailable.</item>
+/// <item><c>true</c> with <see cref="SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable"/> set to <c>true</c> — deny when MXC is unavailable.</item>
 /// <item><c>false</c> — bypass MXC; route through the host runner.</item>
 /// </list>
 /// </remarks>
@@ -119,8 +119,8 @@ public sealed class MxcCommandRunner : ICommandRunner
                     "Update Windows or repair MXC, or disable strict fallback blocking if uncontained host execution is acceptable.",
                     "[mxc] system.run denied: sandbox unavailable and host fallback blocked by settings");
 
-            // Compatibility opt-out: keep pre-MXC host execution only when the
-            // operator explicitly disables fail-closed sandbox-unavailable behavior.
+            // Compatibility default: keep pre-MXC host execution unless the
+            // operator explicitly opts into strict sandbox-unavailable blocking.
             _logger.Warn(
                 "[mxc] system.run UNCONTAINED: sandbox unavailable on this host; " +
                 "routing through host runner for compatibility.");

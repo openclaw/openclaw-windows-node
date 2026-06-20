@@ -191,17 +191,17 @@ public sealed partial class SandboxPage : Page
     /// MXC availability AND the current sandbox toggle state. Three visual states:
     ///   1. Available + ON   → 🛡 "Sandbox is on" + toggle visible
     ///   2. Available + OFF  → ⚠ "Sandbox is off — high risk" + toggle visible
-    ///   3. Unavailable + ON → ⚠ "Sandbox unavailable — commands blocked" + toggle visible
+    ///   3. Unavailable + ON → ⚠ "Sandbox unavailable — host fallback" or "commands blocked" + toggle visible
     ///   4. Unavailable + OFF → ⚠ "Sandbox is off — host execution" + toggle visible
-    /// When MXC is unavailable and sandboxing is enabled, MxcCommandRunner blocks
-    /// by default and uses the compatibility host fallback only when strict
-    /// fallback blocking has been explicitly disabled.
+    /// When MXC is unavailable and sandboxing is enabled, MxcCommandRunner uses
+    /// compatibility host fallback by default and blocks only when strict fallback
+    /// blocking is explicitly enabled.
     /// </summary>
     private void UpdateSandboxStatusCard()
     {
         var availability = _cachedAvailability;
         var enabled = SandboxEnabledToggle.IsOn;
-        var blockHostFallback = CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? true;
+        var blockHostFallback = CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false;
 
         UpdateUnavailableActionBar(availability, enabled);
 
@@ -303,7 +303,7 @@ public sealed partial class SandboxPage : Page
 
         var isSetupIssue = !availability.IsWxcExecResolvable;
         var blockHostFallback = sandboxEnabled
-            && (CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? true);
+            && (CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false);
         var unavailableBehavior = blockHostFallback
             ? "Commands are blocked while sandboxing is unavailable because strict fallback blocking is enabled. "
             : "Commands will run on the host without sandbox protection while sandboxing is unavailable. ";

@@ -567,8 +567,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// Build the <see cref="ICommandRunner"/> for system.run. Returns an
     /// <see cref="MxcCommandRunner"/> wrapping <see cref="DirectAppContainerExecutor"/>.
     /// The runner honors <see cref="SettingsData.SystemRunSandboxEnabled"/>
-    /// by attempting MXC containment when available, blocking by default when
-    /// MXC is unavailable unless compatibility host fallback is explicitly
+    /// by attempting MXC containment when available, preserving compatibility
+    /// host fallback when MXC is unavailable unless strict fallback blocking is
     /// enabled, and rejecting unsupported sandbox request features while
     /// sandboxing remains enabled.
     /// </summary>
@@ -604,7 +604,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // constructed only to satisfy the constructor contract and is never
             // invoked.
             var reason = string.Join("; ", peeked.UnsupportedReasons);
-            var unavailableMode = (_settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? true)
+            var unavailableMode = (_settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false)
                 ? "commands will be blocked by strict fallback settings"
                 : "commands will run through host fallback";
             _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable, {unavailableMode}: {reason})");
@@ -635,7 +635,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             return new SettingsData
             {
                 SystemRunSandboxEnabled = true,
-                SystemRunBlockHostFallbackWhenMxcUnavailable = true,
+                SystemRunBlockHostFallbackWhenMxcUnavailable = false,
                 SystemRunAllowOutbound = false,
             };
 
