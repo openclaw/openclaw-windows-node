@@ -730,6 +730,65 @@ public class MxcConfigBuilderTests
         }
     }
 
+    [Fact]
+    public void Build_CmdShell_BoundsPathBootstrapBeforeCommandLine()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-cmd-long-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var dirs = Enumerable.Range(0, 180)
+                .Select(i => Directory.CreateDirectory(Path.Combine(tempRoot, $"bin{i:D3}")).FullName)
+                .ToArray();
+            var pathEnv = string.Join(Path.PathSeparator, dirs);
+            using var argsDoc = JsonDocument.Parse("""{"command":"echo %PATH%","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: pathEnv);
+
+            Assert.Contains("set \"PATH=", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.Contains(dirs[0], config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(dirs[^1], config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.True(config.Process.CommandLine.Length < 12_000, config.Process.CommandLine);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_PowerShellShell_BoundsPathBootstrapBeforeEncoding()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-pwsh-long-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var dirs = Enumerable.Range(0, 180)
+                .Select(i => Directory.CreateDirectory(Path.Combine(tempRoot, $"bin{i:D3}")).FullName)
+                .ToArray();
+            var pathEnv = string.Join(Path.PathSeparator, dirs);
+            using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output $env:PATH","shell":"powershell"}""");
+            var policy = BalancedPolicy() with
+            {
+                Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+            };
+            var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: pathEnv);
+            var script = DecodePowershellEncodedCommand(config.Process.CommandLine);
+
+            Assert.Contains("$env:PATH = '", script, StringComparison.Ordinal);
+            Assert.Contains(dirs[0], script, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(dirs[^1], script, StringComparison.OrdinalIgnoreCase);
+            Assert.True(script.Length < 8_000, script);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
     // ---- helpers for tolerant JSON comparison ----
 
     private static string DecodePowershellEncodedCommand(string commandLine)

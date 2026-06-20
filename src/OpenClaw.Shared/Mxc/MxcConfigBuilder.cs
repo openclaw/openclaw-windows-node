@@ -11,10 +11,10 @@ namespace OpenClaw.Shared.Mxc;
 /// <list type="bullet">
 /// <item>Translates <see cref="SandboxPolicy"/> (from the Sandbox page) and the
 ///   agent's request into the JSON shape wxc-exec consumes.</item>
-/// <item><see cref="ResolvePathDirsForShellPath"/> — reconstructs <c>PATH</c>
-///   inside the launched shell and grants backend-safe PATH directories as
-///   readonly, so user-level tools can be resolved and executed without asking
-///   MXC's DACL fallback to prepare protected system directories.</item>
+/// <item><see cref="ResolvePathDirsForShellPath"/> — reconstructs a bounded
+///   <c>PATH</c> inside the launched shell and grants backend-safe PATH
+///   directories as readonly, so user-level tools can be resolved and executed
+///   without asking MXC's DACL fallback to prepare protected system directories.</item>
 /// <item>Scratch dir injection — adds the per-invocation scratch dir as
 ///   readwrite and bootstraps <c>TEMP</c>/<c>TMP</c>/<c>TMPDIR</c> inside the
 ///   launched shell. Explicit <c>process.env</c> injection is intentionally
@@ -482,6 +482,7 @@ internal sealed record MxcConfigBuildContext(
 /// </summary>
 internal static class ShellCommandLine
 {
+    private const int MaxShellBootstrapPathChars = 4096;
     private static readonly string[] CmdBootstrapTempEnvNames = ["TEMP", "TMP", "TMPDIR"];
 
     public static string Build(
@@ -492,17 +493,38 @@ internal static class ShellCommandLine
         IReadOnlyList<string> pathDirs)
     {
         var normalized = (shell ?? "cmd").Trim().ToLowerInvariant();
+        var bootstrapPathDirs = LimitPathDirsForCommandLine(pathDirs);
         return normalized switch
         {
-            "cmd" => BuildCmd(command, argv, scratchDir, pathDirs),
+            "cmd" => BuildCmd(command, argv, scratchDir, bootstrapPathDirs),
             "pwsh" or "powershell" => BuildPowershell(
                 normalized == "pwsh" ? ResolvePwshExe(pathDirs) : ResolveWindowsPowerShellExe(),
                 command,
                 argv,
                 scratchDir,
-                pathDirs),
-            _ => BuildPowershell(ResolveWindowsPowerShellExe(), command, argv, scratchDir, pathDirs),
+                bootstrapPathDirs),
+            _ => BuildPowershell(ResolveWindowsPowerShellExe(), command, argv, scratchDir, bootstrapPathDirs),
         };
+    }
+
+    private static IReadOnlyList<string> LimitPathDirsForCommandLine(IReadOnlyList<string> pathDirs)
+    {
+        if (pathDirs.Count == 0)
+            return Array.Empty<string>();
+
+        var bounded = new List<string>();
+        var currentLength = 0;
+        foreach (var dir in pathDirs)
+        {
+            var additionalLength = dir.Length + (bounded.Count == 0 ? 0 : 1);
+            if (currentLength + additionalLength > MaxShellBootstrapPathChars)
+                break;
+
+            bounded.Add(dir);
+            currentLength += additionalLength;
+        }
+
+        return bounded;
     }
 
     private static string BuildCmd(
