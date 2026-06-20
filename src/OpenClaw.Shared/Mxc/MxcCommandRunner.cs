@@ -226,6 +226,18 @@ public sealed class MxcCommandRunner : ICommandRunner
             // caller sees the cancellation rather than a fake "exited 0" response.
             throw;
         }
+        catch (NotSupportedException ex)
+        {
+            _logger.Warn($"[mxc] system.run denied: unsupported sandbox request: {ex.Message}");
+            return new CommandResult
+            {
+                Stdout = string.Empty,
+                Stderr = ex.Message,
+                ExitCode = -1,
+                TimedOut = false,
+                DurationMs = 0,
+            };
+        }
         catch (Exception ex)
         {
             // Fail closed for ANY other error (bridge crashed, JSON malformed, IO

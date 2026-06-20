@@ -66,6 +66,13 @@ public static class MxcConfigBuilder
 
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
+        if (IsPowerShellFamilyShell(args.Shell) && policy?.Ui?.AllowWindows != true)
+        {
+            throw new NotSupportedException(
+                "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend. " +
+                "Use shell=\"cmd\", enable an approved UI policy, or disable sandboxing if uncontained host execution is acceptable.");
+        }
+
         if (request.Env is { Count: > 0 })
         {
             throw new NotSupportedException(
@@ -448,6 +455,12 @@ public static class MxcConfigBuilder
                 .ToArray();
         }
         return new SystemRunArgs(command, shell, argv);
+    }
+
+    private static bool IsPowerShellFamilyShell(string shell)
+    {
+        var normalized = shell.Trim().ToLowerInvariant();
+        return normalized is "powershell" or "pwsh";
     }
 
     private sealed record SystemRunArgs(string Command, string Shell, IReadOnlyList<string> Argv);

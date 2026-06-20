@@ -578,6 +578,19 @@ public class MxcConfigBuilderTests
         Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
     }
 
+    [Theory]
+    [InlineData("powershell")]
+    [InlineData("pwsh")]
+    public void Build_PowerShellFamilyShell_WhenUiDenied_FailsClosed(string shell)
+    {
+        using var argsDoc = JsonDocument.Parse($$"""{"command":"Write-Output hi","shell":"{{shell}}"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("PowerShell-family shells require UI access", ex.Message);
+    }
+
     [Fact]
     public void Build_CmdShell_UsesResolvedCmdExe()
     {
@@ -615,17 +628,21 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void Build_PwshShell_UsesPwshAndPreservesUiDeny()
+    public void Build_PwshShell_WhenPolicyAllowsWindows_UsesPwshAndEnablesDesktopIsolation()
     {
         using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
-        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+        var policy = BalancedPolicy() with
+        {
+            Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+        };
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
 
         var config = BuildConfig(request, pathEnvVar: "");
 
         Assert.StartsWith("pwsh.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
-        Assert.True(config.Ui!.Disable);
-        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
     }
 
     [Fact]
@@ -638,7 +655,11 @@ public class MxcConfigBuilderTests
             var pwshPath = Path.Combine(binDir, "pwsh.exe");
             File.WriteAllBytes(pwshPath, Array.Empty<byte>());
             using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
-            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+            var policy = BalancedPolicy() with
+            {
+                Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+            };
+            var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
 
             var config = BuildConfig(request, pathEnvVar: binDir);
 
@@ -660,7 +681,11 @@ public class MxcConfigBuilderTests
     public void Build_PowerShellShell_UsesResolvedWindowsPowerShellExe()
     {
         using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"powershell"}""");
-        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+        var policy = BalancedPolicy() with
+        {
+            Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+        };
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
 
         var config = BuildConfig(request, pathEnvVar: "");
 
@@ -672,8 +697,8 @@ public class MxcConfigBuilderTests
 
         Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
-        Assert.True(config.Ui!.Disable);
-        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
     }
 
     [Fact]
@@ -686,7 +711,11 @@ public class MxcConfigBuilderTests
             var dir2 = Directory.CreateDirectory(Path.Combine(tempRoot, "bin2")).FullName;
             var pathEnv = string.Join(Path.PathSeparator, dir1, dir2);
             using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output $env:PATH","shell":"powershell"}""");
-            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+            var policy = BalancedPolicy() with
+            {
+                Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+            };
+            var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
 
             var config = BuildConfig(request, pathEnvVar: pathEnv);
             var script = DecodePowershellEncodedCommand(config.Process.CommandLine);

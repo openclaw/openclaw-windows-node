@@ -21,8 +21,8 @@ namespace OpenClaw.Shared.Mxc;
 /// credentials, ElevenLabs key), <c>~/.ssh</c>, and the common browser profile
 /// roots (Chrome / Edge / Firefox / Brave). Always blocked regardless of grants.</item>
 /// <item><c>network.allowOutbound</c> — bound by <see cref="SettingsData.SystemRunAllowOutbound"/>.</item>
-/// <item><c>ui</c> — default-deny in policy; the config builder may relax UI
-/// for PowerShell-family shells that need desktop isolation to start under MXC.</item>
+/// <item><c>ui</c> — default-deny in policy; PowerShell-family shells must not
+/// relax UI containment unless a caller supplies an approved UI policy.</item>
 /// </list>
 /// </remarks>
 public static class MxcPolicyBuilder

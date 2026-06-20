@@ -496,6 +496,24 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_NotSupportedException_ReturnsExplicitDeny_DoesNotFallBack()
+    {
+        var executor = new FakeSandboxExecutor
+        {
+            ThrowsArbitrary = new NotSupportedException("PowerShell-family shells require UI access"),
+        };
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        var result = await runner.RunAsync(new CommandRequest { Command = "Write-Output hi", Shell = "powershell" });
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("PowerShell-family shells require UI access", result.Stderr);
+        Assert.DoesNotContain("unexpected", result.Stderr, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Fact]
     public async Task RunAsync_OperationCanceled_Propagates()
     {
         // OperationCanceledException is the ONE exception type that propagates.
