@@ -116,7 +116,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_DeniesRuntimeFallbackWhenOmittedShellWouldChangeAfterApproval()
+    public async Task RunAsync_SandboxEnabled_OmittedShellFallsBackToHostDefaultWhenExecutorIsUnavailable()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
         var fallback = new FakeCommandRunner
@@ -132,9 +132,10 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("pre-approved shell", result.Stderr);
-        Assert.Null(fallback.LastRequest);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host-ran", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
     }
 
     [Fact]

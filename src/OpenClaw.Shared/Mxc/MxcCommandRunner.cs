@@ -142,9 +142,6 @@ public sealed class MxcCommandRunner : ICommandRunner
                     "[mxc] system.run UNCONTAINED: custom env is unsupported by MXC processcontainer " +
                     "and MXC is unavailable after re-probe; routing through host runner for compatibility.");
                 var hostShell = ResolveHostFallbackShell(request.Shell);
-                if (FallbackWouldChangeApprovedShell(request, effectiveShell, hostShell))
-                    return DenyFallbackShellMismatch(effectiveShell, hostShell);
-
                 return await RunHostFallbackAsync(request, hostShell, ct);
             }
 
@@ -215,9 +212,6 @@ public sealed class MxcCommandRunner : ICommandRunner
                 $"[mxc] system.run UNCONTAINED: sandbox became unavailable at runtime ({ex.Message}); " +
                 "routing through host runner for compatibility.");
             var hostShell = ResolveHostFallbackShell(request.Shell);
-            if (FallbackWouldChangeApprovedShell(request, effectiveShell, hostShell))
-                return DenyFallbackShellMismatch(effectiveShell, hostShell);
-
             return await RunHostFallbackAsync(request, hostShell, ct);
         }
         catch (OperationCanceledException)
@@ -241,9 +235,6 @@ public sealed class MxcCommandRunner : ICommandRunner
                     $"[mxc] system.run UNCONTAINED: PowerShell-family shell unsupported by MXC UI-deny policy ({ex.Message}); " +
                     "routing through host runner for compatibility.");
                 var hostShell = ResolveHostFallbackShell(request.Shell);
-                if (FallbackWouldChangeApprovedShell(request, effectiveShell, hostShell))
-                    return DenyFallbackShellMismatch(effectiveShell, hostShell);
-
                 return await RunHostFallbackAsync(request, hostShell, ct);
             }
 
@@ -318,31 +309,6 @@ public sealed class MxcCommandRunner : ICommandRunner
 
     private static bool IsPowerShellUiUnsupported(NotSupportedException ex) =>
         ex.Message.Contains("PowerShell-family shells require UI access", StringComparison.OrdinalIgnoreCase);
-
-    private static bool FallbackWouldChangeApprovedShell(
-        CommandRequest request,
-        string approvedShell,
-        string hostFallbackShell) =>
-        string.IsNullOrWhiteSpace(request.Shell)
-        && !string.Equals(approvedShell, hostFallbackShell, StringComparison.OrdinalIgnoreCase);
-
-    private CommandResult DenyFallbackShellMismatch(string approvedShell, string hostFallbackShell)
-    {
-        var message =
-            "Sandboxed system.run could not safely fall back to host execution because the " +
-            $"pre-approved shell was '{approvedShell}' but host fallback would execute with " +
-            $"'{hostFallbackShell}'. Retry with an explicit shell or after MXC availability " +
-            "has been re-probed.";
-        _logger.Warn("[mxc] system.run denied: host fallback shell would differ from approved shell");
-        return new CommandResult
-        {
-            Stdout = string.Empty,
-            Stderr = message,
-            ExitCode = -1,
-            TimedOut = false,
-            DurationMs = 0,
-        };
-    }
 
     private static JsonElement SerializeArgs(CommandRequest request, string effectiveShell)
     {

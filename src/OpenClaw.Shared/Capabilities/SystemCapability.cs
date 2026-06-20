@@ -474,7 +474,7 @@ public class SystemCapability : NodeCapabilityBase
             {
                 Command = command,
                 Args = args,
-                Shell = effectiveShell,
+                Shell = string.IsNullOrWhiteSpace(shell) ? null : shell.Trim(),
                 Cwd = cwd,
                 TimeoutMs = timeoutMs,
                 Env = env

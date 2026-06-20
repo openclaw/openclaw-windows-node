@@ -597,6 +597,39 @@ public class SystemRunTests
     }
 
     [Fact]
+    public async Task SystemRun_PreservesOmittedShellWhenCallingRunner()
+    {
+        var logger = new ExecTestLogger();
+        var policy = new ExecApprovalPolicy(Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}"), logger);
+        policy.SetRules(
+            new[]
+            {
+                new ExecApprovalRule
+                {
+                    Pattern = "echo hi",
+                    Action = ExecApprovalAction.Allow,
+                    Shells = new[] { "cmd" }
+                }
+            },
+            ExecApprovalAction.Deny);
+        var runner = new FakeCommandRunner { EffectiveShellForNull = "cmd" };
+        var cap = new SystemCapability(logger);
+        cap.SetCommandRunner(runner);
+        cap.SetApprovalPolicy(policy);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "preserve-omitted-shell",
+            Command = "system.run",
+            Args = Parse("""{"command":"echo hi"}""")
+        });
+
+        Assert.True(res.Ok, res.Error);
+        Assert.NotNull(runner.LastRequest);
+        Assert.Null(runner.LastRequest!.Shell);
+    }
+
+    [Fact]
     public async Task SystemRun_WithPromptPolicy_PromptsOnceForShellWrapper_WhenUserApprovesOnce()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
