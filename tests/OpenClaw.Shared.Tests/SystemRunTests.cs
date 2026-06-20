@@ -846,7 +846,7 @@ public class SystemRunTests
 public class LocalCommandRunnerTests
 {
     [Fact]
-    public void BuildProcessArgs_DefaultShellUsesPwshWhenAvailableOnPath()
+    public void BuildProcessArgs_DefaultShellUsesWindowsPowerShellWhenPwshAvailableOnPath()
     {
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "openclaw-pwsh-path-" + Guid.NewGuid().ToString("N"))).FullName;
         var fakePwsh = Path.Combine(tempDir, "pwsh.exe");
@@ -859,7 +859,7 @@ public class LocalCommandRunnerTests
                 Command = "Write-Output hi",
             }, pathEnvVar: tempDir);
 
-            Assert.Equal(fakePwsh, fileName);
+            Assert.Equal(ExpectedWindowsPowerShellExe(), fileName);
             Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
         }
         finally

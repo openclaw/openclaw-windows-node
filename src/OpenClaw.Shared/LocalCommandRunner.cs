@@ -277,7 +277,7 @@ public class LocalCommandRunner : ICommandRunner
             };
         }
 
-        return ResolveOnPath("pwsh.exe", pathEnvVar) is not null ? "pwsh" : "powershell";
+        return "powershell";
     }
 
     private static string? ResolveOnPath(string executableName, string? pathEnvVar = null)
