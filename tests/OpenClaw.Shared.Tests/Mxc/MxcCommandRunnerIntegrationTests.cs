@@ -182,6 +182,71 @@ public class MxcCommandRunnerIntegrationTests
         }
     }
 
+    [IntegrationFact]
+    public async Task SystemRun_FilesystemAccessMatrix_EnforcesReadwriteAndReadonlyPaths()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "openclaw-mxc-fs-matrix-" + Guid.NewGuid().ToString("N"))).FullName;
+        var rwDir = Directory.CreateDirectory(Path.Combine(root, "rw")).FullName;
+        var roDir = Directory.CreateDirectory(Path.Combine(root, "ro")).FullName;
+
+        var roInput = Path.Combine(roDir, "input.txt");
+        var rwOutput = Path.Combine(rwDir, "rw_marker.tmp");
+        var roForbidden = Path.Combine(roDir, "forbidden.tmp");
+
+        await File.WriteAllTextAsync(roInput, "readonly test data");
+
+        try
+        {
+            if (!HasSupportedSandboxPath(root))
+            {
+                Console.WriteLine(
+                    "[mxc-integration] SKIPPING: filesystem matrix path is not in a supported local sandbox location.");
+                return;
+            }
+
+            var runner = TryBuildRunner(
+                configure: settings =>
+                {
+                    settings.SandboxCustomFolders = new List<SandboxCustomFolder>
+                    {
+                        new() { Path = rwDir, Access = SandboxFolderAccess.ReadWrite },
+                        new() { Path = roDir, Access = SandboxFolderAccess.ReadOnly },
+                    };
+                });
+            if (runner is null) return; // skip — MXC unavailable on this host
+
+            var command = string.Join(" & ", new[]
+            {
+                $"(echo RW_WRITE_VALUE > {CmdQuote(rwOutput)} && echo RW_WRITE=PASS || echo RW_WRITE=FAIL)",
+                $"(type {CmdQuote(rwOutput)} > nul && echo RW_READ=PASS || echo RW_READ=FAIL)",
+                $"(type {CmdQuote(roInput)} > nul && echo RO_READ=PASS || echo RO_READ=FAIL)",
+                $"(echo RO_WRITE_VALUE > {CmdQuote(roForbidden)} && echo RO_WRITE=PASS || echo RO_WRITE=FAIL)",
+            });
+
+            var result = await runner.RunAsync(new CommandRequest
+            {
+                Command = command,
+                Shell = "cmd",
+                TimeoutMs = 30_000,
+            });
+
+            Assert.False(result.TimedOut, $"Filesystem matrix timed out.\nStdout={result.Stdout}\nStderr={result.Stderr}");
+            var matrix = ParseMatrix(result.Stdout);
+            AssertMatrix(matrix, "RW_WRITE", "PASS", result);
+            AssertMatrix(matrix, "RW_READ", "PASS", result);
+            AssertMatrix(matrix, "RO_READ", "PASS", result);
+            AssertMatrix(matrix, "RO_WRITE", "FAIL", result);
+
+            Assert.True(File.Exists(rwOutput), $"RW output should exist on host: {rwOutput}");
+            Assert.False(File.Exists(roForbidden), $"RO output should not exist on host: {roForbidden}");
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
     private static bool HasSupportedSandboxPath(string path)
     {
         try
@@ -204,5 +269,36 @@ public class MxcCommandRunnerIntegrationTests
 
     private static bool IsGitHubActions()
         => string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
-}
 
+    private static Dictionary<string, string> ParseMatrix(string stdout)
+    {
+        var matrix = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawLine in stdout.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.Trim();
+            var separator = line.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            var key = line[..separator];
+            var value = line[(separator + 1)..];
+            if (value is "PASS" or "FAIL")
+                matrix[key] = value;
+        }
+
+        return matrix;
+    }
+
+    private static void AssertMatrix(
+        IReadOnlyDictionary<string, string> matrix,
+        string key,
+        string expected,
+        CommandResult result)
+    {
+        Assert.True(matrix.TryGetValue(key, out var actual),
+            $"Missing matrix key {key}.\nStdout={result.Stdout}\nStderr={result.Stderr}\nExitCode={result.ExitCode}");
+        Assert.Equal(expected, actual);
+    }
+
+    private static string CmdQuote(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+}
