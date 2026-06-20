@@ -275,11 +275,15 @@ public class SystemCapability : NodeCapabilityBase
         
         var command = argv[0];
         var rawCommand = GetStringArg(request.Args, "rawCommand");
+        var requestedShell = GetStringArg(request.Args, "shell");
+        var effectiveShell = _commandRunner?.ResolveEffectiveShell(requestedShell)
+            ?? ResolveDefaultEffectiveShell(requestedShell);
         var cwd = GetStringArg(request.Args, "cwd");
         var agentId = GetStringArg(request.Args, "agentId");
         var sessionKey = request.SessionKey ?? GetStringArg(request.Args, "sessionKey");
         
-        Logger.Info($"system.run.prepare: {rawCommand} (cwd={cwd ?? "default"})");
+        Logger.Info(
+            $"system.run.prepare: {rawCommand} (shell={effectiveShell}, requestedShell={requestedShell ?? "auto"}, cwd={cwd ?? "default"})");
         
         return Success(new
         {
@@ -289,10 +293,26 @@ public class SystemCapability : NodeCapabilityBase
                 argv,
                 cwd,
                 rawCommand,
+                requestedShell = string.IsNullOrWhiteSpace(requestedShell) ? null : requestedShell.Trim(),
+                effectiveShell,
                 agentId,
                 sessionKey
             }
         });
+    }
+
+    private static string ResolveDefaultEffectiveShell(string? requestedShell)
+    {
+        if (string.IsNullOrWhiteSpace(requestedShell))
+            return "powershell";
+
+        return requestedShell.Trim().ToLowerInvariant() switch
+        {
+            "cmd" => "cmd",
+            "pwsh" => "pwsh",
+            "powershell" => "powershell",
+            _ => "powershell",
+        };
     }
     
     private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request)

@@ -88,7 +88,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
                 : config.Process.Cwd;
 
             WarnIfUnsupportedVolume(config);
-            LogConfig(config, configJson, request, availability.WxcExecPath);
+            LogConfig(config, configJson, request, availability);
 
             MxcExecutor executor;
             try
@@ -190,7 +190,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         catch (Exception ex) { Trace.WriteLine($"DirectAppContainerExecutor.TryDeleteDir '{path}' (best-effort) failed: {ex.Message}"); }
     }
 
-    private void LogConfig(MxcConfig config, string configJson, SandboxExecutionRequest request, string? wxcExecPath)
+    private void LogConfig(MxcConfig config, string configJson, SandboxExecutionRequest request, MxcAvailability availability)
     {
         // Default: redacted summary. Field counts only; no paths, no command line,
         // no env values. Useful for verifying Sandbox UI settings round-tripped
@@ -200,21 +200,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
             .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
             .ToArray() ?? Array.Empty<string>();
 
-        var summary =
-            "[mxc] wxc-exec config (redacted) " +
-            $"wxcExec={wxcExecPath}; configBytes={Encoding.UTF8.GetByteCount(configJson)}; " +
-            $"containerId={config.ContainerId}; version={config.Version}; " +
-            $"commandLineLength={config.Process.CommandLine?.Length ?? 0}; " +
-            $"cwd={(string.IsNullOrEmpty(config.Process.Cwd) ? "<null>" : "<set>")}; " +
-            $"envKeys=[{string.Join(",", envKeys)}]; " +
-            $"timeoutMs={config.Process.TimeoutMs?.ToString() ?? "<null>"}; " +
-            $"capabilities=[{string.Join(",", config.ProcessContainer?.Capabilities ?? Array.Empty<string>())}]; " +
-            $"readonlyCount={config.Filesystem?.ReadonlyPaths?.Length ?? 0}; " +
-            $"readwriteCount={config.Filesystem?.ReadwritePaths?.Length ?? 0}; " +
-            $"deniedCount={config.Filesystem?.DeniedPaths?.Length ?? 0}; " +
-            $"network={{defaultPolicy={config.Network?.DefaultPolicy ?? "<null>"},enforcementMode={config.Network?.EnforcementMode ?? "<null>"}}}; " +
-            $"ui={{disable={config.Ui?.Disable},clipboard={config.Ui?.Clipboard ?? "<null>"},injection={config.Ui?.Injection}}}; " +
-            $"maxOutputBytes={request.MaxOutputBytes?.ToString() ?? "<default>"}";
+        var summary = BuildRedactedConfigSummary(availability, config, configJson, request);
         _logger.Debug(summary);
         Trace.WriteLine(summary);
 
@@ -234,6 +220,39 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
             _logger.Debug(fullMsg);
             Trace.WriteLine(fullMsg);
         }
+    }
+
+    internal static string BuildRedactedConfigSummary(
+        MxcAvailability availability,
+        MxcConfig config,
+        string configJson,
+        SandboxExecutionRequest request)
+    {
+        // Default diagnostics must not expose host paths. Keep path presence as
+        // a state flag; the opt-in full diagnostics channel owns path-bearing repro data.
+        var wxcExecState = availability.IsWxcExecResolvable && !string.IsNullOrWhiteSpace(availability.WxcExecPath)
+            ? "<set>"
+            : "<missing>";
+        var envKeys = config.Process.Env?
+            .Select(kv => kv.Split('=', 2)[0])
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? Array.Empty<string>();
+
+        return
+            "[mxc] wxc-exec config (redacted) " +
+            $"wxcExec={wxcExecState}; configBytes={Encoding.UTF8.GetByteCount(configJson)}; " +
+            $"containerId={config.ContainerId}; version={config.Version}; " +
+            $"commandLineLength={config.Process.CommandLine?.Length ?? 0}; " +
+            $"cwd={(string.IsNullOrEmpty(config.Process.Cwd) ? "<null>" : "<set>")}; " +
+            $"envKeys=[{string.Join(",", envKeys)}]; " +
+            $"timeoutMs={config.Process.TimeoutMs?.ToString() ?? "<null>"}; " +
+            $"capabilities=[{string.Join(",", config.AppContainer?.Capabilities ?? Array.Empty<string>())}]; " +
+            $"readonlyCount={config.Filesystem?.ReadonlyPaths?.Length ?? 0}; " +
+            $"readwriteCount={config.Filesystem?.ReadwritePaths?.Length ?? 0}; " +
+            $"deniedCount={config.Filesystem?.DeniedPaths?.Length ?? 0}; " +
+            $"network={{defaultPolicy={config.Network?.DefaultPolicy ?? "<null>"},enforcementMode={config.Network?.EnforcementMode ?? "<null>"}}}; " +
+            $"ui={{disable={config.Ui?.Disable},clipboard={config.Ui?.Clipboard ?? "<null>"},injection={config.Ui?.Injection}}}; " +
+            $"maxOutputBytes={request.MaxOutputBytes?.ToString() ?? "<default>"}";
     }
 
     private void WarnIfUnsupportedVolume(MxcConfig config)

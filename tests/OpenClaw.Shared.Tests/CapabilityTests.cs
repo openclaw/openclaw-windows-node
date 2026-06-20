@@ -371,6 +371,29 @@ public class SystemCapabilityTests
     }
 
     [Fact]
+    public async Task RunPrepare_ReturnsRequestedAndEffectiveShellFromRunner()
+    {
+        var runner = new FakeCommandRunner { ForcedEffectiveShell = "cmd" };
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+        var req = new NodeInvokeRequest
+        {
+            Id = "p-shell",
+            Command = "system.run.prepare",
+            Args = Parse("""{"command":"echo hi","shell":"bash"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        Assert.Equal("bash", runner.LastResolvedShell);
+        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        var plan = payload.GetProperty("plan");
+        Assert.Equal("bash", plan.GetProperty("requestedShell").GetString());
+        Assert.Equal("cmd", plan.GetProperty("effectiveShell").GetString());
+    }
+
+    [Fact]
     public async Task RunPrepare_ReturnsError_WhenMissingCommand()
     {
         var cap = new SystemCapability(NullLogger.Instance);
@@ -743,6 +766,26 @@ public class SystemCapabilityTests
     {
         public string Name => "fake";
         public CommandRequest? LastRequest { get; private set; }
+        public string? LastResolvedShell { get; private set; }
+        public string? ForcedEffectiveShell { get; set; }
+
+        public string ResolveEffectiveShell(string? requestedShell)
+        {
+            LastResolvedShell = requestedShell;
+            if (ForcedEffectiveShell != null)
+                return ForcedEffectiveShell;
+
+            if (string.IsNullOrWhiteSpace(requestedShell))
+                return "powershell";
+
+            return requestedShell.Trim().ToLowerInvariant() switch
+            {
+                "cmd" => "cmd",
+                "pwsh" => "pwsh",
+                "powershell" => "powershell",
+                _ => "powershell",
+            };
+        }
 
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
         {

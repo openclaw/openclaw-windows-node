@@ -117,4 +117,43 @@ public class DirectAppContainerExecutorTests
         Assert.Equal("mxc-direct-appc", executor.Name);
         Assert.True(executor.IsContained);
     }
+
+    [Fact]
+    public void BuildRedactedConfigSummary_DoesNotExposeWxcExecOrRequestPaths()
+    {
+        var availability = new MxcAvailability(
+            isAppContainerAvailable: true,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: "C:\\secret\\mxc\\wxc-exec.exe",
+            unsupportedReasons: Array.Empty<string>());
+        var config = new MxcConfig
+        {
+            ContainerId = "test",
+            Process = new MxcProcess
+            {
+                CommandLine = "cmd /c echo hi",
+                Cwd = "C:\\secret\\work",
+                Env = new[] { "SECRET_PATH=C:\\secret\\value" },
+            },
+            Filesystem = new MxcFilesystem
+            {
+                ReadwritePaths = new[] { "C:\\secret\\repo" },
+                ReadonlyPaths = new[] { "C:\\secret\\docs" },
+                DeniedPaths = new[] { "C:\\secret\\.ssh" },
+            },
+        };
+
+        var summary = DirectAppContainerExecutor.BuildRedactedConfigSummary(
+            availability,
+            config,
+            "{\"fake\":true}",
+            NewRequest());
+
+        Assert.Contains("wxcExec=<set>", summary);
+        Assert.Contains("cwd=<set>", summary);
+        Assert.Contains("envKeys=[SECRET_PATH]", summary);
+        Assert.DoesNotContain("C:\\secret", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("cmd /c echo hi", summary, StringComparison.OrdinalIgnoreCase);
+    }
 }
