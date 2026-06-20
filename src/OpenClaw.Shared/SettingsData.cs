@@ -41,6 +41,16 @@ public record class SettingsData
     public bool CameraRecordingConsentGiven { get; set; } = false;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Optional override for the browser-control host port the node-side
+    /// <c>browser.proxy</c> capability connects to. When null (default) the port is
+    /// derived as gateway port + 2 on 127.0.0.1, matching a co-located gateway. Set
+    /// this for split/remote topologies where the browser-control host is reached on
+    /// a different local port (e.g. an SSH-forwarded WSL2 gateway).
+    /// </summary>
+    public int? BrowserControlPort { get; set; }
+
     /// <summary>
     /// Master switch for the <c>system.run</c> + <c>system.run.prepare</c>
     /// commands. When <c>false</c>, those commands are dropped from the

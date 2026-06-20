@@ -19,6 +19,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
     private readonly string _gatewayUrl;
     private readonly string _bearerToken;
     private readonly int? _sshRemoteGatewayPort;
+    private readonly int? _controlPortOverride;
     private readonly HttpClient _httpClient;
 
     public BrowserProxyCapability(
@@ -26,11 +27,13 @@ public class BrowserProxyCapability : NodeCapabilityBase
         string gatewayUrl,
         string? bearerToken,
         HttpMessageHandler? handler = null,
-        int? sshRemoteGatewayPort = null) : base(logger)
+        int? sshRemoteGatewayPort = null,
+        int? controlPortOverride = null) : base(logger)
     {
         _gatewayUrl = gatewayUrl;
         _bearerToken = bearerToken ?? "";
         _sshRemoteGatewayPort = sshRemoteGatewayPort;
+        _controlPortOverride = controlPortOverride;
         _httpClient = handler == null ? new HttpClient() : new HttpClient(handler);
     }
 
@@ -42,7 +45,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
         if (!string.Equals(request.Command, "browser.proxy", StringComparison.OrdinalIgnoreCase))
             return Error($"Unknown command: {request.Command}");
 
-        if (!TryResolveControlEndpoint(_gatewayUrl, out var controlPort, out var endpointError))
+        if (!TryResolveControlEndpoint(_gatewayUrl, _controlPortOverride, out var controlPort, out var endpointError))
             return Error(endpointError);
 
         var method = GetStringArg(request.Args, "method", "GET")?.ToUpperInvariant() ?? "GET";
@@ -153,10 +156,25 @@ public class BrowserProxyCapability : NodeCapabilityBase
             : "Browser control host rejected authentication. Verify the gateway token saved in Settings matches the browser-control host auth token or password.";
     }
 
-    private static bool TryResolveControlEndpoint(string gatewayUrl, out int controlPort, out string error)
+    private static bool TryResolveControlEndpoint(string gatewayUrl, int? controlPortOverride, out int controlPort, out string error)
     {
         controlPort = 0;
         error = "";
+
+        // An explicit override pins the browser-control port for split/remote topologies
+        // where the host is not reachable at gatewayPort + 2 on the node (e.g. forwarded
+        // over an SSH tunnel from a WSL2 gateway).
+        if (controlPortOverride is { } overridePort)
+        {
+            if (overridePort is < 1 or > 65535)
+            {
+                error = "Configured browser-control port is outside the valid TCP port range.";
+                return false;
+            }
+            controlPort = overridePort;
+            return true;
+        }
+
         if (!Uri.TryCreate(gatewayUrl, UriKind.Absolute, out var gatewayUri) || gatewayUri.Port <= 0)
         {
             error = "Browser proxy requires a gateway URL with an explicit local port.";
