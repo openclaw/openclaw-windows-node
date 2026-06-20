@@ -496,19 +496,64 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_NotSupportedException_ReturnsExplicitDeny_DoesNotFallBack()
+    public async Task RunAsync_PowerShellUiUnsupported_FallsBackWhenCompatibilityFallbackEnabled()
+    {
+        var executor = new FakeSandboxExecutor
+        {
+            ThrowsArbitrary = new NotSupportedException("PowerShell-family shells require UI access"),
+        };
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
+        };
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(sandboxEnabled: true, blockHostFallbackWhenMxcUnavailable: false));
+
+        var result = await runner.RunAsync(new CommandRequest { Command = "Write-Output hi", Shell = "powershell" });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+    }
+
+    [Fact]
+    public async Task RunAsync_PowerShellUiUnsupported_DeniesWhenStrictFallbackBlockingEnabled()
     {
         var executor = new FakeSandboxExecutor
         {
             ThrowsArbitrary = new NotSupportedException("PowerShell-family shells require UI access"),
         };
         var fallback = new FakeCommandRunner();
-        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(sandboxEnabled: true, blockHostFallbackWhenMxcUnavailable: true));
 
         var result = await runner.RunAsync(new CommandRequest { Command = "Write-Output hi", Shell = "powershell" });
 
         Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("PowerShell-family shells require UI access", result.Stderr);
+        Assert.Contains("cannot execute PowerShell-family shells", result.Stderr);
+        Assert.Contains("host fallback is blocked", result.Stderr);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Fact]
+    public async Task RunAsync_OtherNotSupportedException_ReturnsExplicitDeny_DoesNotFallBack()
+    {
+        var executor = new FakeSandboxExecutor
+        {
+            ThrowsArbitrary = new NotSupportedException("Explicit environment variables are not supported by the Windows MXC 0.7 processcontainer backend."),
+        };
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("Explicit environment variables are not supported", result.Stderr);
         Assert.DoesNotContain("unexpected", result.Stderr, StringComparison.OrdinalIgnoreCase);
         Assert.Null(fallback.LastRequest);
     }

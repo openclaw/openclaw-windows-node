@@ -228,6 +228,25 @@ public sealed class MxcCommandRunner : ICommandRunner
         }
         catch (NotSupportedException ex)
         {
+            if (IsPowerShellUiUnsupported(ex))
+            {
+                if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+                    return DenySandboxUnavailable(
+                        "Sandboxed system.run cannot execute PowerShell-family shells with the current MXC UI-deny policy, " +
+                        "and host fallback is blocked by settings. Retry with shell='cmd', disable strict fallback blocking, " +
+                        "or explicitly disable sandboxing if uncontained host execution is acceptable.",
+                        $"[mxc] system.run denied: PowerShell-family shell unsupported by MXC UI-deny policy and host fallback is blocked by settings: {ex.Message}");
+
+                _logger.Warn(
+                    $"[mxc] system.run UNCONTAINED: PowerShell-family shell unsupported by MXC UI-deny policy ({ex.Message}); " +
+                    "routing through host runner for compatibility.");
+                var hostShell = ResolveHostFallbackShell(request.Shell);
+                if (FallbackWouldChangeApprovedShell(request, effectiveShell, hostShell))
+                    return DenyFallbackShellMismatch(effectiveShell, hostShell);
+
+                return await RunHostFallbackAsync(request, hostShell, ct);
+            }
+
             _logger.Warn($"[mxc] system.run denied: unsupported sandbox request: {ex.Message}");
             return new CommandResult
             {
@@ -296,6 +315,9 @@ public sealed class MxcCommandRunner : ICommandRunner
 
     private string ResolveHostFallbackShell(string? requestedShell) =>
         _hostFallback.ResolveEffectiveShell(requestedShell);
+
+    private static bool IsPowerShellUiUnsupported(NotSupportedException ex) =>
+        ex.Message.Contains("PowerShell-family shells require UI access", StringComparison.OrdinalIgnoreCase);
 
     private static bool FallbackWouldChangeApprovedShell(
         CommandRequest request,
