@@ -387,6 +387,38 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
+    public void Build_CmdShell_RewritesBootstrapPercentEnvRefsToDelayedExpansion()
+    {
+        var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-test-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            using var argsDoc = JsonDocument.Parse("""
+            {
+                "command": "echo %TEMP% %TMP% %TMPDIR% %PATH%",
+                "shell": "cmd",
+                "args": ["%TEMP%\\out.txt"]
+            }
+            """);
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: tempDir);
+
+            Assert.Contains(" /V:ON /S /C \"", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.Contains("echo !TEMP! !TMP! !TMPDIR! !PATH!", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.Contains("!TEMP!\\out.txt", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.DoesNotContain("%TEMP%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("%TMP%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("%TMPDIR%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("%PATH%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Build_DoesNotAddDriveRootCompatibilityGrant()
     {
         var policy = new SandboxPolicy(

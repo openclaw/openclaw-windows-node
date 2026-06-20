@@ -459,6 +459,8 @@ public static class MxcConfigBuilder
 /// </summary>
 internal static class ShellCommandLine
 {
+    private static readonly string[] CmdBootstrapTempEnvNames = ["TEMP", "TMP", "TMPDIR"];
+
     public static string Build(
         string shell,
         string command,
@@ -487,17 +489,83 @@ internal static class ShellCommandLine
         IReadOnlyList<string> pathDirs)
     {
         // cmd /S /C "<command> [args]" — /S strips outer quotes so cmd treats
-        // everything after /C as the command line verbatim.
+        // everything after /C as the command line verbatim. If the payload
+        // references env vars we bootstrap in this same /C line, rewrite just
+        // those refs to delayed expansion; otherwise cmd expands %TEMP% before
+        // the preceding set command runs.
+        var rewrittenCommand = RewriteCmdBootstrapEnvRefs(command, pathDirs, out var needsDelayedExpansion);
+        var rewrittenArgv = new List<string>(argv.Count);
+        foreach (var arg in argv)
+        {
+            rewrittenArgv.Add(RewriteCmdBootstrapEnvRefs(arg, pathDirs, out var argNeedsDelayedExpansion));
+            needsDelayedExpansion |= argNeedsDelayedExpansion;
+        }
+
         var sb = new StringBuilder(QuoteProcessPath(ResolveCmdExe()));
+        if (needsDelayedExpansion)
+            sb.Append(" /V:ON");
         sb.Append(" /S /C \"");
         AppendCmdEnvironmentBootstrap(sb, scratchDir, pathDirs);
-        sb.Append(command);
-        foreach (var a in argv)
+        sb.Append(rewrittenCommand);
+        foreach (var a in rewrittenArgv)
         {
             sb.Append(' ');
             sb.Append(QuoteForCmd(a));
         }
         sb.Append('"');
+        return sb.ToString();
+    }
+
+    private static string RewriteCmdBootstrapEnvRefs(
+        string value,
+        IReadOnlyList<string> pathDirs,
+        out bool rewritten)
+    {
+        rewritten = false;
+        var result = value;
+        foreach (var name in CmdBootstrapTempEnvNames)
+        {
+            result = ReplaceOrdinalIgnoreCase(
+                result,
+                $"%{name}%",
+                $"!{name}!",
+                ref rewritten);
+        }
+
+        if (pathDirs.Count > 0)
+        {
+            result = ReplaceOrdinalIgnoreCase(
+                result,
+                "%PATH%",
+                "!PATH!",
+                ref rewritten);
+        }
+
+        return result;
+    }
+
+    private static string ReplaceOrdinalIgnoreCase(
+        string value,
+        string search,
+        string replacement,
+        ref bool replaced)
+    {
+        var index = value.IndexOf(search, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+            return value;
+
+        var sb = new StringBuilder(value.Length);
+        var cursor = 0;
+        while (index >= 0)
+        {
+            sb.Append(value, cursor, index - cursor);
+            sb.Append(replacement);
+            cursor = index + search.Length;
+            index = value.IndexOf(search, cursor, StringComparison.OrdinalIgnoreCase);
+            replaced = true;
+        }
+
+        sb.Append(value, cursor, value.Length - cursor);
         return sb.ToString();
     }
 
@@ -622,10 +690,9 @@ internal static class ShellCommandLine
     {
         // Note: `%VAR%` env-var expansion inside `cmd /S /C "..."` cannot be
         // reliably suppressed via quoting (cmd parses % before applying quote
-        // rules). The cmd shell route is opt-in and runs inside the AppContainer
-        // with a controlled env, so the expansion target is sandbox-side, not
-        // host-side. Callers wanting verbatim arguments should use powershell
-        // (-EncodedCommand) which has no env-expansion ambiguity.
+        // rules). Bootstrap env refs are rewritten before quoting; callers
+        // wanting fully verbatim arguments should use powershell
+        // (-EncodedCommand) which has no cmd env-expansion ambiguity.
         if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '"', '&', '|', '<', '>', '^', '(', ')', '%' }) < 0)
             return arg;
         return "\"" + arg.Replace("\"", "\"\"") + "\"";
