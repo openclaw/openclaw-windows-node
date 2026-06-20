@@ -35,6 +35,13 @@ public class CommandRequest
     
     /// <summary>Additional environment variables</summary>
     public Dictionary<string, string>? Env { get; set; }
+
+    /// <summary>
+    /// Optional host fallback shell that has already passed shell-scoped approval.
+    /// Sandboxed runners use this only when a compatibility fallback would execute
+    /// a different host shell than the sandbox effective shell.
+    /// </summary>
+    public string? ApprovedHostFallbackShell { get; set; }
 }
 
 /// <summary>
@@ -79,4 +86,17 @@ public interface ICommandRunner
     
     /// <summary>Execute a command and return the result.</summary>
     Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Optional contract for runners that may preserve compatibility through an
+/// uncontained host fallback with a shell different from their sandbox shell.
+/// </summary>
+public interface IHostFallbackAwareCommandRunner : ICommandRunner
+{
+    /// <summary>
+    /// Returns the host fallback shell that needs separate approval, or null when
+    /// fallback cannot change the already-approved effective shell.
+    /// </summary>
+    string? ResolveHostFallbackShellForApproval(string? requestedShell, string effectiveShell);
 }

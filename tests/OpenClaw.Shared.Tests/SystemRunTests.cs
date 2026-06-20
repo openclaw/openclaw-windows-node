@@ -608,11 +608,15 @@ public class SystemRunTests
                 {
                     Pattern = "echo hi",
                     Action = ExecApprovalAction.Allow,
-                    Shells = new[] { "cmd" }
+                    Shells = new[] { "cmd", "powershell" }
                 }
             },
             ExecApprovalAction.Deny);
-        var runner = new FakeCommandRunner { EffectiveShellForNull = "cmd" };
+        var runner = new FakeCommandRunner
+        {
+            EffectiveShellForNull = "cmd",
+            HostFallbackShellForApproval = "powershell"
+        };
         var cap = new SystemCapability(logger);
         cap.SetCommandRunner(runner);
         cap.SetApprovalPolicy(policy);
@@ -627,6 +631,44 @@ public class SystemRunTests
         Assert.True(res.Ok, res.Error);
         Assert.NotNull(runner.LastRequest);
         Assert.Null(runner.LastRequest!.Shell);
+        Assert.Equal("powershell", runner.LastRequest.ApprovedHostFallbackShell);
+    }
+
+    [Fact]
+    public async Task SystemRun_DeniesOmittedShellWhenFallbackShellIsNotApproved()
+    {
+        var logger = new ExecTestLogger();
+        var policy = new ExecApprovalPolicy(Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}"), logger);
+        policy.SetRules(
+            new[]
+            {
+                new ExecApprovalRule
+                {
+                    Pattern = "echo hi",
+                    Action = ExecApprovalAction.Allow,
+                    Shells = new[] { "cmd" }
+                }
+            },
+            ExecApprovalAction.Deny);
+        var runner = new FakeCommandRunner
+        {
+            EffectiveShellForNull = "cmd",
+            HostFallbackShellForApproval = "powershell"
+        };
+        var cap = new SystemCapability(logger);
+        cap.SetCommandRunner(runner);
+        cap.SetApprovalPolicy(policy);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "deny-unapproved-fallback-shell",
+            Command = "system.run",
+            Args = Parse("""{"command":"echo hi"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(runner.LastRequest);
     }
 
     [Fact]
@@ -822,13 +864,14 @@ public class SystemRunTests
     /// <summary>
     /// Fake runner for unit testing — no actual process execution.
     /// </summary>
-    private class FakeCommandRunner : ICommandRunner
+    private class FakeCommandRunner : IHostFallbackAwareCommandRunner
     {
         public string Name => "fake";
         public CommandRequest? LastRequest { get; private set; }
         public CommandResult Result { get; set; } = new() { Stdout = "ok", ExitCode = 0 };
         public bool ShouldThrow { get; set; }
         public string EffectiveShellForNull { get; set; } = "powershell";
+        public string? HostFallbackShellForApproval { get; set; }
 
         public string ResolveEffectiveShell(string? requestedShell)
         {
@@ -843,6 +886,9 @@ public class SystemRunTests
                 _ => "powershell",
             };
         }
+
+        public string? ResolveHostFallbackShellForApproval(string? requestedShell, string effectiveShell) =>
+            HostFallbackShellForApproval;
 
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
         {

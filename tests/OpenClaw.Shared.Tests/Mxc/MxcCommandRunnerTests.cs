@@ -116,7 +116,34 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_OmittedShellFallsBackToHostDefaultWhenExecutorIsUnavailable()
+    public async Task RunAsync_SandboxEnabled_OmittedShellFallsBackToApprovedHostDefaultWhenExecutorIsUnavailable()
+    {
+        var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
+        var fallback = new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 0, Stdout = "host-ran" },
+        };
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(
+                sandboxEnabled: true,
+                blockHostFallbackWhenMxcUnavailable: false));
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            ApprovedHostFallbackShell = "powershell",
+        });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("host-ran", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+    }
+
+    [Fact]
+    public async Task RunAsync_SandboxEnabled_DeniesOmittedShellFallbackWhenHostDefaultWasNotApproved()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
         var fallback = new FakeCommandRunner
@@ -132,10 +159,9 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host-ran", result.Stdout);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("without prior approval", result.Stderr);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
