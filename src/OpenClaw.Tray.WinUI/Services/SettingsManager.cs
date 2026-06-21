@@ -37,6 +37,7 @@ public class SettingsManager
     public int SshTunnelSshPort { get => IsValidPort(_data.SshTunnelSshPort) ? _data.SshTunnelSshPort : 22; set => _data = _data with { SshTunnelSshPort = value }; }
     public int SshTunnelRemotePort { get => _data.SshTunnelRemotePort <= 0 ? 18789 : _data.SshTunnelRemotePort; set => _data = _data with { SshTunnelRemotePort = value }; }
     public int SshTunnelLocalPort { get => _data.SshTunnelLocalPort <= 0 ? 18789 : _data.SshTunnelLocalPort; set => _data = _data with { SshTunnelLocalPort = value }; }
+    /// <inheritdoc cref="SettingsData.BrowserControlPort"/>
     public int? BrowserControlPort { get => _data.BrowserControlPort; set => _data = _data with { BrowserControlPort = value }; }
     public string? LegacyToken { get; private set; }
     public string? LegacyBootstrapToken { get; private set; }

@@ -96,6 +96,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly string _identityDataPath;
     private readonly Func<string?>? _sharedGatewayTokenResolver;
     private readonly Func<int?>? _browserControlPortResolver;
+    private readonly Func<SshTunnelConfig?>? _activeGatewayTunnelResolver;
     private string? _token;
 
     // Authoritative capability list — populated by RegisterCapabilities and
@@ -194,7 +195,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         bool enableMcpServer = false,
         string? identityDataPath = null,
         Func<string?>? sharedGatewayTokenResolver = null,
-        Func<int?>? browserControlPortResolver = null)
+        Func<int?>? browserControlPortResolver = null,
+        Func<SshTunnelConfig?>? activeGatewayTunnelResolver = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
@@ -202,6 +204,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _identityDataPath = string.IsNullOrWhiteSpace(identityDataPath) ? dataPath : identityDataPath;
         _sharedGatewayTokenResolver = sharedGatewayTokenResolver;
         _browserControlPortResolver = browserControlPortResolver;
+        _activeGatewayTunnelResolver = activeGatewayTunnelResolver;
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
@@ -382,17 +385,20 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 sharedGatewayToken,
                 hasGatewayClient: _nodeClient != null))
         {
+            // Prefer per-gateway tunnel config (prevents stale global settings after a gateway switch).
+            var activeTunnel = _activeGatewayTunnelResolver?.Invoke();
+            var tunnelEnabled = activeTunnel != null || _settings?.UseSshTunnel == true;
             _browserProxyCapability = new BrowserProxyCapability(
                 _logger,
                 _nodeClient!.GatewayUrl,
                 sharedGatewayToken,
-                sshRemoteGatewayPort: _settings?.UseSshTunnel == true
-                    ? _settings.SshTunnelRemotePort
+                sshRemoteGatewayPort: tunnelEnabled
+                    ? (activeTunnel?.RemotePort ?? _settings?.SshTunnelRemotePort)
                     : null,
                 controlPortOverride: _browserControlPortResolver?.Invoke(),
-                useSshTunnel: _settings?.UseSshTunnel == true,
-                sshTunnelLocalPort: _settings?.UseSshTunnel == true
-                    ? _settings.SshTunnelLocalPort
+                useSshTunnel: tunnelEnabled,
+                sshTunnelLocalPort: tunnelEnabled
+                    ? (activeTunnel?.LocalPort ?? _settings?.SshTunnelLocalPort)
                     : null);
             Register(_browserProxyCapability);
         }

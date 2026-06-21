@@ -95,4 +95,19 @@ public class BrowserControlEndpointTests
         Assert.True(BrowserControlEndpoint.TryResolveControlPort(18789, useSshTunnel: true, sshTunnelLocalPort: null, controlPortOverride: null, out var port, out _));
         Assert.Equal(18791, port);
     }
+
+    [Fact]
+    public void GatewaySwitch_TunnelGatewayToDirectGateway_StaleGlobalTunnelIgnored()
+    {
+        // After switching from a tunnel gateway to a direct gateway, the resolver
+        // is called with useSshTunnel=false (from the active GatewayRecord, not stale
+        // global settings). Override is null — resolves to co-located gateway+2.
+        Assert.True(BrowserControlEndpoint.TryResolveControlPort(
+            gatewayLocalPort: 18789,
+            useSshTunnel: false,
+            sshTunnelLocalPort: null,
+            controlPortOverride: null,
+            out var port, out _));
+        Assert.Equal(18791, port);
+    }
 }

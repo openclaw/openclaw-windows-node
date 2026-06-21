@@ -1758,7 +1758,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
                 sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken,
-                browserControlPortResolver: () => _gatewayRegistry?.GetActive()?.BrowserControlPort);
+                browserControlPortResolver: () => _gatewayRegistry?.GetActive()?.BrowserControlPort,
+                activeGatewayTunnelResolver: () => _gatewayRegistry?.GetActive()?.SshTunnel);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;

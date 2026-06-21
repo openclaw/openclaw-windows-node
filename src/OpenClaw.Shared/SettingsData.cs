@@ -45,9 +45,10 @@ public record class SettingsData
     /// <summary>
     /// Optional override for the browser-control host port the node-side
     /// <c>browser.proxy</c> capability connects to. When null (default) the port is
-    /// derived as gateway port + 2 on 127.0.0.1, matching a co-located gateway. Set
-    /// this for split/remote topologies where the browser-control host is reached on
-    /// a different local port (e.g. an SSH-forwarded WSL2 gateway).
+    /// derived as gateway port + 2 on 127.0.0.1, matching a co-located gateway.
+    /// <para><b>Superseded:</b> prefer <c>GatewayRecord.BrowserControlPort</c> (per-gateway),
+    /// which is resolved from the active gateway and cannot misroute across a gateway switch.
+    /// This global field is preserved for settings-file backward compatibility only.</para>
     /// </summary>
     public int? BrowserControlPort { get; set; }
 
