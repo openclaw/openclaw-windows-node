@@ -239,13 +239,10 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_MxcUnavailable_PreservesCustomEnvOnHostFallback()
+    public async Task RunAsync_SandboxEnabled_MxcUnavailable_RejectsCustomEnvWithoutHostFallback()
     {
         var executor = new FakeSandboxExecutor();
-        var fallback = new FakeCommandRunner
-        {
-            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
-        };
+        var fallback = new FakeCommandRunner();
         var runner = NewRunner(
             executor,
             fallback,
@@ -260,12 +257,10 @@ public class MxcCommandRunnerTests
             Env = new Dictionary<string, string> { ["FOO"] = "bar" },
         });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host", result.Stdout);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("custom environment variables", result.Stderr);
         Assert.Null(executor.LastRequest);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.NotNull(fallback.LastRequest!.Env);
-        Assert.Equal("bar", fallback.LastRequest.Env["FOO"]);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
@@ -458,13 +453,10 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_CustomEnv_ReprobesAvailabilityAndFallsBackWhenMxcBecameUnavailable()
+    public async Task RunAsync_CustomEnv_RejectsBeforeReprobeOrHostFallback()
     {
         var executor = new FakeSandboxExecutor();
-        var fallback = new FakeCommandRunner
-        {
-            Result = new CommandResult { ExitCode = 0, Stdout = "host" },
-        };
+        var fallback = new FakeCommandRunner();
         var sandboxAvailable = true;
         var invalidationCount = 0;
         var runner = new MxcCommandRunner(
@@ -489,14 +481,11 @@ public class MxcCommandRunnerTests
             Env = new Dictionary<string, string> { ["FOO"] = "bar" },
         });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host", result.Stdout);
-        Assert.Equal(1, invalidationCount);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("custom environment variables", result.Stderr);
+        Assert.Equal(0, invalidationCount);
         Assert.Null(executor.LastRequest);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
-        Assert.NotNull(fallback.LastRequest.Env);
-        Assert.Equal("bar", fallback.LastRequest.Env["FOO"]);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]

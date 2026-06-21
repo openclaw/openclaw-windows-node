@@ -111,22 +111,11 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             };
         }
 
+        // Custom env changes the execution boundary. Until MXC can enforce it
+        // in-container, sandbox-enabled requests must not bypass policy through
+        // the MXC-unavailable compatibility fallback.
         if (request.Env is { Count: > 0 })
-        {
-            const string message =
-                "Sandboxed system.run does not currently support custom environment variables " +
-                "with the Windows MXC 0.7 processcontainer backend. Remove env from the request " +
-                "or explicitly disable sandboxing if uncontained host execution is acceptable.";
-            _logger.Warn("[mxc] system.run denied: custom env is unsupported by MXC processcontainer");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr = message,
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
-        }
+            return DenyCustomEnvUnsupported();
 
         if (!_isSandboxAvailable())
         {
@@ -142,41 +131,6 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
                 "[mxc] system.run UNCONTAINED: sandbox unavailable on this host; " +
                 "routing through host runner for compatibility.");
             return await RunHostFallbackAsync(request, effectiveShell, ct);
-        }
-
-        if (request.Env is { Count: > 0 })
-        {
-            _invalidateAvailability?.Invoke();
-            if (!_isSandboxAvailable())
-            {
-                if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-                    return DenySandboxUnavailable(
-                        "Sandboxed system.run is enabled, but MXC is unavailable on this host and host fallback is blocked by settings. " +
-                        "Update Windows or repair MXC, or disable strict fallback blocking if uncontained host execution is acceptable.",
-                        "[mxc] system.run denied: custom env requires host fallback, but sandbox is unavailable and host fallback is blocked by settings");
-
-                _logger.Warn(
-                    "[mxc] system.run UNCONTAINED: custom env is unsupported by MXC processcontainer " +
-                    "and MXC is unavailable after re-probe; routing through host runner for compatibility.");
-                if (!TryResolveApprovedHostFallbackShell(request, effectiveShell, out var hostShell, out var deny))
-                    return deny!;
-
-                return await RunHostFallbackAsync(request, hostShell, ct);
-            }
-
-            const string message =
-                "Sandboxed system.run does not currently support custom environment variables " +
-                "with the Windows MXC 0.7 processcontainer backend. Remove env from the request " +
-                "or explicitly disable sandboxing if uncontained host execution is acceptable.";
-            _logger.Warn("[mxc] system.run denied: custom env is unsupported by MXC processcontainer");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr = message,
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-            };
         }
 
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
@@ -369,6 +323,23 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             $"after approval. Approved shell was '{approvedShell}', but execution resolved " +
             $"'{effectiveShell}'. Retry so the command can be approved for the current shell.";
         _logger.Warn("[mxc] system.run denied: effective shell changed after approval");
+        return new CommandResult
+        {
+            Stdout = string.Empty,
+            Stderr = message,
+            ExitCode = -1,
+            TimedOut = false,
+            DurationMs = 0,
+        };
+    }
+
+    private CommandResult DenyCustomEnvUnsupported()
+    {
+        const string message =
+            "Sandboxed system.run does not currently support custom environment variables " +
+            "with the Windows MXC 0.7 processcontainer backend. Remove env from the request " +
+            "or explicitly disable sandboxing if uncontained host execution is acceptable.";
+        _logger.Warn("[mxc] system.run denied: custom env is unsupported by MXC processcontainer");
         return new CommandResult
         {
             Stdout = string.Empty,
