@@ -144,4 +144,62 @@ public sealed class BrowserProxyEndpointScopingTests
 
         Assert.Equal(19000, port);
     }
+
+    // ---- Finding 1 extended: Command Center topology also uses active GatewayRecord, not stale settings ----
+
+    [Fact]
+    public void CommandCenterTopology_DirectActiveGateway_IgnoresStaleSettingsTunnel()
+    {
+        // After switching from a tunnel gateway to a direct one, global SettingsManager may
+        // still say UseSshTunnel=true. The topology classifier must NOT inherit it.
+        var inputs = CommandCenterTopologyTunnelResolver.Derive(
+            hasActiveGatewayRecord: true,
+            activeGatewaySshTunnel: null,          // direct gateway — no tunnel
+            settingsUseSshTunnel: true,             // stale global setting from old gateway
+            settingsHost: "old-host.example.com",
+            settingsLocalPort: 9100,
+            settingsRemotePort: 18789);
+
+        Assert.False(inputs.UsesSshTunnel);
+        Assert.Null(inputs.SshHost);
+        Assert.Equal(0, inputs.LocalPort);
+        Assert.Equal(0, inputs.RemotePort);
+    }
+
+    [Fact]
+    public void CommandCenterTopology_TunnelActiveGateway_UsesRecordPorts()
+    {
+        // When the active GatewayRecord has an SshTunnel, its ports drive topology — not settings.
+        var tunnel = new SshTunnelConfig("user", "host.example.com", RemotePort: 18789, LocalPort: 9100);
+        var inputs = CommandCenterTopologyTunnelResolver.Derive(
+            hasActiveGatewayRecord: true,
+            activeGatewaySshTunnel: tunnel,
+            settingsUseSshTunnel: false,            // global says off; active record wins
+            settingsHost: null,
+            settingsLocalPort: 0,
+            settingsRemotePort: 0);
+
+        Assert.True(inputs.UsesSshTunnel);
+        Assert.Equal("host.example.com", inputs.SshHost);
+        Assert.Equal(9100, inputs.LocalPort);
+        Assert.Equal(18789, inputs.RemotePort);
+    }
+
+    [Fact]
+    public void CommandCenterTopology_NoActiveGatewayRecord_FallsBackToSettings()
+    {
+        // Legacy / pre-registry path: no active record wired, so global settings are the source.
+        var inputs = CommandCenterTopologyTunnelResolver.Derive(
+            hasActiveGatewayRecord: false,
+            activeGatewaySshTunnel: null,
+            settingsUseSshTunnel: true,
+            settingsHost: "mac.local",
+            settingsLocalPort: 9200,
+            settingsRemotePort: 18789);
+
+        Assert.True(inputs.UsesSshTunnel);
+        Assert.Equal("mac.local", inputs.SshHost);
+        Assert.Equal(9200, inputs.LocalPort);
+        Assert.Equal(18789, inputs.RemotePort);
+    }
 }

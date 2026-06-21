@@ -3003,7 +3003,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId,
         SshTunnelSnapshot = _sshTunnelService?.CreateSnapshot(),
         HasGatewayClient = _connectionManager?.OperatorClient != null,
-        EffectiveBrowserControlPort = _gatewayRegistry?.GetActive()?.BrowserControlPort
+        EffectiveBrowserControlPort = _gatewayRegistry?.GetActive()?.BrowserControlPort,
+        HasActiveGatewayRecord = _gatewayRegistry?.GetActive() != null,
+        ActiveGatewaySshTunnel = _gatewayRegistry?.GetActive()?.SshTunnel
     };
 
     private void ShowNotificationHistory()

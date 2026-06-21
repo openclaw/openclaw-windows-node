@@ -25,12 +25,19 @@ internal sealed class CommandCenterStateBuilder
             nodes.Add(NodeCapabilityHealthInfo.FromLocalDeclarations(localNode));
         }
 
-        var topology = GatewayTopologyClassifier.Classify(
-            _snapshot.Settings?.GatewayUrl,
+        var tunnelInputs = CommandCenterTopologyTunnelResolver.Derive(
+            _snapshot.HasActiveGatewayRecord,
+            _snapshot.ActiveGatewaySshTunnel,
             _snapshot.Settings?.UseSshTunnel == true,
             _snapshot.Settings?.SshTunnelHost,
             _snapshot.Settings?.SshTunnelLocalPort ?? 0,
             _snapshot.Settings?.SshTunnelRemotePort ?? 0);
+        var topology = GatewayTopologyClassifier.Classify(
+            _snapshot.Settings?.GatewayUrl,
+            tunnelInputs.UsesSshTunnel,
+            tunnelInputs.SshHost,
+            tunnelInputs.LocalPort,
+            tunnelInputs.RemotePort);
         var tunnel = BuildTunnelInfo();
         var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel, _snapshot.EffectiveBrowserControlPort);
         ApplyDetectedSshForwardTopology(topology, portDiagnostics);

@@ -29,4 +29,12 @@ internal sealed record AppStateSnapshot
     /// <summary>Browser-control override for the active gateway record (scoped per-gateway,
     /// resolved the same way the node-side browser.proxy capability resolves it).</summary>
     public int? EffectiveBrowserControlPort     { get; init; }
+
+    /// <summary>True when a GatewayRecord is currently active. Distinguishes "active gateway
+    /// has no tunnel" from "no active gateway (fall back to global settings)".</summary>
+    public bool HasActiveGatewayRecord          { get; init; }
+
+    /// <summary>SSH tunnel config from the active GatewayRecord. Null means this gateway is
+    /// direct (no tunnel), NOT "unknown". Only meaningful when HasActiveGatewayRecord is true.</summary>
+    public SshTunnelConfig? ActiveGatewaySshTunnel { get; init; }
 }
