@@ -71,6 +71,25 @@ public sealed class MxcCommandRunner : ICommandRunner
             return await _hostFallback.RunAsync(request, ct);
         }
 
+        // A direct-argv request reaching the sandbox cannot be honored: the sandbox
+        // protocol only carries the legacy command/shell/args fields, so serializing
+        // would silently run something other than the approved argv. Fail closed until
+        // the sandbox transport carries argv faithfully. The host-fallback branches
+        // above keep working because the host runner does honor Argv.
+        if (request.Argv is not null)
+        {
+            _logger.Warn("[mxc] system.run BLOCKED: direct-argv request reached the sandbox, " +
+                "which has no argv transport yet. Failing closed rather than running the legacy fields.");
+            return new CommandResult
+            {
+                Stdout = string.Empty,
+                Stderr = "Sandboxed system.run cannot execute a direct-argv command yet.",
+                ExitCode = -1,
+                TimedOut = false,
+                DurationMs = 0,
+            };
+        }
+
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
         var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectoryPath);
         var argsJson = SerializeArgs(request);
