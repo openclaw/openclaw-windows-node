@@ -689,6 +689,75 @@ Use one of these options:
   <data name="Toast_PairingCommandCopied" xml:space="preserve">
     <value>Pairing command copied</value>
   </data>
+  <data name="Toast_PairingRequestTitle" xml:space="preserve">
+    <value>Pairing request</value>
+  </data>
+  <data name="Toast_PairingRequestBody" xml:space="preserve">
+    <value>{0} wants to connect</value>
+  </data>
+  <data name="Toast_PairingRequestBodyNode" xml:space="preserve">
+    <value>{0} wants to connect as a node</value>
+  </data>
+  <data name="Toast_PairingReview" xml:space="preserve">
+    <value>Review</value>
+  </data>
+  <data name="Toast_PairingApprovedTitle" xml:space="preserve">
+    <value>Pairing approved</value>
+  </data>
+  <data name="Toast_PairingApprovedBody" xml:space="preserve">
+    <value>{0} can now connect</value>
+  </data>
+  <data name="Toast_PairingRejectedTitle" xml:space="preserve">
+    <value>Pairing rejected</value>
+  </data>
+  <data name="Toast_PairingRejectedBody" xml:space="preserve">
+    <value>{0} was not allowed to connect</value>
+  </data>
+  <data name="PairingApproval_WindowTitle" xml:space="preserve">
+    <value>Pairing request</value>
+  </data>
+  <data name="PairingApproval_DeviceHeading" xml:space="preserve">
+    <value>A device wants to connect</value>
+  </data>
+  <data name="PairingApproval_NodeHeading" xml:space="preserve">
+    <value>A node wants to connect</value>
+  </data>
+  <data name="PairingApproval_Subtitle" xml:space="preserve">
+    <value>Only approve if you recognize this request. You can remove it later in Connection settings.</value>
+  </data>
+  <data name="PairingApproval_AccessRequested" xml:space="preserve">
+    <value>Access requested</value>
+  </data>
+  <data name="PairingApproval_RepairBadge" xml:space="preserve">
+    <value>Re-pair request — the device token will rotate.</value>
+  </data>
+  <data name="PairingApproval_Approve" xml:space="preserve">
+    <value>Approve</value>
+  </data>
+  <data name="PairingApproval_ApproveDevice" xml:space="preserve">
+    <value>Approve device</value>
+  </data>
+  <data name="PairingApproval_ApproveNode" xml:space="preserve">
+    <value>Approve node</value>
+  </data>
+  <data name="PairingApproval_Reject" xml:space="preserve">
+    <value>Reject</value>
+  </data>
+  <data name="PairingApproval_Later" xml:space="preserve">
+    <value>Decide later</value>
+  </data>
+  <data name="PairingApproval_MoreWaiting" xml:space="preserve">
+    <value>{0} more waiting</value>
+  </data>
+  <data name="PairingApproval_ApproveHint" xml:space="preserve">
+    <value>Approve becomes available in a moment</value>
+  </data>
+  <data name="PairingApproval_UnknownDevice" xml:space="preserve">
+    <value>Unknown device</value>
+  </data>
+  <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
+    <value>Unknown platform</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node Paired!</value>
   </data>

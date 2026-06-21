@@ -33,6 +33,12 @@ public record class SettingsData
     public bool NotifyBuild { get; set; } = true;
     public bool NotifyStock { get; set; } = true;
     public bool NotifyInfo { get; set; } = true;
+    /// <summary>
+    /// When true (default), inbound device/node pairing requests are surfaced as a focused
+    /// approval dialog plus an awareness toast. When false they appear only in the Connections
+    /// page "Pending approvals" banner (passive). Auto-approval of the local node is unaffected.
+    /// </summary>
+    public bool ShowPairingApprovalDialog { get; set; } = true;
     public bool EnableNodeMode { get; set; } = false;
     public bool NodeCanvasEnabled { get; set; } = true;
     public bool NodeScreenEnabled { get; set; } = true;

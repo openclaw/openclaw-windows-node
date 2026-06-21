@@ -23,6 +23,8 @@ internal sealed class GatewayService
     public event EventHandler<string>? AuthenticationFailed;
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     public event EventHandler<OpenClawNotification>? NotificationReceived;
+    /// <summary>Raised (on the UI thread) whenever the node or device pending pair-list changes.</summary>
+    public event EventHandler? PairListsChanged;
 
     // Throttle / dedup state (moved from App)
     private DateTime _lastPreviewRequestUtc = DateTime.MinValue;
@@ -190,6 +192,10 @@ internal sealed class GatewayService
             if (status == ConnectionStatus.Disconnected || status == ConnectionStatus.Error)
             {
                 _state.ClearCachedData();
+                // Pair lists were just cleared — notify the approval coordinator so it
+                // reconciles to empty (resolving any open approvals / closing the dialog)
+                // instead of leaving stale state until the operator client is swapped out.
+                PairListsChanged?.Invoke(this, EventArgs.Empty);
             }
 
             ConnectionStatusChanged?.Invoke(this, status);
@@ -492,13 +498,21 @@ internal sealed class GatewayService
     private void OnNodePairListUpdated(object? sender, PairingListInfo data)
     {
         if (sender != _currentClient) return;
-        EnqueueModelUpdate(() => _state.NodePairList = data);
+        EnqueueModelUpdate(() =>
+        {
+            _state.NodePairList = data;
+            PairListsChanged?.Invoke(this, EventArgs.Empty);
+        });
     }
 
     private void OnDevicePairListUpdated(object? sender, DevicePairingListInfo data)
     {
         if (sender != _currentClient) return;
-        EnqueueModelUpdate(() => _state.DevicePairList = data);
+        EnqueueModelUpdate(() =>
+        {
+            _state.DevicePairList = data;
+            PairListsChanged?.Invoke(this, EventArgs.Empty);
+        });
     }
 
     private void OnModelsListUpdated(object? sender, ModelsListInfo data)

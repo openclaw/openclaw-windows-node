@@ -36,7 +36,8 @@ public partial class App
                     _toastService!.ShowToast(new ToastContentBuilder()
                         .AddText(LocalizationHelper.GetString("Toast_PairingCommandCopied"))
                         .AddText(command));
-                }
+                },
+                ReviewPairing = ShowPairingApprovalDialog,
             }));
     }
 
