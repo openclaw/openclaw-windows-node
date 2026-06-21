@@ -113,6 +113,27 @@ public class SystemCapabilityTests
     }
 
     [Fact]
+    public async Task Run_PassesApprovedEffectiveShellToRunner()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        var runner = new FakeCommandRunner { ForcedEffectiveShell = "cmd" };
+        cap.SetCommandRunner(runner);
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "r1-shell",
+            Command = "system.run",
+            Args = Parse("""{"command":"hostname"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        Assert.Equal("cmd", runner.LastRequest!.ApprovedEffectiveShell);
+        Assert.Null(runner.LastRequest.Shell);
+    }
+
+    [Fact]
     public async Task Run_AcceptsCommandAsString()
     {
         var cap = new SystemCapability(NullLogger.Instance);

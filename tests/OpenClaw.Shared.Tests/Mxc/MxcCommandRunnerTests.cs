@@ -133,6 +133,7 @@ public class MxcCommandRunnerTests
         var result = await runner.RunAsync(new CommandRequest
         {
             Command = "echo hi",
+            ApprovedEffectiveShell = "cmd",
             ApprovedHostFallbackShell = "powershell",
         });
 
@@ -161,6 +162,29 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("without prior approval", result.Stderr);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Fact]
+    public async Task RunAsync_DeniesWhenEffectiveShellDriftsAfterApproval()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(sandboxEnabled: true),
+            sandboxAvailable: true);
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            ApprovedEffectiveShell = "powershell",
+        });
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("effective shell changed after approval", result.Stderr);
+        Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
     }
 

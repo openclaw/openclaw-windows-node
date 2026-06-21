@@ -83,6 +83,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
     {
         var settings = _settingsProvider();
         var effectiveShell = ResolveEffectiveShell(request.Shell);
+        if (!TryValidateApprovedEffectiveShell(request, effectiveShell, out var approvalDeny))
+            return approvalDeny!;
 
         if (!settings.SystemRunSandboxEnabled)
         {
@@ -302,6 +304,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             Cwd = request.Cwd,
             TimeoutMs = request.TimeoutMs,
             Env = request.Env,
+            ApprovedEffectiveShell = request.ApprovedEffectiveShell,
             ApprovedHostFallbackShell = request.ApprovedHostFallbackShell,
         };
         return _hostFallback.RunAsync(fallbackRequest, ct);
@@ -322,6 +325,23 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
     private static bool IsPowerShellUiUnsupported(NotSupportedException ex) =>
         ex.Message.Contains("PowerShell-family shells require UI access", StringComparison.OrdinalIgnoreCase);
 
+    private bool TryValidateApprovedEffectiveShell(
+        CommandRequest request,
+        string effectiveShell,
+        out CommandResult? deny)
+    {
+        deny = null;
+        if (string.IsNullOrWhiteSpace(request.ApprovedEffectiveShell)
+            || string.Equals(request.ApprovedEffectiveShell, effectiveShell, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(request.ApprovedHostFallbackShell, effectiveShell, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        deny = DenyEffectiveShellMismatch(request.ApprovedEffectiveShell!, effectiveShell);
+        return false;
+    }
+
     private bool TryResolveApprovedHostFallbackShell(
         CommandRequest request,
         string effectiveShell,
@@ -340,6 +360,23 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
 
         deny = DenyFallbackShellMismatch(effectiveShell, hostShell);
         return false;
+    }
+
+    private CommandResult DenyEffectiveShellMismatch(string approvedShell, string effectiveShell)
+    {
+        var message =
+            "Sandboxed system.run could not execute because the effective shell changed " +
+            $"after approval. Approved shell was '{approvedShell}', but execution resolved " +
+            $"'{effectiveShell}'. Retry so the command can be approved for the current shell.";
+        _logger.Warn("[mxc] system.run denied: effective shell changed after approval");
+        return new CommandResult
+        {
+            Stdout = string.Empty,
+            Stderr = message,
+            ExitCode = -1,
+            TimedOut = false,
+            DurationMs = 0,
+        };
     }
 
     private CommandResult DenyFallbackShellMismatch(string approvedShell, string hostFallbackShell)

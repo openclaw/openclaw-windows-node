@@ -37,6 +37,13 @@ public class CommandRequest
     public Dictionary<string, string>? Env { get; set; }
 
     /// <summary>
+    /// Optional effective shell that already passed shell-scoped approval.
+    /// Dynamic runners must execute this shell, or a separately approved host
+    /// fallback shell, so live settings cannot change the approved boundary.
+    /// </summary>
+    public string? ApprovedEffectiveShell { get; set; }
+
+    /// <summary>
     /// Optional host fallback shell that has already passed shell-scoped approval.
     /// Sandboxed runners use this only when a compatibility fallback would execute
     /// a different host shell than the sandbox effective shell.

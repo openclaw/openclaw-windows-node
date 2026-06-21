@@ -462,6 +462,7 @@ public class SystemCapability : NodeCapabilityBase
                 Cwd = cwd,
                 TimeoutMs = timeoutMs,
                 Env = env,
+                ApprovedEffectiveShell = effectiveShell,
                 ApprovedHostFallbackShell = approvedHostFallbackShell
             });
             
