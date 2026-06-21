@@ -23,6 +23,10 @@ public class OpenClawGatewayClientTests
             string gatewayUrl = "ws://localhost:18789",
             string? identityPath = null)
         {
+            // Isolate test identities because other test classes can construct
+            // gateway clients concurrently under the same AppData root.
+            identityPath ??= CreateTempIdentityPath();
+
             _client = new OpenClawGatewayClient(
                 gatewayUrl,
                 "test-token",
@@ -34,7 +38,11 @@ public class OpenClawGatewayClientTests
 
         public GatewayClientTestHelper(IOpenClawLogger logger)
         {
-            _client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", logger);
+            _client = new OpenClawGatewayClient(
+                "ws://localhost:18789",
+                "test-token",
+                logger,
+                identityPath: CreateTempIdentityPath());
         }
 
         public string ClassifyNotification(string text)
@@ -1975,7 +1983,11 @@ public class OpenClawGatewayClientTests
     public async Task NodeRenameAsync_RejectsEmptyNodeId_WithoutHittingTransport()
     {
         var logger = new TestLogger();
-        var client = new OpenClawGatewayClient("http://test:8080", "my-token", logger);
+        var client = new OpenClawGatewayClient(
+            "http://test:8080",
+            "my-token",
+            logger,
+            identityPath: CreateTempIdentityPath());
 
         var result = await client.NodeRenameAsync("", "New Name");
 
@@ -1987,7 +1999,11 @@ public class OpenClawGatewayClientTests
     public async Task NodeRenameAsync_RejectsEmptyDisplayName_WithoutHittingTransport()
     {
         var logger = new TestLogger();
-        var client = new OpenClawGatewayClient("http://test:8080", "my-token", logger);
+        var client = new OpenClawGatewayClient(
+            "http://test:8080",
+            "my-token",
+            logger,
+            identityPath: CreateTempIdentityPath());
 
         var result = await client.NodeRenameAsync("node-1", "   ");
 
@@ -1999,7 +2015,11 @@ public class OpenClawGatewayClientTests
     public async Task NodeRenameAsync_ReturnsErrorWhenNotConnected()
     {
         var logger = new TestLogger();
-        var client = new OpenClawGatewayClient("http://test:8080", "my-token", logger);
+        var client = new OpenClawGatewayClient(
+            "http://test:8080",
+            "my-token",
+            logger,
+            identityPath: CreateTempIdentityPath());
 
         var result = await client.NodeRenameAsync("node-1", "Pretty Name");
 
@@ -2011,7 +2031,11 @@ public class OpenClawGatewayClientTests
     public async Task NodePairRemoveAsync_ReturnsFailureForEmptyNodeId()
     {
         var logger = new TestLogger();
-        var client = new OpenClawGatewayClient("http://test:8080", "my-token", logger);
+        var client = new OpenClawGatewayClient(
+            "http://test:8080",
+            "my-token",
+            logger,
+            identityPath: CreateTempIdentityPath());
 
         var result = await client.NodePairRemoveAsync("");
 
@@ -2023,7 +2047,11 @@ public class OpenClawGatewayClientTests
     public async Task NodePairRemoveAsync_ReturnsFailureWhenNotConnected()
     {
         var logger = new TestLogger();
-        var client = new OpenClawGatewayClient("http://test:8080", "my-token", logger);
+        var client = new OpenClawGatewayClient(
+            "http://test:8080",
+            "my-token",
+            logger,
+            identityPath: CreateTempIdentityPath());
 
         var result = await client.NodePairRemoveAsync("node-1");
 
@@ -2035,7 +2063,11 @@ public class OpenClawGatewayClientTests
     public void Constructor_InitializesWithProvidedValues()
     {
         var logger = new TestLogger();
-        var client = new OpenClawGatewayClient("http://test:8080", "my-token", logger);
+        var client = new OpenClawGatewayClient(
+            "http://test:8080",
+            "my-token",
+            logger,
+            identityPath: CreateTempIdentityPath());
         
         // Verify URL was normalized (http → ws) — field is now on base class WebSocketClientBase
         var field = typeof(OpenClawGatewayClient).BaseType?.GetField(
@@ -2049,7 +2081,10 @@ public class OpenClawGatewayClientTests
     public void Constructor_UsesNullLogger_WhenNotProvided()
     {
         // Verify construction without logger doesn't throw and still normalizes URL
-        var client = new OpenClawGatewayClient("https://test:8080", "my-token");
+        var client = new OpenClawGatewayClient(
+            "https://test:8080",
+            "my-token",
+            identityPath: CreateTempIdentityPath());
         
         var field = typeof(OpenClawGatewayClient).BaseType?.GetField(
             "_gatewayUrl",
@@ -2069,7 +2104,10 @@ public class OpenClawGatewayClientTests
     [InlineData("HTTPS://HOST.EXAMPLE.COM", "wss://HOST.EXAMPLE.COM")]
     public void Constructor_NormalizesHttpToWs(string inputUrl, string expectedWsUrl)
     {
-        var client = new OpenClawGatewayClient(inputUrl, "test-token");
+        var client = new OpenClawGatewayClient(
+            inputUrl,
+            "test-token",
+            identityPath: CreateTempIdentityPath());
 
         var field = typeof(OpenClawGatewayClient).BaseType?.GetField(
             "_gatewayUrl",
