@@ -558,6 +558,24 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Allow_ModifiedEnvWrapper_FailsClosedWithNoStoreWrite()
+    {
+        // A modified env wrapper is approved (security=allowlist, ask=always, AllowAlways) but
+        // the payload cannot carry the modifier semantics faithfully. The result must be
+        // InternalError and the store must not be modified — no new allowlist entry persisted.
+        const string initialStore = """{"version":1,"defaults":{"security":"allowlist","ask":"always"}}""";
+        WriteStoreFile(initialStore);
+        var req = Req("""{"command":["env","FOO=bar","cmd","/c","echo","hello"]}""");
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways))
+            .HandleAsync(req, "env-modifier-no-persist");
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        var storeText = File.ReadAllText(Path.Combine(_dir, "exec-approvals.json"));
+        Assert.Equal(initialStore, storeText);
+    }
+
+    [Fact]
     public void BuildApprovedExecution_ReturnsNull_WhenExecutableUnresolved()
     {
         // No resolved path → caller must fail closed rather than execute a command

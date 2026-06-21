@@ -192,7 +192,14 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             _promptLock.Release();
         }
 
-        // Step 8: side effects — strictly after the final allow decision.
+        // Step 8: build payload before any store writes — a fail-closed payload result
+        // must not leave persistent allowlist state behind.
+        var execution = BuildApprovedExecution(identity, sanitizedEnv);
+        if (execution is null)
+            return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
+                correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
+
+        // Step 9: side effects — only reached when the payload is valid.
         // Each side effect is independently best-effort so a failure in one does not skip the other.
         if (persistAllowlistEntry && context.Security == ExecSecurity.Allowlist)
         {
@@ -202,13 +209,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         try { await RecordAllowlistUsageAsync(context).ConfigureAwait(false); }
         catch (Exception ex) { _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] side-effect: record-usage failed (non-fatal): {ex.Message}"); }
 
-        // Step 9: build payload from the resolved path; fail closed if unresolved.
-        var execution = BuildApprovedExecution(identity, sanitizedEnv);
-        if (execution is null)
-            return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
-                correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
-
-        // Step 9b: final allow log
+        // Step 10: final allow log
         _logger.Info($"[EXEC-APPROVALS] [{correlationId}] path=new " +
             $"canonical=\"{SanitizeForLog(context.DisplayCommand)}\" decision=allow " +
             $"reason=approved fallbackUsed={fallbackUsed} promptAttempted={promptAttempted}");
