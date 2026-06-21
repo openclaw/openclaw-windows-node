@@ -13,9 +13,8 @@ using OpenClaw.Shared.ExecApprovals;
 namespace OpenClaw.Shared.Tests;
 
 /// <summary>
-/// Tests for PR7: ExecApprovalsCoordinator full pipeline.
-/// Covers rail 8 (observability), rail 10 (UI-free), rail 17 (concurrency),
-/// rail 19 (production wiring inert), env injection guard, and log injection prevention.
+/// Tests for ExecApprovalsCoordinator: full pipeline, observability, UI-free guarantee,
+/// concurrency, production wiring inert by default, env injection guard, and log injection prevention.
 /// </summary>
 public class ExecApprovalsCoordinatorTests : IDisposable
 {
@@ -353,7 +352,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.All(results, r => Assert.Equal(ExecApprovalV2Code.UserDenied, r.Code));
     }
 
-    // ── 22a. ExecApprovalV2Result — new codes constructible (InternalError, Allow) ──
+    // ExecApprovalV2Result — new codes constructible (InternalError, Allow)
 
     [Fact]
     public void V2Result_InternalError_CodeAndReason()
@@ -405,7 +404,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Equal("bar", exec.Env!["FOO"]);
     }
 
-    // ── 22b. Allow payload carries the canonical argv on both allow exits ──
+    // Allow payload carries the canonical argv on both allow exits
 
     [Fact]
     public async Task Allow_PreApproved_CarriesCanonicalArgvPayload()
@@ -448,8 +447,8 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Equal(new[] { "/c", "echo", "hello" }, result.Execution.Argv.Skip(1).ToArray());
     }
 
-    // ── 22c. End-to-end handoff: coordinator payload → runner plan (no shell) ──
-    // Guards against the two halves of the PR drifting apart: the payload the
+    // End-to-end handoff: coordinator payload → runner plan (no shell)
+    // Guards against coordinator and runner drifting apart: the payload the
     // coordinator emits must be directly executable by LocalCommandRunner without
     // any shell. Previously the coordinator emitted the raw argv ("cmd") which the
     // direct-argv runner rejects.
@@ -461,7 +460,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.True(result.IsAllow);
 
         // Map the approved payload to a CommandRequest exactly as the production
-        // production caller will, then verify the resulting plan is non-shell.
+        // caller will, then verify the resulting plan is non-shell.
         var plan = LocalCommandRunner.PlanExecution(new CommandRequest
         {
             Argv = result.Execution!.Argv,
@@ -475,7 +474,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.EndsWith("cmd.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ── 22d. Allow payload is built from the RESOLVED path, fail-closed if unresolved ──
+    // Allow payload is built from the RESOLVED path, fail-closed if unresolved
     // The PATH cannot be injected through the request (the env sanitizer blocks it —
     // the anti-hijack guard itself), so the unresolved-executable branch is covered by
     // testing BuildApprovedExecution directly rather than via a filesystem-dependent
@@ -506,6 +505,24 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         Assert.NotNull(exec);
         Assert.Equal(new[] { @"C:\Program Files\Git\bin\git.exe", "status" }, exec!.Argv);
+    }
+
+    [Fact]
+    public void BuildApprovedExecution_UsesEffectiveCommandWhenEnvWrapperWasUnwrapped()
+    {
+        var resolution = new ExecCommandResolution(
+            RawExecutable: "git",
+            ResolvedPath: @"C:\Program Files\Git\bin\git.exe",
+            ExecutableName: "git.exe",
+            Cwd: null);
+        var identity = MakeIdentity(new[] { "env", "git", "status" }, resolution);
+
+        var exec = ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null);
+
+        Assert.NotNull(exec);
+        Assert.Equal(2, exec!.Argv.Count);
+        Assert.Equal(new[] { @"C:\Program Files\Git\bin\git.exe", "status" }, exec.Argv);
+        Assert.NotEqual(new[] { @"C:\Program Files\Git\bin\git.exe", "git", "status" }, exec.Argv);
     }
 
     [Fact]

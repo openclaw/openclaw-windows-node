@@ -244,11 +244,13 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         if (string.IsNullOrEmpty(resolvedPath))
             return null;
 
-        // argv[0] = resolved absolute path; remaining args preserved verbatim.
-        var argv = new string[identity.Command.Count];
+        // Build argv from the effective command the resolver evaluated so approval
+        // and execution stay pinned to the same executable/argument identity.
+        var effective = ExecEnvInvocationUnwrapper.UnwrapForResolution(identity.Command);
+        var argv = new string[effective.Count];
         argv[0] = resolvedPath;
-        for (var i = 1; i < identity.Command.Count; i++)
-            argv[i] = identity.Command[i];
+        for (var i = 1; i < effective.Count; i++)
+            argv[i] = effective[i];
 
         return new ExecApprovedExecution(argv, identity.Cwd, identity.TimeoutMs, sanitizedEnv);
     }
