@@ -367,10 +367,167 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     [Fact]
     public void V2Result_Allow_IsAllowTrueAndReasonApproved()
     {
-        var r = ExecApprovalV2Result.Allow();
+        var exec = new ExecApprovedExecution(new[] { "git", "status" }, cwd: null, timeoutMs: 1000, env: null);
+        var r = ExecApprovalV2Result.Allow(exec);
         Assert.Equal(ExecApprovalV2Code.Allow, r.Code);
         Assert.Equal("approved", r.Reason);
         Assert.True(r.IsAllow);
+        Assert.Same(exec, r.Execution);
+    }
+
+    [Fact]
+    public void V2Result_Allow_NullPayload_Throws()
+        => Assert.Throws<ArgumentNullException>(() => ExecApprovalV2Result.Allow(null!));
+
+    [Fact]
+    public void ExecApprovedExecution_NullArgv_Throws()
+        => Assert.Throws<ArgumentNullException>(() => new ExecApprovedExecution(null!, cwd: null, timeoutMs: 0, env: null));
+
+    [Fact]
+    public void ExecApprovedExecution_EmptyArgv_Throws()
+        => Assert.Throws<ArgumentException>(() => new ExecApprovedExecution(Array.Empty<string>(), cwd: null, timeoutMs: 0, env: null));
+
+    [Fact]
+    public void ExecApprovedExecution_CopiesArgvDefensively()
+    {
+        var argv = new[] { "cmd", "/c", "echo" };
+        var exec = new ExecApprovedExecution(argv, cwd: null, timeoutMs: 0, env: null);
+        argv[0] = "TAMPERED"; // mutate the source after construction
+        Assert.Equal("cmd", exec.Argv[0]);
+    }
+
+    [Fact]
+    public void ExecApprovedExecution_CopiesEnvDefensively()
+    {
+        var env = new Dictionary<string, string> { ["FOO"] = "bar" };
+        var exec = new ExecApprovedExecution(new[] { "x" }, cwd: null, timeoutMs: 0, env: env);
+        env["FOO"] = "TAMPERED"; // mutate the source after construction
+        Assert.Equal("bar", exec.Env!["FOO"]);
+    }
+
+    // ── 22b. Allow payload carries the canonical argv on both allow exits ──
+
+    [Fact]
+    public async Task Allow_PreApproved_CarriesCanonicalArgvPayload()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var result = await MakeCoordinator().HandleAsync(DefaultReq(), "payload-pre");
+        Assert.True(result.IsAllow);
+        Assert.NotNull(result.Execution);
+        // argv[0] is the RESOLVED absolute path, not the raw "cmd".
+        Assert.True(Path.IsPathFullyQualified(result.Execution!.Argv[0]));
+        Assert.EndsWith("cmd.exe", result.Execution.Argv[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new[] { "/c", "echo", "hello" }, result.Execution.Argv.Skip(1).ToArray());
+        Assert.Null(result.Execution.Env); // DefaultReq carries no env
+    }
+
+    [Fact]
+    public async Task Allow_CarriesSanitizedEnvInPayload()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        // A non-blocked env variable must survive sanitization and reach the payload.
+        var req = Req("""{"command":["cmd","/c","echo","hello"],"env":{"FOO":"bar"}}""");
+        var result = await MakeCoordinator().HandleAsync(req, "payload-env");
+        Assert.True(result.IsAllow);
+        Assert.NotNull(result.Execution!.Env);
+        Assert.Equal("bar", result.Execution.Env!["FOO"]);
+    }
+
+    [Fact]
+    public async Task Allow_PostPrompt_CarriesCanonicalArgvPayload()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
+            .HandleAsync(DefaultReq(), "payload-post");
+        Assert.True(result.IsAllow);
+        Assert.NotNull(result.Execution);
+        Assert.True(Path.IsPathFullyQualified(result.Execution!.Argv[0]));
+        Assert.EndsWith("cmd.exe", result.Execution.Argv[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new[] { "/c", "echo", "hello" }, result.Execution.Argv.Skip(1).ToArray());
+    }
+
+    // ── 22c. End-to-end handoff: coordinator payload → runner plan (no shell) ──
+    // Guards against the two halves of the PR drifting apart: the payload the
+    // coordinator emits must be directly executable by LocalCommandRunner without
+    // any shell. Previously the coordinator emitted the raw argv ("cmd") which the
+    // direct-argv runner rejects.
+    [Fact]
+    public async Task Allow_Payload_IsAcceptedByDirectArgvRunner()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var result = await MakeCoordinator().HandleAsync(DefaultReq(), "handoff");
+        Assert.True(result.IsAllow);
+
+        // Map the approved payload to a CommandRequest exactly as the production
+        // production caller will, then verify the resulting plan is non-shell.
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
+        {
+            Argv = result.Execution!.Argv,
+            Cwd = result.Execution.Cwd,
+            TimeoutMs = result.Execution.TimeoutMs,
+            Env = result.Execution.Env is null ? null : new Dictionary<string, string>(result.Execution.Env),
+        });
+
+        Assert.True(plan.IsDirectArgv);
+        Assert.Null(plan.Arguments); // no shell-wrapped command line
+        Assert.EndsWith("cmd.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── 22d. Allow payload is built from the RESOLVED path, fail-closed if unresolved ──
+    // The PATH cannot be injected through the request (the env sanitizer blocks it —
+    // the anti-hijack guard itself), so the unresolved-executable branch is covered by
+    // testing BuildApprovedExecution directly rather than via a filesystem-dependent
+    // end-to-end path.
+
+    private static CanonicalCommandIdentity MakeIdentity(
+        string[] command, ExecCommandResolution? resolution)
+        => new(
+            command,
+            displayCommand: string.Join(' ', command),
+            evaluationRawCommand: null,
+            resolution: resolution,
+            allowlistResolutions: Array.Empty<ExecCommandResolution>(),
+            allowAlwaysPatterns: Array.Empty<string>(),
+            cwd: null, timeoutMs: 0, env: null, agentId: null, sessionKey: null);
+
+    [Fact]
+    public void BuildApprovedExecution_UsesResolvedPathAsArgv0()
+    {
+        var resolution = new ExecCommandResolution(
+            RawExecutable: "git",
+            ResolvedPath: @"C:\Program Files\Git\bin\git.exe",
+            ExecutableName: "git.exe",
+            Cwd: null);
+        var identity = MakeIdentity(new[] { "git", "status" }, resolution);
+
+        var exec = ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null);
+
+        Assert.NotNull(exec);
+        Assert.Equal(new[] { @"C:\Program Files\Git\bin\git.exe", "status" }, exec!.Argv);
+    }
+
+    [Fact]
+    public async Task Allow_UnresolvedExecutable_FailsClosedViaHandleAsync()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        // A bare name on no PATH resolves to a null path but is still a valid command,
+        // so security=full approves it. The payload cannot pin an absolute executable,
+        // so the allow must fail closed rather than execute an unpinnable command.
+        var req = Req("""{"command":["zzz-nonexistent-tool-9c3f1a7b"]}""");
+        var result = await MakeCoordinator().HandleAsync(req, "unresolved");
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.Equal("unresolved-executable-on-allow", result.Reason);
+    }
+
+    [Fact]
+    public void BuildApprovedExecution_ReturnsNull_WhenExecutableUnresolved()
+    {
+        // No resolved path → caller must fail closed rather than execute a command
+        // whose identity cannot be pinned.
+        var identity = MakeIdentity(new[] { "ghost", "arg" }, resolution: null);
+        Assert.Null(ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null));
     }
 
     [Fact]

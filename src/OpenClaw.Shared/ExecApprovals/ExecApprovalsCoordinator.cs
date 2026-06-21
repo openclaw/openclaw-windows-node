@@ -100,13 +100,19 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         if (pass1 is ExecHostPolicyDecision.AllowOutcome)
         {
             // Pre-approved path (security=Full, ask=Off or allowlist satisfied): skip prompt.
+            // Fail closed if the approved executable cannot be pinned to a resolved path.
+            var preApprovedExecution = BuildApprovedExecution(identity, sanitizedEnv);
+            if (preApprovedExecution is null)
+                return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
+                    correlationId, promptAttempted: false, fallbackUsed: false, canonical: context.DisplayCommand);
+
             // Side effects are best-effort: a metadata write failure must not flip an allow to a deny.
             try { await RecordAllowlistUsageAsync(context).ConfigureAwait(false); }
             catch (Exception ex) { _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] side-effect: record-usage failed (non-fatal): {ex.Message}"); }
             _logger.Info($"[EXEC-APPROVALS] [{correlationId}] path=new " +
                 $"canonical=\"{SanitizeForLog(context.DisplayCommand)}\" decision=allow " +
                 $"reason=approved fallbackUsed=false promptAttempted=false");
-            return ExecApprovalV2Result.Allow();
+            return ExecApprovalV2Result.Allow(preApprovedExecution);
         }
         // RequiresPromptOutcome → continue to prompt/fallback block
 
@@ -196,13 +202,19 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         try { await RecordAllowlistUsageAsync(context).ConfigureAwait(false); }
         catch (Exception ex) { _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] side-effect: record-usage failed (non-fatal): {ex.Message}"); }
 
-        // Step 9: final allow log
+        // Step 9: build payload from the resolved path; fail closed if unresolved.
+        var execution = BuildApprovedExecution(identity, sanitizedEnv);
+        if (execution is null)
+            return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
+                correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
+
+        // Step 9b: final allow log
         _logger.Info($"[EXEC-APPROVALS] [{correlationId}] path=new " +
             $"canonical=\"{SanitizeForLog(context.DisplayCommand)}\" decision=allow " +
             $"reason=approved fallbackUsed={fallbackUsed} promptAttempted={promptAttempted}");
 
         // Step 10: return Allow
-        return ExecApprovalV2Result.Allow();
+        return ExecApprovalV2Result.Allow(execution);
         }
         catch (Exception ex)
         {
@@ -215,6 +227,30 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             _logger.Error(msg, ex);
             return ExecApprovalV2Result.InternalError("unexpected-exception");
         }
+    }
+
+    // Builds the approved execution payload from the RESOLVED executable path, never
+    // the raw argv[0]. The command must execute with the same canonical identity it
+    // was evaluated under: a relative argv[0] in the payload would let Windows
+    // re-resolve it against PATH/cwd at execution time (a hijack), and the
+    // direct-argv runner rejects non-absolute executables anyway. Returns null when
+    // the executable could not be resolved to a path — the caller fails closed
+    // rather than execute a command whose identity we cannot pin.
+    internal static ExecApprovedExecution? BuildApprovedExecution(
+        CanonicalCommandIdentity identity,
+        IReadOnlyDictionary<string, string>? sanitizedEnv)
+    {
+        var resolvedPath = identity.Resolution?.ResolvedPath;
+        if (string.IsNullOrEmpty(resolvedPath))
+            return null;
+
+        // argv[0] = resolved absolute path; remaining args preserved verbatim.
+        var argv = new string[identity.Command.Count];
+        argv[0] = resolvedPath;
+        for (var i = 1; i < identity.Command.Count; i++)
+            argv[i] = identity.Command[i];
+
+        return new ExecApprovedExecution(argv, identity.Cwd, identity.TimeoutMs, sanitizedEnv);
     }
 
     // Persists allowAlways patterns after an AllowAlways prompt decision (non-empty only).
