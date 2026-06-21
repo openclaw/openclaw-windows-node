@@ -27,7 +27,7 @@
             <Button x:Name="RefreshButton" HorizontalAlignment="Right"
                     Padding="12,8,12,8" Click="Refresh_Click">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="14"
+                    <TextBlock Text="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14"
                                VerticalAlignment="Center" />
                     <TextBlock Text="Refresh status" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>

@@ -74,7 +74,7 @@ public sealed partial class CapabilitiesPage : Page
             var icon = new TextBlock
             {
                 Text = glyph,
-                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons"),
+                FontFamily = IconFonts.SymbolThemeFontFamily,
                 FontSize = 20,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 12, 0),

@@ -98,23 +98,40 @@ public sealed class FluentIconCatalogTests
     [Fact]
     public void NativeWinUiSources_DoNotHardcodeSegoeFluentIcons()
     {
-        var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
-        var offenders = Directory
-            .EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+        var repositoryRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var sourceRoots = new[]
+        {
+            Path.Combine(repositoryRoot, "src", "OpenClaw.Tray.WinUI"),
+            Path.Combine(repositoryRoot, "src", "OpenClaw.SetupEngine.UI"),
+        };
+        var hardcodedIconFont = new Regex(
+            @"FontFamily\s*\(\s*""Segoe Fluent Icons""\s*\)|FontFamily\s*=\s*""Segoe Fluent Icons""",
+            RegexOptions.Compiled);
+
+        var offenders = sourceRoots
+            .SelectMany(sourceRoot => Directory
+                .EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
+                .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+                .Where(path => !IsBuildArtifact(sourceRoot, path)))
             .SelectMany(path => File.ReadLines(path)
                 .Select((line, index) => (path, line, lineNumber: index + 1)))
-            .Where(item => item.line.Contains("new FontFamily(\"Segoe Fluent Icons\")", StringComparison.Ordinal)
-                || item.line.Contains("FontFamily=\"Segoe Fluent Icons\"", StringComparison.Ordinal))
-            .Select(item => $"{Path.GetRelativePath(TestRepositoryPaths.GetRepositoryRoot(), item.path)}:{item.lineNumber}")
+            .Where(item => hardcodedIconFont.IsMatch(item.line))
+            .Select(item => $"{Path.GetRelativePath(repositoryRoot, item.path)}:{item.lineNumber}")
             .ToArray();
 
         Assert.True(
             offenders.Length == 0,
-            "Use FluentIconCatalog.SymbolThemeFontFamily so icon glyphs fall back to Segoe MDL2 Assets on Windows 10:"
+            "Use the SymbolThemeFontFamily theme resource/property so icon glyphs fall back to Segoe MDL2 Assets on Windows 10:"
             + Environment.NewLine
             + string.Join(Environment.NewLine, offenders));
+
+        static bool IsBuildArtifact(string sourceRoot, string path)
+        {
+            var relative = Path.GetRelativePath(sourceRoot, path);
+            return relative.StartsWith($"bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                || relative.StartsWith($"obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+        }
     }
 
 }

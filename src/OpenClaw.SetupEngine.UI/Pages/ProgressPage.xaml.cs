@@ -369,7 +369,7 @@ internal sealed class StepRow
             {
                 Glyph = glyph,
                 FontSize = 12,
-                FontFamily = new FontFamily("Segoe Fluent Icons"),
+                FontFamily = IconFonts.SymbolThemeFontFamily,
                 Foreground = new SolidColorBrush(foreground),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
