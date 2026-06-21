@@ -61,12 +61,25 @@ public class MxcCommandRunnerTests
         {
             Result = new CommandResult { ExitCode = 0, Stdout = "host" },
         };
-        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: false));
+        var availabilityChecks = 0;
+        var runner = new MxcCommandRunner(
+            executor,
+            fallback,
+            () => NewSettings(sandboxEnabled: false),
+            () => "C:\\test\\settings",
+            () =>
+            {
+                availabilityChecks++;
+                return true;
+            },
+            invalidateAvailability: null,
+            NullLogger.Instance);
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
         Assert.Equal("host", result.Stdout);
         Assert.NotNull(fallback.LastRequest);
+        Assert.Equal(0, availabilityChecks);
         // Executor must not have been touched.
         Assert.Null(executor.LastRequest);
     }
@@ -101,9 +114,8 @@ public class MxcCommandRunnerTests
     [Fact]
     public async Task RunAsync_MxcUnavailable_FallsBackToHost_WithSandboxToggleOn()
     {
-        // Same as the toggle-off variant — the !_isSandboxAvailable() short-circuit
-        // fires before either the toggle check or the executor path, and both
-        // routes lead to the host fallback.
+        // With sandboxing enabled, unavailable MXC is detected before the
+        // executor path and routes to the host fallback.
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "MXC missing" };
         var fallback = new FakeCommandRunner
         {

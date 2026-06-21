@@ -558,11 +558,23 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// </summary>
     private ICommandRunner BuildSystemRunRunner()
     {
-        var availability = _mxcAvailability ??= MxcAvailability.Probe(_logger);
         var hostRunner = new LocalCommandRunner(_logger);
-        var executor = new DirectAppContainerExecutor(availability, _logger);
+        var executor = new DirectAppContainerExecutor(GetOrProbeMxcAvailability, _logger);
 
-        if (availability.HasAnyBackend)
+        // Do NOT probe synchronously here: this runs while _capabilitiesLock is held
+        // (RegisterCapabilities), and a blocking wxc-exec --probe (~15s) would stall
+        // capability registration / reconnect. Log from a non-blocking peek; the
+        // first real probe happens lazily on the first system.run via the
+        // availability gate / executor provider below (off any of our locks).
+        var peeked = PeekMxcAvailability();
+        if (peeked is null)
+        {
+            _logger.Info(
+                $"[mxc] system.run runner = MxcCommandRunner " +
+                $"(executor={executor.Name}; MXC availability probe deferred to first use; " +
+                $"sandboxEnabled={(_settings?.SystemRunSandboxEnabled ?? true)})");
+        }
+        else if (peeked.HasAnyBackend)
         {
             _logger.Info(
                 $"[mxc] system.run runner = MxcCommandRunner " +
@@ -574,7 +586,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // !_isSandboxAvailable() guard will route to the host fallback
             // for every call; the executor is constructed only to satisfy
             // the constructor contract and is never invoked.
-            var reason = string.Join("; ", availability.UnsupportedReasons);
+            var reason = string.Join("; ", peeked.UnsupportedReasons);
             _logger.Info($"[mxc] system.run runner = MxcCommandRunner (MXC unavailable, commands will run uncontained: {reason})");
         }
 
@@ -584,10 +596,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             hostRunner,
             () => SnapshotSettings(),
             () => settingsDirectory,
-            // Re-probe on demand if the cache was invalidated by a prior
-            // SandboxUnavailableException (see invalidateAvailability below).
-            () => (_mxcAvailability ??= MxcAvailability.Probe(_logger)).HasAnyBackend,
-            invalidateAvailability: () => _mxcAvailability = null,
+            // Re-probe on demand when sandbox availability is checked: returns the
+            // cached definitive verdict, or re-probes (single-flight) after a
+            // transient error / a prior SandboxUnavailableException-driven invalidation.
+            () => GetOrProbeMxcAvailability().HasAnyBackend,
+            invalidateAvailability: InvalidateMxcAvailability,
             _logger);
     }
 
@@ -626,6 +639,103 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     }
 
     private MxcAvailability? _mxcAvailability;
+    private DateTime _mxcNextProbeAllowedAtUtc;
+    private Task<MxcAvailability>? _mxcProbeInFlight;
+    private readonly object _mxcAvailabilityLock = new();
+
+    /// <summary>
+    /// Minimum interval before re-probing after a transient probe error. Bounds the
+    /// cost of re-spawning <c>wxc-exec --probe</c> while a probe error persists,
+    /// while still letting a momentary glitch self-heal quickly.
+    /// </summary>
+    private static readonly TimeSpan MxcProbeRetryInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Return the current MXC availability, probing if needed. Definitive verdicts
+    /// (supported / host-unsupported) are cached for the process lifetime; a transient
+    /// probe error (<see cref="MxcAvailability.ProbeErrored"/>) is NOT cached
+    /// permanently — once the retry window opens we re-probe so a momentary glitch
+    /// doesn't pin the whole process to uncontained execution.
+    /// </summary>
+    /// <remarks>
+    /// The blocking probe (<c>wxc-exec --probe</c>, up to ~15s) is NEVER run while
+    /// holding <see cref="_mxcAvailabilityLock"/>: concurrent callers share a single
+    /// in-flight probe (single-flight) and wait on it OUTSIDE the lock, so a slow
+    /// probe can't serialize unrelated callers or stall lock users. The retry window
+    /// opens only AFTER a probe completes, so a 15s timeout can't immediately permit a
+    /// back-to-back re-probe.
+    /// </remarks>
+    private MxcAvailability GetOrProbeMxcAvailability()
+    {
+        Task<MxcAvailability> probe;
+        lock (_mxcAvailabilityLock)
+        {
+            // Definitive verdict — cached for the process lifetime.
+            if (_mxcAvailability is { ProbeErrored: false } definitive)
+                return definitive;
+
+            // Transient error — keep serving it (routes to uncontained) until the
+            // retry window opens, so we don't re-probe on every command.
+            if (_mxcAvailability is { ProbeErrored: true } errored
+                && _mxcProbeInFlight is null
+                && DateTime.UtcNow < _mxcNextProbeAllowedAtUtc)
+                return errored;
+
+            // Start a probe if none is running, otherwise join the in-flight one.
+            probe = _mxcProbeInFlight ??= Task.Run(ProbeAndStoreMxcAvailability);
+        }
+
+        // Wait OUTSIDE the lock so other callers / lock users aren't blocked.
+        return probe.GetAwaiter().GetResult();
+    }
+
+    private MxcAvailability ProbeAndStoreMxcAvailability()
+    {
+        MxcAvailability result;
+        try
+        {
+            result = MxcAvailability.Probe(_logger);
+        }
+        catch (Exception ex)
+        {
+            // Probe() is designed not to throw, but never let an unexpected fault
+            // poison the single-flight slot or leak out of the shared task.
+            _logger.Warn($"[mxc] availability probe threw unexpectedly: {ex.GetType().Name}: {ex.Message}");
+            result = new MxcAvailability(
+                false, false, false, null,
+                new[] { "MXC availability probe failed unexpectedly." }, probeErrored: true);
+        }
+
+        lock (_mxcAvailabilityLock)
+        {
+            _mxcAvailability = result;
+            // Open the retry window only AFTER completion so a slow (timeout) probe
+            // doesn't immediately allow a back-to-back re-probe.
+            _mxcNextProbeAllowedAtUtc = DateTime.UtcNow + MxcProbeRetryInterval;
+            _mxcProbeInFlight = null;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Non-blocking read of the cached MXC availability for diagnostics/logging.
+    /// Returns null when nothing has been probed yet. Never spawns or waits on a
+    /// probe, so it is safe to call while holding other locks (e.g. _capabilitiesLock).
+    /// </summary>
+    private MxcAvailability? PeekMxcAvailability()
+    {
+        lock (_mxcAvailabilityLock)
+            return _mxcAvailability;
+    }
+
+    private void InvalidateMxcAvailability()
+    {
+        lock (_mxcAvailabilityLock)
+        {
+            _mxcAvailability = null;
+            _mxcNextProbeAllowedAtUtc = default;
+        }
+    }
 
     private void StartMcpServer()
     {

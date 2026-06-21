@@ -25,9 +25,9 @@ namespace OpenClaw.Shared.Mxc;
 public static class MxcPolicyBuilder
 {
     /// <summary>
-    /// Policy schema version. @microsoft/mxc-sdk 0.1.8 accepts 0.4.0-alpha
-    /// through 0.5.0-alpha; keep the documented 0.4.0-alpha schema until we
-    /// intentionally adopt a newer MXC policy contract.
+    /// Policy schema version. @microsoft/mxc-sdk 0.7.0 still lists 0.4.0-alpha as a
+    /// supported (stable) config schema; keep the documented 0.4.0-alpha schema
+    /// until we intentionally adopt a newer MXC policy contract.
     /// </summary>
     public const string SupportedPolicyVersion = "0.4.0-alpha";
 

@@ -33,7 +33,7 @@
     "defaultPolicy": "allow",
     "enforcementMode": "capabilities"
   },
-  "appContainer": {
+  "processContainer": {
     "leastPrivilege": false,
     "capabilities": [
       "internetClient"
