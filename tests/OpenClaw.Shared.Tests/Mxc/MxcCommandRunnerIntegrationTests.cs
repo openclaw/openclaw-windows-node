@@ -247,6 +247,48 @@ public class MxcCommandRunnerIntegrationTests
         }
     }
 
+    [IntegrationFact]
+    public async Task SystemRun_CustomEnv_DeniesBeforeMxcUnavailableHostFallback()
+    {
+        var executor = new ThrowIfCalledSandboxExecutor();
+        var hostFallback = new LocalCommandRunner(NullLogger.Instance);
+        var settings = new SettingsData
+        {
+            SystemRunSandboxEnabled = true,
+            SystemRunBlockHostFallbackWhenMxcUnavailable = false,
+        };
+        var runner = new MxcCommandRunner(
+            executor,
+            hostFallback,
+            () => settings,
+            () => Path.Combine(Path.GetTempPath(), "openclaw-mxc-smoke-test-settings"),
+            () => false,
+            invalidateAvailability: null,
+            new ConsoleLogger());
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo %OPENCLAW_MXC_ENV_FALLBACK_MARKER%",
+            Shell = "cmd",
+            Env = new Dictionary<string, string>
+            {
+                ["OPENCLAW_MXC_ENV_FALLBACK_MARKER"] = "OPENCLAW_ENV_FALLBACK_SHOULD_NOT_RUN",
+            },
+            TimeoutMs = 30_000,
+        });
+
+        Console.WriteLine(
+            "[mxc-integration] custom-env-deny " +
+            $"exitCode={result.ExitCode}; " +
+            $"fallbackMarkerSeen={result.Stdout.Contains("OPENCLAW_ENV_FALLBACK_SHOULD_NOT_RUN", StringComparison.Ordinal)}; " +
+            $"stderrContainsCustomEnv={result.Stderr.Contains("custom environment variables", StringComparison.OrdinalIgnoreCase)}");
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("custom environment variables", result.Stderr);
+        Assert.DoesNotContain("OPENCLAW_ENV_FALLBACK_SHOULD_NOT_RUN", result.Stdout);
+        Assert.Equal(0, executor.CallCount);
+    }
+
     private static bool HasSupportedSandboxPath(string path)
     {
         try
@@ -301,4 +343,19 @@ public class MxcCommandRunnerIntegrationTests
     }
 
     private static string CmdQuote(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+
+    private sealed class ThrowIfCalledSandboxExecutor : ISandboxExecutor
+    {
+        public string Name => "throw-if-called";
+        public bool IsContained => true;
+        public int CallCount { get; private set; }
+
+        public Task<SandboxExecutionResult> ExecuteAsync(
+            SandboxExecutionRequest request,
+            CancellationToken ct = default)
+        {
+            CallCount++;
+            throw new InvalidOperationException("Custom-env denial should happen before sandbox execution.");
+        }
+    }
 }
