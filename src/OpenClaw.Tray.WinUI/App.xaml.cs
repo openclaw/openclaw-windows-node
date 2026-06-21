@@ -3034,7 +3034,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private void ShowPairingApprovalDialog(bool bringToFront)
     {
         if (_pairingApprovalCoordinator == null) return;
-        if (_pairingApprovalCoordinator.Current.Count == 0) return;
+        if (_pairingApprovalCoordinator.Current.Count == 0)
+        {
+            ShowStatusDetail();
+            return;
+        }
 
         if (_pairingApprovalDialog is { IsClosed: false } existing)
         {

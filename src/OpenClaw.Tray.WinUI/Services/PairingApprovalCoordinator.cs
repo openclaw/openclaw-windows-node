@@ -252,14 +252,15 @@ public sealed class PairingApprovalCoordinator
             if (ok)
             {
                 // Send-ack only means the frame left the socket, NOT that the gateway accepted it.
-                // But first re-validate the connection: a disconnect may have raced the await (and
-                // already Reset() the queue). Recording a submission now would strand a likely-dropped
-                // frame and risk a later false confirmation, so treat it as not completed instead —
-                // the request re-surfaces on reconnect for a clean retry.
+                // But first re-validate the exact connection: a disconnect/reconnect may have raced
+                // the await (and already Reset() the queue). Recording a submission against a new
+                // client would strand a likely-dropped frame and risk a later false confirmation, so
+                // treat it as not completed instead — the request re-surfaces on reconnect for a
+                // clean retry.
                 var liveClient = _getClient();
-                if (liveClient is not { IsConnectedToGateway: true })
+                if (!ReferenceEquals(liveClient, client) || !CanApproveWith(liveClient))
                 {
-                    _logger.Info("[PairApproval] Connection lost during decision; not recording optimistic submission");
+                    _logger.Info("[PairApproval] Connection changed during decision; not recording optimistic submission");
                     return false;
                 }
 
