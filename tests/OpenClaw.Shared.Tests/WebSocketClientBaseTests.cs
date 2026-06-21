@@ -352,6 +352,67 @@ public class WebSocketClientBaseTests
         client.Dispose();
     }
 
+    [Fact]
+    public async Task ReconnectBackoff_ContinuesAfterFailedRetry_WhenNoNewerConnectionOwnsSocket()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        var client = new ReconnectBackoffRaceClient(server.WebSocketUrl, "token", _logger);
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
+        client.StatusChanged += (_, s) => statuses.Enqueue(s);
+
+        await client.ConnectAsync();
+        await client.FirstConnected.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForConditionAsync(() => server.AcceptedCount >= 1, TimeSpan.FromSeconds(2));
+
+        await server.CloseSocketAsync(0);
+        server.StopAccepting();
+
+        await WaitForConditionAsync(
+            () => statuses.Count(s => s == ConnectionStatus.Connecting) >= 4,
+            TimeSpan.FromSeconds(4));
+
+        Assert.Equal(1, client.OnConnectedCallCount);
+        Assert.True(_logger.Logs.Count(
+            line => line.Contains("reconnecting in", StringComparison.OrdinalIgnoreCase)) >= 2);
+
+        client.Dispose();
+    }
+
+    [Fact]
+    public async Task ReconnectBackoff_ReconnectsCurrentClosingSocket_WhenSupersededLoopIsActive()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        var client = new ReconnectBackoffRaceClient(server.WebSocketUrl, "token", _logger);
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
+        client.StatusChanged += (_, s) => statuses.Enqueue(s);
+
+        await client.ConnectAsync();
+        await client.FirstConnected.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForConditionAsync(() => server.AcceptedCount >= 1, TimeSpan.FromSeconds(2));
+
+        await server.CloseSocketAsync(0);
+        await WaitForConditionAsync(
+            () => statuses.Count(s => s == ConnectionStatus.Connecting) >= 2,
+            TimeSpan.FromSeconds(2));
+
+        await client.ConnectAsync();
+        await client.SecondConnected.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForConditionAsync(() => server.AcceptedCount >= 2, TimeSpan.FromSeconds(2));
+
+        await server.CloseSocketAsync(1);
+
+        var reconnect = await Task.WhenAny(
+            client.ThirdConnected,
+            Task.Delay(TimeSpan.FromSeconds(3)));
+
+        Assert.Same(client.ThirdConnected, reconnect);
+        Assert.True(server.AcceptedCount >= 3);
+
+        client.Dispose();
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var start = DateTime.UtcNow;
@@ -530,6 +591,13 @@ internal sealed class LoopbackWebSocketServer : IDisposable
                 "test close",
                 CancellationToken.None);
         }
+    }
+
+    public void StopAccepting()
+    {
+        _cts.Cancel();
+        try { _listener.Stop(); } catch { }
+        try { _acceptLoop?.Wait(TimeSpan.FromSeconds(1)); } catch { }
     }
 
     public void Dispose()

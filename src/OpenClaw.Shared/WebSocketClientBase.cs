@@ -359,6 +359,14 @@ public abstract class WebSocketClientBase : IDisposable
                     DisposeStaleSocket(oldSocket);
                 }
 
+                var currentSocket = _webSocket;
+                if (currentSocket != null
+                    && !ReferenceEquals(currentSocket, oldSocket)
+                    && IsSocketClosingOrClosed(currentSocket))
+                {
+                    DisposeStaleSocket(currentSocket);
+                }
+
                 await ConnectAsync();
 
                 if (IsConnected)
@@ -380,8 +388,22 @@ public abstract class WebSocketClientBase : IDisposable
         }
     }
 
-    private bool IsReconnectOwner(ClientWebSocket? expectedSocket, long expectedGeneration) =>
-        expectedSocket is null || IsCurrentConnection(expectedSocket, expectedGeneration);
+    private bool IsReconnectOwner(ClientWebSocket? expectedSocket, long expectedGeneration)
+    {
+        if (expectedSocket is null || IsCurrentConnection(expectedSocket, expectedGeneration))
+        {
+            return true;
+        }
+
+        var currentSocket = _webSocket;
+        return currentSocket is null || IsSocketClosingOrClosed(currentSocket);
+    }
+
+    private static bool IsSocketClosingOrClosed(ClientWebSocket ws) =>
+        ws.State is WebSocketState.CloseReceived
+            or WebSocketState.CloseSent
+            or WebSocketState.Closed
+            or WebSocketState.Aborted;
 
     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
     protected async Task SendRawAsync(string message)
