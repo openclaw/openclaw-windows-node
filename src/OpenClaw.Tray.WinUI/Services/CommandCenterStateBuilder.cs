@@ -38,7 +38,7 @@ internal sealed class CommandCenterStateBuilder
             tunnelInputs.SshHost,
             tunnelInputs.LocalPort,
             tunnelInputs.RemotePort);
-        var tunnel = BuildTunnelInfo();
+        var tunnel = BuildTunnelInfo(tunnelInputs);
         var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel, _snapshot.EffectiveBrowserControlPort);
         ApplyDetectedSshForwardTopology(topology, portDiagnostics);
         var runtime = BuildGatewayRuntimeInfo(portDiagnostics);
@@ -414,50 +414,18 @@ internal sealed class CommandCenterStateBuilder
         };
     }
 
-    private TunnelCommandCenterInfo? BuildTunnelInfo()
+    // Resolve tunnel diagnostics from the active-GatewayRecord-first inputs (the same priority
+    // browser.proxy dialing and the topology classifier use) rather than the raw global
+    // SettingsManager. Otherwise a stale SettingsManager.UseSshTunnel could hide an active
+    // gateway's tunnel (or surface a tunnel a now-direct gateway no longer uses), so the Command
+    // Center diagnostics and the copied SSH guidance would not match the endpoint browser.proxy
+    // actually dials. The active-record-first SSH user is resolved the same way Derive resolves
+    // host/ports; CommandCenterTunnelInfoBuilder then layers live SshTunnelSnapshot values on top.
+    private TunnelCommandCenterInfo? BuildTunnelInfo(CommandCenterTopologyTunnelResolver.TunnelInputs tunnelInputs)
     {
-        if (_snapshot.Settings?.UseSshTunnel != true)
-        {
-            return null;
-        }
-
-        var localPort = _snapshot.SshTunnelSnapshot is { CurrentLocalPort: > 0 }
-            ? _snapshot.SshTunnelSnapshot.CurrentLocalPort
-            : _snapshot.Settings.SshTunnelLocalPort;
-        var remotePort = _snapshot.SshTunnelSnapshot is { CurrentRemotePort: > 0 }
-            ? _snapshot.SshTunnelSnapshot.CurrentRemotePort
-            : _snapshot.Settings.SshTunnelRemotePort;
-        var host = string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.CurrentHost)
-            ? _snapshot.Settings.SshTunnelHost
-            : _snapshot.SshTunnelSnapshot!.CurrentHost!;
-        var user = string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.CurrentUser)
-            ? _snapshot.Settings.SshTunnelUser
-            : _snapshot.SshTunnelSnapshot!.CurrentUser!;
-        var status = _snapshot.SshTunnelSnapshot?.Status is TunnelStatus.Up or TunnelStatus.Starting or TunnelStatus.Restarting or TunnelStatus.Failed
-            ? _snapshot.SshTunnelSnapshot.Status
-            : string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.LastError)
-                ? TunnelStatus.Stopped
-                : TunnelStatus.Failed;
-
-        return new TunnelCommandCenterInfo
-        {
-            Status = status,
-            LocalEndpoint = $"127.0.0.1:{localPort}",
-            RemoteEndpoint = string.IsNullOrWhiteSpace(host)
-                ? $"127.0.0.1:{remotePort}"
-                : $"{host}:127.0.0.1:{remotePort}",
-            BrowserProxyLocalEndpoint = _snapshot.SshTunnelSnapshot?.CurrentBrowserProxyLocalPort > 0
-                ? $"127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyLocalPort}"
-                : "",
-            BrowserProxyRemoteEndpoint = _snapshot.SshTunnelSnapshot?.CurrentBrowserProxyRemotePort > 0
-                ? string.IsNullOrWhiteSpace(host)
-                    ? $"127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyRemotePort}"
-                    : $"{host}:127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyRemotePort}"
-                : "",
-            Host = host,
-            User = user,
-            LastError = _snapshot.SshTunnelSnapshot?.LastError,
-            StartedAt = _snapshot.SshTunnelSnapshot?.StartedAtUtc
-        };
+        var baseUser = _snapshot.HasActiveGatewayRecord
+            ? _snapshot.ActiveGatewaySshTunnel?.User
+            : _snapshot.Settings?.SshTunnelUser;
+        return CommandCenterTunnelInfoBuilder.Build(tunnelInputs, baseUser, _snapshot.SshTunnelSnapshot);
     }
 }

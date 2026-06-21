@@ -202,4 +202,83 @@ public sealed class BrowserProxyEndpointScopingTests
         Assert.Equal(9200, inputs.LocalPort);
         Assert.Equal(18789, inputs.RemotePort);
     }
+
+    // ---- Finding 1 closed: Command Center tunnel DETAILS (not just topology) follow the active record ----
+
+    [Fact]
+    public void CommandCenterTunnel_ActiveGatewayTunnel_StaleGlobalUseSshTunnelOff_ShowsActiveRecordDetails()
+    {
+        // The residual half of finding 1: tunnel DETAILS used to gate purely on the global
+        // SettingsManager.UseSshTunnel. With it stale/off but the active GatewayRecord carrying a
+        // tunnel, the Command Center showed NO tunnel — so its diagnostics and the copied SSH
+        // guidance disagreed with the endpoint browser.proxy actually dials. Details must follow
+        // the active record (resolved active-record-first, host/ports via Derive, user via caller).
+        var inputs = CommandCenterTopologyTunnelResolver.Derive(
+            hasActiveGatewayRecord: true,
+            activeGatewaySshTunnel: new SshTunnelConfig("camuser", "mac.local", RemotePort: 18789, LocalPort: 9100),
+            settingsUseSshTunnel: false,            // stale global says off — must be ignored
+            settingsHost: "stale-global.example",
+            settingsLocalPort: 9999,
+            settingsRemotePort: 18000);
+
+        var tunnel = CommandCenterTunnelInfoBuilder.Build(inputs, baseUser: "camuser", snapshot: null);
+
+        Assert.NotNull(tunnel);
+        Assert.Equal("mac.local", tunnel!.Host);
+        Assert.Equal("camuser", tunnel.User);
+        Assert.Equal("127.0.0.1:9100", tunnel.LocalEndpoint);
+        Assert.Equal("mac.local:127.0.0.1:18789", tunnel.RemoteEndpoint);
+    }
+
+    [Fact]
+    public void CommandCenterTunnel_DirectActiveGateway_StaleGlobalUseSshTunnelOn_ShowsNoTunnel()
+    {
+        // Inverse: after switching to a direct gateway, a stale global UseSshTunnel=true must NOT
+        // surface tunnel details the active gateway no longer uses.
+        var inputs = CommandCenterTopologyTunnelResolver.Derive(
+            hasActiveGatewayRecord: true,
+            activeGatewaySshTunnel: null,           // direct gateway — no tunnel
+            settingsUseSshTunnel: true,             // stale global says on — must be ignored
+            settingsHost: "old-host.example",
+            settingsLocalPort: 9100,
+            settingsRemotePort: 18789);
+
+        Assert.Null(CommandCenterTunnelInfoBuilder.Build(inputs, baseUser: null, snapshot: null));
+    }
+
+    [Fact]
+    public void CommandCenterTunnel_LiveSnapshot_OverridesResolvedBase()
+    {
+        // The live SshTunnelSnapshot (actual running tunnel) still wins over the resolved base,
+        // including the browser-proxy forward endpoints — unchanged by the active-record refactor.
+        var inputs = CommandCenterTopologyTunnelResolver.Derive(
+            hasActiveGatewayRecord: true,
+            activeGatewaySshTunnel: new SshTunnelConfig("camuser", "mac.local", RemotePort: 18789, LocalPort: 9100),
+            settingsUseSshTunnel: false,
+            settingsHost: null,
+            settingsLocalPort: 0,
+            settingsRemotePort: 0);
+        var live = new SshTunnelSnapshot(
+            IsRunning: true,
+            CurrentUser: "liveuser",
+            CurrentHost: "live.host",
+            CurrentRemotePort: 28789,
+            CurrentLocalPort: 19100,
+            CurrentBrowserProxyRemotePort: 18791,
+            CurrentBrowserProxyLocalPort: 18792,
+            StartedAtUtc: null,
+            LastError: null,
+            Status: TunnelStatus.Up);
+
+        var tunnel = CommandCenterTunnelInfoBuilder.Build(inputs, baseUser: "camuser", snapshot: live);
+
+        Assert.NotNull(tunnel);
+        Assert.Equal(TunnelStatus.Up, tunnel!.Status);
+        Assert.Equal("live.host", tunnel.Host);
+        Assert.Equal("liveuser", tunnel.User);
+        Assert.Equal("127.0.0.1:19100", tunnel.LocalEndpoint);
+        Assert.Equal("live.host:127.0.0.1:28789", tunnel.RemoteEndpoint);
+        Assert.Equal("127.0.0.1:18792", tunnel.BrowserProxyLocalEndpoint);
+        Assert.Equal("live.host:127.0.0.1:18791", tunnel.BrowserProxyRemoteEndpoint);
+    }
 }
