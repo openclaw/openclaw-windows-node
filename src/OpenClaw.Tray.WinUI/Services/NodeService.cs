@@ -386,7 +386,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 sshRemoteGatewayPort: _settings?.UseSshTunnel == true
                     ? _settings.SshTunnelRemotePort
                     : null,
-                controlPortOverride: _settings?.BrowserControlPort);
+                controlPortOverride: _settings?.BrowserControlPort,
+                useSshTunnel: _settings?.UseSshTunnel == true,
+                sshTunnelLocalPort: _settings?.UseSshTunnel == true
+                    ? _settings.SshTunnelLocalPort
+                    : null);
             Register(_browserProxyCapability);
         }
 

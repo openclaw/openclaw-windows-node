@@ -144,10 +144,16 @@ internal static class CommandCenterTextHelper
     internal static string BuildBrowserSetupGuidance(
         int browserProxyPort,
         GatewayTopologyInfo? topology,
-        TunnelCommandCenterInfo? tunnel)
+        TunnelCommandCenterInfo? tunnel,
+        int? browserControlPort = null)
     {
-        var portText = browserProxyPort is >= 1 and <= 65535
-            ? browserProxyPort.ToString(CultureInfo.InvariantCulture)
+        // An explicit BrowserControlPort override pins the effective endpoint browser.proxy dials,
+        // so the copied setup guidance reports the same port (BrowserControlEndpoint priority 1).
+        var effectivePort = browserControlPort is { } overridePort && overridePort is >= 1 and <= 65535
+            ? overridePort
+            : browserProxyPort;
+        var portText = effectivePort is >= 1 and <= 65535
+            ? effectivePort.ToString(CultureInfo.InvariantCulture)
             : "<gateway-port+2>";
         var gatewayHost = string.IsNullOrWhiteSpace(topology?.Host) ? "<gateway-host>" : topology.Host;
         var gatewayPort = ResolveGatewayPort(topology?.GatewayUrl);

@@ -900,6 +900,56 @@ public class BrowserProxyCapabilityTests
     }
 
     [Fact]
+    public async Task BrowserProxy_TunnelActive_NoOverride_TargetsTunnelLocalPortPlusTwo()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        // Managed SSH tunnel, gateway reached locally on 9000, browser-control on the
+        // companion forward (tunnel local + 2). No override -> resolved from the active tunnel.
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:9000",
+            "secret-token",
+            handler,
+            useSshTunnel: true,
+            sshTunnelLocalPort: 9100);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-tunnel",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.Equal("http://127.0.0.1:9102/status", handler.LastRequest!.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_OverrideWins_OverActiveTunnel()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:9000",
+            "secret-token",
+            handler,
+            controlPortOverride: 19000,
+            useSshTunnel: true,
+            sshTunnelLocalPort: 9100);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-override-tunnel",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.True(res.Ok);
+        // Override pins the port regardless of the active tunnel.
+        Assert.Equal("http://127.0.0.1:19000/status", handler.LastRequest!.RequestUri!.ToString());
+    }
+
+    [Fact]
     public async Task BrowserProxy_ControlPortOverride_RealHttpRoundTripHitsOverridePort()
     {
         // Unlike the mock-handler tests above, this drives the real HttpClient end-to-end:

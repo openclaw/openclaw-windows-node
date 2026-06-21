@@ -47,7 +47,7 @@ internal sealed class CommandCenterStateBuilder
             _snapshot.NodePairingApprovalKind == PairingApprovalKind.DevicePair ||
             !hasAuthoritativePendingLocalNodeTrust;
         warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
-        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel));
+        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel, _snapshot.Settings?.BrowserControlPort));
         warnings.AddRange(BuildBrowserProxyAuthWarnings(nodes));
 
         if (!string.IsNullOrWhiteSpace(_snapshot.AuthFailureMessage))
@@ -227,7 +227,8 @@ internal sealed class CommandCenterStateBuilder
     private static IEnumerable<GatewayDiagnosticWarning> BuildPortDiagnosticWarnings(
         IReadOnlyList<PortDiagnosticInfo> ports,
         GatewayTopologyInfo topology,
-        TunnelCommandCenterInfo? tunnel)
+        TunnelCommandCenterInfo? tunnel,
+        int? browserControlPort)
     {
         foreach (var port in ports)
         {
@@ -269,7 +270,7 @@ internal sealed class CommandCenterStateBuilder
                         Title = LocalizationHelper.GetString("CommandCenter_BrowserProxySshForwardNotListening"),
                         Detail = $"browser.proxy over SSH needs a companion local forward for port {port.Port}. Add the browser-control forward to the same tunnel, or enable the managed SSH tunnel so Windows starts both forwards.",
                         RepairAction = "Copy browser proxy SSH forward",
-                        CopyText = BuildBrowserProxySshForwardHint(port.Port, tunnel)
+                        CopyText = BuildBrowserProxySshForwardHint(port.Port, tunnel, browserControlPort)
                     };
                     continue;
                 }
@@ -282,18 +283,18 @@ internal sealed class CommandCenterStateBuilder
                     Detail = "browser.proxy needs a compatible browser-control host listening on the gateway port + 2.",
                     RepairAction = "Copy browser setup guidance",
                     // string formatter — no UI
-                    CopyText = CommandCenterTextHelper.BuildBrowserSetupGuidance(port.Port, topology, tunnel)
+                    CopyText = CommandCenterTextHelper.BuildBrowserSetupGuidance(port.Port, topology, tunnel, browserControlPort)
                 };
             }
         }
     }
 
-    private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
+    private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel, int? browserControlPort)
     {
         if (browserProxyPort is < 1 or > 65535)
             return "ssh -N -L <local-browser-port>:127.0.0.1:<remote-browser-port> <user>@<host>";
 
-        var localBrowserPort = ResolveLocalBrowserProxyPort(browserProxyPort, tunnel);
+        var localBrowserPort = ResolveLocalBrowserProxyPort(browserProxyPort, tunnel, browserControlPort);
         var target = BuildSshTarget(tunnel);
         var remoteBrowserPort = ResolveRemoteBrowserProxyPort(localBrowserPort, tunnel);
         return remoteBrowserPort is >= 1 and <= 65535
@@ -312,8 +313,13 @@ internal sealed class CommandCenterStateBuilder
         return "<user>@<host>";
     }
 
-    private static int ResolveLocalBrowserProxyPort(int fallbackBrowserProxyPort, TunnelCommandCenterInfo? tunnel)
+    private static int ResolveLocalBrowserProxyPort(int fallbackBrowserProxyPort, TunnelCommandCenterInfo? tunnel, int? browserControlPort)
     {
+        // Honour the explicit BrowserControlPort override first so diagnostics + setup guidance
+        // resolve the same effective endpoint browser.proxy dials (BrowserControlEndpoint priority 1).
+        if (browserControlPort is { } overridePort && overridePort is >= 1 and <= 65535)
+            return overridePort;
+
         if (TryGetEndpointPort(tunnel?.BrowserProxyLocalEndpoint, out var browserLocalPort))
             return browserLocalPort;
 
