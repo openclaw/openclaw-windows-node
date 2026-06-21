@@ -22,6 +22,13 @@ public static class OnboardingChatBootstrapper
         "MEMORY.md",
     };
 
+    private enum ExistingWorkspaceState
+    {
+        Unknown,
+        Empty,
+        Existing,
+    }
+
     public const string Message =
         "Hi! I just installed OpenClaw and you're my brand-new agent. " +
         "Please start the first-run ritual from BOOTSTRAP.md, ask one question at a time, " +
@@ -67,15 +74,25 @@ public static class OnboardingChatBootstrapper
             SetupExistingGatewayClassifier.HasAnyExistingGatewayConnection(
                 registry,
                 settings,
-                SettingsManager.SettingsDirectoryPath) &&
-            await HasExistingWorkspaceStateAsync(
+                settings.SettingsDirectory))
+        {
+            var workspaceState = await ProbeExistingWorkspaceStateAsync(
                 client,
                 existingWorkspaceProbeTimeout ?? ExistingWorkspaceProbeTimeout,
-                cancellationToken).ConfigureAwait(true))
-        {
-            MarkBootstrapped(settings);
-            Logger.Info("[OnboardingChatBootstrapper] Existing OpenClaw workspace state detected; skipping first-run bootstrap prompt.");
-            return true;
+                cancellationToken).ConfigureAwait(true);
+
+            if (workspaceState == ExistingWorkspaceState.Existing)
+            {
+                MarkBootstrapped(settings);
+                Logger.Info("[OnboardingChatBootstrapper] Existing OpenClaw workspace state detected; skipping first-run bootstrap prompt.");
+                return true;
+            }
+
+            if (workspaceState == ExistingWorkspaceState.Unknown)
+            {
+                Logger.Warn("[OnboardingChatBootstrapper] Workspace state probe was unavailable; not sending first-run bootstrap automatically.");
+                return false;
+            }
         }
 
         if (Interlocked.CompareExchange(ref s_inFlight, 1, 0) != 0)
@@ -128,7 +145,7 @@ public static class OnboardingChatBootstrapper
         }
     }
 
-    private static async Task<bool> HasExistingWorkspaceStateAsync(
+    private static async Task<ExistingWorkspaceState> ProbeExistingWorkspaceStateAsync(
         IOperatorGatewayClient client,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -139,10 +156,14 @@ public static class OnboardingChatBootstrapper
         {
             await client.RequestAgentFilesListAsync(agentId).ConfigureAwait(true);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             Logger.Warn($"[OnboardingChatBootstrapper] Workspace state probe failed: {ex.Message}");
-            return false;
+            return ExistingWorkspaceState.Unknown;
         }
 
         var payload = await observer.WaitForFilesListAsync(
@@ -151,11 +172,13 @@ public static class OnboardingChatBootstrapper
 
         if (payload is null)
         {
-            Logger.Info("[OnboardingChatBootstrapper] Workspace state probe returned no file list; preserving first-run bootstrap path.");
-            return false;
+            Logger.Warn("[OnboardingChatBootstrapper] Workspace state probe returned no file list.");
+            return ExistingWorkspaceState.Unknown;
         }
 
-        return ContainsExistingWorkspaceMarker(payload.Value);
+        return ContainsExistingWorkspaceMarker(payload.Value)
+            ? ExistingWorkspaceState.Existing
+            : ExistingWorkspaceState.Empty;
     }
 
     private static bool ContainsExistingWorkspaceMarker(JsonElement payload)

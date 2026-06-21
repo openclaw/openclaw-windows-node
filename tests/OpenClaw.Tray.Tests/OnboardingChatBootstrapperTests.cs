@@ -138,6 +138,94 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     }
 
     [Fact]
+    public async Task BootstrapAsync_DoesNotSendPrompt_WhenExistingGatewayWorkspaceProbeTimesOut()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { IsConnectedToGateway = true };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-probe-timeout");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-existing-timeout",
+            Url = "ws://192.168.1.10:18789",
+            SharedGatewayToken = "existing-shared-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(
+            client,
+            settings,
+            TimeSpan.FromSeconds(5),
+            registry: registry,
+            existingWorkspaceProbeTimeout: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.False(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_DoesNotSendPrompt_WhenExistingGatewayWorkspaceProbeFails()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListException = new InvalidOperationException("agents.files.list unsupported")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-probe-failure");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-existing-failure",
+            Url = "ws://192.168.1.10:18789",
+            SharedGatewayToken = "existing-shared-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(
+            client,
+            settings,
+            TimeSpan.FromSeconds(5),
+            registry: registry,
+            existingWorkspaceProbeTimeout: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.False(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_UsesSettingsInstanceDirectory_WhenCheckingExistingGatewayConnection()
+    {
+        var settings = new SettingsManager(_settingsDir) { GatewayUrl = "wss://remote.example.com:443" };
+        var identity = new DeviceIdentity(_settingsDir);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "operator-device-token");
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = CreateAgentFilesList("SOUL.md")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-empty-with-legacy-token");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(
+            client,
+            settings,
+            TimeSpan.FromSeconds(5),
+            registry: registry);
+
+        Assert.True(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
     public async Task BootstrapAsync_SendsBootstrapPrompt_WhenFreshSetupRegistryHasCredentialButWorkspaceIsEmpty()
     {
         var settings = new SettingsManager(_settingsDir);
@@ -302,6 +390,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public bool IsConnectedToGateway { get; init; } = true;
         public JsonElement? AgentFilesListResponse { get; init; }
         public IReadOnlyList<JsonElement>? AgentFilesListResponses { get; init; }
+        public Exception? AgentFilesListException { get; init; }
         public string? OperatorDeviceId => "operator";
         public IReadOnlyList<string> GrantedOperatorScopes => Array.Empty<string>();
         public string? MainSessionKey { get; init; } = "main";
@@ -395,6 +484,9 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task RequestAgentsListAsync() => Task.CompletedTask;
         public Task RequestAgentFilesListAsync(string agentId = "main")
         {
+            if (AgentFilesListException is not null)
+                throw AgentFilesListException;
+
             if (AgentFilesListResponses is { Count: > 0 })
             {
                 foreach (var listedResponse in AgentFilesListResponses)
