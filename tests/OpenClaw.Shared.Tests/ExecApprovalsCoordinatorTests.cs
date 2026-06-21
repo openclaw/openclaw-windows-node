@@ -525,10 +525,30 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.NotEqual(new[] { @"C:\Program Files\Git\bin\git.exe", "git", "status" }, exec.Argv);
     }
 
+    [Fact]
+    public void BuildApprovedExecution_NestedTransparentEnvWrapper_EmitsUnwrappedPayload()
+    {
+        // A nested env wrapper with no modifiers (`env env git status`) is transparent:
+        // the inner command is the real executable and the args are preserved verbatim.
+        var resolution = new ExecCommandResolution(
+            RawExecutable: "git",
+            ResolvedPath: @"C:\Program Files\Git\bin\git.exe",
+            ExecutableName: "git.exe",
+            Cwd: null);
+        var identity = MakeIdentity(new[] { "env", "env", "git", "status" }, resolution);
+
+        var exec = ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null);
+
+        Assert.NotNull(exec);
+        Assert.Equal(new[] { @"C:\Program Files\Git\bin\git.exe", "status" }, exec!.Argv);
+    }
+
     [Theory]
     [InlineData("env", "FOO=bar", "node", "script.js")]
     [InlineData("env", "-i", "node", "script.js")]
     [InlineData("env", "--unset=FOO", "node", "script.js")]
+    [InlineData("env", "env", "FOO=bar", "node", "script.js")] // nested modifier on the inner wrapper
+    [InlineData("env", "env", "-i", "node", "script.js")]
     public void BuildApprovedExecution_ReturnsNull_WhenEnvHasModifiers(params string[] command)
     {
         // A modified env wrapper (assignments or flags) cannot be faithfully represented

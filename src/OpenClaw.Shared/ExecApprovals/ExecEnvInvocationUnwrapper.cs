@@ -81,6 +81,27 @@ internal static class ExecEnvInvocationUnwrapper
         return false;
     }
 
+    // Returns true when any env wrapper in the full unwrap chain carries modifiers
+    // (VAR=val assignments or flags), including nested forms such as `env env FOO=bar node`.
+    // UnwrapForResolution strips every level for resolution, so checking only the outer
+    // wrapper would let an inner modifier slip through and be dropped from execution.
+    internal static bool AnyWrapperHasModifiers(IReadOnlyList<string> command)
+    {
+        var current = command;
+        for (var depth = 0; depth < MaxWrapperDepth; depth++)
+        {
+            if (current.Count == 0) break;
+            var token = current[0].Trim();
+            if (token.Length == 0) break;
+            if (!ExecCommandToken.IsEnv(token)) break;
+            if (HasModifiers(current)) return true;
+            var unwrapped = Unwrap(current);
+            if (unwrapped is null || unwrapped.Count == 0) break;
+            current = unwrapped;
+        }
+        return false;
+    }
+
     // Iteratively strips env wrappers for executable resolution only.
     internal static IReadOnlyList<string> UnwrapForResolution(IReadOnlyList<string> command)
     {

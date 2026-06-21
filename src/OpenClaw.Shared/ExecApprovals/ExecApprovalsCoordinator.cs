@@ -253,14 +253,14 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             || resolvedPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        // If the command is an env invocation with modifiers (VAR=val assignments or
+        // If any env wrapper in the chain carries modifiers (VAR=val assignments or
         // flags), the direct-argv payload cannot faithfully carry those semantics: the
         // modifier would be silently dropped, and the process would run in a different
-        // environment than the one that was approved. Fail closed rather than execute
-        // a command that differs from what was evaluated.
-        if (identity.Command.Count > 0
-            && ExecCommandToken.IsEnv(identity.Command[0].Trim())
-            && ExecEnvInvocationUnwrapper.HasModifiers(identity.Command))
+        // environment than the one that was approved. This walks the full unwrap chain
+        // so a nested form such as `env env FOO=bar node` is caught, not just the outer
+        // wrapper. Fail closed rather than execute a command that differs from what was
+        // evaluated.
+        if (ExecEnvInvocationUnwrapper.AnyWrapperHasModifiers(identity.Command))
             return null;
 
         // Transparent env wrappers (no modifiers) are safe to unwrap: the inner
