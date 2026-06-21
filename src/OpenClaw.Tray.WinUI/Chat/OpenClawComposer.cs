@@ -425,7 +425,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     TextBlock("\uE711") // Cancel glyph
                         .Set(t =>
                         {
-                            t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                            t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                             t.FontSize = 10;
                         }),
                     () => Props.OnAttachmentRemoved?.Invoke())
@@ -491,7 +491,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     thumb = TextBlock("\uEB9F")
                         .Set(t =>
                         {
-                            t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                            t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                             t.FontSize = 16;
                             t.VerticalAlignment = VerticalAlignment.Center;
                         });
@@ -505,7 +505,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         TextBlock("\uE711")
                             .Set(t =>
                             {
-                                t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                                t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                                 t.FontSize = 10;
                                 t.HorizontalAlignment = HorizontalAlignment.Center;
                                 t.VerticalAlignment = VerticalAlignment.Center;
@@ -554,7 +554,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         TextBlock("\uE8A5") // Page glyph
                             .Set(t =>
                             {
-                                t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                                t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                                 t.FontSize = 12;
                                 t.VerticalAlignment = VerticalAlignment.Center;
                             })
@@ -685,7 +685,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 TextBlock(glyph)
                     .Set(t =>
                     {
-                        t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                        t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         t.FontSize = composerIconSize;
                         // Always set foreground explicitly so element diffing resets it.
                         t.Foreground = foreground
@@ -773,7 +773,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             TextBlock(sendGlyph)
                 .Set(t =>
                 {
-                    t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                    t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                     t.FontSize = composerIconSize;
                 })
                 .Foreground(glyphBrush),
@@ -819,7 +819,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 TextBlock(stopGlyph)
                     .Set(t =>
                     {
-                        t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                        t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         t.FontSize = composerIconSize;
                     })
                     .Foreground(new SolidColorBrush(Colors.White)),

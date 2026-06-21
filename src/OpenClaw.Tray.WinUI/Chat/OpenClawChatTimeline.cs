@@ -785,7 +785,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 TextBlock(shownGlyph)
                     .Set(t =>
                     {
-                        t.FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
+                        t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         t.FontSize = 14;
                         t.FontWeight = Microsoft.UI.Text.FontWeights.Light;
                         t.Foreground = shownColor;
@@ -1062,7 +1062,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                 TextBlock(fileGlyph)
                                     .Set(t =>
                                     {
-                                        t.FontFamily = new FontFamily("Segoe Fluent Icons");
+                                        t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                                         t.FontSize = 16;
                                         t.Foreground = userBubbleFg;
                                         t.VerticalAlignment = VerticalAlignment.Center;

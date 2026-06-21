@@ -103,6 +103,9 @@ public static class FluentIconCatalog
     public const string Workspace = "\uE8DA";      // OpenLocal (alias of Folder)
     public const string Cron = "\uE787";           // Calendar — Cron / scheduled jobs (matches HubWindow search mapping)
 
+    public static FontFamily SymbolThemeFontFamily =>
+        (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];
+
     /// <summary>
     /// Builds a <see cref="FontIcon"/> for the given PUA glyph using the
     /// system-resolved <c>SymbolThemeFontFamily</c> so the icon honors
@@ -114,7 +117,7 @@ public static class FluentIconCatalog
         return new FontIcon
         {
             Glyph = glyph,
-            FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
+            FontFamily = SymbolThemeFontFamily,
             FontSize = size,
         };
     }

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.A2UI.Protocol;
+using OpenClawTray.Helpers;
 
 namespace OpenClawTray.A2UI.Rendering.Renderers;
 
@@ -29,7 +30,7 @@ internal sealed class UnknownRenderer : IComponentRenderer
         stack.Children.Add(new FontIcon
         {
             Glyph = "", // outlined warning
-            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontFamily = FluentIconCatalog.SymbolThemeFontFamily,
         });
         var template = OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_UnsupportedComponent");
         stack.Children.Add(new TextBlock

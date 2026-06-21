@@ -95,6 +95,28 @@ public sealed class FluentIconCatalogTests
         Assert.Contains("SymbolThemeFontFamily", src);
     }
 
+    [Fact]
+    public void NativeWinUiSources_DoNotHardcodeSegoeFluentIcons()
+    {
+        var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var offenders = Directory
+            .EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(path => File.ReadLines(path)
+                .Select((line, index) => (path, line, lineNumber: index + 1)))
+            .Where(item => item.line.Contains("new FontFamily(\"Segoe Fluent Icons\")", StringComparison.Ordinal)
+                || item.line.Contains("FontFamily=\"Segoe Fluent Icons\"", StringComparison.Ordinal))
+            .Select(item => $"{Path.GetRelativePath(TestRepositoryPaths.GetRepositoryRoot(), item.path)}:{item.lineNumber}")
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "Use FluentIconCatalog.SymbolThemeFontFamily so icon glyphs fall back to Segoe MDL2 Assets on Windows 10:"
+            + Environment.NewLine
+            + string.Join(Environment.NewLine, offenders));
+    }
+
 }
 
 /// <summary>
