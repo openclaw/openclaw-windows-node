@@ -12,7 +12,15 @@ public class CommandRequest
 {
     /// <summary>The command to execute (e.g., "echo hello" or "Get-Process")</summary>
     public string Command { get; set; } = "";
-    
+
+    /// <summary>
+    /// When set, execute this argv directly with no shell between policy and the
+    /// process: FileName = Argv[0], the rest go through ProcessStartInfo.ArgumentList
+    /// verbatim. Takes precedence over Command/Args/Shell, which are ignored.
+    /// Null = legacy shell-wrapped path.
+    /// </summary>
+    public IReadOnlyList<string>? Argv { get; set; }
+
     /// <summary>Optional arguments array</summary>
     public string[]? Args { get; set; }
     

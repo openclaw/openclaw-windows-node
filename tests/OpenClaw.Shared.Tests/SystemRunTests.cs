@@ -830,3 +830,129 @@ public class LocalCommandRunnerIntegrationTests
             $"Command took {sw.ElapsedMilliseconds}ms — expected < 3000ms (possible WaitForExitAsync hang regression)");
     }
 }
+
+/// <summary>
+/// Unit tests for LocalCommandRunner.PlanExecution — the direct-argv vs shell-wrapped
+/// decision for the exec-approvals direct-argv path. Always-on: no process is spawned.
+/// </summary>
+public class LocalCommandRunnerPlanTests
+{
+    [Fact]
+    public void DirectArgv_UsesArgv0AsFileName_AndNoShell()
+    {
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
+        {
+            Argv = new[] { "C:\\tools\\where.exe", "dotnet" },
+            // These must be ignored when Argv is present.
+            Command = "Get-Process",
+            Shell = "powershell",
+            Args = new[] { "ignored" },
+        });
+
+        Assert.True(plan.IsDirectArgv);
+        Assert.Equal("C:\\tools\\where.exe", plan.FileName);
+        Assert.Equal(new[] { "dotnet" }, plan.ArgList);
+        Assert.Null(plan.Arguments);
+    }
+
+    [Fact]
+    public void DirectArgv_PreservesArgumentsVerbatim_NoTrimNoMangle()
+    {
+        // Arguments are passed through untouched. The nasty cases (whitespace, empty,
+        // quotes, backslashes, shell metacharacters, Unicode) are round-tripped by
+        // ProcessStartInfo.ArgumentList at the OS boundary; here we only assert our
+        // planner does not alter them.
+        var args = new[]
+        {
+            "  leading-and-trailing  ",
+            "",
+            "with \"quotes\"",
+            "trailing\\",
+            "% ! & | ^ > < ( )",
+            "café-ünïcode-日本語",
+        };
+        var argv = new List<string> { "C:\\probe.exe" };
+        argv.AddRange(args);
+
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest { Argv = argv });
+
+        Assert.True(plan.IsDirectArgv);
+        Assert.Equal("C:\\probe.exe", plan.FileName);
+        Assert.Equal(args, plan.ArgList);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void DirectArgv_RejectsEmptyExecutable(string exe)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest { Argv = new[] { exe } }));
+    }
+
+    [Theory]
+    [InlineData("where.exe")]          // bare name → Windows would guess from PATH
+    [InlineData("tools\\probe.exe")]   // relative path
+    [InlineData("\\probe.exe")]        // rooted but not fully qualified
+    public void DirectArgv_RejectsNonAbsoluteExecutable(string exe)
+    {
+        // argv[0] must be a fully-qualified path so Windows never guesses the
+        // executable (Program.exe hijack).
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest { Argv = new[] { exe } }));
+    }
+
+    [Theory]
+    [InlineData("C:\\scripts\\deploy.bat")]
+    [InlineData("C:\\scripts\\deploy.cmd")]
+    [InlineData("C:\\scripts\\DEPLOY.BAT")]
+    public void DirectArgv_RejectsBatchScripts(string exe)
+    {
+        // .bat/.cmd need cmd.exe, which re-parses args and breaks the verbatim-argv
+        // guarantee.
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest { Argv = new[] { exe, "arg" } }));
+    }
+
+    [Fact]
+    public void DirectArgv_SingleElement_HasEmptyArgList()
+    {
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
+        {
+            Argv = new[] { "C:\\Windows\\System32\\whoami.exe" },
+        });
+
+        Assert.True(plan.IsDirectArgv);
+        Assert.Empty(plan.ArgList!);
+    }
+
+    [Fact]
+    public void LegacyPath_WhenArgvNull_WrapsInPowerShell()
+    {
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
+        {
+            Command = "Write-Output hi",
+            Shell = "powershell",
+        });
+
+        Assert.False(plan.IsDirectArgv);
+        Assert.Null(plan.ArgList);
+        Assert.Equal("powershell.exe", plan.FileName);
+        Assert.Contains("Write-Output hi", plan.Arguments);
+    }
+
+    [Fact]
+    public void DirectArgv_WhenArgvEmptyButNotNull_ThrowsNotFallback()
+    {
+        // A non-null but empty Argv is a malformed approved payload. It must fail
+        // closed, never silently fall back to the shell (ICommandRunner contract:
+        // only null Argv means legacy).
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest
+            {
+                Argv = System.Array.Empty<string>(),
+                Command = "echo hi",
+                Shell = "cmd",
+            }));
+    }
+}
