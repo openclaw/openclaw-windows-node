@@ -20,6 +20,17 @@ internal static partial class ApprovalRequestHelper
     internal static string ApprovalCommand(ApprovalRequestKind kind)
         => $"openclaw {Noun(kind)} approve \"${RequestIdEnvironmentVariable}\" --json";
 
+    // "plugins.entries.device-pair: plugin not found: device-pair" is emitted by older gateway
+    // versions that ship without the device-pair plugin bundle or don't load it. Detecting this
+    // lets callers return a Terminal (non-retriable) failure with actionable upgrade guidance.
+    internal static bool IsPluginNotFoundError(string output)
+        => output.Contains("plugin not found", StringComparison.OrdinalIgnoreCase)
+            && output.Contains("device-pair", StringComparison.OrdinalIgnoreCase);
+
+    internal const string PluginNotFoundMessage =
+        "The gateway device-pair plugin is not loaded. " +
+        "Upgrade your gateway to version 2026.6.0 or later and re-run setup.";
+
     internal static Dictionary<string, string> AddRequestIdEnvironment(
         IReadOnlyDictionary<string, string> environment,
         string requestId)

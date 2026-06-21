@@ -22,6 +22,7 @@ public class SettingsManager
 
     public static string SettingsDirectoryPath => GetDefaultSettingsDirectory();
     public static string SettingsPath => Path.Combine(SettingsDirectoryPath, "settings.json");
+    public string SettingsDirectory => _settingsDirectory;
 
     /// <summary>Raised after settings are persisted to disk.</summary>
     public event EventHandler? Saved;

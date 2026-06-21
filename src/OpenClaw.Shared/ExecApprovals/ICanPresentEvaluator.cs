@@ -1,20 +1,20 @@
 namespace OpenClaw.Shared.ExecApprovals;
 
 // Determines whether the coordinator can present a UI prompt for this request.
-// Doc 08 F1 lists four inputs to canPresent: requestSessionKey, activeSessionKey,
+// Four inputs to canPresent: requestSessionKey, activeSessionKey,
 // lastInputSeconds, desktopInteractive. Only requestSessionKey is passed by the
 // coordinator — the other three are encapsulated inside the implementation:
 //   activeSessionKey: provided by whatever tracks the active tray session.
-//   lastInputSeconds: read via Win32 GetLastInputInfo (OQ-F1).
-//   desktopInteractive: read via OpenInputDesktop / WTSQuerySessionInformation (OQ-F1).
-// Keeping these out of the interface keeps the coordinator UI-free (rail 10) and
+//   lastInputSeconds: read via Win32 GetLastInputInfo.
+//   desktopInteractive: read via OpenInputDesktop / WTSQuerySessionInformation.
+// Keeping these out of the interface keeps the coordinator UI-free and
 // testable without Win32. Must never throw — fail to false (no UI available).
 public interface ICanPresentEvaluator
 {
     bool CanPresent(string? requestSessionKey);
 }
 
-// Default for PR7: UI not wired yet. Everything routes to FallbackDecision.
+// Default: UI not wired. Everything routes to FallbackDecision.
 public sealed class AlwaysCannotPresentEvaluator : ICanPresentEvaluator
 {
     public static readonly AlwaysCannotPresentEvaluator Instance = new();

@@ -496,12 +496,14 @@ public sealed partial class ChatPage : Page
             }
 
             WaitingStatusText.Text = LocalizationHelper.GetString("ChatPage_ChatReady");
+            var app = (App)Application.Current;
             var bootstrapped = await OnboardingChatBootstrapper.BootstrapAsync(
                 connectionManager?.OperatorClient,
-                ((App)Application.Current).Settings,
+                app.Settings,
                 TimeSpan.FromSeconds(90),
-                cancellationToken).ConfigureAwait(true);
-            if (!bootstrapped && !((App)Application.Current).Settings.HasInjectedFirstRunBootstrap)
+                cancellationToken,
+                registry: app.Registry).ConfigureAwait(true);
+            if (!bootstrapped && !app.Settings.HasInjectedFirstRunBootstrap)
             {
                 Logger.Warn("[ChatPage] Gateway hatching bootstrap did not complete; navigating to empty chat");
             }
