@@ -243,7 +243,7 @@ public sealed class A2UIControlMatrixTests
     }
 
     [Fact]
-    public Task Icon_RendersFontIcon_WithSegoeFluentGlyph() => RunAsync(
+    public Task Icon_RendersFontIcon_WithSymbolThemeFontFamily() => RunAsync(
         "Icon → FontIcon",
         Surface("s", "i", new[]
         {
@@ -252,7 +252,8 @@ public sealed class A2UIControlMatrixTests
         root =>
         {
             var fi = FindLogical<FontIcon>(root).Single();
-            Assert.Equal("Segoe Fluent Icons", fi.FontFamily.Source);
+            var expectedFont = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];
+            Assert.Equal(expectedFont.Source, fi.FontFamily.Source);
             // "search" maps to the Segoe MDL2 Search glyph (U+E721).
             Assert.Equal("", fi.Glyph);
         });
