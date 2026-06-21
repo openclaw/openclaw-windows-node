@@ -244,8 +244,18 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         if (string.IsNullOrEmpty(resolvedPath))
             return null;
 
-        // Build argv from the effective command the resolver evaluated so approval
-        // and execution stay pinned to the same executable/argument identity.
+        // If the command is an env invocation with modifiers (VAR=val assignments or
+        // flags), the direct-argv payload cannot faithfully carry those semantics: the
+        // modifier would be silently dropped, and the process would run in a different
+        // environment than the one that was approved. Fail closed rather than execute
+        // a command that differs from what was evaluated.
+        if (identity.Command.Count > 0
+            && ExecCommandToken.IsEnv(identity.Command[0].Trim())
+            && ExecEnvInvocationUnwrapper.HasModifiers(identity.Command))
+            return null;
+
+        // Transparent env wrappers (no modifiers) are safe to unwrap: the inner
+        // command is the real executable and the args are preserved verbatim.
         var effective = ExecEnvInvocationUnwrapper.UnwrapForResolution(identity.Command);
         var argv = new string[effective.Count];
         argv[0] = resolvedPath;

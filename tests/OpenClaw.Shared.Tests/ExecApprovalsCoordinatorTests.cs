@@ -525,6 +525,25 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.NotEqual(new[] { @"C:\Program Files\Git\bin\git.exe", "git", "status" }, exec.Argv);
     }
 
+    [Theory]
+    [InlineData("env", "FOO=bar", "node", "script.js")]
+    [InlineData("env", "-i", "node", "script.js")]
+    [InlineData("env", "--unset=FOO", "node", "script.js")]
+    public void BuildApprovedExecution_ReturnsNull_WhenEnvHasModifiers(params string[] command)
+    {
+        // A modified env wrapper (assignments or flags) cannot be faithfully represented
+        // in a direct-argv payload without the wrapper, so the payload must fail closed
+        // rather than silently drop the modifier and run in a different environment.
+        var resolution = new ExecCommandResolution(
+            RawExecutable: "node",
+            ResolvedPath: @"C:\Program Files\nodejs\node.exe",
+            ExecutableName: "node.exe",
+            Cwd: null);
+        var identity = MakeIdentity(command, resolution);
+
+        Assert.Null(ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null));
+    }
+
     [Fact]
     public async Task Allow_UnresolvedExecutable_FailsClosedViaHandleAsync()
     {
