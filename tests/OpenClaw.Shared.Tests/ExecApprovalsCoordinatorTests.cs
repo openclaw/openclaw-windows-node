@@ -584,6 +584,24 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Null(ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null));
     }
 
+    [Theory]
+    [InlineData(@"C:\scripts\deploy.bat")]
+    [InlineData(@"C:\scripts\deploy.cmd")]
+    [InlineData(@"C:\scripts\DEPLOY.BAT")]
+    public void BuildApprovedExecution_ReturnsNull_WhenResolvedToBatchScript(string resolvedPath)
+    {
+        // A batch script needs cmd.exe, which re-parses arguments and breaks the
+        // verbatim-argv guarantee, so the payload must fail closed before any approval
+        // state is written rather than emit a payload the runner will later reject.
+        var resolution = new ExecCommandResolution(
+            RawExecutable: "deploy",
+            ResolvedPath: resolvedPath,
+            ExecutableName: System.IO.Path.GetFileName(resolvedPath),
+            Cwd: null);
+        var identity = MakeIdentity(new[] { "deploy", "arg" }, resolution);
+        Assert.Null(ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null));
+    }
+
     [Fact]
     public void V2Result_IsAllow_FalseForAllDenyCodes()
     {

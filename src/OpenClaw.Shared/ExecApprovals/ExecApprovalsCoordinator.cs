@@ -245,6 +245,14 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         if (string.IsNullOrEmpty(resolvedPath))
             return null;
 
+        // A batch script (.bat/.cmd) cannot run without cmd.exe, which re-parses the
+        // arguments and breaks the verbatim-argv guarantee. The direct-argv runner
+        // rejects these too; reject here as well so the fail-closed result is reached
+        // before any approval state is written, not after.
+        if (resolvedPath.EndsWith(".bat", StringComparison.OrdinalIgnoreCase)
+            || resolvedPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
+            return null;
+
         // If the command is an env invocation with modifiers (VAR=val assignments or
         // flags), the direct-argv payload cannot faithfully carry those semantics: the
         // modifier would be silently dropped, and the process would run in a different
