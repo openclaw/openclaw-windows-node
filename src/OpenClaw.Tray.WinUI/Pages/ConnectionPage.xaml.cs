@@ -2320,7 +2320,7 @@ public sealed partial class ConnectionPage : Page
                 BootstrapToken = null,
                 SshTunnel = sshConfig,
                 LastConnected = existing?.LastConnected,
-            };
+            }.PreserveAdvancedFields(existing); // keep per-gateway BrowserControlPort across edits
             _gatewayRegistry.AddOrUpdate(record);
             _gatewayRegistry.SetActive(recordId);
             _gatewayRegistry.Save();

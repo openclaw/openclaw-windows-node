@@ -398,7 +398,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
                 SharedGatewayToken = string.IsNullOrWhiteSpace(token) ? null : token,
                 BootstrapToken = null,
                 SshTunnel = sshConfig,
-            };
+            }.PreserveAdvancedFields(existing); // keep per-gateway BrowserControlPort across reconnect/edit
             _registry.AddOrUpdate(record);
             _registry.SetActive(recordId);
             _registry.Save();

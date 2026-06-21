@@ -51,6 +51,24 @@ public sealed record GatewayRecord
     public string IdentityDirName => Id;
 }
 
+/// <summary>
+/// Helpers for the saved-gateway edit/connect flows, which rebuild a fresh
+/// <see cref="GatewayRecord"/> from the form fields rather than mutating the stored one.
+/// </summary>
+public static class GatewayRecordEditing
+{
+    /// <summary>
+    /// Carries forward advanced per-gateway fields that the edit/connect forms don't expose,
+    /// so editing name / token / URL / SSH settings can't silently drop them. A value already
+    /// set on the rebuilt record wins (the form changed it); otherwise the existing record's
+    /// value is preserved. Currently scoped to <see cref="GatewayRecord.BrowserControlPort"/>.
+    /// </summary>
+    public static GatewayRecord PreserveAdvancedFields(this GatewayRecord rebuilt, GatewayRecord? existing)
+        => existing is null
+            ? rebuilt
+            : rebuilt with { BrowserControlPort = rebuilt.BrowserControlPort ?? existing.BrowserControlPort };
+}
+
 /// <summary>Per-gateway SSH tunnel configuration.</summary>
 public sealed record SshTunnelConfig(
     string User,

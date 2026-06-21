@@ -351,6 +351,44 @@ public class GatewayRegistryTests : IDisposable
         Assert.Equal(19005, reloaded.GetActive()!.BrowserControlPort);
     }
 
+    [Fact]
+    public void PreserveAdvancedFields_KeepsBrowserControlPort_AcrossSavedGatewayEdit()
+    {
+        // Simulates the edit/connect flow: a saved gateway has a per-gateway override; the user
+        // edits name / token / URL / SSH, which rebuilds a fresh record WITHOUT the advanced field.
+        var existing = MakeRecord("gw-1", "wss://old") with { BrowserControlPort = 19000, FriendlyName = "Home" };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://new",
+            FriendlyName = "Home renamed",
+            SharedGatewayToken = "rotated",
+            // BrowserControlPort intentionally absent — the form doesn't expose it.
+        }.PreserveAdvancedFields(existing);
+
+        Assert.Equal(19000, rebuilt.BrowserControlPort); // carried forward, not silently dropped
+        Assert.Equal("wss://new", rebuilt.Url);          // edited fields still applied
+        Assert.Equal("rotated", rebuilt.SharedGatewayToken);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_FormValueWins_AndNullExistingIsNoOp()
+    {
+        var existing = MakeRecord("gw-1", "wss://old") with { BrowserControlPort = 19000 };
+
+        // An explicit new value on the rebuilt record wins over the existing one.
+        var changed = (new GatewayRecord { Id = "gw-1", Url = "wss://x", BrowserControlPort = 20500 })
+            .PreserveAdvancedFields(existing);
+        Assert.Equal(20500, changed.BrowserControlPort);
+
+        // A brand-new record (no existing) is returned unchanged.
+        var fresh = new GatewayRecord { Id = "gw-2", Url = "wss://y" };
+        var preserved = fresh.PreserveAdvancedFields(null);
+        Assert.Null(preserved.BrowserControlPort);
+        Assert.Same(fresh, preserved);
+    }
+
     private static GatewayRecord MakeRecord(string id, string url) => new()
     {
         Id = id,
