@@ -51,6 +51,12 @@ public sealed class MxcCommandRunner : ICommandRunner
     {
         var settings = _settingsProvider();
 
+        if (!settings.SystemRunSandboxEnabled)
+        {
+            _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
+            return await _hostFallback.RunAsync(request, ct);
+        }
+
         // When MXC sandboxing isn't available on this host (e.g. Windows 10, an
         // older build whose wxc-exec --probe reports no usable isolation tier, or
         // missing wxc-exec.exe), fall back to the host runner so the agent can
@@ -63,12 +69,6 @@ public sealed class MxcCommandRunner : ICommandRunner
                 "[mxc] system.run UNCONTAINED: sandbox unavailable on this host. " +
                 "Commands will run on the host without containment. " +
                 "Update Windows to enable sandboxing.");
-            return await _hostFallback.RunAsync(request, ct);
-        }
-
-        if (!settings.SystemRunSandboxEnabled)
-        {
-            _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
             return await _hostFallback.RunAsync(request, ct);
         }
 

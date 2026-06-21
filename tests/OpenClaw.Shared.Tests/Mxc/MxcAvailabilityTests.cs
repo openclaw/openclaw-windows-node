@@ -98,20 +98,36 @@ public class MxcAvailabilityTests
     }
 
     [Fact]
-    public void ParseProbeOutput_CompletedNonZeroExit_ReportsUnsupportedHost()
+    public void ParseProbeOutput_CompletedNonZeroExit_ReportsProbeError()
     {
         var result = MxcAvailability.ParseProbeOutput(
             WxcProbeStatus.Completed,
             exitCode: 1,
             stdout: "",
-            stderr: "unsupported os");
+            stderr: "unknown option --probe");
 
-        // The binary ran to completion and returned a definitive negative — not a probe error.
-        Assert.Equal(MxcProbeOutcome.UnsupportedHost, result.Outcome);
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
         Assert.False(result.Supported);
         Assert.Null(result.Tier);
         Assert.NotNull(result.FailureReason);
-        Assert.Contains("does not support", result.FailureReason!);
+        Assert.Contains("Could not determine", result.FailureReason!);
+    }
+
+    [Fact]
+    public void ParseProbeOutput_CompletedJsonError_ReportsUnsupportedHost()
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
+            exitCode: 1,
+            stdout: "{\"error\":\"unsupported Windows build\",\"warnings\":[\"need newer host\"]}",
+            stderr: "");
+
+        Assert.Equal(MxcProbeOutcome.UnsupportedHost, result.Outcome);
+        Assert.False(result.Supported);
+        Assert.Null(result.Tier);
+        Assert.Equal(["need newer host"], result.Warnings);
+        Assert.NotNull(result.FailureReason);
+        Assert.Contains("unsupported Windows build", result.FailureReason!);
     }
 
     [Fact]
@@ -254,13 +270,11 @@ public class MxcAvailabilityTests
                 NullLogger.Instance,
                 _ => new WxcProbeInvocation(WxcProbeStatus.Completed, 1, string.Empty, "unsupported os build"));
 
-            // wxc-exec is present, but the host probe said no → not a setup issue,
-            // and a definitive verdict (exit 1) is NOT a transient probe error.
             Assert.True(availability.IsWxcExecResolvable);
             Assert.False(availability.IsAppContainerAvailable);
             Assert.False(availability.HasAnyBackend);
             Assert.NotEmpty(availability.UnsupportedReasons);
-            Assert.False(availability.ProbeErrored);
+            Assert.True(availability.ProbeErrored);
         }
         finally
         {

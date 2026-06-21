@@ -224,26 +224,43 @@ public sealed class MxcAvailability
                 $"Could not determine MXC sandbox support (wxc-exec --probe {what}{(detail is null ? "" : $": {Summarize(detail)}")}).");
         }
 
-        // The process ran to completion. A non-zero exit is the binary reporting that
-        // this host cannot sandbox — a definitive, non-retryable verdict. (Genuine
-        // infrastructure failures — timeout / failed launch — are captured above via
-        // status, so they never reach this branch and get cached as "unsupported".)
-        if (exitCode != 0)
-        {
-            var detail = FirstNonEmpty(stderr, stdout);
-            return Unsupported(
-                $"This Windows host does not support the MXC sandbox (wxc-exec --probe exited {exitCode}{(detail is null ? "" : $": {Summarize(detail)}")}).");
-        }
-
-        // Exit 0 but no/garbled output is a binary anomaly, not a clear answer —
+        // No/garbled output is a binary anomaly, not a clear answer —
         // treat as a (retryable) probe error rather than silently "unsupported".
         if (string.IsNullOrWhiteSpace(stdout))
-            return Error("Could not determine MXC sandbox support (wxc-exec --probe returned no output).");
+        {
+            var detail = FirstNonEmpty(stderr);
+            return Error(
+                $"Could not determine MXC sandbox support (wxc-exec --probe {(exitCode == 0 ? "returned no output" : $"exited {exitCode}")}{(detail is null ? "" : $": {Summarize(detail)}")}).");
+        }
 
         try
         {
             using var doc = JsonDocument.Parse(stdout);
             var root = doc.RootElement;
+            var warnings = ReadWarnings(root);
+
+            if (TryGetString(root, "error") is { } error)
+            {
+                return Unsupported(
+                    $"This Windows host does not support the MXC sandbox (wxc-exec --probe reported: {Summarize(error)}).",
+                    warnings);
+            }
+
+            if (root.TryGetProperty("supported", out var supportedEl)
+                && supportedEl.ValueKind == JsonValueKind.False)
+            {
+                return Unsupported(
+                    "This Windows host does not support the MXC sandbox (wxc-exec --probe reported no usable isolation tier).",
+                    warnings);
+            }
+
+            if (exitCode != 0)
+            {
+                var detail = FirstNonEmpty(stderr, stdout);
+                return Error(
+                    $"Could not determine MXC sandbox support (wxc-exec --probe exited {exitCode}{(detail is null ? "" : $": {Summarize(detail)}")}).");
+            }
+
             if (root.ValueKind != JsonValueKind.Object
                 || !root.TryGetProperty("tier", out var tierEl)
                 || tierEl.ValueKind != JsonValueKind.String
@@ -255,29 +272,53 @@ public sealed class MxcAvailability
             var needsDacl = root.TryGetProperty("needsDaclAugmentation", out var d)
                 && d.ValueKind == JsonValueKind.True;
 
-            var warnings = new List<string>();
-            if (root.TryGetProperty("warnings", out var w) && w.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in w.EnumerateArray())
-                {
-                    if (item.ValueKind != JsonValueKind.String) continue;
-                    var s = item.GetString();
-                    if (!string.IsNullOrWhiteSpace(s)) warnings.Add(s);
-                }
-            }
-
             return new MxcProbeResult(MxcProbeOutcome.Supported, tierEl.GetString(), needsDacl, warnings, null);
         }
         catch (JsonException ex)
         {
-            return Error($"Could not determine MXC sandbox support (wxc-exec --probe returned unparseable output: {ex.Message}).");
+            var detail = FirstNonEmpty(stderr, stdout);
+            return Error(
+                $"Could not determine MXC sandbox support (wxc-exec --probe {(exitCode == 0 ? "returned unparseable output" : $"exited {exitCode}")}: {Summarize(detail ?? ex.Message)}).");
         }
 
-        static MxcProbeResult Unsupported(string reason) =>
-            new(MxcProbeOutcome.UnsupportedHost, null, false, Array.Empty<string>(), reason);
+        static MxcProbeResult Unsupported(string reason, IReadOnlyList<string>? warnings = null) =>
+            new(MxcProbeOutcome.UnsupportedHost, null, false, warnings ?? Array.Empty<string>(), reason);
 
         static MxcProbeResult Error(string reason) =>
             new(MxcProbeOutcome.ProbeError, null, false, Array.Empty<string>(), reason);
+
+        static string? TryGetString(JsonElement root, string propertyName)
+        {
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty(propertyName, out var property)
+                || property.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            var value = property.GetString();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        static List<string> ReadWarnings(JsonElement root)
+        {
+            var warnings = new List<string>();
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("warnings", out var w)
+                || w.ValueKind != JsonValueKind.Array)
+            {
+                return warnings;
+            }
+
+            foreach (var item in w.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String) continue;
+                var s = item.GetString();
+                if (!string.IsNullOrWhiteSpace(s)) warnings.Add(s);
+            }
+
+            return warnings;
+        }
     }
 
     private static string? FirstNonEmpty(params string?[] values)
