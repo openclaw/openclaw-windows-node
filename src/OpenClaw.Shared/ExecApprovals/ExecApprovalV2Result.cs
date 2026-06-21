@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Shared.ExecApprovals;
 
@@ -14,6 +16,8 @@ namespace OpenClaw.Shared.ExecApprovals;
 /// </summary>
 public sealed record ExecApprovedExecution
 {
+    public const int MaxTimeoutMs = 600_000;
+
     public IReadOnlyList<string> Argv { get; }
     public string? Cwd { get; }
     public int TimeoutMs { get; }
@@ -28,13 +32,27 @@ public sealed record ExecApprovedExecution
         ArgumentNullException.ThrowIfNull(argv);
         if (argv.Count == 0)
             throw new ArgumentException("Approved execution requires a non-empty argv.", nameof(argv));
-        Argv = argv.ToArray();
+        if (timeoutMs <= 0)
+            throw new ArgumentOutOfRangeException(nameof(timeoutMs), timeoutMs, "Approved execution timeout must be positive.");
+
+        Argv = Array.AsReadOnly(argv.ToArray());
         Cwd = cwd;
-        TimeoutMs = timeoutMs;
+        TimeoutMs = Math.Min(timeoutMs, MaxTimeoutMs);
         Env = env is null
             ? null
-            : new Dictionary<string, string>(env, StringComparer.OrdinalIgnoreCase);
+            : new ReadOnlyDictionary<string, string>(
+                new Dictionary<string, string>(env, StringComparer.OrdinalIgnoreCase));
     }
+
+    public CommandRequest ToCommandRequest() => new()
+    {
+        Argv = Argv,
+        Cwd = Cwd,
+        TimeoutMs = TimeoutMs,
+        Env = Env is null
+            ? null
+            : new Dictionary<string, string>(Env, StringComparer.OrdinalIgnoreCase),
+    };
 }
 
 /// <summary>

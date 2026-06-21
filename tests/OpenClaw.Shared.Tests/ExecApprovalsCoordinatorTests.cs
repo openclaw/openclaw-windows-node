@@ -380,18 +380,48 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
     [Fact]
     public void ExecApprovedExecution_NullArgv_Throws()
-        => Assert.Throws<ArgumentNullException>(() => new ExecApprovedExecution(null!, cwd: null, timeoutMs: 0, env: null));
+        => Assert.Throws<ArgumentNullException>(() => new ExecApprovedExecution(null!, cwd: null, timeoutMs: 1000, env: null));
 
     [Fact]
     public void ExecApprovedExecution_EmptyArgv_Throws()
-        => Assert.Throws<ArgumentException>(() => new ExecApprovedExecution(Array.Empty<string>(), cwd: null, timeoutMs: 0, env: null));
+        => Assert.Throws<ArgumentException>(() => new ExecApprovedExecution(Array.Empty<string>(), cwd: null, timeoutMs: 1000, env: null));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ExecApprovedExecution_NonPositiveTimeout_Throws(int timeoutMs)
+        => Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ExecApprovedExecution(new[] { "cmd" }, cwd: null, timeoutMs, env: null));
+
+    [Fact]
+    public void ExecApprovedExecution_ClampsTimeoutToSystemRunMaximum()
+    {
+        var exec = new ExecApprovedExecution(
+            new[] { "cmd" },
+            cwd: null,
+            timeoutMs: int.MaxValue,
+            env: null);
+
+        Assert.Equal(ExecApprovedExecution.MaxTimeoutMs, exec.TimeoutMs);
+    }
 
     [Fact]
     public void ExecApprovedExecution_CopiesArgvDefensively()
     {
         var argv = new[] { "cmd", "/c", "echo" };
-        var exec = new ExecApprovedExecution(argv, cwd: null, timeoutMs: 0, env: null);
+        var exec = new ExecApprovedExecution(argv, cwd: null, timeoutMs: 1000, env: null);
         argv[0] = "TAMPERED"; // mutate the source after construction
+        Assert.Equal("cmd", exec.Argv[0]);
+    }
+
+    [Fact]
+    public void ExecApprovedExecution_ArgvCannotBeMutatedThroughReturnedCollection()
+    {
+        var exec = new ExecApprovedExecution(new[] { "cmd", "/c" }, cwd: null, timeoutMs: 1000, env: null);
+        var list = Assert.IsAssignableFrom<IList<string>>(exec.Argv);
+
+        Assert.True(list.IsReadOnly);
+        Assert.Throws<NotSupportedException>(() => list[0] = "TAMPERED");
         Assert.Equal("cmd", exec.Argv[0]);
     }
 
@@ -399,8 +429,42 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     public void ExecApprovedExecution_CopiesEnvDefensively()
     {
         var env = new Dictionary<string, string> { ["FOO"] = "bar" };
-        var exec = new ExecApprovedExecution(new[] { "x" }, cwd: null, timeoutMs: 0, env: env);
+        var exec = new ExecApprovedExecution(new[] { "x" }, cwd: null, timeoutMs: 1000, env: env);
         env["FOO"] = "TAMPERED"; // mutate the source after construction
+        Assert.Equal("bar", exec.Env!["FOO"]);
+    }
+
+    [Fact]
+    public void ExecApprovedExecution_EnvCannotBeMutatedThroughReturnedDictionary()
+    {
+        var exec = new ExecApprovedExecution(
+            new[] { "cmd" },
+            cwd: null,
+            timeoutMs: 1000,
+            env: new Dictionary<string, string> { ["FOO"] = "bar" });
+
+        var dict = Assert.IsAssignableFrom<IDictionary<string, string>>(exec.Env);
+        Assert.True(dict.IsReadOnly);
+        Assert.Throws<NotSupportedException>(() => dict["FOO"] = "TAMPERED");
+        Assert.Equal("bar", exec.Env!["FOO"]);
+    }
+
+    [Fact]
+    public void ExecApprovedExecution_ToCommandRequest_CarriesAllApprovedExecutionFields()
+    {
+        var exec = new ExecApprovedExecution(
+            new[] { @"C:\Windows\System32\cmd.exe", "/c", "echo", "hello" },
+            cwd: @"C:\work",
+            timeoutMs: 1234,
+            env: new Dictionary<string, string> { ["FOO"] = "bar" });
+
+        var request = exec.ToCommandRequest();
+
+        Assert.Same(exec.Argv, request.Argv);
+        Assert.Equal(exec.Cwd, request.Cwd);
+        Assert.Equal(exec.TimeoutMs, request.TimeoutMs);
+        Assert.Equal("bar", request.Env!["FOO"]);
+        request.Env["FOO"] = "caller-mutation";
         Assert.Equal("bar", exec.Env!["FOO"]);
     }
 
@@ -481,7 +545,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     // end-to-end path.
 
     private static CanonicalCommandIdentity MakeIdentity(
-        string[] command, ExecCommandResolution? resolution)
+        string[] command, ExecCommandResolution? resolution, int timeoutMs = 1000)
         => new(
             command,
             displayCommand: string.Join(' ', command),
@@ -489,7 +553,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             resolution: resolution,
             allowlistResolutions: Array.Empty<ExecCommandResolution>(),
             allowAlwaysPatterns: Array.Empty<string>(),
-            cwd: null, timeoutMs: 0, env: null, agentId: null, sessionKey: null);
+            cwd: null, timeoutMs, env: null, agentId: null, sessionKey: null);
 
     [Fact]
     public void BuildApprovedExecution_UsesResolvedPathAsArgv0()
@@ -505,6 +569,25 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         Assert.NotNull(exec);
         Assert.Equal(new[] { @"C:\Program Files\Git\bin\git.exe", "status" }, exec!.Argv);
+    }
+
+    [Fact]
+    public void BuildApprovedExecution_ClampsPayloadTimeout()
+    {
+        var resolution = new ExecCommandResolution(
+            RawExecutable: "git",
+            ResolvedPath: @"C:\Program Files\Git\bin\git.exe",
+            ExecutableName: "git.exe",
+            Cwd: null);
+        var identity = MakeIdentity(
+            new[] { "git", "status" },
+            resolution,
+            timeoutMs: int.MaxValue);
+
+        var exec = ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null);
+
+        Assert.NotNull(exec);
+        Assert.Equal(ExecApprovedExecution.MaxTimeoutMs, exec!.TimeoutMs);
     }
 
     [Fact]
