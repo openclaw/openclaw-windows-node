@@ -32,7 +32,7 @@ internal sealed class CommandCenterStateBuilder
             _snapshot.Settings?.SshTunnelLocalPort ?? 0,
             _snapshot.Settings?.SshTunnelRemotePort ?? 0);
         var tunnel = BuildTunnelInfo();
-        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel);
+        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel, _snapshot.EffectiveBrowserControlPort);
         ApplyDetectedSshForwardTopology(topology, portDiagnostics);
         var runtime = BuildGatewayRuntimeInfo(portDiagnostics);
         var warnings = nodes.SelectMany(n => n.Warnings).ToList();

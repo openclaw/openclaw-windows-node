@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Dispatching;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
@@ -385,21 +386,24 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 sharedGatewayToken,
                 hasGatewayClient: _nodeClient != null))
         {
-            // Prefer per-gateway tunnel config (prevents stale global settings after a gateway switch).
-            var activeTunnel = _activeGatewayTunnelResolver?.Invoke();
-            var tunnelEnabled = activeTunnel != null || _settings?.UseSshTunnel == true;
+            // Tunnel state is resolved from the active GatewayRecord when a resolver is wired
+            // (the normal app path), so a tunnel->direct gateway switch can't leave stale global
+            // SettingsManager.UseSshTunnel routing browser.proxy (and the shared token) to the
+            // old tunnel-local+2 endpoint. See BrowserProxyTunnelState for the exact contract.
+            var tunnelState = BrowserProxyTunnelState.Resolve(
+                activeResolverSupplied: _activeGatewayTunnelResolver != null,
+                activeTunnel: _activeGatewayTunnelResolver?.Invoke(),
+                settingsUseSshTunnel: _settings?.UseSshTunnel == true,
+                settingsLocalPort: _settings?.SshTunnelLocalPort,
+                settingsRemotePort: _settings?.SshTunnelRemotePort);
             _browserProxyCapability = new BrowserProxyCapability(
                 _logger,
                 _nodeClient!.GatewayUrl,
                 sharedGatewayToken,
-                sshRemoteGatewayPort: tunnelEnabled
-                    ? (activeTunnel?.RemotePort ?? _settings?.SshTunnelRemotePort)
-                    : null,
+                sshRemoteGatewayPort: tunnelState.RemotePort,
                 controlPortOverride: _browserControlPortResolver?.Invoke(),
-                useSshTunnel: tunnelEnabled,
-                sshTunnelLocalPort: tunnelEnabled
-                    ? (activeTunnel?.LocalPort ?? _settings?.SshTunnelLocalPort)
-                    : null);
+                useSshTunnel: tunnelState.Enabled,
+                sshTunnelLocalPort: tunnelState.LocalPort);
             Register(_browserProxyCapability);
         }
 
