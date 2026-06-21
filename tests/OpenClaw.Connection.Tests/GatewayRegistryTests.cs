@@ -322,6 +322,35 @@ public class GatewayRegistryTests : IDisposable
         Assert.Equal("Updated", args.Records[0].FriendlyName);
     }
 
+    [Fact]
+    public void BrowserControlPort_IsScopedToTheActiveGateway()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-a", "wss://a") with { BrowserControlPort = 19001 });
+        _registry.AddOrUpdate(MakeRecord("gw-b", "wss://b") with { BrowserControlPort = 19002 });
+
+        _registry.SetActive("gw-a");
+        Assert.Equal(19001, _registry.GetActive()!.BrowserControlPort);
+
+        // Switching the active gateway re-scopes the override — no sticky global, no misroute.
+        _registry.SetActive("gw-b");
+        Assert.Equal(19002, _registry.GetActive()!.BrowserControlPort);
+    }
+
+    [Fact]
+    public void BrowserControlPort_DefaultsNull_AndPersistsAcrossReload()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1"));
+        _registry.SetActive("gw-1");
+        Assert.Null(_registry.GetActive()!.BrowserControlPort);
+
+        _registry.AddOrUpdate(_registry.GetActive()! with { BrowserControlPort = 19005 });
+        _registry.Save();
+
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal(19005, reloaded.GetActive()!.BrowserControlPort);
+    }
+
     private static GatewayRecord MakeRecord(string id, string url) => new()
     {
         Id = id,

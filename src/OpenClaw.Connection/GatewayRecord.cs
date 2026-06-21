@@ -37,6 +37,14 @@ public sealed record GatewayRecord
     public SshTunnelConfig? SshTunnel { get; init; }
 
     /// <summary>
+    /// Per-gateway override for the local browser-control host port that the node-side
+    /// <c>browser.proxy</c> capability connects to. Null (default) derives the port from the
+    /// active gateway/tunnel (see <c>BrowserControlEndpoint</c>). Scoped to this gateway so a
+    /// split/remote forward set up for one gateway cannot misroute when another is active.
+    /// </summary>
+    public int? BrowserControlPort { get; init; }
+
+    /// <summary>
     /// Identity directory name, deterministically derived from Id.
     /// GUIDs are path-safe and guarantee uniqueness even if URLs change.
     /// </summary>

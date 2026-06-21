@@ -95,6 +95,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // single shared location, role distinction inside).
     private readonly string _identityDataPath;
     private readonly Func<string?>? _sharedGatewayTokenResolver;
+    private readonly Func<int?>? _browserControlPortResolver;
     private string? _token;
 
     // Authoritative capability list — populated by RegisterCapabilities and
@@ -192,13 +193,15 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         SettingsManager? settings = null,
         bool enableMcpServer = false,
         string? identityDataPath = null,
-        Func<string?>? sharedGatewayTokenResolver = null)
+        Func<string?>? sharedGatewayTokenResolver = null,
+        Func<int?>? browserControlPortResolver = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
         _dataPath = dataPath;
         _identityDataPath = string.IsNullOrWhiteSpace(identityDataPath) ? dataPath : identityDataPath;
         _sharedGatewayTokenResolver = sharedGatewayTokenResolver;
+        _browserControlPortResolver = browserControlPortResolver;
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
@@ -386,7 +389,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 sshRemoteGatewayPort: _settings?.UseSshTunnel == true
                     ? _settings.SshTunnelRemotePort
                     : null,
-                controlPortOverride: _settings?.BrowserControlPort,
+                controlPortOverride: _browserControlPortResolver?.Invoke(),
                 useSshTunnel: _settings?.UseSshTunnel == true,
                 sshTunnelLocalPort: _settings?.UseSshTunnel == true
                     ? _settings.SshTunnelLocalPort

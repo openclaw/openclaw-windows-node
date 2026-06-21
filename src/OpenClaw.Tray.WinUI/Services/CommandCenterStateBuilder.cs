@@ -47,7 +47,7 @@ internal sealed class CommandCenterStateBuilder
             _snapshot.NodePairingApprovalKind == PairingApprovalKind.DevicePair ||
             !hasAuthoritativePendingLocalNodeTrust;
         warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
-        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel, _snapshot.Settings?.BrowserControlPort));
+        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel, _snapshot.EffectiveBrowserControlPort));
         warnings.AddRange(BuildBrowserProxyAuthWarnings(nodes));
 
         if (!string.IsNullOrWhiteSpace(_snapshot.AuthFailureMessage))

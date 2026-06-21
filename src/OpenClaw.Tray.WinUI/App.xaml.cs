@@ -1757,7 +1757,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 settings,
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
-                sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken);
+                sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken,
+                browserControlPortResolver: () => _gatewayRegistry?.GetActive()?.BrowserControlPort);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;
@@ -3000,7 +3001,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ?? PairingApprovalKind.Unknown,
         NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId,
         SshTunnelSnapshot = _sshTunnelService?.CreateSnapshot(),
-        HasGatewayClient = _connectionManager?.OperatorClient != null
+        HasGatewayClient = _connectionManager?.OperatorClient != null,
+        EffectiveBrowserControlPort = _gatewayRegistry?.GetActive()?.BrowserControlPort
     };
 
     private void ShowNotificationHistory()

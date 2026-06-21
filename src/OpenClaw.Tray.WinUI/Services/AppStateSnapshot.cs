@@ -25,4 +25,8 @@ internal sealed record AppStateSnapshot
     public string? NodePairingRequestId         { get; init; }
     public SshTunnelSnapshot? SshTunnelSnapshot   { get; init; }
     public bool HasGatewayClient               { get; init; }
+
+    /// <summary>Browser-control override for the active gateway record (scoped per-gateway,
+    /// resolved the same way the node-side browser.proxy capability resolves it).</summary>
+    public int? EffectiveBrowserControlPort     { get; init; }
 }
