@@ -1,6 +1,7 @@
 using OpenClaw.Shared;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -16,6 +17,7 @@ internal sealed class AssistantBridgeService
     private readonly IOpenClawLogger _logger;
     private readonly string _userId;
     private readonly Func<OpenClawCliLauncher?> _launcherResolver;
+    private readonly TimeSpan _timeout;
 
     public AssistantBridgeService(IOpenClawLogger logger, string userId = "owner")
         : this(logger, userId, ResolveOpenClawCli)
@@ -25,11 +27,13 @@ internal sealed class AssistantBridgeService
     internal AssistantBridgeService(
         IOpenClawLogger logger,
         string userId,
-        Func<OpenClawCliLauncher?> launcherResolver)
+        Func<OpenClawCliLauncher?> launcherResolver,
+        TimeSpan? commandTimeout = null)
     {
         _logger = logger;
         _userId = string.IsNullOrWhiteSpace(userId) ? "owner" : userId;
         _launcherResolver = launcherResolver;
+        _timeout = commandTimeout ?? DefaultTimeout;
     }
 
     public async Task<AssistantBridgeSnapshot> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -51,7 +55,7 @@ internal sealed class AssistantBridgeService
 
     public Task<AssistantCommandResult> StartListenServiceAsync(CancellationToken cancellationToken = default) =>
         RunCommandAsync(
-            ["assistant", "listen-service", "start", "--user", _userId, "--allow-cloud", "--store-turn", "--json"],
+            ["assistant", "listen-service", "start", "--user", _userId, "--store-turn", "--json"],
             cancellationToken);
 
     public Task<AssistantCommandResult> StopListenServiceAsync(CancellationToken cancellationToken = default) =>
@@ -90,21 +94,38 @@ internal sealed class AssistantBridgeService
         foreach (var arg in args)
             psi.ArgumentList.Add(arg);
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(DefaultTimeout);
-
         try
         {
-            using var process = Process.Start(psi);
-            if (process == null)
+            using var process = new Process { StartInfo = psi };
+            if (!process.Start())
                 return AssistantProcessResult.Failed("Could not start the OpenClaw backend command.");
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(_timeout);
 
             var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
             var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
-            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            var timedOut = false;
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                timedOut = true;
+                TryKillProcessTree(process);
+            }
+            catch (OperationCanceledException)
+            {
+                TryKillProcessTree(process);
+                throw;
+            }
 
-            var stdout = await stdoutTask.ConfigureAwait(false);
-            var stderr = await stderrTask.ConfigureAwait(false);
+            var stdout = await ReadProcessStreamAsync(stdoutTask).ConfigureAwait(false);
+            var stderr = await ReadProcessStreamAsync(stderrTask).ConfigureAwait(false);
+            if (timedOut)
+                return AssistantProcessResult.Failed("OpenClaw backend command timed out.");
+
             if (process.ExitCode != 0)
             {
                 var detail = string.IsNullOrWhiteSpace(stderr) ? "OpenClaw backend command failed." : stderr.Trim();
@@ -113,14 +134,51 @@ internal sealed class AssistantBridgeService
 
             return new AssistantProcessResult(true, stdout, "");
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            return AssistantProcessResult.Failed("OpenClaw backend command timed out.");
+            throw;
         }
         catch (Exception ex)
         {
             _logger.Warn($"Assistant bridge command failed to start: {ex.Message}");
             return AssistantProcessResult.Failed("OpenClaw backend command could not be started.");
+        }
+    }
+
+    private static async Task<string> ReadProcessStreamAsync(Task<string> streamTask)
+    {
+        try
+        {
+            return await streamTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return "";
+        }
+        catch (IOException)
+        {
+            return "";
+        }
+        catch (ObjectDisposedException)
+        {
+            return "";
+        }
+    }
+
+    private static void TryKillProcessTree(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (Win32Exception)
+        {
+        }
+        catch (NotSupportedException)
+        {
         }
     }
 

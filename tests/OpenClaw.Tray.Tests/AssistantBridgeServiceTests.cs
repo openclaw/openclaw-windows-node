@@ -1,4 +1,6 @@
+using OpenClaw.Shared;
 using OpenClawTray.Services;
+using System.Diagnostics;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -85,6 +87,149 @@ public sealed class AssistantBridgeServiceTests
         {
             Environment.SetEnvironmentVariable("OPENCLAW_BACKEND_ROOT", oldValue);
             try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task StartListenServiceAsync_DefaultsToLocalAssistantRouting()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var argsPath = Path.Combine(root, "args.txt");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var scriptPath = Path.Combine(root, "capture-args.ps1");
+            File.WriteAllText(
+                scriptPath,
+                $"Set-Content -LiteralPath {PsQuote(argsPath)} -Value ($args -join [Environment]::NewLine)");
+            var launcher = PowerShellScriptLauncher(scriptPath, root);
+            var service = new AssistantBridgeService(
+                NullLogger.Instance,
+                "owner",
+                () => launcher);
+
+            var result = await service.StartListenServiceAsync();
+
+            Assert.True(result.Success, result.ErrorMessage);
+            var args = File.ReadAllLines(argsPath);
+            Assert.Contains("assistant", args);
+            Assert.Contains("listen-service", args);
+            Assert.Contains("start", args);
+            Assert.Contains("--store-turn", args);
+            Assert.Contains("--json", args);
+            Assert.DoesNotContain("--allow-cloud", args);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task StartListenServiceAsync_KillsTimedOutBackendCommand()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var pidPath = Path.Combine(root, "pid.txt");
+        Directory.CreateDirectory(root);
+        int? pid = null;
+        try
+        {
+            var scriptPath = Path.Combine(root, "sleep.ps1");
+            File.WriteAllText(
+                scriptPath,
+                $"Set-Content -LiteralPath {PsQuote(pidPath)} -Value $PID; Start-Sleep -Seconds 30");
+            var launcher = PowerShellScriptLauncher(scriptPath, root);
+            var service = new AssistantBridgeService(
+                NullLogger.Instance,
+                "owner",
+                () => launcher,
+                TimeSpan.FromSeconds(2));
+
+            var result = await service.StartListenServiceAsync();
+
+            Assert.False(result.Success);
+            Assert.Contains("timed out", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+            pid = await ReadPidAsync(pidPath);
+            Assert.True(
+                await WaitForProcessExitAsync(pid.Value),
+                $"Expected timed-out backend process {pid.Value} to be killed.");
+        }
+        finally
+        {
+            if (pid is int runningPid)
+                TryKillProcess(runningPid);
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static OpenClawCliLauncher PowerShellScriptLauncher(string scriptPath, string workingDirectory)
+    {
+        var exe = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
+        if (!File.Exists(exe))
+            exe = "powershell.exe";
+
+        return new OpenClawCliLauncher(
+            exe,
+            workingDirectory,
+            ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath]);
+    }
+
+    private static string PsQuote(string value) => "'" + value.Replace("'", "''") + "'";
+
+    private static async Task<int> ReadPidAsync(string pidPath)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            if (File.Exists(pidPath) &&
+                int.TryParse((await File.ReadAllTextAsync(pidPath)).Trim(), out var pid))
+            {
+                return pid;
+            }
+
+            await Task.Delay(100);
+        }
+
+        Assert.Fail("Timed-out backend command did not write its process id.");
+        return 0;
+    }
+
+    private static async Task<bool> WaitForProcessExitAsync(int pid)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(pid);
+                if (process.HasExited)
+                    return true;
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return false;
+    }
+
+    private static void TryKillProcess(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            process.Kill(entireProcessTree: true);
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
         }
     }
 }

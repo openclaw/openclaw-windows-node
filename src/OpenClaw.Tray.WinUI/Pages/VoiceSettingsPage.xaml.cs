@@ -90,7 +90,7 @@ public sealed partial class VoiceSettingsPage : Page
         var bridge = EnsureAssistantBridge();
         SetAssistantBusy(true);
         AssistantStatusText.Text = "Starting assistant...";
-        AssistantDetailText.Text = "Starting always-listening mode with cloud-allowed routing and turn storage.";
+        AssistantDetailText.Text = "Starting always-listening mode with local assistant routing and turn storage.";
         try
         {
             var result = await bridge.StartListenServiceAsync(NewAssistantRequestToken());
