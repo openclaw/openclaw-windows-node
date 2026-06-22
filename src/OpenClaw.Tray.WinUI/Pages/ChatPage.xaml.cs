@@ -423,16 +423,15 @@ public sealed partial class ChatPage : Page
                 return;
             }
 
-            if (!GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage, _pendingWebViewSessionKey))
+            if (!GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage))
             {
                 PlaceholderPanel.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
                 ErrorText.Text = errorMessage;
                 return;
             }
-
             _chatUrl = chatUrl;
-            _pendingWebViewSessionKey = null;
+            _chatUrl = chatUrl;
 
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Collapsed;
@@ -541,7 +540,8 @@ public sealed partial class ChatPage : Page
             _navigationStarted = true;
             ChatPagePanelStates.ApplyShowingWebView(PanelHost);
             Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
-            WebView.CoreWebView2.Navigate(_chatUrl);
+            if (!NavigateWebViewToCurrentChatUrl())
+                ShowMissingChatCredentialError();
         }
         // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException)

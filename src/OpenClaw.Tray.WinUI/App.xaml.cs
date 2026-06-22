@@ -2910,6 +2910,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _hubWindow.PendingChatSessionKey = sessionKey;
             }
         }
+        else
+        {
+            PendingChatSessionKey = null;
+            if (_hubWindow != null)
+            {
+                _hubWindow.PendingChatSessionKey = null;
+            }
+        }
 
         ShowHub("chat");
     }

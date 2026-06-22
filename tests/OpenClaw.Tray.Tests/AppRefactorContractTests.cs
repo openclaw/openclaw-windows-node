@@ -101,6 +101,41 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void ShowWebChat_ClearsStalePendingSessionKeyOnPlainOpen()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "ShowWebChat");
+
+        Assert.Contains("PendingChatSessionKey = sessionKey;", method);
+        Assert.Contains("_hubWindow.PendingChatSessionKey = sessionKey;", method);
+        Assert.Contains("PendingChatSessionKey = null;", method);
+        Assert.Contains("_hubWindow.PendingChatSessionKey = null;", method);
+        AssertInOrder(
+            method,
+            "if (!string.IsNullOrEmpty(sessionKey))",
+            "PendingChatSessionKey = sessionKey;",
+            "else",
+            "PendingChatSessionKey = null;",
+            "ShowHub(\"chat\");");
+    }
+
+    [Fact]
+    public void ChatWebView_KeepsBaseChatUrlSeparateFromPendingSessionKey()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs"));
+        var init = ExtractMethod(source, "InitializeWebViewAsync");
+        var readiness = ExtractMethod(source, "NavigateWhenChatReadyAsync");
+
+        Assert.Contains("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage)", init);
+        Assert.DoesNotContain("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage, _pendingWebViewSessionKey)", init);
+        Assert.Contains("_chatUrl = chatUrl;", init);
+        Assert.DoesNotContain("_pendingWebViewSessionKey = null;", init);
+        Assert.Contains("NavigateWebViewToCurrentChatUrl()", readiness);
+        Assert.DoesNotContain("WebView.CoreWebView2.Navigate(_chatUrl)", readiness);
+    }
+
+    [Fact]
     public void Shutdown_Order_PreservesAwaitedTeardownBeforeExit()
     {
         var source = ReadAppSources();
