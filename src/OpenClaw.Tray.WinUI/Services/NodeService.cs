@@ -98,6 +98,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly Func<string?>? _sharedGatewayTokenResolver;
     private readonly Func<int?>? _browserControlPortResolver;
     private readonly Func<SshTunnelConfig?>? _activeGatewayTunnelResolver;
+    private readonly Func<string?>? _activeGatewayUrlResolver;
     private string? _token;
 
     // Authoritative capability list — populated by RegisterCapabilities and
@@ -197,7 +198,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         string? identityDataPath = null,
         Func<string?>? sharedGatewayTokenResolver = null,
         Func<int?>? browserControlPortResolver = null,
-        Func<SshTunnelConfig?>? activeGatewayTunnelResolver = null)
+        Func<SshTunnelConfig?>? activeGatewayTunnelResolver = null,
+        Func<string?>? activeGatewayUrlResolver = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
@@ -206,6 +208,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _sharedGatewayTokenResolver = sharedGatewayTokenResolver;
         _browserControlPortResolver = browserControlPortResolver;
         _activeGatewayTunnelResolver = activeGatewayTunnelResolver;
+        _activeGatewayUrlResolver = activeGatewayUrlResolver;
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
@@ -393,9 +396,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             var tunnelState = BrowserProxyTunnelState.Resolve(
                 activeResolverSupplied: _activeGatewayTunnelResolver != null,
                 activeTunnel: _activeGatewayTunnelResolver?.Invoke(),
+                activeGatewayUrl: _activeGatewayUrlResolver?.Invoke(),
                 settingsUseSshTunnel: _settings?.UseSshTunnel == true,
                 settingsLocalPort: _settings?.SshTunnelLocalPort,
-                settingsRemotePort: _settings?.SshTunnelRemotePort);
+                settingsRemotePort: _settings?.SshTunnelRemotePort,
+                settingsGatewayUrl: _settings?.GatewayUrl);
             _browserProxyCapability = new BrowserProxyCapability(
                 _logger,
                 _nodeClient!.GatewayUrl,
@@ -403,7 +408,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 sshRemoteGatewayPort: tunnelState.RemotePort,
                 controlPortOverride: _browserControlPortResolver?.Invoke(),
                 useSshTunnel: tunnelState.Enabled,
-                sshTunnelLocalPort: tunnelState.LocalPort);
+                sshTunnelLocalPort: tunnelState.LocalPort,
+                allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback);
             Register(_browserProxyCapability);
         }
 

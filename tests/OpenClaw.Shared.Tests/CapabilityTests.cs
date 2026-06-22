@@ -874,6 +874,28 @@ public class BrowserProxyCapabilityTests
     }
 
     [Fact]
+    public async Task BrowserProxy_RemoteGatewayWithoutOverride_DoesNotSendTokenToLocalFallback()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "wss://gateway.example.com:18789",
+            "secret-token",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-remote-no-fallback",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("explicit browser-control port", res.Error);
+        Assert.Null(handler.LastRequest);
+    }
+
+    [Fact]
     public async Task BrowserProxy_ControlPortOverride_TargetsConfiguredPort()
     {
         var handler = new CapturingHandler("""{"ok":true}""");

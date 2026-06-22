@@ -97,6 +97,34 @@ public class BrowserControlEndpointTests
     }
 
     [Fact]
+    public void GatewayFallback_Disallowed_NoOverride_Fails()
+    {
+        Assert.False(BrowserControlEndpoint.TryResolveControlPort(
+            gatewayLocalPort: 18789,
+            useSshTunnel: false,
+            sshTunnelLocalPort: null,
+            controlPortOverride: null,
+            out _,
+            out var error,
+            allowGatewayPortFallback: false));
+        Assert.Contains("explicit browser-control port", error);
+    }
+
+    [Fact]
+    public void GatewayFallback_Disallowed_OverrideStillPinsPort()
+    {
+        Assert.True(BrowserControlEndpoint.TryResolveControlPort(
+            gatewayLocalPort: 18789,
+            useSshTunnel: false,
+            sshTunnelLocalPort: null,
+            controlPortOverride: 19000,
+            out var port,
+            out _,
+            allowGatewayPortFallback: false));
+        Assert.Equal(19000, port);
+    }
+
+    [Fact]
     public void GatewaySwitch_TunnelGatewayToDirectGateway_StaleGlobalTunnelIgnored()
     {
         // After switching from a tunnel gateway to a direct gateway, the resolver

@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
@@ -17,25 +18,66 @@ namespace OpenClawTray.Services;
 /// </summary>
 internal static class BrowserProxyTunnelState
 {
-    internal readonly record struct Resolved(bool Enabled, int? LocalPort, int? RemotePort);
+    internal readonly record struct Resolved(
+        bool Enabled,
+        int? LocalPort,
+        int? RemotePort,
+        bool AllowGatewayPortFallback);
 
     internal static Resolved Resolve(
         bool activeResolverSupplied,
         SshTunnelConfig? activeTunnel,
+        string? activeGatewayUrl,
         bool settingsUseSshTunnel,
         int? settingsLocalPort,
-        int? settingsRemotePort)
+        int? settingsRemotePort,
+        string? settingsGatewayUrl)
     {
         if (activeResolverSupplied)
         {
             // Active record wins. Null tunnel == direct gateway, NOT "inherit global".
-            return new Resolved(activeTunnel != null, activeTunnel?.LocalPort, activeTunnel?.RemotePort);
+            if (activeTunnel is null)
+            {
+                return new Resolved(
+                    false,
+                    null,
+                    null,
+                    AllowGatewayPortFallback: BrowserControlEndpoint.AllowsGatewayPortFallback(activeGatewayUrl));
+            }
+
+            if (!activeTunnel.IncludeBrowserProxyForward)
+                return new Resolved(false, null, null, AllowGatewayPortFallback: false);
+
+            return new Resolved(
+                Enabled: true,
+                LocalPort: activeTunnel.LocalPort,
+                RemotePort: activeTunnel.RemotePort,
+                AllowGatewayPortFallback: false);
         }
 
         // Legacy path: no active-gateway resolver, honour global settings.
         return new Resolved(
             settingsUseSshTunnel,
             settingsUseSshTunnel ? settingsLocalPort : null,
-            settingsUseSshTunnel ? settingsRemotePort : null);
+            settingsUseSshTunnel ? settingsRemotePort : null,
+            AllowGatewayPortFallback: !settingsUseSshTunnel &&
+                BrowserControlEndpoint.AllowsGatewayPortFallback(settingsGatewayUrl));
+    }
+}
+
+internal static class BrowserProxySshTunnelForwardPolicy
+{
+    internal static bool ShouldInclude(bool nodeBrowserProxyEnabled, int remotePort, int localPort) =>
+        nodeBrowserProxyEnabled && SshTunnelCommandLine.CanForwardBrowserProxyPort(remotePort, localPort);
+
+    internal static bool ShouldInclude(SettingsManager? settings, SshTunnelConfig tunnel) =>
+        settings?.NodeBrowserProxyEnabled == true && ShouldInclude(true, tunnel.RemotePort, tunnel.LocalPort);
+
+    internal static SshTunnelConfig Apply(SettingsManager? settings, SshTunnelConfig tunnel)
+    {
+        var includeBrowserProxyForward = ShouldInclude(settings, tunnel);
+        return tunnel.IncludeBrowserProxyForward == includeBrowserProxyForward
+            ? tunnel
+            : tunnel with { IncludeBrowserProxyForward = includeBrowserProxyForward };
     }
 }

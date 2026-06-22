@@ -254,6 +254,60 @@ public sealed class GatewayRegistry
         int sshPort,
         int sshRemotePort,
         int sshLocalPort,
+        bool includeBrowserProxyForward,
+        string settingsDir,
+        IOpenClawLogger? logger = null) =>
+        MigrateFromSettingsCore(
+            gatewayUrl,
+            token,
+            bootstrapToken,
+            useSshTunnel,
+            sshUser,
+            sshHost,
+            sshPort,
+            sshRemotePort,
+            sshLocalPort,
+            includeBrowserProxyForward,
+            settingsDir,
+            logger);
+
+    public bool MigrateFromSettings(
+        string? gatewayUrl,
+        string? token,
+        string? bootstrapToken,
+        bool useSshTunnel,
+        string? sshUser,
+        string? sshHost,
+        int sshPort,
+        int sshRemotePort,
+        int sshLocalPort,
+        string settingsDir,
+        IOpenClawLogger? logger = null)
+        => MigrateFromSettingsCore(
+            gatewayUrl,
+            token,
+            bootstrapToken,
+            useSshTunnel,
+            sshUser,
+            sshHost,
+            sshPort,
+            sshRemotePort,
+            sshLocalPort,
+            includeBrowserProxyForward: false,
+            settingsDir,
+            logger);
+
+    private bool MigrateFromSettingsCore(
+        string? gatewayUrl,
+        string? token,
+        string? bootstrapToken,
+        bool useSshTunnel,
+        string? sshUser,
+        string? sshHost,
+        int sshPort,
+        int sshRemotePort,
+        int sshLocalPort,
+        bool includeBrowserProxyForward,
         string settingsDir,
         IOpenClawLogger? logger = null)
     {
@@ -276,7 +330,13 @@ public sealed class GatewayRegistry
             SharedGatewayToken = string.IsNullOrWhiteSpace(bootstrapToken) ? token : null,
             BootstrapToken = !string.IsNullOrWhiteSpace(bootstrapToken) ? bootstrapToken : null,
             SshTunnel = useSshTunnel
-                ? new SshTunnelConfig(sshUser ?? "", sshHost ?? "", sshRemotePort, sshLocalPort, SshPort: sshPort)
+                ? new SshTunnelConfig(
+                    sshUser ?? "",
+                    sshHost ?? "",
+                    sshRemotePort,
+                    sshLocalPort,
+                    includeBrowserProxyForward,
+                    sshPort)
                 : null
         };
 

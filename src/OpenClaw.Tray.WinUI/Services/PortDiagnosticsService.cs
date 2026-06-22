@@ -13,7 +13,9 @@ public static class PortDiagnosticsService
     public static List<PortDiagnosticInfo> BuildDiagnostics(
         GatewayTopologyInfo topology,
         TunnelCommandCenterInfo? tunnel,
-        int? browserControlPortOverride = null)
+        int? browserControlPortOverride = null,
+        bool useSshTunnelForBrowserProxy = false,
+        bool allowGatewayPortFallback = true)
     {
         var localTcpPorts = GetLocalTcpListeners();
         var diagnostics = new List<PortDiagnosticInfo>();
@@ -23,7 +25,13 @@ public static class PortDiagnosticsService
             diagnostics.Add(Create("Gateway endpoint", gatewayPort, localTcpPorts));
         }
 
-        if (TryGetBrowserProxyPort(topology, tunnel, browserControlPortOverride, out var browserProxyPort))
+        if (TryGetBrowserProxyPort(
+                topology,
+                tunnel,
+                browserControlPortOverride,
+                useSshTunnelForBrowserProxy,
+                allowGatewayPortFallback,
+                out var browserProxyPort))
         {
             diagnostics.Add(Create("Browser proxy host", browserProxyPort, localTcpPorts));
         }
@@ -97,13 +105,19 @@ public static class PortDiagnosticsService
         return true;
     }
 
-    private static bool TryGetBrowserProxyPort(GatewayTopologyInfo topology, TunnelCommandCenterInfo? tunnel, int? browserControlPortOverride, out int port)
+    private static bool TryGetBrowserProxyPort(
+        GatewayTopologyInfo topology,
+        TunnelCommandCenterInfo? tunnel,
+        int? browserControlPortOverride,
+        bool useSshTunnelForBrowserProxy,
+        bool allowGatewayPortFallback,
+        out int port)
     {
         port = 0;
 
         // Probe the SAME endpoint browser.proxy dials by resolving through BrowserControlEndpoint,
         // so the diagnostic's listener check can never diverge from the effective control port.
-        var tunnelLocalPort = topology.UsesSshTunnel &&
+        var tunnelLocalPort = useSshTunnelForBrowserProxy &&
             TryGetEndpointPort(tunnel?.LocalEndpoint, out var tlp)
                 ? tlp
                 : (int?)null;
@@ -112,17 +126,18 @@ public static class PortDiagnosticsService
         // other topology we only probe when an explicit override pins a real local listener.
         var gatewayFallbackAllowed =
             topology.DetectedKind is (GatewayKind.WindowsNative or GatewayKind.Wsl or GatewayKind.MacOverSsh);
-        var gatewayPort = gatewayFallbackAllowed && TryGetPort(topology.GatewayUrl, out var gp)
+        var gatewayPort = allowGatewayPortFallback && gatewayFallbackAllowed && TryGetPort(topology.GatewayUrl, out var gp)
             ? gp
             : (int?)null;
 
         if (BrowserControlEndpoint.TryResolveControlPort(
                 gatewayLocalPort: gatewayPort,
-                useSshTunnel: topology.UsesSshTunnel,
+                useSshTunnel: useSshTunnelForBrowserProxy,
                 sshTunnelLocalPort: tunnelLocalPort,
                 controlPortOverride: browserControlPortOverride,
                 out var resolved,
-                out _))
+                out _,
+                allowGatewayPortFallback))
         {
             port = resolved;
             return true;

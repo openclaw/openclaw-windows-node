@@ -21,19 +21,29 @@ namespace OpenClaw.Shared;
 /// </summary>
 public static class BrowserControlEndpoint
 {
+    public static bool AllowsGatewayPortFallback(string? gatewayUrl)
+    {
+        var topology = GatewayTopologyClassifier.Classify(gatewayUrl, useSshTunnel: false);
+        return topology.DetectedKind is GatewayKind.WindowsNative or GatewayKind.Wsl;
+    }
+
     /// <summary>Resolves the effective local browser-control TCP port for the active connection.</summary>
     /// <param name="gatewayLocalPort">Local port parsed from the effective gateway URL (the local
     /// forwarded port when an SSH tunnel is active), or null when no usable gateway URL is known.</param>
     /// <param name="useSshTunnel">Whether the managed SSH tunnel is the active transport.</param>
     /// <param name="sshTunnelLocalPort">The tunnel's local gateway forward port (settings value).</param>
     /// <param name="controlPortOverride"><c>SettingsData.BrowserControlPort</c>, or null.</param>
+    /// <param name="allowGatewayPortFallback">Whether gateway local port + 2 is safe to infer.
+    /// Set false when the effective gateway URL is an SSH tunnel that does not declare a
+    /// browser-control companion forward.</param>
     public static bool TryResolveControlPort(
         int? gatewayLocalPort,
         bool useSshTunnel,
         int? sshTunnelLocalPort,
         int? controlPortOverride,
         out int controlPort,
-        out string error)
+        out string error,
+        bool allowGatewayPortFallback = true)
     {
         controlPort = 0;
         error = "";
@@ -60,6 +70,12 @@ public static class BrowserControlEndpoint
             }
             controlPort = tunnelLocal + 2;
             return true;
+        }
+
+        if (!allowGatewayPortFallback)
+        {
+            error = "Browser proxy requires an explicit browser-control port or a managed SSH browser-proxy forward.";
+            return false;
         }
 
         // (3) Co-located gateway: control host on gateway port + 2.

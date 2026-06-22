@@ -33,13 +33,26 @@ internal sealed class CommandCenterStateBuilder
             _snapshot.Settings?.SshTunnelLocalPort ?? 0,
             _snapshot.Settings?.SshTunnelRemotePort ?? 0);
         var topology = GatewayTopologyClassifier.Classify(
-            _snapshot.Settings?.GatewayUrl,
+            _snapshot.EffectiveGatewayUrl,
             tunnelInputs.UsesSshTunnel,
             tunnelInputs.SshHost,
             tunnelInputs.LocalPort,
             tunnelInputs.RemotePort);
         var tunnel = BuildTunnelInfo(tunnelInputs);
-        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel, _snapshot.EffectiveBrowserControlPort);
+        var browserProxyTunnelState = BrowserProxyTunnelState.Resolve(
+            activeResolverSupplied: _snapshot.HasActiveGatewayRecord,
+            activeTunnel: _snapshot.ActiveGatewaySshTunnel,
+            activeGatewayUrl: _snapshot.EffectiveGatewayUrl,
+            settingsUseSshTunnel: _snapshot.Settings?.UseSshTunnel == true,
+            settingsLocalPort: _snapshot.Settings?.SshTunnelLocalPort,
+            settingsRemotePort: _snapshot.Settings?.SshTunnelRemotePort,
+            settingsGatewayUrl: _snapshot.Settings?.GatewayUrl);
+        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(
+            topology,
+            tunnel,
+            _snapshot.EffectiveBrowserControlPort,
+            useSshTunnelForBrowserProxy: browserProxyTunnelState.Enabled,
+            allowGatewayPortFallback: browserProxyTunnelState.AllowGatewayPortFallback);
         ApplyDetectedSshForwardTopology(topology, portDiagnostics);
         var runtime = BuildGatewayRuntimeInfo(portDiagnostics);
         var warnings = nodes.SelectMany(n => n.Warnings).ToList();

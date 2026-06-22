@@ -22,6 +22,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
     private readonly int? _controlPortOverride;
     private readonly bool _useSshTunnel;
     private readonly int? _sshTunnelLocalPort;
+    private readonly bool _allowGatewayPortFallback;
     private readonly HttpClient _httpClient;
 
     public BrowserProxyCapability(
@@ -32,7 +33,8 @@ public class BrowserProxyCapability : NodeCapabilityBase
         int? sshRemoteGatewayPort = null,
         int? controlPortOverride = null,
         bool useSshTunnel = false,
-        int? sshTunnelLocalPort = null) : base(logger)
+        int? sshTunnelLocalPort = null,
+        bool? allowGatewayPortFallback = null) : base(logger)
     {
         _gatewayUrl = gatewayUrl;
         _bearerToken = bearerToken ?? "";
@@ -40,6 +42,8 @@ public class BrowserProxyCapability : NodeCapabilityBase
         _controlPortOverride = controlPortOverride;
         _useSshTunnel = useSshTunnel;
         _sshTunnelLocalPort = sshTunnelLocalPort;
+        _allowGatewayPortFallback = allowGatewayPortFallback ??
+            BrowserControlEndpoint.AllowsGatewayPortFallback(gatewayUrl);
         _httpClient = handler == null ? new HttpClient() : new HttpClient(handler);
     }
 
@@ -177,7 +181,8 @@ public class BrowserProxyCapability : NodeCapabilityBase
             _sshTunnelLocalPort,
             _controlPortOverride,
             out controlPort,
-            out error);
+            out error,
+            _allowGatewayPortFallback);
     }
 
     private static string BuildReachabilityGuidance(int localControlPort, int? sshRemoteGatewayPort)

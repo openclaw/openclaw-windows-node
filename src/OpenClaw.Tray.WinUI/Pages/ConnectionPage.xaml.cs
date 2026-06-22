@@ -2265,7 +2265,17 @@ public sealed partial class ConnectionPage : Page
                 AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
                 return;
             }
-            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort, SshPort: sshPort);
+            var includeBrowserProxyForward = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+                CurrentApp.Settings.NodeBrowserProxyEnabled,
+                remotePort,
+                localPort);
+            sshConfig = new SshTunnelConfig(
+                sshUser,
+                sshHost,
+                remotePort,
+                localPort,
+                IncludeBrowserProxyForward: includeBrowserProxyForward,
+                SshPort: sshPort);
         }
 
         AddSaveButton.IsEnabled = false;
