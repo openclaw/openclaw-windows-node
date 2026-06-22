@@ -245,7 +245,7 @@ public static class InstanceMerger
             IsThisInstance = !isGateway && IsLocalIdentity(node, p, options),
             DisplayName = node?.DisplayName is { Length: > 0 } dn ? dn : p.DisplayName,
             Ip = p.Ip ?? node?.RemoteIp,
-            Version = p.Version ?? node?.Version,
+            Version = p.Version ?? DisplayVersionForNode(node, hasPresence: true),
             Platform = p.Platform ?? node?.Platform,
             DeviceFamily = p.DeviceFamily ?? node?.DeviceFamily,
             ModelIdentifier = p.ModelIdentifier ?? node?.ModelIdentifier,
@@ -279,7 +279,7 @@ public static class InstanceMerger
             IsThisInstance = IsLocalIdentity(node, presence: null, options),
             DisplayName = string.IsNullOrWhiteSpace(node.DisplayName) ? node.ShortId : node.DisplayName,
             Ip = node.RemoteIp,
-            Version = node.Version,
+            Version = DisplayVersionForNode(node, hasPresence: false),
             Platform = node.Platform,
             DeviceFamily = node.DeviceFamily,
             ModelIdentifier = node.ModelIdentifier,
@@ -308,6 +308,19 @@ public static class InstanceMerger
         if (string.Equals(n, "unknown", StringComparison.OrdinalIgnoreCase)) return null;
         if (string.Equals(n, "online", StringComparison.OrdinalIgnoreCase)) return null;
         return n;
+    }
+
+    private static string? DisplayVersionForNode(GatewayNodeInfo? node, bool hasPresence)
+    {
+        var version = node?.Version;
+        if (!hasPresence &&
+            node is { IsOnline: false } &&
+            string.Equals(version?.Trim(), "1.0.0", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return version;
     }
 
     private static PresenceStatus ClassifyPresence(

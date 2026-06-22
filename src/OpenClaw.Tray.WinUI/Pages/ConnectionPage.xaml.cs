@@ -1205,9 +1205,7 @@ public sealed partial class ConnectionPage : Page
                     HasWslGateway = hostAccess.IsWslManaged,
                     HasHostTerminal = hostAccess.CanOpenTerminal,
                     HostTerminalLabel = hostAccess.TerminalLabel,
-                    AuthModeLabel = isActive && !string.IsNullOrEmpty(activeAuthMode)
-                        ? activeAuthMode!
-                        : InferAuthModeLabel(gw),
+                    AuthModeLabel = BuildAuthModeLabel(gw, isActive, _lastSnapshot, activeAuthMode),
                 });
             }
             if (all.Count > 0) emptyVisible = Visibility.Collapsed;
@@ -1243,6 +1241,26 @@ public sealed partial class ConnectionPage : Page
             : string.Format(LocalizationHelper.GetString("ConnectionPage_SavedGatewaysPlural"), items.Count);
     }
 
+    private static string BuildAuthModeLabel(
+        GatewayRecord rec,
+        bool isActive,
+        GatewayConnectionSnapshot snapshot,
+        string? activeAuthMode)
+    {
+        if (isActive)
+        {
+            var credentialLabel = ConnectionPagePlan.FormatCredentialSource(
+                snapshot.OperatorCredentialSource ?? snapshot.NodeCredentialSource);
+            if (!string.IsNullOrEmpty(credentialLabel))
+                return credentialLabel;
+
+            if (!string.IsNullOrEmpty(activeAuthMode))
+                return NormalizeGatewayAuthMode(activeAuthMode!);
+        }
+
+        return InferAuthModeLabel(rec);
+    }
+
     private static string InferAuthModeLabel(GatewayRecord rec)
     {
         if (!string.IsNullOrEmpty(rec.BootstrapToken)) return LocalizationHelper.GetString("ConnectionPage_AuthModeBootstrap");
@@ -1251,6 +1269,11 @@ public sealed partial class ConnectionPage : Page
         // stored in the DeviceIdentityStore for this gateway's identity dir).
         return LocalizationHelper.GetString("ConnectionPage_AuthModeDeviceToken");
     }
+
+    private static string NormalizeGatewayAuthMode(string authMode) =>
+        string.Equals(authMode, "device-token", StringComparison.OrdinalIgnoreCase)
+            ? "paired via device token"
+            : authMode;
 
     private List<Border> BuildSavedGatewayRowControls(IEnumerable<SavedGatewayRow> rows)
     {

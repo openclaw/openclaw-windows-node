@@ -2900,7 +2900,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _globalHotkey?.Unregister();
         }
 
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
+        ObserveBackgroundFault(
+            AutoStartManager.SetAutoStartAsync(_settings.AutoStart),
+            "[App] Failed to apply auto-start setting");
 
         // Notify ad-hoc listeners (e.g. ChatWindow may be alive but not
         // owned by the hub) that settings have changed. Marshal onto the
@@ -3189,7 +3191,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 try
                 {
-                    AutoStartManager.SetAutoStart(true);
+                    await AutoStartManager.SetAutoStartAsync(true);
                 }
                 catch (Exception ex)
                 {
@@ -3402,12 +3404,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void ToggleAutoStart()
+    private void ToggleAutoStart() =>
+        AsyncEventHandlerGuard.Run(
+            ToggleAutoStartAsync,
+            new AppLogger(),
+            nameof(ToggleAutoStart));
+
+    private async Task ToggleAutoStartAsync()
     {
         if (_settings == null) return;
         _settings.AutoStart = !_settings.AutoStart;
         _settings.Save();
-        AutoStartManager.SetAutoStart(_settings.AutoStart);
+        await AutoStartManager.SetAutoStartAsync(_settings.AutoStart);
     }
 
     private void OpenLogFile()

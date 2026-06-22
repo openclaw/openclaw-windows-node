@@ -70,6 +70,7 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(OverallConnectionState.Connecting, _manager.CurrentSnapshot.OverallState);
         Assert.Equal("wss://test", _manager.ActiveGatewayUrl);
         Assert.Equal("gw-1", _manager.CurrentSnapshot.GatewayId);
+        Assert.Equal("test", _manager.CurrentSnapshot.OperatorCredentialSource);
     }
 
     /// <summary>
@@ -582,14 +583,16 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Empty(_factory.CreatedCredentials);
         Assert.Equal(1, node.ConnectCount);
         Assert.Equal("wss://test", node.LastGatewayUrl);
+        Assert.Null(manager.CurrentSnapshot.OperatorCredentialSource);
+        Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
     }
 
     [Fact]
     public async Task ConnectNodeOnlyAsync_PreservesConnectedOperatorForNodeListRefresh()
     {
         SetupGateway("gw-1", "wss://test");
-        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
-        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, CredentialResolver.SourceSharedGatewayToken);
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, CredentialResolver.SourceNodeDeviceToken);
         var node = new CountingNodeConnector();
         using var manager = new GatewayConnectionManager(
             _resolver,
@@ -599,7 +602,9 @@ public class GatewayConnectionManagerTests : IDisposable
             nodeConnector: node);
 
         await manager.ConnectAsync("gw-1");
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
         await InvokeHandshakeSucceededAsync(manager);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
         var operatorLifecycle = Assert.Single(_factory.CreatedClients);
         var operatorClient = manager.OperatorClient;
 
@@ -609,6 +614,8 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Same(operatorClient, manager.OperatorClient);
         Assert.Single(_factory.CreatedClients);
         Assert.Equal(1, node.ConnectCount);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
+        Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
     }
 
     [Fact]
@@ -718,6 +725,7 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal("host.example", tunnel.LastConfig?.Host);
         Assert.Equal(2222, tunnel.LastConfig?.SshPort);
         Assert.Equal("ws://localhost:45678", node.LastGatewayUrl);
+        Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
     }
 
     [Fact]

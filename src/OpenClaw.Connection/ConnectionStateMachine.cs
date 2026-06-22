@@ -13,6 +13,8 @@ internal sealed class ConnectionStateMachine
     private RoleConnectionState _nodeState = RoleConnectionState.Idle;
     private string? _operatorError;
     private string? _nodeError;
+    private string? _operatorCredentialSource;
+    private string? _nodeCredentialSource;
     private bool _nodeEnabled;
 
     /// <summary>
@@ -134,6 +136,8 @@ internal sealed class ConnectionStateMachine
         _nodeState = _nodeEnabled ? RoleConnectionState.Idle : RoleConnectionState.Disabled;
         _operatorError = null;
         _nodeError = null;
+        _operatorCredentialSource = null;
+        _nodeCredentialSource = null;
         RebuildSnapshot();
     }
 
@@ -152,6 +156,12 @@ internal sealed class ConnectionStateMachine
     internal void SetOperatorDeviceId(string? deviceId)
     {
         Current = Current with { OperatorDeviceId = deviceId };
+    }
+
+    internal void SetOperatorCredentialSource(string? source)
+    {
+        _operatorCredentialSource = source;
+        RebuildSnapshot();
     }
 
     /// <summary>Update node info (device ID, pairing status, optional request ID) in the snapshot.</summary>
@@ -181,6 +191,12 @@ internal sealed class ConnectionStateMachine
             NodePairingRequestId = requestId,
             NodePairingApprovalKind = approvalKind
         };
+    }
+
+    internal void SetNodeCredentialSource(string? source)
+    {
+        _nodeCredentialSource = source;
+        RebuildSnapshot();
     }
 
     /// <summary>Update the operator pairing request ID in the snapshot.</summary>
@@ -257,6 +273,8 @@ internal sealed class ConnectionStateMachine
                 _nodeState = _nodeEnabled ? RoleConnectionState.Idle : RoleConnectionState.Disabled;
                 _operatorError = null;
                 _nodeError = null;
+                _operatorCredentialSource = null;
+                _nodeCredentialSource = null;
                 break;
 
             case ConnectionTrigger.ReconnectScheduled:
@@ -317,12 +335,14 @@ internal sealed class ConnectionStateMachine
             OverallState = GatewayConnectionSnapshot.DeriveOverall(_operatorState, _nodeState, _nodeEnabled),
             OperatorState = _operatorState,
             OperatorError = _operatorError,
+            OperatorCredentialSource = _operatorCredentialSource,
             OperatorPairingRequired = _operatorState == RoleConnectionState.PairingRequired,
             // Clear requestId when no longer in PairingRequired to prevent stale reads
             OperatorPairingRequestId = _operatorState == RoleConnectionState.PairingRequired
                 ? Current.OperatorPairingRequestId : null,
             NodeState = _nodeState,
             NodeError = _nodeError,
+            NodeCredentialSource = _nodeCredentialSource,
             // Clear requestId when no longer in PairingRequired to prevent stale reads
             NodePairingRequestId = _nodeState == RoleConnectionState.PairingRequired
                 ? Current.NodePairingRequestId : null,
