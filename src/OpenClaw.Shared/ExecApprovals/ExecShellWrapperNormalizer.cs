@@ -7,7 +7,7 @@ namespace OpenClaw.Shared.ExecApprovals;
 // Differs from the legacy ExecShellWrapperParser.Expand (BFS multi-level, string-based).
 // This normalizer operates on argv (IReadOnlyList<string>) and performs one level of
 // wrapper detection, with recursive env-prefix unwrapping up to MaxWrapperDepth.
-// Rail 18 step 2: normalize command form.
+// Step 2 of the approval pipeline: normalize command form.
 internal static class ExecShellWrapperNormalizer
 {
     private enum WrapperKind { Posix, Cmd, PowerShell }
@@ -35,7 +35,7 @@ internal static class ExecShellWrapperNormalizer
     internal static readonly ParsedWrapper NotWrapper = new(false, null);
 
     // Detects a single-level shell wrapper in argv.
-    // rawCommand is always null in Windows v1 (not in system.run protocol; research doc 05 OQ-V4).
+    // rawCommand is always null in Windows v1 (not in the system.run protocol).
     // Detection is on argv only; rawCommand is accepted for API compatibility with future use.
     internal static ParsedWrapper Extract(IReadOnlyList<string> command, string? rawCommand = null)
         => ExtractInner(command, rawCommand, 0);

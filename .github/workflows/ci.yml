@@ -214,14 +214,25 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
-    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.1, stable),
-    # which looks up the framework package by identity. The hosted windows-2025
-    # runner image doesn't preinstall it, so we install it explicitly here.
-    # Version pinned to match Microsoft.WindowsAppSDK 2.1.3 in the csprojs.
-    - name: Install WindowsAppRuntime 2.1.3
+    # framework MSIX. The hosted windows-2025 runner image doesn't preinstall it,
+    # so install the runtime that matches the repo-level WindowsAppSDK version.
+    - name: Install WindowsAppRuntime
       shell: pwsh
       run: |
-        $url = "https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe"
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
         $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
@@ -408,9 +419,9 @@ jobs:
       if: matrix.rid == 'win-arm64'
       shell: pwsh
       # -SkipNativeLoadProbe: an ARM64 runner CAN LoadLibrary ARM64 DLLs, but
-      # libsodium pulls in a long native dependency chain that may not all be
-      # in the payload here (WindowsAppSDK pieces, etc.). The probe is for x64
-      # parity; signature + presence is what we actually care about.
+      # the full tray native dependency chain may include components that are
+      # not in this payload here (WindowsAppSDK pieces, etc.). The probe is for
+      # x64 parity; signature + presence is what we actually care about.
       run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe
 
     - name: Verify GitVersion assembly metadata
@@ -646,8 +657,8 @@ jobs:
         }
 
     # Create ZIP files for Updatum auto-update (asset name must contain the RID).
-    # We ship both x64 and arm64 portables now that the build job produces a
-    # libsodium-compatible app-local VC runtime for both architectures (the
+    # We ship both x64 and arm64 portables now that the build job produces an
+    # app-local VC runtime for both architectures (the
     # arm64 leg sources its loose Microsoft.VC*.CRT DLLs from the VS install
     # on the windows-11-arm runner; see src/Directory.Build.targets).
     - name: Create x64 Release ZIP

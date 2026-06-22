@@ -112,8 +112,9 @@ public class MxcPolicyBuilderTests
 
         Assert.NotNull(policy.Filesystem!.ReadonlyPaths);
         Assert.Empty(policy.Filesystem.ReadwritePaths!);
+        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         Assert.Contains(policy.Filesystem.ReadonlyPaths!,
-            p => p.EndsWith("Documents", StringComparison.OrdinalIgnoreCase));
+            p => string.Equals(p, documentsPath, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -123,8 +124,9 @@ public class MxcPolicyBuilderTests
         var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\s");
 
         Assert.NotNull(policy.Filesystem!.ReadwritePaths);
+        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         Assert.Contains(policy.Filesystem.ReadwritePaths!,
-            p => p.EndsWith("Desktop", StringComparison.OrdinalIgnoreCase));
+            p => string.Equals(p, desktopPath, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -133,8 +135,9 @@ public class MxcPolicyBuilderTests
         var settings = new SettingsData { SandboxDownloadsAccess = SandboxFolderAccess.ReadOnly };
         var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\s");
 
+        var downloadsPath = GetExpectedDownloadsPath();
         Assert.Contains(policy.Filesystem!.ReadonlyPaths!,
-            p => p.EndsWith("Downloads", StringComparison.OrdinalIgnoreCase));
+            p => string.Equals(p, downloadsPath, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -273,4 +276,36 @@ public class MxcPolicyBuilderTests
 
         Assert.Contains("D:\\code\\my-project", policy.Filesystem!.ReadwritePaths!);
     }
+
+    private static string GetExpectedDownloadsPath()
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return ResolveKnownFolderDownloads() ?? Path.Combine(userProfile, "Downloads");
+    }
+
+    private static readonly Guid s_folderIdDownloads =
+        new("374DE290-123F-4565-9164-39C4925E467B");
+
+    private static string? ResolveKnownFolderDownloads()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        try
+        {
+            var hr = SHGetKnownFolderPath(s_folderIdDownloads, 0, IntPtr.Zero, out var ptr);
+            if (hr != 0 || ptr == IntPtr.Zero) return null;
+            try { return System.Runtime.InteropServices.Marshal.PtrToStringUni(ptr); }
+            finally { System.Runtime.InteropServices.Marshal.FreeCoTaskMem(ptr); }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, ExactSpelling = true)]
+    private static extern int SHGetKnownFolderPath(
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPStruct)] Guid rfid,
+        uint dwFlags,
+        IntPtr hToken,
+        out IntPtr ppszPath);
 }

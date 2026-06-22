@@ -37,6 +37,7 @@ public sealed partial class ChatPage : Page
     private IGatewayConnectionManager? _connectionManager;
     private IChatPagePanelHost? _panelHost;
     private IChatPagePanelHost PanelHost => _panelHost ??= new ChatPagePanelHost(this);
+    private string? _pendingWebViewSessionKey;
     private static readonly HttpClient s_httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(3)
@@ -215,18 +216,20 @@ public sealed partial class ChatPage : Page
         var provider = app?.ChatProvider;
         Func<string, Task>? readAloud = app is null ? null : app.SpeakChatTextAsync;
 
-        // Consume a pending session-key hand-off from SessionsPage so the
-        // chat root mounts with that thread selected. Any pending key forces
-        // a remount — _mountedThreadId only records what we asked for, not
-        // what the user later picked inside the composer's dropdown, so we
-        // cannot use it to detect "already on the right thread".
-        var pendingSessionKey = _hub?.PendingChatSessionKey;
-        if (pendingSessionKey is not null && _hub is not null)
+        // Consume a pending session-key hand-off from SessionsPage or a
+        // notification toast so the chat root mounts with that thread selected.
+        // Any pending key forces a remount — _mountedThreadId only records what
+        // we asked for, not what the user later picked inside the composer's
+        // dropdown, so we cannot use it to detect "already on the right thread".
+        var pendingSessionKey = _hub?.PendingChatSessionKey
+            ?? (App.Current as App)?.PendingChatSessionKey;
+        if (!string.IsNullOrEmpty(pendingSessionKey))
         {
-            _hub.PendingChatSessionKey = null;
+            if (_hub is not null) _hub.PendingChatSessionKey = null;
+            if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
         }
         var threadIdToMount = pendingSessionKey ?? _mountedThreadId;
-        var forceRemount = pendingSessionKey is not null;
+        var forceRemount = !string.IsNullOrEmpty(pendingSessionKey);
 
         if (_functionalHost is not null
             && ReferenceEquals(_mountedProvider, provider)
@@ -290,6 +293,20 @@ public sealed partial class ChatPage : Page
 
     private void ShowWebViewSurface(bool forceNavigate = false)
     {
+        // Consume pending session key for WebView mode.
+        var pendingSessionKey = _hub?.PendingChatSessionKey
+            ?? (App.Current as App)?.PendingChatSessionKey;
+        if (!string.IsNullOrEmpty(pendingSessionKey))
+        {
+            if (_hub is not null) _hub.PendingChatSessionKey = null;
+            if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
+            _pendingWebViewSessionKey = pendingSessionKey;
+        }
+        else
+        {
+            _pendingWebViewSessionKey = null;
+        }
+
         // Tear down native chat (so the WebView2 owns the row) and (re)init WebView2.
         _webViewMode = true;
         DisposeFunctionalHost();
@@ -328,7 +345,19 @@ public sealed partial class ChatPage : Page
             return false;
 
         ChatPagePanelStates.ApplyShowingWebView(PanelHost);
-        WebView.CoreWebView2.Navigate(_chatUrl);
+
+        var url = _chatUrl;
+        if (!string.IsNullOrEmpty(_pendingWebViewSessionKey))
+        {
+            var baseUrl = System.Text.RegularExpressions.Regex.Replace(_chatUrl, @"[&?]session=[^&]*", "");
+            var separator = baseUrl.Contains('?') ? "&" : "?";
+            url = $"{baseUrl}{separator}session={Uri.EscapeDataString(_pendingWebViewSessionKey)}";
+            _pendingWebViewSessionKey = null;
+        }
+
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        WebView.Visibility = Visibility.Visible;
+        WebView.CoreWebView2.Navigate(url);
         return true;
     }
 
@@ -401,7 +430,7 @@ public sealed partial class ChatPage : Page
                 ErrorText.Text = errorMessage;
                 return;
             }
-
+            _chatUrl = chatUrl;
             _chatUrl = chatUrl;
 
             PlaceholderPanel.Visibility = Visibility.Collapsed;
@@ -496,12 +525,14 @@ public sealed partial class ChatPage : Page
             }
 
             WaitingStatusText.Text = LocalizationHelper.GetString("ChatPage_ChatReady");
+            var app = (App)Application.Current;
             var bootstrapped = await OnboardingChatBootstrapper.BootstrapAsync(
                 connectionManager?.OperatorClient,
-                ((App)Application.Current).Settings,
+                app.Settings,
                 TimeSpan.FromSeconds(90),
-                cancellationToken).ConfigureAwait(true);
-            if (!bootstrapped && !((App)Application.Current).Settings.HasInjectedFirstRunBootstrap)
+                cancellationToken,
+                registry: app.Registry).ConfigureAwait(true);
+            if (!bootstrapped && !app.Settings.HasInjectedFirstRunBootstrap)
             {
                 Logger.Warn("[ChatPage] Gateway hatching bootstrap did not complete; navigating to empty chat");
             }
@@ -511,7 +542,8 @@ public sealed partial class ChatPage : Page
             _navigationStarted = true;
             ChatPagePanelStates.ApplyShowingWebView(PanelHost);
             Logger.Info("[ChatPage] Chat HTTP surface is serving; navigating WebView");
-            WebView.CoreWebView2.Navigate(_chatUrl);
+            if (!NavigateWebViewToCurrentChatUrl())
+                ShowMissingChatCredentialError();
         }
         // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (OperationCanceledException)

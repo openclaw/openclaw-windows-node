@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Xunit;
@@ -870,6 +871,198 @@ public class BrowserProxyCapabilityTests
         var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
         Assert.True(payload.TryGetProperty("result", out var result));
         Assert.True(result.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_RemoteGatewayWithoutOverride_DoesNotSendTokenToLocalFallback()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "wss://gateway.example.com:18789",
+            "secret-token",
+            handler);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-remote-no-fallback",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("explicit browser-control port", res.Error);
+        Assert.Null(handler.LastRequest);
+    }
+
+    [Fact]
+    public async Task BrowserProxy_ControlPortOverride_TargetsConfiguredPort()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18790",
+            "secret-token",
+            handler,
+            controlPortOverride: 18791);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-port-override",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.NotNull(handler.LastRequest);
+        // Without the override the derived port would be 18790 + 2 = 18792; the override
+        // pins it to the tunnelled browser-control port (a WSL2 gateway forwarded to
+        // the Windows host) instead.
+        Assert.Equal("http://127.0.0.1:18791/status", handler.LastRequest!.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_TunnelActive_NoOverride_TargetsTunnelLocalPortPlusTwo()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        // Managed SSH tunnel, gateway reached locally on 9000, browser-control on the
+        // companion forward (tunnel local + 2). No override -> resolved from the active tunnel.
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:9000",
+            "secret-token",
+            handler,
+            useSshTunnel: true,
+            sshTunnelLocalPort: 9100);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-tunnel",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.True(res.Ok);
+        Assert.Equal("http://127.0.0.1:9102/status", handler.LastRequest!.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_OverrideWins_OverActiveTunnel()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:9000",
+            "secret-token",
+            handler,
+            controlPortOverride: 19000,
+            useSshTunnel: true,
+            sshTunnelLocalPort: 9100);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-override-tunnel",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.True(res.Ok);
+        // Override pins the port regardless of the active tunnel.
+        Assert.Equal("http://127.0.0.1:19000/status", handler.LastRequest!.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_ControlPortOverride_RealHttpRoundTripHitsOverridePort()
+    {
+        // Unlike the mock-handler tests above, this drives the real HttpClient end-to-end:
+        // a genuine loopback HTTP server stands in for the browser-control host, and we assert
+        // the override actually directs a real TCP/HTTP request to the configured port. The
+        // gateway URL's port (18790) would derive control port 18792 — the wrong, unreachable
+        // port in a port-remapping tunnel — so a successful round-trip proves the override.
+        var server = new TcpListener(IPAddress.Loopback, 0);
+        server.Start();
+        var hostPort = ((IPEndPoint)server.LocalEndpoint).Port;
+
+        string? requestLine = null;
+        string? authHeader = null;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await server.AcceptTcpClientAsync(cts.Token);
+            using var stream = client.GetStream();
+            var buffer = new byte[4096];
+            var sb = new StringBuilder();
+            while (!sb.ToString().Contains("\r\n\r\n"))
+            {
+                var n = await stream.ReadAsync(buffer, cts.Token);
+                if (n == 0) break;
+                sb.Append(Encoding.ASCII.GetString(buffer, 0, n));
+            }
+
+            var headerLines = sb.ToString().Split("\r\n");
+            requestLine = headerLines.Length > 0 ? headerLines[0] : null;
+            foreach (var line in headerLines)
+            {
+                if (line.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))
+                    authHeader = line["Authorization:".Length..].Trim();
+            }
+
+            const string body = "{\"ok\":true}";
+            var response = $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n{body}";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(response), cts.Token);
+            await stream.FlushAsync(cts.Token);
+        }, cts.Token);
+
+        try
+        {
+            var cap = new BrowserProxyCapability(
+                NullLogger.Instance,
+                "ws://127.0.0.1:18790",
+                "shared-gateway-token",
+                handler: null, // real HttpClient -> real socket
+                controlPortOverride: hostPort);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "browser-real-roundtrip",
+                Command = "browser.proxy",
+                Args = Parse("""{"method":"GET","path":"/status"}""")
+            });
+
+            await serverTask;
+
+            Assert.True(res.Ok, $"expected ok, got error: {res.Error}");
+            Assert.Equal("GET /status HTTP/1.1", requestLine);
+            Assert.NotNull(authHeader);
+            // the per-gateway shared token reached the real host over the wire at the override port
+            Assert.Contains("shared-gateway-token", authHeader!);
+        }
+        finally
+        {
+            server.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task BrowserProxy_ControlPortOverrideOutOfRange_ReturnsError()
+    {
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "secret-token",
+            new CapturingHandler("""{"ok":true}"""),
+            controlPortOverride: 70000);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-port-override-invalid",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/status"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("browser-control port is outside the valid TCP port range", res.Error);
     }
 
     [Fact]

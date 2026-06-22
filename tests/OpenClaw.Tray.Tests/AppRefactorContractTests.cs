@@ -95,9 +95,44 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ToastActivationRouter.Route", method);
         Assert.Contains("OpenDashboard = () => OpenDashboard()", method);
         Assert.Contains("OpenSettings = ShowSettings", method);
-        Assert.Contains("OpenChat = ShowWebChat", method);
+        Assert.Contains("OpenChat = sessionKey => ShowWebChat(sessionKey)", method);
         Assert.Contains("OpenActivity = () => ShowHub(\"channels\")", method);
         Assert.Contains("CopyPairingCommand = command =>", method);
+    }
+
+    [Fact]
+    public void ShowWebChat_ClearsStalePendingSessionKeyOnPlainOpen()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "ShowWebChat");
+
+        Assert.Contains("PendingChatSessionKey = sessionKey;", method);
+        Assert.Contains("_hubWindow.PendingChatSessionKey = sessionKey;", method);
+        Assert.Contains("PendingChatSessionKey = null;", method);
+        Assert.Contains("_hubWindow.PendingChatSessionKey = null;", method);
+        AssertInOrder(
+            method,
+            "if (!string.IsNullOrEmpty(sessionKey))",
+            "PendingChatSessionKey = sessionKey;",
+            "else",
+            "PendingChatSessionKey = null;",
+            "ShowHub(\"chat\");");
+    }
+
+    [Fact]
+    public void ChatWebView_KeepsBaseChatUrlSeparateFromPendingSessionKey()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs"));
+        var init = ExtractMethod(source, "InitializeWebViewAsync");
+        var readiness = ExtractMethod(source, "NavigateWhenChatReadyAsync");
+
+        Assert.Contains("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage)", init);
+        Assert.DoesNotContain("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage, _pendingWebViewSessionKey)", init);
+        Assert.Contains("_chatUrl = chatUrl;", init);
+        Assert.DoesNotContain("_pendingWebViewSessionKey = null;", init);
+        Assert.Contains("NavigateWebViewToCurrentChatUrl()", readiness);
+        Assert.DoesNotContain("WebView.CoreWebView2.Navigate(_chatUrl)", readiness);
     }
 
     [Fact]
@@ -128,9 +163,19 @@ public sealed class AppRefactorContractTests
     public void Setup_IsHostedInTrayAndUsesSelfRestartAfterCompletion()
     {
         var source = ReadAppSources();
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
         Assert.Contains("new SetupWindow()", source);
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
+        Assert.Contains("ShowGatewayWizardAsync", source);
+        Assert.Contains("setupWindow.TryNavigateToWizard()", source);
+        Assert.Contains("CanNavigateToWizard", setupWindow);
+        // Direct onboarding must not hijack an already-open setup window: it
+        // only navigates a freshly created window so it cannot cancel an
+        // in-progress install running on ProgressPage.
+        Assert.Contains("EnsureSetupWindowAsync", source);
+        Assert.Contains("if (!createdNew)", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
@@ -141,6 +186,34 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("ResolveSetupEngineUiPath", source);
         Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);
         Assert.DoesNotContain("Process.GetProcessesByName(\"OpenClaw.SetupEngine.UI\")", source);
+    }
+
+    [Fact]
+    public void Settings_OnboardCardRequiresActiveManagedWslGateway()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+
+        Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
+        Assert.Contains("Visibility=\"Collapsed\"", xaml);
+        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
+        Assert.Contains("CurrentApp.Registry?.Load();", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
+    }
+
+    [Fact]
+    public void HubBackNavigation_PrunesUnavailableGatewayPages()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries", source);
+        Assert.Contains("ContentFrame.BackStack.RemoveAt(i)", source);
+        Assert.Contains("GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(tag)", source);
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "GoBack"));
+        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "UpdateGatewayNavVisibility"));
     }
 
     [Fact]

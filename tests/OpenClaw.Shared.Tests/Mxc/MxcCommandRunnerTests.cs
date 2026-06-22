@@ -257,6 +257,47 @@ public class MxcCommandRunnerTests
         Assert.Null(fallback.LastRequest);
     }
 
+    [Fact]
+    public async Task RunAsync_SandboxEnabled_DirectArgv_FailsClosed_DoesNotSerializeLegacy()
+    {
+        // A direct-argv request cannot be carried by the sandbox protocol yet, so the
+        // runner must fail closed rather than silently serialize the legacy command
+        // fields and run something other than the approved argv.
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner { Result = new CommandResult { ExitCode = 0, Stdout = "host" } };
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Argv = new[] { @"C:\Windows\System32\whoami.exe" },
+            Command = "should-be-ignored",
+        });
+
+        Assert.Equal(-1, result.ExitCode);
+        // Neither the sandbox executor nor the host fallback ran the command.
+        Assert.Null(executor.LastRequest);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Fact]
+    public async Task RunAsync_SandboxUnavailable_DirectArgv_FallsBackToHostThatHonorsArgv()
+    {
+        // When the sandbox is unavailable the request routes to the host runner, which
+        // does honor Argv. The fail-closed guard must not interfere with that path.
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner { Result = new CommandResult { ExitCode = 0, Stdout = "host" } };
+        var runner = NewRunner(
+            executor, fallback, NewSettings(sandboxEnabled: true), sandboxAvailable: false);
+
+        var argv = new[] { @"C:\Windows\System32\whoami.exe" };
+        var result = await runner.RunAsync(new CommandRequest { Argv = argv });
+
+        Assert.Equal("host", result.Stdout);
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Same(argv, fallback.LastRequest!.Argv);
+        Assert.Null(executor.LastRequest);
+    }
+
     private sealed class FakeSandboxExecutor : ISandboxExecutor
     {
         public string Name => "fake";

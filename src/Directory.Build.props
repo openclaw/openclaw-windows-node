@@ -1,5 +1,7 @@
 <Project>
 
+  <Import Project="..\Directory.Build.props" Condition="Exists('..\Directory.Build.props')" />
+
   <!-- Shared build configuration for OpenClaw.Shared, OpenClaw.Tray.WinUI, and OpenClaw.Cli. -->
 
   <PropertyGroup>

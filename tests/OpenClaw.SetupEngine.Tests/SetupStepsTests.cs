@@ -12,6 +12,8 @@ public class SetupStepsTests : IDisposable
     private readonly string _localTempDir;
     private readonly string? _prevDataDir;
     private readonly string? _prevLocalDataDir;
+    private const string DevicePairPluginNotFoundOutput = "plugins.entries.device-pair: plugin not found: device-pair";
+    private const string OtherPluginNotFoundOutput = "plugins.entries.other-plugin: plugin not found: other-plugin";
 
     public SetupStepsTests()
     {
@@ -210,6 +212,60 @@ public class SetupStepsTests : IDisposable
         {
             listener.Stop();
         }
+    }
+
+    [Fact]
+    public async Task WaitForPortFree_ReturnsImmediately_WhenPortIsAlreadyFree()
+    {
+        var port = GetFreeTcpPort();
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+
+        // Should complete well within 1 second because the port is already free
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await PreflightPortStep.WaitForPortFreeAsync(port, "loopback", logger, cts.Token, maxWaitSeconds: 10);
+        // No assertion needed — completing without cancellation/timeout is the success condition
+    }
+
+    [Fact]
+    public async Task WaitForPortFree_PollsUntilPortReleased()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+
+        // Release the port after a short delay (simulates WSL proxy teardown lag)
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(400);
+            listener.Stop();
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await PreflightPortStep.WaitForPortFreeAsync(port, "loopback", logger, cts.Token, maxWaitSeconds: 5);
+
+        // Port should now be free
+        Assert.True(PreflightPortStep.CanBind(IPAddress.Loopback, port, out _));
+    }
+
+    [Fact]
+    public async Task PreflightPort_Loopback_SucceedsAfterPortReleasedDuringPoll()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        // Release after 300ms — simulates a slow WSL proxy shutdown
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            listener.Stop();
+        });
+
+        var ctx = CreateContext(new SetupConfig { GatewayPort = port });
+        var result = await new PreflightPortStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]
@@ -644,6 +700,22 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_DetectsUnsupportedMachineConfigurationStatus()
+    {
+        var status = NulSeparated("Default Version: 2\r\n\r\n"
+            + "WSL2 is not supported with your current machine configuration.\r\n\r\n"
+            + "Please enable the \"Virtual Machine Platform\" optional component and ensure virtualization is enabled in the BIOS.\r\n\r\n"
+            + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
+            + "For information please visit https://aka.ms/enablevirtualization\r\n");
+
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(status, out var message));
+        Assert.Contains("Virtual Machine Platform", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", message);
+        Assert.Contains("reboot", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WslInstallSupport_TryGetEnvironmentIssue_ReturnsFalseForHealthyStatus()
     {
         Assert.False(WslInstallSupport.TryGetEnvironmentIssue(
@@ -697,6 +769,33 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("Virtual Machine Platform", result.Message);
         Assert.Contains("wsl --install --no-distribution", result.Message);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_FailsTerminalWhenStatusReportsUnsupportedMachineConfiguration()
+    {
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args is ["--version"])
+                return Ok("WSL version: 2.5.9.0\n");
+            if (args is ["--status"])
+                return Ok(NulSeparated(
+                    "Default Version: 2\r\n\r\n"
+                    + "WSL2 is not supported with your current machine configuration.\r\n\r\n"
+                    + "Please enable the \"Virtual Machine Platform\" optional component and ensure virtualization is enabled in the BIOS.\r\n\r\n"
+                    + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
+                    + "For information please visit https://aka.ms/enablevirtualization\r\n"));
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Virtual Machine Platform", result.Message);
+        Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", result.Message);
+        Assert.DoesNotContain(commands.Calls, c => c.Arguments.Contains("--install"));
     }
 
     [Fact]
@@ -1180,6 +1279,75 @@ public class SetupStepsTests : IDisposable
             "OpenClawGateway"));
     }
 
+    [Fact]
+    public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, "device-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApprovePairing_KeepsOtherMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, "device-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Device approval failed", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_ReturnsTerminalWhenPendingListReportsDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_KeepsOtherPendingListMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not list pending node pairing requests", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_ReturnsTerminalWhenApproveReportsDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "node-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_KeepsOtherApproveMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "node-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Node approval failed", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
     // ─── Bind validation ───
 
     [Fact]
@@ -1273,14 +1441,50 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(2, catAttempts);
     }
 
+    // ─── PairOperatorStep: Windows-side gateway health check ───
+
+    [Fact]
+    public async Task PairOperatorStep_FailsWhenGatewayNotReachableFromWindows()
+    {
+        // Allocate a port and immediately release it so nothing is listening on it.
+        var port = GetFreeTcpPort();
+
+        var config = new SetupConfig { GatewayPort = port };
+        var ctx = CreateContext(config);
+        ctx.SharedGatewayToken = "test-shared-token";
+
+        var step = new PairOperatorStep();
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static CommandResult Ok(string stdout = "", string stderr = "")
         => new(0, stdout, stderr, TimeSpan.Zero, TimedOut: false);
 
     private static CommandResult Fail(string stderr = "")
         => new(1, "", stderr, TimeSpan.Zero, TimedOut: false);
 
+    private static CommandResult FailWithStdout(string stdout)
+        => new(1, stdout, "", TimeSpan.Zero, TimedOut: false);
+
     private static CommandResult TimedOut()
         => new(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
+
+    private static string NulSeparated(string value)
+        => string.Join("\0", value.ToCharArray()) + "\0";
+
+    private SetupContext CreatePairingContext(string failureStdout)
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => FailWithStdout(failureStdout));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "shared-token";
+        return ctx;
+    }
 
     private sealed class FakeCommandRunner(
         Func<string[], CommandResult> run,

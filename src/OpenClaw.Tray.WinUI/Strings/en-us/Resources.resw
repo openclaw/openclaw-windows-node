@@ -2283,6 +2283,12 @@ On your gateway host (Mac/Linux), run:
   <data name="NavPaneToggleButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Toggle navigation pane</value>
   </data>
+  <data name="NavBackButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="NavBackButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Back</value>
+  </data>
   <data name="TitleStatusText.Text" xml:space="preserve">
     <value>Disconnected</value>
   </data>
@@ -3303,9 +3309,6 @@ On your gateway host (Mac/Linux), run:
   <data name="InstancesPage_Reason_Resync" xml:space="preserve">
     <value>Resync</value>
   </data>
-  <data name="InstancesPage_BackToConnectionText.Text" xml:space="preserve">
-    <value>Back to Connection</value>
-  </data>
   <data name="ConnectionPage_NodePairing_Title.Text" xml:space="preserve">
     <value>🔗 Pending Operator/Node Pairing</value>
   </data>
@@ -3608,6 +3611,15 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="DiagnosticsPage_ManageOnConnection.Content" xml:space="preserve">
     <value>Manage on Connection page</value>
+  </data>
+  <data name="DiagnosticsPage_Section_Gateway.Text" xml:space="preserve">
+    <value>Gateway</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Doctor.Header" xml:space="preserve">
+    <value>Run gateway doctor</value>
+  </data>
+  <data name="DiagnosticsPage_Card_Doctor.Description" xml:space="preserve">
+    <value>Opens a terminal and runs openclaw doctor to check the local gateway for problems.</value>
   </data>
   <data name="DiagnosticsPage_Section_Share.Text" xml:space="preserve">
     <value>Share diagnostics with support</value>
@@ -4185,9 +4197,6 @@ On your gateway host (Mac/Linux), run:
   <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
     <value>Review on Connection page</value>
   </data>
-  <data name="PermissionsPage_BackToConnection.Text" xml:space="preserve">
-    <value>Back to Connection</value>
-  </data>
   <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
     <value>Permissions</value>
   </data>
@@ -4407,9 +4416,6 @@ On your gateway host (Mac/Linux), run:
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
-  <data name="SessionsPage_BackToConnection.Text" xml:space="preserve">
-    <value>Back to Connection</value>
-  </data>
   <data name="SessionsPage_Sessions.Text" xml:space="preserve">
     <value>Sessions</value>
   </data>
@@ -4466,6 +4472,15 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="SettingsPage_OpenLocalGatewaySetup.Content" xml:space="preserve">
     <value>Open setup</value>
+  </data>
+  <data name="SettingsPage_OnboardWizard_Header.Text" xml:space="preserve">
+    <value>OpenClaw Onboard</value>
+  </data>
+  <data name="SettingsPage_OnboardWizard_Description.Text" xml:space="preserve">
+    <value>Open the OpenClaw onboarding on an installed Local Gateway. Skips WSL installation and jumps straight to configuration.</value>
+  </data>
+  <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
+    <value>Open onboarding</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>MSIX installation detected</value>

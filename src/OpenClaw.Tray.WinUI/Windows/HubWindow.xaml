@@ -28,19 +28,36 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton" Grid.Column="0"
-                    AutomationProperties.Name="Toggle navigation pane"
-                    MinWidth="32" MinHeight="32"
-                    Padding="0" VerticalAlignment="Center"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
-                    BorderThickness="0"
-                    ToolTipService.ToolTip="Toggle navigation pane"
-                    Click="OnNavPaneToggleButtonClick">
-                <FontIcon Glyph="&#xE700;"
-                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          FontSize="16"/>
-            </Button>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Uid="NavBackButton" x:Name="NavBackButton"
+                        AutomationProperties.Name="Back"
+                        MinWidth="32" MinHeight="32"
+                        Padding="0" VerticalAlignment="Center"
+                        IsEnabled="False"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Back"
+                        Click="OnBackRequested">
+                    <FontIcon Glyph="&#xE72B;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="16"/>
+                </Button>
+
+                <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton"
+                        AutomationProperties.Name="Toggle navigation pane"
+                        MinWidth="32" MinHeight="32"
+                        Padding="0" VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Toggle navigation pane"
+                        Click="OnNavPaneToggleButtonClick">
+                    <FontIcon Glyph="&#xE700;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="16"/>
+                </Button>
+            </StackPanel>
 
             <!-- Icon + Title -->
             <TextBlock Grid.Column="1" Text="🦞" FontSize="18" VerticalAlignment="Center" Margin="8,0,8,0" Translation="0,-1,0"/>

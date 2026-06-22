@@ -49,6 +49,12 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
+        // Product/feature name — "OpenClaw Onboard" is kept identical across
+        // all locales (the card's description and button are translated).
+        "SettingsPage_OnboardWizard_Header.Text",
+        // Technical product term — "Gateway" is kept in English across
+        // supported locales per onboarding terminology.
+        "DiagnosticsPage_Section_Gateway.Text",
         "PermissionsPage_TtsElevenLabsModel.PlaceholderText",
         "PermissionsPage_TtsProviderElevenLabs.Content",
         // Sample IDs / brand identifiers — same across locales.

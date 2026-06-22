@@ -1848,12 +1848,12 @@ public sealed partial class ConnectionPage : Page
 
     // ─── Operator card navigation ────────────────────────────────────
 
-    private void OnOpenSessions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("sessions", "connection");
-    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("instances", "connection");
+    private void OnOpenSessions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("sessions");
+    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("instances");
 
     // ─── Node card navigation ────────────────────────────────────────
 
-    private void OnOpenPermissions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("permissions", "connection");
+    private void OnOpenPermissions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("permissions");
 
     private void OnCopyNodeApproveCommand(object sender, RoutedEventArgs e)
     {
@@ -2265,7 +2265,17 @@ public sealed partial class ConnectionPage : Page
                 AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
                 return;
             }
-            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort, SshPort: sshPort);
+            var includeBrowserProxyForward = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+                CurrentApp.Settings.NodeBrowserProxyEnabled,
+                remotePort,
+                localPort);
+            sshConfig = new SshTunnelConfig(
+                sshUser,
+                sshHost,
+                remotePort,
+                localPort,
+                IncludeBrowserProxyForward: includeBrowserProxyForward,
+                SshPort: sshPort);
         }
 
         AddSaveButton.IsEnabled = false;
@@ -2320,7 +2330,7 @@ public sealed partial class ConnectionPage : Page
                 BootstrapToken = null,
                 SshTunnel = sshConfig,
                 LastConnected = existing?.LastConnected,
-            };
+            }.PreserveAdvancedFields(existing); // keep per-gateway BrowserControlPort across edits
             _gatewayRegistry.AddOrUpdate(record);
             _gatewayRegistry.SetActive(recordId);
             _gatewayRegistry.Save();

@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services;
 using OpenClaw.Connection;
 using System;
 using System.IO;
@@ -380,7 +381,18 @@ public sealed partial class ConnectionStatusWindow : WindowEx
             int.TryParse(DiagSshLocalPortBox.Text, out var localPort);
             if (remotePort <= 0) remotePort = 18789;
             if (localPort <= 0) localPort = 18790;
-            sshConfig = new SshTunnelConfig(sshUser, sshHost, remotePort, localPort, SshPort: sshPort);
+            var app = (App)Microsoft.UI.Xaml.Application.Current;
+            var includeBrowserProxyForward = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+                app.Settings.NodeBrowserProxyEnabled,
+                remotePort,
+                localPort);
+            sshConfig = new SshTunnelConfig(
+                sshUser,
+                sshHost,
+                remotePort,
+                localPort,
+                IncludeBrowserProxyForward: includeBrowserProxyForward,
+                SshPort: sshPort);
         }
 
         DirectConnectResult.Text = useSsh ? LocalizationHelper.GetString("ConnectionStatus_StartingSshTunnel") : LocalizationHelper.GetString("ConnectionStatus_Connecting");
@@ -398,7 +410,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
                 SharedGatewayToken = string.IsNullOrWhiteSpace(token) ? null : token,
                 BootstrapToken = null,
                 SshTunnel = sshConfig,
-            };
+            }.PreserveAdvancedFields(existing); // keep per-gateway BrowserControlPort across reconnect/edit
             _registry.AddOrUpdate(record);
             _registry.SetActive(recordId);
             _registry.Save();

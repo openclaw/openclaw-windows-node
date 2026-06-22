@@ -43,6 +43,12 @@ public sealed partial class DebugPage : Page
     private AppState? _appState;
     private bool _suppressOverrideChange;
 
+    private IGatewayTerminalLauncher? _terminalLauncher;
+    private GatewayHostAccessPlan _doctorAccessPlan = GatewayHostAccessPlan.None();
+
+    private IGatewayTerminalLauncher TerminalLauncher =>
+        _terminalLauncher ??= new GatewayTerminalLauncher(new OpenClawTray.AppLogger());
+
     private static readonly string LocalAppData = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
     private static readonly string LogPath = Path.Combine(LocalAppData, "openclaw-tray.log");
@@ -107,6 +113,7 @@ public sealed partial class DebugPage : Page
         // (per docs/DATA_FLOW_ARCHITECTURE.md reactive-by-default ethos).
         CurrentApp.SettingsChanged += OnSettingsChanged;
         UpdateStatusInfoBar();
+        UpdateGatewayDoctorCard();
         LoadDeviceIdentity();
         LoadChatSurfaceOverrides();
     }
@@ -118,11 +125,16 @@ public sealed partial class DebugPage : Page
             case nameof(AppState.Status):
             case nameof(AppState.GatewaySelf):
                 UpdateStatusInfoBar();
+                UpdateGatewayDoctorCard();
                 break;
         }
     }
 
-    private void OnSettingsChanged(object? sender, EventArgs e) => UpdateStatusInfoBar();
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        UpdateStatusInfoBar();
+        UpdateGatewayDoctorCard();
+    }
 
     /// <summary>
     /// Reset detail-mode state when the user navigates to a different
@@ -178,6 +190,40 @@ public sealed partial class DebugPage : Page
 
     private void OnManageOnConnection(object sender, RoutedEventArgs e)
         => ((IAppCommands)CurrentApp).Navigate("connection");
+
+    // ── Gateway doctor (app-managed WSL only) ────────────────────────
+
+    /// <summary>
+    /// Show the "Run gateway doctor" card only when the active gateway is an
+    /// app-managed WSL distro we can run commands in (CanControlWslGateway).
+    /// SSH/remote gateways have no such control surface, so the section stays
+    /// collapsed. Mirrors ConnectionPage's gateway-host gating.
+    /// </summary>
+    private void UpdateGatewayDoctorCard()
+    {
+        var activeRecord = CurrentApp.Registry?.GetActive();
+        _doctorAccessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        GatewayDoctorSection.Visibility = _doctorAccessPlan.CanControlWslGateway
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void OnRunGatewayDoctor(object sender, RoutedEventArgs e)
+    {
+        if (!_doctorAccessPlan.CanControlWslGateway)
+        {
+            return;
+        }
+
+        try
+        {
+            TerminalLauncher.OpenGatewayDoctor(_doctorAccessPlan);
+        }
+        catch (Exception ex)
+        {
+            OpenClawTray.Services.Logger.Warn($"[DebugPage] Failed to launch gateway doctor: {ex.Message}");
+        }
+    }
 
     // ── Detail view (recent log) ─────────────────────────────────────
 

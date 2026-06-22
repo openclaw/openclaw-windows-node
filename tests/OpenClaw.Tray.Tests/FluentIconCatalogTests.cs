@@ -95,6 +95,45 @@ public sealed class FluentIconCatalogTests
         Assert.Contains("SymbolThemeFontFamily", src);
     }
 
+    [Fact]
+    public void NativeWinUiSources_DoNotHardcodeSegoeFluentIcons()
+    {
+        var repositoryRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var sourceRoots = new[]
+        {
+            Path.Combine(repositoryRoot, "src", "OpenClaw.Tray.WinUI"),
+            Path.Combine(repositoryRoot, "src", "OpenClaw.SetupEngine.UI"),
+        };
+        var hardcodedIconFont = new Regex(
+            @"FontFamily\s*\(\s*""Segoe Fluent Icons""\s*\)|FontFamily\s*=\s*""Segoe Fluent Icons""",
+            RegexOptions.Compiled);
+
+        var offenders = sourceRoots
+            .SelectMany(sourceRoot => Directory
+                .EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
+                .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+                .Where(path => !IsBuildArtifact(sourceRoot, path)))
+            .SelectMany(path => File.ReadLines(path)
+                .Select((line, index) => (path, line, lineNumber: index + 1)))
+            .Where(item => hardcodedIconFont.IsMatch(item.line))
+            .Select(item => $"{Path.GetRelativePath(repositoryRoot, item.path)}:{item.lineNumber}")
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "Use the SymbolThemeFontFamily theme resource/property so icon glyphs fall back to Segoe MDL2 Assets on Windows 10:"
+            + Environment.NewLine
+            + string.Join(Environment.NewLine, offenders));
+
+        static bool IsBuildArtifact(string sourceRoot, string path)
+        {
+            var relative = Path.GetRelativePath(sourceRoot, path);
+            return relative.StartsWith($"bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                || relative.StartsWith($"obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
 }
 
 /// <summary>

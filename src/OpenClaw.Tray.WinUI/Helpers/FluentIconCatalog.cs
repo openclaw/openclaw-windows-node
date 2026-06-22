@@ -93,6 +93,7 @@ public static class FluentIconCatalog
     public const string Clear = "\uE74D";          // Delete — clear/reset a buffer
     public const string Develop = "\uE943";        // Code — engineering / explorations action
     public const string AgentEvents = "\uE81C";    // History — agent events feed
+    public const string Doctor = "\uE95E";         // Health — "Run gateway doctor" health-check action
 
     // ── Agents / Workspace surface ─────────────────────────────────
     // Workspace concept (per-agent file viewer). Reuses the Folder
@@ -101,6 +102,9 @@ public static class FluentIconCatalog
     // See reference/concepts/states/workspace.md.
     public const string Workspace = "\uE8DA";      // OpenLocal (alias of Folder)
     public const string Cron = "\uE787";           // Calendar — Cron / scheduled jobs (matches HubWindow search mapping)
+
+    public static FontFamily SymbolThemeFontFamily =>
+        (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];
 
     /// <summary>
     /// Builds a <see cref="FontIcon"/> for the given PUA glyph using the
@@ -113,7 +117,7 @@ public static class FluentIconCatalog
         return new FontIcon
         {
             Glyph = glyph,
-            FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
+            FontFamily = SymbolThemeFontFamily,
             FontSize = size,
         };
     }

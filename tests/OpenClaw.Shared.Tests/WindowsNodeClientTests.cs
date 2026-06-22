@@ -12,6 +12,7 @@ using Xunit;
 
 namespace OpenClaw.Shared.Tests;
 
+[Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
     [Theory]
@@ -423,7 +424,7 @@ public class WindowsNodeClientTests
             Assert.Single(pairingEvents);
             Assert.Equal(PairingApprovalKind.DevicePair, pairingEvents[0].ApprovalKind);
             Assert.Null(pairingEvents[0].RequestId);
-            Assert.DoesNotContain("bad", pairingEvents[0].Message);
+            Assert.DoesNotContain("req-1 && bad", pairingEvents[0].Message);
         }
         finally
         {

@@ -64,6 +64,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// <summary>The full device ID of the local node service (if running).</summary>
     internal string? NodeFullDeviceId => _nodeService?.FullDeviceId;
 
+    /// <summary>
+    /// Session key that the chat surface should select on its next mount.
+    /// Used when the user clicks a session from SessionsPage or a notification
+    /// while the HubWindow may not yet exist. Consumed (cleared) by ChatPage.
+    /// </summary>
+    public string? PendingChatSessionKey { get; set; }
+
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
 
     /// <summary>
@@ -90,9 +97,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return;
         }
 
-        var includeBrowserProxyForward =
-            _settings.NodeBrowserProxyEnabled &&
-            SshTunnelCommandLine.CanForwardBrowserProxyPort(_settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort);
+        var includeBrowserProxyForward = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+            _settings.NodeBrowserProxyEnabled,
+            _settings.SshTunnelRemotePort,
+            _settings.SshTunnelLocalPort);
         if (_settings.NodeBrowserProxyEnabled && !includeBrowserProxyForward)
         {
             Logger.Warn("SSH tunnel browser proxy forward disabled because the derived port would be invalid");
@@ -913,7 +921,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         switch (action)
         {
             case "status": ShowStatusDetail(); break;
-            case "reconnect": _ = _connectionManager?.ReconnectAsync(); break;
+            case "reconnect": ReconnectWithSyncedBrowserProxyForward(); break;
             case "disconnect":
                 _ = _connectionManager?.DisconnectAsync();
                 LocalDisconnectCleanup();
@@ -1202,7 +1210,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var snapshot = CaptureTrayMenuSnapshot();
         var callbacks = new TrayMenuCallbacks(
             DispatchAction: action => OnTrayMenuItemClicked(null, action),
-            SaveAndReconnect: () => { _settings?.Save(); _ = _connectionManager?.ReconnectAsync(); },
+            SaveAndReconnect: () => { _settings?.Save(); ReconnectWithSyncedBrowserProxyForward(); },
             TrackConnectionToggle: toggle => _connectionToggleRef = new WeakReference<ToggleSwitch>(toggle),
             IsConnectionToggleSuspended: () => _suspendConnectionToggleEvent);
         var builder = new TrayMenuStateBuilder(snapshot, _permToggleActions, callbacks);
@@ -1417,22 +1425,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 Url = gatewayUrl,
                 IsLocal = LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl),
                 SshTunnel = _settings.UseSshTunnel
-                    ? new SshTunnelConfig(
+                    ? BrowserProxySshTunnelForwardPolicy.Apply(
+                        _settings,
+                        new SshTunnelConfig(
                         _settings.SshTunnelUser ?? "",
                         _settings.SshTunnelHost ?? "",
                         _settings.SshTunnelRemotePort,
                         _settings.SshTunnelLocalPort,
-                        _settings.NodeBrowserProxyEnabled &&
-                            SshTunnelCommandLine.CanForwardBrowserProxyPort(
-                                _settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort),
-                        _settings.SshTunnelSshPort)
+                        SshPort: _settings.SshTunnelSshPort))
                     : null,
             };
             _gatewayRegistry.AddOrUpdate(record);
             _gatewayRegistry.SetActive(recordId);
         }
 
-        var migratedRecord = _gatewayRegistry.GetActive()!;
+        var migratedRecord = SyncGatewayBrowserProxyForward(_gatewayRegistry.GetActive()!);
 
         // Ensure identity directory exists for credential resolution
         var identityDir = _gatewayRegistry.GetIdentityDirectory(migratedRecord.Id);
@@ -1470,6 +1477,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_connectionManager == null || _gatewayRegistry == null)
             return false;
 
+        record = SyncGatewayBrowserProxyForward(record);
         var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
         var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
         var credential = ResolveStartupOperatorCredential(record, resolver, identityDir);
@@ -1498,6 +1506,34 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _connectionManager.ConnectAsync(record.Id),
             $"[App] Startup gateway connect failed during {context}");
         return true;
+    }
+
+    private void ReconnectWithSyncedBrowserProxyForward()
+    {
+        SyncActiveGatewayBrowserProxyForward();
+        _ = _connectionManager?.ReconnectAsync();
+    }
+
+    private void SyncActiveGatewayBrowserProxyForward()
+    {
+        if (_gatewayRegistry?.GetActive() is { } active)
+            SyncGatewayBrowserProxyForward(active);
+    }
+
+    private GatewayRecord SyncGatewayBrowserProxyForward(GatewayRecord record)
+    {
+        if (_settings == null || _gatewayRegistry == null || record.SshTunnel == null)
+            return record;
+
+        var effectiveTunnel = BrowserProxySshTunnelForwardPolicy.Apply(_settings, record.SshTunnel);
+        if (Equals(effectiveTunnel, record.SshTunnel))
+            return record;
+
+        var updated = record with { SshTunnel = effectiveTunnel };
+        _gatewayRegistry.AddOrUpdate(updated);
+        _gatewayRegistry.Save();
+        Logger.Info($"[SETTINGS] Updated active gateway SSH browser-proxy forward flag to {effectiveTunnel.IncludeBrowserProxyForward}");
+        return updated;
     }
 
     private static void ObserveBackgroundFault(Task task, string message)
@@ -1615,6 +1651,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _settings.SshTunnelSshPort,
             _settings.SshTunnelRemotePort,
             _settings.SshTunnelLocalPort,
+            includeBrowserProxyForward: BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+                _settings.NodeBrowserProxyEnabled,
+                _settings.SshTunnelRemotePort,
+                _settings.SshTunnelLocalPort),
             SettingsManager.SettingsDirectoryPath,
             logger);
 
@@ -1757,7 +1797,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 settings,
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
-                sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken);
+                sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken,
+                browserControlPortResolver: () => _gatewayRegistry?.GetActive()?.BrowserControlPort,
+                activeGatewayTunnelResolver: () => _gatewayRegistry?.GetActive()?.SshTunnel,
+                activeGatewayUrlResolver: () => _gatewayRegistry?.GetActive()?.Url);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;
@@ -2460,10 +2503,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             if (notification.IsChat)
             {
-                builder.AddArgument("action", "open_chat")
-                       .AddButton(new ToastButton()
-                           .SetContent("Open Chat")
-                           .AddArgument("action", "open_chat"));
+                builder.AddArgument("action", "open_chat");
+                if (!string.IsNullOrEmpty(notification.SessionKey))
+                {
+                    builder.AddArgument("sessionKey", notification.SessionKey);
+                }
+                builder.AddButton(new ToastButton()
+                    .SetContent("Open Chat")
+                    .AddArgument("action", "open_chat")
+                    .AddArgument("sessionKey", notification.SessionKey ?? ""));
             }
 
             _toastService!.ShowToast(builder);
@@ -2678,7 +2726,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #region Window Management
 
-    internal void ShowHub(string? navigateTo = null, bool activate = true, string? originTag = null)
+    internal void ShowHub(string? navigateTo = null, bool activate = true)
     {
         if (_hubWindow == null || _hubWindow.IsClosed)
         {
@@ -2693,7 +2741,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _hubWindow.GatewayRegistry = _gatewayRegistry;
             _hubWindow.ConnectAction = () =>
             {
-                _ = _connectionManager?.ReconnectAsync();
+                ReconnectWithSyncedBrowserProxyForward();
             };
             _hubWindow.DisconnectAction = () =>
             {
@@ -2703,7 +2751,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             };
             _hubWindow.ReconnectAction = () =>
             {
-                _ = _connectionManager?.ReconnectAsync();
+                ReconnectWithSyncedBrowserProxyForward();
             };
             if (_nodeService != null)
             {
@@ -2729,7 +2777,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         if (navigateTo != null)
         {
-            _hubWindow.NavigateTo(navigateTo, originTag);
+            _hubWindow.NavigateTo(navigateTo);
         }
         if (activate)
         {
@@ -2785,6 +2833,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var currentSnapshot = _settings?.ToSettingsData()?.ToConnectionSnapshot();
         var impact = SettingsChangeClassifier.Classify(_previousSettingsSnapshot, currentSnapshot);
         _previousSettingsSnapshot = currentSnapshot;
+        SyncActiveGatewayBrowserProxyForward();
         Logger.Info($"[SETTINGS] Change impact: {impact}");
 
         switch (impact)
@@ -2807,15 +2856,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     _chatWindow = null;
                 }
 
-                _ = _connectionManager?.ReconnectAsync();
+                ReconnectWithSyncedBrowserProxyForward();
                 break;
 
             case SettingsChangeImpact.NodeReconnectRequired:
-                _ = _connectionManager?.ReconnectAsync();
+                ReconnectWithSyncedBrowserProxyForward();
                 break;
 
             case SettingsChangeImpact.CapabilityReload:
-                _ = _connectionManager?.ReconnectAsync();
+                ReconnectWithSyncedBrowserProxyForward();
                 break;
 
             case SettingsChangeImpact.UiOnly:
@@ -2869,7 +2918,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void ShowWebChat()
+    private void ShowWebChat(string? sessionKey = null)
     {
         if (_settings == null) return;
         if (!TryResolveChatCredentials(out _, out _, out _, out var isBootstrapToken))
@@ -2886,6 +2935,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 "Chat",
                 "Gateway pairing is not complete");
             return;
+        }
+
+        // Stash the session key on both App (fallback when HubWindow doesn't exist)
+        // and HubWindow (existing path) so ChatPage can pick it up after navigation.
+        if (!string.IsNullOrEmpty(sessionKey))
+        {
+            PendingChatSessionKey = sessionKey;
+            if (_hubWindow != null)
+            {
+                _hubWindow.PendingChatSessionKey = sessionKey;
+            }
+        }
+        else
+        {
+            PendingChatSessionKey = null;
+            if (_hubWindow != null)
+            {
+                _hubWindow.PendingChatSessionKey = null;
+            }
         }
 
         ShowHub("chat");
@@ -2942,7 +3010,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return;
             }
 
-            _ = _connectionManager?.ReconnectAsync();
+            ReconnectWithSyncedBrowserProxyForward();
 
             UpdateStatusDetailWindow();
             _toastService!.ShowToast(new ToastContentBuilder()
@@ -2981,27 +3049,35 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     internal GatewayCommandCenterState BuildCommandCenterState() =>
         new CommandCenterStateBuilder(CaptureSnapshot()).Build();
 
-    private AppStateSnapshot CaptureSnapshot() => new AppStateSnapshot
+    private AppStateSnapshot CaptureSnapshot()
     {
-        Status = _appState!.Status,
-        LastCheckTime = _appState!.LastCheckTime,
-        Channels = _appState!.Channels,
-        Sessions = _appState!.Sessions,
-        Nodes = _appState!.Nodes,
-        Usage = _appState!.Usage,
-        UsageStatus = _appState!.UsageStatus,
-        UsageCost = _appState!.UsageCost,
-        GatewaySelf = _appState!.GatewaySelf,
-        AuthFailureMessage = _appState!.AuthFailureMessage,
-        LastUpdateInfo = _appState!.UpdateInfo,
-        Settings = _settings,
-        NodeService = _nodeService,
-        NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind
-            ?? PairingApprovalKind.Unknown,
-        NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId,
-        SshTunnelSnapshot = _sshTunnelService?.CreateSnapshot(),
-        HasGatewayClient = _connectionManager?.OperatorClient != null
-    };
+        var activeGateway = _gatewayRegistry?.GetActive();
+        return new AppStateSnapshot
+        {
+            Status = _appState!.Status,
+            LastCheckTime = _appState!.LastCheckTime,
+            Channels = _appState!.Channels,
+            Sessions = _appState!.Sessions,
+            Nodes = _appState!.Nodes,
+            Usage = _appState!.Usage,
+            UsageStatus = _appState!.UsageStatus,
+            UsageCost = _appState!.UsageCost,
+            GatewaySelf = _appState!.GatewaySelf,
+            AuthFailureMessage = _appState!.AuthFailureMessage,
+            LastUpdateInfo = _appState!.UpdateInfo,
+            Settings = _settings,
+            NodeService = _nodeService,
+            NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind
+                ?? PairingApprovalKind.Unknown,
+            NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId,
+            SshTunnelSnapshot = _sshTunnelService?.CreateSnapshot(),
+            HasGatewayClient = _connectionManager?.OperatorClient != null,
+            EffectiveGatewayUrl = activeGateway?.Url ?? _settings?.GatewayUrl,
+            EffectiveBrowserControlPort = activeGateway?.BrowserControlPort,
+            HasActiveGatewayRecord = activeGateway != null,
+            ActiveGatewaySshTunnel = activeGateway?.SshTunnel
+        };
+    }
 
     private void ShowNotificationHistory()
     {
@@ -3018,8 +3094,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task ShowOnboardingAsync()
     {
+        await EnsureSetupWindowAsync();
+    }
+
+    private async Task<(SetupWindow? Window, bool CreatedNew)> EnsureSetupWindowAsync()
+    {
         if (_settings == null)
-            return;
+            return (null, false);
 
         if (_setupWindow != null)
         {
@@ -3027,7 +3108,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             await existingSetupWindow.WaitForInitialContentReadyAsync();
             if (ReferenceEquals(_setupWindow, existingSetupWindow) && !existingSetupWindow.IsClosed)
                 existingSetupWindow.BringToFrontForSetupLaunch();
-            return;
+            return (existingSetupWindow, false);
         }
 
         try
@@ -3047,10 +3128,37 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 setupWindow.BringToFrontForSetupLaunch();
                 Logger.Info("Opened tray-hosted setup window");
             }
+            return (setupWindow, true);
         }
         catch (Exception ex)
         {
             Logger.Error($"Failed to open setup window: {ex}");
+            return (null, false);
+        }
+    }
+
+    private async Task ShowGatewayWizardAsync()
+    {
+        var (setupWindow, createdNew) = await EnsureSetupWindowAsync();
+        if (setupWindow == null)
+            return;
+
+        // Only steer a freshly created setup window to the gateway wizard. An
+        // already-open setup window may be mid-install on ProgressPage, whose
+        // Unloaded handler cancels the running setup pipeline — navigating it
+        // away would abort an in-progress install. In that case leave the
+        // existing window on its current page (already brought to the front).
+        if (!createdNew)
+        {
+            Logger.Info("Setup window already open; skipping direct gateway wizard navigation to avoid interrupting active setup");
+            return;
+        }
+
+        await setupWindow.WaitForInitialContentReadyAsync();
+        if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
+        {
+            if (!setupWindow.TryNavigateToWizard())
+                Logger.Warn("Setup window is not ready for direct gateway wizard navigation; leaving current setup page visible");
         }
     }
 
@@ -3242,8 +3350,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     void IAppCommands.OpenDashboard(string? path) => OpenDashboard(path);
     void IAppCommands.Navigate(string pageTag) => ShowHub(pageTag);
-    void IAppCommands.Navigate(string pageTag, string? originTag) => ShowHub(pageTag, originTag: originTag);
-    void IAppCommands.Reconnect() => _ = _connectionManager?.ReconnectAsync();
+    void IAppCommands.Reconnect() => ReconnectWithSyncedBrowserProxyForward();
     void IAppCommands.Disconnect()
     {
         _ = _connectionManager?.DisconnectAsync();
@@ -3253,6 +3360,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.ShowChat() => ShowChatWindow();
     void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
+    void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
 
@@ -3550,7 +3658,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             CopyActivitySummary = _diagnosticsClipboard!.CopyActivitySummary,
             CopyExtensibilitySummary = _diagnosticsClipboard!.CopyExtensibilitySummary,
             RestartSshTunnel = RestartSshTunnel,
-            OpenChat = ShowWebChat,
+            OpenChat = () => ShowWebChat(),
             OpenCommandCenter = ShowStatusDetail,
             OpenTrayMenu = ShowTrayMenuPopup,
             OpenActivityStream = ShowActivityStream,
@@ -3805,9 +3913,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             try
             {
                 _sshTunnelService ??= new SshTunnelService(new AppLogger());
-                var includeBrowserProxy =
-                    _settings.NodeBrowserProxyEnabled &&
-                    SshTunnelCommandLine.CanForwardBrowserProxyPort(_settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort);
+                var includeBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+                    _settings.NodeBrowserProxyEnabled,
+                    _settings.SshTunnelRemotePort,
+                    _settings.SshTunnelLocalPort);
                 _sshTunnelService.EnsureStarted(
                     _settings.SshTunnelUser,
                     _settings.SshTunnelHost,
@@ -3863,9 +3972,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             try
             {
-                var restartBrowserProxy =
-                    _settings.NodeBrowserProxyEnabled &&
-                    SshTunnelCommandLine.CanForwardBrowserProxyPort(_settings.SshTunnelRemotePort, _settings.SshTunnelLocalPort);
+                var restartBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+                    _settings.NodeBrowserProxyEnabled,
+                    _settings.SshTunnelRemotePort,
+                    _settings.SshTunnelLocalPort);
                 _sshTunnelService.EnsureStarted(
                     _settings.SshTunnelUser,
                     _settings.SshTunnelHost,

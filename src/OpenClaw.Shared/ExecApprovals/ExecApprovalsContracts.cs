@@ -37,7 +37,6 @@ public sealed class ExecAllowlistEntry
     public Guid? Id { get; set; }
     public string? Pattern { get; set; }
     public double? LastUsedAt { get; set; }
-    public string? LastUsedCommand { get; set; }
     public string? LastResolvedPath { get; set; }
 }
 

@@ -322,6 +322,73 @@ public class GatewayRegistryTests : IDisposable
         Assert.Equal("Updated", args.Records[0].FriendlyName);
     }
 
+    [Fact]
+    public void BrowserControlPort_IsScopedToTheActiveGateway()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-a", "wss://a") with { BrowserControlPort = 19001 });
+        _registry.AddOrUpdate(MakeRecord("gw-b", "wss://b") with { BrowserControlPort = 19002 });
+
+        _registry.SetActive("gw-a");
+        Assert.Equal(19001, _registry.GetActive()!.BrowserControlPort);
+
+        // Switching the active gateway re-scopes the override — no sticky global, no misroute.
+        _registry.SetActive("gw-b");
+        Assert.Equal(19002, _registry.GetActive()!.BrowserControlPort);
+    }
+
+    [Fact]
+    public void BrowserControlPort_DefaultsNull_AndPersistsAcrossReload()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1"));
+        _registry.SetActive("gw-1");
+        Assert.Null(_registry.GetActive()!.BrowserControlPort);
+
+        _registry.AddOrUpdate(_registry.GetActive()! with { BrowserControlPort = 19005 });
+        _registry.Save();
+
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal(19005, reloaded.GetActive()!.BrowserControlPort);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_KeepsBrowserControlPort_AcrossSavedGatewayEdit()
+    {
+        // Simulates the edit/connect flow: a saved gateway has a per-gateway override; the user
+        // edits name / token / URL / SSH, which rebuilds a fresh record WITHOUT the advanced field.
+        var existing = MakeRecord("gw-1", "wss://old") with { BrowserControlPort = 19000, FriendlyName = "Home" };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://new",
+            FriendlyName = "Home renamed",
+            SharedGatewayToken = "rotated",
+            // BrowserControlPort intentionally absent — the form doesn't expose it.
+        }.PreserveAdvancedFields(existing);
+
+        Assert.Equal(19000, rebuilt.BrowserControlPort); // carried forward, not silently dropped
+        Assert.Equal("wss://new", rebuilt.Url);          // edited fields still applied
+        Assert.Equal("rotated", rebuilt.SharedGatewayToken);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_FormValueWins_AndNullExistingIsNoOp()
+    {
+        var existing = MakeRecord("gw-1", "wss://old") with { BrowserControlPort = 19000 };
+
+        // An explicit new value on the rebuilt record wins over the existing one.
+        var changed = (new GatewayRecord { Id = "gw-1", Url = "wss://x", BrowserControlPort = 20500 })
+            .PreserveAdvancedFields(existing);
+        Assert.Equal(20500, changed.BrowserControlPort);
+
+        // A brand-new record (no existing) is returned unchanged.
+        var fresh = new GatewayRecord { Id = "gw-2", Url = "wss://y" };
+        var preserved = fresh.PreserveAdvancedFields(null);
+        Assert.Null(preserved.BrowserControlPort);
+        Assert.Same(fresh, preserved);
+    }
+
     private static GatewayRecord MakeRecord(string id, string url) => new()
     {
         Id = id,

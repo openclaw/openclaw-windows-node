@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.A2UI.Protocol;
+using OpenClawTray.Helpers;
 
 namespace OpenClawTray.A2UI.Rendering.Renderers;
 
@@ -232,7 +233,7 @@ public sealed class IconRenderer : IComponentRenderer
     {
         var fontIcon = new FontIcon
         {
-            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontFamily = FluentIconCatalog.SymbolThemeFontFamily,
             FontSize = 16,
         };
         var nameVal = ctx.GetValue(c, "name");

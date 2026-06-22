@@ -7,7 +7,7 @@ public sealed class ToastActivationRouterTests
     [Theory]
     [InlineData("open_dashboard", "dashboard")]
     [InlineData("open_settings", "settings")]
-    [InlineData("open_chat", "chat")]
+    [InlineData("open_chat", "chat:(null)")]
     [InlineData("open_activity", "activity")]
     public void Route_DispatchesSimpleActions(string action, string expected)
     {
@@ -58,6 +58,24 @@ public sealed class ToastActivationRouterTests
     }
 
     [Fact]
+    public void Route_OpenChat_PassesSessionKeyArgument()
+    {
+        var calls = new List<string>();
+
+        ToastActivationRouter.Route(
+            "open_chat",
+            key => key == "sessionKey" ? "agent:main:scratch" : null,
+            BuildActions(calls));
+
+        ToastActivationRouter.Route(
+            "open_chat",
+            _ => null,
+            BuildActions(calls));
+
+        Assert.Equal(["chat:agent:main:scratch", "chat:(null)"], calls);
+    }
+
+    [Fact]
     public void Route_UnknownAction_NoOps()
     {
         var calls = new List<string>();
@@ -75,7 +93,7 @@ public sealed class ToastActivationRouterTests
         OpenUrl = url => calls.Add($"url:{url}"),
         OpenDashboard = () => calls.Add("dashboard"),
         OpenSettings = () => calls.Add("settings"),
-        OpenChat = () => calls.Add("chat"),
+        OpenChat = key => calls.Add($"chat:{key ?? "(null)"}"),
         OpenActivity = () => calls.Add("activity"),
         CopyPairingCommand = command => calls.Add($"copy:{command}")
     };

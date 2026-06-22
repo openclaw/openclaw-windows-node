@@ -69,6 +69,14 @@ public class WizardConsoleTailTests
     }
 
     [Fact]
+    public void DetectsTerminalQrArtWithSideBlockGlyphs()
+    {
+        var qr = string.Join('\n', Enumerable.Repeat("▌██  ▐▌ ▄▄ ▐▌ ██▐▌  ▀▀ ▐▌", 8));
+
+        Assert.True(WizardConsoleTail.LooksLikeTerminalQrArt(qr));
+    }
+
+    [Fact]
     public void DoesNotTreatRegularMultilineConsoleOutputAsQrArt()
     {
         var message = """

@@ -137,6 +137,19 @@ internal static class WslInstallSupport
             return true;
         }
 
+        // Observed from `wsl --status` when WSL2 cannot start because the
+        // host still needs Virtual Machine Platform and/or firmware
+        // virtualization enabled, even though `wsl --version` succeeds.
+        if (Contains(text, "WSL2 is not supported with your current machine configuration"))
+        {
+            message = "WSL2 is not supported with the current machine configuration. "
+                + "Enable the Windows 'Virtual Machine Platform' support by running "
+                + "`wsl --install --no-distribution` from an elevated PowerShell (or enable "
+                + "'Virtual Machine Platform' under 'Turn Windows features on or off'), ensure "
+                + "hardware virtualization is enabled in BIOS/UEFI, reboot, then retry setup.";
+            return true;
+        }
+
         // Required Windows feature missing (Virtual Machine Platform and/or
         // Hyper-V). 0x80370102 = HCS_E_SERVICE_NOT_AVAILABLE, emitted verbatim
         // by wsl.exe as "The virtual machine could not be started because a
@@ -276,7 +289,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
 
             // Wait for port to be released
             ctx.Logger.Info("Waiting for port release after distro termination...");
-            await Task.Delay(3000, ct);
+            await PreflightPortStep.WaitForPortFreeAsync(ctx.Config.GatewayPort, ctx.Config.Gateway.Bind, ctx.Logger, ct);
             return StepResult.Ok($"Unregistered stale distro '{distro}'");
         }
 
@@ -596,23 +609,61 @@ public sealed class PreflightPortStep : SetupStep
     public override string DisplayName => "Check gateway port available";
     public override bool CanRetry => false;
 
-    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var port = ctx.Config.GatewayPort;
         var addresses = ctx.Config.Gateway.Bind.Equals("lan", StringComparison.OrdinalIgnoreCase)
             ? new[] { IPAddress.Any, IPAddress.IPv6Any }
             : [IPAddress.Loopback];
 
+        // Poll briefly in case WSL port forwarding proxy hasn't fully released the
+        // port yet (e.g. after wsl --shutdown in a prior cleanup step).
+        await WaitForPortFreeAsync(port, ctx.Config.Gateway.Bind, ctx.Logger, ct, maxWaitSeconds: 10);
+
         foreach (var address in addresses)
         {
             if (!CanBind(address, port, out var error))
-                return Task.FromResult(StepResult.Fail($"Port {port} is already in use for {DescribeBind(address)} ({error.SocketErrorCode})"));
+                return StepResult.Fail($"Port {port} is already in use for {DescribeBind(address)} ({error.SocketErrorCode})");
         }
 
-        return Task.FromResult(StepResult.Ok($"Port {port} is available"));
+        return StepResult.Ok($"Port {port} is available");
     }
 
-    private static bool CanBind(IPAddress address, int port, out SocketException error)
+    /// <summary>
+    /// Polls until all required addresses for <paramref name="port"/> can be bound,
+    /// or until <paramref name="maxWaitSeconds"/> elapses.  Silently returns if the
+    /// port never frees — <see cref="ExecuteAsync"/> will still hard-fail in that case.
+    /// </summary>
+    internal static async Task WaitForPortFreeAsync(
+        int port, string bind, SetupLogger logger, CancellationToken ct,
+        int maxWaitSeconds = 20)
+    {
+        var addresses = bind.Equals("lan", StringComparison.OrdinalIgnoreCase)
+            ? new[] { IPAddress.Any, IPAddress.IPv6Any }
+            : [IPAddress.Loopback];
+
+        var deadline = DateTime.UtcNow.AddSeconds(maxWaitSeconds);
+        var attempt = 0;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (addresses.All(a => CanBind(a, port, out _)))
+            {
+                if (attempt > 0)
+                    logger.Info($"Port {port} became free after {attempt * 500}ms");
+                return;
+            }
+
+            attempt++;
+            await Task.Delay(500, ct);
+        }
+
+        logger.Warn($"Port {port} still in use after {maxWaitSeconds}s poll — proceeding to hard check");
+    }
+
+    internal static bool CanBind(IPAddress address, int port, out SocketException error)
     {
         var listener = new TcpListener(address, port)
         {
@@ -1660,6 +1711,28 @@ public sealed class MintBootstrapTokenStep : SetupStep
     }
 }
 
+internal static class WindowsGatewayReachability
+{
+    public static async Task<StepResult> VerifyAsync(SetupContext ctx, string pairingRole, CancellationToken ct)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
+            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
+            return StepResult.Ok();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Gateway not reachable before {pairingRole} pairing: {ex.Message}");
+        }
+    }
+}
+
 public sealed class PairOperatorStep : SetupStep
 {
     public override string Id => "pair-operator";
@@ -1715,6 +1788,10 @@ public sealed class PairOperatorStep : SetupStep
         identity.Initialize();
         ctx.Logger.Info($"Device identity initialized: {identity.DeviceId[..16]}...");
         ctx.OperatorDeviceId = identity.DeviceId;
+
+        var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "operator", ct);
+        if (!reachability.IsSuccess)
+            return reachability;
 
         // Connect operator WebSocket — handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
@@ -1919,7 +1996,12 @@ public sealed class PairOperatorStep : SetupStep
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
 
         if (approve.ExitCode != 0)
-            return StepResult.Fail($"Device approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+        {
+            var approveOutput = approve.Stdout.Trim();
+            if (ApprovalRequestHelper.IsPluginNotFoundError(approveOutput))
+                return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+            return StepResult.Fail($"Device approval failed (exit {approve.ExitCode}): {approveOutput}");
+        }
 
         return StepResult.Ok($"Approved request {requestId}");
     }
@@ -2104,17 +2186,9 @@ public sealed class PairNodeStep : SetupStep
 
         var identityPath = registry.GetIdentityDirectory(record.Id);
 
-        // Verify gateway is reachable before connecting
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
-            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
-        }
-        catch (Exception ex)
-        {
-            return StepResult.Fail($"Gateway not reachable before node pairing: {ex.Message}");
-        }
+        var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "node", ct);
+        if (!reachability.IsSuccess)
+            return reachability;
 
         var drainResult = await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, ct);
         if (!drainResult.IsSuccess)
@@ -2343,7 +2417,12 @@ public sealed class PairNodeStep : SetupStep
             ctx.Logger.Info($"Node pending list: exit={pending.ExitCode}");
 
             if (pending.ExitCode != 0)
-                return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pending.Stdout.Trim()}");
+            {
+                var pendingOutput = pending.Stdout.Trim();
+                if (ApprovalRequestHelper.IsPluginNotFoundError(pendingOutput))
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+                return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pendingOutput}");
+            }
 
             var parsed = ApprovalRequestHelper.TryReadSinglePendingRequestId(pending.Stdout.Trim());
             if (!parsed.Success)
@@ -2370,7 +2449,9 @@ public sealed class PairNodeStep : SetupStep
 
         return approve.ExitCode == 0
             ? StepResult.Ok($"Node approved: {requestId}")
-            : StepResult.Fail($"Node approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+            : ApprovalRequestHelper.IsPluginNotFoundError(approve.Stdout.Trim())
+                ? StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage)
+                : StepResult.Fail($"Node approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
     }
 
     private static void RegisterCapabilitiesFromConfig(WindowsNodeClient client, SetupContext ctx)

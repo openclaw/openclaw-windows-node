@@ -64,6 +64,21 @@ public class GatewayRegistryMigrationTests : IDisposable
     }
 
     [Fact]
+    public void MigrateFromSettings_WithSshTunnelBrowserProxyForward_PreservesFlag()
+    {
+        var result = _registry.MigrateFromSettings(
+            "wss://test.example.com", "tok", null,
+            true, "user", "host.com", sshPort: 2222, sshRemotePort: 18789, sshLocalPort: 18789,
+            includeBrowserProxyForward: true, settingsDir: _tempDir);
+
+        Assert.True(result);
+        var record = _registry.GetActive()!;
+        Assert.NotNull(record.SshTunnel);
+        Assert.True(record.SshTunnel.IncludeBrowserProxyForward);
+        Assert.Equal(2222, record.SshTunnel.SshPort);
+    }
+
+    [Fact]
     public void MigrateFromSettings_IsIdempotent()
     {
         _registry.MigrateFromSettings(

@@ -19,7 +19,7 @@
                     CornerRadius="48" HorizontalAlignment="Center"
                     Margin="0,0,0,20" Visibility="Collapsed"
                     Background="#3CFF4444">
-                <TextBlock Text="&#xE783;" FontFamily="Segoe Fluent Icons"
+                <TextBlock Text="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
                            FontSize="42" Foreground="#FF6B6B"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center" />
@@ -58,7 +58,7 @@
                     Margin="0,20,0,0">
                 <StackPanel Spacing="6">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                        <TextBlock Text="&#xE7BA;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="16"
                                    VerticalAlignment="Center" Foreground="#FFC107" />
                         <TextBlock Text="Node Mode Active" FontSize="15" FontWeight="SemiBold" />
                     </StackPanel>

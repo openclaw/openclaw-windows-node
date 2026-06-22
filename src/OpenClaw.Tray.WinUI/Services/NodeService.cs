@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Dispatching;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
@@ -95,6 +96,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // single shared location, role distinction inside).
     private readonly string _identityDataPath;
     private readonly Func<string?>? _sharedGatewayTokenResolver;
+    private readonly Func<int?>? _browserControlPortResolver;
+    private readonly Func<SshTunnelConfig?>? _activeGatewayTunnelResolver;
+    private readonly Func<string?>? _activeGatewayUrlResolver;
     private string? _token;
 
     // Authoritative capability list — populated by RegisterCapabilities and
@@ -192,13 +196,19 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         SettingsManager? settings = null,
         bool enableMcpServer = false,
         string? identityDataPath = null,
-        Func<string?>? sharedGatewayTokenResolver = null)
+        Func<string?>? sharedGatewayTokenResolver = null,
+        Func<int?>? browserControlPortResolver = null,
+        Func<SshTunnelConfig?>? activeGatewayTunnelResolver = null,
+        Func<string?>? activeGatewayUrlResolver = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
         _dataPath = dataPath;
         _identityDataPath = string.IsNullOrWhiteSpace(identityDataPath) ? dataPath : identityDataPath;
         _sharedGatewayTokenResolver = sharedGatewayTokenResolver;
+        _browserControlPortResolver = browserControlPortResolver;
+        _activeGatewayTunnelResolver = activeGatewayTunnelResolver;
+        _activeGatewayUrlResolver = activeGatewayUrlResolver;
         _rootProvider = rootProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
@@ -379,13 +389,27 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 sharedGatewayToken,
                 hasGatewayClient: _nodeClient != null))
         {
+            // Tunnel state is resolved from the active GatewayRecord when a resolver is wired
+            // (the normal app path), so a tunnel->direct gateway switch can't leave stale global
+            // SettingsManager.UseSshTunnel routing browser.proxy (and the shared token) to the
+            // old tunnel-local+2 endpoint. See BrowserProxyTunnelState for the exact contract.
+            var tunnelState = BrowserProxyTunnelState.Resolve(
+                activeResolverSupplied: _activeGatewayTunnelResolver != null,
+                activeTunnel: _activeGatewayTunnelResolver?.Invoke(),
+                activeGatewayUrl: _activeGatewayUrlResolver?.Invoke(),
+                settingsUseSshTunnel: _settings?.UseSshTunnel == true,
+                settingsLocalPort: _settings?.SshTunnelLocalPort,
+                settingsRemotePort: _settings?.SshTunnelRemotePort,
+                settingsGatewayUrl: _settings?.GatewayUrl);
             _browserProxyCapability = new BrowserProxyCapability(
                 _logger,
                 _nodeClient!.GatewayUrl,
                 sharedGatewayToken,
-                sshRemoteGatewayPort: _settings?.UseSshTunnel == true
-                    ? _settings.SshTunnelRemotePort
-                    : null);
+                sshRemoteGatewayPort: tunnelState.RemotePort,
+                controlPortOverride: _browserControlPortResolver?.Invoke(),
+                useSshTunnel: tunnelState.Enabled,
+                sshTunnelLocalPort: tunnelState.LocalPort,
+                allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback);
             Register(_browserProxyCapability);
         }
 

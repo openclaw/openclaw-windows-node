@@ -213,23 +213,31 @@ internal sealed class WizardConsoleTail : IDisposable
             .Split('\n')
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .ToArray();
-        if (lines.Length < 10)
+        if (lines.Length < 8)
             return false;
 
         var qrGlyphCount = 0;
-        var wideLineCount = 0;
+        var qrLikeLineCount = 0;
         foreach (var line in lines)
         {
-            if (line.Length >= 30)
-                wideLineCount++;
+            var lineGlyphCount = 0;
 
             foreach (var ch in line)
             {
-                if (ch is '█' or '▄' or '▀')
+                if (IsQrBlockGlyph(ch))
+                {
                     qrGlyphCount++;
+                    lineGlyphCount++;
+                }
             }
+
+            if (line.Length >= 20 && lineGlyphCount >= 4)
+                qrLikeLineCount++;
         }
 
-        return wideLineCount >= 10 && qrGlyphCount >= 100;
+        return qrLikeLineCount >= 8 && qrGlyphCount >= 64;
     }
+
+    private static bool IsQrBlockGlyph(char ch) =>
+        ch is '█' or '▄' or '▀' or '▌' or '▐';
 }
