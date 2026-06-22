@@ -55,11 +55,28 @@ internal static class Win32FilePickerHelper
                 if (allowMultiple)
                 {
                     dialog.GetResults(out var items);
+                    if (items is null)
+                    {
+                        dialog.GetResult(out var fallbackItem);
+                        if (fallbackItem is null)
+                        {
+                            tcs.SetResult(Array.Empty<string>());
+                            return;
+                        }
+
+                        fallbackItem.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var fallbackFilePath);
+                        tcs.SetResult(new[] { fallbackFilePath });
+                        return;
+                    }
+
                     items.GetCount(out var count);
                     var paths = new List<string>((int)count);
                     for (uint i = 0; i < count; i++)
                     {
                         items.GetItemAt(i, out var multiItem);
+                        if (multiItem is null)
+                            continue;
+
                         multiItem.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var multiFilePath);
                         paths.Add(multiFilePath);
                     }
