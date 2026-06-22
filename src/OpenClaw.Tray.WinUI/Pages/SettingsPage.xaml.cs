@@ -8,6 +8,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
 
@@ -117,7 +118,13 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void PersistAutoStart()
+    private void PersistAutoStart() =>
+        AsyncEventHandlerGuard.Run(
+            PersistAutoStartAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(PersistAutoStart));
+
+    private async Task PersistAutoStartAsync()
     {
         if (_loading || CurrentApp.Settings == null) return;
         _saving = true;
@@ -125,7 +132,7 @@ public sealed partial class SettingsPage : Page
         {
             CurrentApp.Settings.AutoStart = AutoStartToggle.IsOn;
             CurrentApp.Settings.Save();
-            AutoStartManager.SetAutoStart(CurrentApp.Settings.AutoStart);
+            await AutoStartManager.SetAutoStartAsync(CurrentApp.Settings.AutoStart);
             ((IAppCommands)CurrentApp).NotifySettingsSaved();
             ShowSavedIndicator();
         }

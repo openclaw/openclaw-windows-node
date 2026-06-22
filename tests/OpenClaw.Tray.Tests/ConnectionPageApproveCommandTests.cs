@@ -146,12 +146,6 @@ public sealed class ConnectionPageApproveCommandTests
             pageSource);
     }
 
-    private static void AssertContainsCli(string source, string expected, string message)
-    {
-        if (!source.Contains(expected, System.StringComparison.Ordinal))
-            Assert.Fail($"Expected source to contain `{expected}`. {message}");
-    }
-
     [Fact]
     public void MissingNodeTrustRequestId_EmitsShellSafeDiscoveryCommand_NotBareApprove()
     {

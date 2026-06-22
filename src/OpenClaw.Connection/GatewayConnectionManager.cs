@@ -372,6 +372,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
             string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
             Equals(_activeSshTunnel, record.SshTunnel);
+        var operatorCredentialSource = preservesOperatorConnection
+            ? _stateMachine.Current.OperatorCredentialSource
+            : null;
         var gen = Interlocked.Read(ref _generation);
         if (!preservesOperatorConnection)
         {
@@ -395,7 +398,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         };
 
         _diagnostics.RecordCredentialResolution(nodeCredential);
-        _stateMachine.SetOperatorCredentialSource(null);
+        _stateMachine.SetOperatorCredentialSource(operatorCredentialSource);
         _stateMachine.SetNodeCredentialSource(nodeCredential.Source);
         _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
             $"Credential source: {nodeCredential.Source}");

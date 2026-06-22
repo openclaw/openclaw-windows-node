@@ -1,11 +1,12 @@
 using Microsoft.Win32;
 using OpenClaw.Shared;
 using System;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
 
 /// <summary>
-/// Manages Windows auto-start registry entries.
+/// Manages Windows auto-start registration.
 /// </summary>
 public static class AutoStartManager
 {
@@ -63,6 +64,9 @@ public static class AutoStartManager
             Logger.Error($"Failed to set auto-start: {ex.Message}");
         }
     }
+
+    public static Task SetAutoStartAsync(bool enable) =>
+        Task.Run(() => SetAutoStart(enable));
 
     private static void DeleteRunKey()
     {

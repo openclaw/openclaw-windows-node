@@ -591,8 +591,8 @@ public class GatewayConnectionManagerTests : IDisposable
     public async Task ConnectNodeOnlyAsync_PreservesConnectedOperatorForNodeListRefresh()
     {
         SetupGateway("gw-1", "wss://test");
-        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
-        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, CredentialResolver.SourceSharedGatewayToken);
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, CredentialResolver.SourceNodeDeviceToken);
         var node = new CountingNodeConnector();
         using var manager = new GatewayConnectionManager(
             _resolver,
@@ -602,7 +602,9 @@ public class GatewayConnectionManagerTests : IDisposable
             nodeConnector: node);
 
         await manager.ConnectAsync("gw-1");
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
         await InvokeHandshakeSucceededAsync(manager);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
         var operatorLifecycle = Assert.Single(_factory.CreatedClients);
         var operatorClient = manager.OperatorClient;
 
@@ -612,6 +614,8 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Same(operatorClient, manager.OperatorClient);
         Assert.Single(_factory.CreatedClients);
         Assert.Equal(1, node.ConnectCount);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
+        Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
     }
 
     [Fact]

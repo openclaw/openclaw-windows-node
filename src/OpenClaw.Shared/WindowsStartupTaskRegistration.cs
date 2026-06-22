@@ -48,8 +48,18 @@ public static class WindowsStartupTaskRegistration
             if (process == null)
                 return false;
 
-            process.WaitForExit(10_000);
-            return process.HasExited && process.ExitCode == 0;
+            if (process.WaitForExit(10_000))
+                return process.ExitCode == 0;
+
+            try
+            {
+                process.Kill(entireProcessTree: false);
+            }
+            catch
+            {
+            }
+
+            return false;
         }
         catch
         {
