@@ -1,0 +1,228 @@
+{
+  "_comment": [
+    "CANONICAL MIRROR of the upstream OpenClaw gateway protocol schema for the",
+    "sessions / files / commands / compaction surface. This file is the pinned",
+    "reference that GatewayProtocolDriftTests checks the Windows companion against.",
+    "It is maintained BY HAND from upstream main. When upstream changes, refresh",
+    "this file (see docs/gateway-protocol-drift-guard.md) and the drift test will",
+    "force the Windows client to be reconciled.",
+    "",
+    "This guard complements — it does not duplicate — the behavioural parser tests",
+    "in GatewayProtocolModelsTests. Those parse sample JSON and assert DTO mapping;",
+    "this guard statically pins the method / request-field / response-envelope",
+    "SURFACE against the typed client so an upstream rename or a dropped API fails",
+    "loudly even if the parser unit tests still pass on their fixed samples.",
+    "",
+    "windowsUsage:",
+    "  used     - the client sends/handles this method today; the guard REQUIRES it",
+    "             to remain wired up (dropping it means the client stopped",
+    "             implementing a method it should send).",
+    "  planned  - defined upstream but not yet consumed by the client; the shape is",
+    "             pinned for future adoption but the client is not required to use",
+    "             it yet. (Currently none — the typed client wires the whole",
+    "             sessions/files/commands/compaction surface.)",
+    "",
+    "Per-method enforced fields (see docs 'Enforced vs documentation-only'):",
+    "  requestFields   - validated BIDIRECTIONALLY against the ACTUAL constructed wire",
+    "                    keys (anonymous-object members + dictionary string keys) in the",
+    "                    request-construction region (the send call site's enclosing",
+    "                    block, or requestFieldsSource): missing (pinned but not built)",
+    "                    AND unexpected (built but not pinned) both fail. So renaming a",
+    "                    wire key (old name surviving as a local) and leaving a stale",
+    "                    extra key are both caught.",
+    "  allowedExtraRequestFields - optional per-method allowlist exempting intentional",
+    "                    client-only extra wire keys from the 'unexpected' direction.",
+    "  responseEnvelope- the top-level container property the client must read",
+    "                    (TryGetProperty / TryGetArray), scoped to responseEnvelopeSource",
+    "                    (the specific parser body) so one parser reading the same",
+    "                    property name cannot satisfy another method's envelope.",
+    "  responseFields  - (sessions.list only) the exact session field set the legacy",
+    "                    session parser reads; cross-checked both directions.",
+    "  requestFieldsSource    - declaration-signature fragment whose body holds the",
+    "                    request-field construction, when it is NOT inline at the send",
+    "                    call site (e.g. SessionPatch.ToPayload, MutateCompactionAsync).",
+    "                    Must resolve uniquely to a body that actually constructs keys.",
+    "  responseEnvelopeSource - declaration-signature fragment of the parser body that",
+    "                    reads this method's response envelope."
+  ],
+  "upstreamSourceOfTruth": "openclaw/openclaw — packages/gateway-protocol/src/schema/{sessions,commands}.ts",
+  "upstreamRef": "main",
+  "upstreamVerified": {
+    "date": "2026-06-23",
+    "sessionsTsBlobSha": "d938f80f68cb285719e20801e83f74893aa04332",
+    "commandsTsBlobSha": "a24972162dfbe4f95e05bf19211097707d30f9bb",
+    "result": "All enforced request fields, response envelopes, and the sessions.patch tri-state nullable (Union([value, Null])) contract match upstream main exactly. The snapshot is a deliberate SUBSET: the Windows client does not yet implement these upstream sessions.patch fields — label, agentId, spawnedBy, spawnedWorkspaceDir, spawnedCwd, spawnDepth, subagentRole, subagentControlScope, inheritedToolAllow, inheritedToolDeny (spawn/subagent orchestration); nor the compaction checkpoint preCompaction/postCompaction references. These are upstream fields the client does not implement yet, not drift."
+  },
+  "clientFoundationCommit": "2cae69ba",
+  "_clientFoundationCommitNote": "The commit on main that introduced the typed gateway protocol client (OpenClawGatewayClient.Protocol.cs + GatewayProtocolModels.cs) this guard cross-checks.",
+  "snapshotUpdated": "2026-06-24",
+  "scopePrefixes": ["sessions.", "agents.files.", "commands."],
+  "methods": [
+    {
+      "method": "sessions.list",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["agentId"],
+      "responseEnvelope": ["sessions"],
+      "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
+      "responseFields": [
+        "key", "isMain", "status", "model", "channel", "displayName", "provider",
+        "subject", "room", "space", "sessionId", "thinkingLevel", "verboseLevel",
+        "systemSent", "abortedLastRun", "inputTokens", "outputTokens", "totalTokens",
+        "contextTokens", "updatedAt", "startedAt"
+      ]
+    },
+    {
+      "method": "sessions.subscribe",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": []
+    },
+    {
+      "method": "sessions.changed",
+      "kind": "notification",
+      "windowsUsage": "used",
+      "requestFields": []
+    },
+    {
+      "method": "sessions.preview",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["keys", "limit", "maxChars"]
+    },
+    {
+      "method": "sessions.patch",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": [
+        "key", "model", "thinkingLevel", "fastMode", "verboseLevel", "traceLevel",
+        "reasoningLevel", "responseUsage", "elevatedLevel", "execHost", "execSecurity",
+        "execAsk", "execNode", "sendPolicy", "groupActivation"
+      ],
+      "requestFieldsSource": "ToPayload(string key",
+      "_note": "Extended field set built by SessionPatch.ToPayload (strict additionalProperties:false upstream). The exact wire key allowlist is also asserted at runtime by GatewayProtocolModelsTests.SessionPatch_ToPayload_EmitsOnlyKnownGatewaySchemaFields.",
+      "requestFieldSemantics": "tristate-nullable",
+      "tristateContract": {
+        "_doc": [
+          "Upstream SessionsPatchParamsSchema types every field as Union([<value>, Null]):",
+          "an explicit null REMOVES a session override. The Windows client models this as",
+          "a tri-state PatchField<T>: unset (null reference) -> omitted; a value -> sent",
+          "(blank string omitted per NonEmptyString); SessionPatch.Clear -> explicit JSON",
+          "null. This guard pins the STRUCTURAL PRESENCE of that machinery; the runtime",
+          "routing SEMANTICS (incl. unset->omit and value-when-blank) are owned by",
+          "GatewayProtocolModelsTests (ClearEmitsExplicitNull*, MixesSetAndClearAndUnset,",
+          "PatchField_TriStateFlags). Each marker is a regex over a specific source body;",
+          "'source' defaults to builderSource when omitted. Every source must resolve uniquely."
+        ],
+        "builderSource": "public sealed class SessionPatch",
+        "markers": [
+          { "name": "clear sentinel type referenced in builder", "pattern": "PatchFieldClear" },
+          { "name": "AddString has a clear branch", "source": "void AddString(", "pattern": "\\bIsClear\\b" },
+          { "name": "AddString emits explicit null on clear", "source": "void AddString(", "pattern": "payload\\[\\s*name\\s*\\]\\s*=\\s*null" },
+          { "name": "AddString omits blank string value", "source": "void AddString(", "pattern": "IsNullOrWhiteSpace" },
+          { "name": "AddEncoded has a clear branch", "source": "void AddEncoded", "pattern": "\\bIsClear\\b" },
+          { "name": "AddEncoded emits explicit null on clear", "source": "void AddEncoded", "pattern": "payload\\[\\s*name\\s*\\]\\s*=\\s*null" },
+          { "name": "AddEncoded gates emission on set value", "source": "void AddEncoded", "pattern": "\\bHasValue\\b" },
+          { "name": "unset (null reference) maps to default/unset", "source": "struct PatchField<T>", "pattern": "value is null\\s*\\?\\s*default" }
+        ],
+        "stateTypeSource": "struct PatchField<T>",
+        "stateMembers": ["IsSpecified", "IsClear", "HasValue"]
+      }
+    },
+    {
+      "method": "sessions.reset",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key"]
+    },
+    {
+      "method": "sessions.delete",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "deleteTranscript"]
+    },
+    {
+      "method": "sessions.compact",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "maxLines"]
+    },
+    {
+      "method": "agents.files.list",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["agentId"]
+    },
+    {
+      "method": "agents.files.get",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["agentId", "name"]
+    },
+    {
+      "method": "commands.list",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": [],
+      "responseEnvelope": ["commands"],
+      "responseEnvelopeSource": "ParseCommandCatalog(JsonElement payload",
+      "itemFields": [
+        "name", "nativeName", "textAliases", "description", "category", "source",
+        "scope", "acceptsArgs", "args"
+      ],
+      "_itemFieldsNote": "Per-command descriptor fields parsed by ParseCommand; documentation-only (behaviour covered by GatewayProtocolModelsTests.ParseCommandCatalog_*)."
+    },
+    {
+      "method": "sessions.files.list",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["sessionKey", "path", "search"],
+      "responseEnvelope": ["files"],
+      "responseEnvelopeSource": "ParseSessionFileList(JsonElement payload",
+      "itemFields": ["path", "name", "kind", "missing", "size", "updatedAtMs", "content"],
+      "_itemFieldsNote": "File entry fields parsed by ParseFileEntry; documentation-only (covered by GatewayProtocolModelsTests.ParseSessionFileList_*)."
+    },
+    {
+      "method": "sessions.files.get",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["sessionKey", "path"],
+      "responseEnvelope": ["file"],
+      "responseEnvelopeSource": "ParseSessionFileContent(JsonElement payload",
+      "itemFields": ["path", "name", "kind", "content", "size", "updatedAtMs", "missing"],
+      "_itemFieldsNote": "Nested file fields parsed by ParseSessionFileContent; documentation-only."
+    },
+    {
+      "method": "sessions.compaction.list",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key"],
+      "responseEnvelope": ["checkpoints"],
+      "responseEnvelopeSource": "ParseCompactionCheckpointList(JsonElement payload",
+      "itemFields": ["checkpointId", "sessionKey", "sessionId", "createdAt", "reason", "tokensBefore", "tokensAfter", "summary", "firstKeptEntryId"],
+      "_itemFieldsNote": "Checkpoint fields parsed by ParseCompactionCheckpoint; documentation-only."
+    },
+    {
+      "method": "sessions.compaction.get",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "checkpointId"],
+      "responseEnvelope": ["checkpoint"],
+      "responseEnvelopeSource": "ParseCompactionCheckpointResult(JsonElement payload"
+    },
+    {
+      "method": "sessions.compaction.branch",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "checkpointId"],
+      "requestFieldsSource": "string method, string key, string checkpointId"
+    },
+    {
+      "method": "sessions.compaction.restore",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["key", "checkpointId"],
+      "requestFieldsSource": "string method, string key, string checkpointId"
+    }
+  ]
+}

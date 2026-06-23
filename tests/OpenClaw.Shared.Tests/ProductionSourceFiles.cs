@@ -27,7 +27,7 @@ internal static class ProductionSourceFiles
         path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
         path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal);
 
-    private static string FindRepoRoot()
+    internal static string FindRepoRoot()
     {
         var envRoot = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
         if (!string.IsNullOrWhiteSpace(envRoot) &&
