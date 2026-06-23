@@ -47,10 +47,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupExistingGatewayClassifier.cs" Link="Services\SetupExistingGatewayClassifier.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayHostAccess.cs" Link="Services\GatewayHostAccess.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayTerminalLauncher.cs" Link="Services\GatewayTerminalLauncher.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslGatewayController.cs" Link="Services\WslGatewayController.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslCommandRunner.cs" Link="Services\WslCommandRunner.cs" />
+    <!-- GatewayHostAccess, GatewayTerminalLauncher, WslGatewayController and WslCommandRunner
+         now live in OpenClaw.Connection (referenced above), so they no longer need linking. -->
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslKeepAlivePolicy.cs" Link="Services\WslKeepAlivePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayConnectorInterfaces.cs" Link="Services\GatewayConnectorInterfaces.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />

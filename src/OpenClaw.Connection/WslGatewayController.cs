@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using OpenClaw.Shared;
 
-namespace OpenClawTray.Services;
+namespace OpenClaw.Connection;
 
 public enum WslGatewayControlAction
 {
@@ -10,7 +10,7 @@ public enum WslGatewayControlAction
     Restart
 }
 
-internal sealed record WslGatewayControlResult(
+public sealed record WslGatewayControlResult(
     string DistroName,
     WslGatewayControlAction Action,
     int ExitCode,
@@ -29,7 +29,7 @@ internal sealed record WslGatewayControlResult(
     }
 }
 
-internal static class WslGatewayControlCommandBuilder
+public static class WslGatewayControlCommandBuilder
 {
     internal const string OpenClawWslPathPrefix = "export PATH=\"/home/openclaw/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH\"";
 
@@ -54,7 +54,7 @@ internal static class WslGatewayControlCommandBuilder
     }
 }
 
-internal sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenClawLogger logger)
+public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenClawLogger logger)
 {
     public async Task<WslGatewayControlResult> RunAsync(
         string distroName,
@@ -68,7 +68,14 @@ internal sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpe
 
         var normalizedDistroName = distroName.Trim();
         var distros = await commandRunner.ListDistrosAsync(cancellationToken).ConfigureAwait(false);
-        if (!distros.Any(distro => string.Equals(distro.Name, normalizedDistroName, StringComparison.OrdinalIgnoreCase)))
+
+        // Only short-circuit as "not registered" when the probe returned a non-empty
+        // enumeration that definitively lacks the distro. An empty list is ambiguous:
+        // `wsl --list` may have failed or timed out (ListDistrosAsync collapses any
+        // failure to an empty list), so fail open and let the actual control command
+        // surface the real error instead of dead-ending recovery with a misleading message.
+        if (distros.Count > 0 &&
+            !distros.Any(distro => string.Equals(distro.Name, normalizedDistroName, StringComparison.OrdinalIgnoreCase)))
         {
             return new WslGatewayControlResult(
                 normalizedDistroName,

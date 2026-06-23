@@ -42,7 +42,26 @@
                     <StackPanel x:Name="MultiOptions" Visibility="Collapsed" Spacing="8" />
                     <TextBox x:Name="TextInput" Visibility="Collapsed" PlaceholderText="Enter value" />
                     <PasswordBox x:Name="SecretInput" Visibility="Collapsed" PlaceholderText="Enter value" />
-                    <TextBlock x:Name="ErrorText" Visibility="Collapsed" Foreground="#FF6B6B" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ErrorText"
+                               Visibility="Collapsed"
+                               Foreground="#FF6B6B"
+                               TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" />
+                    <StackPanel x:Name="GatewayRecovery"
+                                Visibility="Collapsed"
+                                Orientation="Horizontal"
+                                Spacing="12">
+                        <Button x:Name="OpenGatewayTerminalButton"
+                                Content="Open terminal"
+                                Height="40"
+                                MinWidth="120"
+                                Click="OpenGatewayTerminal_Click" />
+                        <Button x:Name="RestartGatewayButton"
+                                Content="Restart gateway"
+                                Height="40"
+                                MinWidth="120"
+                                Click="RestartGateway_Click" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </ScrollViewer>

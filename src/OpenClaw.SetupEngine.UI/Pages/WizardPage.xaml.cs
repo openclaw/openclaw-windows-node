@@ -30,6 +30,10 @@ public sealed partial class WizardPage : Page
     // (OAuth URLs, install fallback messages, etc) inline on the active step.
     // wizard.payload frames don't carry this content.
     private WizardConsoleTail? _consoleTail;
+    // Host access for the active gateway, captured on connect. Drives the
+    // "Open terminal" / "Restart gateway" recovery affordances shown when the
+    // wizard fails because a tool is missing from an app-managed WSL gateway.
+    private GatewayHostAccessPlan _hostAccessPlan = GatewayHostAccessPlan.None();
 
     public WizardPage()
     {
@@ -92,6 +96,7 @@ public sealed partial class WizardPage : Page
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var record = registry.GetActive() ?? throw new InvalidOperationException("No active gateway record found.");
+        _hostAccessPlan = GatewayHostAccessClassifier.Classify(record);
         var identityPath = registry.GetIdentityDirectory(record.Id);
         var token = DeviceIdentity.TryReadStoredDeviceToken(identityPath)
             ?? record.SharedGatewayToken
@@ -557,6 +562,7 @@ public sealed partial class WizardPage : Page
         TextInput.Visibility = Visibility.Collapsed;
         SecretInput.Visibility = Visibility.Collapsed;
         MessagePanel.Children.Clear();
+        HideGatewayRecovery();
     }
 
     private void RenderMessage(string message)
@@ -727,6 +733,7 @@ public sealed partial class WizardPage : Page
         BusyRing.IsActive = true;
         PrimaryButton.IsEnabled = false;
         SecondaryButton.IsEnabled = false;
+        HideGatewayRecovery();
     }
 
     private void ShowError(string message)
@@ -743,6 +750,7 @@ public sealed partial class WizardPage : Page
         SecondaryButton.IsEnabled = true;
         SecondaryButton.Visibility = Visibility.Visible;
         HideRecoveryActions();
+        MaybeShowGatewayRecovery();
     }
 
     private async Task EnterWizardErrorAsync(string detail)
@@ -756,6 +764,109 @@ public sealed partial class WizardPage : Page
         // "wizard already running" error from a lingering gateway session.
         await CancelCurrentSessionAsync();
         ShowError(detail);
+    }
+
+    // Shows the WSL recovery affordances (open a terminal / restart the gateway)
+    // whenever the wizard surfaces an error AND the active gateway is an
+    // app-managed WSL distro we can control. We deliberately do not parse the
+    // gateway's error text: its wording is outside our control and can change, so
+    // the user reads the (selectable) error message and decides what to run.
+    private void MaybeShowGatewayRecovery()
+    {
+        HideGatewayRecovery();
+
+        if (!_hostAccessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(_hostAccessPlan.DistroName))
+            return;
+
+        OpenGatewayTerminalButton.IsEnabled = true;
+        RestartGatewayButton.IsEnabled = true;
+        GatewayRecovery.Visibility = Visibility.Visible;
+    }
+
+    private void HideGatewayRecovery()
+    {
+        GatewayRecovery.Visibility = Visibility.Collapsed;
+    }
+
+    private void OpenGatewayTerminal_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hostAccessPlan.CanOpenTerminal)
+            return;
+
+        try
+        {
+            new GatewayTerminalLauncher(NullLogger.Instance).Open(_hostAccessPlan);
+            StatusText.Text = $"Opened a terminal in {_hostAccessPlan.DistroName}. Install the tool, then choose Restart gateway.";
+        }
+        catch (Exception ex)
+        {
+            ErrorText.Text = $"Couldn't open a terminal: {ex.Message}";
+            ErrorText.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void RestartGateway_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            RestartGatewayAsync,
+            NullLogger.Instance,
+            nameof(RestartGateway_Click));
+
+    private async Task RestartGatewayAsync()
+    {
+        var distro = _hostAccessPlan.DistroName;
+        if (!_hostAccessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(distro))
+            return;
+
+        // Claim this operation and lock the UI synchronously, before the first await,
+        // so a second Restart/Skip/Open-terminal click during the disconnect can't race
+        // us. SetBusy disables the primary/secondary buttons and collapses the recovery
+        // panel (which hosts the Restart/Open-terminal buttons), so they stop hit-testing.
+        var generation = AdvanceOperationGeneration();
+        _errorState = false;
+        ErrorText.Visibility = Visibility.Collapsed;
+        SetBusy($"Restarting {distro}...");
+
+        // Detach the current wizard client first so the restart-induced disconnect
+        // doesn't surface as a spurious "connection lost" error mid-restart.
+        await DisconnectAsync();
+        if (generation != _operationGeneration)
+            return;
+
+        try
+        {
+            // A gateway restart spins up a fresh login shell and restarts the daemon
+            // inside the distro, which can take well over the runner's default 30s
+            // ceiling on a cold distro. Give it a generous timeout so a slow-but-healthy
+            // restart isn't reported as a spurious timeout failure.
+            var runner = new WslExeCommandRunner(NullLogger.Instance, defaultTimeout: TimeSpan.FromMinutes(2));
+            var controller = new WslGatewayController(runner, NullLogger.Instance);
+            var result = await controller.RunAsync(distro, WslGatewayControlAction.Restart);
+            if (generation != _operationGeneration)
+                return;
+
+            if (!result.Success)
+            {
+                var details = string.IsNullOrWhiteSpace(result.OutputSummary)
+                    ? $"wsl.exe exited with code {result.ExitCode}."
+                    : result.OutputSummary;
+                await EnterWizardErrorAsync($"Restarting the gateway failed: {details}");
+                return;
+            }
+
+            // Gateway is back up with the freshly-installed tool on PATH. Stay on
+            // this page and re-enter the gateway config wizard (provider/model
+            // onboarding) — we do NOT return to Welcome or re-install WSL. The
+            // gateway restart wiped its wizard session, so this resumes at the
+            // first config question rather than the exact step that failed.
+            await StartWizardAsync();
+        }
+        catch (Exception ex)
+        {
+            if (generation != _operationGeneration)
+                return;
+
+            await EnterWizardErrorAsync($"Restarting the gateway failed: {ex.Message}");
+        }
     }
 
     private async Task SkipWizardAsync()

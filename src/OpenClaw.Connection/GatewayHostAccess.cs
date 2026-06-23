@@ -1,9 +1,8 @@
 using System;
-using OpenClaw.Connection;
 
-namespace OpenClawTray.Services;
+namespace OpenClaw.Connection;
 
-internal enum GatewayTerminalTarget
+public enum GatewayTerminalTarget
 {
     None,
     Wsl,
@@ -16,13 +15,13 @@ internal enum GatewayTerminalTarget
 /// without a WinUI runtime. <c>App.xaml.cs</c> wires these up to <c>LocalizationHelper</c>
 /// at startup so the running app sees real localized strings.
 /// </summary>
-internal static class GatewayHostAccessLocalization
+public static class GatewayHostAccessLocalization
 {
     public static Func<string, string> GetString { get; set; } = key => key;
     public static Func<string, object?[], string> Format { get; set; } = (key, _) => key;
 }
 
-internal sealed record GatewayHostAccessPlan(
+public sealed record GatewayHostAccessPlan(
     string? GatewayId,
     GatewayTerminalTarget TerminalTarget,
     string? DistroName,
@@ -53,7 +52,7 @@ internal sealed record GatewayHostAccessPlan(
     }
 }
 
-internal static class GatewayHostAccessClassifier
+public static class GatewayHostAccessClassifier
 {
     public static GatewayHostAccessPlan Classify(GatewayRecord? record)
     {

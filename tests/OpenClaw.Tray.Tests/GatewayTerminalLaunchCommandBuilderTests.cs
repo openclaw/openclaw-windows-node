@@ -1,5 +1,4 @@
 using OpenClaw.Connection;
-using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 

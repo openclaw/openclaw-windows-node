@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
-namespace OpenClawTray.Services;
+namespace OpenClaw.Connection;
 
 public sealed record WslCommandResult(int ExitCode, string StandardOutput, string StandardError)
 {

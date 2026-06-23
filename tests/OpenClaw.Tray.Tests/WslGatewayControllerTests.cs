@@ -1,5 +1,5 @@
+using OpenClaw.Connection;
 using OpenClaw.Shared;
-using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -51,6 +51,27 @@ public class WslGatewayControllerTests
         Assert.Equal(-1, result.ExitCode);
         Assert.Null(runner.LastDistroCommand);
         Assert.Contains("not registered", result.StandardError);
+    }
+
+    [Fact]
+    public async Task RunAsync_AttemptsCommand_WhenDistroEnumerationIsEmpty()
+    {
+        // An empty distro list is ambiguous — the `wsl --list` probe may have failed
+        // or timed out — so the controller should fail open and still attempt the
+        // control command rather than dead-ending with a misleading "not registered".
+        var runner = new FakeWslCommandRunner
+        {
+            Distros = [],
+            Result = new WslCommandResult(0, "restarted", string.Empty),
+        };
+        var controller = new WslGatewayController(runner, NullLogger.Instance);
+
+        var result = await controller.RunAsync("OpenClawGateway", WslGatewayControlAction.Restart);
+
+        Assert.True(result.Success);
+        Assert.Equal("OpenClawGateway", runner.LastDistroName);
+        Assert.Equal(WslGatewayControlCommandBuilder.Build(WslGatewayControlAction.Restart), runner.LastDistroCommand);
+        Assert.DoesNotContain("not registered", result.StandardError);
     }
 
     private sealed class FakeWslCommandRunner : IWslCommandRunner

@@ -2,21 +2,21 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using OpenClaw.Shared;
 
-namespace OpenClawTray.Services;
+namespace OpenClaw.Connection;
 
-internal interface IGatewayTerminalLauncher
+public interface IGatewayTerminalLauncher
 {
     void Open(GatewayHostAccessPlan accessPlan);
 
     void OpenGatewayDoctor(GatewayHostAccessPlan accessPlan);
 }
 
-internal sealed record GatewayTerminalLaunchCommand(
+public sealed record GatewayTerminalLaunchCommand(
     string FileName,
     IReadOnlyList<string> Arguments,
     bool UsesWindowsTerminal);
 
-internal static class GatewayTerminalLaunchCommandBuilder
+public static class GatewayTerminalLaunchCommandBuilder
 {
     public static GatewayTerminalLaunchCommand Build(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
     {
@@ -144,7 +144,7 @@ internal static class GatewayTerminalLaunchCommandBuilder
     }
 }
 
-internal sealed class GatewayTerminalLauncher(IOpenClawLogger logger) : IGatewayTerminalLauncher
+public sealed class GatewayTerminalLauncher(IOpenClawLogger logger) : IGatewayTerminalLauncher
 {
     public void Open(GatewayHostAccessPlan accessPlan)
     {
