@@ -2003,6 +2003,16 @@ public class SessionInfoContextSummaryTests
     }
 
     [Fact]
+    public void DangerousCommands_IncludesTtsStatus()
+    {
+        // tts.status is gated behind NodeTtsEnabled alongside tts.speak so the
+        // readiness probe isn't advertised until TTS is explicitly enabled.
+        Assert.Contains("tts.speak", CommandCenterCommandGroups.DangerousCommands);
+        Assert.Contains("tts.status", CommandCenterCommandGroups.DangerousCommands);
+        Assert.Contains("tts.status", (IReadOnlySet<string>)CommandCenterCommandGroups.DangerousCommandSet);
+    }
+
+    [Fact]
     public void CommonDangerousCommands_StillIncludedInMacParity()
     {
         // Refactor invariant: the original camera/screen dangerous commands

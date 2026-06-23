@@ -367,6 +367,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _textToSpeechService ??= new TextToSpeechService(_logger, settings);
             _ttsCapability = new TtsCapability(_logger);
             _ttsCapability.SpeakRequested += OnTtsSpeakAsync;
+            _ttsCapability.StatusRequested += OnTtsStatusAsync;
             Register(_ttsCapability);
         }
 
@@ -1866,6 +1867,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             throw new InvalidOperationException("Text-to-speech service not available");
 
         return _textToSpeechService.SpeakAsync(args, cancellationToken);
+    }
+
+    private Task<TtsStatusResult> OnTtsStatusAsync(CancellationToken cancellationToken)
+    {
+        if (_textToSpeechService == null)
+            throw new InvalidOperationException("Text-to-speech service not available");
+
+        return Task.FromResult(_textToSpeechService.GetStatus());
     }
 
     // ============================================================

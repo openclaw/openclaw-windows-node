@@ -3155,6 +3155,152 @@ public class TtsCapabilityTests
         Assert.False(res.Ok);
         Assert.Contains("Unknown command", res.Error);
     }
+
+    [Fact]
+    public void Commands_IncludeSpeakAndStatus()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+
+        Assert.Contains(TtsCapability.SpeakCommand, cap.Commands);
+        Assert.Contains(TtsCapability.StatusCommand, cap.Commands);
+        Assert.True(cap.CanHandle("tts.status"));
+    }
+
+    [Theory]
+    // Preferred provider is ready → no fallback.
+    [InlineData("piper", "piper", "piper,windows", false, "piper", "piper", false)]
+    [InlineData("elevenlabs", "piper", "elevenlabs,windows", false, "elevenlabs", "elevenlabs", false)]
+    // Configured/default preferred provider not ready, Windows available → fall back to Windows.
+    [InlineData(null, "piper", "windows", true, "piper", "windows", true)]
+    [InlineData(null, "elevenlabs", "windows", true, "elevenlabs", "windows", true)]
+    // Explicit provider requests stay strict and do not silently reroute.
+    [InlineData("piper", "windows", "windows", false, "piper", "piper", false)]
+    [InlineData("elevenlabs", "windows", "windows", false, "elevenlabs", "elevenlabs", false)]
+    [InlineData("unknown-provider", "windows", "windows", false, "unknown-provider", "unknown-provider", false)]
+    // Preferred IS Windows but somehow not ready → no self-fallback.
+    [InlineData("windows", "windows", "piper", false, "windows", "windows", false)]
+    // Nothing ready → preferred returned unchanged so the dispatch error is meaningful.
+    [InlineData(null, "elevenlabs", "", true, "elevenlabs", "elevenlabs", false)]
+    public void ResolveEffectiveProvider_FallsBackToWindows(
+        string? requested,
+        string? configured,
+        string readyCsv,
+        bool allowFallback,
+        string expectedRequested,
+        string expectedEffective,
+        bool expectedFellBack)
+    {
+        var ready = readyCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var resolution = TtsCapability.ResolveEffectiveProvider(requested, configured, ready, allowFallback);
+
+        Assert.Equal(expectedRequested, resolution.RequestedProvider);
+        Assert.Equal(expectedEffective, resolution.EffectiveProvider);
+        Assert.Equal(expectedFellBack, resolution.FellBack);
+    }
+
+    [Fact]
+    public async Task Speak_Projection_IncludesRequestedProviderAndFellBack()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+        cap.SpeakRequested += (_, _) => Task.FromResult(new TtsSpeakResult
+        {
+            Provider = TtsCapability.WindowsProvider,
+            RequestedProvider = TtsCapability.ElevenLabsProvider,
+            FellBack = true,
+            ContentType = "audio/wav",
+            DurationMs = 50
+        });
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-fallback",
+            Command = "tts.speak",
+            Args = Parse("""{"text":"hello","provider":"elevenlabs"}""")
+        });
+
+        Assert.True(res.Ok);
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("windows", root.GetProperty("provider").GetString());
+        Assert.Equal("elevenlabs", root.GetProperty("requestedProvider").GetString());
+        Assert.True(root.GetProperty("fellBack").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Status_ReturnsError_WhenNoHandler()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-status-unavailable",
+            Command = "tts.status",
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Status_ProjectsProviderReadiness()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+        cap.StatusRequested += _ => Task.FromResult(new TtsStatusResult
+        {
+            ConfiguredProvider = TtsCapability.PiperProvider,
+            EffectiveProvider = TtsCapability.WindowsProvider,
+            WillFallBack = true,
+            Providers =
+            [
+                new TtsProviderStatus { Provider = TtsCapability.PiperProvider, Readiness = TtsCapability.ReadinessVoiceNotDownloaded, IsReady = false },
+                new TtsProviderStatus { Provider = TtsCapability.WindowsProvider, Readiness = TtsCapability.ReadinessReady, IsReady = true },
+                new TtsProviderStatus { Provider = TtsCapability.ElevenLabsProvider, Readiness = TtsCapability.ReadinessNeedsApiKey, IsReady = false }
+            ]
+        });
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-status",
+            Command = "tts.status",
+            Args = Parse("""{}""")
+        });
+
+        Assert.True(res.Ok);
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("piper", root.GetProperty("configuredProvider").GetString());
+        Assert.Equal("windows", root.GetProperty("effectiveProvider").GetString());
+        Assert.True(root.GetProperty("willFallBack").GetBoolean());
+        var providers = root.GetProperty("providers");
+        Assert.Equal(3, providers.GetArrayLength());
+        Assert.Equal("voice-not-downloaded", providers[0].GetProperty("readiness").GetString());
+        Assert.False(providers[0].GetProperty("isReady").GetBoolean());
+        Assert.True(providers[1].GetProperty("isReady").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Status_ReturnsSanitizedError_WhenHandlerThrows()
+    {
+        var cap = new TtsCapability(NullLogger.Instance);
+        cap.StatusRequested += _ => throw new InvalidOperationException("voice id secret-voice-xyz on device Mic-42");
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "tts-status-fail",
+            Command = "tts.status",
+            Args = Parse("""{}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Equal("Status failed", res.Error);
+        Assert.DoesNotContain("secret-voice-xyz", res.Error);
+        Assert.DoesNotContain("Mic-42", res.Error);
+    }
 }
 
 public class LocationCapabilityTests

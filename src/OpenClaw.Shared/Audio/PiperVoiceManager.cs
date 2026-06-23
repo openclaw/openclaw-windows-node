@@ -27,9 +27,9 @@ namespace OpenClaw.Shared.Audio;
 ///
 /// Each voice is ~50 MB compressed, ~80 MB extracted (with espeak data).
 ///
-/// **TODO (pre-GA):** SHA-256 verification of downloaded tarballs before
-/// extraction (Audio_FollowUps.md §2). The current implementation trusts
-/// HTTPS + the system trust chain only.
+/// **Integrity:** downloaded tarballs are SHA-256-verified against the pinned
+/// hash in <see cref="AvailableVoices"/> before extraction; a mismatch is a
+/// hard failure and the partial file is deleted (see Audio_FollowUps.md §2).
 /// </summary>
 public sealed class PiperVoiceManager
 {

@@ -180,6 +180,7 @@ public class SetupConfigTests : IDisposable
 
         Assert.Contains("system.notify", commands);
         Assert.Contains("tts.speak", commands);
+        Assert.Contains("tts.status", commands);
         Assert.DoesNotContain("camera.snap", commands);
         Assert.DoesNotContain("stt.listen", commands);
         Assert.Equal(commands.Count, commands.Distinct(StringComparer.OrdinalIgnoreCase).Count());

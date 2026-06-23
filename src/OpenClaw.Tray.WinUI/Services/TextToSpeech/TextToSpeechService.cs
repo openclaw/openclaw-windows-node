@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -50,8 +51,36 @@ public sealed class TextToSpeechService : IDisposable
 
     public async Task<TtsSpeakResult> SpeakAsync(TtsSpeakArgs args, CancellationToken cancellationToken = default)
     {
-        var provider = TtsCapability.ResolveProvider(args.Provider, _settings.TtsProvider);
+        // Resolve the provider that should actually serve this call. When the
+        // configured/default provider isn't usable (no ElevenLabs key, Piper
+        // voice not downloaded), fall back to Windows TTS so the assistant can
+        // still talk instead of failing the call outright. Explicit per-call
+        // provider requests stay strict so callers can rely on provider
+        // selection.
+        var readyProviders = BuildReadyProviderSet(args);
+        var allowFallback = string.IsNullOrWhiteSpace(args.Provider);
+        var resolution = TtsCapability.ResolveEffectiveProvider(
+            args.Provider, _settings.TtsProvider, readyProviders, allowFallback);
+        var provider = resolution.EffectiveProvider;
         var stopwatch = Stopwatch.StartNew();
+
+        if (resolution.FellBack)
+        {
+            // The per-call voiceId/model were meant for the originally
+            // requested provider; they're meaningless (and would throw, e.g.
+            // "Windows TTS voice '<piper-id>' was not found") on the fallback
+            // provider. Drop them so the fallback uses its own configured voice.
+            _logger.Info(
+                $"TTS provider '{resolution.RequestedProvider}' not usable; falling back to '{provider}'");
+            args = new TtsSpeakArgs
+            {
+                Text = args.Text,
+                Provider = provider,
+                VoiceId = null,
+                Model = null,
+                Interrupt = args.Interrupt
+            };
+        }
 
         if (string.Equals(provider, TtsCapability.WindowsProvider, StringComparison.OrdinalIgnoreCase))
         {
@@ -74,6 +103,8 @@ public sealed class TextToSpeechService : IDisposable
         return new TtsSpeakResult
         {
             Provider = provider,
+            RequestedProvider = resolution.RequestedProvider,
+            FellBack = resolution.FellBack,
             ContentType = string.Equals(provider, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase)
                 ? "audio/mpeg"
                 : "audio/wav",
@@ -81,22 +112,135 @@ public sealed class TextToSpeechService : IDisposable
         };
     }
 
+    /// <summary>
+    /// Snapshot per-provider readiness plus the configured/effective default
+    /// provider, for the <c>tts.status</c> surface and Settings UI. PII-free:
+    /// reports only readiness states, never voice ids or key fragments.
+    /// </summary>
+    public TtsStatusResult GetStatus()
+    {
+        var providers = new List<TtsProviderStatus>(TtsCapability.AllProviders.Length);
+        foreach (var p in TtsCapability.AllProviders)
+        {
+            var readiness = GetProviderReadiness(p, args: null);
+            providers.Add(new TtsProviderStatus
+            {
+                Provider = p,
+                Readiness = readiness,
+                IsReady = string.Equals(readiness, TtsCapability.ReadinessReady, StringComparison.Ordinal)
+            });
+        }
+
+        var ready = providers
+            .Where(s => s.IsReady)
+            .Select(s => s.Provider)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var configured = TtsCapability.ResolveProvider(null, _settings.TtsProvider);
+        var resolution = TtsCapability.ResolveEffectiveProvider(
+            null,
+            _settings.TtsProvider,
+            ready,
+            allowFallback: true);
+
+        return new TtsStatusResult
+        {
+            ConfiguredProvider = configured,
+            EffectiveProvider = resolution.EffectiveProvider,
+            WillFallBack = resolution.FellBack,
+            Providers = providers
+        };
+    }
+
+    /// <summary>
+    /// Build the set of providers that can serve a call right now, taking the
+    /// per-call <paramref name="args"/> into account (a per-call voiceId can
+    /// make ElevenLabs/Piper usable even when no default is configured).
+    /// </summary>
+    private HashSet<string> BuildReadyProviderSet(TtsSpeakArgs? args)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in TtsCapability.AllProviders)
+        {
+            if (string.Equals(GetProviderReadiness(p, args), TtsCapability.ReadinessReady, StringComparison.Ordinal))
+                set.Add(p);
+        }
+        return set;
+    }
+
+    /// <summary>
+    /// Determine a single provider's readiness. <paramref name="args"/> is
+    /// honored when present so a per-call voiceId counts toward readiness;
+    /// pass null for the configured-defaults view used by <see cref="GetStatus"/>.
+    /// </summary>
+    private string GetProviderReadiness(string provider, TtsSpeakArgs? args)
+    {
+        if (string.Equals(provider, TtsCapability.WindowsProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            // The OS speech stack always has at least the default system voice.
+            return TtsCapability.ReadinessReady;
+        }
+
+        if (string.Equals(provider, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(_settings.TtsElevenLabsApiKey))
+                return TtsCapability.ReadinessNeedsApiKey;
+
+            var voiceId = !string.IsNullOrWhiteSpace(args?.VoiceId)
+                ? args!.VoiceId
+                : _settings.TtsElevenLabsVoiceId;
+            return string.IsNullOrWhiteSpace(voiceId)
+                ? TtsCapability.ReadinessNeedsVoice
+                : TtsCapability.ReadinessReady;
+        }
+
+        if (string.Equals(provider, TtsCapability.PiperProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            var voiceId = !string.IsNullOrWhiteSpace(args?.VoiceId)
+                ? args!.VoiceId!
+                : _settings.TtsPiperVoiceId;
+            if (string.IsNullOrWhiteSpace(voiceId))
+                return TtsCapability.ReadinessNeedsVoice;
+            return _piperVoices.IsVoiceDownloaded(voiceId)
+                ? TtsCapability.ReadinessReady
+                : TtsCapability.ReadinessVoiceNotDownloaded;
+        }
+
+        return TtsCapability.ReadinessUnavailable;
+    }
+
     private async Task SpeakWithWindowsAsync(TtsSpeakArgs args, CancellationToken cancellationToken)
     {
         using var synthesizer = new SpeechSynthesizer();
-        var requestedVoice = string.IsNullOrWhiteSpace(args.VoiceId)
-            ? _settings.TtsWindowsVoiceId
-            : args.VoiceId;
+
+        // Distinguish an explicit per-call voice from the configured default.
+        // An explicit per-call voice that can't be resolved is a caller error
+        // and throws. A stale/removed *configured* voice must NOT throw — that
+        // would break the always-available fallback guarantee (a provider that
+        // fell back to Windows would still fail). In that case we silently use
+        // the synthesizer's system default voice.
+        var explicitVoice = !string.IsNullOrWhiteSpace(args.VoiceId);
+        var requestedVoice = explicitVoice ? args.VoiceId : _settings.TtsWindowsVoiceId;
         if (!string.IsNullOrWhiteSpace(requestedVoice))
         {
             requestedVoice = requestedVoice.Trim();
             var voice = SpeechSynthesizer.AllVoices.FirstOrDefault(v =>
                 string.Equals(v.Id, requestedVoice, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(v.DisplayName, requestedVoice, StringComparison.OrdinalIgnoreCase));
-            if (voice == null)
+            if (voice != null)
+            {
+                synthesizer.Voice = voice;
+            }
+            else if (explicitVoice)
+            {
                 throw new InvalidOperationException($"Windows TTS voice '{requestedVoice}' was not found.");
-
-            synthesizer.Voice = voice;
+            }
+            else
+            {
+                // Configured voice no longer installed — fall through with the
+                // system default so playback still happens.
+                _logger.Info("Configured Windows TTS voice not found; using system default voice");
+            }
         }
 
         using var stream = await synthesizer
