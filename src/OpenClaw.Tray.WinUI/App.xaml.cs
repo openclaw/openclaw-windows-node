@@ -3500,7 +3500,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private void OnSettingsHotkeyPressed(object? sender, EventArgs e)
     {
-        OnUiThread(() => ShowHub("companion"));
+        OnUiThread(ShowSettings);
     }
 
     #endregion

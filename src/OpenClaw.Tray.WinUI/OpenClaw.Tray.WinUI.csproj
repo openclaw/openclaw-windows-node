@@ -196,7 +196,7 @@
     <Error Text="Unsupported RuntimeIdentifier '$(RuntimeIdentifier)' for MXC sandbox. Only win-x64 and win-arm64 are supported. Override -p:MxcArch=x64 or -p:MxcArch=arm64 if you know what you are doing." />
   </Target>
 
-  <Target Name="RestoreMxcNodeBridge" BeforeTargets="Build;Publish;CopyWxcExecToOutput;CopyWxcExecToPublish" Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json') And !Exists('$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json')">
+  <Target Name="RestoreMxcNodeBridge" BeforeTargets="Build;Publish;CopyWxcExecToOutput;CopyWxcExecToPublish" Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json')">
     <Message Importance="high" Text="Restoring @microsoft/mxc-sdk to extract wxc-exec.exe ($(MxcArch))" />
     <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(OpenClawRepoRoot)" />
   </Target>
