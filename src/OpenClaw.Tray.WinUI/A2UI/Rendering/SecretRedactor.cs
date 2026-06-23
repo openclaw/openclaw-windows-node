@@ -107,8 +107,19 @@ internal static class SecretRedactor
             {
                 var childPath = path == "/" ? "/" + i : path + "/" + i;
                 var current = arr[i];
-                var replaced = RedactNode(current, childPath, registered);
-                if (!ReferenceEquals(replaced, current)) arr[i] = replaced;
+                // Mirror the object branch: a registered/denylisted element path
+                // (e.g. an obscured TextField bound to "/codes/0") must be
+                // redacted, not just recursed into — a scalar element would
+                // otherwise pass through unchanged and leak via canvas.a2ui.dump.
+                if (IsSecret(childPath, registered))
+                {
+                    arr[i] = JsonValue.Create("[REDACTED]");
+                }
+                else
+                {
+                    var replaced = RedactNode(current, childPath, registered);
+                    if (!ReferenceEquals(replaced, current)) arr[i] = replaced;
+                }
             }
             return arr;
         }

@@ -128,6 +128,30 @@ public static class A2UI
     }
 
     /// <summary>
+    /// Build a dataModelUpdate line that writes a single v0.8 <c>valueArray</c>
+    /// of strings at <paramref name="key"/>. Mirrors how an agent seeds an
+    /// array-shaped value (e.g. <c>MultipleChoice.selections</c>) into the data
+    /// model — the array channel that was previously dropped on the wire.
+    /// </summary>
+    public static string DataUpdateStringArray(string surfaceId, string key, params string[] values)
+    {
+        var arr = new JsonArray();
+        foreach (var v in values) arr.Add(new JsonObject { ["valueString"] = v });
+        var contents = new JsonArray
+        {
+            new JsonObject { ["key"] = key, ["valueArray"] = arr },
+        };
+        return new JsonObject
+        {
+            ["dataModelUpdate"] = new JsonObject
+            {
+                ["surfaceId"] = surfaceId,
+                ["contents"] = contents,
+            },
+        }.ToJsonString();
+    }
+
+    /// <summary>
     /// Theme-styles object suitable for the <c>styles</c> argument of
     /// <see cref="Surface"/>. Mirrors what <see cref="OpenClawTray.A2UI.Theming.A2UITheme.Parse"/>
     /// reads on the wire.

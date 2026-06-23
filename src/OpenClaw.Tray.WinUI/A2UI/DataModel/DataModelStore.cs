@@ -105,6 +105,7 @@ public sealed class DataModelStore
             if (entry.Key.Length > MaxKeyLength) continue;
             if (entry.ValueString != null && entry.ValueString.Length > MaxStringValueLength) continue;
             if (!IsWithinDepth(entry.ValueMap, depth: 1, max: MaxValueMapDepth)) continue;
+            if (!IsWithinDepth(entry.ValueArray, depth: 1, max: MaxValueMapDepth)) continue;
 
             try
             {
@@ -130,12 +131,17 @@ public sealed class DataModelStore
             new DataModelObservable(model, _dispatcher).NotifyPaths(changed);
     }
 
-    private static bool IsWithinDepth(IReadOnlyList<Protocol.DataModelEntry>? map, int depth, int max)
+    private static bool IsWithinDepth(IReadOnlyList<Protocol.DataModelEntry>? children, int depth, int max)
     {
-        if (map == null) return true;
+        if (children == null) return true;
         if (depth > max) return false;
-        foreach (var e in map)
+        foreach (var e in children)
+        {
+            // Both nested maps and nested arrays add a level — bound either path
+            // so a deeply-nested valueArray can't bypass the valueMap depth cap.
             if (!IsWithinDepth(e.ValueMap, depth + 1, max)) return false;
+            if (!IsWithinDepth(e.ValueArray, depth + 1, max)) return false;
+        }
         return true;
     }
 
