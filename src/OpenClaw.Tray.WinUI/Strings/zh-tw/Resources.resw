@@ -6582,4 +6582,91 @@
   <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
     <value>Pending declared permissions: {0}</value>
   </data>
+  <data name="ConnectionPage_AdviceCleartextTitle" xml:space="preserve">
+    <value>未加密的連線</value>
+  </data>
+  <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
+    <value>此遠端 gateway 使用 ws:// — 您的 token 將以明文傳送。請使用 wss://（TLS）、SSH 通道或受信任的 Proxy / Tailscale。</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
+    <value>已加密 (TLS)</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureMessage" xml:space="preserve">
+    <value>此 gateway 使用 TLS。憑證驗證通過後，您的 token 在傳輸過程中受到保護。</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelTitle" xml:space="preserve">
+    <value>SSH 通道</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelMessage" xml:space="preserve">
+    <value>到此 gateway 的流量透過 SSH 通道加密。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTokenDrift" xml:space="preserve">
+    <value>重新配對此裝置：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderScope" xml:space="preserve">
+    <value>升級此裝置的存取權限：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTls" xml:space="preserve">
+    <value>修復安全連線：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet1" xml:space="preserve">
+    <value>gateway 不再信任此裝置儲存的 token（它已被輪換或撤銷）。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet2" xml:space="preserve">
+    <value>從 gateway 主機取得新的設定代碼，並貼到下方以重新配對。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet1" xml:space="preserve">
+    <value>此裝置已通過驗證，但缺少所需的 scope（例如 operator.admin 或 operator.pairing）。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet2" xml:space="preserve">
+    <value>使用新的設定代碼重新配對以請求所需的 scope，或在 gateway 主機上核准更高的 scope。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet1" xml:space="preserve">
+    <value>無法建立 gateway 的 TLS/安全傳輸。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet2" xml:space="preserve">
+    <value>驗證 gateway 主機上的憑證，或透過 wss:// 或 SSH 通道連線。</value>
+  </data>
+  <data name="ConnectionPage_TokenOrPasswordHint.Text" xml:space="preserve">
+    <value>貼上共用 gateway token，或將其留空以使用設定代碼配對。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirect.Text" xml:space="preserve">
+    <value>當 gateway 擁有受信任憑證時，連線到 wss:// 或 https://。憑證驗證通過後，您的 token 會在傳輸過程中加密。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnel.Text" xml:space="preserve">
+    <value>當 gateway 僅在 localhost 上接聽時，請展開下方的「使用 SSH 通道」。tray 會透過 SSH 轉發本機連接埠，使流量保持加密。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxy.Text" xml:space="preserve">
+    <value>如果 Tailscale 或反向 Proxy 已加密路徑，則在該私人網路上使用一般 ws:// URL 即可。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuth.Text" xml:space="preserve">
+    <value>貼上共用 token，或將其留空並使用設定代碼配對。重新配對也會升級此裝置的 scope。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderRateLimited" xml:space="preserve">
+    <value>請稍後再重新連線：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet1" xml:space="preserve">
+    <value>gateway 在多次失敗嘗試後正在對此用戶端限速。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet2" xml:space="preserve">
+    <value>暫時停止重試，然後在修正 token、密碼或配對狀態後重新連線。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpLink.Text" xml:space="preserve">
+    <value>如何連線到遠端 gateway？</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTip.Title" xml:space="preserve">
+    <value>連線到遠端 gateway</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirectTitle.Text" xml:space="preserve">
+    <value>直連 (TLS)</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnelTitle.Text" xml:space="preserve">
+    <value>SSH 通道</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxyTitle.Text" xml:space="preserve">
+    <value>受信任 Proxy / Tailscale</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuthTitle.Text" xml:space="preserve">
+    <value>驗證</value>
+  </data>
 </root>

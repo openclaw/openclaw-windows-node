@@ -6629,4 +6629,91 @@ Check your connection settings and try again.</value>
   <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
     <value>Pending declared permissions: {0}</value>
   </data>
+  <data name="ConnectionPage_AdviceCleartextTitle" xml:space="preserve">
+    <value>Unencrypted connection</value>
+  </data>
+  <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
+    <value>This remote gateway uses ws:// — your token would be sent in cleartext. Use wss:// (TLS), an SSH tunnel, or a trusted proxy / Tailscale.</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
+    <value>Encrypted (TLS)</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureMessage" xml:space="preserve">
+    <value>This gateway uses TLS. Your token is protected in transit when the certificate validates.</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelTitle" xml:space="preserve">
+    <value>SSH tunnel</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelMessage" xml:space="preserve">
+    <value>Traffic to this gateway is encrypted through the SSH tunnel.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTokenDrift" xml:space="preserve">
+    <value>Re-pair this device:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderScope" xml:space="preserve">
+    <value>Upgrade this device's access:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTls" xml:space="preserve">
+    <value>Fix the secure connection:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet1" xml:space="preserve">
+    <value>The gateway no longer trusts this device's saved token (it was rotated or revoked).</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet2" xml:space="preserve">
+    <value>Get a fresh setup code from the gateway host and paste it below to re-pair.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet1" xml:space="preserve">
+    <value>This device is authenticated but is missing the scopes it needs (for example operator.admin or operator.pairing).</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet2" xml:space="preserve">
+    <value>Re-pair with a fresh setup code to request the required scopes, or approve the higher scopes on the gateway host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet1" xml:space="preserve">
+    <value>The gateway's TLS/secure transport could not be established.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet2" xml:space="preserve">
+    <value>Verify the certificate on the gateway host, or connect over wss:// or an SSH tunnel.</value>
+  </data>
+  <data name="ConnectionPage_TokenOrPasswordHint.Text" xml:space="preserve">
+    <value>Paste a shared gateway token, or leave it blank to pair with a setup code.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirect.Text" xml:space="preserve">
+    <value>Connect to wss:// or https:// when the gateway has a trusted certificate. Your token is encrypted in transit after certificate validation.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnel.Text" xml:space="preserve">
+    <value>When the gateway only listens on localhost, expand "Use SSH tunnel" below. The tray forwards a local port over SSH so traffic stays encrypted.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxy.Text" xml:space="preserve">
+    <value>If a Tailscale or reverse proxy already encrypts the path, a plain ws:// URL over that private network is fine.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuth.Text" xml:space="preserve">
+    <value>Paste a shared token, or leave it blank and pair with a setup code. Re-pairing also upgrades this device's scopes.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderRateLimited" xml:space="preserve">
+    <value>Wait before reconnecting:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet1" xml:space="preserve">
+    <value>The gateway is rate-limiting this client after repeated failed attempts.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet2" xml:space="preserve">
+    <value>Stop retrying for a moment, then reconnect after correcting the token, password, or pairing state.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpLink.Text" xml:space="preserve">
+    <value>How do I connect to a remote gateway?</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTip.Title" xml:space="preserve">
+    <value>Connecting to a remote gateway</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirectTitle.Text" xml:space="preserve">
+    <value>Direct (TLS)</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnelTitle.Text" xml:space="preserve">
+    <value>SSH tunnel</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxyTitle.Text" xml:space="preserve">
+    <value>Trusted proxy / Tailscale</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuthTitle.Text" xml:space="preserve">
+    <value>Auth</value>
+  </data>
 </root>

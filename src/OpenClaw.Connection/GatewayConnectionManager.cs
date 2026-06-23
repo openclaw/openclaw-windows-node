@@ -518,7 +518,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    public async Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode)
+    public async Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode, SshTunnelConfig? sshTunnel = null)
     {
         ThrowIfDisposed();
 
@@ -554,6 +554,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             Url = gatewayUrl,
             SharedGatewayToken = existing?.SharedGatewayToken, // preserve existing shared token if any
             BootstrapToken = decoded.Token ?? existing?.BootstrapToken,
+            SshTunnel = sshTunnel ?? existing?.SshTunnel,
         };
         _registry.AddOrUpdate(record);
         _registry.SetActive(recordId);

@@ -173,7 +173,7 @@ public class ChatNavigationReadinessTests
         public Task ReconnectAsync() => Task.CompletedTask;
         public Task SwitchGatewayAsync(string gatewayId) => Task.CompletedTask;
         public Task EnsureNodeConnectedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode) => Task.FromResult(new SetupCodeResult(SetupCodeOutcome.InvalidCode));
+        public Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode, SshTunnelConfig? sshTunnel = null) => Task.FromResult(new SetupCodeResult(SetupCodeOutcome.InvalidCode));
         public Task<SetupCodeResult> ConnectWithSharedTokenAsync(string gatewayUrl, string token, SshTunnelConfig? sshTunnel = null) => Task.FromResult(new SetupCodeResult(SetupCodeOutcome.InvalidCode));
         public void Dispose() { }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

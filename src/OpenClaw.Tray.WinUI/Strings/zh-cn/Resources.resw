@@ -6582,4 +6582,91 @@
   <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
     <value>Pending declared permissions: {0}</value>
   </data>
+  <data name="ConnectionPage_AdviceCleartextTitle" xml:space="preserve">
+    <value>未加密的连接</value>
+  </data>
+  <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
+    <value>此远程 gateway 使用 ws:// — 您的 token 将以明文发送。请使用 wss://（TLS）、SSH 隧道或受信任的代理 / Tailscale。</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
+    <value>已加密 (TLS)</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureMessage" xml:space="preserve">
+    <value>此 gateway 使用 TLS。证书验证通过后，您的 token 在传输过程中受到保护。</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelTitle" xml:space="preserve">
+    <value>SSH 隧道</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelMessage" xml:space="preserve">
+    <value>到此 gateway 的流量通过 SSH 隧道加密。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTokenDrift" xml:space="preserve">
+    <value>重新配对此设备：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderScope" xml:space="preserve">
+    <value>升级此设备的访问权限：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTls" xml:space="preserve">
+    <value>修复安全连接：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet1" xml:space="preserve">
+    <value>gateway 不再信任此设备保存的 token（它已被轮换或吊销）。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet2" xml:space="preserve">
+    <value>从 gateway 主机获取新的设置代码，并粘贴到下方以重新配对。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet1" xml:space="preserve">
+    <value>此设备已通过身份验证，但缺少所需的 scope（例如 operator.admin 或 operator.pairing）。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet2" xml:space="preserve">
+    <value>使用新的设置代码重新配对以请求所需的 scope，或在 gateway 主机上批准更高的 scope。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet1" xml:space="preserve">
+    <value>无法建立 gateway 的 TLS/安全传输。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet2" xml:space="preserve">
+    <value>验证 gateway 主机上的证书，或通过 wss:// 或 SSH 隧道连接。</value>
+  </data>
+  <data name="ConnectionPage_TokenOrPasswordHint.Text" xml:space="preserve">
+    <value>粘贴共享 gateway token，或将其留空以使用设置代码配对。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirect.Text" xml:space="preserve">
+    <value>当 gateway 拥有受信任证书时，连接到 wss:// 或 https://。证书验证通过后，您的 token 会在传输过程中加密。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnel.Text" xml:space="preserve">
+    <value>当 gateway 仅在 localhost 上侦听时，请展开下方的“使用 SSH 隧道”。tray 会通过 SSH 转发本地端口，使流量保持加密。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxy.Text" xml:space="preserve">
+    <value>如果 Tailscale 或反向代理已加密路径，则在该专用网络上使用普通 ws:// URL 即可。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuth.Text" xml:space="preserve">
+    <value>粘贴共享 token，或将其留空并使用设置代码配对。重新配对还会升级此设备的 scope。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderRateLimited" xml:space="preserve">
+    <value>请稍后再重新连接：</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet1" xml:space="preserve">
+    <value>gateway 在多次失败尝试后正在对此客户端限速。</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet2" xml:space="preserve">
+    <value>暂时停止重试，然后在修正 token、密码或配对状态后重新连接。</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpLink.Text" xml:space="preserve">
+    <value>如何连接到远程 gateway？</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTip.Title" xml:space="preserve">
+    <value>连接到远程 gateway</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirectTitle.Text" xml:space="preserve">
+    <value>直连 (TLS)</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnelTitle.Text" xml:space="preserve">
+    <value>SSH 隧道</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxyTitle.Text" xml:space="preserve">
+    <value>受信任代理 / Tailscale</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuthTitle.Text" xml:space="preserve">
+    <value>身份验证</value>
+  </data>
 </root>

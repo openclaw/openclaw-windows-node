@@ -55,6 +55,10 @@ public sealed partial class ConnectionPage : Page
     // updates the original record instead of orphaning it as a duplicate.
     private string? _editingGatewayId;
 
+    // Last gateway URL decoded from a pasted setup code, used to drive the
+    // transport-security advice for the Setup-code method. Null when no valid
+    // code is decoded.
+    private string? _lastDecodedSetupUrl;
     // ─── Reconnect-mask state ───
     // Toggling Node mode forces the connection manager to tear down the
     // WS and rebuild it (so the gateway sees the role change). That brief
@@ -978,6 +982,7 @@ public sealed partial class ConnectionPage : Page
         RecoveryTunnelBlock.Visibility = Visibility.Collapsed;
         RecoveryAuthPasteBlock.Visibility = Visibility.Collapsed;
         RecoveryApproveCmdBlock.Visibility = Visibility.Collapsed;
+        RecoveryRepairResultText.Visibility = Visibility.Collapsed;
 
         RecoveryHelpHeaderText.Text = plan.Recovery switch
         {
@@ -985,6 +990,10 @@ public sealed partial class ConnectionPage : Page
             RecoveryCategory.Pairing => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderPairing"),
             RecoveryCategory.Tunnel => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderTunnel"),
             RecoveryCategory.Server => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderServer"),
+            RecoveryCategory.TokenDrift => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderTokenDrift"),
+            RecoveryCategory.Scope => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderScope"),
+            RecoveryCategory.Tls => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderTls"),
+            RecoveryCategory.RateLimited => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderRateLimited"),
             _ => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderServer"),
         };
 
@@ -1011,6 +1020,26 @@ public sealed partial class ConnectionPage : Page
                 LocalizationHelper.GetString("ConnectionPage_RecoveryServerBullet2"),
                 LocalizationHelper.GetString("ConnectionPage_RecoveryServerBullet3"),
             },
+            RecoveryCategory.TokenDrift => new[]
+            {
+                LocalizationHelper.GetString("ConnectionPage_RecoveryTokenDriftBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryTokenDriftBullet2"),
+            },
+            RecoveryCategory.Scope => new[]
+            {
+                LocalizationHelper.GetString("ConnectionPage_RecoveryScopeBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryScopeBullet2"),
+            },
+            RecoveryCategory.Tls => new[]
+            {
+                LocalizationHelper.GetString("ConnectionPage_RecoveryTlsBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryTlsBullet2"),
+            },
+            RecoveryCategory.RateLimited => new[]
+            {
+                LocalizationHelper.GetString("ConnectionPage_RecoveryRateLimitedBullet1"),
+                LocalizationHelper.GetString("ConnectionPage_RecoveryRateLimitedBullet2"),
+            },
             _ => new[]
             {
                 LocalizationHelper.GetString("ConnectionPage_RecoveryDefaultBullet1"),
@@ -1028,7 +1057,11 @@ public sealed partial class ConnectionPage : Page
             RecoveryTunnelBlock.Visibility = Visibility.Visible;
             RecoveryTunnelDetailText.Text = plan.RecoveryDetail ?? LocalizationHelper.GetString("ConnectionPage_SshTunnelIsDownText");
         }
-        if (plan.Recovery == RecoveryCategory.Auth)
+        // Auth, token drift, and scope problems are all repaired by pasting a
+        // fresh setup code (re-pair), which also upgrades scopes on the gateway.
+        if (plan.Recovery is RecoveryCategory.Auth
+                          or RecoveryCategory.TokenDrift
+                          or RecoveryCategory.Scope)
         {
             RecoveryAuthPasteBlock.Visibility = Visibility.Visible;
         }
@@ -1641,6 +1674,101 @@ public sealed partial class ConnectionPage : Page
         bool isFormMethod = (tag == "direct") || (tag == "setup");
         AddSshExpander.Visibility = isFormMethod ? Visibility.Visible : Visibility.Collapsed;
         AddSaveButton.Visibility = isFormMethod ? Visibility.Visible : Visibility.Collapsed;
+        AddRemoteHelpLink.Visibility = isFormMethod ? Visibility.Visible : Visibility.Collapsed;
+        if (!isFormMethod)
+            AddRemoteHelpTip.IsOpen = false;
+
+        UpdateRemoteSetupAdvice();
+    }
+
+    private void OnRemoteHelpClick(object sender, RoutedEventArgs e)
+    {
+        AddRemoteHelpTip.IsOpen = !AddRemoteHelpTip.IsOpen;
+    }
+
+    // ─── Remote setup transport-security advisory ─────────────────────
+    // Offline (no network) classification driven by RemoteGatewayClassifier.
+    // Steers users to TLS / SSH tunnel / trusted proxy before they save a
+    // gateway that would send the token in cleartext over the network.
+
+    private void OnAddSshExpanding(Expander sender, ExpanderExpandingEventArgs args) =>
+        UpdateRemoteSetupAdvice(sshExpandedOverride: true);
+
+    private void OnAddSshCollapsed(Expander sender, ExpanderCollapsedEventArgs args) =>
+        UpdateRemoteSetupAdvice(sshExpandedOverride: false);
+
+    private void OnAddSshFieldChanged(object sender, TextChangedEventArgs e) =>
+        UpdateRemoteSetupAdvice();
+
+    private void UpdateRemoteSetupAdvice(bool? sshExpandedOverride = null)
+    {
+        if (AddSecurityAdviceBar == null) return;
+
+        // The advice applies to the two form methods (Direct + Setup code).
+        // Pick the URL from whichever is active: the typed Direct URL, or the
+        // URL decoded from a pasted setup code.
+        string? url;
+        var tag = ActiveAddPaneTag();
+        if (tag == "direct")
+            url = DirectUrlBox.Text?.Trim();
+        else if (tag == "setup")
+            url = _lastDecodedSetupUrl;
+        else
+        {
+            AddSecurityAdviceBar.IsOpen = false;
+            return;
+        }
+
+        // The Expander.Expanding/Collapsed events fire before IsExpanded flips,
+        // so callers pass the post-transition state to avoid a one-frame flash
+        // of the cleartext warning.
+        bool sshExpanded = sshExpandedOverride ?? AddSshExpander.IsExpanded;
+        bool hasSshTunnel = sshExpanded
+                         && !string.IsNullOrWhiteSpace(AddSshUserBox.Text)
+                         && !string.IsNullOrWhiteSpace(AddSshHostBox.Text);
+
+        var profile = RemoteGatewayClassifier.Classify(url, hasSshTunnel);
+
+        InfoBarSeverity severity;
+        string title;
+        string message;
+        bool open = true;
+
+        switch (profile.Topology)
+        {
+            case GatewayConnectionTopology.DirectInsecure:
+                severity = InfoBarSeverity.Warning;
+                title = LocalizationHelper.GetString("ConnectionPage_AdviceCleartextTitle");
+                message = LocalizationHelper.GetString("ConnectionPage_AdviceCleartextMessage");
+                break;
+            case GatewayConnectionTopology.DirectSecure:
+                severity = InfoBarSeverity.Success;
+                title = LocalizationHelper.GetString("ConnectionPage_AdviceSecureTitle");
+                message = LocalizationHelper.GetString("ConnectionPage_AdviceSecureMessage");
+                break;
+            case GatewayConnectionTopology.SshTunnel:
+                severity = InfoBarSeverity.Success;
+                title = LocalizationHelper.GetString("ConnectionPage_AdviceTunnelTitle");
+                message = LocalizationHelper.GetString("ConnectionPage_AdviceTunnelMessage");
+                break;
+            default:
+                // Local or unparseable — no transport warning needed.
+                AddSecurityAdviceBar.IsOpen = false;
+                return;
+        }
+
+        // InfoBar does not reliably repaint its severity icon/accent when
+        // Severity changes while IsOpen stays true. When the severity actually
+        // changes (e.g. cleartext ws:// → TLS wss://), force a close before
+        // re-applying so the bar re-renders cleanly. Guard on change so we
+        // don't flicker on every keystroke within the same severity.
+        if (AddSecurityAdviceBar.IsOpen && AddSecurityAdviceBar.Severity != severity)
+            AddSecurityAdviceBar.IsOpen = false;
+
+        AddSecurityAdviceBar.Severity = severity;
+        AddSecurityAdviceBar.Title = title;
+        AddSecurityAdviceBar.Message = message;
+        AddSecurityAdviceBar.IsOpen = open;
     }
 
     private string ActiveAddPaneTag()
@@ -1949,16 +2077,24 @@ public sealed partial class ConnectionPage : Page
     {
         var code = RecoveryRepairCodeBox.Text?.Trim();
         if (string.IsNullOrEmpty(code) || _connectionManager == null) return;
+        void ShowResult(string text, bool error)
+        {
+            RecoveryRepairResultText.Text = text;
+            RecoveryRepairResultText.Foreground = (Brush)Application.Current.Resources[
+                error ? "SystemFillColorCriticalBrush" : "SystemFillColorSuccessBrush"];
+            RecoveryRepairResultText.Visibility = Visibility.Visible;
+        }
         try
         {
             var result = await _connectionManager.ApplySetupCodeAsync(code);
-            AddResultText.Text = result.Outcome == SetupCodeOutcome.Success
-                ? LocalizationHelper.GetString("ConnectionPage_RepairedReconnecting")
-                : $"✗ {result.ErrorMessage ?? LocalizationHelper.GetString("ConnectionPage_CouldNotApplyCode")}";
+            if (result.Outcome == SetupCodeOutcome.Success)
+                ShowResult(LocalizationHelper.GetString("ConnectionPage_RepairedReconnecting"), error: false);
+            else
+                ShowResult($"✗ {result.ErrorMessage ?? LocalizationHelper.GetString("ConnectionPage_CouldNotApplyCode")}", error: true);
         }
         catch (Exception ex)
         {
-            AddResultText.Text = $"✗ {ex.Message}";
+            ShowResult($"✗ {ex.Message}", error: true);
         }
     }
 
@@ -2107,6 +2243,7 @@ public sealed partial class ConnectionPage : Page
         var url = DirectUrlBox.Text?.Trim();
         ScheduleConnectivityTest(url);
         AutoFillTokenForUrl(url);
+        UpdateRemoteSetupAdvice();
     }
 
     private void OnDirectUrlLostFocus(object sender, RoutedEventArgs e)
@@ -2115,6 +2252,7 @@ public sealed partial class ConnectionPage : Page
         ScheduleConnectivityTest(url);
         // On focus-out, overwrite token even if already populated (user finished editing URL).
         AutoFillTokenForUrl(url, force: true);
+        UpdateRemoteSetupAdvice();
     }
 
     private void AutoFillTokenForUrl(string? url, bool force = false)
@@ -2263,43 +2401,12 @@ public sealed partial class ConnectionPage : Page
 
         url = GatewayUrlHelper.NormalizeForWebSocket(url);
 
-        // SSH tunnel — read from the Add form (per-gateway) if the expander is open
-        SshTunnelConfig? sshConfig = null;
-        bool useSsh = AddSshExpander.IsExpanded
-                   && !string.IsNullOrWhiteSpace(AddSshUserBox.Text)
-                   && !string.IsNullOrWhiteSpace(AddSshHostBox.Text);
-        if (useSsh)
+        if (!TryBuildAddSshTunnelConfig(out var sshConfig, out var sshError))
         {
-            var sshUser = AddSshUserBox.Text.Trim();
-            var sshHost = AddSshHostBox.Text.Trim();
-            var sshPortText = string.IsNullOrWhiteSpace(AddSshServerPortBox.Text) ? "22" : AddSshServerPortBox.Text;
-            if (!int.TryParse(sshPortText, out var sshPort) || sshPort is < 1 or > 65535)
-            {
-                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshServerPortInvalid");
-                return;
-            }
-            if (!int.TryParse(AddSshRemotePortBox.Text, out var remotePort) || remotePort is < 1 or > 65535)
-            {
-                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid");
-                return;
-            }
-            if (!int.TryParse(AddSshLocalPortBox.Text, out var localPort) || localPort is < 1 or > 65535)
-            {
-                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
-                return;
-            }
-            var includeBrowserProxyForward = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
-                CurrentApp.Settings.NodeBrowserProxyEnabled,
-                remotePort,
-                localPort);
-            sshConfig = new SshTunnelConfig(
-                sshUser,
-                sshHost,
-                remotePort,
-                localPort,
-                IncludeBrowserProxyForward: includeBrowserProxyForward,
-                SshPort: sshPort);
+            AddResultText.Text = sshError;
+            return;
         }
+        bool useSsh = sshConfig != null;
 
         AddSaveButton.IsEnabled = false;
         AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_Connecting");
@@ -2490,6 +2597,51 @@ public sealed partial class ConnectionPage : Page
         snapshot.OperatorState is RoleConnectionState.PairingRequired
             or RoleConnectionState.Error;
 
+    private bool TryBuildAddSshTunnelConfig(out SshTunnelConfig? sshConfig, out string? error)
+    {
+        sshConfig = null;
+        error = null;
+
+        if (!AddSshExpander.IsExpanded ||
+            string.IsNullOrWhiteSpace(AddSshUserBox.Text) ||
+            string.IsNullOrWhiteSpace(AddSshHostBox.Text))
+        {
+            return true;
+        }
+
+        var sshUser = AddSshUserBox.Text.Trim();
+        var sshHost = AddSshHostBox.Text.Trim();
+        var sshPortText = string.IsNullOrWhiteSpace(AddSshServerPortBox.Text) ? "22" : AddSshServerPortBox.Text;
+        if (!int.TryParse(sshPortText, out var sshPort) || sshPort is < 1 or > 65535)
+        {
+            error = LocalizationHelper.GetString("ConnectionPage_SshServerPortInvalid");
+            return false;
+        }
+        if (!int.TryParse(AddSshRemotePortBox.Text, out var remotePort) || remotePort is < 1 or > 65535)
+        {
+            error = LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid");
+            return false;
+        }
+        if (!int.TryParse(AddSshLocalPortBox.Text, out var localPort) || localPort is < 1 or > 65535)
+        {
+            error = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
+            return false;
+        }
+
+        var includeBrowserProxyForward = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+            CurrentApp.Settings.NodeBrowserProxyEnabled,
+            remotePort,
+            localPort);
+        sshConfig = new SshTunnelConfig(
+            sshUser,
+            sshHost,
+            remotePort,
+            localPort,
+            IncludeBrowserProxyForward: includeBrowserProxyForward,
+            SshPort: sshPort);
+        return true;
+    }
+
     private static GatewayConnectionSnapshot EnsureDirectConnectSucceeded(GatewayConnectionSnapshot snapshot)
     {
         if (snapshot.OperatorState == RoleConnectionState.Error)
@@ -2576,6 +2728,11 @@ public sealed partial class ConnectionPage : Page
             AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_PleaseEnterSetupCode");
             return;
         }
+        if (!TryBuildAddSshTunnelConfig(out var sshConfig, out var sshError))
+        {
+            AddResultText.Text = sshError;
+            return;
+        }
 
         AddSaveButton.IsEnabled = false;
         AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_Applying");
@@ -2583,7 +2740,7 @@ public sealed partial class ConnectionPage : Page
         {
             if (_connectionManager != null)
             {
-                var result = await _connectionManager.ApplySetupCodeAsync(code);
+                var result = await _connectionManager.ApplySetupCodeAsync(code, sshConfig);
                 AddResultText.Text = result.Outcome switch
                 {
                     SetupCodeOutcome.Success => $"✓ {string.Format(LocalizationHelper.GetString("ConnectionPage_AppliedGateway"), SanitizeUrl(result.GatewayUrl ?? ""))}",
@@ -2634,6 +2791,8 @@ public sealed partial class ConnectionPage : Page
         if (string.IsNullOrEmpty(code) || code.Length < 10)
         {
             AddSetupCodePreviewPanel.Visibility = Visibility.Collapsed;
+            _lastDecodedSetupUrl = null;
+            UpdateRemoteSetupAdvice();
             return;
         }
         var decoded = SetupCodeDecoder.Decode(code);
@@ -2648,10 +2807,15 @@ public sealed partial class ConnectionPage : Page
             // Auto-test connectivity with the decoded URL
             if (!string.IsNullOrEmpty(decoded.Url))
                 ScheduleConnectivityTest(decoded.Url);
+            // Warn if the decoded URL would send the bootstrap token in cleartext.
+            _lastDecodedSetupUrl = decoded.Url;
+            UpdateRemoteSetupAdvice();
         }
         else
         {
             AddSetupCodePreviewPanel.Visibility = Visibility.Collapsed;
+            _lastDecodedSetupUrl = null;
+            UpdateRemoteSetupAdvice();
         }
     }
 

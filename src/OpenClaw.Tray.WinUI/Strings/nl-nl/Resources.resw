@@ -6582,4 +6582,91 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
   <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
     <value>Pending declared permissions: {0}</value>
   </data>
+  <data name="ConnectionPage_AdviceCleartextTitle" xml:space="preserve">
+    <value>Niet-versleutelde verbinding</value>
+  </data>
+  <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
+    <value>Deze externe gateway gebruikt ws:// — uw token zou onversleuteld worden verzonden. Gebruik wss:// (TLS), een SSH-tunnel of een vertrouwde proxy / Tailscale.</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
+    <value>Versleuteld (TLS)</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureMessage" xml:space="preserve">
+    <value>Deze gateway gebruikt TLS. Uw token is beschermd tijdens het transport wanneer het certificaat wordt gevalideerd.</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelTitle" xml:space="preserve">
+    <value>SSH-tunnel</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelMessage" xml:space="preserve">
+    <value>Verkeer naar deze gateway wordt versleuteld via de SSH-tunnel.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTokenDrift" xml:space="preserve">
+    <value>Koppel dit apparaat opnieuw:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderScope" xml:space="preserve">
+    <value>Werk de toegang van dit apparaat bij:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTls" xml:space="preserve">
+    <value>Herstel de beveiligde verbinding:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet1" xml:space="preserve">
+    <value>De gateway vertrouwt het opgeslagen token van dit apparaat niet meer (het is gewijzigd of ingetrokken).</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet2" xml:space="preserve">
+    <value>Haal een nieuwe installatiecode op van de gateway-host en plak deze hieronder om opnieuw te koppelen.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet1" xml:space="preserve">
+    <value>Dit apparaat is geverifieerd maar mist de benodigde scopes (bijvoorbeeld operator.admin of operator.pairing).</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet2" xml:space="preserve">
+    <value>Koppel opnieuw met een nieuwe installatiecode om de vereiste scopes aan te vragen, of keur de hogere scopes goed op de gateway-host.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet1" xml:space="preserve">
+    <value>Het TLS-/beveiligde transport van de gateway kon niet tot stand worden gebracht.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet2" xml:space="preserve">
+    <value>Controleer het certificaat op de gateway-host, of maak verbinding via wss:// of een SSH-tunnel.</value>
+  </data>
+  <data name="ConnectionPage_TokenOrPasswordHint.Text" xml:space="preserve">
+    <value>Plak een gedeeld gateway-token, of laat het leeg om te koppelen met een installatiecode.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirect.Text" xml:space="preserve">
+    <value>Maak verbinding met wss:// of https:// wanneer de gateway een vertrouwd certificaat heeft. Uw token wordt tijdens het transport versleuteld na certificaatvalidatie.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnel.Text" xml:space="preserve">
+    <value>Wanneer de gateway alleen op localhost luistert, vouwt u "SSH-tunnel gebruiken" hieronder uit. De tray stuurt een lokale poort door via SSH zodat het verkeer versleuteld blijft.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxy.Text" xml:space="preserve">
+    <value>Als Tailscale of een reverse proxy het pad al versleutelt, is een gewone ws://-URL over dat privénetwerk prima.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuth.Text" xml:space="preserve">
+    <value>Plak een gedeeld token, of laat het leeg en koppel met een installatiecode. Opnieuw koppelen werkt ook de scopes van dit apparaat bij.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderRateLimited" xml:space="preserve">
+    <value>Wacht voordat u opnieuw verbinding maakt:</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet1" xml:space="preserve">
+    <value>De gateway beperkt deze client tijdelijk na herhaalde mislukte pogingen.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet2" xml:space="preserve">
+    <value>Stop even met opnieuw proberen en verbind opnieuw nadat het token, wachtwoord of de koppelingsstatus is gecorrigeerd.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpLink.Text" xml:space="preserve">
+    <value>Hoe maak ik verbinding met een externe gateway?</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTip.Title" xml:space="preserve">
+    <value>Verbinding maken met een externe gateway</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirectTitle.Text" xml:space="preserve">
+    <value>Directe verbinding (TLS)</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnelTitle.Text" xml:space="preserve">
+    <value>SSH-tunnel</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxyTitle.Text" xml:space="preserve">
+    <value>Vertrouwde proxy / Tailscale</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuthTitle.Text" xml:space="preserve">
+    <value>Verificatie</value>
+  </data>
 </root>

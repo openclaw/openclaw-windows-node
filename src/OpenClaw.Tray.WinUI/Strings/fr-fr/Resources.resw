@@ -6581,4 +6581,91 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
   <data name="ConnectionPage_NodePendingDeclaredPermissions" xml:space="preserve">
     <value>Pending declared permissions: {0}</value>
   </data>
+  <data name="ConnectionPage_AdviceCleartextTitle" xml:space="preserve">
+    <value>Connexion non chiffrée</value>
+  </data>
+  <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
+    <value>Cette gateway distante utilise ws:// — votre token serait envoyé en clair. Utilisez wss:// (TLS), un tunnel SSH, ou un proxy de confiance / Tailscale.</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
+    <value>Chiffré (TLS)</value>
+  </data>
+  <data name="ConnectionPage_AdviceSecureMessage" xml:space="preserve">
+    <value>Cette gateway utilise TLS. Votre token est protégé en transit lorsque le certificat est validé.</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelTitle" xml:space="preserve">
+    <value>Tunnel SSH</value>
+  </data>
+  <data name="ConnectionPage_AdviceTunnelMessage" xml:space="preserve">
+    <value>Le trafic vers cette gateway est chiffré via le tunnel SSH.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTokenDrift" xml:space="preserve">
+    <value>Réappairer cet appareil :</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderScope" xml:space="preserve">
+    <value>Mettre à niveau l'accès de cet appareil :</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderTls" xml:space="preserve">
+    <value>Corriger la connexion sécurisée :</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet1" xml:space="preserve">
+    <value>La gateway ne fait plus confiance au token enregistré de cet appareil (il a été renouvelé ou révoqué).</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTokenDriftBullet2" xml:space="preserve">
+    <value>Obtenez un nouveau code de configuration depuis l'hôte de la gateway et collez-le ci-dessous pour réappairer.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet1" xml:space="preserve">
+    <value>Cet appareil est authentifié mais il manque les scopes nécessaires (par exemple operator.admin ou operator.pairing).</value>
+  </data>
+  <data name="ConnectionPage_RecoveryScopeBullet2" xml:space="preserve">
+    <value>Réappairez avec un nouveau code de configuration pour demander les scopes requis, ou approuvez les scopes supérieurs sur l'hôte de la gateway.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet1" xml:space="preserve">
+    <value>Le transport TLS/sécurisé de la gateway n'a pas pu être établi.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryTlsBullet2" xml:space="preserve">
+    <value>Vérifiez le certificat sur l'hôte de la gateway, ou connectez-vous via wss:// ou un tunnel SSH.</value>
+  </data>
+  <data name="ConnectionPage_TokenOrPasswordHint.Text" xml:space="preserve">
+    <value>Collez un token de gateway partagé, ou laissez-le vide pour appairer avec un code de configuration.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirect.Text" xml:space="preserve">
+    <value>Connectez-vous à wss:// ou https:// lorsque la gateway possède un certificat de confiance. Votre token est chiffré en transit après validation du certificat.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnel.Text" xml:space="preserve">
+    <value>Lorsque la gateway n'écoute que sur localhost, développez « Utiliser un tunnel SSH » ci-dessous. La tray transfère un port local via SSH afin que le trafic reste chiffré.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxy.Text" xml:space="preserve">
+    <value>Si Tailscale ou un reverse proxy chiffre déjà le chemin, une simple URL ws:// sur ce réseau privé convient.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuth.Text" xml:space="preserve">
+    <value>Collez un token partagé, ou laissez-le vide et appairez avec un code de configuration. Le réappairage met aussi à niveau les scopes de cet appareil.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryHeaderRateLimited" xml:space="preserve">
+    <value>Attendez avant de vous reconnecter :</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet1" xml:space="preserve">
+    <value>La gateway limite temporairement ce client après plusieurs tentatives échouées.</value>
+  </data>
+  <data name="ConnectionPage_RecoveryRateLimitedBullet2" xml:space="preserve">
+    <value>Arrêtez les nouvelles tentatives un moment, puis reconnectez-vous après avoir corrigé le token, le mot de passe ou l’état d’appairage.</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpLink.Text" xml:space="preserve">
+    <value>Comment me connecter à une gateway distante ?</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTip.Title" xml:space="preserve">
+    <value>Se connecter à une gateway distante</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpDirectTitle.Text" xml:space="preserve">
+    <value>Connexion directe (TLS)</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpTunnelTitle.Text" xml:space="preserve">
+    <value>Tunnel SSH</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpProxyTitle.Text" xml:space="preserve">
+    <value>Proxy de confiance / Tailscale</value>
+  </data>
+  <data name="ConnectionPage_RemoteSetupHelpAuthTitle.Text" xml:space="preserve">
+    <value>Authentification</value>
+  </data>
 </root>

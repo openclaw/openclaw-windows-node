@@ -103,6 +103,34 @@ public class SetupCodeFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplySetupCode_WithSshTunnel_PersistsTunnelConfig()
+    {
+        var json = """{"url":"ws://gateway.example.com:18789","bootstrapToken":"boot-tok-ssh"}""";
+        var code = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
+        var sshTunnel = new SshTunnelConfig(
+            "operator",
+            "ssh.example.com",
+            RemotePort: 18789,
+            LocalPort: 18791,
+            IncludeBrowserProxyForward: true,
+            SshPort: 2222);
+
+        var resolver = new CredentialResolver(new FakeIdentityReader());
+        var factory = new RecordingClientFactory();
+        var manager = new GatewayConnectionManager(
+            resolver, factory, _registry, NullLogger.Instance);
+
+        var result = await manager.ApplySetupCodeAsync(code, sshTunnel);
+
+        Assert.Equal(SetupCodeOutcome.Success, result.Outcome);
+        var active = _registry.GetActive();
+        Assert.NotNull(active);
+        Assert.Equal(sshTunnel, active.SshTunnel);
+
+        manager.Dispose();
+    }
+
+    [Fact]
     public async Task ApplySetupCode_WithExistingCredential_ForcesBootstrapForImmediatePairing()
     {
         // First, apply a setup code to create the gateway record

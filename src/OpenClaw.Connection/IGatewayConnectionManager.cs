@@ -46,7 +46,7 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
     Task EnsureNodeConnectedAsync(CancellationToken cancellationToken = default);
 
     // ─── Setup ───
-    Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode);
+    Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode, SshTunnelConfig? sshTunnel = null);
     Task<SetupCodeResult> ConnectWithSharedTokenAsync(string gatewayUrl, string token, SshTunnelConfig? sshTunnel = null);
 
     // ─── Operator Client Access ───

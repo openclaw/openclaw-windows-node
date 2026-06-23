@@ -105,6 +105,14 @@ internal enum RecoveryCategory
     Network,
     Server,
     Tunnel,
+    /// <summary>Authenticated but missing a required scope — re-pair for higher scopes.</summary>
+    Scope,
+    /// <summary>Stored device token rotated/revoked — re-pair to repair.</summary>
+    TokenDrift,
+    /// <summary>TLS/cleartext transport problem — switch to wss:// or a tunnel.</summary>
+    Tls,
+    /// <summary>Gateway is temporarily rate-limiting this client.</summary>
+    RateLimited,
 }
 
 /// <summary>
@@ -449,6 +457,85 @@ internal sealed record ConnectionPagePlan
                 RelevantGatewayId = rec?.Id,
             },
 
+            // Stored device token rotated/revoked — the fix is to re-pair, not
+            // retry. Same paste-setup-code affordance as Auth, clearer copy.
+            RecoveryCategory.TokenDrift => new ConnectionPagePlan
+            {
+                Mode = ConnectionPageMode.Recovery,
+                Recovery = RecoveryCategory.TokenDrift,
+                StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusErr,
+                StripAccent = ConnectionAccent.Critical,
+                StripHeadline = "Device needs re-pairing",
+                StripSub = string.IsNullOrEmpty(err)
+                    ? $"The saved device token for {name} is no longer trusted by the gateway."
+                    : err,
+                StripPrimaryLabel = null,
+                StripPrimaryAction = ConnectionPrimaryAction.None,
+                ActiveGatewayDisplayName = name,
+                ActiveGatewayDetailLine = url,
+                ActiveGatewayHasSshTunnel = rec?.SshTunnel != null,
+                RelevantGatewayId = rec?.Id,
+            },
+
+            // Authenticated but under-privileged — re-pair to request the scopes
+            // this device needs (e.g. operator.admin / operator.pairing).
+            RecoveryCategory.Scope => new ConnectionPagePlan
+            {
+                Mode = ConnectionPageMode.Recovery,
+                Recovery = RecoveryCategory.Scope,
+                StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.Lock,
+                StripAccent = ConnectionAccent.Critical,
+                StripHeadline = "Not enough access",
+                StripSub = string.IsNullOrEmpty(err)
+                    ? $"This device is connected but lacks the scopes it needs on {name}."
+                    : err,
+                StripPrimaryLabel = null,
+                StripPrimaryAction = ConnectionPrimaryAction.None,
+                ActiveGatewayDisplayName = name,
+                ActiveGatewayDetailLine = url,
+                ActiveGatewayHasSshTunnel = rec?.SshTunnel != null,
+                RelevantGatewayId = rec?.Id,
+            },
+
+            // TLS/cleartext transport problem — steer toward wss:// or a tunnel.
+            RecoveryCategory.Tls => new ConnectionPagePlan
+            {
+                Mode = ConnectionPageMode.Recovery,
+                Recovery = RecoveryCategory.Tls,
+                StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusErr,
+                StripAccent = ConnectionAccent.Critical,
+                StripHeadline = "Secure connection failed",
+                StripSub = string.IsNullOrEmpty(err)
+                    ? "The gateway's transport could not be secured."
+                    : err,
+                StripPrimaryLabel = "Retry",
+                StripPrimaryAction = ConnectionPrimaryAction.Retry,
+                RecoveryDetail = err,
+                ActiveGatewayDisplayName = name,
+                ActiveGatewayDetailLine = url,
+                ActiveGatewayHasSshTunnel = rec?.SshTunnel != null,
+                RelevantGatewayId = rec?.Id,
+            },
+
+            RecoveryCategory.RateLimited => new ConnectionPagePlan
+            {
+                Mode = ConnectionPageMode.Recovery,
+                Recovery = RecoveryCategory.RateLimited,
+                StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusWarn,
+                StripAccent = ConnectionAccent.Caution,
+                StripHeadline = "Too many failed attempts",
+                StripSub = string.IsNullOrEmpty(err)
+                    ? "The gateway is temporarily limiting connection attempts from this client."
+                    : err,
+                StripPrimaryLabel = null,
+                StripPrimaryAction = ConnectionPrimaryAction.None,
+                RecoveryDetail = err,
+                ActiveGatewayDisplayName = name,
+                ActiveGatewayDetailLine = url,
+                ActiveGatewayHasSshTunnel = rec?.SshTunnel != null,
+                RelevantGatewayId = rec?.Id,
+            },
+
             RecoveryCategory.Tunnel => new ConnectionPagePlan
             {
                 Mode = ConnectionPageMode.Recovery,
@@ -708,20 +795,24 @@ internal sealed record ConnectionPagePlan
 
     private static RecoveryCategory ClassifyError(string err)
     {
-        if (string.IsNullOrEmpty(err)) return RecoveryCategory.Network;
-        var e = err.ToLowerInvariant();
-
-        if (e.Contains("auth") || e.Contains("token") || e.Contains("unauthor") || e.Contains("forbid"))
-            return RecoveryCategory.Auth;
-
-        if (e.Contains("ssh") || e.Contains("tunnel"))
-            return RecoveryCategory.Tunnel;
-
-        if (e.Contains("500") || e.Contains("502") || e.Contains("503") ||
-            e.Contains("internal") || e.Contains("server"))
-            return RecoveryCategory.Server;
-
-        return RecoveryCategory.Network;
+        // Delegate the heuristic matching to the pure, unit-tested Shared
+        // classifier so the same kinds drive both setup and recovery copy.
+        return OpenClaw.Shared.GatewayErrorClassifier.Classify(err) switch
+        {
+            OpenClaw.Shared.GatewayErrorKind.ScopeMismatch => RecoveryCategory.Scope,
+            OpenClaw.Shared.GatewayErrorKind.TokenDrift => RecoveryCategory.TokenDrift,
+            OpenClaw.Shared.GatewayErrorKind.Auth => RecoveryCategory.Auth,
+            OpenClaw.Shared.GatewayErrorKind.Tls => RecoveryCategory.Tls,
+            OpenClaw.Shared.GatewayErrorKind.Tunnel => RecoveryCategory.Tunnel,
+            OpenClaw.Shared.GatewayErrorKind.Server => RecoveryCategory.Server,
+            OpenClaw.Shared.GatewayErrorKind.RateLimited => RecoveryCategory.RateLimited,
+            OpenClaw.Shared.GatewayErrorKind.PairingRejected => RecoveryCategory.Auth,
+            // PairingRequired is normally driven by snapshot state, not the
+            // error string; if it surfaces here, the Auth re-pair path is the
+            // closest actionable fit. Network / Unknown → Network.
+            OpenClaw.Shared.GatewayErrorKind.PairingRequired => RecoveryCategory.Auth,
+            _ => RecoveryCategory.Network,
+        };
     }
 
     private static string FormatUptime(long uptimeMs)

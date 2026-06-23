@@ -602,6 +602,11 @@
                                             Click="OnApplyRepairCode"
                                             AutomationProperties.AutomationId="RecoveryApplyRepair"/>
                                 </Grid>
+                                <TextBlock x:Name="RecoveryRepairResultText"
+                                           Visibility="Collapsed"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="RecoveryRepairResult"/>
                             </StackPanel>
                         </Border>
 
@@ -946,11 +951,82 @@
                                  Header="Shared token"
                                  PlaceholderText="Paste shared gateway token"
                                  AutomationProperties.AutomationId="AddDirectToken"/>
+                        <TextBlock x:Uid="ConnectionPage_TokenOrPasswordHint" x:Name="DirectAuthHintText"
+                                   Text="Paste a shared gateway token, or leave it blank to pair with a setup code."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
                         <TextBox x:Uid="ConnectionPage_NameOptional" x:Name="DirectNameBox"
                                  Header="Name (optional)"
                                  PlaceholderText="My gateway"
                                  AutomationProperties.AutomationId="AddDirectName"/>
                     </StackPanel>
+
+                    <!-- Remote gateway setup help — a lightweight info link that
+                         opens a TeachingTip. Deliberately NOT an Expander so it
+                         reads as guidance and is visually distinct from the
+                         functional "Use SSH tunnel" input section below. -->
+                    <HyperlinkButton x:Name="AddRemoteHelpLink"
+                                     Padding="0" FontSize="13"
+                                     Click="OnRemoteHelpClick"
+                                     AutomationProperties.AutomationId="AddRemoteHelpLink">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.About, Mode=OneTime}"
+                                      FontSize="14" VerticalAlignment="Center"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                            <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpLink"
+                                       Text="How do I connect to a remote gateway?"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </HyperlinkButton>
+
+                    <TeachingTip x:Name="AddRemoteHelpTip"
+                                 Target="{x:Bind AddRemoteHelpLink}"
+                                 x:Uid="ConnectionPage_RemoteSetupHelpTip"
+                                 Title="Connecting to a remote gateway"
+                                 PreferredPlacement="Bottom"
+                                 IsLightDismissEnabled="True">
+                        <TeachingTip.Content>
+                            <StackPanel Spacing="12" Margin="0,8,0,0">
+                                <StackPanel Spacing="2">
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpDirectTitle"
+                                               Text="Direct (TLS)" FontWeight="SemiBold"/>
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpDirect"
+                                               Text="Connect to wss:// or https:// when the gateway has a trusted certificate. Your token is encrypted in transit after certificate validation."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpTunnelTitle"
+                                               Text="SSH tunnel" FontWeight="SemiBold"/>
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpTunnel"
+                                               Text="When the gateway only listens on localhost, expand &quot;Use SSH tunnel&quot; below. The tray forwards a local port over SSH so traffic stays encrypted."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpProxyTitle"
+                                               Text="Trusted proxy / Tailscale" FontWeight="SemiBold"/>
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpProxy"
+                                               Text="If a Tailscale or reverse proxy already encrypts the path, a plain ws:// URL over that private network is fine."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpAuthTitle"
+                                               Text="Auth" FontWeight="SemiBold"/>
+                                    <TextBlock x:Uid="ConnectionPage_RemoteSetupHelpAuth"
+                                               Text="Paste a shared token, or leave it blank and pair with a setup code. Re-pairing also upgrades this device's scopes."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </TeachingTip.Content>
+                    </TeachingTip>
 
                     <!-- Setup code pane -->
                     <StackPanel x:Name="AddSetupCodePane" Spacing="8" Visibility="Collapsed">
@@ -1013,10 +1089,20 @@
                                    Visibility="Collapsed"/>
                     </StackPanel>
 
+                    <!-- Transport-security advice — populated in code-behind
+                         from RemoteGatewayClassifier for the active method's
+                         URL (Direct field or decoded setup code). -->
+                    <InfoBar x:Name="AddSecurityAdviceBar"
+                             IsOpen="False" IsClosable="False"
+                             Severity="Informational"
+                             AutomationProperties.AutomationId="AddSecurityAdvice"/>
+
                     <!-- Per-gateway SSH tunnel — saved with the gateway record -->
                     <Expander x:Name="AddSshExpander"
                               HorizontalAlignment="Stretch"
                               HorizontalContentAlignment="Stretch"
+                              Expanding="OnAddSshExpanding"
+                              Collapsed="OnAddSshCollapsed"
                               IsExpanded="False">
                         <Expander.Header>
                             <TextBlock x:Uid="ConnectionPage_UseSSHTunnelOptional" Text="Use SSH tunnel (optional)"
@@ -1032,10 +1118,12 @@
                                 <TextBox x:Uid="ConnectionPage_SSHUser" Grid.Column="0"
                                          x:Name="AddSshUserBox"
                                          Header="SSH user"
+                                         TextChanged="OnAddSshFieldChanged"
                                          PlaceholderText="user"/>
                                 <TextBox x:Uid="ConnectionPage_SSHHost" Grid.Column="1"
                                          x:Name="AddSshHostBox"
                                          Header="SSH host"
+                                         TextChanged="OnAddSshFieldChanged"
                                          PlaceholderText="machine-name"/>
                             </Grid>
                             <Grid ColumnSpacing="8">
