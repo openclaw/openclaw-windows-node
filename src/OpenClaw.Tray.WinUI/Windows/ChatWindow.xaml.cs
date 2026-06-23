@@ -28,6 +28,7 @@ public sealed partial class ChatWindow : WindowEx
     private IChatDataProvider? _mountedProvider;
     private bool _webViewInitialized;
     private bool _webViewMode;
+    private bool _shownNearTray;
     public bool IsClosed { get; private set; }
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
@@ -103,7 +104,7 @@ public sealed partial class ChatWindow : WindowEx
             escAccel.Invoked += (_, args) =>
             {
                 args.Handled = true;
-                this.Hide();
+                HideNearTray();
             };
             contentRoot.KeyboardAccelerators.Add(escAccel);
             // Suppress the default "Esc" tooltip that WinUI shows for
@@ -188,11 +189,13 @@ public sealed partial class ChatWindow : WindowEx
         LoadingRing.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
         TryMountFunctionalChat();
+        UpdateNativeChatSurfaceActive();
     }
 
     private void ShowWebViewSurface()
     {
         _webViewMode = true;
+        UpdateNativeChatSurfaceActive();
 
         // Tear down native chat so the WebView2 owns the row.
         DisposeFunctionalHost();
@@ -403,6 +406,7 @@ public sealed partial class ChatWindow : WindowEx
         {
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ChatHost.Visibility = Visibility.Visible;
+            UpdateNativeChatSurfaceActive();
             return;
         }
 
@@ -412,6 +416,7 @@ public sealed partial class ChatWindow : WindowEx
         {
             PlaceholderPanel.Visibility = Visibility.Visible;
             ChatHost.Visibility = Visibility.Collapsed;
+            UpdateNativeChatSurfaceActive();
             return;
         }
 
@@ -430,6 +435,7 @@ public sealed partial class ChatWindow : WindowEx
             initialMuted: appInstance?.Settings?.VoiceTtsEnabled == false,
             isCompact: true);
         _mountedProvider = provider;
+        UpdateNativeChatSurfaceActive();
     }
 
     private void DisposeFunctionalHost()
@@ -437,8 +443,27 @@ public sealed partial class ChatWindow : WindowEx
         var host = _functionalHost;
         _functionalHost = null;
         _mountedProvider = null;
+        UpdateNativeChatSurfaceActive();
         try { host?.Dispose(); }
         catch (Exception ex) { Logger.Debug($"ChatWindow: functional host dispose tear-down race: {ex.Message}"); }
+    }
+
+    private void SetShownNearTray(bool shown)
+    {
+        _shownNearTray = shown;
+        UpdateNativeChatSurfaceActive();
+    }
+
+    public void HideNearTray()
+    {
+        SetShownNearTray(false);
+        this.Hide();
+    }
+
+    private void UpdateNativeChatSurfaceActive()
+    {
+        if (App.Current is App app)
+            app.SetTrayNativeChatSurfaceActive(_shownNearTray && !_webViewMode && _functionalHost is not null);
     }
 
     private void EagerlyLoadChatHistory()
@@ -655,7 +680,7 @@ public sealed partial class ChatWindow : WindowEx
         // Pinned via Chat exploration panel — keep open so the user can
         // preview backdrop/composer changes side-by-side.
         if (ChatWindowPinState.IsPinned) return;
-        this.Hide();
+        HideNearTray();
     }
 
     private static Microsoft.UI.Xaml.Controls.TextBox? FindFirstFocusableTextBox(DependencyObject root)
@@ -673,7 +698,7 @@ public sealed partial class ChatWindow : WindowEx
 
     private void OnCloseClick(object sender, RoutedEventArgs e)
     {
-        this.Hide();
+        HideNearTray();
     }
 
     /// <summary>Position near the system tray and show with animation.</summary>
@@ -703,6 +728,11 @@ public sealed partial class ChatWindow : WindowEx
         const uint SWP_NOACTIVATE = 0x0010;
         SetWindowPos(hwnd, IntPtr.Zero, x, y, panelWPx, panelHPx, SWP_NOZORDER | SWP_NOACTIVATE);
 
+        // Mark active before remount/show work below can pump messages; otherwise
+        // an approval arriving during this narrow window may choose native fallback
+        // even though the tray chat is already in the process of opening.
+        SetShownNearTray(true);
+
         // Provider may have arrived after construction — re-apply surface so
         // a native-mode window swaps placeholder → live tree on first show.
         ApplyChatSurface();
@@ -710,7 +740,7 @@ public sealed partial class ChatWindow : WindowEx
         // Eagerly load chat history so the tray popup renders messages
         // immediately instead of showing the zero-state while history loads.
         EagerlyLoadChatHistory();
-
+        this.Show();
         this.Show();
         SetForegroundWindow(hwnd);
         RequestChatInputFocus();
@@ -723,7 +753,7 @@ public sealed partial class ChatWindow : WindowEx
     {
         // Intercept close → hide instead (keeps native chat state warm).
         args.Handled = true;
-        this.Hide();
+        HideNearTray();
     }
 
     /// <summary>Actually close and dispose (called on app shutdown).</summary>
@@ -738,6 +768,7 @@ public sealed partial class ChatWindow : WindowEx
         }
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
         IsClosed = true;
+        SetShownNearTray(false);
         DisposeFunctionalHost();
         Close();
     }
@@ -749,7 +780,7 @@ public sealed partial class ChatWindow : WindowEx
         try
         {
             (App.Current as App)?.ShowHub("chat");
-            this.Hide();
+            HideNearTray();
         }
         catch (Exception ex)
         {

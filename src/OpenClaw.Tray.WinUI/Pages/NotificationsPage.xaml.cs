@@ -11,6 +11,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class NotificationsPage : Page
 {
+    private static App CurrentApp => (App)Application.Current!;
     private readonly ObservableCollection<NotificationItemViewModel> _notificationItems = new();
     private AppNotificationService? _notificationService;
 
@@ -76,12 +77,37 @@ public sealed partial class NotificationsPage : Page
         _notificationService?.Dismiss(notificationId);
     }
 
+    private void OnNotificationActionClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: NotificationItemViewModel item })
+            return;
+
+        if (string.IsNullOrWhiteSpace(item.ActionRoute))
+            return;
+
+        if (AppNotificationActionRoutes.TryGetChatSessionKey(item.ActionRoute, out var sessionKey))
+        {
+            CurrentApp.PendingChatSessionKey = sessionKey;
+            if (CurrentApp.ActiveHubWindow is OpenClawTray.Windows.HubWindow hub)
+                hub.PendingChatSessionKey = sessionKey;
+            ((IAppCommands)CurrentApp).Navigate("chat");
+            _notificationService?.Dismiss(item.Id);
+            return;
+        }
+
+        ((IAppCommands)CurrentApp).Navigate(item.ActionRoute);
+        _notificationService?.Dismiss(item.Id);
+    }
+
     private sealed record NotificationItemViewModel(
         string Id,
         string SeverityGlyph,
         string Title,
         string Message,
         string Metadata,
+        string? ActionLabel,
+        string? ActionRoute,
+        Visibility ActionVisibility,
         string OccurrenceText,
         Visibility OccurrenceVisibility,
         string DismissAutomationName)
@@ -106,6 +132,12 @@ public sealed partial class NotificationsPage : Page
                 notification.Title,
                 notification.Message,
                 string.Join(" - ", metadata),
+                notification.ActionLabel,
+                notification.ActionRoute,
+                !string.IsNullOrWhiteSpace(notification.ActionLabel) &&
+                !string.IsNullOrWhiteSpace(notification.ActionRoute)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed,
                 occurrenceText,
                 notification.OccurrenceCount > 1 ? Visibility.Visible : Visibility.Collapsed,
                 LocalizationHelper.Format("NotificationsPage_DismissAutomationNameFormat", notification.Title));

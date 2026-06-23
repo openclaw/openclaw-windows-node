@@ -29,6 +29,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly Func<FrameworkElement?> _rootProvider;
     private readonly Func<OpenClawChatDataProvider?> _chatProviderProvider;
+    private readonly Func<string, bool> _inlineApprovalAvailable;
     private readonly SettingsManager? _settings;
     private readonly SemaphoreSlim _consentLock = new(1, 1);
     private readonly object _disposeLock = new();
@@ -170,6 +171,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
     public event EventHandler<ToastContentBuilder>? ToastRequested;
+    public event EventHandler<ExecApprovalPromptRequestedEventArgs>? LocalExecApprovalRequested;
     public event EventHandler<ExecApprovalPromptDecidedEventArgs>? LocalExecApprovalDecided;
     
     public bool IsScreenRecording { get; private set; }
@@ -196,6 +198,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         string dataPath,
         Func<FrameworkElement?>? rootProvider = null,
         Func<OpenClawChatDataProvider?>? chatProviderProvider = null,
+        Func<string, bool>? inlineApprovalAvailable = null,
         SettingsManager? settings = null,
         bool enableMcpServer = false,
         string? identityDataPath = null,
@@ -214,6 +217,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _activeGatewayUrlResolver = activeGatewayUrlResolver;
         _rootProvider = rootProvider ?? (() => null);
         _chatProviderProvider = chatProviderProvider ?? (() => null);
+        _inlineApprovalAvailable = inlineApprovalAvailable ?? (_ => false);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
@@ -307,7 +311,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _systemCapability.PolicyAutoDecided += OnLocalExecApprovalDecided;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
-        var execPrompt = new ExecApprovalPromptService(_dispatcherQueue, _rootProvider, _logger, _chatProviderProvider);
+        var execPrompt = new ExecApprovalPromptService(
+            _dispatcherQueue,
+            _rootProvider,
+            _logger,
+            _chatProviderProvider,
+            _inlineApprovalAvailable);
+        execPrompt.InlineApprovalRequested += OnLocalExecApprovalRequested;
         execPrompt.Decided += OnLocalExecApprovalDecided;
         _systemCapability.SetPromptHandler(execPrompt);
         Register(_systemCapability);
@@ -1014,6 +1024,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _dispatcherQueue.TryEnqueue(() =>
         {
             LocalExecApprovalDecided?.Invoke(this, args);
+        });
+    }
+
+    private void OnLocalExecApprovalRequested(object? sender, ExecApprovalPromptRequestedEventArgs args)
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            LocalExecApprovalRequested?.Invoke(this, args);
         });
     }
     

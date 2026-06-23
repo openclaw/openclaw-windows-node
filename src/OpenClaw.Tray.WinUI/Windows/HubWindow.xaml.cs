@@ -249,7 +249,19 @@ public sealed partial class HubWindow : WindowEx
 
         if (_currentAppNotification?.ActionRoute is { Length: > 0 } route)
         {
-            NavigateTo(route);
+            if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
+            {
+                CurrentApp.PendingChatSessionKey = sessionKey;
+                PendingChatSessionKey = sessionKey;
+                if (CurrentPage is ChatPage chatPage)
+                    chatPage.SelectSession(sessionKey!);
+                else
+                    NavigateTo("chat");
+            }
+            else
+            {
+                NavigateTo(route);
+            }
             _appNotificationService?.Dismiss(_currentAppNotification.Id);
             return;
         }

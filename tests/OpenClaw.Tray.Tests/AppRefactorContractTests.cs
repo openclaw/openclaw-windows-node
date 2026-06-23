@@ -136,6 +136,17 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void PermissionsPage_ExecPolicy_UsesAppDataDirectory()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs"));
+
+        Assert.Contains("Path.Combine(CurrentApp.DataDirectoryPath, \"exec-policy.json\")", source);
+        Assert.DoesNotContain("SpecialFolder.LocalApplicationData", source);
+        Assert.DoesNotContain("SettingsManager.SettingsDirectoryPath, \"exec-policy.json\"", source);
+    }
+
+    [Fact]
     public void Shutdown_Order_PreservesAwaitedTeardownBeforeExit()
     {
         var source = ReadAppSources();

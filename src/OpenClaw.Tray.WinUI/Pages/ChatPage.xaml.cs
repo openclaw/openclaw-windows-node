@@ -30,6 +30,7 @@ public sealed partial class ChatPage : Page
     private string? _chatUrl;
     private bool _webViewInitialized;
     private bool _webViewMode;
+    private bool _pageActive;
     private bool _navigationStarted;
     private CancellationTokenSource? _navigationCts;
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navCompletedHandler;
@@ -51,6 +52,9 @@ public sealed partial class ChatPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        _pageActive = false;
+        UpdateNativeChatSurfaceActive();
+
         // Don't tear down the native chat host — preserve it across page
         // navigations so that scroll position, selected session, and loaded
         // history survive. ShowFunctionalSurface's _mountedProvider check
@@ -111,6 +115,7 @@ public sealed partial class ChatPage : Page
 
     public void Initialize()
     {
+        _pageActive = true;
         _hub = CurrentApp.ActiveHubWindow as HubWindow;
 
         // Compute a "open in browser" URL once so the toolbar button works
@@ -163,6 +168,17 @@ public sealed partial class ChatPage : Page
         }
 
         _ = dispatcher.TryEnqueue(ApplyChatSurface);
+    }
+
+    internal void SelectSession(string sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey))
+            return;
+
+        if (_hub is not null)
+            _hub.PendingChatSessionKey = sessionKey;
+        CurrentApp.PendingChatSessionKey = sessionKey;
+        ApplyChatSurface();
     }
 
     private void ApplyChatSurface()
@@ -237,6 +253,7 @@ public sealed partial class ChatPage : Page
         {
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ChatHost.Visibility = Visibility.Visible;
+            UpdateNativeChatSurfaceActive();
             // Check for pending auto-start voice even when already mounted
             if (_hub?.PendingAutoStartVoice == true)
             {
@@ -258,6 +275,7 @@ public sealed partial class ChatPage : Page
 
             PlaceholderPanel.Visibility = Visibility.Visible;
             ChatHost.Visibility = Visibility.Collapsed;
+            UpdateNativeChatSurfaceActive();
             return;
         }
 
@@ -277,6 +295,7 @@ public sealed partial class ChatPage : Page
             suppressAutoDispose: true);
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
+        UpdateNativeChatSurfaceActive();
 
         // If the V hotkey (or another caller) requested auto-start voice,
         // trigger it after the UI thread processes the mount (composer needs
@@ -312,6 +331,7 @@ public sealed partial class ChatPage : Page
         DisposeFunctionalHost();
 
         ChatHost.Visibility = Visibility.Collapsed;
+        UpdateNativeChatSurfaceActive();
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ToolbarBorder.Visibility = Visibility.Visible;
         HomeButton.Visibility = Visibility.Visible;
@@ -391,8 +411,15 @@ public sealed partial class ChatPage : Page
         _functionalHost = null;
         _mountedProvider = null;
         _mountedThreadId = null;
+        UpdateNativeChatSurfaceActive();
         try { host?.Dispose(); }
         catch (Exception ex) { Logger.Debug($"ChatPage: functional host dispose tear-down race: {ex.Message}"); }
+    }
+
+    private void UpdateNativeChatSurfaceActive()
+    {
+        if (App.Current is App app)
+            app.SetHubNativeChatSurfaceActive(_pageActive && !_webViewMode && _functionalHost is not null);
     }
 
     private async Task InitializeWebViewAsync(SettingsManager settings)

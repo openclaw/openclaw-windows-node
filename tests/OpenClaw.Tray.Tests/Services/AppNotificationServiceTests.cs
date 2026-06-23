@@ -165,6 +165,20 @@ public sealed class AppNotificationServiceTests
     }
 
     [Fact]
+    public void DismissByDedupeKey_RemovesCurrentAndQueuedMatches()
+    {
+        var service = new AppNotificationService();
+        service.Show(Notification("First", "Message", dedupeKey: "same"));
+        service.Show(Notification("Second", "Message", dedupeKey: "other"));
+        service.Show(Notification("Third", "Message", dedupeKey: "same"));
+
+        service.DismissByDedupeKey("same");
+
+        Assert.Equal("Second", service.Snapshot.Current?.Title);
+        Assert.Empty(service.Snapshot.Queued);
+    }
+
+    [Fact]
     public void ClearAll_RemovesCurrentAndQueuedNotifications()
     {
         var service = new AppNotificationService();
@@ -234,6 +248,26 @@ public sealed class AppNotificationServiceTests
         Assert.Equal("Gateway", service.Snapshot.Current?.Title);
         Assert.Equal(0, service.Snapshot.PendingCount);
         Assert.Equal(["Gateway"], service.Snapshot.ActiveNotifications.Select(n => n.Title).ToArray());
+    }
+
+    [Fact]
+    public void AppNotificationActionRoutes_Chat_RoundTripsSessionKey()
+    {
+        var route = AppNotificationActionRoutes.Chat("agent:main:scratch session");
+
+        Assert.True(AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey));
+        Assert.Equal("agent:main:scratch session", sessionKey);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("chat:")]
+    [InlineData("settings")]
+    public void AppNotificationActionRoutes_TryGetChatSessionKey_RejectsNonChatRoutes(string? route)
+    {
+        Assert.False(AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey));
+        Assert.Null(sessionKey);
     }
 
     [Theory]

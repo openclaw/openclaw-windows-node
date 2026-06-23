@@ -114,6 +114,10 @@ public class LocalizationValidationTests
         "PermissionsPage_TtsStatus_DefaultProviderFormat",
         "PermissionsPage_TtsStatus_ElevenLabsSaved",
         "PermissionsPage_McpStatus_TokenReadFailedFormat",
+        // Session key display formatter: "{agent} / {slot}" intentionally
+        // uses an invariant separator while the surrounding notification copy
+        // and common labels ("Main chat") are localized.
+        "AppNotification_ExecApprovalPending_AgentSlotLabelFormat",
         // Chat runtime warning seeded English-only until translations land.
         "Chat_Composer_Placeholder_IncompatibleGateway",
         // InstancesPage / ConnectionPage new strings — seeded English across

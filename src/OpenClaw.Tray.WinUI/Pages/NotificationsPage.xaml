@@ -80,18 +80,22 @@
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                     </StackPanel>
 
-                                    <Button Grid.Column="2"
-                                            Tag="{Binding Id}"
-                                            AutomationProperties.Name="{Binding DismissAutomationName}"
-                                            Padding="8"
-                                            MinWidth="32"
-                                            MinHeight="32"
-                                            VerticalAlignment="Top"
-                                            Click="OnDismissNotificationClick">
-                                        <FontIcon Glyph="&#xE711;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="12"/>
-                                    </Button>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                                        <Button Content="{Binding ActionLabel}"
+                                                Tag="{Binding}"
+                                                Visibility="{Binding ActionVisibility}"
+                                                Click="OnNotificationActionClick"/>
+                                        <Button Tag="{Binding Id}"
+                                                AutomationProperties.Name="{Binding DismissAutomationName}"
+                                                Padding="8"
+                                                MinWidth="32"
+                                                MinHeight="32"
+                                                Click="OnDismissNotificationClick">
+                                            <FontIcon Glyph="&#xE711;"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="12"/>
+                                        </Button>
+                                    </StackPanel>
                                 </Grid>
                             </Border>
                         </DataTemplate>

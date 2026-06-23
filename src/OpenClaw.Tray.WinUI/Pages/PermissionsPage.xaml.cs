@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 
 namespace OpenClawTray.Pages;
@@ -572,9 +573,7 @@ public sealed partial class PermissionsPage : Page
         _loadingExecPolicy = true;
         try
         {
-            var policyPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "exec-policy.json");
+            var policyPath = ExecPolicyPath;
 
             if (File.Exists(policyPath))
             {
@@ -584,7 +583,7 @@ public sealed partial class PermissionsPage : Page
 
                 if (root.TryGetProperty("defaultAction", out var da))
                 {
-                    var action = NormalizeExecPolicyAction(da.GetString());
+                    var action = NormalizeExecPolicyAction(da);
                     for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
                     {
                         if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
@@ -603,16 +602,16 @@ public sealed partial class PermissionsPage : Page
                             // Accept either case — earlier saves wrote "Pattern" capitalized
                             // due to an anonymous-type property name leak.
                             Pattern = TryGetStringCaseInsensitive(rule, "pattern", "Pattern") ?? "",
-                            Action = NormalizeExecPolicyAction(TryGetStringCaseInsensitive(rule, "action", "Action")),
+                            Action = ExecPolicyRuleList.TryGetActionCaseInsensitive(rule, "action", "Action") ?? "deny",
+                            Shells = TryGetStringArrayCaseInsensitive(rule, "shells", "Shells"),
+                            Description = TryGetStringCaseInsensitive(rule, "description", "Description"),
+                            Enabled = TryGetBoolCaseInsensitive(rule, "enabled", "Enabled") ?? true,
                             Index = idx++
                         });
                     }
                 }
 
-                var removedDuplicateRules = ExecPolicyRuleList.CoalesceDuplicatePatterns(_policyRules);
                 RefreshPolicyRulesList();
-                if (removedDuplicateRules)
-                    SaveExecPolicyToDisk(showSavedHint: false);
             }
             else
             {
@@ -684,24 +683,34 @@ public sealed partial class PermissionsPage : Page
 
     private bool _loadingExecPolicy;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _execSavedHintTimer;
+    private static string ExecPolicyPath => Path.Combine(CurrentApp.DataDirectoryPath, "exec-policy.json");
 
     private void SaveExecPolicyToDisk(bool showSavedHint = true)
     {
         string? tmpPath = null;
         try
         {
-            var policyPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "exec-policy.json");
+            var policyPath = ExecPolicyPath;
 
             var defaultAction = NormalizeExecPolicyAction((DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString());
             var policy = new
             {
                 defaultAction,
-                rules = _policyRules.Select(r => new { pattern = r.Pattern, action = r.Action }).ToArray()
+                rules = _policyRules.Select(r => new
+                {
+                    pattern = r.Pattern,
+                    action = r.Action,
+                    shells = r.Shells,
+                    description = r.Description,
+                    enabled = ExecPolicyRuleList.PersistedEnabled(r.Enabled)
+                }).ToArray()
             };
 
-            var json = JsonSerializer.Serialize(policy, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(policy, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            });
             Directory.CreateDirectory(Path.GetDirectoryName(policyPath)!);
 
             // Atomic write: serialize to a sibling .tmp first, then replace.
@@ -778,14 +787,43 @@ public sealed partial class PermissionsPage : Page
         return null;
     }
 
-    private static string NormalizeExecPolicyAction(string? action)
+    internal static string NormalizeExecPolicyAction(string? action) =>
+        ExecPolicyRuleList.NormalizeAction(action);
+
+    private static string NormalizeExecPolicyAction(JsonElement action) =>
+        ExecPolicyRuleList.NormalizeAction(action);
+
+    private static string[]? TryGetStringArrayCaseInsensitive(JsonElement element, params string[] names)
     {
-        if (string.Equals(action, "allow", StringComparison.OrdinalIgnoreCase))
-            return "allow";
-        if (string.Equals(action, "prompt", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(action, "ask", StringComparison.OrdinalIgnoreCase))
-            return "prompt";
-        return "deny";
+        foreach (var name in names)
+        {
+            if (!element.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var values = new List<string>();
+            foreach (var item in prop.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                    values.Add(item.GetString() ?? "");
+            }
+
+            return values.ToArray();
+        }
+
+        return null;
+    }
+
+    private static bool? TryGetBoolCaseInsensitive(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!element.TryGetProperty(name, out var prop))
+                continue;
+            if (prop.ValueKind == JsonValueKind.True) return true;
+            if (prop.ValueKind == JsonValueKind.False) return false;
+        }
+
+        return null;
     }
 
     private static string DisplayExecPolicyAction(string action) =>

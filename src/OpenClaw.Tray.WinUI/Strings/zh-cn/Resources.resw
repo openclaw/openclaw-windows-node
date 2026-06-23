@@ -3055,7 +3055,7 @@
     <value>始终允许</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
-    <value>拒绝</value>
+    <value>拒绝一次</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>已允许</value>
@@ -3116,6 +3116,30 @@
   </data>
   <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
     <value>节点命令</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_Title" xml:space="preserve">
+    <value>命令批准待处理</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MessageFormat" xml:space="preserve">
+    <value>{0} 正在等待批准以运行：{1}</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_OpenChatAction" xml:space="preserve">
+    <value>打开聊天</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_UnknownChatLabel" xml:space="preserve">
+    <value>聊天</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MainSessionLabel" xml:space="preserve">
+    <value>主</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MainChatLabel" xml:space="preserve">
+    <value>主聊天</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_AgentChatLabelFormat" xml:space="preserve">
+    <value>{0} 聊天</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_AgentSlotLabelFormat" xml:space="preserve">
+    <value>{0} / {1}</value>
   </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>需要执行批准</value>

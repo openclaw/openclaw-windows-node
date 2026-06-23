@@ -1,4 +1,5 @@
 using OpenClawTray.Pages;
+using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -70,44 +71,34 @@ public sealed class ExecPolicyRuleListTests
             rule => Assert.Equal("rm *", rule.Pattern));
     }
 
-    [Fact]
-    public void CoalesceDuplicatePatterns_PreservesFirstEffectiveAction()
+    [Theory]
+    [InlineData("\"allow\"", "allow")]
+    [InlineData("\"ask\"", "prompt")]
+    [InlineData("\"prompt\"", "prompt")]
+    [InlineData("\"deny\"", "deny")]
+    [InlineData("0", "allow")]
+    [InlineData("1", "deny")]
+    [InlineData("2", "prompt")]
+    [InlineData("99", "deny")]
+    public void NormalizeExecPolicyAction_AcceptsLegacyStringAndNumericValues(string json, string expected)
     {
-        var rules = new List<ExecPolicyRule>
-        {
-            new() { Pattern = "cat *", Action = "allow" },
-            new() { Pattern = "del *", Action = "deny" },
-            new() { Pattern = "rm *", Action = "deny" },
-            new() { Pattern = "DEL *", Action = "prompt" },
-            new() { Pattern = " del * ", Action = "allow" }
-        };
+        using var doc = JsonDocument.Parse(json);
 
-        var changed = ExecPolicyRuleList.CoalesceDuplicatePatterns(rules);
-
-        Assert.True(changed);
-        Assert.Collection(
-            rules,
-            rule => Assert.Equal("cat *", rule.Pattern),
-            rule =>
-            {
-                Assert.Equal("del *", rule.Pattern);
-                Assert.Equal("deny", rule.Action);
-            },
-            rule => Assert.Equal("rm *", rule.Pattern));
+        Assert.Equal(expected, ExecPolicyRuleList.NormalizeAction(doc.RootElement));
     }
 
     [Fact]
-    public void CoalesceDuplicatePatterns_ReturnsFalseWithoutDuplicatePatterns()
+    public void TryGetExecPolicyActionCaseInsensitive_ReadsNumericAction()
     {
-        var rules = new List<ExecPolicyRule>
-        {
-            new() { Pattern = "cat *", Action = "allow" },
-            new() { Pattern = "del *", Action = "deny" }
-        };
+        using var doc = JsonDocument.Parse("""{"Action":2}""");
 
-        var changed = ExecPolicyRuleList.CoalesceDuplicatePatterns(rules);
+        Assert.Equal("prompt", ExecPolicyRuleList.TryGetActionCaseInsensitive(doc.RootElement, "action", "Action"));
+    }
 
-        Assert.False(changed);
-        Assert.Equal(2, rules.Count);
+    [Fact]
+    public void PersistedEnabled_OmitsDefaultTrueButPreservesFalse()
+    {
+        Assert.Null(ExecPolicyRuleList.PersistedEnabled(true));
+        Assert.False(ExecPolicyRuleList.PersistedEnabled(false));
     }
 }

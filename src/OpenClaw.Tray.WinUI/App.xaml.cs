@@ -22,6 +22,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -56,6 +57,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
     internal SettingsManager Settings => _settings ?? throw new InvalidOperationException("Settings are not initialized.");
+    internal string DataDirectoryPath => DataPath;
 
     /// <summary>The active hub window, exposed so pages can obtain an HWND for file pickers.</summary>
     internal Microsoft.UI.Xaml.Window? ActiveHubWindow => _hubWindow;
@@ -72,6 +74,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     public string? PendingChatSessionKey { get; set; }
 
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
+    private volatile bool _hubNativeChatSurfaceActive;
+    private volatile bool _trayNativeChatSurfaceActive;
+    internal bool IsNativeChatSurfaceActive => _hubNativeChatSurfaceActive || _trayNativeChatSurfaceActive;
+
+    internal void SetHubNativeChatSurfaceActive(bool active) => _hubNativeChatSurfaceActive = active;
+    internal void SetTrayNativeChatSurfaceActive(bool active) => _trayNativeChatSurfaceActive = active;
 
     /// <summary>
     /// Raised after the tray-wide settings have been saved (either via the
@@ -782,7 +790,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Toggle: if visible, hide; if hidden, show near tray
         if (_chatWindow.Visible)
         {
-            _chatWindow.Hide();
+            _chatWindow.HideNearTray();
         }
         else
         {
@@ -1821,6 +1829,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 DataPath,
                 rootProvider: () => _keepAliveWindow?.Content as FrameworkElement,
                 chatProviderProvider: () => _chatCoordinator?.Provider,
+                inlineApprovalAvailable: _ => IsNativeChatSurfaceActive,
                 settings: settings,
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
@@ -1835,6 +1844,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _nodeService.ChannelHealthUpdated += _gatewayService.OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
             _nodeService.GatewaySelfUpdated += _gatewayService.OnGatewaySelfUpdated;
+            _nodeService.LocalExecApprovalRequested += OnLocalExecApprovalRequested;
             _nodeService.LocalExecApprovalDecided += OnLocalExecApprovalDecided;
             return _nodeService;
         }
@@ -2267,8 +2277,45 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         => OnUiThread(() =>
             NonFatalAction.Run(() => _toastService!.ShowToast(builder), msg => Logger.Warn($"Failed to show node toast: {msg}")));
 
+    private void OnLocalExecApprovalRequested(object? sender, ExecApprovalPromptRequestedEventArgs args)
+    {
+        if (string.IsNullOrWhiteSpace(args.Request.SessionKey))
+            return;
+
+        try
+        {
+            _appNotificationService?.Show(new AppNotification
+            {
+                Id = BuildLocalApprovalPendingNotificationId(args.Request),
+                Title = LocalizationHelper.GetString("AppNotification_ExecApprovalPending_Title"),
+                Message = BuildLocalApprovalPendingNotificationMessage(args.Request),
+                Source = "exec-approval",
+                Category = "node.invoke",
+                Severity = AppNotificationSeverity.Warning,
+                DedupeKey = BuildLocalApprovalPendingDedupeKey(args.Request),
+                ActionLabel = LocalizationHelper.GetString("AppNotification_ExecApprovalPending_OpenChatAction"),
+                ActionRoute = AppNotificationActionRoutes.Chat(args.Request.SessionKey!)
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to post pending exec-approval app notification: {ex.Message}");
+        }
+    }
+
     private void OnLocalExecApprovalDecided(object? sender, ExecApprovalPromptDecidedEventArgs args)
     {
+        try { _appNotificationService?.Dismiss(BuildLocalApprovalPendingNotificationId(args.Request)); }
+        catch (Exception ex) { Logger.Debug($"Failed to dismiss pending exec-approval notification: {ex.Message}"); }
+
+        if (args.Source is ExecApprovalPromptDecisionSource.UserAllowOnce
+            or ExecApprovalPromptDecisionSource.UserAlwaysAllow)
+        {
+            try { _appNotificationService?.DismissByDedupeKey(BuildLocalDenyDedupeKey(args.Request)); }
+            catch (Exception ex) { Logger.Debug($"Failed to dismiss stale denied exec-approval notification: {ex.Message}"); }
+            return;
+        }
+
         if (args.Source is not (ExecApprovalPromptDecisionSource.UserDeny
             or ExecApprovalPromptDecisionSource.PolicyAutoDeny))
             return;
@@ -2289,6 +2336,77 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Logger.Warn($"Failed to post local-deny app notification: {ex.Message}");
         }
     }
+
+    private static string BuildLocalApprovalPendingNotificationMessage(ExecApprovalPromptRequest request)
+    {
+        var session = FormatSessionKeyForNotification(request.SessionKey);
+        var command = string.IsNullOrWhiteSpace(request.Command)
+            ? LocalizationHelper.GetString("AppNotification_LocalCommandDenied_UnknownCommandSubject")
+            : CompactNotificationText(request.Command.Trim());
+        return LocalizationHelper.Format(
+            "AppNotification_ExecApprovalPending_MessageFormat",
+            session,
+            command);
+    }
+
+    private static string FormatSessionKeyForNotification(string? sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey))
+            return LocalizationHelper.GetString("AppNotification_ExecApprovalPending_UnknownChatLabel");
+
+        var parts = sessionKey.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length >= 3 && string.Equals(parts[0], "agent", StringComparison.OrdinalIgnoreCase))
+        {
+            var agent = FormatSessionSegment(parts[1]);
+            var slot = FormatSessionSegment(parts[2]);
+            var main = LocalizationHelper.GetString("AppNotification_ExecApprovalPending_MainSessionLabel");
+            var isMainAgent = string.Equals(parts[1], "main", StringComparison.OrdinalIgnoreCase);
+            var isMainSlot = string.Equals(parts[2], "main", StringComparison.OrdinalIgnoreCase);
+            var isDefaultSlot = string.Equals(parts[2], "default", StringComparison.OrdinalIgnoreCase);
+
+            if (isMainAgent && isMainSlot)
+                return LocalizationHelper.GetString("AppNotification_ExecApprovalPending_MainChatLabel");
+
+            if (isMainSlot || isDefaultSlot)
+            {
+                return LocalizationHelper.Format(
+                    "AppNotification_ExecApprovalPending_AgentChatLabelFormat",
+                    isMainAgent ? main : agent);
+            }
+
+            return LocalizationHelper.Format(
+                "AppNotification_ExecApprovalPending_AgentSlotLabelFormat",
+                isMainAgent ? main : agent,
+                slot);
+        }
+
+        return CompactNotificationText(sessionKey);
+    }
+
+    private static string FormatSessionSegment(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return LocalizationHelper.GetString("AppNotification_ExecApprovalPending_UnknownChatLabel");
+
+        var words = value.Replace('-', ' ').Replace('_', ' ');
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(words.ToLower(CultureInfo.CurrentCulture));
+    }
+
+    private static string BuildLocalApprovalPendingNotificationId(ExecApprovalPromptRequest request) =>
+        "exec-approval-pending-" + HashNotificationKey(BuildLocalApprovalPendingDedupeKey(request));
+
+    private static string BuildLocalApprovalPendingDedupeKey(ExecApprovalPromptRequest request)
+    {
+        return string.Join("|",
+            "exec-approval-pending",
+            request.SessionKey ?? "",
+            request.CorrelationId ?? "",
+            request.Command ?? "",
+            request.Shell ?? "");
+    }
+
+    private static string HashNotificationKey(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private static string BuildLocalDenyNotificationMessage(ExecApprovalPromptRequest request)
     {

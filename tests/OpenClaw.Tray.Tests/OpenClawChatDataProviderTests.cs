@@ -3664,6 +3664,24 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ResolvedEcho_WithExpiredPhaseAndAllowDecision_StaysExpired()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-echo-expired-allow"));
+        bridge.RaiseAgent(MakeApprovalResolvedEvent(
+            "appr-echo-expired-allow",
+            phase: "expired",
+            decision: ChatPermissionActionKeys.AllowAlways));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Expired, entry.PermissionDecision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
     public async Task ApprovalRequested_DedupesUuidFirstSlugTwin_AndSlugOnlyResolvedClearsBanner()
     {
         // Regression for the second "one Expired, one Allowed" root cause:
@@ -3755,8 +3773,36 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(ChatPermissionDecision.AllowedAlways, decidedEntry.PermissionDecision);
         Assert.Contains(decidedTimeline.Entries, e =>
             e.Kind == ChatTimelineItemKind.Status &&
-            e.Text.Contains("allow-always", StringComparison.Ordinal) &&
-            e.Text.Contains("local-abc12345", StringComparison.Ordinal));
+            e.Text.Contains("Always allow", StringComparison.Ordinal) &&
+            e.Text.Contains("del \"E:\\Temp\\sample.txt\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LocalExecApproval_TimeoutExpiresEntryAndCompletesAsTimedOutDeny()
+    {
+        var (_, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        var promptTask = provider.RequestLocalExecApprovalAsync(new ExecApprovalPromptRequest
+        {
+            Command = "tasklist",
+            Shell = "cmd",
+            SessionKey = "main",
+            CorrelationId = "timeout1"
+        }, approvalTimeout: TimeSpan.FromMilliseconds(10));
+
+        var decision = await promptTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.NotNull(decision);
+        Assert.Equal(ExecApprovalPromptDecisionKind.Deny, decision!.Kind);
+        Assert.Equal(ExecApprovalPromptDecision.TimedOutReason, decision.Reason);
+
+        var timedOutTimeline = snapshots[^1].Timelines["main"];
+        var timedOutEntry = Assert.Single(timedOutTimeline.Entries,
+            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
+        Assert.Equal(ChatPermissionDecision.Expired, timedOutEntry.PermissionDecision);
+        Assert.Null(timedOutTimeline.PendingPermission);
     }
 
     private static AgentEventInfo MakeApprovalResolvedEvent(

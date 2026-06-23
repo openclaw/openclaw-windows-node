@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace OpenClawTray.Pages;
 
@@ -8,10 +9,55 @@ internal sealed class ExecPolicyRule
     public string Pattern { get; set; } = "";
     public string Action { get; set; } = "deny";
     public int Index { get; set; }
+    public string[]? Shells { get; set; }
+    public string? Description { get; set; }
+    public bool Enabled { get; set; } = true;
 }
 
 internal static class ExecPolicyRuleList
 {
+    public static string NormalizeAction(string? action)
+    {
+        if (string.Equals(action, "allow", StringComparison.OrdinalIgnoreCase))
+            return "allow";
+        if (string.Equals(action, "prompt", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(action, "ask", StringComparison.OrdinalIgnoreCase))
+            return "prompt";
+        return "deny";
+    }
+
+    public static string NormalizeAction(JsonElement action)
+    {
+        if (action.ValueKind == JsonValueKind.String)
+            return NormalizeAction(action.GetString());
+
+        if (action.ValueKind == JsonValueKind.Number && action.TryGetInt32(out var numeric))
+        {
+            return numeric switch
+            {
+                0 => "allow",
+                1 => "deny",
+                2 => "prompt",
+                _ => "deny"
+            };
+        }
+
+        return "deny";
+    }
+
+    public static string? TryGetActionCaseInsensitive(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var prop))
+                return NormalizeAction(prop);
+        }
+
+        return null;
+    }
+
+    public static bool? PersistedEnabled(bool enabled) => enabled ? null : false;
+
     public static void UpsertByPattern(IList<ExecPolicyRule> rules, string pattern, string action)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -44,39 +90,6 @@ internal static class ExecPolicyRuleList
             if (PatternEquals(rules[i].Pattern, normalizedPattern))
                 rules.RemoveAt(i);
         }
-    }
-
-    public static bool CoalesceDuplicatePatterns(IList<ExecPolicyRule> rules)
-    {
-        ArgumentNullException.ThrowIfNull(rules);
-
-        var changed = false;
-        for (var i = 0; i < rules.Count; i++)
-        {
-            ExecPolicyRule? lastDuplicate = null;
-            for (var j = i + 1; j < rules.Count; j++)
-            {
-                if (PatternEquals(rules[i].Pattern, rules[j].Pattern))
-                    lastDuplicate = rules[j];
-            }
-
-            if (lastDuplicate is null)
-                continue;
-
-            // Loading an existing file must not relax or tighten policy just
-            // because duplicate patterns exist; exec policy is first-match-wins.
-            rules[i].Pattern = rules[i].Pattern.Trim();
-
-            for (var j = rules.Count - 1; j > i; j--)
-            {
-                if (PatternEquals(rules[i].Pattern, rules[j].Pattern))
-                    rules.RemoveAt(j);
-            }
-
-            changed = true;
-        }
-
-        return changed;
     }
 
     private static bool PatternEquals(string currentPattern, string newPattern) =>

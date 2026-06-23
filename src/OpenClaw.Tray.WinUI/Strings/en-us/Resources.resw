@@ -3103,7 +3103,7 @@ On your gateway host (Mac/Linux), run:
     <value>Always allow</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
-    <value>Deny</value>
+    <value>Deny once</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>Allowed</value>
@@ -3134,6 +3134,30 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="AppNotification_LocalCommandDenied_PatternSuffixFormat" xml:space="preserve">
     <value>Matched pattern: {0}.</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_Title" xml:space="preserve">
+    <value>Command approval pending</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MessageFormat" xml:space="preserve">
+    <value>{0} is waiting for approval to run: {1}</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_OpenChatAction" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_UnknownChatLabel" xml:space="preserve">
+    <value>chat</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MainSessionLabel" xml:space="preserve">
+    <value>Main</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MainChatLabel" xml:space="preserve">
+    <value>Main chat</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_AgentChatLabelFormat" xml:space="preserve">
+    <value>{0} chat</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_AgentSlotLabelFormat" xml:space="preserve">
+    <value>{0} / {1}</value>
   </data>
   <data name="AppNotification_RepeatedBadgeFormat" xml:space="preserve">
     <value>{0}x</value>

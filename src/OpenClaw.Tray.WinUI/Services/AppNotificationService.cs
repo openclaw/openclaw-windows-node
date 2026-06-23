@@ -43,6 +43,31 @@ public sealed record AppNotificationSnapshot(
     public bool HasMultipleActiveNotifications => ActiveNotifications.Count > 1;
 }
 
+internal static class AppNotificationActionRoutes
+{
+    private const string ChatPrefix = "chat:";
+
+    public static string Chat(string sessionKey) =>
+        ChatPrefix + Uri.EscapeDataString(sessionKey);
+
+    public static bool TryGetChatSessionKey(string? route, out string? sessionKey)
+    {
+        sessionKey = null;
+        if (string.IsNullOrWhiteSpace(route) ||
+            !route.StartsWith(ChatPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var encoded = route[ChatPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(encoded))
+            return false;
+
+        sessionKey = Uri.UnescapeDataString(encoded);
+        return !string.IsNullOrWhiteSpace(sessionKey);
+    }
+}
+
 internal sealed class AppNotificationBannerState
 {
     private readonly HashSet<string> _hiddenNotificationIds = new(StringComparer.Ordinal);
@@ -160,6 +185,37 @@ internal sealed class AppNotificationService
                     changed = true;
                     break;
                 }
+            }
+
+            snapshot = CreateSnapshotLocked();
+        }
+
+        if (changed)
+            RaiseChanged(snapshot);
+    }
+
+    public void DismissByDedupeKey(string dedupeKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dedupeKey);
+
+        AppNotificationSnapshot snapshot;
+        var changed = false;
+        lock (_gate)
+        {
+            if (_current is not null &&
+                string.Equals(_current.DedupeKey, dedupeKey, StringComparison.OrdinalIgnoreCase))
+            {
+                _current = _queue.Count > 0 ? DequeueLocked() : null;
+                changed = true;
+            }
+
+            for (var i = _queue.Count - 1; i >= 0; i--)
+            {
+                if (!string.Equals(_queue[i].DedupeKey, dedupeKey, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                _queue.RemoveAt(i);
+                changed = true;
             }
 
             snapshot = CreateSnapshotLocked();

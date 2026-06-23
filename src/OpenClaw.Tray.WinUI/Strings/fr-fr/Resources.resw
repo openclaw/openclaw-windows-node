@@ -3055,7 +3055,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Toujours autoriser</value>
   </data>
   <data name="Chat_Permission_Deny" xml:space="preserve">
-    <value>Refuser</value>
+    <value>Refuser une fois</value>
   </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>Autorisé</value>
@@ -3116,6 +3116,30 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="NotificationsPage_MetadataCategoryNodeInvoke" xml:space="preserve">
     <value>Commande du nœud</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_Title" xml:space="preserve">
+    <value>Approbation de commande en attente</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MessageFormat" xml:space="preserve">
+    <value>{0} attend l'approbation pour exécuter : {1}</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_OpenChatAction" xml:space="preserve">
+    <value>Ouvrir le chat</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_UnknownChatLabel" xml:space="preserve">
+    <value>discussion</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MainSessionLabel" xml:space="preserve">
+    <value>Principal</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_MainChatLabel" xml:space="preserve">
+    <value>Chat principal</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_AgentChatLabelFormat" xml:space="preserve">
+    <value>Chat {0}</value>
+  </data>
+  <data name="AppNotification_ExecApprovalPending_AgentSlotLabelFormat" xml:space="preserve">
+    <value>{0} / {1}</value>
   </data>
   <data name="Chat_Permission_Title" xml:space="preserve">
     <value>Approbation d'exécution requise</value>

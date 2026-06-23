@@ -23,6 +23,8 @@ public sealed class ExecApprovalPromptRequest
 
 public sealed class ExecApprovalPromptDecision
 {
+    public const string TimedOutReason = "Approval prompt timed out";
+
     private ExecApprovalPromptDecision(ExecApprovalPromptDecisionKind kind, string reason)
     {
         Kind = kind;
@@ -35,6 +37,7 @@ public sealed class ExecApprovalPromptDecision
     public static ExecApprovalPromptDecision Deny(string reason = "Denied by user") => new(ExecApprovalPromptDecisionKind.Deny, reason);
     public static ExecApprovalPromptDecision AllowOnce(string reason = "Allowed once by user") => new(ExecApprovalPromptDecisionKind.AllowOnce, reason);
     public static ExecApprovalPromptDecision AlwaysAllow(string reason = "Always allowed by user") => new(ExecApprovalPromptDecisionKind.AlwaysAllow, reason);
+    public static ExecApprovalPromptDecision TimedOut() => Deny(TimedOutReason);
 }
 
 public interface IExecApprovalPromptHandler
@@ -54,6 +57,7 @@ public enum ExecApprovalPromptDecisionSource
     UserAllowOnce,
     UserAlwaysAllow,
     Cancelled,
+    TimedOut,
     Failed,
     /// <summary>
     /// Policy denied the command non-interactively (e.g. default action is
@@ -78,4 +82,14 @@ public sealed class ExecApprovalPromptDecidedEventArgs : EventArgs
     public ExecApprovalPromptRequest Request { get; }
     public ExecApprovalPromptDecision Decision { get; }
     public ExecApprovalPromptDecisionSource Source { get; }
+}
+
+public sealed class ExecApprovalPromptRequestedEventArgs : EventArgs
+{
+    public ExecApprovalPromptRequestedEventArgs(ExecApprovalPromptRequest request)
+    {
+        Request = request;
+    }
+
+    public ExecApprovalPromptRequest Request { get; }
 }
