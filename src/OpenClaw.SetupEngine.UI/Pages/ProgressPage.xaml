@@ -5,65 +5,56 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*">
 
         <!-- Header -->
-        <StackPanel Grid.Row="0" Padding="56,24,56,0" Spacing="4">
+        <StackPanel Grid.Row="0" Padding="56,14,56,0" Spacing="4">
             <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png" Width="44" Height="44"
                    HorizontalAlignment="Center" Margin="0,0,0,2" />
-            <TextBlock Text="Setting up locally"
-                       FontSize="26" FontWeight="SemiBold"
+            <TextBlock Text="Setting up your gateway"
+                       Style="{StaticResource TitleTextBlockStyle}"
                        HorizontalAlignment="Center" />
             <TextBlock x:Name="SubtitleText"
-                       FontSize="13" Opacity="0.6"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" />
         </StackPanel>
 
-        <!-- Step rows -->
+        <!-- Steps + live activity flow together in one scroll region so the
+             ledger opens downward naturally instead of being pinned to the bottom. -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel x:Name="StepsPanel"
-                        Padding="56,24,56,12" Spacing="18"
-                        VerticalAlignment="Top">
-                <!-- Populated in code-behind -->
+            <StackPanel Padding="56,12,56,16" Spacing="16" VerticalAlignment="Top">
+
+                <!-- Step rows -->
+                <StackPanel x:Name="StepsPanel" Spacing="4" />
+
+                <!-- Live activity ledger -->
+                <Expander IsExpanded="True"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Header="Live activity">
+                    <Grid RowDefinitions="*,Auto">
+                        <Border Grid.Row="0" CornerRadius="4" Height="128" Padding="12,8"
+                                Background="#0E0F12">
+                            <ScrollViewer x:Name="LogScroller"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="LogText"
+                                           FontFamily="Cascadia Mono, Consolas"
+                                           FontSize="11"
+                                           Foreground="#C3CAD4"
+                                           TextWrapping="NoWrap"
+                                           IsTextSelectionEnabled="True" />
+                            </ScrollViewer>
+                        </Border>
+                        <Button x:Name="OpenLogButton" Grid.Row="1"
+                                Content="Open log file" FontSize="12"
+                                HorizontalAlignment="Right" Margin="0,6,0,0"
+                                Click="OpenLog_Click" Padding="10,4" />
+                    </Grid>
+                </Expander>
+
             </StackPanel>
         </ScrollViewer>
-
-        <!-- Log viewer (bottom panel) -->
-        <Grid Grid.Row="2" Padding="24,0,24,16">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <Border x:Name="LogPanel" Grid.Row="0"
-                    CornerRadius="6" Padding="12,8,12,8"
-                    Height="200" Visibility="Collapsed"
-                    Margin="0,0,0,8">
-                <ScrollViewer x:Name="LogScroller"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Auto">
-                    <TextBlock x:Name="LogText"
-                               FontFamily="Consolas"
-                               FontSize="11"
-                               TextWrapping="NoWrap"
-                               IsTextSelectionEnabled="True" />
-                </ScrollViewer>
-            </Border>
-
-            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                <Button x:Name="OpenLogButton"
-                        Grid.Column="1"
-                        Content="Open log" FontSize="12"
-                        Visibility="Collapsed"
-                        Click="OpenLog_Click"
-                        Padding="8,4,8,4" />
-                <Button x:Name="LogToggleButton"
-                        Grid.Column="2"
-                        Content="Show logs ▲" FontSize="12"
-                        Click="LogToggle_Click"
-                        Padding="8,4,8,4" />
-            </Grid>
-        </Grid>
 
     </Grid>
 </Page>

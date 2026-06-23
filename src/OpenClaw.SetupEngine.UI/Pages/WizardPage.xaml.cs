@@ -54,7 +54,42 @@ public sealed partial class WizardPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        if (SetupPreview.IsActive)
+        {
+            RenderWizardPreview();
+            return;
+        }
         _ = StartWizardAsync();
+    }
+
+    private void RenderWizardPreview()
+    {
+        BusyRing.Visibility = Visibility.Collapsed;
+        BusyRing.IsActive = false;
+        StatusText.Text = "Answer the gateway setup question";
+        ShowRecoveryActions();
+        AppendTranscriptTurn("Welcome — let's connect your agent", null);
+        AppendTranscriptTurn("Choose your AI provider", "Anthropic — Claude");
+        AppendTranscriptTurn("Paste your API key", "••••••");
+
+        _stepType = "select";
+        _stepId = "model";
+        TitleText.Text = "Default model";
+        SelectOptions.Visibility = Visibility.Visible;
+        foreach (var (val, lbl) in new[] { ("opus", "claude-opus-4.8"), ("sonnet", "claude-sonnet-4.6"), ("haiku", "claude-haiku-4.5") })
+        {
+            SelectOptions.Children.Add(new RadioButton
+            {
+                Content = lbl,
+                Tag = val,
+                GroupName = "preview",
+                Padding = new Thickness(8, 6, 8, 6),
+            });
+        }
+        ((RadioButton)SelectOptions.Children[0]).IsChecked = true;
+        PrimaryButton.Content = "Continue";
+        PrimaryButton.IsEnabled = true;
+        SecondaryButton.Visibility = Visibility.Collapsed;
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -80,6 +115,7 @@ public sealed partial class WizardPage : Page
             _totalProgressPolls = 0;
             _lastProgressStepId = "";
             _stepVisits.Clear();
+            TranscriptPanel.Children.Clear();
             SetBusy("Connecting to gateway...");
             _client = await ConnectClientAsync();
             _client.StatusChanged += OnWizardClientStatusChanged;
@@ -547,6 +583,8 @@ public sealed partial class WizardPage : Page
             // render and the user's current click. Once they answer, those messages
             // are "consumed" — wipe so the next step starts with a clean slate.
             ClearConsoleBanner();
+            var answeredQuestion = TitleText.Text;
+            var answeredLabel = CurrentAnswerLabel(skip);
             object parameters;
             if (skip)
             {
@@ -567,7 +605,9 @@ public sealed partial class WizardPage : Page
             if (generation != _operationGeneration)
                 return;
 
+            AppendTranscriptTurn(answeredQuestion, answeredLabel);
             await ApplyPayloadAsync(payload);
+            ScrollActiveIntoView();
         }
         catch (Exception ex)
         {
@@ -576,6 +616,107 @@ public sealed partial class WizardPage : Page
 
             await EnterWizardErrorAsync(ex.Message);
         }
+    }
+
+    private string? CurrentAnswerLabel(bool skip)
+    {
+        if (skip)
+            return _stepType == "confirm" ? "No" : "Skipped";
+
+        return _stepType switch
+        {
+            "confirm" => "Yes",
+            "text" => _sensitive ? "••••••" : (string.IsNullOrEmpty(TextInput.Text) ? null : TextInput.Text),
+            "select" or "multiselect" => LabelForValues(GetSelectedOptionValues()),
+            _ => null,
+        };
+    }
+
+    private string? LabelForValues(string[] values)
+    {
+        if (values.Length == 0)
+            return null;
+        var labels = values.Select(v => _options.FirstOrDefault(o => o.Value == v)?.Label ?? v);
+        return string.Join(", ", labels);
+    }
+
+    // ── Transcript (vertical accreting list). Presentation only: each answered
+    // step is frozen into a compact ✓ row above the active step card. No protocol change.
+    private void AppendTranscriptTurn(string question, string? answer)
+    {
+        if (string.IsNullOrWhiteSpace(question))
+            return;
+
+        var grid = new Grid { Padding = new Thickness(2, 6, 2, 6) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var dot = new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(11),
+            Background = ResourceBrush("SystemFillColorSuccessBrush"),
+            Margin = new Thickness(0, 1, 12, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = new FontIcon
+            {
+                Glyph = "\uE73E",
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+            },
+        };
+
+        var stack = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(new TextBlock
+        {
+            Text = question,
+            FontSize = 14,
+            Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        if (!string.IsNullOrWhiteSpace(answer))
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = answer,
+                FontSize = 13,
+                Foreground = ResourceBrush("TextFillColorPrimaryBrush"),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
+
+        Grid.SetColumn(dot, 0);
+        Grid.SetColumn(stack, 1);
+        grid.Children.Add(dot);
+        grid.Children.Add(stack);
+        TranscriptPanel.Children.Add(grid);
+    }
+
+    private void ScrollActiveIntoView()
+    {
+        MainScroller.UpdateLayout();
+        // Bring the active step card's TITLE into view (just below the last answered
+        // step) rather than jumping to the very bottom — scrolling to the bottom hid
+        // the step's introduction/question when it had many options (e.g. web search).
+        if (MainScroller.Content is FrameworkElement content)
+        {
+            try
+            {
+                var cardTop = StepCard.TransformToVisual(content)
+                    .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                // Leave a little room above so the most recent answered step stays
+                // visible for continuity, but keep the active title at the top.
+                var target = Math.Max(0, cardTop - 44);
+                MainScroller.ChangeView(null, target, null);
+                return;
+            }
+            catch
+            {
+                // Fall back to the previous behaviour if the transform fails.
+            }
+        }
+        MainScroller.ChangeView(null, MainScroller.ScrollableHeight, null);
     }
 
     private bool TryBuildAnswerValue(out object value)

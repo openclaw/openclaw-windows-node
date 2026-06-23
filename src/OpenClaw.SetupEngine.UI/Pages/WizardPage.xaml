@@ -5,22 +5,31 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="48,32,48,32">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="48,28,48,28">
         <StackPanel Grid.Row="0" Spacing="6" HorizontalAlignment="Center">
-            <TextBlock Text="🦞" FontSize="42" HorizontalAlignment="Center" />
-            <TextBlock Text="Gateway setup" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
-            <TextBlock x:Name="StatusText" Text="Connecting to gateway..." FontSize="13" Opacity="0.65" HorizontalAlignment="Center" />
+            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png"
+                   Width="44" Height="44" HorizontalAlignment="Center" />
+            <TextBlock Text="Gateway onboard"
+                       Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
+            <TextBlock x:Name="StatusText" Text="Connecting to gateway..."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center" />
         </StackPanel>
 
-        <ScrollViewer Grid.Row="1" Margin="0,28,0,20" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="MainScroller" Grid.Row="1" Margin="0,24,0,20" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12">
+            <StackPanel x:Name="TranscriptPanel" Spacing="6" />
             <Border x:Name="StepCard"
-                    CornerRadius="10"
+                    CornerRadius="8"
                     Padding="24"
                     MinHeight="180"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                 <StackPanel Spacing="16">
-                    <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" />
-                    <TextBlock x:Name="TitleText" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                    <TextBlock x:Name="TitleText" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                     <StackPanel x:Name="MessagePanel" Spacing="8" />
                     <Border x:Name="ConsoleBanner"
                             Visibility="Collapsed"
@@ -31,9 +40,8 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Live gateway output"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Opacity="0.7"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        CharacterSpacing="60" />
                             <StackPanel x:Name="ConsoleBannerLines" Spacing="6" />
                         </StackPanel>
@@ -44,7 +52,7 @@
                     <PasswordBox x:Name="SecretInput" Visibility="Collapsed" PlaceholderText="Enter value" />
                     <TextBlock x:Name="ErrorText"
                                Visibility="Collapsed"
-                               Foreground="#FF6B6B"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                TextWrapping="Wrap"
                                IsTextSelectionEnabled="True" />
                     <StackPanel x:Name="GatewayRecovery"
@@ -64,6 +72,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+            </StackPanel>
         </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
@@ -93,16 +102,8 @@
                         Click="Secondary_Click" IsEnabled="False" />
                 <Button x:Name="PrimaryButton" Content="Continue" Height="44"
                         MinWidth="120"
-                        Click="Primary_Click" IsEnabled="False">
-                    <Button.Resources>
-                        <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
-                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
-                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
-                        <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
-                        <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
-                        <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
-                    </Button.Resources>
-                </Button>
+                        Style="{StaticResource AccentButtonStyle}"
+                        Click="Primary_Click" IsEnabled="False" />
             </StackPanel>
         </Grid>
     </Grid>
