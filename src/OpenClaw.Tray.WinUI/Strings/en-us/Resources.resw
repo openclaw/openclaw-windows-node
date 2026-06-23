@@ -1684,7 +1684,7 @@ On your gateway host (Mac/Linux), run:
     <value>Local MCP Server</value>
   </data>
   <data name="PermissionsPage_McpDescription.Text" xml:space="preserve">
-    <value>Expose capabilities via HTTP for CLI tools and local integrations.</value>
+    <value>Serves capabilities to local MCP clients (CLI tools, integrations) on this PC over HTTP.</value>
   </data>
   <data name="PermissionsPage_McpEndpointLabel.Text" xml:space="preserve">
     <value>Endpoint:</value>
@@ -3547,6 +3547,18 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="PermissionsPage_NodeStatus_ActiveDetailsFormat" xml:space="preserve">
     <value>Providing {0} capabilities: {1}</value>
   </data>
+  <data name="PermissionsPage_NodeStatus_McpOnly" xml:space="preserve">
+    <value>Local MCP only</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpOnlyDetailsFormat" xml:space="preserve">
+    <value>Serving {0} capabilities to local MCP clients at {1}</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_Starting" xml:space="preserve">
+    <value>Node starting…</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpError" xml:space="preserve">
+    <value>Local MCP server failed to start</value>
+  </data>
   <data name="PermissionsPage_NodeStatus_NoCapabilities" xml:space="preserve">
     <value>No capabilities enabled.</value>
   </data>
@@ -5328,6 +5340,18 @@ Make sure the gateway is running.</value>
   </data>
   <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
     <value>Node mode disabled</value>
+  </data>
+  <data name="ConnectionPage_NodeStarting" xml:space="preserve">
+    <value>Node starting…</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnly" xml:space="preserve">
+    <value>Serving capabilities locally (MCP only)</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnlyReachable" xml:space="preserve">
+    <value>Reachable by local MCP clients at {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpError" xml:space="preserve">
+    <value>Local MCP server failed to start</value>
   </data>
   <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
     <value>No capabilities enabled. Pick what to share in Permissions.</value>

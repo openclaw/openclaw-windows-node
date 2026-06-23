@@ -175,7 +175,7 @@
                             <TextBlock x:Uid="PermissionsPage_McpHeader" Text="Local MCP Server"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"/>
                             <TextBlock x:Uid="PermissionsPage_McpDescription"
-                                       Text="Expose capabilities over HTTP for CLI tools and local integrations."
+                                       Text="Serves capabilities to local MCP clients (CLI tools, integrations) on this PC over HTTP."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>

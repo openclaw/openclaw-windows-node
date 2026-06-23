@@ -1636,7 +1636,7 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Serveur MCP local</value>
   </data>
   <data name="PermissionsPage_McpDescription.Text" xml:space="preserve">
-    <value>Exposez les fonctionnalités via HTTP pour les outils CLI et les intégrations locales.</value>
+    <value>Fournit des fonctionnalités aux clients MCP locaux (outils CLI, intégrations) sur ce PC via HTTP.</value>
   </data>
   <data name="PermissionsPage_McpEndpointLabel.Text" xml:space="preserve">
     <value>Point de terminaison :</value>
@@ -3499,6 +3499,18 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="PermissionsPage_NodeStatus_ActiveDetailsFormat" xml:space="preserve">
     <value>Providing {0} capabilities: {1}</value>
   </data>
+  <data name="PermissionsPage_NodeStatus_McpOnly" xml:space="preserve">
+    <value>MCP local uniquement</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpOnlyDetailsFormat" xml:space="preserve">
+    <value>Fourniture de {0} capacités aux clients MCP locaux à {1}</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_Starting" xml:space="preserve">
+    <value>Node en cours de démarrage…</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpError" xml:space="preserve">
+    <value>Échec du démarrage du serveur MCP local</value>
+  </data>
   <data name="PermissionsPage_NodeStatus_NoCapabilities" xml:space="preserve">
     <value>No capabilities enabled.</value>
   </data>
@@ -5280,6 +5292,18 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
     <value>Mode nœud désactivé</value>
+  </data>
+  <data name="ConnectionPage_NodeStarting" xml:space="preserve">
+    <value>Node en cours de démarrage…</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnly" xml:space="preserve">
+    <value>Capacités fournies localement (MCP uniquement)</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnlyReachable" xml:space="preserve">
+    <value>Accessible par les clients MCP locaux à {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpError" xml:space="preserve">
+    <value>Échec du démarrage du serveur MCP local</value>
   </data>
   <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
     <value>Aucune capacité activée. Choisissez ce que vous souhaitez partager dans les Autorisations.</value>

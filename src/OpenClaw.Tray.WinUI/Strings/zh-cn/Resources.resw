@@ -1636,7 +1636,7 @@
     <value>本地 MCP 服务器</value>
   </data>
   <data name="PermissionsPage_McpDescription.Text" xml:space="preserve">
-    <value>通过 HTTP 向 CLI 工具和本地集成公开功能。</value>
+    <value>通过 HTTP 向此电脑上的本地 MCP 客户端（CLI 工具、集成）提供功能。</value>
   </data>
   <data name="PermissionsPage_McpEndpointLabel.Text" xml:space="preserve">
     <value>终结点：</value>
@@ -3499,6 +3499,18 @@
   <data name="PermissionsPage_NodeStatus_ActiveDetailsFormat" xml:space="preserve">
     <value>Providing {0} capabilities: {1}</value>
   </data>
+  <data name="PermissionsPage_NodeStatus_McpOnly" xml:space="preserve">
+    <value>仅本地 MCP</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpOnlyDetailsFormat" xml:space="preserve">
+    <value>正在通过 {1} 向本地 MCP 客户端提供 {0} 项功能</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_Starting" xml:space="preserve">
+    <value>Node 正在启动…</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpError" xml:space="preserve">
+    <value>本地 MCP 服务器启动失败</value>
+  </data>
   <data name="PermissionsPage_NodeStatus_NoCapabilities" xml:space="preserve">
     <value>No capabilities enabled.</value>
   </data>
@@ -5281,6 +5293,18 @@
   </data>
   <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
     <value>节点模式已禁用</value>
+  </data>
+  <data name="ConnectionPage_NodeStarting" xml:space="preserve">
+    <value>Node 正在启动…</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnly" xml:space="preserve">
+    <value>正在本地提供功能（仅 MCP）</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnlyReachable" xml:space="preserve">
+    <value>本地 MCP 客户端可通过 {0} 访问</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpError" xml:space="preserve">
+    <value>本地 MCP 服务器启动失败</value>
   </data>
   <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
     <value>未启用任何能力。请在权限中选择要共享的内容。</value>

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
@@ -24,6 +25,7 @@ public sealed partial class PermissionsPage : Page
     private bool _suppressTtsProviderChange;
     private readonly List<ToggleSwitch> _featureToggles = new();
     private List<ExecPolicyRule> _policyRules = new();
+    private const int BrowserProxyToggleIndex = 1;
 
     // Sentinel rendered into the API key PasswordBox so the user can see
     // that a key is already saved without us ever surfacing the plaintext.
@@ -56,12 +58,29 @@ public sealed partial class PermissionsPage : Page
     {
         if (CurrentApp.Settings != null)
             CurrentApp.Settings.Saved += OnSettingsSaved;
+
+        var mgr = CurrentApp.ConnectionManager;
+        if (mgr != null)
+            mgr.StateChanged += OnConnectionStateChanged;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         if (CurrentApp.Settings != null)
             CurrentApp.Settings.Saved -= OnSettingsSaved;
+
+        var mgr = CurrentApp.ConnectionManager;
+        if (mgr != null)
+            mgr.StateChanged -= OnConnectionStateChanged;
+    }
+
+    private void OnConnectionStateChanged(object? sender, GatewayConnectionSnapshot snapshot)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (!IsLoaded) return;
+            UpdateNodeStatus();
+        });
     }
 
     private bool _suppressNodeModeToggle;
@@ -119,18 +138,18 @@ public sealed partial class PermissionsPage : Page
         }
     }
 
-    /// <summary>
-    /// Disables and dims the sub-toggles when Node Mode is off so users see they have
-    /// no effect until Node Mode is back on. ItemsRepeater isn't a Control (no IsEnabled),
-    /// so we apply per-toggle plus an Opacity on the repeater.
-    /// </summary>
+    /// <summary>Enables capability toggles whenever either node transport can serve them.</summary>
     private void ApplyFeaturesEnabledState()
     {
-        var nodeEnabled = CurrentApp.Settings?.EnableNodeMode ?? false;
-        CapabilityRepeater.Opacity = nodeEnabled ? 1.0 : 0.4;
-        foreach (var toggle in _featureToggles)
-            toggle.IsEnabled = nodeEnabled;
-        FeaturesSectionDescription.Text = LocalizationHelper.GetString(nodeEnabled
+        var s = CurrentApp.Settings;
+        var canServe = (s?.EnableNodeMode ?? false) || (s?.EnableMcpServer ?? false);
+        CapabilityRepeater.Opacity = canServe ? 1.0 : 0.4;
+        for (int i = 0; i < _featureToggles.Count; i++)
+        {
+            var isBrowserProxyToggle = i == BrowserProxyToggleIndex;
+            _featureToggles[i].IsEnabled = canServe && (!isBrowserProxyToggle || s?.EnableNodeMode == true);
+        }
+        FeaturesSectionDescription.Text = LocalizationHelper.GetString(canServe
             ? "PermissionsPage_FeaturesDescription_Enabled"
             : "PermissionsPage_FeaturesDescription_Disabled");
     }
@@ -472,16 +491,52 @@ public sealed partial class PermissionsPage : Page
 
     private void UpdateNodeStatus()
     {
-        var nodeEnabled = CurrentApp.Settings?.EnableNodeMode ?? false;
-        var isConnected = (CurrentApp.AppState?.Status ?? ConnectionStatus.Disconnected) == ConnectionStatus.Connected;
+        var settings = CurrentApp.Settings;
+        var nodeEnabled = settings?.EnableNodeMode ?? false;
+        var mcpEnabled = settings?.EnableMcpServer ?? false;
 
         if (!nodeEnabled)
         {
-            NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.Gray);
-            NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Disabled");
-            NodeDetailsText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_DisabledDetails");
+            if (mcpEnabled && settings != null)
+            {
+                var mcpError = CurrentApp.ActiveNodeService?.McpStartupError;
+                if (!string.IsNullOrEmpty(mcpError))
+                {
+                    NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.OrangeRed);
+                    NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_McpError");
+                    NodeDetailsText.Text = mcpError;
+                }
+                else
+                {
+                    NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
+                    NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_McpOnly");
+                    NodeDetailsText.Text = LocalizationHelper.Format(
+                        "PermissionsPage_NodeStatus_McpOnlyDetailsFormat",
+                        NodeCapabilityGating.CountMcpServedCapabilities(settings),
+                        NodeService.McpServerUrl);
+                }
+            }
+            else
+            {
+                NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.Gray);
+                NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Disabled");
+                NodeDetailsText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_DisabledDetails");
+            }
+            return;
         }
-        else if (isConnected)
+
+        var snap = CurrentApp.ConnectionManager?.CurrentSnapshot;
+        var nodeState = snap?.NodeState ?? RoleConnectionState.Idle;
+        var operatorConnected = snap?.OperatorState == RoleConnectionState.Connected;
+        var mcpStartupError = CurrentApp.ActiveNodeService?.McpStartupError;
+
+        if (mcpEnabled && !string.IsNullOrEmpty(mcpStartupError))
+        {
+            NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.OrangeRed);
+            NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_McpError");
+            NodeDetailsText.Text = mcpStartupError;
+        }
+        else if (nodeState == RoleConnectionState.Connected && operatorConnected)
         {
             NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.LimeGreen);
             NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Active");
@@ -496,11 +551,22 @@ public sealed partial class PermissionsPage : Page
                     caps.Count, string.Join(", ", caps))
                 : LocalizationHelper.GetString("PermissionsPage_NodeStatus_NoCapabilities");
         }
+        else if (nodeState == RoleConnectionState.Connecting)
+        {
+            NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.Goldenrod);
+            NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Starting");
+            NodeDetailsText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_NotConnectedDetails");
+        }
         else
         {
             NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.Orange);
             NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_NotConnected");
-            NodeDetailsText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_NotConnectedDetails");
+            NodeDetailsText.Text = mcpEnabled && settings != null && string.IsNullOrEmpty(mcpStartupError)
+                ? LocalizationHelper.Format(
+                    "PermissionsPage_NodeStatus_McpOnlyDetailsFormat",
+                    NodeCapabilityGating.CountMcpServedCapabilities(settings),
+                    NodeService.McpServerUrl)
+                : LocalizationHelper.GetString("PermissionsPage_NodeStatus_NotConnectedDetails");
         }
     }
 
@@ -519,6 +585,14 @@ public sealed partial class PermissionsPage : Page
 
         if (settings.EnableMcpServer)
         {
+            var mcpError = CurrentApp.ActiveNodeService?.McpStartupError;
+            if (!string.IsNullOrEmpty(mcpError))
+            {
+                McpStatusText.Text =
+                    $"{LocalizationHelper.GetString("PermissionsPage_NodeStatus_McpError")}: {mcpError}";
+                return;
+            }
+
             var tokenPath = NodeService.McpTokenPath;
             var tokenExists = File.Exists(tokenPath);
             McpStatusText.Text = LocalizationHelper.GetString(tokenExists
@@ -535,6 +609,8 @@ public sealed partial class PermissionsPage : Page
         CurrentApp.Settings.Save();
         ((IAppCommands)CurrentApp).NotifySettingsSaved();
         UpdateMcpStatus();
+        UpdateNodeStatus();
+        ApplyFeaturesEnabledState();
     }
 
     private void OnCopyMcpToken(object sender, RoutedEventArgs e)

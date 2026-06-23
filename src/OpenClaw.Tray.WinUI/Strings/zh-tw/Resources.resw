@@ -1636,7 +1636,7 @@
     <value>本機 MCP 伺服器</value>
   </data>
   <data name="PermissionsPage_McpDescription.Text" xml:space="preserve">
-    <value>透過 HTTP 向 CLI 工具和本機整合公開功能。</value>
+    <value>透過 HTTP 向此電腦上的本機 MCP 用戶端（CLI 工具、整合）提供功能。</value>
   </data>
   <data name="PermissionsPage_McpEndpointLabel.Text" xml:space="preserve">
     <value>端點：</value>
@@ -3499,6 +3499,18 @@
   <data name="PermissionsPage_NodeStatus_ActiveDetailsFormat" xml:space="preserve">
     <value>Providing {0} capabilities: {1}</value>
   </data>
+  <data name="PermissionsPage_NodeStatus_McpOnly" xml:space="preserve">
+    <value>僅本機 MCP</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpOnlyDetailsFormat" xml:space="preserve">
+    <value>正在透過 {1} 向本機 MCP 用戶端提供 {0} 項功能</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_Starting" xml:space="preserve">
+    <value>Node 正在啟動…</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpError" xml:space="preserve">
+    <value>本機 MCP 伺服器啟動失敗</value>
+  </data>
   <data name="PermissionsPage_NodeStatus_NoCapabilities" xml:space="preserve">
     <value>No capabilities enabled.</value>
   </data>
@@ -5281,6 +5293,18 @@
   </data>
   <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
     <value>節點模式已停用</value>
+  </data>
+  <data name="ConnectionPage_NodeStarting" xml:space="preserve">
+    <value>Node 正在啟動…</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnly" xml:space="preserve">
+    <value>正在本機提供功能（僅 MCP）</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnlyReachable" xml:space="preserve">
+    <value>本機 MCP 用戶端可透過 {0} 存取</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpError" xml:space="preserve">
+    <value>本機 MCP 伺服器啟動失敗</value>
   </data>
   <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
     <value>未啟用任何功能。請在權限中選擇要共用的內容。</value>

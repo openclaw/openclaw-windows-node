@@ -166,6 +166,55 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.False(NodeCapabilityGating.ShouldRegisterSystemRun(s));
     }
 
+    // ── CountMcpServedCapabilities ────────────────────────────────────────────
+
+    [Fact]
+    public void CountMcpServed_Defaults_AreSixCapabilities()
+    {
+        var s = NewSettings();
+        Assert.Equal(6, NodeCapabilityGating.CountMcpServedCapabilities(s));
+    }
+
+    [Fact]
+    public void CountMcpServed_NullSettings_AreSix()
+    {
+        Assert.Equal(6, NodeCapabilityGating.CountMcpServedCapabilities(null));
+    }
+
+    [Fact]
+    public void CountMcpServed_ExcludesBrowserProxy()
+    {
+        var s = NewSettings();
+        var before = NodeCapabilityGating.CountMcpServedCapabilities(s);
+        s.NodeBrowserProxyEnabled = false;
+        Assert.Equal(before, NodeCapabilityGating.CountMcpServedCapabilities(s));
+    }
+
+    [Fact]
+    public void CountMcpServed_SystemAndDeviceAlwaysCounted_EvenWhenSystemRunDisabled()
+    {
+        var s = NewSettings();
+        s.NodeCanvasEnabled = false;
+        s.NodeScreenEnabled = false;
+        s.NodeCameraEnabled = false;
+        s.NodeLocationEnabled = false;
+        s.NodeBrowserProxyEnabled = false;
+        s.NodeSystemRunEnabled = false;
+        s.NodeTtsEnabled = false;
+        s.NodeSttEnabled = false;
+        Assert.Equal(2, NodeCapabilityGating.CountMcpServedCapabilities(s));
+    }
+
+    [Fact]
+    public void CountMcpServed_OptInCapabilities_IncrementCount()
+    {
+        var s = NewSettings();
+        var baseline = NodeCapabilityGating.CountMcpServedCapabilities(s);
+        s.NodeTtsEnabled = true;
+        s.NodeSttEnabled = true;
+        Assert.Equal(baseline + 2, NodeCapabilityGating.CountMcpServedCapabilities(s));
+    }
+
     // ── GetLocalNodeCapabilities ──────────────────────────────────────────────
 
     [Fact]

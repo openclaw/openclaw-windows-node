@@ -86,7 +86,11 @@ internal enum NodeCardState
 {
     Hidden,
     Off,
+    /// <summary>Gateway node is off, local MCP server is enabled.</summary>
+    OffMcpOnly,
     OnHealthy,
+    /// <summary>Node role is connecting / starting up (not yet ready).</summary>
+    OnNodeConnecting,
     OnPermissionsIncomplete,
     OnNodeApprovalRequired,
     OnNodeReapprovalRequired,
@@ -617,7 +621,8 @@ internal sealed record ConnectionPagePlan
         var nodeCardAllowsTrustOverride = plan.NodeCard is
             NodeCardState.OnHealthy or
             NodeCardState.OnPermissionsIncomplete or
-            NodeCardState.OnNodePairingRequired ||
+            NodeCardState.OnNodePairingRequired or
+            NodeCardState.OnNodeConnecting ||
             nodeConnectingAllowsTrustOverride;
         // Authoritative node-list trust can override any non-device-pair card.
         // Snapshot fallback is narrower: Unknown stays on discovery-only pairing UI.
@@ -685,14 +690,16 @@ internal sealed record ConnectionPagePlan
     private static NodeCardState BuildNodeCardState(GatewayConnectionSnapshot snap, SettingsManager? settings)
     {
         if (settings == null) return NodeCardState.Hidden;
-        if (!settings.EnableNodeMode) return NodeCardState.Off;
 
-        // Operator must be connected for the node card to be meaningful.
+        if (!settings.EnableNodeMode)
+            return settings.EnableMcpServer ? NodeCardState.OffMcpOnly : NodeCardState.Off;
+
         if (snap.OperatorState != RoleConnectionState.Connected)
             return NodeCardState.Off;
 
         return snap.NodeState switch
         {
+            RoleConnectionState.Connecting => NodeCardState.OnNodeConnecting,
             RoleConnectionState.PairingRequired => NodeCardState.OnNodePairingRequired,
             RoleConnectionState.PairingRejected => NodeCardState.OnNodeRejected,
             RoleConnectionState.RateLimited => NodeCardState.OnNodeRateLimited,

@@ -61,4 +61,17 @@ internal static class NodeCapabilityGating
     }
 
     public static bool ShouldRegisterSystemRun(SettingsManager? s)    => s?.NodeSystemRunEnabled    != false;
+
+    /// <summary>Counts node capability categories served by local MCP without a gateway node client.</summary>
+    public static int CountMcpServedCapabilities(SettingsManager? s)
+    {
+        int n = 2; // system + device are always registered
+        if (ShouldRegisterCanvas(s)) n++;
+        if (ShouldRegisterScreen(s)) n++;
+        if (ShouldRegisterCamera(s)) n++;
+        if (ShouldRegisterLocation(s)) n++;
+        if (ShouldRegisterTts(s)) n++;
+        if (ShouldRegisterStt(s)) n++;
+        return n;
+    }
 }

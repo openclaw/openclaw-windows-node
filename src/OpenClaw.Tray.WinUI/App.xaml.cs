@@ -67,6 +67,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     internal VoiceService? VoiceService => _nodeService?.VoiceService ?? _standaloneVoiceService;
     /// <summary>The full device ID of the local node service (if running).</summary>
     internal string? NodeFullDeviceId => _nodeService?.FullDeviceId;
+    /// <summary>Live node service instance used by settings surfaces for MCP status.</summary>
+    internal NodeService? ActiveNodeService => _nodeService;
 
     /// <summary>
     /// Session key that the chat surface should select on its next mount.
@@ -644,7 +646,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             credentialResolver, clientFactory, _gatewayRegistry, appLogger,
             identityStore: new DeviceIdentityFileStore(appLogger),
             nodeConnector: nodeConnector,
-            isNodeEnabled: ShouldInitializeNodeService,
+            isNodeEnabled: IsGatewayNodeEnabled,
             diagnostics: diagnostics,
             tunnelManager: _sshTunnelService);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
@@ -1541,7 +1543,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (credential == null)
         {
             var nodeCredential = ResolveStartupNodeCredential(record, resolver, identityDir);
-            if (nodeCredential != null && ShouldInitializeNodeService())
+            if (nodeCredential != null && IsGatewayNodeEnabled())
             {
                 Logger.Info(
                     $"Connecting node-only gateway during {context}: {record.Url} ({nodeCredential.Source})");
@@ -1562,6 +1564,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ObserveBackgroundFault(
             _connectionManager.ConnectAsync(record.Id),
             $"[App] Startup gateway connect failed during {context}");
+        if (!IsGatewayNodeEnabled())
+            TryStartLocalMcpOnlyNode();
         return true;
     }
 
@@ -1889,6 +1893,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private bool ShouldInitializeNodeService()
     {
         return _settings?.EnableNodeMode == true || _settings?.EnableMcpServer == true;
+    }
+
+    /// <summary>True when this PC should connect as a gateway node.</summary>
+    private bool IsGatewayNodeEnabled()
+    {
+        return _settings?.EnableNodeMode == true;
     }
 
     /// <summary>

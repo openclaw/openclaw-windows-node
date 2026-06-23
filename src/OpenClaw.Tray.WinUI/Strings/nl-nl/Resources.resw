@@ -1637,7 +1637,7 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Lokale MCP-server</value>
   </data>
   <data name="PermissionsPage_McpDescription.Text" xml:space="preserve">
-    <value>Stel mogelijkheden beschikbaar via HTTP voor CLI-hulpprogramma’s en lokale integraties.</value>
+    <value>Levert mogelijkheden aan lokale MCP-clients (CLI-hulpprogramma's, integraties) op deze pc via HTTP.</value>
   </data>
   <data name="PermissionsPage_McpEndpointLabel.Text" xml:space="preserve">
     <value>Eindpunt:</value>
@@ -3500,6 +3500,18 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="PermissionsPage_NodeStatus_ActiveDetailsFormat" xml:space="preserve">
     <value>Providing {0} capabilities: {1}</value>
   </data>
+  <data name="PermissionsPage_NodeStatus_McpOnly" xml:space="preserve">
+    <value>Alleen lokale MCP</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpOnlyDetailsFormat" xml:space="preserve">
+    <value>Levert {0} mogelijkheden aan lokale MCP-clients op {1}</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_Starting" xml:space="preserve">
+    <value>Node wordt gestart…</value>
+  </data>
+  <data name="PermissionsPage_NodeStatus_McpError" xml:space="preserve">
+    <value>Lokale MCP-server kon niet worden gestart</value>
+  </data>
   <data name="PermissionsPage_NodeStatus_NoCapabilities" xml:space="preserve">
     <value>No capabilities enabled.</value>
   </data>
@@ -5281,6 +5293,18 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="ConnectionPage_NodeModeDisabledText" xml:space="preserve">
     <value>Nodemodus uitgeschakeld</value>
+  </data>
+  <data name="ConnectionPage_NodeStarting" xml:space="preserve">
+    <value>Node wordt gestart…</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnly" xml:space="preserve">
+    <value>Mogelijkheden lokaal beschikbaar (alleen MCP)</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpOnlyReachable" xml:space="preserve">
+    <value>Bereikbaar voor lokale MCP-clients op {0}</value>
+  </data>
+  <data name="ConnectionPage_NodeMcpError" xml:space="preserve">
+    <value>Lokale MCP-server kon niet worden gestart</value>
   </data>
   <data name="ConnectionPage_NodeBodyNoCapabilities" xml:space="preserve">
     <value>Geen mogelijkheden ingeschakeld. Kies wat u wilt delen bij Machtigingen.</value>
