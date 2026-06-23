@@ -34,6 +34,7 @@ public sealed partial class CompletePage : Page
                 SubtitleText.Text = "OpenClaw is ready to go";
                 ErrorCard.Visibility = Visibility.Collapsed;
                 HelpLink.Visibility = Visibility.Collapsed;
+                SummaryPanel.Visibility = Visibility.Visible;
             }
             else
             {
@@ -48,6 +49,7 @@ public sealed partial class CompletePage : Page
                     : "Follow the steps below to resolve the setup issue and retry.";
                 NodeModeBanner.Visibility = Visibility.Collapsed;
                 StartupRow.Visibility = Visibility.Collapsed;
+                SummaryPanel.Visibility = Visibility.Collapsed;
                 LaunchButton.Content = "Close";
 
                 // Show error card with details and log link

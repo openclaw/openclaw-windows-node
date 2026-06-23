@@ -17,7 +17,6 @@ public sealed partial class ProgressPage : Page
     private SetupLogger? _logger;
     private CancellationTokenSource? _runCts;
     private readonly Dictionary<string, StepRow> _rows = new();
-    private bool _logExpanded;
     private int _logLineCount;
     private bool _pipelineFinished;
     private const int MaxLogLines = 200;
@@ -49,7 +48,31 @@ public sealed partial class ProgressPage : Page
         SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
 
         BuildStepRows();
+        if (SetupPreview.IsActive)
+        {
+            RenderProgressPreview();
+            return;
+        }
         StartPipeline();
+    }
+
+    private void RenderProgressPreview()
+    {
+        SubtitleText.Text = "Creating OpenClawGateway WSL instance — about 4 minutes left";
+        var ids = StepGroups.Select(g => g.GroupId).ToArray();
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var status = i < 3 ? StepStatus.Done : i == 3 ? StepStatus.Running : StepStatus.Idle;
+            if (_rows.TryGetValue(ids[i], out var row))
+                row.SetStatus(status);
+        }
+        LogText.Text =
+            "[12:04:01] [info] Windows 11 26100 · WSL 2 present\n" +
+            "[12:04:03] [info] port 127.0.0.1:18789 available\n" +
+            "[12:04:05] [info] wsl --install -d Ubuntu-24.04 --name OpenClawGateway --no-launch\n" +
+            "[12:04:38] [info] downloading distro … 142/200 MB\n" +
+            "[12:04:38] [changed] created %LOCALAPPDATA%\\OpenClawTray\\wsl\\OpenClawGateway\\\n" +
+            "[12:04:38] [info] next: install CLI via HTTPS, configure loopback gateway\n";
     }
 
     private void BuildStepRows()
@@ -114,10 +137,10 @@ public sealed partial class ProgressPage : Page
                     finishRow?.SetStatus(StepStatus.Done);
                     SetupWindow.Active?.NavigateToWizard();
                 }
-                else if (config.SkipPermissions)
-                    SetupWindow.Active?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
                 else
-                    SetupWindow.Active?.NavigateToPermissions();
+                    // Permissions are now surfaced inline on the capabilities screen, so
+                    // the standalone permissions step is skipped — go straight to done.
+                    SetupWindow.Active?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
             }
             else
             {
@@ -229,19 +252,6 @@ public sealed partial class ProgressPage : Page
         });
     }
 
-    private void LogToggle_Click(object sender, RoutedEventArgs e)
-    {
-        _logExpanded = !_logExpanded;
-        LogPanel.Visibility = _logExpanded ? Visibility.Visible : Visibility.Collapsed;
-        OpenLogButton.Visibility = _logExpanded ? Visibility.Visible : Visibility.Collapsed;
-        LogToggleButton.Content = _logExpanded ? "Hide logs ▼" : "Show logs ▲";
-
-        var isDark = ActualTheme == ElementTheme.Dark;
-        LogPanel.Background = new SolidColorBrush(isDark
-            ? Color.FromArgb(255, 0x1A, 0x1A, 0x1A)
-            : Color.FromArgb(255, 0xF8, 0xF8, 0xF8));
-    }
-
     private void OpenLog_Click(object sender, RoutedEventArgs e)
     {
         LogFileLauncher.RevealInExplorer(_config?.LogPath);
@@ -273,14 +283,14 @@ internal sealed class StepRow
         _label = new TextBlock
         {
             Text = displayName,
-            FontSize = 16,
+            FontSize = 15,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
         _spinner = new ProgressRing
         {
-            Width = 28, Height = 28,
-            MinWidth = 28, MinHeight = 28,
+            Width = 22, Height = 22,
+            MinWidth = 22, MinHeight = 22,
             IsActive = false,
             Visibility = Visibility.Collapsed,
         };
@@ -295,8 +305,8 @@ internal sealed class StepRow
 
         var badgeContainer = new Grid
         {
-            Width = 32,
-            Height = 32,
+            Width = 28,
+            Height = 28,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -322,6 +332,16 @@ internal sealed class StepRow
         Status = status;
         _spinner.IsActive = status == StepStatus.Running;
         _spinner.Visibility = status == StepStatus.Running ? Visibility.Visible : Visibility.Collapsed;
+        if (status == StepStatus.Running)
+        {
+            // Brand-red spinner. The ProgressRing foreground resolves to the
+            // app-level system accent, so the setup window's element-scoped
+            // red override doesn't reach it; pick the themed red explicitly.
+            _spinner.Foreground = new SolidColorBrush(
+                _spinner.ActualTheme == ElementTheme.Light
+                    ? Color.FromArgb(255, 0xC8, 0x1E, 0x1E)
+                    : Color.FromArgb(255, 0xD8, 0x1E, 0x34));
+        }
         _idleBadge.Visibility = status == StepStatus.Idle ? Visibility.Visible : Visibility.Collapsed;
         _checkBadge.Visibility = status == StepStatus.Done ? Visibility.Visible : Visibility.Collapsed;
         _errorBadge.Visibility = status == StepStatus.Failed ? Visibility.Visible : Visibility.Collapsed;

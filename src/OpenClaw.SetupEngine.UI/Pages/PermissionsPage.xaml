@@ -10,10 +10,11 @@
         <!-- Header -->
         <StackPanel Grid.Row="0" Spacing="12" HorizontalAlignment="Center">
             <TextBlock Text="Grant permissions"
-                       FontSize="28" FontWeight="SemiBold"
+                       Style="{StaticResource TitleTextBlockStyle}"
                        HorizontalAlignment="Center" />
-            <TextBlock TextWrapping="Wrap" TextAlignment="Center"
-                       FontSize="14" Opacity="0.7" MaxWidth="480"
+            <TextBlock TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center"
                        Text="OpenClaw works best when it can send notifications, access your camera and microphone, capture your screen, and know your location. Grant permissions below." />
         </StackPanel>
@@ -33,24 +34,15 @@
                 </StackPanel>
             </Button>
 
-            <Button Content="Back to gateway wizard"
+            <Button Content="Back to setup"
                     HorizontalAlignment="Stretch"
                     Height="40"
                     Click="BackToWizard_Click" />
 
             <Button Content="Next"
-                    HorizontalAlignment="Stretch"
-                    Height="44" FontSize="15" FontWeight="SemiBold"
-                    Click="Next_Click">
-                <Button.Resources>
-                    <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
-                    <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
-                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
-                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
-                </Button.Resources>
-            </Button>
+                    HorizontalAlignment="Stretch" Height="44"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="Next_Click" />
         </StackPanel>
 
     </Grid>

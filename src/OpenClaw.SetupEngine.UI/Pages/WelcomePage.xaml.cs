@@ -2,13 +2,11 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
 using OpenClaw.Shared;
 using System.Numerics;
-using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
@@ -31,14 +29,6 @@ public sealed partial class WelcomePage : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        var isDark = ActualTheme == ElementTheme.Dark;
-        InfoCard.Background = new SolidColorBrush(isDark
-            ? Color.FromArgb(255, 0x2C, 0x2C, 0x2C)
-            : Color.FromArgb(255, 0xF0, 0xF0, 0xF0));
-
-        InfoText.Text = "This local setup installs a small WSL Linux instance dedicated to OpenClaw. "
-                      + "If you'd rather connect to an existing or remote gateway, choose Advanced setup.";
-
         StartLobsterBreatheAnimation();
     }
 

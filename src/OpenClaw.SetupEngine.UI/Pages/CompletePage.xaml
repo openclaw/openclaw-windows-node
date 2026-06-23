@@ -5,93 +5,121 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <Grid RowDefinitions="*,Auto" Padding="56,40,56,32">
+    <Grid RowDefinitions="*,Auto" Padding="56,24,56,24">
 
-        <!-- Main content -->
-        <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="12"
-                    HorizontalAlignment="Stretch">
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel VerticalAlignment="Center" Spacing="12" HorizontalAlignment="Stretch"
+                        MaxWidth="480" Margin="0,8">
 
-            <!-- Success/failure icon -->
-            <Image x:Name="SuccessIcon" Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/PartyPopper.png"
-                   Width="120" Height="120"
-                   HorizontalAlignment="Center" Margin="0,0,0,8" />
-            <Border x:Name="FailureIcon" Width="96" Height="96"
-                    CornerRadius="48" HorizontalAlignment="Center"
-                    Margin="0,0,0,20" Visibility="Collapsed"
-                    Background="#3CFF4444">
-                <TextBlock Text="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                           FontSize="42" Foreground="#FF6B6B"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
-            </Border>
+                <!-- Success/failure icon -->
+                <Image x:Name="SuccessIcon" Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/PartyPopper.png"
+                       Width="104" Height="104"
+                       HorizontalAlignment="Center" Margin="0,0,0,4" />
+                <Border x:Name="FailureIcon" Width="96" Height="96"
+                        CornerRadius="48" HorizontalAlignment="Center"
+                        Margin="0,0,0,16" Visibility="Collapsed"
+                        Background="#3CFF4444">
+                    <TextBlock Text="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                               FontSize="42" Foreground="#FF6B6B"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
 
-            <!-- Title -->
-            <TextBlock x:Name="TitleText" Text="All set!"
-                       FontSize="32" FontWeight="SemiBold"
-                       HorizontalAlignment="Center" />
+                <!-- Title -->
+                <TextBlock x:Name="TitleText" Text="All set!"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           HorizontalAlignment="Center" />
 
-            <!-- Subtitle -->
-            <TextBlock x:Name="SubtitleText" Text="OpenClaw is ready to go"
-                       FontSize="14" Opacity="0.6"
-                       HorizontalAlignment="Center" />
+                <!-- Subtitle -->
+                <TextBlock x:Name="SubtitleText" Text="OpenClaw is ready to go"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center" />
 
-            <!-- Error details (hidden on success) -->
-            <Border x:Name="ErrorCard" CornerRadius="8" Padding="16,12,16,12"
-                    Margin="0,16,0,0" Visibility="Collapsed"
-                    Background="#3CFF4444">
-                <StackPanel Spacing="8">
-                    <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
-                               FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
-                               Foreground="#FF6B6B" />
-                    <HyperlinkButton x:Name="HelpLink"
-                                     Visibility="Collapsed"
-                                     Padding="0"
-                                     FontSize="13" />
-                    <HyperlinkButton x:Name="ViewLogLink" Content="View full log →"
-                                     Click="ViewLog_Click" Padding="0"
-                                     FontSize="13" />
+                <!-- Success summary -->
+                <StackPanel x:Name="SummaryPanel" Spacing="4" Margin="0,8,0,0" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                            <FontIcon Grid.Column="0" Glyph="&#xE756;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Local gateway running" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="OpenClawGateway · 127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <FontIcon Grid.Column="2" Glyph="&#xE73E;" FontSize="16" Foreground="{ThemeResource SystemFillColorSuccessBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                            <FontIcon Grid.Column="0" Glyph="&#xE772;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Device paired" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="Operator + node connected" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <FontIcon Grid.Column="2" Glyph="&#xE73E;" FontSize="16" Foreground="{ThemeResource SystemFillColorSuccessBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                            <FontIcon Grid.Column="0" Glyph="&#xEA18;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="Capability profile applied" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="Editable any time in Settings" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <FontIcon Grid.Column="2" Glyph="&#xE73E;" FontSize="16" Foreground="{ThemeResource SystemFillColorSuccessBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
-            </Border>
 
-            <!-- Node Mode Active banner (amber/orange) -->
-            <Border x:Name="NodeModeBanner" CornerRadius="8" Padding="20,16,20,16"
-                    Margin="0,20,0,0">
-                <StackPanel Spacing="6">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="&#xE7BA;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="16"
-                                   VerticalAlignment="Center" Foreground="#FFC107" />
-                        <TextBlock Text="Node Mode Active" FontSize="15" FontWeight="SemiBold" />
+                <!-- Error details (hidden on success) -->
+                <Border x:Name="ErrorCard" CornerRadius="8" Padding="16,12,16,12"
+                        Margin="0,16,0,0" Visibility="Collapsed"
+                        Background="#3CFF4444">
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
+                                   FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
+                                   Foreground="#FF6B6B" />
+                        <HyperlinkButton x:Name="HelpLink"
+                                         Visibility="Collapsed"
+                                         Padding="0"
+                                         FontSize="13" />
+                        <HyperlinkButton x:Name="ViewLogLink" Content="View full log →"
+                                         Click="ViewLog_Click" Padding="0"
+                                         FontSize="13" />
                     </StackPanel>
-                    <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
-                               Text="This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine." />
-                </StackPanel>
-            </Border>
+                </Border>
 
-            <!-- Launch at startup toggle -->
-            <Grid x:Name="StartupRow" ColumnDefinitions="*,Auto" Margin="0,24,0,0">
-                <TextBlock Text="Launch OpenClaw at startup?" FontSize="14"
-                           VerticalAlignment="Center" Grid.Column="0" />
-                <ToggleSwitch x:Name="StartupToggle" Grid.Column="1"
-                              OnContent="On" OffContent="Off" />
-            </Grid>
+                <!-- Node Mode Active banner (amber/orange) -->
+                <Border x:Name="NodeModeBanner" CornerRadius="8" Padding="20,16,20,16"
+                        Margin="0,12,0,0">
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#xE7BA;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="16"
+                                       VerticalAlignment="Center" Foreground="#FFC107" />
+                            <TextBlock Text="Node Mode Active" FontSize="15" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="13" Opacity="0.85"
+                                   Text="This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine." />
+                    </StackPanel>
+                </Border>
 
-        </StackPanel>
+                <!-- Launch at startup toggle -->
+                <Grid x:Name="StartupRow" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+                    <TextBlock Text="Launch OpenClaw at startup?"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               VerticalAlignment="Center" Grid.Column="0" />
+                    <ToggleSwitch x:Name="StartupToggle" Grid.Column="1"
+                                  OnContent="On" OffContent="Off" />
+                </Grid>
+
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- Bottom: Finish button -->
         <Button Grid.Row="1" x:Name="LaunchButton"
                 Content="Finish"
-                HorizontalAlignment="Stretch"
-                Height="44" FontSize="15" FontWeight="SemiBold"
-                Click="LaunchButton_Click">
-            <Button.Resources>
-                <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
-                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
-                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
-                <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
-                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
-                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
-            </Button.Resources>
-        </Button>
+                HorizontalAlignment="Stretch" Height="44" Margin="0,16,0,0"
+                Style="{StaticResource AccentButtonStyle}"
+                Click="LaunchButton_Click" />
 
     </Grid>
 </Page>

@@ -82,6 +82,13 @@ public sealed partial class SetupWindow : Window
                 Active = null;
         };
 
+        var previewPage = SetupPreview.RequestedPage;
+        if (previewPage != null)
+        {
+            NavigatePreview(previewPage);
+            return;
+        }
+
         if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out _setupLock, out var lockMessage))
         {
             RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
@@ -110,6 +117,20 @@ public sealed partial class SetupWindow : Window
     public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
+
+    // Dev-only: OPENCLAW_SETUP_PREVIEW_PAGE=<welcome|capabilities|progress|wizard|permissions|complete>
+    // opens a page directly with sample content (no pipeline, no gateway). Used for visual iteration only.
+    private void NavigatePreview(string page) => RootFrame.Navigate(
+        page switch
+        {
+            "capabilities" => typeof(CapabilitiesPage),
+            "progress" => typeof(ProgressPage),
+            "wizard" => typeof(WizardPage),
+            "permissions" => typeof(PermissionsPage),
+            "complete" => typeof(CompletePage),
+            _ => typeof(WelcomePage),
+        },
+        page == "complete" ? new CompletePageArgs(true, TimeSpan.FromMinutes(3), null) : _config);
 
     public void RequestAdvancedSetup()
     {
