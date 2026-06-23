@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -16,15 +15,27 @@ public sealed partial class WizardPage : Page
 {
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
+
+    // Bound progress polling separately from interactive wizard steps.
+    private const int MaxProgressPolls = 360;
+    private const int MaxTotalProgressPolls = 1200;
+    private static readonly TimeSpan ProgressPollDelay = TimeSpan.FromSeconds(1);
+
     private SetupConfig? _config;
     private OpenClawGatewayClient? _client;
     private string _sessionId = "";
     private string _stepId = "";
     private string _stepType = "";
+    private string _currentTitle = "";
+    private string _currentMessage = "";
+    private string _lastProgressStepId = "";
+    private WizardStepCategory _stepCategory = WizardStepCategory.Acknowledge;
     private bool _sensitive;
     private bool _errorState;
     private int _operationGeneration;
     private int _wizardStepCount;
+    private int _progressPolls;
+    private int _totalProgressPolls;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
     // Tails the WSL gateway log and surfaces openclaw plugin console.log output
@@ -68,6 +79,9 @@ public sealed partial class WizardPage : Page
             ClearConsoleBanner();
             _sessionId = "";
             _wizardStepCount = 0;
+            _progressPolls = 0;
+            _totalProgressPolls = 0;
+            _lastProgressStepId = "";
             _stepVisits.Clear();
             SetBusy("Connecting to gateway...");
             _client = await ConnectClientAsync();
@@ -166,101 +180,185 @@ public sealed partial class WizardPage : Page
 
     private async Task ApplyPayloadAsync(JsonElement payload)
     {
-        if (payload.TryGetProperty("sessionId", out var sid))
-            _sessionId = sid.GetString() ?? _sessionId;
+        var generation = _operationGeneration;
 
-        if (payload.TryGetProperty("done", out var done) && done.ValueKind == JsonValueKind.True)
+        while (true)
         {
-            var error = payload.TryGetProperty("error", out var err) ? err.ToString() : "";
-            if (!string.IsNullOrWhiteSpace(error) && !error.Contains("this.prompt is not a function", StringComparison.OrdinalIgnoreCase))
+            if (payload.TryGetProperty("sessionId", out var sid))
+                _sessionId = sid.GetString() ?? _sessionId;
+
+            if (payload.TryGetProperty("done", out var done) && done.ValueKind == JsonValueKind.True)
             {
-                ShowError(error);
+                var error = payload.TryGetProperty("error", out var err) ? err.ToString() : "";
+                if (!string.IsNullOrWhiteSpace(error) && !error.Contains("this.prompt is not a function", StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowError(error);
+                    return;
+                }
+
+                await DisconnectAsync();
+                if (generation != _operationGeneration || _errorState)
+                    return;
+
+                if (_config!.SkipPermissions)
+                    SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
+                else
+                    SetupWindow.Active?.NavigateToPermissions();
                 return;
             }
 
-            await DisconnectAsync();
-            if (_config!.SkipPermissions)
-                SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
-            else
-                SetupWindow.Active?.NavigateToPermissions();
+            if (!payload.TryGetProperty("step", out var step))
+            {
+                ShowError("Gateway wizard returned an invalid response.");
+                return;
+            }
+
+            _stepId = step.TryGetProperty("id", out var id) ? id.ToString() : "";
+            var rawType = step.TryGetProperty("type", out var type) ? type.ToString() : "note";
+            _stepType = string.IsNullOrWhiteSpace(rawType) ? "note" : rawType.Trim().ToLowerInvariant();
+            var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
+            _sensitive = step.TryGetProperty("sensitive", out var sensitive) && sensitive.ValueKind == JsonValueKind.True;
+            var title = step.TryGetProperty("title", out var titleProp) ? titleProp.ToString() : "";
+            var message = WizardPayloadHelpers.ExtractStepMessage(step);
+            var initial = step.TryGetProperty("initialValue", out var initialProp) ? initialProp : default;
+            var hasOptions = StepHasOptions(step);
+            _stepCategory = WizardStepClassifier.Categorize(_stepType, hasOptions);
+
+            if (_stepCategory == WizardStepCategory.RequiresAnswer
+                && hasOptions
+                && _stepType is not ("select" or "multiselect" or "text"))
+            {
+                _stepType = "select";
+            }
+
+            // Keep raw text for auth timeout selection; rendered URL/code rows are not TextBlocks.
+            _currentTitle = title;
+            _currentMessage = message;
+
+            if (string.IsNullOrWhiteSpace(_stepId))
+            {
+                ShowError("Gateway wizard step is missing an id.");
+                return;
+            }
+
+            // Progress carries no answer; poll until the gateway emits the next step.
+            if (_stepCategory == WizardStepCategory.Progress)
+            {
+                if (!string.Equals(_stepId, _lastProgressStepId, StringComparison.Ordinal))
+                {
+                    _lastProgressStepId = _stepId;
+                    _progressPolls = 0;
+                }
+
+                _progressPolls++;
+                _totalProgressPolls++;
+                if (_progressPolls > MaxProgressPolls)
+                {
+                    ShowError($"Gateway wizard progress step '{_stepId}' did not complete after {MaxProgressPolls} updates.");
+                    return;
+                }
+                if (_totalProgressPolls > MaxTotalProgressPolls)
+                {
+                    ShowError($"Gateway wizard did not finish after {MaxTotalProgressPolls} progress updates.");
+                    return;
+                }
+
+                RenderProgressStep(title, message);
+                await Task.Delay(ProgressPollDelay);
+                if (generation != _operationGeneration || _errorState || _client == null)
+                    return;
+
+                payload = await _client.SendWizardRequestAsync(
+                    "wizard.next",
+                    WizardNextPayload.Acknowledge(_sessionId, _stepId),
+                    timeoutMs: WizardTimeouts.ForStep(title, message));
+
+                if (generation != _operationGeneration || _errorState || _client == null)
+                    return;
+
+                continue;
+            }
+
+            _wizardStepCount++;
+            if (_wizardStepCount > MaxWizardSteps)
+            {
+                ShowError($"Gateway wizard exceeded {MaxWizardSteps} steps.");
+                return;
+            }
+
+            var visitKey = $"{_stepId}:{stepIndex}";
+            _stepVisits.TryGetValue(visitKey, out var visits);
+            _stepVisits[visitKey] = visits + 1;
+            if (_stepVisits[visitKey] > MaxSameStepVisits)
+            {
+                ShowError($"Gateway wizard repeated step '{_stepId}' too many times.");
+                return;
+            }
+
+            ResetInputs();
+            TitleText.Text = string.IsNullOrWhiteSpace(title) ? DisplayTitleFor(_stepType) : title;
+            RenderMessage(message);
+            StepCard.MinHeight = _stepType == "note" && string.IsNullOrWhiteSpace(message) ? 140 : 260;
+            ErrorText.Visibility = Visibility.Collapsed;
+            BusyRing.Visibility = Visibility.Collapsed;
+            BusyRing.IsActive = false;
+            ShowRecoveryActions();
+            StatusText.Text = "Answer the gateway setup question";
+            PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
+            SecondaryButton.IsEnabled = true;
+            PrimaryButton.Content = _stepType == "confirm" ? "Yes" : "Continue";
+            SecondaryButton.Content = "No";
+            SecondaryButton.Visibility = _stepType == "confirm" ? Visibility.Visible : Visibility.Collapsed;
+
+            if (!BuildOptions(step, initial))
+                return;
+
+            if (_stepType == "text")
+            {
+                if (_sensitive)
+                {
+                    SecretInput.Visibility = Visibility.Visible;
+                    SecretInput.Password = initial.ValueKind == JsonValueKind.String ? initial.GetString() ?? "" : "";
+                }
+                else
+                {
+                    TextInput.Visibility = Visibility.Visible;
+                    TextInput.Text = initial.ValueKind == JsonValueKind.String ? initial.GetString() ?? "" : "";
+                }
+
+                UpdateContinueState();
+            }
+
+            if (_stepType == "note")
+            {
+                SecondaryButton.IsEnabled = false;
+                SecondaryButton.Visibility = Visibility.Collapsed;
+            }
+
             return;
         }
+    }
 
-        if (!payload.TryGetProperty("step", out var step))
-        {
-            ShowError("Gateway wizard returned an invalid response.");
-            return;
-        }
+    private static bool StepHasOptions(JsonElement step) =>
+        step.TryGetProperty("options", out var options)
+        && options.ValueKind == JsonValueKind.Array
+        && options.EnumerateArray().Any();
 
-        _stepId = step.TryGetProperty("id", out var id) ? id.ToString() : "";
-        _stepType = step.TryGetProperty("type", out var type) ? type.ToString() : "note";
-        var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
-        _sensitive = step.TryGetProperty("sensitive", out var sensitive) && sensitive.ValueKind == JsonValueKind.True;
-        var title = step.TryGetProperty("title", out var titleProp) ? titleProp.ToString() : "";
-        var message = WizardPayloadHelpers.ExtractStepMessage(step);
-        var initial = step.TryGetProperty("initialValue", out var initialProp) ? initialProp : default;
-
-        if (string.IsNullOrWhiteSpace(_stepId))
-        {
-            ShowError("Gateway wizard step is missing an id.");
-            return;
-        }
-
-        _wizardStepCount++;
-        if (_wizardStepCount > MaxWizardSteps)
-        {
-            ShowError($"Gateway wizard exceeded {MaxWizardSteps} steps.");
-            return;
-        }
-
-        var visitKey = $"{_stepId}:{stepIndex}";
-        _stepVisits.TryGetValue(visitKey, out var visits);
-        _stepVisits[visitKey] = visits + 1;
-        if (_stepVisits[visitKey] > MaxSameStepVisits)
-        {
-            ShowError($"Gateway wizard repeated step '{_stepId}' too many times.");
-            return;
-        }
-
+    private void RenderProgressStep(string title, string message)
+    {
         ResetInputs();
-        TitleText.Text = string.IsNullOrWhiteSpace(title) ? DisplayTitleFor(_stepType) : title;
+        TitleText.Text = string.IsNullOrWhiteSpace(title) ? "Working…" : title;
         RenderMessage(message);
-        StepCard.MinHeight = _stepType == "note" && string.IsNullOrWhiteSpace(message) ? 140 : 260;
+        StepCard.MinHeight = 200;
         ErrorText.Visibility = Visibility.Collapsed;
-        BusyRing.Visibility = Visibility.Collapsed;
-        BusyRing.IsActive = false;
+        BusyRing.Visibility = Visibility.Visible;
+        BusyRing.IsActive = true;
+        StatusText.Text = string.IsNullOrWhiteSpace(message) ? "Working…" : "Setting things up…";
+        PrimaryButton.IsEnabled = false;
+        PrimaryButton.Content = "Continue";
+        SecondaryButton.IsEnabled = false;
+        SecondaryButton.Visibility = Visibility.Collapsed;
         ShowRecoveryActions();
-        StatusText.Text = "Answer the gateway setup question";
-        PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
-        SecondaryButton.IsEnabled = true;
-        PrimaryButton.Content = _stepType == "confirm" ? "Yes" : "Continue";
-        SecondaryButton.Content = "No";
-        SecondaryButton.Visibility = _stepType == "confirm" ? Visibility.Visible : Visibility.Collapsed;
-
-        if (!BuildOptions(step, initial))
-            return;
-
-        if (_stepType == "text")
-        {
-            if (_sensitive)
-            {
-                SecretInput.Visibility = Visibility.Visible;
-                SecretInput.Password = initial.ValueKind == JsonValueKind.String ? initial.GetString() ?? "" : "";
-            }
-            else
-            {
-                TextInput.Visibility = Visibility.Visible;
-                TextInput.Text = initial.ValueKind == JsonValueKind.String ? initial.GetString() ?? "" : "";
-            }
-
-            UpdateContinueState();
-        }
-
-        if (_stepType == "note")
-        {
-            SecondaryButton.IsEnabled = false;
-            SecondaryButton.Visibility = Visibility.Collapsed;
-        }
     }
 
     private bool BuildOptions(JsonElement step, JsonElement initial)
@@ -459,6 +557,10 @@ public sealed partial class WizardPage : Page
                     ? new { sessionId = _sessionId, answer = new { stepId = _stepId, value = false } }
                     : new { sessionId = _sessionId };
             }
+            else if (_stepCategory == WizardStepCategory.NonInteractive)
+            {
+                parameters = WizardNextPayload.Acknowledge(_sessionId, _stepId);
+            }
             else
             {
                 parameters = new { sessionId = _sessionId, answer = new { stepId = _stepId, value = answerValue } };
@@ -542,17 +644,7 @@ public sealed partial class WizardPage : Page
             ErrorText.Visibility = Visibility.Collapsed;
     }
 
-    private int TimeoutForCurrentStep()
-    {
-        var text = $"{TitleText.Text} {string.Join(' ', MessagePanel.Children.OfType<TextBlock>().Select(t => t.Text))}";
-        return text.Contains("device", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("authorize", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("login", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("sign in", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("oauth", StringComparison.OrdinalIgnoreCase)
-            ? 300_000
-            : 30_000;
-    }
+    private int TimeoutForCurrentStep() => WizardTimeouts.ForStep(_currentTitle, _currentMessage);
 
     private void ResetInputs()
     {
@@ -577,29 +669,26 @@ public sealed partial class WizardPage : Page
     }
 
     // Renders a single line into a target panel, decorating URLs as hyperlinks
-    // and "Code: XXX" patterns as monospace rows with a copy button. Shared by
-    // RenderMessage and AppendConsoleLine.
+    // and "Code: XXX" patterns as monospace rows with a copy button.
     private void AppendLineTo(Panel target, string line, double fontSize, double opacity)
     {
-        var trimmed = line.TrimEnd('\r');
+        var segment = WizardMessageFormatting.ClassifyLine(line);
 
-        var codeMatch = Regex.Match(trimmed, @"^((?:Code|code|user_code|USER_CODE)\s*[:=]\s*)([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b");
-        if (codeMatch.Success)
+        if (segment.Kind == WizardLineKind.Code)
         {
-            target.Children.Add(BuildCodeRow(codeMatch.Groups[1].Value, codeMatch.Groups[2].Value));
+            target.Children.Add(BuildCodeRow(segment.Prefix, segment.Highlight));
             return;
         }
 
-        var urlMatch = Regex.Match(trimmed, @"https?://[^\s\)\""]+", RegexOptions.IgnoreCase);
-        if (urlMatch.Success && Uri.TryCreate(urlMatch.Value.TrimEnd('.', ','), UriKind.Absolute, out var uri))
+        if (segment.Kind == WizardLineKind.Url && Uri.TryCreate(segment.Highlight, UriKind.Absolute, out var uri))
         {
-            target.Children.Add(BuildLinkLine(trimmed, urlMatch.Value, uri));
+            target.Children.Add(BuildLinkLine(segment.Text, segment.Highlight, uri));
             return;
         }
 
         target.Children.Add(new TextBlock
         {
-            Text = trimmed,
+            Text = segment.Text,
             FontSize = fontSize,
             FontFamily = new FontFamily("Consolas"),
             Opacity = opacity,
@@ -803,6 +892,8 @@ public sealed partial class WizardPage : Page
         if (_errorState)
             return;
 
+        // Invalidate in-flight wizard.next calls before tearing down the connection.
+        AdvanceOperationGeneration();
         _errorState = true;
         // Cancel the server-side wizard session before disconnecting so that
         // subsequent retries (Start wizard again / Skip wizard) don't hit a
