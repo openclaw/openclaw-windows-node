@@ -65,25 +65,36 @@ public class MxcAvailabilityTests
     }
 
     [Theory]
-    [InlineData(26299, 9999, "is not MXC supported build 26300")]
-    [InlineData(26300, 8288, "Windows UBR 8288 below MXC minimum 8289")]
-    [InlineData(26301, 9999, "is not MXC supported build 26300")]
-    [InlineData(27999, 9999, "is not MXC supported build 26300")]
-    [InlineData(28000, 9999, "is not MXC supported build 26300")]
+    [InlineData(26099, 9999, "is below MXC minimum 26100")]
+    [InlineData(26100, 7964, "Windows UBR 7964 below MXC minimum 7965")]
+    [InlineData(26300, 7964, "Windows UBR 7964 below MXC minimum 7965")]
+    [InlineData(26499, 7964, "Windows UBR 7964 below MXC minimum 7965")]
+    [InlineData(26500, 1, null)]
+    [InlineData(27000, 0, null)]
     public void GetWindowsBuildUnsupportedReason_RejectsUnsupportedBuilds(
         int build,
         int ubr,
-        string expectedReason)
+        string? expectedReason)
     {
         var reason = MxcAvailability.GetWindowsBuildUnsupportedReason(build, ubr);
 
-        Assert.NotNull(reason);
-        Assert.Contains(expectedReason, reason);
+        if (expectedReason is null)
+        {
+            Assert.Null(reason);
+        }
+        else
+        {
+            Assert.NotNull(reason);
+            Assert.Contains(expectedReason, reason);
+        }
     }
 
     [Theory]
+    [InlineData(26100, 7965)]
+    [InlineData(26100, 9999)]
     [InlineData(26300, 8289)]
-    [InlineData(26300, 9999)]
+    [InlineData(26500, 0)]
+    [InlineData(27000, 0)]
     public void GetWindowsBuildUnsupportedReason_AllowsSupportedBuilds(int build, int ubr)
     {
         var reason = MxcAvailability.GetWindowsBuildUnsupportedReason(build, ubr);

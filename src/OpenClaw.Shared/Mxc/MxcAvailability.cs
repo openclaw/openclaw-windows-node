@@ -8,7 +8,7 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Backends checked:
 /// <list type="bullet">
-/// <item><see cref="IsAppContainerAvailable"/> — Windows 11 build 26300 with UBR &gt;= 8289, x64 / arm64.</item>
+/// <item><see cref="IsAppContainerAvailable"/> — Windows build &gt;= 26100 with UBR &gt;= 7965 (builds 26100–26500), x64 / arm64.</item>
 /// <item><see cref="IsWxcExecResolvable"/> — wxc-exec.exe found in the shipped tray output layout or via override.</item>
 /// <item><see cref="IsIsolationSessionAvailable"/> — requires AppContainer plus IsolationProxy.exe in System32.</item>
 /// </list>
@@ -22,14 +22,13 @@ public sealed class MxcAvailability
     /// </summary>
     public const string WxcExecOverrideEnvVar = "OPENCLAW_WXC_EXEC";
 
-    private const int SupportedBuild = 26300;
-
-    // TODO: This is all temporary and a moment in time; feature gate this correctly ASAP.
-    /// <summary>
-    /// Temporary MXC support table: only build 26300 with UBR 8289+ is enabled.
-    /// All other builds are blocked until validated and the table is updated.
-    /// </summary>
-    private const int MinSupportedUbr = 8289;
+    // Matches @microsoft/mxc-sdk platform.checkWindowsBuildVersion():
+    // - Build >= 26100 required.
+    // - Builds 26100–26500 require UBR >= 7965.
+    // - Builds >= 26500 have no UBR minimum.
+    private const int MinBuild = 26100;
+    private const int MinSupportedUbr = 7965;
+    private const int UbrRelaxedBuild = 26500;
 
     public bool IsAppContainerAvailable { get; }
     public bool IsIsolationSessionAvailable { get; }
@@ -114,14 +113,14 @@ public sealed class MxcAvailability
 
     internal static string? GetWindowsBuildUnsupportedReason(int build, int ubr)
     {
-        if (build != SupportedBuild)
-            return $"Windows build {build} is not MXC supported build {SupportedBuild}.";
+        if (build < MinBuild)
+            return $"Windows build {build} is below MXC minimum {MinBuild}.";
 
-        if (ubr < MinSupportedUbr)
+        if (build < UbrRelaxedBuild && ubr < MinSupportedUbr)
         {
             return
                 $"Windows UBR {ubr} below MXC minimum {MinSupportedUbr} " +
-                $"(for build {SupportedBuild}). " +
+                $"(for build {build}). " +
                 "Install latest cumulative update.";
         }
 
