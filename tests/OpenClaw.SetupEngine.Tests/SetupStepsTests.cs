@@ -1512,7 +1512,8 @@ public class SetupStepsTests : IDisposable
             TimeSpan timeout,
             IReadOnlyDictionary<string, string>? environment = null,
             CancellationToken ct = default,
-            string? user = null)
+            string? user = null,
+            string? stdinInput = null)
         {
             if (runInWsl == null)
                 throw new NotSupportedException("RunInWslAsync is not expected in these tests.");

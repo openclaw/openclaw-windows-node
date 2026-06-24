@@ -24,7 +24,8 @@ public interface ICommandRunner
         TimeSpan timeout,
         IReadOnlyDictionary<string, string>? environment = null,
         CancellationToken ct = default,
-        string? user = null);
+        string? user = null,
+        string? stdinInput = null);
 }
 
 public sealed class CommandRunner : ICommandRunner
@@ -145,7 +146,8 @@ public sealed class CommandRunner : ICommandRunner
         TimeSpan timeout,
         IReadOnlyDictionary<string, string>? environment = null,
         CancellationToken ct = default,
-        string? user = null)
+        string? user = null,
+        string? stdinInput = null)
     {
         // Strip Windows \r to avoid bash "$'\r': command not found" errors
         command = command.Replace("\r", "");
@@ -171,7 +173,7 @@ public sealed class CommandRunner : ICommandRunner
                 : wslEnvKeys;
         }
 
-        return RunAsync("wsl.exe", args.ToArray(), timeout, env, ct: ct);
+        return RunAsync("wsl.exe", args.ToArray(), timeout, env, stdinInput: stdinInput, ct: ct);
     }
 
     private static void TryKill(Process process)
