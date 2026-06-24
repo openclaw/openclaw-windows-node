@@ -203,7 +203,7 @@ public class MxcConfigBuilderTests
     {
         var policy = BalancedPolicy();
         var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
-        Assert.Contains("internetClient", config.AppContainer!.Capabilities!);
+        Assert.Contains("internetClient", config.ProcessContainer!.Capabilities!);
         Assert.Equal("allow", config.Network!.DefaultPolicy);
     }
 
@@ -212,7 +212,7 @@ public class MxcConfigBuilderTests
     {
         var policy = LockedDownPolicy();
         var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
-        Assert.DoesNotContain("internetClient", config.AppContainer!.Capabilities!);
+        Assert.DoesNotContain("internetClient", config.ProcessContainer!.Capabilities!);
         Assert.Equal("block", config.Network!.DefaultPolicy);
     }
 
@@ -559,7 +559,7 @@ public class MxcConfigBuilderTests
         Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.True(config.Ui!.Disable);
-        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
+        Assert.Equal("container", config.ProcessContainer!.Ui!.Isolation);
     }
 
     [Fact]
@@ -575,7 +575,7 @@ public class MxcConfigBuilderTests
         var config = BuildConfig(request, pathEnvVar: "");
 
         Assert.False(config.Ui!.Disable);
-        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
+        Assert.Equal("desktop", config.ProcessContainer!.Ui!.Isolation);
     }
 
     [Theory]
@@ -592,6 +592,17 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
+    public void Build_UnsupportedShell_FailsClosedBeforeCommandLineFallback()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"bash"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("Unsupported shell 'bash'", ex.Message);
+    }
+
+    [Fact]
     public void Build_CmdShell_UsesResolvedCmdExe()
     {
         using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"cmd"}""");
@@ -603,7 +614,7 @@ public class MxcConfigBuilderTests
         Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.True(config.Ui!.Disable);
-        Assert.Equal("container", config.AppContainer!.Ui!.Isolation);
+        Assert.Equal("container", config.ProcessContainer!.Ui!.Isolation);
     }
 
     [Fact]
@@ -664,7 +675,7 @@ public class MxcConfigBuilderTests
         Assert.StartsWith("pwsh.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.False(config.Ui!.Disable);
-        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
+        Assert.Equal("desktop", config.ProcessContainer!.Ui!.Isolation);
     }
 
     [Fact]
@@ -720,7 +731,7 @@ public class MxcConfigBuilderTests
         Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.False(config.Ui!.Disable);
-        Assert.Equal("desktop", config.AppContainer!.Ui!.Isolation);
+        Assert.Equal("desktop", config.ProcessContainer!.Ui!.Isolation);
     }
 
     [Fact]

@@ -67,7 +67,8 @@ public static class MxcConfigBuilder
 
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
-        if (IsPowerShellFamilyShell(args.Shell) && policy?.Ui?.AllowWindows != true)
+        var shell = NormalizeSupportedShell(args.Shell);
+        if (IsPowerShellFamilyShell(shell) && policy?.Ui?.AllowWindows != true)
         {
             throw new NotSupportedException(
                 "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend.");
@@ -94,7 +95,7 @@ public static class MxcConfigBuilder
 
         // commandLine — shell-quoted, with PATH/TEMP/TMP/TMPDIR bootstrapped
         // inside the shell because MXC 0.7 rejects non-empty process.env.
-        var commandLine = ShellCommandLine.Build(args.Shell, args.Command, args.Argv, scratchDir, pathDirs);
+        var commandLine = ShellCommandLine.Build(shell, args.Command, args.Argv, scratchDir, pathDirs);
         var allowWindows = policy?.Ui?.AllowWindows == true;
 
         // readwrite = UI grants + scratch dir.
@@ -463,6 +464,19 @@ public static class MxcConfigBuilder
         return normalized is "powershell" or "pwsh";
     }
 
+    private static string NormalizeSupportedShell(string shell)
+    {
+        var normalized = string.IsNullOrWhiteSpace(shell)
+            ? DefaultShell
+            : shell.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "cmd" or "powershell" or "pwsh" => normalized,
+            _ => throw new NotSupportedException(
+                $"Unsupported shell '{shell}' for the Windows MXC 0.7 processcontainer backend."),
+        };
+    }
+
     private sealed record SystemRunArgs(string Command, string Shell, IReadOnlyList<string> Argv);
 }
 
@@ -503,7 +517,8 @@ internal static class ShellCommandLine
                 argv,
                 scratchDir,
                 bootstrapPathDirs),
-            _ => BuildPowershell(ResolveWindowsPowerShellExe(), command, argv, scratchDir, bootstrapPathDirs),
+            _ => throw new NotSupportedException(
+                $"Unsupported shell '{shell}' for the Windows MXC 0.7 processcontainer backend."),
         };
     }
 

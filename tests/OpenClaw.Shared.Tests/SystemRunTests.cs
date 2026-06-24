@@ -1271,7 +1271,7 @@ public class LocalCommandRunnerPlanTests
 
         Assert.False(plan.IsDirectArgv);
         Assert.Null(plan.ArgList);
-        Assert.Equal("powershell.exe", plan.FileName);
+        Assert.EndsWith("powershell.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Write-Output hi", plan.Arguments);
     }
 
