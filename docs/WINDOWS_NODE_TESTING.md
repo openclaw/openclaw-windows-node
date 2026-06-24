@@ -129,6 +129,29 @@ When the node connects, it advertises these capabilities:
   dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter "FullyQualifiedName~Mxc"
   ```
 
+### Full Gateway `system.run` MXC runtime proof
+- The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, sets a local exec approval rule through MCP, invokes `system.run` through the real Gateway `node.invoke` path, and verifies tray MXC diagnostics show contained `mxc-direct-appc` execution for both allowed execution and denied writes to the tray data directory.
+- Run it when validating the Gateway/Windows node runtime path, not just direct MCP or shared library behavior.
+- When reproducing this manually against an existing Gateway, make sure `gateway.nodes.allowCommands` includes `system.run`, `system.run.prepare`, and `system.which`, then approve any `pending-reapproval` request with `openclaw nodes approve <pendingRequestId>`. The node can advertise `system.run` while the Gateway still blocks it until both gates are updated.
+
+  ```powershell
+  .\build.ps1
+  $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+  $env:OPENCLAW_RUN_E2E = "1"
+  dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj `
+    --no-restore `
+    --filter "FullyQualifiedName~RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox" `
+    --logger "console;verbosity=normal" `
+    -r win-x64
+  ```
+
+- Expected proof markers:
+  - Gateway response contains `OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK` with `exitCode=0`.
+  - The denied-write proof targets a fresh file under the isolated tray data directory, returns non-zero, and leaves that file absent.
+  - `openclaw-tray.log` contains `[mxc] system.run sandbox request` with `executor=mxc-direct-appc`, `contained=True`, and `shell=cmd`.
+  - `openclaw-tray.log` contains `[mxc] system.run sandbox result` with `containment=mxc` for both the successful execution and the denied write.
+- E2E artifacts are written under `TestResults\E2E\<run-id>` and skip known secret-bearing files such as gateway records and settings.
+
 ## Remaining Work (Roadmap)
 
 1. ~~**system.run + exec approvals**~~ ✅ Implemented

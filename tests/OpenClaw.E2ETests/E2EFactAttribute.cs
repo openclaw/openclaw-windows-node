@@ -1,4 +1,5 @@
 using Xunit;
+using OpenClaw.Shared.Mxc;
 
 namespace OpenClaw.E2ETests;
 
@@ -14,6 +15,132 @@ public sealed class E2EFactAttribute : FactAttribute
         if (!E2ETestGate.IsEnabled)
             Skip = $"E2E tests disabled. Set {E2ETestGate.EnvVar}=1 to enable.";
     }
+}
+
+/// <summary>
+/// Focused E2E tests that require MXC support must not fail the regular E2E
+/// shard on Windows runners where the Gateway path works but MXC is unavailable.
+/// </summary>
+public sealed class MxcE2EFactAttribute : FactAttribute
+{
+    public MxcE2EFactAttribute()
+    {
+        Skip = MxcE2ETestGate.SkipReason;
+    }
+}
+
+internal static class MxcE2ETestGate
+{
+    private static readonly Lazy<string?> s_skipReason = new(GetSkipReason);
+
+    public static string? SkipReason => s_skipReason.Value;
+
+    private static string? GetSkipReason()
+    {
+        if (!E2ETestGate.IsEnabled)
+            return $"E2E tests disabled. Set {E2ETestGate.EnvVar}=1 to enable.";
+
+        try
+        {
+            var availability = MxcAvailability.Probe();
+            var hasBackend = availability.IsAppContainerAvailable || availability.IsIsolationSessionAvailable;
+            if (!hasBackend)
+            {
+                var reason = availability.UnsupportedReasons.Count == 0
+                    ? "MXC backend is unavailable."
+                    : string.Join("; ", availability.UnsupportedReasons);
+                return $"MXC E2E test skipped: {reason}";
+            }
+
+            if (!availability.IsWxcExecResolvable && !HasE2EWxcExec())
+            {
+                var reason = availability.UnsupportedReasons.Count == 0
+                    ? "wxc-exec.exe is unavailable."
+                    : string.Join("; ", availability.UnsupportedReasons);
+                return $"MXC E2E test skipped: {reason}";
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return $"MXC E2E test skipped: availability probe failed ({ex.GetType().Name}: {ex.Message}).";
+        }
+    }
+
+    private static bool HasE2EWxcExec()
+    {
+        var overridePath = Environment.GetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar);
+        if (FileExists(overridePath))
+            return true;
+
+        foreach (var repoRoot in CandidateRepoRoots())
+        {
+            var arch = GetSdkArchString();
+            if (FileExists(Path.Combine(repoRoot, "node_modules", "@microsoft", "mxc-sdk", "bin", arch, "wxc-exec.exe")))
+                return true;
+
+            var trayBin = Path.Combine(repoRoot, "src", "OpenClaw.Tray.WinUI", "bin");
+            if (Directory.Exists(trayBin))
+            {
+                try
+                {
+                    if (Directory.EnumerateFiles(trayBin, "wxc-exec.exe", SearchOption.AllDirectories).Any())
+                        return true;
+                }
+                catch
+                {
+                    // Discovery-only guard; a failed search should become an
+                    // ordinary MXC skip rather than a discovery failure.
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> CandidateRepoRoots()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var start in new[]
+        {
+            Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT"),
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory,
+        })
+        {
+            if (string.IsNullOrWhiteSpace(start))
+                continue;
+
+            var dir = Directory.Exists(start)
+                ? new DirectoryInfo(start)
+                : new FileInfo(start).Directory;
+            while (dir is not null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "package.json"))
+                    && Directory.Exists(Path.Combine(dir.FullName, "src", "OpenClaw.Tray.WinUI")))
+                {
+                    if (seen.Add(dir.FullName))
+                        yield return dir.FullName;
+                    break;
+                }
+                dir = dir.Parent;
+            }
+        }
+    }
+
+    private static bool FileExists(string? path)
+    {
+        try { return !string.IsNullOrWhiteSpace(path) && File.Exists(path); }
+        catch { return false; }
+    }
+
+    private static string GetSdkArchString() => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture switch
+    {
+        System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+        System.Runtime.InteropServices.Architecture.X64 => "x64",
+        _ => "x64",
+    };
 }
 
 internal static class E2ETestGate

@@ -299,7 +299,7 @@ jobs:
       matrix:
         include:
           - name: setup-connect
-            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
           - name: revocation-recovery
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
           - name: network-recovery
@@ -365,6 +365,36 @@ jobs:
         if ($executed -lt 1) {
           Write-Error "E2E shard '${{ matrix.name }}' executed zero tests. Check OPENCLAW_RUN_E2E gating/filter before merging."
           exit 1
+        }
+        if ("${{ matrix.name }}" -eq "setup-connect") {
+          $mxcProofNames = @(
+            "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
+            "RealGateway_SystemRun_BlocksWritesToTrayDataDirectoryInMxcSandbox"
+          )
+
+          foreach ($mxcProofName in $mxcProofNames) {
+            $mxcProof = @($trx.TestRun.Results.UnitTestResult | Where-Object { $_.testName -like "*$mxcProofName*" }) | Select-Object -First 1
+            if ($null -eq $mxcProof) {
+              Write-Error "E2E shard '${{ matrix.name }}' did not report the MXC proof test '$mxcProofName'. Check the setup-connect filter before merging."
+              exit 1
+            }
+
+            $mxcOutcome = [string]$mxcProof.outcome
+            if ($mxcOutcome -eq "Passed") {
+              Write-Host "MXC E2E proof passed: $mxcProofName"
+            } elseif ($mxcOutcome -eq "NotExecuted" -or $mxcOutcome -eq "Skipped") {
+              $mxcSkipReason = @($mxcProof.Output.ErrorInfo.Message, $mxcProof.Output.StdOut) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                Select-Object -First 1
+              if ([string]::IsNullOrWhiteSpace($mxcSkipReason)) {
+                $mxcSkipReason = "skip reason was not present in the trx output"
+              }
+              Write-Warning "MXC E2E proof skipped: $mxcProofName; $mxcSkipReason"
+            } else {
+              Write-Error "MXC E2E proof '$mxcProofName' had unexpected outcome '$mxcOutcome'."
+              exit 1
+            }
+          }
         }
 
     - name: Upload E2E Test Results & Logs
