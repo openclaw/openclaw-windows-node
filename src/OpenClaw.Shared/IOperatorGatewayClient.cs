@@ -111,4 +111,34 @@ public interface IOperatorGatewayClient
     /// <summary>Long-poll for QR linking completion. Sends web.login.wait { currentQrDataUrl, timeoutMs }.</summary>
     Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
+
+    // ─── Gateway protocol APIs ───
+    // These ship with default implementations so adding them does not source-break
+    // existing external implementers of this interface (e.g. test doubles). The
+    // real gateway client overrides them; defaults degrade gracefully to an
+    // "unsupported" typed result, matching older-gateway behavior.
+    /// <summary>Fetch the gateway command catalog (<c>commands.list</c>); applies <paramref name="query"/> client-side. Returns IsSupported=false on older gateways.</summary>
+    Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null, int timeoutMs = 15000)
+        => Task.FromResult(new CommandCatalog { IsSupported = false });
+    /// <summary>Apply an extended <see cref="SessionPatch"/> (rich field set) to a session.</summary>
+    Task<bool> PatchSessionAsync(string key, SessionPatch patch)
+        => Task.FromResult(false);
+    /// <summary>List session files, optionally scoped to a sub-path/search (<c>sessions.files.list</c>).</summary>
+    Task<SessionFileList> ListSessionFilesAsync(string key, string? path = null, string? search = null, int timeoutMs = 15000)
+        => Task.FromResult(new SessionFileList { Key = key, IsSupported = false });
+    /// <summary>Read a session file's content (<c>sessions.files.get</c>).</summary>
+    Task<SessionFileContent> GetSessionFileAsync(string key, string path, int timeoutMs = 15000)
+        => Task.FromResult(new SessionFileContent { Key = key, Path = path, IsSupported = false });
+    /// <summary>List compaction checkpoints for a session (<c>sessions.compaction.list</c>).</summary>
+    Task<SessionCompactionCheckpointList> ListCompactionCheckpointsAsync(string key, int timeoutMs = 15000)
+        => Task.FromResult(new SessionCompactionCheckpointList { Key = key, IsSupported = false });
+    /// <summary>Fetch a single compaction checkpoint's metadata (<c>sessions.compaction.get</c>).</summary>
+    Task<SessionCompactionCheckpointResult> GetCompactionCheckpointAsync(string key, string checkpointId, int timeoutMs = 15000)
+        => Task.FromResult(new SessionCompactionCheckpointResult { Key = key, IsSupported = false });
+    /// <summary>Branch a new session from a compaction checkpoint (<c>sessions.compaction.branch</c>).</summary>
+    Task<SessionCompactionMutationResult> BranchCompactionCheckpointAsync(string key, string checkpointId, int timeoutMs = 15000)
+        => Task.FromResult(new SessionCompactionMutationResult { Key = key, CheckpointId = checkpointId, IsSupported = false });
+    /// <summary>Restore a session to a compaction checkpoint (<c>sessions.compaction.restore</c>).</summary>
+    Task<SessionCompactionMutationResult> RestoreCompactionCheckpointAsync(string key, string checkpointId, int timeoutMs = 15000)
+        => Task.FromResult(new SessionCompactionMutationResult { Key = key, CheckpointId = checkpointId, IsSupported = false });
 }
