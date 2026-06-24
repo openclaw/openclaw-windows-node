@@ -140,17 +140,19 @@ public sealed class InstallerIssAssertionTests
     {
         var repositoryRoot = TestRepositoryPaths.GetRepositoryRoot();
         var packageJson = File.ReadAllText(Path.Combine(repositoryRoot, "package.json"));
+        var packageLock = File.ReadAllText(Path.Combine(repositoryRoot, "package-lock.json"));
         var trayProject = File.ReadAllText(Path.Combine(
             repositoryRoot, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
         var iss = File.ReadAllText(Path.Combine(repositoryRoot, "installer.iss"));
 
         Assert.Contains(@"""@microsoft/mxc-sdk""", packageJson);
         Assert.Contains(@"""@microsoft/mxc-sdk"": ""^0.7.0""", packageJson);
-        Assert.Contains("<MxcSdkExpectedVersion>0.7.0</MxcSdkExpectedVersion>", trayProject);
-        Assert.Contains("MxcSdkInstalledVersion", trayProject);
+        Assert.Contains(@"""node_modules/@microsoft/mxc-sdk""", packageLock);
+        Assert.Contains(@"""version"": ""0.7.0""", packageLock);
         Assert.Contains("RestoreMxcNodeBridge", trayProject);
+        Assert.Contains(@"Inputs=""$(OpenClawRepoRoot)package-lock.json""", trayProject);
+        Assert.Contains(@"Outputs=""$(OpenClawRepoRoot)node_modules\.package-lock.json""", trayProject);
         Assert.Contains("npm ci --no-audit --no-fund", trayProject);
-        Assert.Contains("'$(MxcSdkInstalledVersion)' != '$(MxcSdkExpectedVersion)'", trayProject);
         Assert.Contains("CopyWxcExecToOutput", trayProject);
         Assert.Contains("CopyWxcExecToPublish", trayProject);
         Assert.Contains("ValidateWxcExecShipped", trayProject);
