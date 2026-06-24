@@ -4799,6 +4799,60 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="CronPage_Running" xml:space="preserve">
     <value>Exécution...</value>
   </data>
+  <data name="CronPage_CompletedOneTimeJobTooltip" xml:space="preserve">
+    <value>Tâche ponctuelle terminée</value>
+  </data>
+  <data name="CronPage_EnableJobTooltip" xml:space="preserve">
+    <value>Activer la tâche</value>
+  </data>
+  <data name="CronPage_DisableJobTooltip" xml:space="preserve">
+    <value>Désactiver la tâche</value>
+  </data>
+  <data name="CronPage_FullResponse" xml:space="preserve">
+    <value>Réponse complète</value>
+  </data>
+  <data name="CronPage_OpenChat" xml:space="preserve">
+    <value>Ouvrir le chat</value>
+  </data>
+  <data name="CronPage_RunNow" xml:space="preserve">
+    <value>Exécuter maintenant</value>
+  </data>
+  <data name="CronPage_EditAction" xml:space="preserve">
+    <value>Modifier</value>
+  </data>
+  <data name="CronPage_HistoryAction" xml:space="preserve">
+    <value>Historique</value>
+  </data>
+  <data name="CronPage_RemoveAction" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="CronPage_RunningBadge" xml:space="preserve">
+    <value>Exécution</value>
+  </data>
+  <data name="CronPage_RunHistory" xml:space="preserve">
+    <value>Historique des exécutions</value>
+  </data>
+  <data name="CronPage_RunHistoryShowing" xml:space="preserve">
+    <value>Historique des exécutions - {0} sur {1} affichées</value>
+  </data>
+  <data name="CronPage_RunHistoryCount" xml:space="preserve">
+    <value>Historique des exécutions - {0} exécutions</value>
+  </data>
+  <data name="CronPage_LoadingRunHistory" xml:space="preserve">
+    <value>Chargement de l’historique des exécutions...</value>
+  </data>
+  <data name="CronPage_NoRunHistoryAvailable" xml:space="preserve">
+    <value>Aucun historique d’exécution disponible.</value>
+  </data>
+  <data name="CronPage_LoadOlderRuns" xml:space="preserve">
+    <value>Charger les exécutions plus anciennes ({0} restantes)...</value>
+  </data>
+  <data name="CronPage_LoadMoreRuns" xml:space="preserve">
+    <value>Charger plus d’exécutions...</value>
+  </data>
+  <data name="CronPage_Loading" xml:space="preserve">
+    <value>Chargement...</value>
+  </data>
   <data name="CronPage_SaveChanges" xml:space="preserve">
     <value>Enregistrer les modifications</value>
   </data>
@@ -5859,6 +5913,15 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
   </data>
   <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
     <value>&quot;{0}&quot; ran successfully and was removed.</value>
+  </data>
+  <data name="CronPage_RunNotStarted" xml:space="preserve">
+    <value>Exécution non démarrée</value>
+  </data>
+  <data name="CronPage_RunNotStartedGeneric" xml:space="preserve">
+    <value>{0} n’a pas été démarrée.</value>
+  </data>
+  <data name="CronPage_RunNotStartedWithReason" xml:space="preserve">
+    <value>{0} n’a pas été démarrée : {1}</value>
   </data>
   <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
     <value>This gateway does not have WSL or SSH terminal access.</value>

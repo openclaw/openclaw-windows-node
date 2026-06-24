@@ -47,16 +47,16 @@ public class CronPayloadShapeTests
     }
 
     [Fact]
-    public void CronRun_Payload_Uses_Id()
+    public void CronRun_Payload_Uses_JobId()
     {
         // Mirrors the wire object built by RunCronJobAsync
-        var payload = new { id = "job-789", force = true };
+        var payload = new { jobId = "job-789" };
         var el = Serialize(payload);
 
-        Assert.True(el.TryGetProperty("id", out var idProp));
+        Assert.True(el.TryGetProperty("jobId", out var idProp));
         Assert.Equal("job-789", idProp.GetString());
-        Assert.False(el.TryGetProperty("jobId", out _));
-        Assert.True(el.GetProperty("force").GetBoolean());
+        Assert.False(el.TryGetProperty("id", out _));
+        Assert.False(el.TryGetProperty("force", out _));
     }
 
     [Fact]

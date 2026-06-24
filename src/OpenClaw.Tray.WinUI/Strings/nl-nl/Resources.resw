@@ -4800,6 +4800,60 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="CronPage_Running" xml:space="preserve">
     <value>Uitvoeren...</value>
   </data>
+  <data name="CronPage_CompletedOneTimeJobTooltip" xml:space="preserve">
+    <value>Eenmalige taak voltooid</value>
+  </data>
+  <data name="CronPage_EnableJobTooltip" xml:space="preserve">
+    <value>Taak inschakelen</value>
+  </data>
+  <data name="CronPage_DisableJobTooltip" xml:space="preserve">
+    <value>Taak uitschakelen</value>
+  </data>
+  <data name="CronPage_FullResponse" xml:space="preserve">
+    <value>Volledig antwoord</value>
+  </data>
+  <data name="CronPage_OpenChat" xml:space="preserve">
+    <value>Chat openen</value>
+  </data>
+  <data name="CronPage_RunNow" xml:space="preserve">
+    <value>Nu uitvoeren</value>
+  </data>
+  <data name="CronPage_EditAction" xml:space="preserve">
+    <value>Bewerken</value>
+  </data>
+  <data name="CronPage_HistoryAction" xml:space="preserve">
+    <value>Geschiedenis</value>
+  </data>
+  <data name="CronPage_RemoveAction" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="CronPage_RunningBadge" xml:space="preserve">
+    <value>Wordt uitgevoerd</value>
+  </data>
+  <data name="CronPage_RunHistory" xml:space="preserve">
+    <value>Uitvoeringsgeschiedenis</value>
+  </data>
+  <data name="CronPage_RunHistoryShowing" xml:space="preserve">
+    <value>Uitvoeringsgeschiedenis - {0} van {1} weergegeven</value>
+  </data>
+  <data name="CronPage_RunHistoryCount" xml:space="preserve">
+    <value>Uitvoeringsgeschiedenis - {0} uitvoeringen</value>
+  </data>
+  <data name="CronPage_LoadingRunHistory" xml:space="preserve">
+    <value>Uitvoeringsgeschiedenis laden...</value>
+  </data>
+  <data name="CronPage_NoRunHistoryAvailable" xml:space="preserve">
+    <value>Geen uitvoeringsgeschiedenis beschikbaar.</value>
+  </data>
+  <data name="CronPage_LoadOlderRuns" xml:space="preserve">
+    <value>Oudere uitvoeringen laden (nog {0})...</value>
+  </data>
+  <data name="CronPage_LoadMoreRuns" xml:space="preserve">
+    <value>Meer uitvoeringen laden...</value>
+  </data>
+  <data name="CronPage_Loading" xml:space="preserve">
+    <value>Laden...</value>
+  </data>
   <data name="CronPage_SaveChanges" xml:space="preserve">
     <value>Wijzigingen opslaan</value>
   </data>
@@ -5860,6 +5914,15 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
   </data>
   <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
     <value>&quot;{0}&quot; ran successfully and was removed.</value>
+  </data>
+  <data name="CronPage_RunNotStarted" xml:space="preserve">
+    <value>Uitvoering niet gestart</value>
+  </data>
+  <data name="CronPage_RunNotStartedGeneric" xml:space="preserve">
+    <value>{0} is niet gestart.</value>
+  </data>
+  <data name="CronPage_RunNotStartedWithReason" xml:space="preserve">
+    <value>{0} is niet gestart: {1}</value>
   </data>
   <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
     <value>This gateway does not have WSL or SSH terminal access.</value>

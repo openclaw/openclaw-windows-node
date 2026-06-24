@@ -466,6 +466,8 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task RequestCronListAsync() => Task.CompletedTask;
         public Task RequestCronStatusAsync() => Task.CompletedTask;
         public Task<bool> RunCronJobAsync(string jobId, bool force = true) => Task.FromResult(false);
+        public Task<CronRunRequestResult> RunCronJobDetailedAsync(string jobId, bool force = true, int timeoutMs = 12000) =>
+            Task.FromResult(CronRunRequestResult.NotAccepted("not implemented"));
         public Task<bool> RemoveCronJobAsync(string jobId) => Task.FromResult(false);
         // Stubbed for interface compliance — not exercised by these tests.
         public Task<bool> AddCronJobAsync(object jobDefinition) => Task.FromResult(false);

@@ -4800,6 +4800,60 @@
   <data name="CronPage_Running" xml:space="preserve">
     <value>正在运行...</value>
   </data>
+  <data name="CronPage_CompletedOneTimeJobTooltip" xml:space="preserve">
+    <value>一次性作业已完成</value>
+  </data>
+  <data name="CronPage_EnableJobTooltip" xml:space="preserve">
+    <value>启用作业</value>
+  </data>
+  <data name="CronPage_DisableJobTooltip" xml:space="preserve">
+    <value>禁用作业</value>
+  </data>
+  <data name="CronPage_FullResponse" xml:space="preserve">
+    <value>完整回复</value>
+  </data>
+  <data name="CronPage_OpenChat" xml:space="preserve">
+    <value>打开聊天</value>
+  </data>
+  <data name="CronPage_RunNow" xml:space="preserve">
+    <value>立即运行</value>
+  </data>
+  <data name="CronPage_EditAction" xml:space="preserve">
+    <value>编辑</value>
+  </data>
+  <data name="CronPage_HistoryAction" xml:space="preserve">
+    <value>历史记录</value>
+  </data>
+  <data name="CronPage_RemoveAction" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="CronPage_RunningBadge" xml:space="preserve">
+    <value>正在运行</value>
+  </data>
+  <data name="CronPage_RunHistory" xml:space="preserve">
+    <value>运行历史记录</value>
+  </data>
+  <data name="CronPage_RunHistoryShowing" xml:space="preserve">
+    <value>运行历史记录 - 正在显示 {0}/{1}</value>
+  </data>
+  <data name="CronPage_RunHistoryCount" xml:space="preserve">
+    <value>运行历史记录 - {0} 次运行</value>
+  </data>
+  <data name="CronPage_LoadingRunHistory" xml:space="preserve">
+    <value>正在加载运行历史记录...</value>
+  </data>
+  <data name="CronPage_NoRunHistoryAvailable" xml:space="preserve">
+    <value>没有可用的运行历史记录。</value>
+  </data>
+  <data name="CronPage_LoadOlderRuns" xml:space="preserve">
+    <value>加载较早的运行（还有 {0} 个）...</value>
+  </data>
+  <data name="CronPage_LoadMoreRuns" xml:space="preserve">
+    <value>加载更多运行...</value>
+  </data>
+  <data name="CronPage_Loading" xml:space="preserve">
+    <value>正在加载...</value>
+  </data>
   <data name="CronPage_SaveChanges" xml:space="preserve">
     <value>保存更改</value>
   </data>
@@ -5860,6 +5914,15 @@
   </data>
   <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
     <value>&quot;{0}&quot; ran successfully and was removed.</value>
+  </data>
+  <data name="CronPage_RunNotStarted" xml:space="preserve">
+    <value>运行未启动</value>
+  </data>
+  <data name="CronPage_RunNotStartedGeneric" xml:space="preserve">
+    <value>{0} 未启动。</value>
+  </data>
+  <data name="CronPage_RunNotStartedWithReason" xml:space="preserve">
+    <value>{0} 未启动：{1}</value>
   </data>
   <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
     <value>This gateway does not have WSL or SSH terminal access.</value>

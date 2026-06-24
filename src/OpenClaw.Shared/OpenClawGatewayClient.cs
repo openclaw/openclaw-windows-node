@@ -760,9 +760,66 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         await SendTrackedRequestAsync("cron.status");
     }
 
-    public Task<bool> RunCronJobAsync(string jobId, bool force = true)
+    public async Task<bool> RunCronJobAsync(string jobId, bool force = true)
     {
-        return TrySendTrackedRequestAsync("cron.run", new { id = jobId, force });
+        var result = await RunCronJobDetailedAsync(jobId, force);
+        return result.Accepted && result.Enqueued;
+    }
+
+    public async Task<CronRunRequestResult> RunCronJobDetailedAsync(string jobId, bool force = true, int timeoutMs = 12000)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+            return CronRunRequestResult.NotAccepted("Job id is required.");
+
+        var payloads = new List<object>();
+        if (!force)
+            payloads.Add(new { jobId, mode = "due" });
+        payloads.Add(new { jobId });
+        payloads.Add(new { id = jobId, force });
+
+        string? lastError = null;
+        foreach (var requestPayload in payloads)
+        {
+            try
+            {
+                var payload = await SendWizardRequestAsync("cron.run", requestPayload, timeoutMs);
+                return ParseCronRunRequestResult(payload);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex.Message;
+                if (!IsCronRunPayloadShapeError(ex.Message))
+                    break;
+            }
+        }
+
+        _logger.Warn($"cron.run request failed: {lastError}");
+        return CronRunRequestResult.NotAccepted(lastError);
+    }
+
+    private static bool IsCronRunPayloadShapeError(string? message) =>
+        !string.IsNullOrWhiteSpace(message) &&
+        message.Contains("invalid cron.run params", StringComparison.OrdinalIgnoreCase);
+
+    private static CronRunRequestResult ParseCronRunRequestResult(JsonElement payload)
+    {
+        var accepted = !payload.TryGetProperty("ok", out var okEl) || okEl.ValueKind != JsonValueKind.False;
+        var enqueued = payload.TryGetProperty("enqueued", out var enqEl) && enqEl.ValueKind == JsonValueKind.True;
+        var ran = payload.TryGetProperty("ran", out var ranEl)
+            ? ranEl.ValueKind == JsonValueKind.True
+            : (bool?)null;
+        var runId = payload.TryGetProperty("runId", out var runIdEl) && runIdEl.ValueKind == JsonValueKind.String
+            ? runIdEl.GetString()
+            : null;
+        var reason = payload.TryGetProperty("reason", out var reasonEl) && reasonEl.ValueKind == JsonValueKind.String
+            ? reasonEl.GetString()
+            : null;
+
+        return new CronRunRequestResult(
+            accepted,
+            enqueued || !string.IsNullOrWhiteSpace(runId) || ran == true,
+            runId,
+            reason);
     }
 
     public Task<bool> RemoveCronJobAsync(string jobId)
