@@ -239,7 +239,7 @@ public sealed class MxcSetupAndConnectTests
         });
 
         Assert.True(updated.RootElement.GetProperty("updated").GetBoolean());
-        Console.WriteLine("[E2E] exec approval policy prepared for Gateway system.run proof: defaultAction=deny; allow=echo *");
+        Console.WriteLine("[E2E] exec approval policy prepared for Gateway system.run proof: defaultAction=deny; allow=echo *, copy /Y *openclaw-mxc-denied-source.txt*");
     }
 
     private TrayLogCursor GetTrayLogCursor()
