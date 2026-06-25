@@ -2561,6 +2561,114 @@ public class ScreenCapabilityTests
     }
 
     [Fact]
+    public async Task Capture_RejectsUnsupportedFormat()
+    {
+        // Reject before the capture handler runs so a caller-supplied format
+        // cannot reach the data URI MIME type.
+        var cap = new ScreenCapability(NullLogger.Instance);
+        var handlerCalled = false;
+        cap.CaptureRequested += (_) =>
+        {
+            handlerCalled = true;
+            return Task.FromResult(new ScreenCaptureResult { Format = "png", Base64 = "x" });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "sfmt1",
+            Command = "screen.snapshot",
+            Args = Parse("""{"format":"svg+xml"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.False(res.Ok);
+        Assert.False(handlerCalled);
+        Assert.Contains("Unsupported screen snapshot format", res.Error);
+    }
+
+    [Fact]
+    public async Task Capture_NormalizesJpgToJpeg()
+    {
+        // Normalize the alias before invoking the capture handler.
+        var cap = new ScreenCapability(NullLogger.Instance);
+        ScreenCaptureArgs? received = null;
+        cap.CaptureRequested += (args) =>
+        {
+            received = args;
+            return Task.FromResult(new ScreenCaptureResult { Format = args.Format, Width = 10, Height = 10, Base64 = "data" });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "sfmt2",
+            Command = "screen.snapshot",
+            Args = Parse("""{"format":"jpg"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+        Assert.NotNull(received);
+        Assert.Equal("jpeg", received!.Format);
+
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("jpeg", root.GetProperty("format").GetString());
+        Assert.StartsWith("data:image/jpeg;base64,", root.GetProperty("image").GetString());
+    }
+
+    [Fact]
+    public async Task Capture_DataUri_IgnoresHandlerEchoedFormat()
+    {
+        // The response MIME type comes from the validated request format.
+        var cap = new ScreenCapability(NullLogger.Instance);
+        cap.CaptureRequested += (_) => Task.FromResult(new ScreenCaptureResult
+        {
+            Format = "svg+xml\";base64,evil",
+            Width = 1,
+            Height = 1,
+            Base64 = "abc123"
+        });
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "sfmt3",
+            Command = "screen.snapshot",
+            Args = Parse("""{"format":"png"}""")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+        Assert.True(res.Ok);
+
+        var json = JsonSerializer.Serialize(res.Payload);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal("png", root.GetProperty("format").GetString());
+        Assert.Equal("data:image/png;base64,abc123", root.GetProperty("image").GetString());
+    }
+
+    [Fact]
+    public void TryNormalizeSnapshotFormat_AllowsKnownFormats_RejectsOthers()
+    {
+        Assert.True(ScreenCapability.TryNormalizeSnapshotFormat("png", out var png));
+        Assert.Equal("png", png);
+        Assert.True(ScreenCapability.TryNormalizeSnapshotFormat("PNG", out var pngUpper));
+        Assert.Equal("png", pngUpper);
+        Assert.True(ScreenCapability.TryNormalizeSnapshotFormat("jpeg", out var jpeg));
+        Assert.Equal("jpeg", jpeg);
+        Assert.True(ScreenCapability.TryNormalizeSnapshotFormat("  JPG  ", out var jpg));
+        Assert.Equal("jpeg", jpg);
+        Assert.True(ScreenCapability.TryNormalizeSnapshotFormat(null, out var def));
+        Assert.Equal("png", def);
+        Assert.True(ScreenCapability.TryNormalizeSnapshotFormat("", out var empty));
+        Assert.Equal("png", empty);
+
+        Assert.False(ScreenCapability.TryNormalizeSnapshotFormat("webp", out _));
+        Assert.False(ScreenCapability.TryNormalizeSnapshotFormat("gif", out _));
+        Assert.False(ScreenCapability.TryNormalizeSnapshotFormat("png;base64,x", out _));
+    }
+
+    [Fact]
     public async Task Record_ReturnsError_WhenNoHandler()
     {
         var cap = new ScreenCapability(NullLogger.Instance);

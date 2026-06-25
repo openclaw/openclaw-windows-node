@@ -68,12 +68,16 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 - ✅ device.status returns Mac-compatible status payload
 - ✅ Unknown command returns error
 
-#### ScreenCapabilityTests (9 tests)
+#### ScreenCapabilityTests (13 tests)
 - ✅ CanHandle screen.snapshot/screen.record and rejects non-gateway screen.capture/screen.list/start/stop commands
 - ✅ Capture returns error when no handler
 - ✅ Capture calls handler with parsed args (format, maxWidth, quality, screenIndex)
 - ✅ Capture returns error when handler throws
 - ✅ Capture includes data URI response
+- ✅ Capture rejects unsupported format (e.g. svg+xml) before invoking handler
+- ✅ Capture normalizes jpg → jpeg so encoded bytes and MIME type cannot diverge
+- ✅ Capture data URI derives MIME from validated format, not handler echo
+- ✅ TryNormalizeSnapshotFormat allows png/jpeg/jpg, rejects others
 - ✅ Record returns error when no handler
 - ✅ Record calls handler with Mac-compatible args
 - ✅ Record rejects unsupported non-mp4 format
