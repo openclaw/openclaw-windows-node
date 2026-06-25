@@ -283,6 +283,17 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("ms-appx:///Assets/Setup/", xaml);
     }
 
+    [Fact]
+    public void TrayIcon_UpdateDelegatesToCoordinator()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "UpdateTrayIcon");
+
+        Assert.Contains("_trayIconCoordinator?.UpdateTrayIcon()", method);
+        Assert.DoesNotContain("SetIcon(", method);
+        Assert.DoesNotContain("private void ApplyTrayTooltip", source);
+    }
+
     private static string ReadAppSources()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

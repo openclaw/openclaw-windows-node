@@ -43,6 +43,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     };
 
     private TrayIcon? _trayIcon;
+    private TrayIconCoordinator? _trayIconCoordinator;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
     private OpenClawTray.Chat.OpenClawChatCoordinator? _chatCoordinator;
@@ -732,8 +733,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         
         var iconPath = IconHelper.GetStatusIconPath(ConnectionStatus.Disconnected);
         _trayIcon = new TrayIcon(1, iconPath, BuildTrayTooltip());
+        _trayIconCoordinator = new TrayIconCoordinator(
+            _trayIcon,
+            hasThreadAccess: () => _dispatcherQueue == null || _dispatcherQueue.HasThreadAccess,
+            marshal: OnUiThread,
+            captureSnapshot: CaptureTraySnapshot);
         _trayIcon.IsVisible = true;
-        ApplyTrayTooltip(BuildTrayTooltip());
+        _trayIconCoordinator.ApplyTrayTooltip(BuildTrayTooltip());
         _trayIcon.Selected += OnTrayIconSelected;
         _trayIcon.ContextMenu += OnTrayContextMenu;
     }
@@ -2818,45 +2824,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #region Tray Icon
 
-    private void UpdateTrayIcon()
-    {
-        if (_dispatcherQueue != null && !_dispatcherQueue.HasThreadAccess)
-        {
-            _dispatcherQueue.TryEnqueue(UpdateTrayIcon);
-            return;
-        }
-
-        if (_trayIcon == null) return;
-
-        // Tray icon is pinned to the app icon so it visually matches the agent
-        // avatar and chat-window title bar. Status is communicated via the
-        // tooltip text below rather than swapping the icon image.
-        var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "openclaw.ico");
-        var tooltip = BuildTrayTooltip();
-
-        try
-        {
-            _trayIcon.SetIcon(iconPath);
-            ApplyTrayTooltip(tooltip);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to update tray icon: {ex.Message}");
-        }
-    }
-
-    private void ApplyTrayTooltip(string tooltip)
-    {
-        if (_trayIcon == null)
-            return;
-
-        if (string.Equals(_trayIcon.Tooltip, tooltip, StringComparison.Ordinal))
-        {
-            _trayIcon.Tooltip = string.Empty;
-        }
-
-        _trayIcon.Tooltip = tooltip;
-    }
+    private void UpdateTrayIcon() => _trayIconCoordinator?.UpdateTrayIcon();
 
     private string BuildTrayTooltip() =>
         new TrayTooltipBuilder(CaptureTraySnapshot()).Build();
