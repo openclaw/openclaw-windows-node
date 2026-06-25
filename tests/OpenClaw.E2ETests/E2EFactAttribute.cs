@@ -42,7 +42,7 @@ internal static class MxcE2ETestGate
 
         try
         {
-            var availability = MxcAvailability.Probe();
+            var availability = ProbeAvailabilityForE2E();
             var hasBackend = availability.IsAppContainerAvailable || availability.IsIsolationSessionAvailable;
             if (!hasBackend)
             {
@@ -52,7 +52,7 @@ internal static class MxcE2ETestGate
                 return $"MXC E2E test skipped: {reason}";
             }
 
-            if (!availability.IsWxcExecResolvable && !HasE2EWxcExec())
+            if (!availability.IsWxcExecResolvable && !TryFindE2EWxcExec(out _))
             {
                 var reason = availability.UnsupportedReasons.Count == 0
                     ? "wxc-exec.exe is unavailable."
@@ -68,25 +68,56 @@ internal static class MxcE2ETestGate
         }
     }
 
-    private static bool HasE2EWxcExec()
+    private static MxcAvailability ProbeAvailabilityForE2E()
+    {
+        if (TryFindE2EWxcExec(out var wxcExecPath))
+        {
+            var previousOverride = Environment.GetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar);
+            try
+            {
+                Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, wxcExecPath);
+                return MxcAvailability.Probe();
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, previousOverride);
+            }
+        }
+
+        return MxcAvailability.Probe();
+    }
+
+    private static bool TryFindE2EWxcExec(out string? path)
     {
         var overridePath = Environment.GetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar);
         if (FileExists(overridePath))
+        {
+            path = overridePath;
             return true;
+        }
 
         foreach (var repoRoot in CandidateRepoRoots())
         {
             var arch = GetSdkArchString();
-            if (FileExists(Path.Combine(repoRoot, "node_modules", "@microsoft", "mxc-sdk", "bin", arch, "wxc-exec.exe")))
+            var nodeModulesWxcExec = Path.Combine(repoRoot, "node_modules", "@microsoft", "mxc-sdk", "bin", arch, "wxc-exec.exe");
+            if (FileExists(nodeModulesWxcExec))
+            {
+                path = nodeModulesWxcExec;
                 return true;
+            }
 
             var trayBin = Path.Combine(repoRoot, "src", "OpenClaw.Tray.WinUI", "bin");
             if (Directory.Exists(trayBin))
             {
                 try
                 {
-                    if (Directory.EnumerateFiles(trayBin, "wxc-exec.exe", SearchOption.AllDirectories).Any())
+                    var trayWxcExec = Directory.EnumerateFiles(trayBin, "wxc-exec.exe", SearchOption.AllDirectories)
+                        .FirstOrDefault(file => file.EndsWith(Path.Combine("mxc", arch, "wxc-exec.exe"), StringComparison.OrdinalIgnoreCase));
+                    if (FileExists(trayWxcExec))
+                    {
+                        path = trayWxcExec;
                         return true;
+                    }
                 }
                 catch
                 {
@@ -96,6 +127,7 @@ internal static class MxcE2ETestGate
             }
         }
 
+        path = null;
         return false;
     }
 
