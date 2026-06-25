@@ -3,6 +3,8 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -1175,6 +1177,108 @@ public sealed class ValidateWslLockdownStep : SetupStep
 // ═══════════════════════════════════════════════════════════════════
 // GATEWAY INSTALL STEPS
 // ═══════════════════════════════════════════════════════════════════
+
+/// <summary>
+/// Exports Windows trusted root/intermediate CA certificates into the WSL
+/// distro's system trust store.  This resolves curl exit-60 failures that
+/// occur on corporate networks where a TLS-intercepting proxy injects a
+/// self-signed certificate that the WSL Ubuntu instance does not trust.
+/// The step is non-fatal: if the Windows store cannot be read or the WSL
+/// filesystem cannot be reached, it logs a warning and continues so that
+/// setups on non-proxied networks are not blocked.
+/// </summary>
+public sealed class SyncWindowsCaCertsStep : SetupStep
+{
+    public override string Id => "sync-ca-certs";
+    public override string DisplayName => "Sync Windows CA certificates to WSL";
+    public override bool CanRetry => false;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+
+        string pemBundle;
+        try
+        {
+            pemBundle = ExportWindowsCaCerts();
+        }
+        catch (Exception ex)
+        {
+            ctx.Logger.Warn($"Could not read Windows CA store: {ex.Message} — skipping CA sync");
+            return StepResult.Ok("Skipped: could not read Windows CA store");
+        }
+
+        if (string.IsNullOrWhiteSpace(pemBundle))
+        {
+            ctx.Logger.Warn("Windows CA store returned no certificates — skipping CA sync");
+            return StepResult.Ok("Skipped: Windows CA store is empty");
+        }
+
+        // Write directly to the WSL filesystem via the UNC share WSL exposes on Windows.
+        // This avoids needing stdin piping through RunInWslAsync.
+        var wslCertDir = $@"\\wsl$\{distro}\usr\local\share\ca-certificates";
+        try
+        {
+            Directory.CreateDirectory(wslCertDir);
+            File.WriteAllText(Path.Combine(wslCertDir, "windows-ca-bundle.crt"), pemBundle);
+        }
+        catch (Exception ex)
+        {
+            ctx.Logger.Warn($"Could not write CA bundle to WSL filesystem: {ex.Message} — skipping CA sync");
+            return StepResult.Ok("Skipped: could not write to WSL filesystem");
+        }
+
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            "update-ca-certificates",
+            TimeSpan.FromSeconds(30),
+            ct: ct,
+            user: "root");
+
+        if (result.ExitCode != 0)
+        {
+            ctx.Logger.Warn($"update-ca-certificates exited {result.ExitCode}: {result.Stderr.Trim()}");
+            // Non-fatal: the bundle is written; curl may still work depending on the error.
+            return StepResult.Ok($"CA bundle written but update-ca-certificates warned (exit {result.ExitCode})");
+        }
+
+        ctx.Logger.Info("Windows CA certificates synced to WSL trust store");
+        return StepResult.Ok("Windows CA certificates synced to WSL");
+    }
+
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
+        var wslCertPath = $@"\\wsl$\{distro}\usr\local\share\ca-certificates\windows-ca-bundle.crt";
+        if (File.Exists(wslCertPath))
+        {
+            File.Delete(wslCertPath);
+            ctx.Logger.Info("[Rollback] Removed windows-ca-bundle.crt from WSL");
+        }
+        return Task.CompletedTask;
+    }
+
+    private static string ExportWindowsCaCerts()
+    {
+        var sb = new StringBuilder();
+        var storeNames = new[] { StoreName.Root, StoreName.CertificateAuthority };
+
+        foreach (var storeName in storeNames)
+        {
+            using var store = new X509Store(storeName, StoreLocation.LocalMachine);
+            store.Open(OpenFlags.ReadOnly);
+
+            foreach (var cert in store.Certificates)
+            {
+                sb.AppendLine("-----BEGIN CERTIFICATE-----");
+                sb.AppendLine(Convert.ToBase64String(cert.RawData, Base64FormattingOptions.InsertLineBreaks));
+                sb.AppendLine("-----END CERTIFICATE-----");
+            }
+        }
+
+        return sb.ToString();
+    }
+}
 
 public sealed class InstallCliStep : SetupStep
 {
