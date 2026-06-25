@@ -164,7 +164,12 @@ public sealed class RenderContext
     {
         if (SecretPaths == null) return;
         if (string.IsNullOrEmpty(path)) return;
-        SecretPaths.Add(NormalizePath(path));
+        var normalized = NormalizePath(path);
+        SecretPaths.Add(normalized);
+
+        var canonical = SecretRedactor.CanonicalizeLenientArrayIndices(normalized);
+        if (!string.Equals(canonical, normalized, StringComparison.Ordinal))
+            SecretPaths.Add(canonical);
     }
 
     /// <summary>True if <paramref name="path"/> is a secret path (registered or matches denylist).</summary>
@@ -210,7 +215,11 @@ public sealed class RenderContext
                 var path = val.Path!;
                 if (!IsAllowedPath(path, allowed)) continue;
                 if (IsSecretPath(path)) continue;
-                result[key] = DataModel.Read(path)?.DeepClone();
+                var clone = DataModel.Read(path)?.DeepClone();
+                var registered = SecretPaths == null
+                    ? System.Collections.Frozen.FrozenSet<string>.Empty
+                    : (IReadOnlySet<string>)SecretPaths;
+                result[key] = SecretRedactor.RedactInPlace(clone, path, registered);
             }
         }
         return result;
