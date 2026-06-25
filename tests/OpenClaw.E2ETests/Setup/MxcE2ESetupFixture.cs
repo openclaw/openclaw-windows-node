@@ -3,6 +3,8 @@ using Xunit;
 
 namespace OpenClaw.E2ETests.Setup;
 
+// AssemblyInfo disables parallelization for the whole E2E assembly; this separate
+// collection exists so the MXC gate can skip before initializing WSL/tray state.
 [CollectionDefinition("E2E MXC Setup", DisableParallelization = true)]
 public sealed class MxcE2ESetupCollection : ICollectionFixture<MxcE2ESetupFixture> { }
 
