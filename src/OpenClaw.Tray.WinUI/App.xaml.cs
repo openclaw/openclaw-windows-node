@@ -4069,6 +4069,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             _trayIcon?.Dispose();
             _trayIcon = null;
+            _trayIconCoordinator = null;
         });
 
         SafeShutdownStep("single-instance mutex", () =>
