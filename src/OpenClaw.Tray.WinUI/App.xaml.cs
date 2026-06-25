@@ -209,6 +209,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private const string ConnectionIssueNotificationId = "connection:issue";
     private const string ConnectionIssueNotificationDedupeKey = "connection:issue";
+    private const string SandboxRiskNotificationId = "sandbox:risk";
+    private const string SandboxRiskNotificationDedupeKey = "sandbox:risk";
     private static readonly TimeSpan SandboxRiskProbeRefreshInterval = TimeSpan.FromMinutes(5);
     
     // Node service (optional, enabled in settings)
@@ -3050,10 +3052,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "sandbox",
             "system.run",
             AppNotificationSeverity.Warning,
-            $"sandbox:{riskKey}",
+            SandboxRiskNotificationDedupeKey,
             "sandbox",
             LocalizationHelper.GetString("AppNotification_ActionOpenSandbox"),
-            id: "sandbox:risk");
+            id: SandboxRiskNotificationId);
     }
 
     private void ClearSandboxRiskNotification()

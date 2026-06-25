@@ -333,6 +333,18 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ContinueWith", probeMethod);
     }
 
+    [Fact]
+    public void AppNotifications_SandboxRiskUsesStableDedupeKey()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("private const string SandboxRiskNotificationId = \"sandbox:risk\"", source);
+        Assert.Contains("private const string SandboxRiskNotificationDedupeKey = \"sandbox:risk\"", source);
+        Assert.Contains("SandboxRiskNotificationDedupeKey", source);
+        Assert.Contains("id: SandboxRiskNotificationId", source);
+        Assert.DoesNotContain("$\"sandbox:{riskKey}\"", source);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
