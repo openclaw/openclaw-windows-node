@@ -227,6 +227,14 @@ public sealed class MxcSetupAndConnectTests
             rules = new object[]
             {
                 new { pattern = "echo *", action = "allow", description = "E2E Gateway system.run MXC proof", enabled = true },
+                new
+                {
+                    pattern = "copy /Y *openclaw-mxc-denied-source.txt*",
+                    action = "allow",
+                    shells = new[] { "cmd" },
+                    description = "E2E Gateway system.run MXC denied-write proof",
+                    enabled = true
+                },
             },
         });
 
