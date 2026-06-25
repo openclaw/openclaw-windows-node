@@ -98,7 +98,8 @@ public sealed class MxcSetupAndConnectTests
     [MxcE2EFact]
     public async Task RealGateway_SystemRun_BlocksWritesToTrayDataDirectoryInMxcSandbox()
     {
-        const string marker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED";
+        const string sourcePayload = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED_PAYLOAD";
+        const string sourceReadyMarker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_SOURCE_READY";
         var blockedPath = Path.Combine(_fixture.DataDir, $"mxc-denied-write-{Guid.NewGuid():N}.txt");
         var blockedPathForCmd = blockedPath.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var sourcePathForCmd = "%TEMP%\\openclaw-mxc-denied-source.txt";
@@ -118,7 +119,7 @@ public sealed class MxcSetupAndConnectTests
             command = "system.run",
             @params = new
             {
-                command = $"echo {marker} > {CmdQuote(sourcePathForCmd)} && copy /Y {CmdQuote(sourcePathForCmd)} {CmdQuote(blockedPathForCmd)}",
+                command = $"echo {sourcePayload} > {CmdQuote(sourcePathForCmd)} && echo {sourceReadyMarker} && copy /Y {CmdQuote(sourcePathForCmd)} {CmdQuote(blockedPathForCmd)}",
                 shell = "cmd",
                 timeoutMs = SystemRunProofTimeoutMs
             },
@@ -150,11 +151,12 @@ public sealed class MxcSetupAndConnectTests
             : "";
         var combinedOutput = stdout + stderr;
 
-        // The shell's access-denied text is localized; the load-bearing proof is no timeout,
-        // non-zero denied-write exit, no file creation, and MXC containment in the tray log.
+        // The shell's access-denied text is localized; sourceReadyMarker proves the
+        // scratch source was created before the denied destination copy was attempted.
         Assert.NotEqual(0, exitCode);
         Assert.True(combinedOutput.Length > 0, $"Expected denied write to emit output; payload: {payload.GetRawText()}");
-        Assert.DoesNotContain(marker, combinedOutput, StringComparison.Ordinal);
+        Assert.Contains(sourceReadyMarker, combinedOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain(sourcePayload, combinedOutput, StringComparison.Ordinal);
         Assert.False(File.Exists(blockedPath),
             $"MXC sandbox should not create files inside the tray data/settings directory: {blockedPath}");
 
