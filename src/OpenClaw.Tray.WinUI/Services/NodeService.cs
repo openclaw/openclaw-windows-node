@@ -1154,8 +1154,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
 
         var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cts = new CancellationTokenSource();
         if (!_dispatcherQueue.TryEnqueue(() =>
         {
+            if (cts.IsCancellationRequested) return;
             try
             {
                 CloseA2UICanvasWindow();
@@ -1177,7 +1179,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             tcs.TrySetException(new InvalidOperationException("Failed to dispatch canvas.navigate to UI thread"));
         }
 
-        return await tcs.Task.ConfigureAwait(false);
+        return await WaitWithTimeout(tcs.Task, cts, "canvas.navigate");
     }
 
     /// <summary>
