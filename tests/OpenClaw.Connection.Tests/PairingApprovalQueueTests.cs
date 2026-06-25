@@ -136,7 +136,7 @@ public class PairingApprovalQueueTests
         var delta = q.Reconcile(Devices(), null);
 
         Assert.Single(delta.ResolvedKeys);
-        Assert.Equal("Device:a", delta.ResolvedKeys[0]);
+        Assert.Equal("DevicePair:a", delta.ResolvedKeys[0]);
         Assert.Empty(delta.Current);
     }
 
@@ -282,7 +282,47 @@ public class PairingApprovalQueueTests
         // Device-only refresh (node list null): the node request must not vanish.
         var delta = q.Reconcile(Devices(Device("dev")), null);
         Assert.Contains(delta.Current, a => a.Kind == PairingApprovalKind.NodePair && a.RequestId == "n1");
-        Assert.DoesNotContain("Node:n1", delta.ResolvedKeys);
+        Assert.DoesNotContain("NodePair:n1", delta.ResolvedKeys);
+    }
+
+    [Fact]
+    public void Reconcile_DropsAmbiguousLegacyFallbackIds()
+    {
+        var q = new PairingApprovalQueue();
+        var delta = q.Reconcile(Devices(
+            new DevicePairingRequest { RequestId = "", DeviceId = "legacy", DisplayName = "first" },
+            new DevicePairingRequest { RequestId = "", DeviceId = "legacy", DisplayName = "second" }), null);
+
+        Assert.Empty(delta.Added);
+        Assert.Empty(delta.Current);
+    }
+
+    [Fact]
+    public void Reconcile_DropsAmbiguousLegacyNodeFallbackIds()
+    {
+        var q = new PairingApprovalQueue();
+        var delta = q.Reconcile(null, Nodes(
+            new PairingRequest { RequestId = "", NodeId = "legacy-node", DisplayName = "first" },
+            new PairingRequest { RequestId = "", NodeId = "legacy-node", DisplayName = "second" }));
+
+        Assert.Empty(delta.Added);
+        Assert.Empty(delta.Current);
+    }
+
+    [Fact]
+    public void Reconcile_DoesNotConfirmSubmittedDecisionWhenFallbackIdBecomesAmbiguous()
+    {
+        var q = new PairingApprovalQueue();
+        var first = q.Reconcile(Devices(
+            new DevicePairingRequest { RequestId = "", DeviceId = "legacy", DisplayName = "first" }), null);
+        q.MarkSubmitted(first.Added[0], approved: true, nowMs: 0);
+
+        var delta = q.Reconcile(Devices(
+            new DevicePairingRequest { RequestId = "", DeviceId = "legacy", DisplayName = "first" },
+            new DevicePairingRequest { RequestId = "", DeviceId = "legacy", DisplayName = "second" }), null, nowMs: 100);
+
+        Assert.Empty(delta.ConfirmedDecisions);
+        Assert.Empty(delta.Current);
     }
 
     [Fact]

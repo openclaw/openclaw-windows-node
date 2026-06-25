@@ -44,7 +44,8 @@ public sealed class PairingApprovalDelta
 ///   <item>Filter out the local node's own pairing request (handled by the auto-approve path)
 ///         so the operator is never prompted to approve their own machine. Matches against any of
 ///         the node's advertised identifiers (device id and/or gateway node id).</item>
-///   <item>Drop entries with no usable id and de-duplicate by <see cref="PendingApproval.Key"/>.</item>
+///   <item>Drop entries with no usable id and legacy fallback-id collisions that cannot be
+///         approved/rejected unambiguously, then de-duplicate by <see cref="PendingApproval.Key"/>.</item>
 ///   <item>Treat a submitted approve/reject as <em>optimistic-pending</em> — suppress it from the
 ///         actionable set, but only report it <see cref="PairingApprovalDelta.ConfirmedDecisions">
 ///         confirmed</see> once the gateway actually drops it from a provided list for that kind. If
@@ -94,6 +95,10 @@ public sealed class PairingApprovalQueue
             kind == PairingApprovalKind.DevicePair ? devicesProvided : nodesProvided;
 
         var incoming = BuildIncoming(devices, nodes, ownNodeDeviceIds);
+        var ambiguousFallbackKeys = FindAmbiguousFallbackKeys(incoming);
+        if (ambiguousFallbackKeys.Count > 0)
+            incoming = incoming.Where(a => !ambiguousFallbackKeys.Contains(a.Key)).ToList();
+
         var incomingByKey = new Dictionary<string, PendingApproval>(StringComparer.Ordinal);
         foreach (var item in incoming)
             incomingByKey[item.Key] = item; // last wins on duplicate ids
@@ -103,6 +108,11 @@ public sealed class PairingApprovalQueue
         foreach (var kv in _current)
             if (!KindProvided(kv.Value.Kind) && !incomingByKey.ContainsKey(kv.Key))
                 incomingByKey[kv.Key] = kv.Value;
+
+        // If a legacy fallback id becomes ambiguous, cancel any optimistic wait instead of treating
+        // its absence from the actionable queue as a confirmed gateway decision.
+        foreach (var key in _submitted.Keys.Where(ambiguousFallbackKeys.Contains).ToArray())
+            _submitted.Remove(key);
 
         // Confirmed resolutions: decisions we submitted whose request has now left a PROVIDED list.
         // This — not the send-ack — is the authoritative "the gateway accepted it" signal.
@@ -207,6 +217,16 @@ public sealed class PairingApprovalQueue
         }
 
         return list;
+    }
+
+    private static HashSet<string> FindAmbiguousFallbackKeys(IEnumerable<PendingApproval> incoming)
+    {
+        var ambiguous = incoming
+            .GroupBy(a => a.Key, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1 && g.Any(a => string.IsNullOrEmpty(a.RequestId)))
+            .Select(g => g.Key);
+
+        return new HashSet<string>(ambiguous, StringComparer.Ordinal);
     }
 
     private static bool IsOwnNode(PendingApproval approval, IReadOnlyCollection<string>? ownNodeDeviceIds)

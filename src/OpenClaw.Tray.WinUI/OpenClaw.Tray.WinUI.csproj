@@ -89,6 +89,9 @@
     <MxcArch Condition="'$(MxcArch)' == '' And '$(PlatformTarget)' == 'ARM64'">arm64</MxcArch>
     <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == ''">x64</MxcArch>
     <MxcSdkBinDir>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\bin\$(MxcArch)\</MxcSdkBinDir>
+    <MxcSdkExpectedVersion>0.7.0</MxcSdkExpectedVersion>
+    <MxcSdkPackageJson>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json</MxcSdkPackageJson>
+    <MxcSdkRestoreStamp>$(OpenClawRepoRoot)node_modules\.openclaw-mxc-sdk-$(MxcSdkExpectedVersion).stamp</MxcSdkRestoreStamp>
   </PropertyGroup>
 
   <!--
@@ -200,9 +203,18 @@
           BeforeTargets="Build;Publish;CopyWxcExecToOutput;CopyWxcExecToPublish"
           Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json')"
           Inputs="$(OpenClawRepoRoot)package-lock.json"
-          Outputs="$(OpenClawRepoRoot)node_modules\.package-lock.json">
+          Outputs="$(MxcSdkRestoreStamp)">
     <Message Importance="high" Text="Restoring @microsoft/mxc-sdk to extract wxc-exec.exe ($(MxcArch))" />
     <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(OpenClawRepoRoot)" />
+    <Touch Files="$(MxcSdkRestoreStamp)" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="ValidateMxcSdkVersion"
+          BeforeTargets="CopyWxcExecToOutput;CopyWxcExecToPublish"
+          DependsOnTargets="RestoreMxcNodeBridge"
+          Condition="'$(SkipMxcNodeBridgeRestore)' != 'true' And Exists('$(OpenClawRepoRoot)package-lock.json')">
+    <Error Condition="!Exists('$(MxcSdkPackageJson)')" Text="@microsoft/mxc-sdk package.json missing at $(MxcSdkPackageJson). Run `npm ci` at $(OpenClawRepoRoot)." />
+    <Error Condition="Exists('$(MxcSdkPackageJson)') And !$([System.IO.File]::ReadAllText('$(MxcSdkPackageJson)').Contains('&quot;version&quot;: &quot;$(MxcSdkExpectedVersion)&quot;'))" Text="@microsoft/mxc-sdk version mismatch. Expected $(MxcSdkExpectedVersion) in $(MxcSdkPackageJson). Run `npm ci` at $(OpenClawRepoRoot)." />
   </Target>
 
   <!-- Copy ONLY wxc-exec.exe (and any sibling DLLs) for the active arch into
