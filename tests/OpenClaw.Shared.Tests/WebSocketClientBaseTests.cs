@@ -70,6 +70,7 @@ public class TestWebSocketClient : WebSocketClientBase
     public IOpenClawLogger TestLogger => _logger;
 }
 
+[Collection("WebSocketClientBase")]
 public class WebSocketClientBaseTests
 {
     private readonly TestLogger _logger = new();
@@ -425,6 +426,11 @@ public class WebSocketClientBaseTests
             await Task.Delay(25);
         }
     }
+}
+
+[CollectionDefinition("WebSocketClientBase", DisableParallelization = true)]
+public sealed class WebSocketClientBaseTestCollection
+{
 }
 
 internal sealed class BlockingFirstConnectClient : WebSocketClientBase
