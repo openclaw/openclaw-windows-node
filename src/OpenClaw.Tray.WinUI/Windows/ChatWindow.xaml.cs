@@ -741,7 +741,6 @@ public sealed partial class ChatWindow : WindowEx
         // immediately instead of showing the zero-state while history loads.
         EagerlyLoadChatHistory();
         this.Show();
-        this.Show();
         SetForegroundWindow(hwnd);
         RequestChatInputFocus();
     }
