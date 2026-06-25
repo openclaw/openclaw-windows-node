@@ -3148,7 +3148,20 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
     <value>Les commandes Windows lancées par l'agent s'exécuteront sans confinement jusqu'à ce que le Sandbox du nœud soit réactivé.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox indisponible — les commandes s'exécutent sans confinement</value>
+    <value>Sandbox indisponible — repli sur l'hôte</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le sandboxing est indisponible.</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
+    <value>Sandbox indisponible — commandes bloquées</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+Les commandes sont bloquées tant que le sandboxing est indisponible, car le blocage strict du repli est activé.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
@@ -6245,10 +6258,22 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>{0} copié dans le presse-papiers.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>Sandbox du nœud indisponible — les commandes s'exécutent sans confinement</value>
+    <value>Sandbox du nœud indisponible — repli sur l'hôte</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
-    <value>Le confinement n'est pas disponible sur ce PC ; les commandes s'exécutent donc sans protection de sandbox.</value>
+    <value>Le confinement n'est pas disponible sur ce PC ; les commandes lancées par l'agent s'exécutent donc sur l'hôte sans protection de sandbox.</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
+    <value>Sandbox du nœud indisponible — commandes bloquées</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
+    <value>Le confinement n'est pas disponible sur ce PC et le blocage strict du repli est activé ; les commandes lancées par l'agent sont donc bloquées.</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
+    <value>Le Sandbox du nœud est désactivé — exécution sur l'hôte</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
+    <value>Le confinement n'est pas disponible et le Sandbox du nœud est désactivé ; les commandes lancées par l'agent s'exécutent donc sur l'hôte sans protection de sandbox.</value>
   </data>
   <data name="SandboxPage_StatusOnTitle" xml:space="preserve">
     <value>Le Sandbox du nœud est activé</value>
@@ -6265,11 +6290,29 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
   <data name="SandboxPage_UnavailableDefaultReason" xml:space="preserve">
     <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
   </data>
+  <data name="SandboxPage_ProbeErrorReason" xml:space="preserve">
+    <value>Impossible de vérifier la disponibilité du sandbox.</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorHostFallback" xml:space="preserve">
+    <value>Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le sandboxing est indisponible.</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
+    <value>Les commandes sont bloquées tant que le sandboxing est indisponible, car le blocage strict du repli est activé.</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
+    <value>Impossible de vérifier la disponibilité du sandbox</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
+    <value>{0}&#x0A;&#x0A;{1} La vérification des capacités du sandbox ne s'est pas terminée. C'est généralement transitoire (vérification lente ou bloquée) — réessayez, et si le problème persiste, vérifiez si un logiciel de sécurité bloque wxc-exec.</value>
+  </data>
+  <data name="SandboxPage_Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
   <data name="SandboxPage_WindowsUnsupportedTitle" xml:space="preserve">
     <value>Votre version de Windows ne prend pas encore en charge le sandboxing</value>
   </data>
   <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;Les commandes s'exécutent sans confinement sur cette machine — le sandboxing nécessite une version récente de Windows avec les primitives AppContainer. Installez les dernières mises à jour Windows (ou rejoignez le programme Windows Insider pour les versions les plus récentes) afin d'activer le confinement.</value>
+    <value>{0}&#x0A;&#x0A;{1} Le sandboxing nécessite une version récente de Windows avec les primitives AppContainer. Installez les dernières mises à jour Windows (ou rejoignez le programme Windows Insider pour les versions les plus récentes) afin d'activer le confinement.</value>
   </data>
   <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
     <value>Ouvrir Windows Update</value>
@@ -6278,13 +6321,16 @@ Vérifiez vos paramètres de connexion et réessayez.</value>
     <value>Des composants de sandboxing sont manquants</value>
   </data>
   <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;Le binaire wxc-exec est introuvable ; les commandes s'exécutent donc sans confinement. S'il s'agit d'une build développeur, compilez l'application Tray pour copier wxc-exec.exe dans le dossier de sortie. Sinon, réinstallez le compagnon pour restaurer le sandboxing.</value>
+    <value>{0}&#x0A;&#x0A;Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, compilez l'application Tray pour copier wxc-exec.exe dans le dossier de sortie. Sinon, réinstallez le compagnon pour restaurer le sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Afficher les instructions d'installation</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>Sandbox indisponible — les commandes s'exécutent sans confinement</value>
+    <value>Sandbox indisponible — repli sur l'hôte</value>
+  </data>
+  <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
+    <value>Sandbox indisponible — commandes bloquées</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>Passerelle locale supprimée</value>

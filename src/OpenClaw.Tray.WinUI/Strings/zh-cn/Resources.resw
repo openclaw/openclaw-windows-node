@@ -3148,7 +3148,20 @@
     <value>在重新启用节点沙盒之前，代理启动的 Windows 命令将在没有沙盒隔离的情况下运行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙盒不可用 — 命令将不受限制地运行</value>
+    <value>沙盒不可用 — 回退到主机</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
+    <value>沙盒不可用 — 命令已阻止</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此计算机上没有可用的 MXC 沙盒基元。</value>
@@ -6246,10 +6259,22 @@
     <value>{0} 已复制到剪贴板。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>节点沙盒不可用 — 命令将不受限制地运行</value>
+    <value>节点沙盒不可用 — 回退到主机</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
-    <value>此电脑上无法使用隔离，因此命令将在没有沙盒保护的情况下运行。</value>
+    <value>此电脑上无法使用隔离，因此代理启动的命令会在主机上运行，且没有沙盒保护。</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
+    <value>节点沙盒不可用 — 命令已阻止</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
+    <value>此电脑上无法使用隔离，并且已启用严格回退阻止，因此代理启动的命令会被阻止。</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
+    <value>节点沙盒已关闭 — 主机执行</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
+    <value>隔离不可用且节点沙盒已关闭，因此代理启动的命令会在主机上运行，且没有沙盒保护。</value>
   </data>
   <data name="SandboxPage_StatusOnTitle" xml:space="preserve">
     <value>节点沙盒已开启</value>
@@ -6266,11 +6291,29 @@
   <data name="SandboxPage_UnavailableDefaultReason" xml:space="preserve">
     <value>此计算机上没有可用的 MXC 沙盒基元。</value>
   </data>
+  <data name="SandboxPage_ProbeErrorReason" xml:space="preserve">
+    <value>无法检查沙盒可用性。</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorHostFallback" xml:space="preserve">
+    <value>在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
+    <value>由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
+    <value>无法验证沙盒可用性</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
+    <value>{0}&#x0A;&#x0A;{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）— 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
+  </data>
+  <data name="SandboxPage_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
   <data name="SandboxPage_WindowsUnsupportedTitle" xml:space="preserve">
     <value>你的 Windows 版本尚不支持沙盒</value>
   </data>
   <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;此计算机上的命令将不受限制地运行 — 沙盒需要包含 AppContainer 基元的较新 Windows 版本。请安装最新 Windows 更新（或加入 Windows 预览体验计划以获取最新版本）以启用隔离。</value>
+    <value>{0}&#x0A;&#x0A;{1} 沙盒需要包含 AppContainer 基元的较新 Windows 版本。请安装最新 Windows 更新（或加入 Windows 预览体验计划以获取最新版本）以启用隔离。</value>
   </data>
   <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
     <value>打开 Windows 更新</value>
@@ -6279,13 +6322,16 @@
     <value>缺少沙盒组件</value>
   </data>
   <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;找不到 wxc-exec 二进制文件，因此命令将不受限制地运行。如果这是开发者版本，请生成托盘应用，以便将 wxc-exec.exe 复制到输出文件夹。否则请重新安装伴侣应用以恢复沙盒。</value>
+    <value>{0}&#x0A;&#x0A;找不到 wxc-exec 二进制文件。{1} 如果这是开发者版本，请生成托盘应用，以便将 wxc-exec.exe 复制到输出文件夹。否则请重新安装伴侣应用以恢复沙盒。</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>显示安装说明</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>沙盒不可用 — 命令将不受限制地运行</value>
+    <value>沙盒不可用 — 回退到主机</value>
+  </data>
+  <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
+    <value>沙盒不可用 — 命令已阻止</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>本地网关已移除</value>

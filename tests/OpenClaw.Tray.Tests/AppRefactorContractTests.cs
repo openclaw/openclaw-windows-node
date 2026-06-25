@@ -345,6 +345,19 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("$\"sandbox:{riskKey}\"", source);
     }
 
+    [Fact]
+    public void AppNotifications_SandboxRiskMessageReflectsStrictFallbackBlocking()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "PublishSandboxRiskNotification");
+
+        Assert.Contains("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
+        Assert.Contains("AppNotification_SandboxUnavailableBlocked_Title", method);
+        Assert.Contains("AppNotification_SandboxUnavailableBlocked_MessageFormat", method);
+        Assert.Contains("host-fallback", method);
+        Assert.Contains("blocked", method);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

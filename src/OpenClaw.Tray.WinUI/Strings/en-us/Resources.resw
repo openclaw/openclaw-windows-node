@@ -3220,7 +3220,20 @@ On your gateway host (Mac/Linux), run:
     <value>Agent-started Windows commands will run without sandbox containment until Node Sandbox is turned back on.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox unavailable — commands run uncontained</value>
+    <value>Sandbox unavailable — host fallback</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+Commands will run on the host without sandbox protection while sandboxing is unavailable.</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
+    <value>Sandbox unavailable — commands blocked</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+Commands are blocked while sandboxing is unavailable because strict fallback blocking is enabled.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>MXC sandboxing primitives are not available on this machine.</value>
@@ -6293,10 +6306,22 @@ Check your connection settings and try again.</value>
     <value>{0} copied to clipboard.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>Node Sandbox unavailable — commands run uncontained</value>
+    <value>Node Sandbox unavailable — host fallback</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
-    <value>Containment isn't available on this PC, so commands run without sandbox protection.</value>
+    <value>Containment isn't available on this PC, so agent-started commands run on the host without sandbox protection.</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
+    <value>Node Sandbox unavailable — commands blocked</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
+    <value>Containment isn't available on this PC, and strict fallback blocking is on, so agent-started commands are blocked.</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
+    <value>Node Sandbox is off — host execution</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
+    <value>Containment isn't available and Node Sandbox is off, so agent-started commands run on the host without sandbox protection.</value>
   </data>
   <data name="SandboxPage_StatusOnTitle" xml:space="preserve">
     <value>Node Sandbox is on</value>
@@ -6313,11 +6338,29 @@ Check your connection settings and try again.</value>
   <data name="SandboxPage_UnavailableDefaultReason" xml:space="preserve">
     <value>MXC sandboxing primitives are not available on this machine.</value>
   </data>
+  <data name="SandboxPage_ProbeErrorReason" xml:space="preserve">
+    <value>Couldn't check sandbox availability.</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorHostFallback" xml:space="preserve">
+    <value>Commands will run on the host without sandbox protection while sandboxing is unavailable.</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
+    <value>Commands are blocked while sandboxing is unavailable because strict fallback blocking is enabled.</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
+    <value>Couldn't verify sandbox availability</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
+    <value>{0}&#x0A;&#x0A;{1} The sandbox capability check didn't complete. This is usually transient (a slow or blocked check) — retry, and if it persists check whether security software is blocking wxc-exec.</value>
+  </data>
+  <data name="SandboxPage_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
   <data name="SandboxPage_WindowsUnsupportedTitle" xml:space="preserve">
     <value>Your Windows version doesn't support sandboxing yet</value>
   </data>
   <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;Commands run uncontained on this machine — sandboxing requires a recent Windows build with the AppContainer primitives shipped. Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.</value>
+    <value>{0}&#x0A;&#x0A;{1} Sandboxing requires a recent Windows build with the AppContainer primitives shipped. Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.</value>
   </data>
   <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
     <value>Open Windows Update</value>
@@ -6326,13 +6369,16 @@ Check your connection settings and try again.</value>
     <value>Sandboxing components are missing</value>
   </data>
   <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;The wxc-exec binary couldn't be located, so commands run uncontained. If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. Otherwise reinstall the companion app to restore sandboxing.</value>
+    <value>{0}&#x0A;&#x0A;The wxc-exec binary couldn't be located. {1} If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. Otherwise reinstall the companion app to restore sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Show install instructions</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>Sandbox unavailable — commands run uncontained</value>
+    <value>Sandbox unavailable — host fallback</value>
+  </data>
+  <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
+    <value>Sandbox unavailable — commands blocked</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>Local gateway removed</value>

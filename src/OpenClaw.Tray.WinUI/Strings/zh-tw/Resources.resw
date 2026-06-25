@@ -3148,7 +3148,20 @@
     <value>在重新啟用節點沙箱之前，代理程式啟動的 Windows 命令將在沒有沙箱隔離的情況下執行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙箱無法使用 — 命令將不受限制地執行</value>
+    <value>沙箱無法使用 — 回退到主機</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+在沙箱無法使用期間，命令將在主機上執行，且沒有沙箱保護。</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
+    <value>沙箱無法使用 — 命令已封鎖</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+由於已啟用嚴格回退封鎖，沙箱無法使用期間命令會被封鎖。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此電腦上沒有可用的 MXC 沙箱基元。</value>
@@ -6246,10 +6259,22 @@
     <value>{0} 已複製到剪貼簿。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>節點沙箱無法使用 — 命令將不受限制地執行</value>
+    <value>節點沙箱無法使用 — 回退到主機</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
-    <value>此電腦上無法使用隔離，因此命令會在沒有沙箱保護的情況下執行。</value>
+    <value>此電腦上無法使用隔離，因此代理程式啟動的命令會在主機上執行，且沒有沙箱保護。</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
+    <value>節點沙箱無法使用 — 命令已封鎖</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
+    <value>此電腦上無法使用隔離，且已啟用嚴格回退封鎖，因此代理程式啟動的命令會被封鎖。</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
+    <value>節點沙箱已關閉 — 主機執行</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
+    <value>隔離無法使用且節點沙箱已關閉，因此代理程式啟動的命令會在主機上執行，且沒有沙箱保護。</value>
   </data>
   <data name="SandboxPage_StatusOnTitle" xml:space="preserve">
     <value>節點沙箱已開啟</value>
@@ -6266,11 +6291,29 @@
   <data name="SandboxPage_UnavailableDefaultReason" xml:space="preserve">
     <value>此電腦上沒有可用的 MXC 沙箱基元。</value>
   </data>
+  <data name="SandboxPage_ProbeErrorReason" xml:space="preserve">
+    <value>無法檢查沙箱可用性。</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorHostFallback" xml:space="preserve">
+    <value>在沙箱無法使用期間，命令將在主機上執行，且沒有沙箱保護。</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
+    <value>由於已啟用嚴格回退封鎖，沙箱無法使用期間命令會被封鎖。</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
+    <value>無法驗證沙箱可用性</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
+    <value>{0}&#x0A;&#x0A;{1} 沙箱功能檢查未完成。這通常是暫時性的（檢查緩慢或遭封鎖）— 請重試；如果問題仍然存在，請檢查安全性軟體是否封鎖了 wxc-exec。</value>
+  </data>
+  <data name="SandboxPage_Retry" xml:space="preserve">
+    <value>重試</value>
+  </data>
   <data name="SandboxPage_WindowsUnsupportedTitle" xml:space="preserve">
     <value>您的 Windows 版本尚不支援沙箱</value>
   </data>
   <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;此電腦上的命令將不受限制地執行 — 沙箱需要包含 AppContainer 基元的較新 Windows 版本。請安裝最新 Windows 更新（或加入 Windows 測試人員計畫以取得最新版本）以啟用隔離。</value>
+    <value>{0}&#x0A;&#x0A;{1} 沙箱需要包含 AppContainer 基元的較新 Windows 版本。請安裝最新 Windows 更新（或加入 Windows 測試人員計畫以取得最新版本）以啟用隔離。</value>
   </data>
   <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
     <value>開啟 Windows Update</value>
@@ -6279,13 +6322,16 @@
     <value>缺少沙箱元件</value>
   </data>
   <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;找不到 wxc-exec 二進位檔，因此命令將不受限制地執行。如果這是開發人員組建，請建置托盤應用程式，讓 wxc-exec.exe 複製到輸出資料夾。否則請重新安裝伴侶應用程式以還原沙箱。</value>
+    <value>{0}&#x0A;&#x0A;找不到 wxc-exec 二進位檔。{1} 如果這是開發人員組建，請建置托盤應用程式，讓 wxc-exec.exe 複製到輸出資料夾。否則請重新安裝伴侶應用程式以還原沙箱。</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>顯示安裝指示</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>沙箱無法使用 — 命令將不受限制地執行</value>
+    <value>沙箱無法使用 — 回退到主機</value>
+  </data>
+  <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
+    <value>沙箱無法使用 — 命令已封鎖</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>本機閘道已移除</value>

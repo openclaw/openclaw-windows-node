@@ -3149,7 +3149,20 @@ Voer op uw gateway-host (Mac/Linux) uit:
     <value>Door agents gestarte Windows-opdrachten worden zonder sandboxbeperking uitgevoerd totdat Node-sandbox weer is ingeschakeld.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox niet beschikbaar — opdrachten worden onbeperkt uitgevoerd</value>
+    <value>Sandbox niet beschikbaar — host-fallback</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+Opdrachten worden op de host uitgevoerd zonder sandboxbescherming zolang sandboxing niet beschikbaar is.</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
+    <value>Sandbox niet beschikbaar — opdrachten geblokkeerd</value>
+  </data>
+  <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
+    <value>{0}
+
+Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strikte fallbackblokkering is ingeschakeld.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>MXC-sandboxprimitieven zijn niet beschikbaar op deze machine.</value>
@@ -6246,10 +6259,22 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>{0} gekopieerd naar klembord.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>Node-sandbox niet beschikbaar — opdrachten worden onbeperkt uitgevoerd</value>
+    <value>Node-sandbox niet beschikbaar — host-fallback</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
-    <value>Containment is niet beschikbaar op deze pc, dus opdrachten worden zonder sandboxbescherming uitgevoerd.</value>
+    <value>Containment is niet beschikbaar op deze pc, dus opdrachten die de agent start, worden op de host uitgevoerd zonder sandboxbescherming.</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
+    <value>Node-sandbox niet beschikbaar — opdrachten geblokkeerd</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
+    <value>Containment is niet beschikbaar op deze pc en strikte fallbackblokkering staat aan, dus opdrachten die de agent start, worden geblokkeerd.</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
+    <value>Node-sandbox is uitgeschakeld — hostuitvoering</value>
+  </data>
+  <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
+    <value>Containment is niet beschikbaar en Node-sandbox is uitgeschakeld, dus opdrachten die de agent start, worden op de host uitgevoerd zonder sandboxbescherming.</value>
   </data>
   <data name="SandboxPage_StatusOnTitle" xml:space="preserve">
     <value>Node-sandbox is ingeschakeld</value>
@@ -6266,11 +6291,29 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
   <data name="SandboxPage_UnavailableDefaultReason" xml:space="preserve">
     <value>MXC-sandboxprimitieven zijn niet beschikbaar op deze machine.</value>
   </data>
+  <data name="SandboxPage_ProbeErrorReason" xml:space="preserve">
+    <value>Kan de beschikbaarheid van de sandbox niet controleren.</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorHostFallback" xml:space="preserve">
+    <value>Opdrachten worden op de host uitgevoerd zonder sandboxbescherming zolang sandboxing niet beschikbaar is.</value>
+  </data>
+  <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
+    <value>Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strikte fallbackblokkering is ingeschakeld.</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
+    <value>Kan de beschikbaarheid van de sandbox niet verifiëren</value>
+  </data>
+  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
+    <value>{0}&#x0A;&#x0A;{1} De sandboxcapaciteitscontrole is niet voltooid. Dit is meestal tijdelijk (een trage of geblokkeerde controle) — probeer het opnieuw en controleer, als het probleem blijft bestaan, of beveiligingssoftware wxc-exec blokkeert.</value>
+  </data>
+  <data name="SandboxPage_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
   <data name="SandboxPage_WindowsUnsupportedTitle" xml:space="preserve">
     <value>Uw Windows-versie ondersteunt sandboxing nog niet</value>
   </data>
   <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;Opdrachten worden onbeperkt op deze machine uitgevoerd — sandboxing vereist een recente Windows-build met de AppContainer-primitieven. Installeer de nieuwste Windows-updates (of neem deel aan het Windows Insider-programma voor de nieuwste builds) om containment in te schakelen.</value>
+    <value>{0}&#x0A;&#x0A;{1} Sandboxing vereist een recente Windows-build met de AppContainer-primitieven. Installeer de nieuwste Windows-updates (of neem deel aan het Windows Insider-programma voor de nieuwste builds) om containment in te schakelen.</value>
   </data>
   <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
     <value>Windows Update openen</value>
@@ -6279,13 +6322,16 @@ Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
     <value>Sandboxing-onderdelen ontbreken</value>
   </data>
   <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;Het binaire bestand wxc-exec is niet gevonden, dus opdrachten worden onbeperkt uitgevoerd. Als dit een ontwikkelaarsbuild is, bouw dan de tray-app zodat wxc-exec.exe naar de uitvoermap wordt gekopieerd. Installeer anders de companion-app opnieuw om sandboxing te herstellen.</value>
+    <value>{0}&#x0A;&#x0A;Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuild is, bouw dan de tray-app zodat wxc-exec.exe naar de uitvoermap wordt gekopieerd. Installeer anders de companion-app opnieuw om sandboxing te herstellen.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Installatie-instructies weergeven</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>Sandbox niet beschikbaar — opdrachten worden onbeperkt uitgevoerd</value>
+    <value>Sandbox niet beschikbaar — host-fallback</value>
+  </data>
+  <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
+    <value>Sandbox niet beschikbaar — opdrachten geblokkeerd</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>Lokale gateway verwijderd</value>

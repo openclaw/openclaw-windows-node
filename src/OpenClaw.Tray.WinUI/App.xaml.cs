@@ -3032,11 +3032,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var reasonText = availability.UnsupportedReasons.Count > 0
             ? string.Join("  ·  ", availability.UnsupportedReasons)
             : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_DefaultReason");
+        var blockHostFallback = _settings?.SystemRunBlockHostFallbackWhenMxcUnavailable == true;
+        var mode = blockHostFallback ? "blocked" : "host-fallback";
+        var title = blockHostFallback
+            ? LocalizationHelper.GetString("AppNotification_SandboxUnavailableBlocked_Title")
+            : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_Title");
+        var message = blockHostFallback
+            ? LocalizationHelper.Format("AppNotification_SandboxUnavailableBlocked_MessageFormat", reasonText)
+            : LocalizationHelper.Format("AppNotification_SandboxUnavailable_MessageFormat", reasonText);
 
         PublishSandboxRiskNotification(
-            $"unavailable:{reasonText}",
-            LocalizationHelper.GetString("AppNotification_SandboxUnavailable_Title"),
-            reasonText);
+            $"unavailable:{mode}:{reasonText}",
+            title,
+            message);
     }
 
     private void PublishSandboxRiskNotification(string riskKey, string title, string message)
