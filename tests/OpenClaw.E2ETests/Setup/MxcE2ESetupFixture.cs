@@ -24,7 +24,11 @@ public sealed class MxcE2ESetupFixture : IAsyncLifetime
         if (MxcE2ETestGate.SkipReason is not null)
             return;
 
-        _inner = new E2ESetupFixture(settings => settings["SandboxTimeoutMs"] = 120_000);
+        _inner = new E2ESetupFixture(settings =>
+        {
+            settings["SandboxTimeoutMs"] = 120_000;
+            settings["SystemRunBlockHostFallbackWhenMxcUnavailable"] = true;
+        });
         await _inner.InitializeAsync();
     }
 

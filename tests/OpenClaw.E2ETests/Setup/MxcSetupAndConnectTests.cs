@@ -226,10 +226,43 @@ public sealed class MxcSetupAndConnectTests
             defaultAction = "deny",
             rules = new object[]
             {
-                new { pattern = "echo *", action = "allow", description = "E2E Gateway system.run MXC proof", enabled = true },
                 new
                 {
-                    pattern = "copy /Y *openclaw-mxc-denied-source.txt*",
+                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK",
+                    action = "allow",
+                    shells = new[] { "cmd" },
+                    description = "E2E Gateway system.run MXC success proof",
+                    enabled = true
+                },
+                new
+                {
+                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED_PAYLOAD > *openclaw-mxc-denied-source.txt\"" +
+                              " && echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_SOURCE_READY" +
+                              " && copy /Y *openclaw-mxc-denied-source.txt\" *mxc-denied-write-*.txt\"",
+                    action = "allow",
+                    shells = new[] { "cmd" },
+                    description = "E2E Gateway system.run MXC denied-write wrapper proof",
+                    enabled = true
+                },
+                new
+                {
+                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED_PAYLOAD > *openclaw-mxc-denied-source.txt\"",
+                    action = "allow",
+                    shells = new[] { "cmd" },
+                    description = "E2E Gateway system.run MXC denied-write source prep",
+                    enabled = true
+                },
+                new
+                {
+                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_SOURCE_READY",
+                    action = "allow",
+                    shells = new[] { "cmd" },
+                    description = "E2E Gateway system.run MXC denied-write source marker",
+                    enabled = true
+                },
+                new
+                {
+                    pattern = "copy /Y *openclaw-mxc-denied-source.txt\" *mxc-denied-write-*.txt\"",
                     action = "allow",
                     shells = new[] { "cmd" },
                     description = "E2E Gateway system.run MXC denied-write proof",
@@ -239,7 +272,7 @@ public sealed class MxcSetupAndConnectTests
         });
 
         Assert.True(updated.RootElement.GetProperty("updated").GetBoolean());
-        Console.WriteLine("[E2E] exec approval policy prepared for Gateway system.run proof: defaultAction=deny; allow=echo *, copy /Y *openclaw-mxc-denied-source.txt*");
+        Console.WriteLine("[E2E] exec approval policy prepared for Gateway system.run proof: defaultAction=deny; allow=scoped cmd MXC proof commands");
     }
 
     private TrayLogCursor GetTrayLogCursor()
