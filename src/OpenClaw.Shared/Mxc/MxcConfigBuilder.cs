@@ -1,4 +1,6 @@
 using System.Text;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -64,6 +66,7 @@ public static class MxcConfigBuilder
         if (string.IsNullOrWhiteSpace(scratchDir)) throw new ArgumentException("scratchDir required", nameof(scratchDir));
         if (context is null) throw new ArgumentNullException(nameof(context));
         var deniedPathExists = context.DeniedPathExists ?? PathExists;
+        var readonlyGrantIsBackendSafe = context.ReadonlyGrantIsBackendSafe ?? IsBackendSafeReadonlyGrant;
 
         var policy = request.Policy;
         var args = ParseSystemRunArgs(request.Args);
@@ -88,7 +91,7 @@ public static class MxcConfigBuilder
         var pathDirs = ResolvePathDirsForShellPath(context.PathEnvVar);
         foreach (var dir in pathDirs)
         {
-            if (!IsBackendSafeReadonlyGrant(dir)) continue;
+            if (!readonlyGrantIsBackendSafe(dir)) continue;
             if (!roFromPolicy.Contains(dir, StringComparer.OrdinalIgnoreCase))
                 roFromPolicy.Add(dir);
         }
@@ -254,7 +257,59 @@ public static class MxcConfigBuilder
     {
         if (IsDriveRoot(dir)) return false;
         if (IsProtectedSystemPath(dir)) return false;
+        if (!CanMxcDaclFallbackPreparePath(dir)) return false;
         return true;
+    }
+
+    private static bool CanMxcDaclFallbackPreparePath(string dir)
+    {
+        if (!OperatingSystem.IsWindows())
+            return true;
+
+        try
+        {
+            var identity = WindowsIdentity.GetCurrent();
+            var principals = new HashSet<SecurityIdentifier>();
+            if (identity.User is not null)
+                principals.Add(identity.User);
+            if (identity.Groups is not null)
+            {
+                foreach (var group in identity.Groups)
+                {
+                    if (group is SecurityIdentifier sid)
+                        principals.Add(sid);
+                }
+            }
+
+            if (principals.Count == 0)
+                return false;
+
+            var rules = new DirectoryInfo(dir)
+                .GetAccessControl(AccessControlSections.Access)
+                .GetAccessRules(includeExplicit: true, includeInherited: true, targetType: typeof(SecurityIdentifier));
+
+            var allowed = false;
+            foreach (FileSystemAccessRule rule in rules)
+            {
+                if (rule.IdentityReference is not SecurityIdentifier sid || !principals.Contains(sid))
+                    continue;
+
+                if ((rule.FileSystemRights & (FileSystemRights.ChangePermissions | FileSystemRights.FullControl)) == 0)
+                    continue;
+
+                if (rule.AccessControlType == AccessControlType.Deny)
+                    return false;
+
+                if (rule.AccessControlType == AccessControlType.Allow)
+                    allowed = true;
+            }
+
+            return allowed;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool IsProtectedSystemPath(string dir)
@@ -483,7 +538,8 @@ public static class MxcConfigBuilder
 internal sealed record MxcConfigBuildContext(
     string? ContainerId = null,
     string? PathEnvVar = null,
-    Func<string, bool>? DeniedPathExists = null)
+    Func<string, bool>? DeniedPathExists = null,
+    Func<string, bool>? ReadonlyGrantIsBackendSafe = null)
 {
     public static MxcConfigBuildContext Default { get; } = new();
 }

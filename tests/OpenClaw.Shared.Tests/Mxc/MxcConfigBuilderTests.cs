@@ -99,14 +99,16 @@ public class MxcConfigBuilderTests
         string scratchDir = P.Scratch,
         string? containerId = null,
         string? pathEnvVar = "",
-        Func<string, bool>? deniedPathExists = null) =>
+        Func<string, bool>? deniedPathExists = null,
+        Func<string, bool>? readonlyGrantIsBackendSafe = null) =>
         MxcConfigBuilder.Build(
             request,
             scratchDir,
             new MxcConfigBuildContext(
                 ContainerId: containerId,
                 PathEnvVar: pathEnvVar,
-                DeniedPathExists: deniedPathExists ?? DeniedPathExists));
+                DeniedPathExists: deniedPathExists ?? DeniedPathExists,
+                ReadonlyGrantIsBackendSafe: readonlyGrantIsBackendSafe));
 
     private static string ExpectedSystemCmdExe()
     {
@@ -393,6 +395,34 @@ public class MxcConfigBuilderTests
         {
             // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_BootstrapsUnsafePathDirsWithoutGrantingThem()
+    {
+        var unsafeDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-unsafe-" + Guid.NewGuid().ToString("N"))).FullName;
+        var safeDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-safe-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            using var argsDoc = JsonDocument.Parse("""{"command":"tool --version","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+            var pathEnv = string.Join(Path.PathSeparator, unsafeDir, safeDir);
+
+            var config = BuildConfig(
+                request,
+                pathEnvVar: pathEnv,
+                readonlyGrantIsBackendSafe: dir => !string.Equals(dir, unsafeDir, StringComparison.OrdinalIgnoreCase));
+
+            Assert.Contains($"set \"PATH={pathEnv}\"", config.Process.CommandLine);
+            Assert.DoesNotContain(unsafeDir, config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(safeDir, config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(unsafeDir, true); } catch { }
+            try { Directory.Delete(safeDir, true); } catch { }
         }
     }
 
