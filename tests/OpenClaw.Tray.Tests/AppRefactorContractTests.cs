@@ -310,6 +310,29 @@ public sealed class AppRefactorContractTests
         Assert.True(guardIndex < setIconIndex, "Liveness guard must run before SetIcon");
     }
 
+    [Fact]
+    public void AppNotifications_ConnectionIssueUsesStableDedupeKey()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "UpdateConnectionIssueNotification");
+
+        Assert.Contains("private const string ConnectionIssueNotificationDedupeKey = \"connection:issue\"", source);
+        Assert.Contains("ConnectionIssueNotificationDedupeKey", method);
+        Assert.DoesNotContain("$\"connection:{key}\"", method);
+    }
+
+    [Fact]
+    public void AppNotifications_SandboxRiskProbeRunsOffUiPath()
+    {
+        var source = ReadAppSources();
+        var publishMethod = ExtractMethod(source, "PublishSandboxRiskNotificationIfNeeded");
+        var probeMethod = ExtractMethod(source, "StartSandboxRiskProbeIfNeeded");
+
+        Assert.DoesNotContain("MxcAvailability.Probe", publishMethod);
+        Assert.Contains("Task.Run(() => MxcAvailability.Probe", probeMethod);
+        Assert.Contains("ContinueWith", probeMethod);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

@@ -202,6 +202,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private string? _lastConnectionIssueNotificationKey;
     private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastSandboxRiskNotificationKey;
+    private MxcAvailability? _sandboxRiskAvailabilityCache;
+    private bool _sandboxRiskProbeInFlight;
+    private int _sandboxRiskProbeGeneration;
+    private DateTimeOffset _lastSandboxRiskProbeStartedAt;
+
+    private const string ConnectionIssueNotificationId = "connection:issue";
+    private const string ConnectionIssueNotificationDedupeKey = "connection:issue";
+    private static readonly TimeSpan SandboxRiskProbeRefreshInterval = TimeSpan.FromMinutes(5);
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -2317,7 +2325,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (!TryBuildConnectionIssueNotification(snapshot, out var title, out var message, out var severity, out var category, out var key))
         {
             _lastConnectionIssueNotificationKey = null;
-            _appNotificationService?.Dismiss("connection:issue");
+            _appNotificationService?.Dismiss(ConnectionIssueNotificationId);
             return;
         }
 
@@ -2332,10 +2340,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "connection",
             category,
             severity,
-            $"connection:{key}",
+            ConnectionIssueNotificationDedupeKey,
             "connection",
             LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
-            id: "connection:issue");
+            id: ConnectionIssueNotificationId);
     }
 
     private static bool TryBuildConnectionIssueNotification(
@@ -2936,45 +2944,109 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_settings is null || _appNotificationService is null)
             return;
 
-        string? riskKey = null;
-        string? title = null;
-        string? message = null;
-
         if (!_settings.SystemRunSandboxEnabled)
         {
-            riskKey = "disabled";
-            title = LocalizationHelper.GetString("AppNotification_SandboxDisabled_Title");
-            message = LocalizationHelper.GetString("AppNotification_SandboxDisabled_Message");
-        }
-        else
-        {
-            var availability = MxcAvailability.Probe(new AppLogger());
-            if (!availability.HasAnyBackend)
-            {
-                var reasonText = availability.UnsupportedReasons.Count > 0
-                    ? string.Join("  ·  ", availability.UnsupportedReasons)
-                    : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_DefaultReason");
-                riskKey = $"unavailable:{reasonText}";
-                title = LocalizationHelper.GetString("AppNotification_SandboxUnavailable_Title");
-                message = reasonText;
-            }
-        }
-
-        if (riskKey is null)
-        {
-            _lastSandboxRiskNotificationKey = null;
-            _appNotificationService.ClearSource("sandbox");
+            _sandboxRiskProbeGeneration++;
+            _sandboxRiskProbeInFlight = false;
+            PublishSandboxRiskNotification(
+                "disabled",
+                LocalizationHelper.GetString("AppNotification_SandboxDisabled_Title"),
+                LocalizationHelper.GetString("AppNotification_SandboxDisabled_Message"));
             return;
         }
 
+        if (_sandboxRiskAvailabilityCache is { } cachedAvailability)
+            PublishSandboxRiskNotification(cachedAvailability);
+        else
+            ClearSandboxRiskNotification();
+
+        StartSandboxRiskProbeIfNeeded();
+    }
+
+    private void StartSandboxRiskProbeIfNeeded()
+    {
+        if (_settings is not { SystemRunSandboxEnabled: true })
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (_sandboxRiskProbeInFlight)
+            return;
+
+        if (_sandboxRiskAvailabilityCache is { ProbeErrored: false } &&
+            now - _lastSandboxRiskProbeStartedAt < SandboxRiskProbeRefreshInterval)
+        {
+            return;
+        }
+
+        _sandboxRiskProbeInFlight = true;
+        _lastSandboxRiskProbeStartedAt = now;
+        var generation = ++_sandboxRiskProbeGeneration;
+
+        _ = Task.Run(() => MxcAvailability.Probe(new AppLogger()))
+            .ContinueWith(
+                task => OnUiThread(() => CompleteSandboxRiskProbe(generation, task)),
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
+    }
+
+    private void CompleteSandboxRiskProbe(int generation, Task<MxcAvailability> task)
+    {
+        if (generation != _sandboxRiskProbeGeneration)
+            return;
+
+        _sandboxRiskProbeInFlight = false;
+
+        MxcAvailability availability;
+        if (task.Status == TaskStatus.RanToCompletion)
+        {
+            availability = task.Result;
+        }
+        else
+        {
+            var message = task.Exception?.GetBaseException().Message ?? LocalizationHelper.GetString("SandboxPage_ProbeErrorReason");
+            Logger.Warn($"Sandbox availability probe failed: {message}");
+            availability = new MxcAvailability(
+                false,
+                false,
+                false,
+                null,
+                new[] { message },
+                probeErrored: true);
+        }
+
+        _sandboxRiskAvailabilityCache = availability;
+        PublishSandboxRiskNotification(availability);
+    }
+
+    private void PublishSandboxRiskNotification(MxcAvailability availability)
+    {
+        if (availability.HasAnyBackend)
+        {
+            ClearSandboxRiskNotification();
+            return;
+        }
+
+        var reasonText = availability.UnsupportedReasons.Count > 0
+            ? string.Join("  ·  ", availability.UnsupportedReasons)
+            : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_DefaultReason");
+
+        PublishSandboxRiskNotification(
+            $"unavailable:{reasonText}",
+            LocalizationHelper.GetString("AppNotification_SandboxUnavailable_Title"),
+            reasonText);
+    }
+
+    private void PublishSandboxRiskNotification(string riskKey, string title, string message)
+    {
         if (string.Equals(_lastSandboxRiskNotificationKey, riskKey, StringComparison.Ordinal))
             return;
 
         _lastSandboxRiskNotificationKey = riskKey;
         AppNotificationPublisher.Show(
             _appNotificationService,
-            title!,
-            message!,
+            title,
+            message,
             "sandbox",
             "system.run",
             AppNotificationSeverity.Warning,
@@ -2982,6 +3054,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "sandbox",
             LocalizationHelper.GetString("AppNotification_ActionOpenSandbox"),
             id: "sandbox:risk");
+    }
+
+    private void ClearSandboxRiskNotification()
+    {
+        _lastSandboxRiskNotificationKey = null;
+        _appNotificationService?.ClearSource("sandbox");
     }
 
 
