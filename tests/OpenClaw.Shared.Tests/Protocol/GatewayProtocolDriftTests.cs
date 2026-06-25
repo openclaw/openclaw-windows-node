@@ -182,7 +182,7 @@ public class GatewayProtocolDriftTests
         var sentIndices = ExtractDispatchedRequestMethods(client, snapshot.ScopePrefixes);
         var failures = new List<string>();
 
-        foreach (var method in snapshot.Methods.Where(m => m.WindowsUsage == "used" && m.Kind == "request" && m.RequestFields.Count > 0))
+        foreach (var method in snapshot.Methods.Where(m => m.WindowsUsage == "used" && m.Kind == "request"))
         {
             var regions = new List<Region>();
 
