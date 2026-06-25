@@ -151,7 +151,9 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"""version"": ""0.7.0""", packageLock);
         Assert.Contains("RestoreMxcNodeBridge", trayProject);
         Assert.Contains(@"Inputs=""$(OpenClawRepoRoot)package-lock.json""", trayProject);
-        Assert.Contains(@"Outputs=""$(OpenClawRepoRoot)node_modules\.package-lock.json""", trayProject);
+        Assert.Contains(@"<MxcSdkRestoreStamp>$(OpenClawRepoRoot)node_modules\.openclaw-mxc-sdk-$(MxcSdkExpectedVersion).stamp</MxcSdkRestoreStamp>", trayProject);
+        Assert.Contains(@"Outputs=""$(MxcSdkRestoreStamp)""", trayProject);
+        Assert.Contains(@"<Touch Files=""$(MxcSdkRestoreStamp)"" AlwaysCreate=""true"" />", trayProject);
         Assert.Contains("npm ci --no-audit --no-fund", trayProject);
         Assert.Contains("CopyWxcExecToOutput", trayProject);
         Assert.Contains("CopyWxcExecToPublish", trayProject);
