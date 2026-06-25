@@ -96,6 +96,17 @@ public sealed class SecretRedactorTests
     }
 
     [Fact]
+    public void RedactInPlace_RootRegistered_RedactsWholeRoot()
+    {
+        var registered = new HashSet<string> { "/" };
+        var root = JsonNode.Parse("""{ "value": "1234", "profile": { "name": "alice" } }""")!;
+
+        var redacted = SecretRedactor.RedactInPlace(root, registered)!;
+
+        Assert.Equal("[REDACTED]", redacted.GetValue<string>());
+    }
+
+    [Fact]
     public void Redact_RegisteredSecretInsideArray_IsRedacted()
     {
         // An obscured TextField bound to "/codes/0" registers that element path.
@@ -110,6 +121,22 @@ public sealed class SecretRedactorTests
         var arr = Assert.IsType<JsonArray>(redacted["codes"]);
         Assert.Equal("[REDACTED]", (string?)arr[0]);
         Assert.Equal("5678", (string?)arr[1]);
+    }
+
+    [Theory]
+    [InlineData("/codes/01")]
+    [InlineData("/codes/+1")]
+    [InlineData("/codes/ 1")]
+    public void Redact_NonCanonicalRegisteredArrayIndex_RedactsCanonicalElement(string registeredPath)
+    {
+        var registered = new HashSet<string> { registeredPath };
+        var root = JsonNode.Parse("""{ "codes": ["1234", "5678"] }""")!;
+
+        var redacted = SecretRedactor.Redact(root, registered)!;
+
+        var arr = Assert.IsType<JsonArray>(redacted["codes"]);
+        Assert.Equal("1234", (string?)arr[0]);
+        Assert.Equal("[REDACTED]", (string?)arr[1]);
     }
 
     [Fact]

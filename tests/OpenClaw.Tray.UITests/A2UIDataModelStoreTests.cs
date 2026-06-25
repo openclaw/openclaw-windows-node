@@ -1,7 +1,11 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using OpenClawTray.A2UI.Rendering;
 using OpenClawTray.A2UI.Protocol;
+using OpenClawTray.A2UI.Theming;
 using Xunit;
 using static OpenClaw.Tray.UITests.TestSupport;
 
@@ -44,6 +48,110 @@ public sealed class A2UIDataModelStoreTests
             var node = harness.DataModel.Read("s", "/form/picked");
             var arr = Assert.IsType<JsonArray>(node);
             Assert.Equal(new[] { "g", "b" }, arr.Select(n => n!.GetValue<string>()));
+        });
+    }
+
+    [Fact]
+    public async Task ApplyDataModelUpdate_ValueArray_NotifiesElementPathSubscribers()
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var harness = BuildHarness(_ui);
+            var observable = harness.DataModel.GetOrCreate("s");
+            var notifications = 0;
+            using var subscription = observable.Subscribe("/codes/0", () => notifications++);
+
+            harness.DataModel.ApplyDataModelUpdate("s", null, new[]
+            {
+                new DataModelEntry
+                {
+                    Key = "codes",
+                    ValueArray = new[]
+                    {
+                        new DataModelEntry { Key = string.Empty, ValueString = "1234" },
+                    },
+                },
+            });
+
+            Assert.Equal(1, notifications);
+            Assert.Equal("1234", observable.ReadString("/codes/0"));
+        });
+    }
+
+    [Theory]
+    [InlineData("/codes/01")]
+    [InlineData("/codes/+1")]
+    [InlineData("/codes/ 1")]
+    public async Task Read_NonCanonicalArrayIndex_DoesNotResolve(string pointer)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var harness = BuildHarness(_ui);
+            harness.DataModel.ApplyDataModelUpdate("s", null, new[]
+            {
+                new DataModelEntry
+                {
+                    Key = "codes",
+                    ValueArray = new[]
+                    {
+                        new DataModelEntry { Key = string.Empty, ValueString = "1234" },
+                        new DataModelEntry { Key = string.Empty, ValueString = "5678" },
+                    },
+                },
+            });
+
+            Assert.Null(harness.DataModel.Read("s", pointer));
+        });
+    }
+
+    [Theory]
+    [InlineData("/codes/1")]
+    [InlineData("/codes/01")]
+    public async Task BuildActionContext_RedactsRegisteredSecretArrayElement_WhenParentPathIsRequested(string secretPath)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var ctx = BuildRenderContext(
+                JsonNode.Parse("""{ "codes": ["1234", "5678"] }""")!.AsObject(),
+                secretPath);
+            var source = BuildSourceComponent("""{ "dataBinding": ["/codes"] }""");
+            var action = JsonNode.Parse("""
+            {
+                "context": [
+                    { "key": "codes", "value": { "path": "/codes" } }
+                ]
+            }
+            """);
+
+            var result = ctx.BuildActionContext(source, action)!;
+
+            var codes = Assert.IsType<JsonArray>(result["codes"]);
+            Assert.Equal("1234", (string?)codes[0]);
+            Assert.Equal("[REDACTED]", (string?)codes[1]);
+        });
+    }
+
+    [Fact]
+    public async Task BuildActionContext_RedactsDenylistedDescendant_WhenParentPathIsRequested()
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var ctx = BuildRenderContext(
+                JsonNode.Parse("""{ "profile": { "name": "alice", "password": "p@ss" } }""")!.AsObject());
+            var source = BuildSourceComponent("""{ "dataBinding": ["/profile"] }""");
+            var action = JsonNode.Parse("""
+            {
+                "context": [
+                    { "key": "profile", "value": { "path": "/profile" } }
+                ]
+            }
+            """);
+
+            var result = ctx.BuildActionContext(source, action)!;
+
+            var profile = Assert.IsType<JsonObject>(result["profile"]);
+            Assert.Equal("alice", (string?)profile["name"]);
+            Assert.Equal("[REDACTED]", (string?)profile["password"]);
         });
     }
 
@@ -92,4 +200,32 @@ public sealed class A2UIDataModelStoreTests
             inner = new DataModelEntry { Key = "n", ValueMap = new[] { inner } };
         return new DataModelEntry { Key = key, ValueMap = new[] { inner } };
     }
+
+    private RenderContext BuildRenderContext(JsonObject seed, string? secretPath = null)
+    {
+        var harness = BuildHarness(_ui);
+        var observable = harness.DataModel.GetOrCreate("s", seed);
+        var secretPaths = new HashSet<string>(StringComparer.Ordinal);
+        var ctx = new RenderContext
+        {
+            SurfaceId = "s",
+            DataModel = observable,
+            Actions = harness.Actions,
+            Theme = A2UITheme.Empty,
+            BuildChild = _ => null,
+            Subscriptions = new Dictionary<string, IDisposable>(),
+            SecretPaths = secretPaths,
+        };
+
+        ctx.MarkSecretPath(secretPath);
+        return ctx;
+    }
+
+    private static A2UIComponentDef BuildSourceComponent(string propertiesJson) =>
+        new()
+        {
+            Id = "button",
+            ComponentName = "Button",
+            Properties = JsonNode.Parse(propertiesJson)!.AsObject(),
+        };
 }

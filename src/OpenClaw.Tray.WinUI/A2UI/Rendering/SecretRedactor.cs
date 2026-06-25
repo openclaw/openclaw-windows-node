@@ -50,11 +50,27 @@ internal static class SecretRedactor
         if (string.IsNullOrEmpty(path)) return false;
         var normalized = Normalize(path);
         if (registered.Contains(normalized)) return true;
+
+        var canonical = CanonicalizeLenientArrayIndices(normalized);
+        if (!string.Equals(canonical, normalized, StringComparison.Ordinal)
+            && registered.Contains(canonical))
+        {
+            return true;
+        }
+
         // Any ancestor of the path counts: obscuring "/credentials" should hide "/credentials/password" too.
         foreach (var prefix in registered)
         {
-            if (prefix.Length == 0 || prefix == "/") continue;
-            if (normalized.StartsWith(prefix + "/", StringComparison.Ordinal)) return true;
+            var normalizedPrefix = Normalize(prefix);
+            if (normalizedPrefix.Length == 0 || normalizedPrefix == "/") continue;
+            if (IsPathOrDescendant(normalized, normalizedPrefix)) return true;
+
+            var canonicalPrefix = CanonicalizeLenientArrayIndices(normalizedPrefix);
+            if (!string.Equals(canonicalPrefix, normalizedPrefix, StringComparison.Ordinal)
+                && IsPathOrDescendant(normalized, canonicalPrefix))
+            {
+                return true;
+            }
         }
         return MatchesDenylist(normalized);
     }
@@ -66,6 +82,7 @@ internal static class SecretRedactor
     public static JsonNode? Redact(JsonNode? root, IReadOnlySet<string> registered)
     {
         if (root == null) return null;
+        if (IsSecret("/", registered)) return JsonValue.Create("[REDACTED]");
         return RedactNode(root.DeepClone(), "/", registered);
     }
 
@@ -76,7 +93,19 @@ internal static class SecretRedactor
     public static JsonNode? RedactInPlace(JsonNode? root, IReadOnlySet<string> registered)
     {
         if (root == null) return null;
+        if (IsSecret("/", registered)) return JsonValue.Create("[REDACTED]");
         return RedactNode(root, "/", registered);
+    }
+
+    public static JsonNode? RedactInPlace(JsonNode? root, string rootPath, IReadOnlySet<string> registered)
+    {
+        if (root == null) return null;
+
+        var normalizedRootPath = Normalize(rootPath);
+        if (IsSecret(normalizedRootPath, registered))
+            return JsonValue.Create("[REDACTED]");
+
+        return RedactNode(root, normalizedRootPath, registered);
     }
 
     private static JsonNode? RedactNode(JsonNode? node, string path, IReadOnlySet<string> registered)
@@ -157,6 +186,41 @@ internal static class SecretRedactor
 
     private static string Normalize(string p) =>
         string.IsNullOrEmpty(p) ? "/" : (p[0] == '/' ? p : "/" + p);
+
+    private static bool IsPathOrDescendant(string path, string prefix) =>
+        string.Equals(path, prefix, StringComparison.Ordinal)
+        || path.StartsWith(prefix + "/", StringComparison.Ordinal);
+
+    internal static string CanonicalizeLenientArrayIndices(string path)
+    {
+        var normalized = Normalize(path);
+        if (normalized == "/") return normalized;
+
+        var parts = normalized.Substring(1).Split('/');
+        var changed = false;
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var decoded = parts[i].Replace("~1", "/").Replace("~0", "~");
+            if (!int.TryParse(
+                    decoded,
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var index)
+                || index < 0)
+            {
+                continue;
+            }
+
+            var canonical = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (string.Equals(decoded, canonical, StringComparison.Ordinal))
+                continue;
+
+            parts[i] = EncodeSegment(canonical);
+            changed = true;
+        }
+
+        return changed ? "/" + string.Join("/", parts) : normalized;
+    }
 
     private static string EncodeSegment(string key) =>
         key.Replace("~", "~0").Replace("/", "~1");
