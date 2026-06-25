@@ -117,6 +117,57 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task CronRunDetailed_FallsBackToLegacyIdPayload_WhenJobIdPayloadIsRejected()
+    {
+        using var server = new LoopbackGatewayServer();
+        var requestCount = 0;
+        var observedParameters = new ConcurrentQueue<JsonElement>();
+        server.OnMethod("cron.run", parameters =>
+        {
+            requestCount++;
+            observedParameters.Enqueue(parameters.Clone());
+            if (requestCount == 1)
+                return LoopbackResponse.Fail("invalid cron.run params: unexpected property jobId");
+
+            return new { ok = true, enqueued = true, runId = "manual:job-legacy:1" };
+        });
+
+        var logger = new TestLogger();
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", logger,
+            tokenIsBootstrapToken: false, bootstrapPairAsNode: false,
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            var result = await client.RunCronJobDetailedAsync("job-legacy", timeoutMs: 20000);
+
+            Assert.True(result.Accepted);
+            Assert.True(result.Enqueued);
+            Assert.Equal("manual:job-legacy:1", result.RunId);
+            Assert.Equal(2, requestCount);
+            await server.WaitFrameAsync("cron.run", occurrence: 1, timeoutMs: 20000);
+
+            var payloads = observedParameters.ToArray();
+            Assert.Equal(2, payloads.Length);
+            Assert.True(payloads[0].TryGetProperty("jobId", out var jobId));
+            Assert.Equal("job-legacy", jobId.GetString());
+            Assert.False(payloads[0].TryGetProperty("id", out _));
+            Assert.True(payloads[1].TryGetProperty("id", out var id));
+            Assert.Equal("job-legacy", id.GetString());
+            Assert.True(payloads[1].TryGetProperty("force", out var force));
+            Assert.True(force.GetBoolean());
+            Assert.False(payloads[1].TryGetProperty("jobId", out _));
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
     private static void ConfigureResponders(LoopbackGatewayServer server)
     {
         // NOTE: intentionally NO hello-ok responder. The new methods only require
@@ -401,7 +452,11 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
                 ? responder(parameters)
                 : new { };
 
-            var response = JsonSerializer.Serialize(new { type = "res", id, ok = true, payload });
+            var response = payload is LoopbackResponse loopbackResponse
+                ? loopbackResponse.Ok
+                    ? JsonSerializer.Serialize(new { type = "res", id, ok = true, payload = loopbackResponse.Payload })
+                    : JsonSerializer.Serialize(new { type = "res", id, ok = false, error = loopbackResponse.Error })
+                : JsonSerializer.Serialize(new { type = "res", id, ok = true, payload });
             var bytes = Encoding.UTF8.GetBytes(response);
             await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
         }
@@ -423,5 +478,10 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             try { _loop.Wait(TimeSpan.FromSeconds(2)); } catch { }
             _cts.Dispose();
         }
+    }
+
+    private sealed record LoopbackResponse(bool Ok, object? Payload = null, string? Error = null)
+    {
+        public static LoopbackResponse Fail(string error) => new(false, Error: error);
     }
 }
