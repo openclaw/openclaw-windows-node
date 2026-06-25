@@ -6,7 +6,7 @@ using OpenClaw.Shared;
 namespace OpenClaw.Connection;
 
 /// <summary>Whether a pending pairing approval is for a device (operator-class client) or a node.</summary>
-public enum PairingApprovalKind
+public enum PendingApprovalKind
 {
     Device,
     Node,
@@ -20,7 +20,7 @@ public enum PairingApprovalKind
 /// </summary>
 public sealed class PendingApproval
 {
-    public PairingApprovalKind Kind { get; init; }
+    public PendingApprovalKind Kind { get; init; }
 
     /// <summary>Gateway request id used to approve/reject. May be empty on legacy gateways.</summary>
     public string RequestId { get; init; } = "";
@@ -58,7 +58,7 @@ public sealed class PendingApproval
         ArgumentNullException.ThrowIfNull(request);
         return new PendingApproval
         {
-            Kind = PairingApprovalKind.Device,
+            Kind = PendingApprovalKind.Device,
             RequestId = request.RequestId,
             DeviceId = request.DeviceId,
             DisplayName = request.DisplayName,
@@ -78,7 +78,7 @@ public sealed class PendingApproval
         ArgumentNullException.ThrowIfNull(request);
         return new PendingApproval
         {
-            Kind = PairingApprovalKind.Node,
+            Kind = PendingApprovalKind.Node,
             RequestId = request.RequestId,
             DeviceId = request.NodeId,
             DisplayName = request.DisplayName,
