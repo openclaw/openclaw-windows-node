@@ -22,6 +22,8 @@ namespace OpenClaw.E2ETests.Setup;
 /// </summary>
 public sealed class E2ESetupFixture : IAsyncLifetime
 {
+    private readonly Action<Dictionary<string, object>>? _settingsPatch;
+
     /// <summary>
     /// Persistent artifact directory that survives test cleanup.
     /// CI uploads this as a test artifact for post-mortem debugging.
@@ -51,7 +53,14 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     private Process? _trayProcess;
 
     public E2ESetupFixture()
+        : this(settingsPatch: null)
     {
+    }
+
+    internal E2ESetupFixture(Action<Dictionary<string, object>>? settingsPatch)
+    {
+        _settingsPatch = settingsPatch;
+
         if (!E2ETestGate.IsEnabled)
         {
             _distroName = "OpenClawE2E-disabled";
@@ -257,7 +266,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         File.WriteAllText(_configPath, json);
     }
 
-    private static void PatchSettingsForMcp(string settingsPath)
+    private void PatchSettingsForMcp(string settingsPath)
     {
         var json = File.ReadAllText(settingsPath);
         var settings = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json) ?? [];
@@ -269,6 +278,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         merged["HasSeenActivityStreamTip"] = true;
         merged["ShowNotifications"] = false;
         merged["GlobalHotkeyEnabled"] = false;
+        _settingsPatch?.Invoke(merged);
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = true }));
     }
 

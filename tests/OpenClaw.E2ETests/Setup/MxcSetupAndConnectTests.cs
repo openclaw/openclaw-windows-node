@@ -102,7 +102,7 @@ public sealed class MxcSetupAndConnectTests
         const string sourceReadyMarker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_SOURCE_READY";
         var blockedPath = Path.Combine(_fixture.DataDir, $"mxc-denied-write-{Guid.NewGuid():N}.txt");
         var blockedPathForCmd = blockedPath.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var sourcePathForCmd = "%TEMP%\\openclaw-mxc-denied-source.txt";
+        var sourcePathForCmd = "%TEMP%/openclaw-mxc-denied-source.txt";
 
         await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
         await SetExecApprovalForSystemRunProofAsync();
