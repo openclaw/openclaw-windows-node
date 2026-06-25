@@ -310,6 +310,54 @@ public sealed class AppRefactorContractTests
         Assert.True(guardIndex < setIconIndex, "Liveness guard must run before SetIcon");
     }
 
+    [Fact]
+    public void AppNotifications_ConnectionIssueUsesStableDedupeKey()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "UpdateConnectionIssueNotification");
+
+        Assert.Contains("private const string ConnectionIssueNotificationDedupeKey = \"connection:issue\"", source);
+        Assert.Contains("ConnectionIssueNotificationDedupeKey", method);
+        Assert.DoesNotContain("$\"connection:{key}\"", method);
+    }
+
+    [Fact]
+    public void AppNotifications_SandboxRiskProbeRunsOffUiPath()
+    {
+        var source = ReadAppSources();
+        var publishMethod = ExtractMethod(source, "PublishSandboxRiskNotificationIfNeeded");
+        var probeMethod = ExtractMethod(source, "StartSandboxRiskProbeIfNeeded");
+
+        Assert.DoesNotContain("MxcAvailability.Probe", publishMethod);
+        Assert.Contains("Task.Run(() => MxcAvailability.Probe", probeMethod);
+        Assert.Contains("ContinueWith", probeMethod);
+    }
+
+    [Fact]
+    public void AppNotifications_SandboxRiskUsesStableDedupeKey()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("private const string SandboxRiskNotificationId = \"sandbox:risk\"", source);
+        Assert.Contains("private const string SandboxRiskNotificationDedupeKey = \"sandbox:risk\"", source);
+        Assert.Contains("SandboxRiskNotificationDedupeKey", source);
+        Assert.Contains("id: SandboxRiskNotificationId", source);
+        Assert.DoesNotContain("$\"sandbox:{riskKey}\"", source);
+    }
+
+    [Fact]
+    public void AppNotifications_SandboxRiskMessageReflectsStrictFallbackBlocking()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "PublishSandboxRiskNotification");
+
+        Assert.Contains("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
+        Assert.Contains("AppNotification_SandboxUnavailableBlocked_Title", method);
+        Assert.Contains("AppNotification_SandboxUnavailableBlocked_MessageFormat", method);
+        Assert.Contains("host-fallback", method);
+        Assert.Contains("blocked", method);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

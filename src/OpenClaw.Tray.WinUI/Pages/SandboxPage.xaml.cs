@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -13,6 +14,8 @@ namespace OpenClawTray.Pages;
 public sealed partial class SandboxPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
+    private static string L(string key) => LocalizationHelper.GetString(key);
+    private static string Lf(string key, params object?[] args) => LocalizationHelper.Format(key, args);
     private bool _suppress;
     private bool _dialogOpen;
 
@@ -53,7 +56,7 @@ public sealed partial class SandboxPage : Page
             // "Checking…": synthesize an errored result so the UI shows Retry.
             _cachedAvailability = new OpenClaw.Shared.Mxc.MxcAvailability(
                 false, false, false, null,
-                new[] { "Couldn't check sandbox availability." }, probeErrored: true);
+                new[] { L("SandboxPage_ProbeErrorReason") }, probeErrored: true);
         }
         finally
         {
@@ -223,18 +226,18 @@ public sealed partial class SandboxPage : Page
 
             if (enabled && blockHostFallback)
             {
-                SandboxStatusTitle.Text = "Node Sandbox unavailable — commands blocked";
-                SandboxStatusSubtext.Text = "Containment isn't available on this PC, and strict fallback blocking is on, so agent-started commands are blocked.";
+                SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableBlockedTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableBlockedSubtext");
             }
             else if (enabled)
             {
-                SandboxStatusTitle.Text = "Node Sandbox unavailable — host fallback";
-                SandboxStatusSubtext.Text = "Containment isn't available on this PC, so agent-started commands run on the host without sandbox protection.";
+                SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableSubtext");
             }
             else
             {
-                SandboxStatusTitle.Text = "Node Sandbox is off — host execution";
-                SandboxStatusSubtext.Text = "Containment isn't available and Node Sandbox is off, so agent-started commands run on the host without sandbox protection.";
+                SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableOffTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableOffSubtext");
             }
             return;
         }
@@ -256,15 +259,15 @@ public sealed partial class SandboxPage : Page
             }
             else
             {
-                SandboxStatusTitle.Text = "Node Sandbox is on";
-                SandboxStatusSubtext.Text = "Programs the agent runs on this PC are contained.";
+                SandboxStatusTitle.Text = L("SandboxPage_StatusOnTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusOnSubtext");
             }
         }
         else
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox is off — high risk";
-            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are not contained.";
+            SandboxStatusTitle.Text = L("SandboxPage_StatusOffTitle");
+            SandboxStatusSubtext.Text = L("SandboxPage_StatusOffSubtext");
         }
     }
 
@@ -288,7 +291,7 @@ public sealed partial class SandboxPage : Page
         var reasons = availability.UnsupportedReasons;
         var reasonText = reasons.Count > 0
             ? string.Join("  ·  ", reasons)
-            : "MXC sandboxing primitives are not available on this machine.";
+            : L("SandboxPage_UnavailableDefaultReason");
 
         // A transient probe error (timeout / couldn't launch / garbled output) is NOT
         // the same as the host being unsupported — don't push the user at Windows
@@ -304,46 +307,39 @@ public sealed partial class SandboxPage : Page
         var isSetupIssue = !availability.IsWxcExecResolvable;
         var blockHostFallback = sandboxEnabled
             && (CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false);
-        var unavailableBehavior = blockHostFallback
-            ? "Commands are blocked while sandboxing is unavailable because strict fallback blocking is enabled. "
-            : "Commands will run on the host without sandbox protection while sandboxing is unavailable. ";
+        var unavailableBehavior = L(blockHostFallback
+            ? "SandboxPage_UnavailableBehaviorBlocked"
+            : "SandboxPage_UnavailableBehaviorHostFallback");
 
         if (isProbeError)
         {
-            UnavailableActionBar.Title = "Couldn't verify sandbox availability";
-            UnavailableActionMessage.Text =
-                $"{reasonText}\n\nThe sandbox capability check didn't complete, so commands run uncontained for now. " +
-                "This is usually transient (a slow or blocked check) — retry, and if it persists check whether security software is blocking wxc-exec.";
-            UnavailablePrimaryButton.Content = "Retry";
+            UnavailableActionBar.Title = L("SandboxPage_ProbeErrorTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_ProbeErrorMessageFormat", reasonText, unavailableBehavior);
+            UnavailablePrimaryButton.Content = L("SandboxPage_Retry");
             UnavailablePrimaryButton.Tag = "retry";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else if (isWindowsIssue)
         {
-            UnavailableActionBar.Title = "Your Windows version doesn't support sandboxing yet";
-            UnavailableActionMessage.Text =
-                $"{reasonText}\n\n{unavailableBehavior}Sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
-                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.";
-            UnavailablePrimaryButton.Content = "Open Windows Update";
+            UnavailableActionBar.Title = L("SandboxPage_WindowsUnsupportedTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_WindowsUnsupportedMessageFormat", reasonText, unavailableBehavior);
+            UnavailablePrimaryButton.Content = L("SandboxPage_OpenWindowsUpdate");
             UnavailablePrimaryButton.Tag = "windowsupdate";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else if (isSetupIssue)
         {
-            UnavailableActionBar.Title = "Sandboxing components are missing";
-            UnavailableActionMessage.Text =
-                $"{reasonText}\n\nThe wxc-exec binary couldn't be located. {unavailableBehavior}" +
-                "If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. " +
-                "Otherwise reinstall the companion app to restore sandboxing.";
-            UnavailablePrimaryButton.Content = "Show install instructions";
+            UnavailableActionBar.Title = L("SandboxPage_ComponentsMissingTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_ComponentsMissingMessageFormat", reasonText, unavailableBehavior);
+            UnavailablePrimaryButton.Content = L("SandboxPage_ShowInstallInstructions");
             UnavailablePrimaryButton.Tag = "install";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else
         {
             UnavailableActionBar.Title = blockHostFallback
-                ? "Sandbox unavailable — commands blocked"
-                : "Sandbox unavailable — host fallback";
+                ? L("SandboxPage_UnavailableBlockedTitle")
+                : L("SandboxPage_UnavailableTitle");
             UnavailableActionMessage.Text = $"{reasonText}\n\n{unavailableBehavior}";
             UnavailablePrimaryButton.Visibility = Visibility.Collapsed;
         }
@@ -581,6 +577,7 @@ public sealed partial class SandboxPage : Page
     {
         if (_suppress) return;
         CurrentApp.Settings?.Save();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
         UpdatePresetHighlight();
     }
 

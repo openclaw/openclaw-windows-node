@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Mxc;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -196,6 +197,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private DiagnosticsClipboardService? _diagnosticsClipboard;
     private ToastService? _toastService;
     private AppNotificationService? _appNotificationService;
+    internal AppNotificationService? AppNotifications => _appNotificationService;
+    private string? _lastAuthFailureNotificationMessage;
+    private string? _lastConnectionIssueNotificationKey;
+    private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
+    private string? _lastSandboxRiskNotificationKey;
+    private MxcAvailability? _sandboxRiskAvailabilityCache;
+    private bool _sandboxRiskProbeInFlight;
+    private int _sandboxRiskProbeGeneration;
+    private DateTimeOffset _lastSandboxRiskProbeStartedAt;
+
+    private const string ConnectionIssueNotificationId = "connection:issue";
+    private const string ConnectionIssueNotificationDedupeKey = "connection:issue";
+    private const string SandboxRiskNotificationId = "sandbox:risk";
+    private const string SandboxRiskNotificationDedupeKey = "sandbox:risk";
+    private static readonly TimeSpan SandboxRiskProbeRefreshInterval = TimeSpan.FromMinutes(5);
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
@@ -488,6 +504,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
         _appNotificationService = new AppNotificationService();
+        PublishSandboxRiskNotificationIfNeeded();
 
         // Inbound pairing approvals: surface a focused dialog + awareness toast when another
         // device/node requests pairing (Mac-parity). Getters are lazy so this can be created
@@ -1806,6 +1823,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             if (_appState != null) _appState.Status = mapped;
             UpdateTrayIcon();
             SyncConnectionToggle(mapped);
+            UpdateConnectionIssueNotification(snap);
             if (mapped is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
             {
                 // Dismiss the tray menu on state change — it will capture fresh data on next open
@@ -2176,6 +2194,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             else if (args.Status == OpenClaw.Shared.PairingStatus.Paired)
             {
                 RefreshGatewayNodes("node paired");
+                ClearPairingAppNotifications(args.DeviceId);
                 // Bug 3: idempotency guard — only show "Node paired" toast/activity once
                 // per device per session. WS reconnects re-fire Paired; suppress duplicates.
                 var deviceKey = args.DeviceId ?? string.Empty;
@@ -2196,6 +2215,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             else if (args.Status == OpenClaw.Shared.PairingStatus.Rejected)
             {
+                _appNotificationService?.Dismiss(BuildPairingPendingNotificationId(args.DeviceId));
+                ShowPairingRejectedAppNotification(args.DeviceId, args.Message);
                 AddRecentActivity("Node pairing rejected", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId, details: args.Message ?? LocalizationHelper.GetString("Toast_PairingRejectedDetail"));
                 _toastService!.ShowToast(new ToastContentBuilder()
                     .AddText(LocalizationHelper.GetString("Toast_PairingRejected"))
@@ -2234,6 +2255,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     public static string BuildPairingApprovalCommand(string deviceId) =>
         $"openclaw devices approve {deviceId}";
 
+    private static string BuildPairingPendingNotificationId(string deviceId) =>
+        $"node-pairing-pending:{deviceId.Trim().ToLowerInvariant()}";
+
+    private static string BuildPairingRejectedNotificationId(string deviceId) =>
+        $"node-pairing-rejected:{deviceId.Trim().ToLowerInvariant()}";
+
+    private void ClearPairingAppNotifications(string deviceId)
+    {
+        _appNotificationService?.Dismiss(BuildPairingPendingNotificationId(deviceId));
+        _appNotificationService?.Dismiss(BuildPairingRejectedNotificationId(deviceId));
+    }
+
     private static string DeviceIdForLog(string? deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
@@ -2252,6 +2285,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var shortDeviceId = deviceId.Length > 16 ? deviceId[..16] : deviceId;
 
         AddRecentActivity("Node pairing pending", category: "node", dashboardPath: "nodes", nodeId: deviceId);
+        AppNotificationPublisher.Show(
+            _appNotificationService,
+            LocalizationHelper.GetString("Toast_PairingPending"),
+            string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), shortDeviceId),
+            "node",
+            "pairing",
+            AppNotificationSeverity.Warning,
+            $"node-pairing-pending:{deviceId}",
+            "connection",
+            LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
+            id: BuildPairingPendingNotificationId(deviceId));
         _toastService!.ShowToast(new ToastContentBuilder()
             .AddText(LocalizationHelper.GetString("Toast_PairingPending"))
             .AddText(string.Format(LocalizationHelper.GetString("Toast_PairingPendingDetail"), shortDeviceId))
@@ -2262,7 +2306,109 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "node-pairing-pending",
             deviceId);
     }
-    
+
+    private void ShowPairingRejectedAppNotification(string deviceId, string? detail)
+    {
+        AppNotificationPublisher.Show(
+            _appNotificationService,
+            LocalizationHelper.GetString("Toast_PairingRejected"),
+            detail ?? LocalizationHelper.GetString("Toast_PairingRejectedDetail"),
+            "node",
+            "pairing",
+            AppNotificationSeverity.Error,
+            $"node-pairing-rejected:{deviceId}",
+            "connection",
+            LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
+            id: BuildPairingRejectedNotificationId(deviceId));
+    }
+
+    private void UpdateConnectionIssueNotification(GatewayConnectionSnapshot snapshot)
+    {
+        if (!TryBuildConnectionIssueNotification(snapshot, out var title, out var message, out var severity, out var category, out var key))
+        {
+            _lastConnectionIssueNotificationKey = null;
+            _appNotificationService?.Dismiss(ConnectionIssueNotificationId);
+            return;
+        }
+
+        if (string.Equals(_lastConnectionIssueNotificationKey, key, StringComparison.Ordinal))
+            return;
+
+        _lastConnectionIssueNotificationKey = key;
+        AppNotificationPublisher.Show(
+            _appNotificationService,
+            title,
+            message,
+            "connection",
+            category,
+            severity,
+            ConnectionIssueNotificationDedupeKey,
+            "connection",
+            LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
+            id: ConnectionIssueNotificationId);
+    }
+
+    private static bool TryBuildConnectionIssueNotification(
+        GatewayConnectionSnapshot snapshot,
+        out string title,
+        out string message,
+        out AppNotificationSeverity severity,
+        out string category,
+        out string key)
+    {
+        title = "";
+        message = "";
+        severity = AppNotificationSeverity.Warning;
+        category = "lifecycle";
+        key = "";
+
+        if (snapshot.OverallState == OverallConnectionState.Error)
+        {
+            title = LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_Title");
+            message = snapshot.OperatorError ?? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage");
+            severity = AppNotificationSeverity.Error;
+            key = $"operator-error:{message}";
+            return true;
+        }
+
+        if (snapshot.OperatorPairingRequired)
+        {
+            title = LocalizationHelper.GetString("AppNotification_GatewayPairingRequired_Title");
+            message = string.IsNullOrWhiteSpace(snapshot.OperatorDeviceId)
+                ? LocalizationHelper.GetString("AppNotification_GatewayPairingRequired_GenericMessage")
+                : LocalizationHelper.Format(
+                    "AppNotification_GatewayPairingRequired_DeviceMessageFormat",
+                    DeviceIdForLog(snapshot.OperatorDeviceId));
+            category = "pairing";
+            key = $"operator-pairing:{snapshot.OperatorDeviceId ?? "unknown"}";
+            return true;
+        }
+
+        if (snapshot.OverallState == OverallConnectionState.Degraded)
+        {
+            if (snapshot.NodeState == RoleConnectionState.Error)
+            {
+                title = LocalizationHelper.GetString("AppNotification_WindowsNodeConnectionFailed_Title");
+                message = snapshot.NodeError ?? LocalizationHelper.GetString("AppNotification_WindowsNodeConnectionFailed_DefaultMessage");
+                severity = AppNotificationSeverity.Error;
+                category = "node";
+                key = $"node-error:{message}";
+                return true;
+            }
+
+            if (snapshot.NodeState == RoleConnectionState.RateLimited)
+            {
+                title = LocalizationHelper.GetString("AppNotification_WindowsNodeRateLimited_Title");
+                message = snapshot.NodeError ?? LocalizationHelper.GetString("AppNotification_WindowsNodeRateLimited_DefaultMessage");
+                category = "node";
+                key = $"node-rate-limited:{message}";
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void OnNodeNotificationRequested(object? sender, OpenClaw.Shared.Capabilities.SystemNotifyArgs args)
     {
         AddRecentActivity(args.Title, category: "node", dashboardPath: "nodes", details: args.Body);
@@ -2507,6 +2653,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (status == ConnectionStatus.Connected && _appState != null)
         {
             _appState.AuthFailureMessage = null;
+            _lastAuthFailureNotificationMessage = null;
+            _appNotificationService?.Dismiss("connection:authentication-failed");
         }
 
         UpdateTrayIcon();
@@ -2560,6 +2708,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_appState != null)
         {
             _appState.AuthFailureMessage = message;
+        }
+
+        if (!string.Equals(_lastAuthFailureNotificationMessage, message, StringComparison.Ordinal))
+        {
+            _lastAuthFailureNotificationMessage = message;
+            AppNotificationPublisher.Show(
+                _appNotificationService,
+                LocalizationHelper.GetString("AppNotification_GatewayAuthenticationFailed_Title"),
+                message,
+                "connection",
+                "authentication",
+                AppNotificationSeverity.Error,
+                "connection:authentication-failed",
+                "connection",
+                LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
+                id: "connection:authentication-failed");
         }
     }
 
@@ -2697,10 +2861,215 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             case nameof(AppState.Nodes):
                 UpdateStatusDetailWindow();
                 break;
+            case nameof(AppState.Channels):
+                UpdateChannelIssueNotifications(_appState.Channels);
+                UpdateStatusDetailWindow();
+                break;
             case nameof(AppState.CurrentActivity):
                 UpdateTrayIcon();
                 break;
         }
+    }
+
+    private void UpdateChannelIssueNotifications(ChannelHealth[] channels)
+    {
+        var currentIssueNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var channel in channels)
+        {
+            if (!TryBuildChannelIssueNotification(channel, out var title, out var message, out var signature))
+                continue;
+
+            currentIssueNames.Add(channel.Name);
+            if (_reportedChannelIssueSignatures.TryGetValue(channel.Name, out var existingSignature) &&
+                string.Equals(existingSignature, signature, StringComparison.Ordinal))
+                continue;
+
+            _reportedChannelIssueSignatures[channel.Name] = signature;
+            AppNotificationPublisher.Show(
+                _appNotificationService,
+                title,
+                message,
+                "channels",
+                "status",
+                AppNotificationSeverity.Error,
+                $"channels:{channel.Name}:status-error",
+                "channels",
+                LocalizationHelper.GetString("AppNotification_ActionOpenChannels"),
+                id: BuildChannelIssueNotificationId(channel.Name));
+        }
+
+        foreach (var channelName in _reportedChannelIssueSignatures.Keys.Except(currentIssueNames).ToList())
+        {
+            _reportedChannelIssueSignatures.Remove(channelName);
+            _appNotificationService?.Dismiss(BuildChannelIssueNotificationId(channelName));
+        }
+    }
+
+    private static bool TryBuildChannelIssueNotification(
+        ChannelHealth channel,
+        out string title,
+        out string message,
+        out string signature)
+    {
+        title = "";
+        message = "";
+        signature = "";
+
+        if (string.IsNullOrWhiteSpace(channel.Name))
+            return false;
+
+        var status = channel.Status?.Trim() ?? "";
+        var hasExplicitError = !string.IsNullOrWhiteSpace(channel.Error);
+        var hasErrorStatus = !string.IsNullOrWhiteSpace(status) &&
+            !ChannelHealth.IsHealthyStatus(status) &&
+            !ChannelHealth.IsIntermediateStatus(status) &&
+            !status.Equals("not configured", StringComparison.OrdinalIgnoreCase) &&
+            !status.Equals("unknown", StringComparison.OrdinalIgnoreCase);
+
+        if (!hasExplicitError && !hasErrorStatus)
+            return false;
+
+        var displayName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(channel.Name);
+        title = LocalizationHelper.Format("AppNotification_ChannelNeedsAttention_TitleFormat", displayName);
+        message = hasExplicitError
+            ? channel.Error!.Trim()
+            : LocalizationHelper.Format("AppNotification_ChannelNeedsAttention_StatusMessageFormat", channel.Name, status);
+        signature = $"{status}|{message}";
+        return true;
+    }
+
+    private static string BuildChannelIssueNotificationId(string channelName) =>
+        $"channel-issue:{channelName.Trim().ToLowerInvariant()}";
+
+    private void PublishSandboxRiskNotificationIfNeeded()
+    {
+        if (_settings is null || _appNotificationService is null)
+            return;
+
+        if (!_settings.SystemRunSandboxEnabled)
+        {
+            _sandboxRiskProbeGeneration++;
+            _sandboxRiskProbeInFlight = false;
+            PublishSandboxRiskNotification(
+                "disabled",
+                LocalizationHelper.GetString("AppNotification_SandboxDisabled_Title"),
+                LocalizationHelper.GetString("AppNotification_SandboxDisabled_Message"));
+            return;
+        }
+
+        if (_sandboxRiskAvailabilityCache is { } cachedAvailability)
+            PublishSandboxRiskNotification(cachedAvailability);
+        else
+            ClearSandboxRiskNotification();
+
+        StartSandboxRiskProbeIfNeeded();
+    }
+
+    private void StartSandboxRiskProbeIfNeeded()
+    {
+        if (_settings is not { SystemRunSandboxEnabled: true })
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (_sandboxRiskProbeInFlight)
+            return;
+
+        if (_sandboxRiskAvailabilityCache is { ProbeErrored: false } &&
+            now - _lastSandboxRiskProbeStartedAt < SandboxRiskProbeRefreshInterval)
+        {
+            return;
+        }
+
+        _sandboxRiskProbeInFlight = true;
+        _lastSandboxRiskProbeStartedAt = now;
+        var generation = ++_sandboxRiskProbeGeneration;
+
+        _ = Task.Run(() => MxcAvailability.Probe(new AppLogger()))
+            .ContinueWith(
+                task => OnUiThread(() => CompleteSandboxRiskProbe(generation, task)),
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
+    }
+
+    private void CompleteSandboxRiskProbe(int generation, Task<MxcAvailability> task)
+    {
+        if (generation != _sandboxRiskProbeGeneration)
+            return;
+
+        _sandboxRiskProbeInFlight = false;
+
+        MxcAvailability availability;
+        if (task.Status == TaskStatus.RanToCompletion)
+        {
+            availability = task.Result;
+        }
+        else
+        {
+            var message = task.Exception?.GetBaseException().Message ?? LocalizationHelper.GetString("SandboxPage_ProbeErrorReason");
+            Logger.Warn($"Sandbox availability probe failed: {message}");
+            availability = new MxcAvailability(
+                false,
+                false,
+                false,
+                null,
+                new[] { message },
+                probeErrored: true);
+        }
+
+        _sandboxRiskAvailabilityCache = availability;
+        PublishSandboxRiskNotification(availability);
+    }
+
+    private void PublishSandboxRiskNotification(MxcAvailability availability)
+    {
+        if (availability.HasAnyBackend)
+        {
+            ClearSandboxRiskNotification();
+            return;
+        }
+
+        var reasonText = availability.UnsupportedReasons.Count > 0
+            ? string.Join("  ·  ", availability.UnsupportedReasons)
+            : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_DefaultReason");
+        var blockHostFallback = _settings?.SystemRunBlockHostFallbackWhenMxcUnavailable == true;
+        var mode = blockHostFallback ? "blocked" : "host-fallback";
+        var title = blockHostFallback
+            ? LocalizationHelper.GetString("AppNotification_SandboxUnavailableBlocked_Title")
+            : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_Title");
+        var message = blockHostFallback
+            ? LocalizationHelper.Format("AppNotification_SandboxUnavailableBlocked_MessageFormat", reasonText)
+            : LocalizationHelper.Format("AppNotification_SandboxUnavailable_MessageFormat", reasonText);
+
+        PublishSandboxRiskNotification(
+            $"unavailable:{mode}:{reasonText}",
+            title,
+            message);
+    }
+
+    private void PublishSandboxRiskNotification(string riskKey, string title, string message)
+    {
+        if (string.Equals(_lastSandboxRiskNotificationKey, riskKey, StringComparison.Ordinal))
+            return;
+
+        _lastSandboxRiskNotificationKey = riskKey;
+        AppNotificationPublisher.Show(
+            _appNotificationService,
+            title,
+            message,
+            "sandbox",
+            "system.run",
+            AppNotificationSeverity.Warning,
+            SandboxRiskNotificationDedupeKey,
+            "sandbox",
+            LocalizationHelper.GetString("AppNotification_ActionOpenSandbox"),
+            id: SandboxRiskNotificationId);
+    }
+
+    private void ClearSandboxRiskNotification()
+    {
+        _lastSandboxRiskNotificationKey = null;
+        _appNotificationService?.ClearSource("sandbox");
     }
 
 
@@ -2955,6 +3324,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _previousSettingsSnapshot = currentSnapshot;
         SyncActiveGatewayBrowserProxyForward();
         Logger.Info($"[SETTINGS] Change impact: {impact}");
+        PublishSandboxRiskNotificationIfNeeded();
 
         switch (impact)
         {
