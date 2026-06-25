@@ -27,7 +27,7 @@ public class PendingApprovalTests
 
         var a = PendingApproval.FromDevice(req);
 
-        Assert.Equal(PendingApprovalKind.Device, a.Kind);
+        Assert.Equal(PairingApprovalKind.DevicePair, a.Kind);
         Assert.Equal("req-1", a.RequestId);
         Assert.Equal("dev-1", a.DeviceId);
         Assert.Equal("Bedroom iPad", a.DisplayName);
@@ -62,7 +62,7 @@ public class PendingApprovalTests
 
         var a = PendingApproval.FromNode(req);
 
-        Assert.Equal(PendingApprovalKind.Node, a.Kind);
+        Assert.Equal(PairingApprovalKind.NodePair, a.Kind);
         Assert.Equal("node-9", a.DeviceId);
         Assert.Equal("node", a.Role);
         Assert.Empty(a.Scopes);
@@ -258,14 +258,14 @@ public class PairingApprovalQueueTests
         Assert.Equal(2, first.Current.Count);
 
         // Submit the device decision (optimistic-pending).
-        var dev = first.Added.First(a => a.Kind == PendingApprovalKind.Device);
+        var dev = first.Added.First(a => a.Kind == PairingApprovalKind.DevicePair);
         q.MarkSubmitted(dev, approved: true, nowMs: 0);
 
         // A node-only update arrives (device list is null = no fresh device snapshot). The device
         // submission must NOT be confirmed by its absence, and the node entry must survive.
         var nodeOnly = q.Reconcile(null, Nodes(Node("n1")), nowMs: 100);
         Assert.Empty(nodeOnly.ConfirmedDecisions);
-        Assert.Contains(nodeOnly.Current, a => a.Kind == PendingApprovalKind.Node);
+        Assert.Contains(nodeOnly.Current, a => a.Kind == PairingApprovalKind.NodePair);
 
         // When the device list genuinely returns without the request, it confirms.
         var deviceResolved = q.Reconcile(Devices(), Nodes(Node("n1")), nowMs: 200);
@@ -281,7 +281,7 @@ public class PairingApprovalQueueTests
 
         // Device-only refresh (node list null): the node request must not vanish.
         var delta = q.Reconcile(Devices(Device("dev")), null);
-        Assert.Contains(delta.Current, a => a.Kind == PendingApprovalKind.Node && a.RequestId == "n1");
+        Assert.Contains(delta.Current, a => a.Kind == PairingApprovalKind.NodePair && a.RequestId == "n1");
         Assert.DoesNotContain("Node:n1", delta.ResolvedKeys);
     }
 

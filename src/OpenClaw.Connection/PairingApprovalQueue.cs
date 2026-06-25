@@ -90,8 +90,8 @@ public sealed class PairingApprovalQueue
     {
         var devicesProvided = devices is not null;
         var nodesProvided = nodes is not null;
-        bool KindProvided(PendingApprovalKind kind) =>
-            kind == PendingApprovalKind.Device ? devicesProvided : nodesProvided;
+        bool KindProvided(PairingApprovalKind kind) =>
+            kind == PairingApprovalKind.DevicePair ? devicesProvided : nodesProvided;
 
         var incoming = BuildIncoming(devices, nodes, ownNodeDeviceIds);
         var incomingByKey = new Dictionary<string, PendingApproval>(StringComparer.Ordinal);

@@ -3056,7 +3056,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 dashboardPath: "connection",
                 details: name);
 
-            var bodyKey = approval.Kind == PendingApprovalKind.Node
+            var bodyKey = approval.Kind == PairingApprovalKind.NodePair
                 ? "Toast_PairingRequestBodyNode"
                 : "Toast_PairingRequestBody";
             _toastService?.ShowToast(new ToastContentBuilder()

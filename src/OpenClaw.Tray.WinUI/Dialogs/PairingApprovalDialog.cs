@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -241,13 +242,13 @@ public sealed class PairingApprovalDialog : WindowEx
 
         _currentKey = approval.Key;
         _headingText.Text = LocalizationHelper.GetString(
-            approval.Kind == PendingApprovalKind.Node ? "PairingApproval_NodeHeading" : "PairingApproval_DeviceHeading");
+            approval.Kind == PairingApprovalKind.NodePair ? "PairingApproval_NodeHeading" : "PairingApproval_DeviceHeading");
 
         // Kind-aware approve label ("Approve device" / "Approve node") to reinforce intent.
         _approveButton.Content = BuildButtonContent(
             "\uE73E",
             null,
-            LocalizationHelper.GetString(approval.Kind == PendingApprovalKind.Node
+            LocalizationHelper.GetString(approval.Kind == PairingApprovalKind.NodePair
                 ? "PairingApproval_ApproveNode"
                 : "PairingApproval_ApproveDevice"));
 

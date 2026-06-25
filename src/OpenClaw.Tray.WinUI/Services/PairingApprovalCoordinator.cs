@@ -236,10 +236,10 @@ public sealed class PairingApprovalCoordinator
             {
                 ok = (approval.Kind, approve) switch
                 {
-                    (PendingApprovalKind.Device, true) => await client.DevicePairApproveAsync(approval.DecisionId),
-                    (PendingApprovalKind.Device, false) => await client.DevicePairRejectAsync(approval.DecisionId),
-                    (PendingApprovalKind.Node, true) => await client.NodePairApproveAsync(approval.DecisionId),
-                    (PendingApprovalKind.Node, false) => await client.NodePairRejectAsync(approval.DecisionId),
+                    (PairingApprovalKind.DevicePair, true) => await client.DevicePairApproveAsync(approval.DecisionId),
+                    (PairingApprovalKind.DevicePair, false) => await client.DevicePairRejectAsync(approval.DecisionId),
+                    (PairingApprovalKind.NodePair, true) => await client.NodePairApproveAsync(approval.DecisionId),
+                    (PairingApprovalKind.NodePair, false) => await client.NodePairRejectAsync(approval.DecisionId),
                     _ => false,
                 };
             }
@@ -273,7 +273,7 @@ public sealed class PairingApprovalCoordinator
                 // Nudge the gateway to re-send the list so the resolved entry drops (and confirms) promptly.
                 try
                 {
-                    if (approval.Kind == PendingApprovalKind.Device)
+                    if (approval.Kind == PairingApprovalKind.DevicePair)
                         await liveClient.RequestDevicePairListAsync();
                     else
                         await liveClient.RequestNodePairListAsync();
