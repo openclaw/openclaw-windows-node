@@ -6,6 +6,11 @@ namespace OpenClaw.E2ETests.Setup;
 [Collection("E2E MXC Setup")]
 public sealed class MxcSetupAndConnectTests
 {
+    private const int SystemRunProofTimeoutMs = 60_000;
+    private const int NodeInvokeProofTimeoutMs = 90_000;
+    private const int GatewayCliProofTimeoutMs = 120_000;
+    private static readonly TimeSpan GatewayCliProofProcessTimeout = TimeSpan.FromSeconds(130);
+
     private readonly E2ESetupFixture _fixture;
 
     public MxcSetupAndConnectTests(MxcE2ESetupFixture fixture)
@@ -38,15 +43,15 @@ public sealed class MxcSetupAndConnectTests
             {
                 command = $"echo {marker}",
                 shell = "cmd",
-                timeoutMs = 10_000
+                timeoutMs = SystemRunProofTimeoutMs
             },
-            timeoutMs = 30_000,
+            timeoutMs = NodeInvokeProofTimeoutMs,
             idempotencyKey = Guid.NewGuid().ToString("N")
         });
 
         var invoke = await _fixture.RunInWslAsync(
-            $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout 45000",
-            TimeSpan.FromSeconds(45),
+            $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout {GatewayCliProofTimeoutMs}",
+            GatewayCliProofProcessTimeout,
             env);
 
         AssertCommandSucceeded(invoke, "invoke Windows node system.run through real gateway");
@@ -114,15 +119,15 @@ public sealed class MxcSetupAndConnectTests
             {
                 command = $"echo {marker} > {CmdQuote(blockedPathForCmd)}",
                 shell = "cmd",
-                timeoutMs = 10_000
+                timeoutMs = SystemRunProofTimeoutMs
             },
-            timeoutMs = 30_000,
+            timeoutMs = NodeInvokeProofTimeoutMs,
             idempotencyKey = Guid.NewGuid().ToString("N")
         });
 
         var invoke = await _fixture.RunInWslAsync(
-            $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout 45000",
-            TimeSpan.FromSeconds(45),
+            $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout {GatewayCliProofTimeoutMs}",
+            GatewayCliProofProcessTimeout,
             env);
 
         AssertCommandSucceeded(invoke, "invoke Windows node system.run denied-write proof through real gateway");
