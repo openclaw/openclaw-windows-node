@@ -60,6 +60,42 @@ public class CronPayloadShapeTests
     }
 
     [Fact]
+    public void CronRun_Response_EmptyPayload_IsAcceptedLegacyAck()
+    {
+        var payload = Serialize(new { });
+
+        var result = OpenClawGatewayClient.ParseCronRunRequestResult(payload);
+
+        Assert.True(result.Accepted);
+        Assert.True(result.Enqueued);
+        Assert.Null(result.RunId);
+    }
+
+    [Fact]
+    public void CronRun_Response_DetailedEnqueue_PreservesRunId()
+    {
+        var payload = Serialize(new { ok = true, enqueued = true, runId = "manual:job:1" });
+
+        var result = OpenClawGatewayClient.ParseCronRunRequestResult(payload);
+
+        Assert.True(result.Accepted);
+        Assert.True(result.Enqueued);
+        Assert.Equal("manual:job:1", result.RunId);
+    }
+
+    [Fact]
+    public void CronRun_Response_ExplicitRanFalse_IsNotEnqueued()
+    {
+        var payload = Serialize(new { ok = true, ran = false, reason = "not-due" });
+
+        var result = OpenClawGatewayClient.ParseCronRunRequestResult(payload);
+
+        Assert.True(result.Accepted);
+        Assert.False(result.Enqueued);
+        Assert.Equal("not-due", result.Reason);
+    }
+
+    [Fact]
     public void CronRemove_Payload_Uses_Id()
     {
         // Mirrors the wire object built by RemoveCronJobAsync

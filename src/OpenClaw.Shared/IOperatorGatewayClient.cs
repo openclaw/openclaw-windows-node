@@ -73,7 +73,19 @@ public interface IOperatorGatewayClient
     Task RequestCronListAsync();
     Task RequestCronStatusAsync();
     Task<bool> RunCronJobAsync(string jobId, bool force = true);
-    Task<CronRunRequestResult> RunCronJobDetailedAsync(string jobId, bool force = true, int timeoutMs = 12000);
+    /// <summary>
+    /// Response-aware cron run request. Compatibility fallback for implementers
+    /// that only provide <see cref="RunCronJobAsync"/>; the fallback cannot
+    /// enforce <paramref name="timeoutMs"/> and implementers should not implement
+    /// <see cref="RunCronJobAsync"/> by delegating back to this method.
+    /// </summary>
+    async Task<CronRunRequestResult> RunCronJobDetailedAsync(string jobId, bool force = true, int timeoutMs = 12000)
+    {
+        var accepted = await RunCronJobAsync(jobId, force).ConfigureAwait(false);
+        return accepted
+            ? new CronRunRequestResult(true, true, null)
+            : CronRunRequestResult.NotAccepted(null);
+    }
     Task<bool> RemoveCronJobAsync(string jobId);
     Task<bool> AddCronJobAsync(object jobDefinition);
     Task<bool> UpdateCronJobAsync(string id, object patch);

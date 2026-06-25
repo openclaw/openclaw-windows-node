@@ -801,11 +801,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         !string.IsNullOrWhiteSpace(message) &&
         message.Contains("invalid cron.run params", StringComparison.OrdinalIgnoreCase);
 
-    private static CronRunRequestResult ParseCronRunRequestResult(JsonElement payload)
+    internal static CronRunRequestResult ParseCronRunRequestResult(JsonElement payload)
     {
         var accepted = !payload.TryGetProperty("ok", out var okEl) || okEl.ValueKind != JsonValueKind.False;
-        var enqueued = payload.TryGetProperty("enqueued", out var enqEl) && enqEl.ValueKind == JsonValueKind.True;
-        var ran = payload.TryGetProperty("ran", out var ranEl)
+        var hasEnqueued = payload.TryGetProperty("enqueued", out var enqEl);
+        var enqueued = hasEnqueued && enqEl.ValueKind == JsonValueKind.True;
+        var enqueuedFalse = hasEnqueued && enqEl.ValueKind == JsonValueKind.False;
+        var hasRan = payload.TryGetProperty("ran", out var ranEl);
+        var ran = hasRan
             ? ranEl.ValueKind == JsonValueKind.True
             : (bool?)null;
         var runId = payload.TryGetProperty("runId", out var runIdEl) && runIdEl.ValueKind == JsonValueKind.String
@@ -817,7 +820,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         return new CronRunRequestResult(
             accepted,
-            enqueued || !string.IsNullOrWhiteSpace(runId) || ran == true,
+            accepted && !enqueuedFalse && ran != false &&
+            (enqueued || !string.IsNullOrWhiteSpace(runId) || ran == true || (!hasEnqueued && !hasRan)),
             runId,
             reason);
     }
