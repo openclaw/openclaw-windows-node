@@ -54,6 +54,15 @@ function Write-Info($text) { Write-Host "   $text" -ForegroundColor Gray }
 # Track issues
 $issues = @()
 
+function Test-WindowsHost {
+    $isWindowsVariable = Get-Variable -Name IsWindows -ErrorAction SilentlyContinue
+    if ($isWindowsVariable) {
+        return [bool]$isWindowsVariable.Value
+    }
+
+    return [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+}
+
 function ConvertTo-GitSafeDirectoryPath($path) {
     return ([System.IO.Path]::GetFullPath($path).TrimEnd("\") -replace "\\", "/")
 }
@@ -143,7 +152,7 @@ Write-Host @"
 Write-Header "Checking Prerequisites"
 
 # Check OS
-if ($env:OS -ne "Windows_NT") {
+if (-not (Test-WindowsHost)) {
     Write-Error "This project requires Windows"
     exit 1
 }
