@@ -108,6 +108,17 @@ public class TrayMenuWindowMarkupTests
             string.Join(", ", offenders));
     }
 
+    [Fact]
+    public void TrayMenuWindow_SizeToContent_MeasuresFinalRootWidthAndAppliesPixelSize()
+    {
+        var source = Read("src", "OpenClaw.Tray.WinUI", "Windows", "TrayMenuWindow.xaml.cs");
+
+        Assert.Contains("GetClientRect", source);
+        Assert.Contains("RootGrid.Measure(new global::Windows.Foundation.Size(clientWidthViewUnits, double.PositiveInfinity))", source);
+        Assert.Contains("ResizeWindowToPixelSize(_menuWidthPx, _menuHeightPx)", source);
+        Assert.DoesNotContain("MenuPanel.Measure(new global::Windows.Foundation.Size(widthViewUnits, double.PositiveInfinity))", source);
+    }
+
     private static string Read(params string[] parts)
         => File.ReadAllText(Path.Combine(new[] { TestRepositoryPaths.GetRepositoryRoot() }.Concat(parts).ToArray()));
 
