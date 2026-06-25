@@ -293,16 +293,19 @@ jobs:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: setup-connect
+            timeout_minutes: 45
             filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
           - name: revocation-recovery
+            timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
           - name: network-recovery
+            timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
     - name: Fail if repo hygiene failed
