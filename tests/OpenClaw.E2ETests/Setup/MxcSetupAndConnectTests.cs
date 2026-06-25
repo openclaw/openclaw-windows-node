@@ -100,7 +100,8 @@ public sealed class MxcSetupAndConnectTests
     {
         const string marker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED";
         var blockedPath = Path.Combine(_fixture.DataDir, $"mxc-denied-write-{Guid.NewGuid():N}.txt");
-        var blockedPathForCmd = blockedPath.Replace(Path.DirectorySeparatorChar, '/');
+        var blockedPathForCmd = blockedPath.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var sourcePathForCmd = "%TEMP%\\openclaw-mxc-denied-source.txt";
 
         await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
         await SetExecApprovalForSystemRunProofAsync();
@@ -117,7 +118,7 @@ public sealed class MxcSetupAndConnectTests
             command = "system.run",
             @params = new
             {
-                command = $"echo {marker} > {CmdQuote(blockedPathForCmd)}",
+                command = $"echo {marker} > {CmdQuote(sourcePathForCmd)} && copy /Y {CmdQuote(sourcePathForCmd)} {CmdQuote(blockedPathForCmd)}",
                 shell = "cmd",
                 timeoutMs = SystemRunProofTimeoutMs
             },
@@ -147,12 +148,13 @@ public sealed class MxcSetupAndConnectTests
         var stderr = payload.TryGetProperty("stderr", out var stderrElement)
             ? stderrElement.GetString() ?? ""
             : "";
+        var combinedOutput = stdout + stderr;
 
         // The shell's access-denied text is localized; the load-bearing proof is no timeout,
         // non-zero denied-write exit, no file creation, and MXC containment in the tray log.
         Assert.NotEqual(0, exitCode);
-        Assert.True(stderr.Length > 0, $"Expected denied write to emit stderr; payload: {payload.GetRawText()}");
-        Assert.DoesNotContain(marker, stdout, StringComparison.Ordinal);
+        Assert.True(combinedOutput.Length > 0, $"Expected denied write to emit output; payload: {payload.GetRawText()}");
+        Assert.DoesNotContain(marker, combinedOutput, StringComparison.Ordinal);
         Assert.False(File.Exists(blockedPath),
             $"MXC sandbox should not create files inside the tray data/settings directory: {blockedPath}");
 
