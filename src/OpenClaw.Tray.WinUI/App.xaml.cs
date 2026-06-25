@@ -737,7 +737,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _trayIcon,
             hasThreadAccess: () => _dispatcherQueue == null || _dispatcherQueue.HasThreadAccess,
             marshal: OnUiThread,
-            captureSnapshot: CaptureTraySnapshot);
+            captureSnapshot: CaptureTraySnapshot,
+            isAlive: () => _trayIcon != null);
         _trayIcon.IsVisible = true;
         _trayIconCoordinator.ApplyTrayTooltip(BuildTrayTooltip());
         _trayIcon.Selected += OnTrayIconSelected;
