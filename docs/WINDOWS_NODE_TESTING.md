@@ -14,6 +14,32 @@ The Windows Node feature allows the tray app to receive commands from the OpenCl
 
 ## What You Can Test Now
 
+### Agent-driven UI and MCP validation
+
+For any change that touches tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, local MCP, gateway pairing/connection, permissions, or diagnostics, agents should use the repo-local validation skill at `.agents/skills/openclaw-proof-validation/SKILL.md`.
+
+The expected flow is:
+
+1. Run the required build and test suites from `AGENTS.md`.
+2. After implementation and automated/focused tests are complete, run a larger closeout proof pass before publishing/updating a PR. Avoid repeated computer-use during normal development because it blocks the user's desktop; mid-development rubber-duck, computer-use, and MCP validation are fine when the developer explicitly wants extra validation or the task is blocked without it.
+3. Launch the tray from the current worktree, preferably with isolated settings, using `.\run-app-local.ps1 -Isolated`.
+4. Use computer-use / desktop automation to click through the changed UI path and verify visible state, not just code paths.
+5. If the change affects MCP or Windows node capabilities, enable **Local MCP Server** in Settings and validate with `winnode --list-tools` plus `winnode --command <changed-command> --params '<json-object>'`.
+   Raw MCP server JSON-RPC output is also valid proof, especially for HTTP/MCP protocol changes: paste `tools/list` plus `tools/call` responses from the local server.
+6. If the changed behavior is gateway-mediated, also validate the gateway path when available. If a gateway, permission prompt, or hardware dependency blocks the smoke, record the exact blocker.
+7. Run rubber-duck review before PR publication for non-trivial UI/MCP/node-command/setup/security/diagnostics work, or mid-development when extra design/testing validation is requested.
+8. When publishing a PR, include copied live output under `## Real behavior proof`. ClawSweeper gives stronger proof credit to concrete after-change output, visible UI/media evidence, and real runtime path proof than to prose-only claims.
+
+### New command MCP contract
+
+Every new Windows node call must also be exposed through the local MCP server and `winnode` before it is considered complete:
+
+1. Register the capability command in the tray node capability registry.
+2. Update `McpToolBridge.CommandDescriptions`.
+3. Update `src/OpenClaw.WinNode.Cli/skill.md`.
+4. Add/update capability, MCP, `winnode`, and UI/gateway tests as applicable.
+5. Prove the command with `winnode --list-tools` and `winnode --command ...`, or raw MCP `tools/list` plus `tools/call` server output, in PR proof.
+
 ### 1. Settings Toggle
 - Verify the toggle appears in Settings under "ADVANCED"
 - Verify it saves and persists across app restarts
@@ -156,25 +182,25 @@ When the node connects, it advertises these capabilities:
 ## Remaining Work (Roadmap)
 
 1. ~~**system.run + exec approvals**~~ ✅ Implemented
-   - `system.run` with PowerShell/cmd support
-   - `system.run.prepare` pre-flight command
-   - `system.which` command lookup
-   - `system.execApprovals` allowlist flow with base-hash optimistic concurrency for remote edits
-   - `system.run` environment override sanitizer blocks path/toolchain injection and secret-looking variables
+    - `system.run` with PowerShell/cmd support
+    - `system.run.prepare` pre-flight command
+    - `system.which` command lookup
+    - `system.execApprovals` allowlist flow with base-hash optimistic concurrency for remote edits
+    - `system.run` environment override sanitizer blocks path/toolchain injection and secret-looking variables
 2. ~~**screen.record**~~ ✅ Implemented
-   - Graphics Capture video recording (MP4/base64)
+    - Graphics Capture video recording (MP4/base64)
 3. ~~**camera.clip**~~ ✅ Implemented
-   - Short webcam video capture (MediaCapture + encoding)
+    - Short webcam video capture (MediaCapture + encoding)
 4. ~~**A2UI pushJSONL alias + device status**~~ ✅ Implemented
-   - Legacy `canvas.a2ui.pushJSONL`
-   - Safe `device.info` / `device.status`
+    - Legacy `canvas.a2ui.pushJSONL`
+    - Safe `device.info` / `device.status`
 5. ~~**Command Center diagnostics**~~ ✅ Implemented
-   - Channel/node/usage/pairing/allowlist diagnostics and recent invoke timeline
+    - Channel/node/usage/pairing/allowlist diagnostics and recent invoke timeline
 6. **Packaging & consent prompts**
-   - MSIX packaging with camera/screen capabilities for system prompts
+    - MSIX packaging with camera/screen capabilities for system prompts
 7. **Test matrix & polish**
-   - Canvas/screen/camera regression tests
-   - Handle timeouts/disconnects, reduce verbose logging
+    - Canvas/screen/camera regression tests
+    - Handle timeouts/disconnects, reduce verbose logging
 
 ## Files Involved
 

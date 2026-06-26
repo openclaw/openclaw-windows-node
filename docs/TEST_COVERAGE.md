@@ -114,3 +114,14 @@ first so `dotnet test --no-restore` cannot no-op before `bin\` exists.
   and memory usage over multi-day sessions.
 - Manual visual acceptance for complex WinUI surfaces where screenshot
   comparison would be brittle.
+
+For these gaps, affected changes must include the manual UI/MCP smoke described
+in `AGENTS.md` and `.agents/skills/openclaw-proof-validation/SKILL.md`: launch
+the tray from the current worktree, use computer-use / desktop automation for
+visible WinUI paths, and validate local MCP with `winnode --list-tools` plus the
+changed command when node capabilities are involved.
+
+When node command surfaces change, include
+`OpenClaw.WinNode.Cli.Tests` in focused validation because `SkillMdDriftTests`
+guards the capability registry, MCP descriptions, and `winnode` skill reference
+from drifting apart.
