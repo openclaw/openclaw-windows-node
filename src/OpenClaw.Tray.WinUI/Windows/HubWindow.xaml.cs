@@ -3,12 +3,16 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Pages;
 using OpenClawTray.Services;
+using OpenClawTray.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using WinUIEx;
@@ -37,6 +41,9 @@ public sealed partial class HubWindow : WindowEx
     private AppNotification? _currentAppNotification;
     private bool _suppressAppNotificationClosed;
     private bool _appNotificationActionShowsMore;
+
+    private readonly ObservableCollection<NotificationItemViewModel> _bellItems = new();
+    private bool _bellListBound;
 
     // Legacy compatibility alias
     public string SelectedAgentId => _currentAgentId;
@@ -108,6 +115,9 @@ public sealed partial class HubWindow : WindowEx
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
         RootGrid.SizeChanged += OnRootGridSizeChanged;
+
+        ToolTipService.SetToolTip(StatusPillButton, LocalizationHelper.GetString("HubWindow_StatusPill_Tooltip"));
+        ToolTipService.SetToolTip(NotificationsBellButton, LocalizationHelper.GetString("HubWindow_Bell_Tooltip"));
     }
 
     /// <summary>
@@ -150,12 +160,22 @@ public sealed partial class HubWindow : WindowEx
     private void RenderAppNotification(AppNotificationSnapshot snapshot)
     {
         _lastAppNotificationSnapshot = snapshot;
+
+        UpdateNotificationsBell(snapshot);
+
+        var bannerActive = snapshot.ActiveNotifications
+            .Where(n => IsBannerSeverity(n.Severity))
+            .ToList();
+        var bannerSnapshot = bannerActive.Count == snapshot.ActiveNotifications.Count
+            ? snapshot
+            : snapshot with { ActiveNotifications = bannerActive };
+
         var displayedNotificationWasRemoved = _currentAppNotification is not null
             && AppNotificationInfoBar.IsOpen
-            && !snapshot.ActiveNotifications.Any(notification =>
+            && !bannerSnapshot.ActiveNotifications.Any(notification =>
                 string.Equals(notification.Id, _currentAppNotification.Id, StringComparison.Ordinal));
         _currentAppNotification = _appNotificationBannerState.SelectVisibleNotification(
-            snapshot,
+            bannerSnapshot,
             revealHiddenIfNeeded: displayedNotificationWasRemoved);
         if (_currentAppNotification is null)
         {
@@ -169,11 +189,6 @@ public sealed partial class HubWindow : WindowEx
         AppNotificationInfoBar.Title = string.Empty;
         AppNotificationInfoBar.Message = string.Empty;
 
-        // Single-line compact banner: bold headline + regular detail on one
-        // line (e.g. "Gateway connection failed — Transport error"). The bold
-        // run gives the headline scannability without adding a second row.
-        // Full detail/troubleshooting still lives on the surface the action
-        // routes to (e.g. the Connection page).
         AppNotificationMessageText.Inlines.Clear();
         AppNotificationMessageText.Inlines.Add(new Run
         {
@@ -246,6 +261,197 @@ public sealed partial class HubWindow : WindowEx
         AppNotificationSeverity.Error => InfoBarSeverity.Error,
         _ => InfoBarSeverity.Informational
     };
+
+    private static bool IsBannerSeverity(AppNotificationSeverity severity) =>
+        severity is AppNotificationSeverity.Error or AppNotificationSeverity.Warning;
+
+    private void UpdateNotificationsBell(AppNotificationSnapshot snapshot)
+    {
+        var count = snapshot.ActiveNotifications.Count;
+
+        if (NotificationsBadge is not null)
+        {
+            NotificationsBadge.Value = count;
+            NotificationsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        SyncBellItems(snapshot.ActiveNotifications.Select(NotificationItemViewModel.From).ToList());
+
+        SyncBellFlyoutEmptyState();
+    }
+
+    private void SyncBellItems(IReadOnlyList<NotificationItemViewModel> desiredItems)
+    {
+        var desiredIds = desiredItems
+            .Select(item => item.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        for (var i = _bellItems.Count - 1; i >= 0; i--)
+        {
+            if (!desiredIds.Contains(_bellItems[i].Id))
+                _bellItems.RemoveAt(i);
+        }
+
+        for (var i = 0; i < desiredItems.Count; i++)
+        {
+            var item = desiredItems[i];
+            if (i < _bellItems.Count && string.Equals(_bellItems[i].Id, item.Id, StringComparison.Ordinal))
+            {
+                if (!_bellItems[i].Equals(item))
+                    _bellItems[i] = item;
+                continue;
+            }
+
+            var existingIndex = -1;
+            for (var j = i + 1; j < _bellItems.Count; j++)
+            {
+                if (string.Equals(_bellItems[j].Id, item.Id, StringComparison.Ordinal))
+                {
+                    existingIndex = j;
+                    break;
+                }
+            }
+
+            if (existingIndex >= 0)
+            {
+                _bellItems.Move(existingIndex, i);
+                if (!_bellItems[i].Equals(item))
+                    _bellItems[i] = item;
+            }
+            else
+            {
+                _bellItems.Insert(i, item);
+            }
+        }
+    }
+
+    private void SyncBellFlyoutEmptyState()
+    {
+        var hasItems = _bellItems.Count > 0;
+
+        if (BellNotificationsList is not null)
+            BellNotificationsList.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        if (BellEmptyState is not null)
+            BellEmptyState.Visibility = hasItems ? Visibility.Collapsed : Visibility.Visible;
+        if (BellClearAllButton is not null)
+            BellClearAllButton.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        if (BellActiveCountText is not null)
+            BellActiveCountText.Text = hasItems
+                ? LocalizationHelper.Format("NotificationsFlyout_ActiveCountFormat", _bellItems.Count)
+                : string.Empty;
+    }
+
+    private void OnNotificationsFlyoutOpening(object sender, object e)
+    {
+        if (BellNotificationsList is not null && !_bellListBound)
+        {
+            BellNotificationsList.ItemsSource = _bellItems;
+            _bellListBound = true;
+        }
+        SyncBellFlyoutEmptyState();
+    }
+
+    private void OnBellClearAllClick(object sender, RoutedEventArgs e)
+        => _appNotificationService?.ClearAll();
+
+    private void OnBellDismissNotificationClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string notificationId })
+            _appNotificationService?.Dismiss(notificationId);
+    }
+
+    private void OnBellOpenPageClick(object sender, RoutedEventArgs e)
+    {
+        NotificationsFlyout.Hide();
+        NavigateTo("notifications");
+    }
+
+    private void OnStatusFlyoutOpening(object sender, object e)
+    {
+        var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
+        var settings = CurrentApp.Settings;
+        var nodeEnabled = settings?.EnableNodeMode == true;
+        var enabledCapabilities = CountEnabledCapabilities(settings);
+        var op = snapshot?.OperatorState ?? RoleConnectionState.Idle;
+
+        GatewayRowDot.Fill = AccentBrush(ConnectionStatusPresenter.RoleAccent(op));
+        GatewayRowDetail.Text = BuildGatewayDetail(snapshot);
+        GatewayRowAction.Visibility =
+            op is RoleConnectionState.Connected or RoleConnectionState.Connecting
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+
+        OperatorRowDot.Fill = AccentBrush(ConnectionStatusPresenter.RoleAccent(op));
+        OperatorRowDetail.Text = LocalizationHelper.GetString(
+            ConnectionStatusPresenter.RoleStateLabelKey(op));
+
+        if (snapshot is not null)
+        {
+            var (nodeKey, nodeAccent) = ConnectionStatusPresenter.NodeRow(snapshot, nodeEnabled, enabledCapabilities);
+            NodeRowDot.Fill = AccentBrush(nodeAccent);
+            NodeRowDetail.Text = LocalizationHelper.GetString(nodeKey);
+            NodeRowAction.Visibility = ConnectionStatusPresenter.NodeNeedsApproval(snapshot, nodeEnabled)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        else
+        {
+            NodeRowDot.Fill = AccentBrush(ConnectionStatusAccent.Neutral);
+            NodeRowDetail.Text = LocalizationHelper.GetString("HubWindow_Role_Disabled");
+            NodeRowAction.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private string BuildGatewayDetail(GatewayConnectionSnapshot? snapshot)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(snapshot?.GatewayName))
+            parts.Add(snapshot!.GatewayName!);
+        if (!string.IsNullOrWhiteSpace(snapshot?.GatewayUrl))
+            parts.Add(snapshot!.GatewayUrl!);
+        if (LastGatewaySelf is { ServerVersion: { Length: > 0 } ver })
+            parts.Add($"v{ver}");
+        return parts.Count > 0
+            ? string.Join(" · ", parts)
+            : LocalizationHelper.GetString("StatusDisplay_Disconnected");
+    }
+
+    private static int CountEnabledCapabilities(SettingsManager? settings)
+    {
+        if (settings is null) return 0;
+
+        var count = 0;
+        if (settings.NodeBrowserProxyEnabled) count++;
+        if (settings.NodeCameraEnabled) count++;
+        if (settings.NodeCanvasEnabled) count++;
+        if (settings.NodeScreenEnabled) count++;
+        if (settings.NodeLocationEnabled) count++;
+        if (settings.NodeTtsEnabled) count++;
+        if (settings.NodeSttEnabled) count++;
+        return count;
+    }
+
+    private void OnStatusFlyoutOpenConnectionClick(object sender, RoutedEventArgs e)
+    {
+        StatusFlyout.Hide();
+        NavigateTo("connection");
+    }
+
+    private void OnStatusFlyoutReconnectClick(object sender, RoutedEventArgs e)
+    {
+        StatusFlyout.Hide();
+        if (ReconnectAction is not null)
+            ReconnectAction.Invoke();
+        else
+            ConnectAction?.Invoke();
+    }
+
+    private void OnStatusFlyoutNodeActionClick(object sender, RoutedEventArgs e)
+    {
+        StatusFlyout.Hide();
+        NavigateTo("connection");
+    }
+
 
     private void OnAppNotificationInfoBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
     {
@@ -364,11 +570,6 @@ public sealed partial class HubWindow : WindowEx
     private void OnNavContentHostSizeChanged(object sender, SizeChangedEventArgs e)
     {
         NavContentClip.Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);
-    }
-
-    private void OnTitleBarStatusTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
-    {
-        NavigateTo("connection");
     }
 
     private void OnNavPaneToggleButtonClick(object sender, RoutedEventArgs e)
@@ -498,6 +699,14 @@ public sealed partial class HubWindow : WindowEx
             _syncingNavSelection = true;
             try { NavView.SelectedItem = item; }
             finally { _syncingNavSelection = false; }
+            return;
+        }
+
+        if (item == null && NavView.SelectedItem != null)
+        {
+            _syncingNavSelection = true;
+            try { NavView.SelectedItem = null; }
+            finally { _syncingNavSelection = false; }
         }
     }
 
@@ -535,51 +744,49 @@ public sealed partial class HubWindow : WindowEx
 
     private void UpdateTitleBarStatus(ConnectionStatus status)
     {
-        var color = status switch
-        {
-            ConnectionStatus.Connected => Microsoft.UI.Colors.LimeGreen,
-            ConnectionStatus.Connecting => Microsoft.UI.Colors.Orange,
-            ConnectionStatus.Error => Microsoft.UI.Colors.Red,
-            _ => Microsoft.UI.Colors.Gray
-        };
-
-        TitleStatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
-
-        // Build status text with version when connected
-        if (status == ConnectionStatus.Connected && LastGatewaySelf is { ServerVersion: { Length: > 0 } ver })
-            TitleStatusText.Text = $"v{ver}";
-        else
-            TitleStatusText.Text = LocalizationHelper.GetConnectionStatusText(status);
-
-        // Update role indicator dots
         var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
-        if (snapshot != null)
-        {
-            TitleOpDot.Fill = RoleDotBrush(snapshot.OperatorState);
-            TitleNodeDot.Fill = RoleDotBrush(snapshot.NodeState);
-        }
-        else
-        {
-            var gray = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray);
-            TitleOpDot.Fill = gray;
-            TitleNodeDot.Fill = gray;
-        }
+        var (text, accent) = ComputePillState(status, snapshot);
+        StatusPillText.Text = text;
+        StatusPillDot.Fill = AccentBrush(accent);
     }
 
-    private static Microsoft.UI.Xaml.Media.SolidColorBrush RoleDotBrush(OpenClaw.Connection.RoleConnectionState state) => state switch
+    private static (string Text, ConnectionStatusAccent Accent) ComputePillState(
+        ConnectionStatus status, GatewayConnectionSnapshot? snapshot)
     {
-        OpenClaw.Connection.RoleConnectionState.Connected =>
-            new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.LimeGreen),
-        OpenClaw.Connection.RoleConnectionState.Connecting =>
-            new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Orange),
-        OpenClaw.Connection.RoleConnectionState.PairingRequired =>
-            new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Orange),
-        OpenClaw.Connection.RoleConnectionState.Error or
-        OpenClaw.Connection.RoleConnectionState.PairingRejected or
-        OpenClaw.Connection.RoleConnectionState.RateLimited =>
-            new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red),
-        _ => new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+        if (snapshot is not null)
+        {
+            var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot.OverallState);
+            return (LocalizationHelper.GetString(labelKey), accent);
+        }
+
+        return status switch
+        {
+            ConnectionStatus.Connected => (LocalizationHelper.GetString("StatusDisplay_Connected"), ConnectionStatusAccent.Success),
+            ConnectionStatus.Connecting => (LocalizationHelper.GetString("StatusDisplay_Connecting"), ConnectionStatusAccent.Caution),
+            ConnectionStatus.Error => (LocalizationHelper.GetString("StatusDisplay_Error"), ConnectionStatusAccent.Critical),
+            _ => (LocalizationHelper.GetString("StatusDisplay_Disconnected"), ConnectionStatusAccent.Neutral),
+        };
+    }
+
+    private static string AccentBrushKey(ConnectionStatusAccent accent) => accent switch
+    {
+        ConnectionStatusAccent.Success => "SystemFillColorSuccessBrush",
+        ConnectionStatusAccent.Caution => "SystemFillColorCautionBrush",
+        ConnectionStatusAccent.Critical => "SystemFillColorCriticalBrush",
+        _ => "SystemFillColorNeutralBrush",
     };
+
+    private static Brush AccentBrush(ConnectionStatusAccent accent)
+    {
+        var resources = Application.Current.Resources;
+        if (resources.TryGetValue(AccentBrushKey(accent), out var brush) && brush is Brush typed)
+            return typed;
+
+        if (resources.TryGetValue("SystemFillColorNeutralBrush", out var neutral) && neutral is Brush fallback)
+            return fallback;
+
+        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
 
     private void ScheduleGatewayNavVisibilityForStatus(ConnectionStatus status, bool debounceDisconnected)
     {

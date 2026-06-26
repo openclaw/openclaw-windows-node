@@ -559,6 +559,15 @@ public class LocalizationValidationTests
         || key.StartsWith("ChannelsPage_", StringComparison.Ordinal)
         || key.StartsWith("DiagnosticsPage_", StringComparison.Ordinal)
         || key.StartsWith("SettingsRow_", StringComparison.Ordinal)
+        // Title-bar status pill + notifications bell flyout strings. Seeded
+        // English-only across all five .resw files using the deferred-translation
+        // pattern; translations land in a follow-up.
+        || key.StartsWith("HubWindow_StatusFlyout_", StringComparison.Ordinal)
+        || key.StartsWith("HubWindow_StatusPill_", StringComparison.Ordinal)
+        || key.StartsWith("HubWindow_Pill_", StringComparison.Ordinal)
+        || key.StartsWith("HubWindow_Role_", StringComparison.Ordinal)
+        || key.StartsWith("HubWindow_Bell_", StringComparison.Ordinal)
+        || key.StartsWith("NotificationsFlyout_", StringComparison.Ordinal)
         // V2 onboarding redesign strings (V2_*) are intentionally English-only at first
         // ship. They live in V2Strings.DefaultEnUs and the cutover seeded them into all
         // five .resw files with English values. Translations land in a follow-up.

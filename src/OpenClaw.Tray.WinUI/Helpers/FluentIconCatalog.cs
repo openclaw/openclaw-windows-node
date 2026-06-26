@@ -49,6 +49,7 @@ public static class FluentIconCatalog
     public const string Settings = "\uE713";       // Settings
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
+    public const string Notifications = "\uE7E7";   // Ringer — title-bar notifications bell
     public const string Exit = "\uE711";           // Cancel (X) — used for "Close" menu item
     public const string Add = "\uE710";            // Add — "+ Add gateway" header button
     public const string Back = "\uE72B";           // Back — leading chevron on Back hyperlink

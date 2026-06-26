@@ -90,26 +90,240 @@
                 </AutoSuggestBox.ItemTemplate>
             </AutoSuggestBox>
 
-            <!-- Status indicator on the right (clickable → navigates to Connection page) -->
-            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
-                        Tapped="OnTitleBarStatusTapped">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Ellipse x:Name="TitleStatusDot" Width="8" Height="8" VerticalAlignment="Center" Fill="Gray"/>
-                    <TextBlock x:Uid="HubWindow_TitleStatus" x:Name="TitleStatusText" Text="Disconnected"
-                               FontSize="11" VerticalAlignment="Center" MinWidth="80"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                </StackPanel>
-                <Border Background="{ThemeResource DividerStrokeColorDefaultBrush}" Width="1" Height="14" VerticalAlignment="Center"/>
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <Ellipse x:Name="TitleOpDot" Width="6" Height="6" VerticalAlignment="Center" Fill="Gray"/>
-                    <TextBlock x:Uid="HubWindow_Op" x:Name="TitleOpLabel" Text="Op" FontSize="10" VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <Ellipse x:Name="TitleNodeDot" Width="6" Height="6" VerticalAlignment="Center" Fill="Gray"/>
-                    <TextBlock x:Uid="HubWindow_Node" x:Name="TitleNodeLabel" Text="Node" FontSize="10" VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                </StackPanel>
+            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+
+                <Button x:Name="StatusPillButton"
+                        Height="30"
+                        Padding="11,0"
+                        CornerRadius="15"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="Connection status">
+                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                        <Ellipse x:Name="StatusPillDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
+                        <TextBlock x:Name="StatusPillText" Text="Disconnected"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   VerticalAlignment="Center"/>
+                        <FontIcon Glyph="&#xE70D;" FontSize="8" VerticalAlignment="Center"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                    </StackPanel>
+                    <Button.Flyout>
+                        <Flyout x:Name="StatusFlyout" Placement="Bottom" Opening="OnStatusFlyoutOpening">
+                            <StackPanel Width="304" Spacing="0">
+                                <Grid Padding="0,0,0,10" ColumnSpacing="11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse x:Name="GatewayRowDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock x:Uid="HubWindow_StatusFlyout_GatewayLabel" Text="Gateway"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                        <TextBlock x:Name="GatewayRowDetail" Text=""
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <HyperlinkButton x:Name="GatewayRowAction" x:Uid="HubWindow_StatusFlyout_Reconnect"
+                                                     Grid.Column="2" Content="Reconnect"
+                                                     Padding="4,0" VerticalAlignment="Center"
+                                                     Visibility="Collapsed"
+                                                     Click="OnStatusFlyoutReconnectClick"/>
+                                </Grid>
+                                <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+
+                                <Grid Padding="0,10" ColumnSpacing="11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse x:Name="OperatorRowDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock x:Uid="HubWindow_StatusFlyout_OperatorLabel" Text="Operator"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                        <TextBlock x:Name="OperatorRowDetail" Text=""
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+
+                                <Grid Padding="0,10" ColumnSpacing="11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse x:Name="NodeRowDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock x:Uid="HubWindow_StatusFlyout_NodeLabel" Text="Node"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                        <TextBlock x:Name="NodeRowDetail" Text=""
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                    <HyperlinkButton x:Name="NodeRowAction" x:Uid="HubWindow_StatusFlyout_Approve"
+                                                     Grid.Column="2" Content="Approve…"
+                                                     Padding="4,0" VerticalAlignment="Center"
+                                                     Visibility="Collapsed"
+                                                     Click="OnStatusFlyoutNodeActionClick"/>
+                                </Grid>
+
+                                <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                                <HyperlinkButton x:Uid="HubWindow_StatusFlyout_OpenConnection"
+                                                 Content="Open Connection"
+                                                 Margin="2,8,2,0" Padding="4,0"
+                                                 Click="OnStatusFlyoutOpenConnectionClick"/>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+
+                <Button x:Name="NotificationsBellButton"
+                        MinWidth="36" Height="30"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="Notifications">
+                    <Grid>
+                        <FontIcon Glyph="&#xE7E7;" FontSize="16"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                        <InfoBadge x:Name="NotificationsBadge"
+                                   Value="0"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Right" VerticalAlignment="Top"
+                                   Margin="0,-6,-8,0"/>
+                    </Grid>
+                    <Button.Flyout>
+                        <Flyout x:Name="NotificationsFlyout" Placement="Bottom" Opening="OnNotificationsFlyoutOpening">
+                            <Grid Width="352" MaxHeight="440" RowSpacing="0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" Margin="2,0,2,8">
+                                    <HyperlinkButton x:Name="BellClearAllButton" x:Uid="NotificationsFlyout_ClearAll"
+                                                     Content="Clear all"
+                                                     HorizontalAlignment="Right"
+                                                     Padding="4,0" VerticalAlignment="Center"
+                                                     Click="OnBellClearAllClick"/>
+                                </Grid>
+
+                                <ListView x:Name="BellNotificationsList"
+                                          Grid.Row="1"
+                                          SelectionMode="None"
+                                          IsItemClickEnabled="False"
+                                          Padding="0"
+                                          Margin="-4,0">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="Margin" Value="0"/>
+                                            <Setter Property="MinHeight" Value="0"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Padding="12"
+                                                    Margin="4,4,4,4">
+                                                <Grid ColumnSpacing="11">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <FontIcon Grid.Column="0"
+                                                              Glyph="{Binding SeverityGlyph}"
+                                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                              FontSize="16"
+                                                              VerticalAlignment="Top"
+                                                              Margin="0,2,0,0"/>
+                                                    <StackPanel Grid.Column="1" Spacing="3">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                       TextWrapping="WrapWholeWords"/>
+                                                            <Border Visibility="{Binding OccurrenceVisibility}"
+                                                                    Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                                                                    CornerRadius="10"
+                                                                    Padding="7,1"
+                                                                    VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding OccurrenceText}"
+                                                                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Message}"
+                                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                                   TextWrapping="WrapWholeWords"/>
+                                                        <TextBlock Text="{Binding Metadata}"
+                                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="2"
+                                                            Tag="{Binding Id}"
+                                                            AutomationProperties.Name="{Binding DismissAutomationName}"
+                                                            Padding="6"
+                                                            MinWidth="30" MinHeight="30"
+                                                            VerticalAlignment="Top"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Click="OnBellDismissNotificationClick">
+                                                        <FontIcon Glyph="&#xE711;"
+                                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                  FontSize="11"/>
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+
+                                <Border x:Name="BellEmptyState"
+                                        Grid.Row="1"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="20"
+                                        Margin="0,4"
+                                        VerticalAlignment="Top">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock x:Uid="NotificationsFlyout_EmptyTitle"
+                                                   Text="No notifications"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                        <TextBlock x:Uid="NotificationsPage_EmptyDescription"
+                                                   Text="New app notifications will appear here until you dismiss or clear them."
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   TextWrapping="WrapWholeWords"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Grid Grid.Row="2" Margin="2,8,2,0" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <HyperlinkButton x:Uid="NotificationsFlyout_OpenPage"
+                                                     Content="Open notifications"
+                                                     Padding="4,0" VerticalAlignment="Center"
+                                                     Click="OnBellOpenPageClick"/>
+                                    <TextBlock x:Name="BellActiveCountText" Grid.Column="1" Text=""
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Grid>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
             </StackPanel>
         </Grid>
 
@@ -269,9 +483,6 @@
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Notifications" Tag="notifications" Content="Notifications">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Notifications_Icon}"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" Tag="debug" Content="Debug">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>

@@ -65,6 +65,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\PairingApprovalCoordinator.cs" Link="Services\PairingApprovalCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ToastActivationRouter.cs" Link="Services\ToastActivationRouter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationService.cs" Link="Services\AppNotificationService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionStatusPresenter.cs" Link="Services\ConnectionStatusPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UsageCostApplicationPolicy.cs" Link="Services\UsageCostApplicationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CanvasGatewayUrlRewriter.cs" Link="Helpers\CanvasGatewayUrlRewriter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />

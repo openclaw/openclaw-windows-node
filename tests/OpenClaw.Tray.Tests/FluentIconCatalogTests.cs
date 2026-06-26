@@ -20,7 +20,7 @@ public sealed class FluentIconCatalogTests
         "Sessions", "Approvals", "Devices", "Hostname", "Permissions",
         "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Terminal", "Operator",
         "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings",
-        "Setup", "About", "Exit",
+        "Setup", "About", "Notifications", "Exit",
         "Add", "Back", "Sync", "Lock", "Plug", "MoreOverflow",
         "People", "Money", "ServerEnvironment", "CapabilityOff", "Channels",
         "ChevronR", "Check",

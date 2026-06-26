@@ -2376,9 +2376,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Débogage</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
-    <value>Alertes</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
     <value>Informations</value>
   </data>
@@ -4981,12 +4978,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Déconnecté</value>
   </data>
-  <data name="HubWindow_Op.Text" xml:space="preserve">
-    <value>Op.</value>
-  </data>
-  <data name="HubWindow_Node.Text" xml:space="preserve">
-    <value>Nœud</value>
-  </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Avancé</value>
   </data>
@@ -5016,9 +5007,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="VoiceSettingsPage_PreviewVoice.Text" xml:space="preserve">
     <value>Aperçu de la voix</value>
-  </data>
-  <data name="HubWindow_TitleStatus.Text" xml:space="preserve">
-    <value>Déconnecté</value>
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle se trouve sur ce PC, elles peuvent toujours accéder à vos fichiers Windows, au presse-papiers et au réseau — vérifiez la configuration de votre passerelle.</value>
@@ -6657,5 +6645,71 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="ConnectionPage_RemoteSetupHelpAuthTitle.Text" xml:space="preserve">
     <value>Authentification</value>
+  </data>
+  <data name="HubWindow_StatusFlyout_Title.Text" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="HubWindow_StatusFlyout_OpenConnection.Content" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="HubWindow_StatusFlyout_GatewayLabel.Text" xml:space="preserve">
+    <value>Gateway</value>
+  </data>
+  <data name="HubWindow_StatusFlyout_Reconnect.Content" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="HubWindow_StatusFlyout_OperatorLabel.Text" xml:space="preserve">
+    <value>Operator</value>
+  </data>
+  <data name="HubWindow_StatusFlyout_NodeLabel.Text" xml:space="preserve">
+    <value>Node</value>
+  </data>
+  <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
+    <value>Approve…</value>
+  </data>
+  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
+    <value>Connection status</value>
+  </data>
+  <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="HubWindow_Pill_Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="HubWindow_Pill_PairingRequired" xml:space="preserve">
+    <value>Pairing required</value>
+  </data>
+  <data name="HubWindow_Pill_Degraded" xml:space="preserve">
+    <value>Degraded</value>
+  </data>
+  <data name="HubWindow_Role_Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="HubWindow_Role_PairingRequired" xml:space="preserve">
+    <value>Pairing required</value>
+  </data>
+  <data name="HubWindow_Role_PairingRejected" xml:space="preserve">
+    <value>Pairing rejected</value>
+  </data>
+  <data name="HubWindow_Role_RateLimited" xml:space="preserve">
+    <value>Rate limited</value>
+  </data>
+  <data name="HubWindow_Role_Disabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
+    <value>Clear all</value>
+  </data>
+  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
+    <value>No notifications</value>
+  </data>
+  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
+    <value>Open notifications</value>
+  </data>
+  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
+    <value>{0} active</value>
+  </data>
+  <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
+    <value>Permissions incomplete</value>
   </data>
 </root>
