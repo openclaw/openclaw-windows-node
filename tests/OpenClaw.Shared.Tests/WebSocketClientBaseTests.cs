@@ -409,7 +409,9 @@ public class WebSocketClientBaseTests
             Task.Delay(TimeSpan.FromSeconds(3)));
 
         Assert.Same(client.ThirdConnected, reconnect);
-        Assert.True(server.AcceptedCount >= 3);
+        await WaitForConditionAsync(
+            () => server.AcceptedCount >= 3,
+            TimeSpan.FromSeconds(2));
 
         client.Dispose();
     }

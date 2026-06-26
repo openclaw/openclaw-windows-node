@@ -321,10 +321,9 @@ public sealed partial class ConnectionPage : Page
         bool isRecovery = plan.Mode == ConnectionPageMode.Recovery;
         bool isAdding   = plan.Mode == ConnectionPageMode.AddGateway;
 
-        // Operator + Node cards only when we actually have an active operator
-        // connection AND we're not in a focused sub-view (Welcome / Recovery /
-        // AddGateway). Recovery's help block carries the action; the role
-        // cards would just compete with it.
+        // Operator + Node cards are normally tied to an active operator session.
+        // Local MCP-only mode has no operator session, but still needs the Node
+        // card so users can see that MCP is serving local tools.
         bool hasOperatorSession = _lastSnapshot.OverallState is
             OverallConnectionState.Connected
             or OverallConnectionState.Ready
@@ -332,9 +331,12 @@ public sealed partial class ConnectionPage : Page
             or OverallConnectionState.Connecting
             or OverallConnectionState.PairingRequired
             or OverallConnectionState.Disconnecting;
-        bool showRoles = hasOperatorSession && !isWelcome && !isAdding && !isRecovery;
+        var hasStandaloneNodeCard = plan.NodeCard != NodeCardState.Hidden && !hasOperatorSession;
+        bool showRoles = (hasOperatorSession || hasStandaloneNodeCard) && !isAdding && !isRecovery;
         CockpitPanel.Visibility = showRoles ? Visibility.Visible : Visibility.Collapsed;
-        OperatorSection.Visibility = showRoles ? Visibility.Visible : Visibility.Collapsed;
+        OperatorSection.Visibility = showRoles && plan.OperatorCard != OperatorCardState.Hidden
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         // Bottom section: exactly one of these is visible
         //   • SavedGatewaysCard  — Cockpit / Recovery (always present when registry has items)

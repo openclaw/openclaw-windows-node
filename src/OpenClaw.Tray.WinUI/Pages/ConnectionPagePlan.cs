@@ -224,7 +224,7 @@ internal sealed record ConnectionPagePlan
         // ─── Derived layout ───
         return snap.OverallState switch
         {
-            OverallConnectionState.Idle => BuildIdle(savedGatewayCount, activeRecord),
+            OverallConnectionState.Idle => BuildIdle(savedGatewayCount, activeRecord, settings),
 
             OverallConnectionState.Connecting => BuildCockpitConnecting(snap, activeRecord, displayName),
 
@@ -253,7 +253,7 @@ internal sealed record ConnectionPagePlan
                 ActiveGatewayHasSshTunnel = activeRecord?.SshTunnel != null,
             },
 
-            _ => BuildIdle(savedGatewayCount, activeRecord),
+            _ => BuildIdle(savedGatewayCount, activeRecord, settings),
         };
     }
 
@@ -261,8 +261,12 @@ internal sealed record ConnectionPagePlan
     // Mode builders
     // ───────────────────────────────────────────────────────────────────
 
-    private static ConnectionPagePlan BuildIdle(int savedCount, GatewayRecord? activeRecord)
+    private static ConnectionPagePlan BuildIdle(
+        int savedCount,
+        GatewayRecord? activeRecord,
+        SettingsManager? settings)
     {
+        var idleNodeCard = BuildIdleNodeCardState(settings);
         if (savedCount == 0)
         {
             return new ConnectionPagePlan
@@ -272,11 +276,12 @@ internal sealed record ConnectionPagePlan
                 StripAccent = ConnectionAccent.Neutral,
                 StripHeadline = "No gateway yet",
                 StripSub = "Add a gateway to get started.",
+                NodeCard = idleNodeCard,
             };
         }
 
         // Saved gateways exist but none active — drop straight into Cockpit
-        // (Operator/Node panels hide themselves because OperatorCardState=Hidden).
+        // (role panels hide themselves unless local MCP-only status is visible).
         return new ConnectionPagePlan
         {
             Mode = ConnectionPageMode.Cockpit,
@@ -284,6 +289,7 @@ internal sealed record ConnectionPagePlan
             StripAccent = ConnectionAccent.Neutral,
             StripHeadline = "Not connected",
             StripSub = "Pick a gateway below, or add a new one.",
+            NodeCard = idleNodeCard,
             RelevantGatewayId = activeRecord?.Id,
         };
     }
@@ -707,6 +713,15 @@ internal sealed record ConnectionPagePlan
             _ when CountEnabledCapabilities(settings) == 0 => NodeCardState.OnPermissionsIncomplete,
             _ => NodeCardState.OnHealthy,
         };
+    }
+
+    private static NodeCardState BuildIdleNodeCardState(SettingsManager? settings)
+    {
+        if (settings == null) return NodeCardState.Hidden;
+
+        return !settings.EnableNodeMode && settings.EnableMcpServer
+            ? NodeCardState.OffMcpOnly
+            : NodeCardState.Hidden;
     }
 
     private static string? BuildNodeApproveCommand(GatewayConnectionSnapshot snap)

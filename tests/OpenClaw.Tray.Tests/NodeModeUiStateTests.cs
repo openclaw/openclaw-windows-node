@@ -1,4 +1,7 @@
 using System.Linq;
+using OpenClaw.Connection;
+using OpenClawTray.Pages;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -27,6 +30,42 @@ public sealed class NodeModeUiStateTests
             plan);
     }
 
+    [Theory]
+    [InlineData(0, (int)ConnectionPageMode.Welcome)]
+    [InlineData(1, (int)ConnectionPageMode.Cockpit)]
+    public void IdlePlan_SurfacesMcpOnlyNodeCardWithoutGatewaySession(
+        int savedGatewayCount,
+        int expectedMode)
+    {
+        var settingsDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "openclaw-node-mode-ui-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsManager(settingsDirectory)
+            {
+                EnableMcpServer = true,
+                EnableNodeMode = false
+            };
+
+            var plan = ConnectionPagePlan.Build(
+                GatewayConnectionSnapshot.Idle,
+                activeRecord: null,
+                self: null,
+                settings: settings,
+                savedGatewayCount: savedGatewayCount);
+
+            Assert.Equal((ConnectionPageMode)expectedMode, plan.Mode);
+            Assert.Equal(NodeCardState.OffMcpOnly, plan.NodeCard);
+            Assert.Equal(OperatorCardState.Hidden, plan.OperatorCard);
+        }
+        finally
+        {
+            if (Directory.Exists(settingsDirectory))
+                Directory.Delete(settingsDirectory, recursive: true);
+        }
+    }
+
     [Fact]
     public void BuildNodeCardState_MapsConnectingToStartingState()
     {
@@ -50,6 +89,8 @@ public sealed class NodeModeUiStateTests
         Assert.Contains("NodeService.McpServerUrl", page);
         Assert.Contains("ConnectionPage_NodeMcpError", page);
         Assert.Contains("ActiveNodeService", page);
+        Assert.Contains("var hasStandaloneNodeCard = plan.NodeCard != NodeCardState.Hidden && !hasOperatorSession;", page);
+        Assert.Contains("showRoles = (hasOperatorSession || hasStandaloneNodeCard)", page);
     }
 
     [Fact]
