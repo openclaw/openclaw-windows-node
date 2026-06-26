@@ -65,6 +65,7 @@ public sealed partial class SandboxPage : Page
             // await resumed us on the UI thread (DispatcherQueue sync context), so it
             // is safe to touch controls here. Always re-render — on both the happy
             // path and the failure path — so the page never stays in "Checking…".
+            NormalizeSandboxToggleForAvailability();
             UpdateSandboxStatusCard();
             UpdateControlsEnabledState();
         }
@@ -184,6 +185,7 @@ public sealed partial class SandboxPage : Page
             _suppress = false;
         }
 
+        NormalizeSandboxToggleForAvailability();
         UpdatePresetHighlight();
         UpdateSandboxStatusCard();
         UpdateControlsEnabledState();
@@ -191,14 +193,10 @@ public sealed partial class SandboxPage : Page
 
     /// <summary>
     /// Drives the page header (icon + title + subtext + toggle visibility) based on
-    /// MXC availability AND the current sandbox toggle state. Three visual states:
-    ///   1. Available + ON   → 🛡 "Sandbox is on" + toggle visible
-    ///   2. Available + OFF  → ⚠ "Sandbox is off — high risk" + toggle visible
-    ///   3. Unavailable + ON → ⚠ "Sandbox unavailable — host fallback" or "commands blocked" + toggle visible
-    ///   4. Unavailable + OFF → ⚠ "Sandbox is off — host execution" + toggle visible
-    /// When MXC is unavailable and sandboxing is enabled, MxcCommandRunner uses
-    /// compatibility host fallback by default and blocks only when strict fallback
-    /// blocking is explicitly enabled.
+    /// MXC availability AND the current sandbox toggle state. Definitively
+    /// unavailable MXC is normalized to OFF so the UI never claims Node Sandbox is
+    /// on when containment cannot run. Transient probe errors can still render the
+    /// enabled/strict-blocking state until retry resolves the probe.
     /// </summary>
     private void UpdateSandboxStatusCard()
     {
@@ -345,6 +343,35 @@ public sealed partial class SandboxPage : Page
         }
 
         UnavailableActionBar.IsOpen = true;
+    }
+
+    private bool IsSandboxDefinitivelyUnavailable()
+    {
+        return _cachedAvailability is { HasAnyBackend: false, ProbeErrored: false };
+    }
+
+    private bool NormalizeSandboxToggleForAvailability()
+    {
+        if (!IsSandboxDefinitivelyUnavailable())
+            return false;
+        if (CurrentApp.Settings is not { } settings || !settings.SystemRunSandboxEnabled)
+            return false;
+        if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+            return false;
+
+        _suppress = true;
+        try
+        {
+            settings.SystemRunSandboxEnabled = false;
+            SandboxEnabledToggle.IsOn = false;
+        }
+        finally
+        {
+            _suppress = false;
+        }
+
+        Save();
+        return true;
     }
 
     private void OnUnavailableActionClick(object sender, RoutedEventArgs e) =>
@@ -603,6 +630,15 @@ public sealed partial class SandboxPage : Page
         var newValue = SandboxEnabledToggle.IsOn;
         var oldValue = s.SystemRunSandboxEnabled;
 
+        if (newValue
+            && !oldValue
+            && IsSandboxDefinitivelyUnavailable()
+            && !s.SystemRunBlockHostFallbackWhenMxcUnavailable)
+        {
+            await RejectSandboxEnableWhenUnavailableAsync();
+            return;
+        }
+
         // Confirm before turning sandbox OFF — this is the high-risk transition.
         if (!newValue && oldValue)
         {
@@ -657,6 +693,48 @@ public sealed partial class SandboxPage : Page
         UpdateSandboxStatusCard();
         UpdateControlsEnabledState();
         Save();
+    }
+
+    private async Task RejectSandboxEnableWhenUnavailableAsync()
+    {
+        _suppress = true;
+        try { SandboxEnabledToggle.IsOn = false; }
+        finally { _suppress = false; }
+
+        UpdateSandboxStatusCard();
+        UpdateControlsEnabledState();
+
+        if (_dialogOpen)
+            return;
+
+        var reasonText = _cachedAvailability?.UnsupportedReasons.Count > 0
+            ? string.Join("\n", _cachedAvailability.UnsupportedReasons)
+            : L("SandboxPage_UnavailableDefaultReason");
+        var dialog = new ContentDialog
+        {
+            Title = "Node Sandbox unavailable",
+            Content =
+                "Node Sandbox can't be turned on because this PC does not currently have a usable MXC backend.\n\n" +
+                $"{reasonText}\n\n" +
+                "Agent-started commands will keep using the host execution path until MXC is available.",
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+
+        _dialogOpen = true;
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Another dialog is already open. The toggle has already been restored.
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
     }
 
     private void OnNetInternetToggled(object sender, RoutedEventArgs e)

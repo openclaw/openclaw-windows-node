@@ -358,6 +358,58 @@ public sealed class AppRefactorContractTests
         Assert.Contains("blocked", method);
     }
 
+    [Fact]
+    public void SandboxPage_NormalizesDefinitiveUnavailableMxcOff()
+    {
+        var source = ReadSandboxPageSource();
+        var refresh = ExtractMethod(source, "RefreshAvailabilityAsync");
+        var loadState = ExtractMethod(source, "LoadState");
+        var definitiveUnavailable = ExtractMethod(source, "IsSandboxDefinitivelyUnavailable");
+        var normalize = ExtractMethod(source, "NormalizeSandboxToggleForAvailability");
+
+        AssertInOrder(
+            refresh,
+            "NormalizeSandboxToggleForAvailability();",
+            "UpdateSandboxStatusCard();",
+            "UpdateControlsEnabledState();");
+        AssertInOrder(
+            loadState,
+            "NormalizeSandboxToggleForAvailability();",
+            "UpdatePresetHighlight();",
+            "UpdateSandboxStatusCard();",
+            "UpdateControlsEnabledState();");
+        Assert.Contains("HasAnyBackend: false", definitiveUnavailable);
+        Assert.Contains("ProbeErrored: false", definitiveUnavailable);
+        AssertInOrder(
+            normalize,
+            "settings.SystemRunSandboxEnabled",
+            "settings.SystemRunBlockHostFallbackWhenMxcUnavailable",
+            "settings.SystemRunSandboxEnabled = false");
+        Assert.Contains("settings.SystemRunSandboxEnabled = false", normalize);
+        Assert.Contains("SandboxEnabledToggle.IsOn = false", normalize);
+        Assert.Contains("Save();", normalize);
+    }
+
+    [Fact]
+    public void SandboxPage_RejectsTurningOnWhenMxcIsDefinitivelyUnavailable()
+    {
+        var source = ReadSandboxPageSource();
+        var toggle = ExtractMethod(source, "OnSandboxEnabledToggledAsync");
+        var reject = ExtractMethod(source, "RejectSandboxEnableWhenUnavailableAsync");
+
+        AssertInOrder(
+            toggle,
+            "newValue",
+            "!oldValue",
+            "IsSandboxDefinitivelyUnavailable()",
+            "!s.SystemRunBlockHostFallbackWhenMxcUnavailable",
+            "await RejectSandboxEnableWhenUnavailableAsync();",
+            "return;");
+        Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
+        Assert.Contains("Node Sandbox unavailable", reject);
+        Assert.Contains("usable MXC backend", reject);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -377,11 +429,18 @@ public sealed class AppRefactorContractTests
                 .Select(File.ReadAllText));
     }
 
+    private static string ReadSandboxPageSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml.cs"));
+    }
+
     private static string ExtractMethod(string source, string methodName)
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|void|bool|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);
