@@ -107,6 +107,10 @@ public sealed class NodeModeUiStateTests
 
         Assert.Contains("nodeCredential != null && IsGatewayNodeEnabled()", app);
         Assert.Contains("TryStartLocalMcpOnlyNode()", connectMethod);
+
+        var localNodeConnect = ExtractMethodBody(app, "Task TryConnectLocalNodeServiceAsync");
+        Assert.Contains("!IsGatewayNodeEnabled()", localNodeConnect);
+        Assert.Contains("EnsureNodeConnectedAsync()", localNodeConnect);
     }
 
     [Fact]

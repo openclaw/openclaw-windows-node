@@ -2682,8 +2682,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (status == ConnectionStatus.Connected)
         {
             _ = RunHealthCheckAsync();
-            // For local gateways, the NodeConnector is suppressed because NodeService
-            // owns the identity. Connect the NodeService directly after operator connects.
+            // Gateway-node mode connects the NodeService after operator auth; MCP-only
+            // mode keeps serving local tools and must not escalate into node pairing.
             _ = TryConnectLocalNodeServiceAsync();
         }
     }
@@ -2696,7 +2696,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// </summary>
     private async Task TryConnectLocalNodeServiceAsync()
     {
-        if (_connectionManager == null)
+        if (_connectionManager == null || !IsGatewayNodeEnabled())
             return;
 
         Logger.Info("[App] Auto-connecting local NodeService via EnsureNodeConnectedAsync");
