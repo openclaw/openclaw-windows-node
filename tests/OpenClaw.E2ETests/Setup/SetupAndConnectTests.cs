@@ -724,6 +724,14 @@ public class SetupAndConnectTests
             if (credentials.HasOperatorToken && credentials.HasNodeToken && !credentials.HasBootstrapToken)
                 return;
 
+            if (credentials.HasOperatorToken && !credentials.HasNodeToken && !credentials.HasBootstrapToken)
+            {
+                using var reconnectNodeDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+                Assert.True(reconnectNodeDoc.RootElement.GetProperty("reconnected").GetBoolean());
+                await Task.Delay(500);
+                continue;
+            }
+
             using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
             lastDevicesOutput = approvals.RootElement.GetRawText();
             var approvedAny = false;
