@@ -11,11 +11,8 @@ public sealed class SetupWizardRunner
     private const int MaxSameStepVisits = 3;
     private static readonly Regex s_normalizeKeyRegex = new("[^a-z0-9]+", RegexOptions.Compiled);
 
-    // Progress steps can repeat while background work runs; keep per-step and
-    // aggregate caps so setup fails with a diagnostic instead of hanging.
-    private const int MaxProgressPolls = 360;
-    private const int MaxTotalProgressPolls = 1200;
-    private static readonly TimeSpan ProgressPollDelay = TimeSpan.FromSeconds(1);
+    // Progress steps can repeat while background work runs; keep bounded caps
+    // so setup fails with a diagnostic instead of hanging.
 
     private readonly SetupContext _ctx;
 
@@ -182,17 +179,17 @@ public sealed class SetupWizardRunner
 
                     progressPolls++;
                     totalProgressPolls++;
-                    if (progressPolls > MaxProgressPolls)
-                        return StepResult.Fail($"Gateway wizard progress step '{parsed.StepId}' did not complete after {MaxProgressPolls} polls.");
-                    if (totalProgressPolls > MaxTotalProgressPolls)
-                        return StepResult.Fail($"Gateway wizard did not finish after {MaxTotalProgressPolls} progress updates.");
+                    if (progressPolls > WizardTimeouts.MaxProgressPollsPerStep)
+                        return StepResult.Fail($"Gateway wizard progress step '{parsed.StepId}' did not complete after {WizardTimeouts.MaxProgressPollsPerStep} polls.");
+                    if (totalProgressPolls > WizardTimeouts.MaxTotalProgressPolls)
+                        return StepResult.Fail($"Gateway wizard did not finish after {WizardTimeouts.MaxTotalProgressPolls} progress updates.");
 
                     var progressText = $"{parsed.Title} {parsed.Message}".Trim();
                     _ctx.Logger.Info(string.IsNullOrWhiteSpace(progressText)
                         ? $"Wizard progress step '{parsed.StepId}' — polling for next step"
                         : $"Wizard progress: {progressText}");
 
-                    await Task.Delay(ProgressPollDelay, ct);
+                    await Task.Delay(WizardTimeouts.ProgressPollDelay, ct);
                     payload = await SendWizardNextAsync(WizardNextPayload.Acknowledge(sessionId, parsed.StepId), TimeoutFor(parsed));
                     continue;
                 }

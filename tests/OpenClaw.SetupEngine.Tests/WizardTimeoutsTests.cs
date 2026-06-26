@@ -29,4 +29,14 @@ public class WizardTimeoutsTests
     {
         Assert.Equal(WizardTimeouts.DefaultTimeoutMs, WizardTimeouts.ForStep(text, string.Empty));
     }
+
+    [Fact]
+    public void ProgressPollBudget_AllowsSingleLongSetupStepToUseTotalBudget()
+    {
+        Assert.Equal(WizardTimeouts.MaxTotalProgressPolls, WizardTimeouts.MaxProgressPollsPerStep);
+        var totalBudget = TimeSpan.FromTicks(
+            WizardTimeouts.ProgressPollDelay.Ticks * WizardTimeouts.MaxTotalProgressPolls);
+        Assert.True(
+            totalBudget >= TimeSpan.FromMinutes(20));
+    }
 }

@@ -17,9 +17,6 @@ public sealed partial class WizardPage : Page
     private const int MaxSameStepVisits = 3;
 
     // Bound progress polling separately from interactive wizard steps.
-    private const int MaxProgressPolls = 360;
-    private const int MaxTotalProgressPolls = 1200;
-    private static readonly TimeSpan ProgressPollDelay = TimeSpan.FromSeconds(1);
 
     private SetupConfig? _config;
     private OpenClawGatewayClient? _client;
@@ -252,19 +249,19 @@ public sealed partial class WizardPage : Page
 
                 _progressPolls++;
                 _totalProgressPolls++;
-                if (_progressPolls > MaxProgressPolls)
+                if (_progressPolls > WizardTimeouts.MaxProgressPollsPerStep)
                 {
-                    ShowError($"Gateway wizard progress step '{_stepId}' did not complete after {MaxProgressPolls} updates.");
+                    ShowError($"Gateway wizard progress step '{_stepId}' did not complete after {WizardTimeouts.MaxProgressPollsPerStep} updates.");
                     return;
                 }
-                if (_totalProgressPolls > MaxTotalProgressPolls)
+                if (_totalProgressPolls > WizardTimeouts.MaxTotalProgressPolls)
                 {
-                    ShowError($"Gateway wizard did not finish after {MaxTotalProgressPolls} progress updates.");
+                    ShowError($"Gateway wizard did not finish after {WizardTimeouts.MaxTotalProgressPolls} progress updates.");
                     return;
                 }
 
                 RenderProgressStep(title, message);
-                await Task.Delay(ProgressPollDelay);
+                await Task.Delay(WizardTimeouts.ProgressPollDelay);
                 if (generation != _operationGeneration || _errorState || _client == null)
                     return;
 
