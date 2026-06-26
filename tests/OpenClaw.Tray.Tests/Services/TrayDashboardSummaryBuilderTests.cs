@@ -327,6 +327,26 @@ public sealed class TrayDashboardSummaryBuilderTests
         Assert.Equal(10, summary.ActiveSession!.ContextPercent);
     }
 
+    [Fact]
+    public void ActiveSession_DoesNotExposeCurrentActivityInTopLevelGlance()
+    {
+        var sessions = new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main",
+                CurrentActivity = "🔧 curl https://internal.example.test/secrets"
+            },
+        };
+
+        var summary = Build(Base(sessions: sessions));
+
+        Assert.NotNull(summary.ActiveSession);
+        Assert.Null(summary.ActiveSession!.Detail);
+    }
+
     // ── Edge cases: severity ordering, usage fallbacks, formatting ──
 
     [Fact]

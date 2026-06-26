@@ -211,12 +211,11 @@ internal sealed class TrayDashboardSummaryBuilder
             ? (int)Math.Round(Math.Min(100.0, (double)usedTokens / contextTokens * 100.0))
             : 0;
 
-        // Detail carries model and/or current activity — the context % lives in
-        // its own trailing chip, so don't repeat it here.
-        var detailParts = new List<string>(2);
+        // Detail carries only stable metadata; CurrentActivity can include
+        // command/query/path/URL snippets and should stay out of the top-level
+        // tray glance.
+        var detailParts = new List<string>(1);
         if (!string.IsNullOrWhiteSpace(session.Model)) detailParts.Add(session.Model!);
-        if (usedTokens <= 0 && !string.IsNullOrWhiteSpace(session.CurrentActivity))
-            detailParts.Add(session.CurrentActivity!);
         var detail = detailParts.Count == 0 ? null : string.Join(" · ", detailParts);
 
         return new TrayDashboardActiveSession(
