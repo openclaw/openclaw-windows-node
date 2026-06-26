@@ -59,6 +59,19 @@ The method inventory is a source scan of `[Fact]` and `[Theory]` attributes. Use
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
 - **OpenClawTray.OnboardingV2.Tests** and **OpenClawTray.FunctionalUI.Tests** cover newer UI surfaces outside the main tray test project.
 
+## Formal validation paths
+
+Use the smallest lane that proves the changed subsystem, but always include the
+required closeout lane for code changes.
+
+| Lane | Entry point | Required when |
+|---|---|---|
+| Required closeout | `.\build.ps1`, Shared tests, Tray tests | Every code change and every agent closeout |
+| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; runs normal E2E shards but skips MXC proofs on hosted runners |
+| Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |
+| Local MXC E2E | `.\scripts\validate-mxc-e2e.ps1` | MXC sandboxing, `system.run`, exec approvals, Windows node command execution, gateway setup/connect changes that affect MXC |
+| Product WSL setup validation | `.\scripts\validate-wsl-gateway.ps1` | Tray onboarding/setup-engine changes that must prove the product WSL install path |
+
 ## Running tests
 
 ```powershell
@@ -75,6 +88,10 @@ dotnet test
 # Explicit local E2E run
 $env:OPENCLAW_RUN_E2E = "1"
 dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj -r win-x64
+
+# Formal MXC validation path. This sets the required integration/E2E env vars
+# itself and fails when MXC proofs skip unless -AllowSkip is explicitly supplied.
+.\scripts\validate-mxc-e2e.ps1
 
 # Single project
 dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj

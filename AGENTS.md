@@ -29,6 +29,20 @@ Notes:
 - Prefer isolated worktrees for PR validation. Use `git-wt` for worktree workflows; `wt.exe` may resolve to WorkTrunk instead of Windows Terminal, so use the full Windows Terminal path when explicitly launching Terminal.
 - Do not claim completion without reporting validation results.
 
+## Targeted Validation Paths
+
+Run the required validation above for every code change, then add the targeted path that matches the touched subsystem.
+
+### MXC / `system.run` / Windows node command execution
+
+When changing MXC sandboxing, `system.run`, exec approvals, Windows node command execution, gateway setup/connect E2E behavior, or files under `src\OpenClaw.Shared\Mxc`, run:
+
+```powershell
+.\scripts\validate-mxc-e2e.ps1
+```
+
+The script sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E` itself, then runs the real WSL Gateway -> Windows node -> `system.run` MXC E2E proofs. It fails if the MXC proof skips. Use `-AllowSkip` only to document that the current host is not MXC-capable; do not report an `-AllowSkip` run as merge validation for MXC-related work.
+
 ## Architecture Context for New Agents
 
 Start with these docs before changing connection, pairing, node, MCP, or tray UX behavior:

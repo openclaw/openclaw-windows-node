@@ -122,17 +122,17 @@ When the node connects, it advertises these capabilities:
 ### Local sandbox validation
 - Sandbox integration tests are intended for local Windows development machines and may skip when the required local sandbox prerequisites are unavailable.
 - Build the tray app before running local sandbox validation so the required sandbox helper binaries are present in the app output.
+- For MXC-related merge validation, prefer the formal script below because it sets the required gates and fails if MXC is skipped.
 
   ```powershell
-  .\build.ps1
-  $env:OPENCLAW_RUN_INTEGRATION='1'
-  dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter "FullyQualifiedName~Mxc"
+  .\scripts\validate-mxc-e2e.ps1
   ```
 
 ### Full Gateway `system.run` MXC runtime proof
 - The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, sets a local exec approval rule through MCP, invokes `system.run` through the real Gateway `node.invoke` path, and verifies tray MXC diagnostics show contained `mxc-direct-appc` execution for both allowed execution and denied writes to the tray data directory.
 - Run it when validating the Gateway/Windows node runtime path, not just direct MCP or shared library behavior.
 - GitHub-hosted Actions runners do not provide a working MXC/AppContainer runtime. The regular cloud E2E matrix should report these MXC proofs as skipped while still running the rest of setup-connect. Run the proof on a local MXC-enabled Windows machine. Only set `OPENCLAW_RUN_MXC_E2E=1` in GitHub Actions when using an MXC-enabled self-hosted runner.
+- Use `.\scripts\validate-mxc-e2e.ps1` for normal local validation. It sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E`, runs the real Gateway MXC proofs, and fails if the MXC proof skips. `-AllowSkip` is only for documenting a non-MXC host, not for merge validation of MXC-related work.
 - When reproducing this manually against an existing Gateway, make sure `gateway.nodes.allowCommands` includes `system.run`, `system.run.prepare`, and `system.which`, then approve any `pending-reapproval` request with `openclaw nodes approve <pendingRequestId>`. The node can advertise `system.run` while the Gateway still blocks it until both gates are updated.
 
   ```powershell
