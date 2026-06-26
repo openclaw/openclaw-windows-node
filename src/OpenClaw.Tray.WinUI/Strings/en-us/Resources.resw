@@ -1815,9 +1815,6 @@ On your gateway host (Mac/Linux), run:
   <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
     <value>Gateway endpoint used by both the operator client and node service.</value>
   </data>
-  <data name="AuthErrorBar.Title" xml:space="preserve">
-    <value>Connection Error</value>
-  </data>
   <data name="StatusText.Text" xml:space="preserve">
     <value>Disconnected</value>
   </data>
@@ -3275,9 +3272,6 @@ On your gateway host (Mac/Linux), run:
   </data>
   <data name="AppNotification_ActionOpenCron" xml:space="preserve">
     <value>Open Cron</value>
-  </data>
-  <data name="AppNotification_GatewayAuthenticationFailed_Title" xml:space="preserve">
-    <value>Gateway authentication failed</value>
   </data>
   <data name="AppNotification_GatewayConnectionFailed_Title" xml:space="preserve">
     <value>Gateway connection failed</value>
@@ -5599,9 +5593,6 @@ Make sure the gateway is running.</value>
   <data name="ConnectionPage_CancelAction" xml:space="preserve">
     <value>Cancel</value>
   </data>
-  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
-    <value>Connect failed</value>
-  </data>
   <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
     <value>Gateway connection failed.</value>
   </data>
@@ -5631,31 +5622,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
     <value>Deny pairing request</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
-    <value>{0}
-
-Paste a new setup code from the Add Gateway flow.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
-    <value>{0}
-
-Your device needs approval on the gateway host.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
-    <value>{0}
-
-This gateway requires password authentication.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
-    <value>{0}
-
-The gateway may require a different auth protocol version.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
-    <value>{0}
-
-Check your connection settings and try again.</value>
   </data>
   <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
     <value>bootstrap</value>

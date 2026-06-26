@@ -1,5 +1,7 @@
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
@@ -164,22 +166,45 @@ public sealed partial class HubWindow : WindowEx
         var notification = _currentAppNotification;
         AppNotificationInfoBar.Visibility = Visibility.Visible;
         AppNotificationInfoBar.Severity = ToInfoBarSeverity(notification.Severity);
-        AppNotificationInfoBar.Title = notification.Title;
+        AppNotificationInfoBar.Title = string.Empty;
         AppNotificationInfoBar.Message = string.Empty;
-        AppNotificationMessageText.Text = notification.Message;
 
-        if (snapshot.HasMultipleActiveNotifications)
+        // Single-line compact banner: bold headline + regular detail on one
+        // line (e.g. "Gateway connection failed — Transport error"). The bold
+        // run gives the headline scannability without adding a second row.
+        // Full detail/troubleshooting still lives on the surface the action
+        // routes to (e.g. the Connection page).
+        AppNotificationMessageText.Inlines.Clear();
+        AppNotificationMessageText.Inlines.Add(new Run
         {
-            _appNotificationActionShowsMore = true;
-            AppNotificationActionButton.Content = LocalizationHelper.GetString("AppNotification_ShowMore");
-            AppNotificationActionButton.Visibility = Visibility.Visible;
-            UpdateAppNotificationActionEnabledState();
+            Text = notification.Title,
+            FontWeight = FontWeights.SemiBold
+        });
+        if (!string.IsNullOrWhiteSpace(notification.Message))
+        {
+            AppNotificationMessageText.Inlines.Add(new Run
+            {
+                Text = $" — {notification.Message}"
+            });
         }
-        else if (!string.IsNullOrWhiteSpace(notification.ActionLabel) &&
+
+        // Action-button precedence: if the visible notification is itself
+        // actionable (e.g. a connection issue routes to the Connection page),
+        // surface that action so the user can act on the banner they're
+        // looking at. Only fall back to "Show more" when the visible
+        // notification has no action of its own but others are queued.
+        if (!string.IsNullOrWhiteSpace(notification.ActionLabel) &&
             !string.IsNullOrWhiteSpace(notification.ActionRoute))
         {
             _appNotificationActionShowsMore = false;
             AppNotificationActionButton.Content = notification.ActionLabel;
+            AppNotificationActionButton.Visibility = Visibility.Visible;
+            UpdateAppNotificationActionEnabledState();
+        }
+        else if (snapshot.HasMultipleActiveNotifications)
+        {
+            _appNotificationActionShowsMore = true;
+            AppNotificationActionButton.Content = LocalizationHelper.GetString("AppNotification_ShowMore");
             AppNotificationActionButton.Visibility = Visibility.Visible;
             UpdateAppNotificationActionEnabledState();
         }
@@ -200,7 +225,7 @@ public sealed partial class HubWindow : WindowEx
         AppNotificationInfoBar.Visibility = Visibility.Collapsed;
         AppNotificationInfoBar.Title = string.Empty;
         AppNotificationInfoBar.Message = string.Empty;
-        AppNotificationMessageText.Text = string.Empty;
+        AppNotificationMessageText.Inlines.Clear();
         AppNotificationActionButton.Visibility = Visibility.Collapsed;
         _appNotificationActionShowsMore = false;
         _currentAppNotification = null;

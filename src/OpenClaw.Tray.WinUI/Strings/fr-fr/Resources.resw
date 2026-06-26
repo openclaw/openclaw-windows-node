@@ -1767,9 +1767,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
     <value>Point de terminaison de passerelle utilisé par le client opérateur et le service de nœud.</value>
   </data>
-  <data name="AuthErrorBar.Title" xml:space="preserve">
-    <value>Erreur de connexion</value>
-  </data>
   <data name="StatusText.Text" xml:space="preserve">
     <value>Déconnecté</value>
   </data>
@@ -3203,9 +3200,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   </data>
   <data name="AppNotification_ActionOpenCron" xml:space="preserve">
     <value>Ouvrir Cron</value>
-  </data>
-  <data name="AppNotification_GatewayAuthenticationFailed_Title" xml:space="preserve">
-    <value>Échec de l'authentification de la passerelle</value>
   </data>
   <data name="AppNotification_GatewayConnectionFailed_Title" xml:space="preserve">
     <value>Échec de la connexion à la passerelle</value>
@@ -5551,9 +5545,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ConnectionPage_CancelAction" xml:space="preserve">
     <value>Annuler</value>
   </data>
-  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
-    <value>Échec de la connexion</value>
-  </data>
   <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
     <value>Échec de la connexion à la passerelle.</value>
   </data>
@@ -5583,31 +5574,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
     <value>Refuser la demande d’appairage</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
-    <value>{0}
-
-Collez un nouveau code de configuration depuis le flux Ajouter une passerelle.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
-    <value>{0}
-
-Votre appareil nécessite une approbation sur l’hôte de la passerelle.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
-    <value>{0}
-
-Cette passerelle nécessite une authentification par mot de passe.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
-    <value>{0}
-
-La passerelle pourrait nécessiter une version différente du protocole d’authentification.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
-    <value>{0}
-
-Vérifiez vos paramètres de connexion et réessayez.</value>
   </data>
   <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
     <value>amorçage</value>

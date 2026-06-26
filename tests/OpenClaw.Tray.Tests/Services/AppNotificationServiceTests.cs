@@ -66,6 +66,82 @@ public sealed class AppNotificationServiceTests
     }
 
     [Fact]
+    public void BannerState_PrioritizesConnectionIssueOverEarlierActionableNotification()
+    {
+        var service = new AppNotificationService();
+        var bannerState = new AppNotificationBannerState();
+
+        // An unrelated, actionable notification is current...
+        service.Show(Notification("Sandbox risk", "Review sandbox", source: "sandbox"));
+        // ...then a connection failure arrives and is queued behind it.
+        service.Show(Notification("Gateway connection failed", "unauthorized", source: "connection"));
+
+        // The connection issue must be the visible banner so the user can reach
+        // the Connection page, even though it wasn't the first/current item.
+        Assert.Equal(
+            "Gateway connection failed",
+            bannerState.SelectVisibleNotification(service.Snapshot)?.Title);
+    }
+
+    [Fact]
+    public void BannerState_HidingConnectionIssue_RevealsRemainingNotification()
+    {
+        var service = new AppNotificationService();
+        var bannerState = new AppNotificationBannerState();
+
+        service.Show(Notification("Sandbox risk", "Review sandbox", source: "sandbox"));
+        service.Show(Notification("Gateway connection failed", "unauthorized", source: "connection"));
+
+        // Dismissing the banner hides all active items; once the connection
+        // issue is removed, the remaining notification can surface again.
+        bannerState.HideActiveNotifications(service.Snapshot);
+        Assert.Null(bannerState.SelectVisibleNotification(service.Snapshot));
+
+        var connectionId = service.Snapshot.ActiveNotifications
+            .First(n => n.Source == "connection").Id;
+        service.Dismiss(connectionId);
+
+        Assert.Equal(
+            "Sandbox risk",
+            bannerState.SelectVisibleNotification(service.Snapshot, revealHiddenIfNeeded: true)?.Title);
+    }
+
+    [Fact]
+    public void BannerState_PrioritizesActionableConnectionOverActionlessConnection()
+    {
+        var service = new AppNotificationService();
+        var bannerState = new AppNotificationBannerState();
+
+        // An action-less connection notification (e.g. a transient gateway-host
+        // failure) is current...
+        service.Show(new AppNotification
+        {
+            Id = "gateway-host-action:Terminal failed",
+            Title = "Terminal failed",
+            Message = "Could not open the gateway terminal.",
+            Source = "connection",
+            Severity = AppNotificationSeverity.Error
+        });
+        // ...then a real connection error arrives with an "Open Connection" action.
+        service.Show(new AppNotification
+        {
+            Id = "connection:issue",
+            Title = "Gateway connection failed",
+            Message = "Transport error",
+            Source = "connection",
+            Severity = AppNotificationSeverity.Error,
+            ActionRoute = "connection",
+            ActionLabel = "Open Connection"
+        });
+
+        // The actionable connection error must win so the banner offers
+        // "Open Connection" rather than degrading to "Show more".
+        var visible = bannerState.SelectVisibleNotification(service.Snapshot);
+        Assert.Equal("Gateway connection failed", visible?.Title);
+        Assert.Equal("Open Connection", visible?.ActionLabel);
+    }
+
+    [Fact]
     public void BannerState_HideActiveNotifications_HidesExistingItemsUntilNewNotificationArrives()
     {
         var service = new AppNotificationService();

@@ -1767,9 +1767,6 @@
   <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
     <value>操作员客户端和节点服务共同使用的网关终结点。</value>
   </data>
-  <data name="AuthErrorBar.Title" xml:space="preserve">
-    <value>连接错误</value>
-  </data>
   <data name="StatusText.Text" xml:space="preserve">
     <value>已断开连接</value>
   </data>
@@ -3203,9 +3200,6 @@
   </data>
   <data name="AppNotification_ActionOpenCron" xml:space="preserve">
     <value>打开 Cron</value>
-  </data>
-  <data name="AppNotification_GatewayAuthenticationFailed_Title" xml:space="preserve">
-    <value>网关身份验证失败</value>
   </data>
   <data name="AppNotification_GatewayConnectionFailed_Title" xml:space="preserve">
     <value>网关连接失败</value>
@@ -5552,9 +5546,6 @@
   <data name="ConnectionPage_CancelAction" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
-    <value>连接失败</value>
-  </data>
   <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
     <value>网关连接失败。</value>
   </data>
@@ -5584,31 +5575,6 @@
   </data>
   <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
     <value>拒绝配对请求</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
-    <value>{0}
-
-从添加网关流程中粘贴新的设置代码。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
-    <value>{0}
-
-您的设备需要在网关主机上获得批准。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
-    <value>{0}
-
-此网关需要密码身份验证。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
-    <value>{0}
-
-网关可能需要不同版本的认证协议。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
-    <value>{0}
-
-请检查您的连接设置并重试。</value>
   </data>
   <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
     <value>引导</value>

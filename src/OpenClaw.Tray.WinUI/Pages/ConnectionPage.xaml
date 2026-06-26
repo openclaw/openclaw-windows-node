@@ -59,12 +59,6 @@
                  PINNED MODIFIERS — render across every mode
                  ═════════════════════════════════════════════════════════ -->
 
-            <!-- Auth error (legacy, kept) -->
-            <InfoBar x:Name="AuthErrorBar"
-                     x:Uid="AuthErrorBar"
-                     Title="Connection Error"
-                     Severity="Error" IsOpen="False" IsClosable="True"/>
-
             <!-- Pending approvals (others waiting on the user's decision) -->
             <Border x:Name="PendingApprovalsBanner"
                     Visibility="Collapsed"

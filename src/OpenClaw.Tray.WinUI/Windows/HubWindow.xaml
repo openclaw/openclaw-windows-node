@@ -121,19 +121,25 @@
                  IsClosable="True"
                  Closed="OnAppNotificationInfoBarClosed">
             <InfoBar.Content>
-                <Grid ColumnSpacing="12" Margin="0,0,0,8">
+                <Grid ColumnSpacing="12" Margin="0,0,0,4" VerticalAlignment="Center">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+                    <!-- Single-line message: bold headline + regular detail
+                         (Runs set in RenderAppNotification). Trims rather than
+                         wrapping so the banner stays one line tall. -->
                     <TextBlock x:Name="AppNotificationMessageText"
-                               TextWrapping="WrapWholeWords"
-                               VerticalAlignment="Center"/>
-                    <Button x:Name="AppNotificationActionButton"
-                           Grid.Column="1"
-                           Visibility="Collapsed"
-                           VerticalAlignment="Center"
-                           Click="OnAppNotificationActionButtonClick"/>
+                               VerticalAlignment="Center"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis"/>
+                    <!-- Action sits at the far right of the banner, before the
+                         close button — mirrors the prior Connection-page bar. -->
+                    <HyperlinkButton x:Name="AppNotificationActionButton"
+                            Grid.Column="1"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            Click="OnAppNotificationActionButtonClick"/>
                 </Grid>
             </InfoBar.Content>
         </InfoBar>

@@ -1768,9 +1768,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
     <value>Gateway-eindpunt dat door zowel de operatorclient als de knooppuntservice wordt gebruikt.</value>
   </data>
-  <data name="AuthErrorBar.Title" xml:space="preserve">
-    <value>Verbindingsfout</value>
-  </data>
   <data name="StatusText.Text" xml:space="preserve">
     <value>Verbinding verbroken</value>
   </data>
@@ -3204,9 +3201,6 @@ Voer op uw gateway-host (Mac/Linux) uit:
   </data>
   <data name="AppNotification_ActionOpenCron" xml:space="preserve">
     <value>Cron openen</value>
-  </data>
-  <data name="AppNotification_GatewayAuthenticationFailed_Title" xml:space="preserve">
-    <value>Gatewayverificatie mislukt</value>
   </data>
   <data name="AppNotification_GatewayConnectionFailed_Title" xml:space="preserve">
     <value>Gatewayverbinding mislukt</value>
@@ -5552,9 +5546,6 @@ Controleer of de gateway actief is.</value>
   <data name="ConnectionPage_CancelAction" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
-    <value>Verbinding mislukt</value>
-  </data>
   <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
     <value>Gatewayverbinding mislukt.</value>
   </data>
@@ -5584,31 +5575,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
     <value>Koppelingverzoek weigeren</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
-    <value>{0}
-
-Plak een nieuwe installatiecode vanuit het Gateway toevoegen-proces.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
-    <value>{0}
-
-Uw apparaat moet worden goedgekeurd op de gatewayhost.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
-    <value>{0}
-
-Deze gateway vereist wachtwoordverificatie.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
-    <value>{0}
-
-De gateway vereist mogelijk een andere versie van het verificatieprotocol.</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
-    <value>{0}
-
-Controleer uw verbindingsinstellingen en probeer het opnieuw.</value>
   </data>
   <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
     <value>bootstrap-modus</value>

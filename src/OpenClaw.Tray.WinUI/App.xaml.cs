@@ -200,7 +200,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private ToastService? _toastService;
     private AppNotificationService? _appNotificationService;
     internal AppNotificationService? AppNotifications => _appNotificationService;
-    private string? _lastAuthFailureNotificationMessage;
     private string? _lastConnectionIssueNotificationKey;
     private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastSandboxRiskNotificationKey;
@@ -2332,6 +2331,37 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             id: BuildPairingRejectedNotificationId(deviceId));
     }
 
+    /// <summary>
+    /// Publishes an immediate connection-error banner using the single
+    /// connection-issue notification identity. Used for transient, page-driven
+    /// failures (e.g. a manual gateway switch that throws) where the snapshot
+    /// may be briefly silent. Because it reuses the connection-issue id/dedupe
+    /// key it occupies the same banner slot — it cannot produce a second bar —
+    /// and the snapshot-driven path will replace or dismiss it on the next tick.
+    /// </summary>
+    internal void ShowTransientConnectionError(string message)
+    {
+        var body = string.IsNullOrWhiteSpace(message)
+            ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
+            : message;
+
+        // Keep the snapshot-driven publisher from immediately re-emitting a
+        // duplicate for the same underlying error.
+        _lastConnectionIssueNotificationKey = $"operator-error:{message}";
+
+        AppNotificationPublisher.Show(
+            _appNotificationService,
+            LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_Title"),
+            body,
+            "connection",
+            "lifecycle",
+            AppNotificationSeverity.Error,
+            ConnectionIssueNotificationDedupeKey,
+            "connection",
+            LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
+            id: ConnectionIssueNotificationId);
+    }
+
     private void UpdateConnectionIssueNotification(GatewayConnectionSnapshot snapshot)
     {
         if (!TryBuildConnectionIssueNotification(snapshot, out var title, out var message, out var severity, out var category, out var key))
@@ -2375,9 +2405,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (snapshot.OverallState == OverallConnectionState.Error)
         {
             title = LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_Title");
-            message = snapshot.OperatorError ?? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage");
+            var rawError = snapshot.OperatorError;
+            message = string.IsNullOrWhiteSpace(rawError)
+                ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
+                : rawError;
             severity = AppNotificationSeverity.Error;
-            key = $"operator-error:{message}";
+            key = $"operator-error:{rawError ?? "default"}";
             return true;
         }
 
@@ -2663,8 +2696,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (status == ConnectionStatus.Connected && _appState != null)
         {
             _appState.AuthFailureMessage = null;
-            _lastAuthFailureNotificationMessage = null;
-            _appNotificationService?.Dismiss("connection:authentication-failed");
         }
 
         UpdateTrayIcon();
@@ -2714,27 +2745,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         UpdateTrayIcon();
 
-        // Store auth failure in AppState — HubWindow observes it via PropertyChanged
+        // Store auth failure in AppState — observed for tray tooltip / status.
         if (_appState != null)
         {
             _appState.AuthFailureMessage = message;
         }
 
-        if (!string.Equals(_lastAuthFailureNotificationMessage, message, StringComparison.Ordinal))
-        {
-            _lastAuthFailureNotificationMessage = message;
-            AppNotificationPublisher.Show(
-                _appNotificationService,
-                LocalizationHelper.GetString("AppNotification_GatewayAuthenticationFailed_Title"),
-                message,
-                "connection",
-                "authentication",
-                AppNotificationSeverity.Error,
-                "connection:authentication-failed",
-                "connection",
-                LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
-                id: "connection:authentication-failed");
-        }
+        // The user-facing banner is published by the single connection-issue
+        // notification (UpdateConnectionIssueNotification), driven off the
+        // snapshot's Error state + OperatorError (same string surfaced here).
+        // Publishing a second "authentication failed" banner here produced a
+        // duplicate top bar and forced the action button to degrade to
+        // "Show more", so it is intentionally not raised from this handler.
     }
 
     private void OnGatewaySessionCommandCompleted(object? sender, SessionCommandResult result)

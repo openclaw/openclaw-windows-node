@@ -299,18 +299,6 @@ public sealed partial class ConnectionPage : Page
         // background highlight reflects the live snapshot. Cheap — list is
         // typically < 10 entries and only re-runs on real state transitions.
         LoadSavedGateways();
-
-        // Bridge auth error (lives outside the plan as a transient modifier)
-        var authError = CurrentApp.AppState?.AuthFailureMessage;
-        if (!string.IsNullOrEmpty(authError))
-        {
-            AuthErrorBar.Message = GetAuthErrorGuidance(authError!);
-            AuthErrorBar.IsOpen = true;
-        }
-        else
-        {
-            AuthErrorBar.IsOpen = false;
-        }
     }
 
     private void ApplyPlan(ConnectionPagePlan plan)
@@ -2001,10 +1989,23 @@ public sealed partial class ConnectionPage : Page
             return;
         }
 
-        AuthErrorBar.Title = title;
-        AuthErrorBar.Message = message;
-        AuthErrorBar.Severity = InfoBarSeverity.Error;
-        AuthErrorBar.IsOpen = true;
+        // No inline WSL-controls surface is available here (e.g. launching a
+        // terminal for a non-active saved gateway, where that card isn't shown).
+        // The in-page Connection Error bar was removed, so surface the failure as
+        // a transient top-bar notification rather than dropping it silently. This
+        // is a one-off action failure, not the persistent connection-issue banner,
+        // so it carries no "Open Connection" action.
+        AppNotificationPublisher.Show(
+            CurrentApp.AppNotifications,
+            title,
+            message,
+            "connection",
+            "gateway-host",
+            AppNotificationSeverity.Error,
+            $"gateway-host-action:{title}",
+            actionRoute: string.Empty,
+            actionLabel: string.Empty,
+            id: $"gateway-host-action:{title}");
     }
 
     private static string UppercaseFirst(string value)
@@ -2177,18 +2178,16 @@ public sealed partial class ConnectionPage : Page
         catch (Exception ex)
         {
             // Strip status will read the snapshot's terminal state next tick;
-            // surface the immediate error in the auth-error bar so the user
-            // gets feedback even if the snapshot is briefly silent.
+            // surface the immediate error in the single top connection banner so
+            // the user gets feedback (and an "Open Connection" action) even if
+            // the snapshot is briefly silent.
             try
             {
-                AuthErrorBar.Title = LocalizationHelper.GetString("ConnectionPage_ConnectFailed");
-                AuthErrorBar.Message = ex.Message;
-                AuthErrorBar.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error;
-                AuthErrorBar.IsOpen = true;
+                CurrentApp.ShowTransientConnectionError(ex.Message);
             }
             catch (Exception uiEx)
             {
-                Logger.Warn($"ConnectionPage: Failed to surface connect failure in auth error bar: {uiEx.Message}");
+                Logger.Warn($"ConnectionPage: Failed to surface connect failure in connection banner: {uiEx.Message}");
             }
         }
         finally
@@ -3538,21 +3537,6 @@ public sealed partial class ConnectionPage : Page
         }
         card.Child = grid;
         return card;
-    }
-
-    // ─── Auth error guidance (preserved) ─────────────────────────────
-
-    private static string GetAuthErrorGuidance(string error)
-    {
-        if (error.Contains("token", StringComparison.OrdinalIgnoreCase))
-            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidanceToken"), error);
-        if (error.Contains("pairing", StringComparison.OrdinalIgnoreCase))
-            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidancePairing"), error);
-        if (error.Contains("password", StringComparison.OrdinalIgnoreCase))
-            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidancePassword"), error);
-        if (error.Contains("signature", StringComparison.OrdinalIgnoreCase))
-            return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidanceSignature"), error);
-        return string.Format(LocalizationHelper.GetString("ConnectionPage_AuthGuidanceDefault"), error);
     }
 
     private static string SanitizeUrl(string url)

@@ -70,21 +70,47 @@ internal static class AppNotificationActionRoutes
 
 internal sealed class AppNotificationBannerState
 {
+    private const string ConnectionSource = "connection";
     private readonly HashSet<string> _hiddenNotificationIds = new(StringComparer.Ordinal);
 
     public AppNotification? SelectVisibleNotification(AppNotificationSnapshot snapshot, bool revealHiddenIfNeeded = false)
     {
         PruneRemovedNotifications(snapshot);
-        var visible = snapshot.ActiveNotifications.FirstOrDefault(notification =>
-            !_hiddenNotificationIds.Contains(notification.Id));
+
+        var visibleCandidates = snapshot.ActiveNotifications
+            .Where(notification => !_hiddenNotificationIds.Contains(notification.Id))
+            .ToList();
+
+        // Connection issues are the most actionable banner (they route the user
+        // to the Connection page), so surface them ahead of any earlier,
+        // unrelated notification that happens to be current. Without this, a
+        // connection failure arriving while another notification is showing
+        // would be queued behind it and the user couldn't reach Connection.
+        // Among connection-source notifications, prefer one that actually has an
+        // action: an action-less connection notification (e.g. a transient
+        // gateway-host failure) must not mask a real connection error and
+        // degrade the banner to "Show more".
+        var visible = visibleCandidates.FirstOrDefault(IsActionableConnectionPriority)
+            ?? visibleCandidates.FirstOrDefault(IsConnectionPriority)
+            ?? visibleCandidates.FirstOrDefault();
         if (visible is not null || !revealHiddenIfNeeded)
             return visible;
 
-        var fallback = snapshot.ActiveNotifications.FirstOrDefault();
+        var fallback = snapshot.ActiveNotifications.FirstOrDefault(IsActionableConnectionPriority)
+            ?? snapshot.ActiveNotifications.FirstOrDefault(IsConnectionPriority)
+            ?? snapshot.ActiveNotifications.FirstOrDefault();
         if (fallback is not null)
             _hiddenNotificationIds.Remove(fallback.Id);
         return fallback;
     }
+
+    private static bool IsConnectionPriority(AppNotification notification) =>
+        string.Equals(notification.Source, ConnectionSource, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsActionableConnectionPriority(AppNotification notification) =>
+        IsConnectionPriority(notification)
+        && !string.IsNullOrWhiteSpace(notification.ActionLabel)
+        && !string.IsNullOrWhiteSpace(notification.ActionRoute);
 
     public void HideActiveNotifications(AppNotificationSnapshot snapshot)
     {

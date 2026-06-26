@@ -1767,9 +1767,6 @@
   <data name="ConnectionPage_TextBlock_11.Text" xml:space="preserve">
     <value>操作員用戶端和節點服務共同使用的閘道端點。</value>
   </data>
-  <data name="AuthErrorBar.Title" xml:space="preserve">
-    <value>連線錯誤</value>
-  </data>
   <data name="StatusText.Text" xml:space="preserve">
     <value>已中斷連線</value>
   </data>
@@ -3203,9 +3200,6 @@
   </data>
   <data name="AppNotification_ActionOpenCron" xml:space="preserve">
     <value>開啟 Cron</value>
-  </data>
-  <data name="AppNotification_GatewayAuthenticationFailed_Title" xml:space="preserve">
-    <value>閘道驗證失敗</value>
   </data>
   <data name="AppNotification_GatewayConnectionFailed_Title" xml:space="preserve">
     <value>閘道連線失敗</value>
@@ -5552,9 +5546,6 @@
   <data name="ConnectionPage_CancelAction" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="ConnectionPage_ConnectFailed" xml:space="preserve">
-    <value>連線失敗</value>
-  </data>
   <data name="ConnectionPage_GatewayConnectionFailed" xml:space="preserve">
     <value>閘道連線失敗。</value>
   </data>
@@ -5584,31 +5575,6 @@
   </data>
   <data name="ConnectionPage_DenyPairingRequest" xml:space="preserve">
     <value>拒絕配對請求</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceToken" xml:space="preserve">
-    <value>{0}
-
-從新增閘道流程中貼上新的設定碼。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePairing" xml:space="preserve">
-    <value>{0}
-
-您的裝置需要在閘道主機上獲得核准。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidancePassword" xml:space="preserve">
-    <value>{0}
-
-此閘道需要密碼驗證。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceSignature" xml:space="preserve">
-    <value>{0}
-
-閘道可能需要不同版本的認證協定。</value>
-  </data>
-  <data name="ConnectionPage_AuthGuidanceDefault" xml:space="preserve">
-    <value>{0}
-
-請檢查您的連線設定並重試。</value>
   </data>
   <data name="ConnectionPage_AuthModeBootstrap" xml:space="preserve">
     <value>引導</value>
