@@ -31,6 +31,8 @@ public sealed class MxcE2EFactAttribute : FactAttribute
 
 internal static class MxcE2ETestGate
 {
+    private const string GitHubActionsEnvVar = "GITHUB_ACTIONS";
+    private const string ExplicitGitHubActionsOptInEnvVar = "OPENCLAW_RUN_MXC_E2E";
     private static readonly Lazy<string?> s_skipReason = new(GetSkipReason);
 
     public static string? SkipReason => s_skipReason.Value;
@@ -39,6 +41,12 @@ internal static class MxcE2ETestGate
     {
         if (!E2ETestGate.IsEnabled)
             return $"E2E tests disabled. Set {E2ETestGate.EnvVar}=1 to enable.";
+
+        if (IsEnabled(GitHubActionsEnvVar) && !IsEnabled(ExplicitGitHubActionsOptInEnvVar))
+        {
+            return "MXC E2E test skipped in GitHub Actions because hosted runners do not provide a working MXC/AppContainer runtime. " +
+                $"Run on a local MXC-enabled Windows machine, or set {ExplicitGitHubActionsOptInEnvVar}=1 only on an MXC-enabled self-hosted runner.";
+        }
 
         try
         {
@@ -166,6 +174,11 @@ internal static class MxcE2ETestGate
         try { return !string.IsNullOrWhiteSpace(path) && File.Exists(path); }
         catch { return false; }
     }
+
+    private static bool IsEnabled(string envVar) =>
+        Environment.GetEnvironmentVariable(envVar) is { } value &&
+        (string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
 
     private static string GetSdkArchString() => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture switch
     {
