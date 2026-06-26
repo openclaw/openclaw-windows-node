@@ -66,7 +66,11 @@ public sealed class AssistantBridgeServiceTests
     public void ResolveOpenClawCli_PrefersBackendRootEnvironmentOverride()
     {
         var oldValue = Environment.GetEnvironmentVariable("OPENCLAW_BACKEND_ROOT");
-        var root = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Projects",
+            "OpenClaw.Tray.Tests",
+            Guid.NewGuid().ToString("N"));
         try
         {
             var scripts = Path.Combine(root, ".venv", "Scripts");
@@ -88,6 +92,61 @@ public sealed class AssistantBridgeServiceTests
             Environment.SetEnvironmentVariable("OPENCLAW_BACKEND_ROOT", oldValue);
             try { Directory.Delete(root, recursive: true); } catch { }
         }
+    }
+
+    [Fact]
+    public void ResolveOpenClawCli_IgnoresBackendRootOutsideTrustedParents()
+    {
+        var oldValue = Environment.GetEnvironmentVariable("OPENCLAW_BACKEND_ROOT");
+        var root = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var scripts = Path.Combine(root, ".venv", "Scripts");
+            Directory.CreateDirectory(scripts);
+            var exe = Path.Combine(scripts, "openclaw.exe");
+            File.WriteAllText(exe, "");
+
+            Environment.SetEnvironmentVariable("OPENCLAW_BACKEND_ROOT", root);
+
+            var launcher = AssistantBridgeService.ResolveOpenClawCli();
+
+            Assert.True(
+                launcher == null || !string.Equals(launcher.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase),
+                "OPENCLAW_BACKEND_ROOT should not execute arbitrary binaries outside trusted checkout parents.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_BACKEND_ROOT", oldValue);
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void TryNormalizeBackendRoot_RejectsRelativePaths()
+    {
+        Assert.False(AssistantBridgeService.TryNormalizeBackendRoot("OpenClaw", out _));
+    }
+
+    [Fact]
+    public void TryNormalizeBackendRoot_AcceptsTrustedCheckoutParents()
+    {
+        var root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Projects",
+            "OpenClaw");
+
+        Assert.True(AssistantBridgeService.TryNormalizeBackendRoot(root, out var normalizedRoot));
+        Assert.Equal(Path.GetFullPath(root), normalizedRoot);
+    }
+
+    [Fact]
+    public void BuildBackendNotFoundMessage_ListsSearchedLocations()
+    {
+        var message = AssistantBridgeService.BuildBackendNotFoundMessage();
+
+        Assert.Contains("Searched:", message);
+        Assert.Contains(@"D:\Projects\OpenClaw", message);
+        Assert.Contains("OPENCLAW_BACKEND_ROOT", message);
     }
 
     [Fact]

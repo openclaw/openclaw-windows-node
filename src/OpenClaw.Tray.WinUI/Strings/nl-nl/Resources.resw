@@ -2590,6 +2590,105 @@ Voer op uw gateway-host (Mac/Linux) uit:
   <data name="VoiceSettingsPage_PageDescription.Text" xml:space="preserve">
     <value>Configureer spraak-naar-tekst en spraakinteractie-instellingen. Alle spraakverwerking draait lokaal op uw apparaat.</value>
   </data>
+  <data name="VoiceSettingsPage_AssistantHeader.Text" xml:space="preserve">
+    <value>Assistent</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantDescription.Text" xml:space="preserve">
+    <value>Altijd luisterende assistentservice en nieuwste gespreksbeurten.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantRefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Assistentstatus vernieuwen</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStartButtonText.Text" xml:space="preserve">
+    <value>Starten</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopButtonText.Text" xml:space="preserve">
+    <value>Stoppen</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStatusChecking.Text" xml:space="preserve">
+    <value>Assistentstatus controleren...</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantRecentTurnsHeader.Text" xml:space="preserve">
+    <value>Recente beurten</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStarting" xml:space="preserve">
+    <value>Assistent starten...</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStartingDetail" xml:space="preserve">
+    <value>Altijd-luisterende modus starten met lokale assistentroutering en opslag van beurten.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStartFailed" xml:space="preserve">
+    <value>Assistent is niet gestart</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopping" xml:space="preserve">
+    <value>Assistent stoppen...</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopFailed" xml:space="preserve">
+    <value>Assistent is niet gestopt</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantBridgeUnavailable" xml:space="preserve">
+    <value>Assistentbrug niet beschikbaar</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantNoTurnsLoaded" xml:space="preserve">
+    <value>Geen assistentbeurten geladen.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantUnknown" xml:space="preserve">
+    <value>onbekend</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantListeningFormat" xml:space="preserve">
+    <value>Assistent luistert (PID {0})</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopped" xml:space="preserve">
+    <value>Assistent gestopt</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStatusFormat" xml:space="preserve">
+    <value>Assistent {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantTranscriberFormat" xml:space="preserve">
+    <value>Transcriptie: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantMicFormat" xml:space="preserve">
+    <value>Microfoon: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantSpeakerFormat" xml:space="preserve">
+    <value>Luidspreker: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantCloudRoutingFormat" xml:space="preserve">
+    <value>Cloudroutering: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantSpeechOutputFormat" xml:space="preserve">
+    <value>Spraakuitvoer: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantOn" xml:space="preserve">
+    <value>aan</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantOff" xml:space="preserve">
+    <value>uit</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantLastBridgeUpdateFormat" xml:space="preserve">
+    <value>Laatste brugupdate: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantNoConversationTurns" xml:space="preserve">
+    <value>Nog geen gespreksbeurten.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantSourceDefault" xml:space="preserve">
+    <value>assistent</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantTurnMetadataFormat" xml:space="preserve">
+    <value>{0} / {1}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantTurnMetadataWithLatencyFormat" xml:space="preserve">
+    <value>{0} | {1} | {2} ms vertraging</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantUserTurnFormat" xml:space="preserve">
+    <value>Jij: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantResponseTurnFormat" xml:space="preserve">
+    <value>OpenClaw-antwoord: {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantEmptyValue" xml:space="preserve">
+    <value>(leeg)</value>
+  </data>
   <data name="VoiceSettingsPage_SttHeader.Text" xml:space="preserve">
     <value>Spraak-naar-tekst</value>
   </data>

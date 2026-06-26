@@ -16,7 +16,7 @@ internal sealed class AssistantBridgeService
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(20);
     private readonly IOpenClawLogger _logger;
     private readonly string _userId;
-    private readonly Func<OpenClawCliLauncher?> _launcherResolver;
+    private readonly OpenClawCliLauncher? _launcher;
     private readonly TimeSpan _timeout;
 
     public AssistantBridgeService(IOpenClawLogger logger, string userId = "owner")
@@ -32,8 +32,25 @@ internal sealed class AssistantBridgeService
     {
         _logger = logger;
         _userId = string.IsNullOrWhiteSpace(userId) ? "owner" : userId;
-        _launcherResolver = launcherResolver;
+        _launcher = launcherResolver();
         _timeout = commandTimeout ?? DefaultTimeout;
+
+        var overrideRoot = Environment.GetEnvironmentVariable("OPENCLAW_BACKEND_ROOT");
+        if (!string.IsNullOrWhiteSpace(overrideRoot))
+        {
+            if (TryNormalizeBackendRoot(overrideRoot, out var normalizedOverrideRoot))
+            {
+                if (_launcher != null &&
+                    string.Equals(_launcher.WorkingDirectory, normalizedOverrideRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.Info($"Assistant bridge using OPENCLAW_BACKEND_ROOT launcher at '{_launcher.WorkingDirectory}'.");
+                }
+            }
+            else
+            {
+                _logger.Warn("Assistant bridge ignored OPENCLAW_BACKEND_ROOT because it is not a fully qualified local checkout under a trusted parent.");
+            }
+        }
     }
 
     public async Task<AssistantBridgeSnapshot> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -73,9 +90,9 @@ internal sealed class AssistantBridgeService
         IReadOnlyList<string> args,
         CancellationToken cancellationToken)
     {
-        var launcher = _launcherResolver();
+        var launcher = _launcher;
         if (launcher == null)
-            return AssistantProcessResult.Failed("OpenClaw backend checkout was not found. Set OPENCLAW_BACKEND_ROOT or keep it at D:\\Projects\\OpenClaw.");
+            return AssistantProcessResult.Failed(BuildBackendNotFoundMessage());
 
         var psi = new ProcessStartInfo
         {
@@ -238,8 +255,7 @@ internal sealed class AssistantBridgeService
     {
         foreach (var root in CandidateBackendRoots())
         {
-            var normalizedRoot = Environment.ExpandEnvironmentVariables(root);
-            if (string.IsNullOrWhiteSpace(normalizedRoot))
+            if (!TryNormalizeBackendRoot(root, out var normalizedRoot))
                 continue;
 
             var openclawExe = Path.Combine(normalizedRoot, ".venv", "Scripts", "openclaw.exe");
@@ -252,6 +268,18 @@ internal sealed class AssistantBridgeService
         }
 
         return null;
+    }
+
+    internal static string BuildBackendNotFoundMessage()
+    {
+        var searchedRoots = CandidateBackendRoots()
+            .Select(root => TryNormalizeBackendRoot(root, out var normalizedRoot) ? normalizedRoot : root)
+            .Where(root => !string.IsNullOrWhiteSpace(root))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        return "OpenClaw backend checkout was not found. Set OPENCLAW_BACKEND_ROOT to a fully qualified local checkout under D:\\Projects, %USERPROFILE%\\Projects, or %USERPROFILE%\\source\\repos. Searched: " +
+            string.Join("; ", searchedRoots) +
+            ".";
     }
 
     internal static IReadOnlyList<string> CandidateBackendRoots()
@@ -273,6 +301,63 @@ internal sealed class AssistantBridgeService
             "OpenClaw"));
 
         return candidates;
+    }
+
+    internal static bool TryNormalizeBackendRoot(string root, out string normalizedRoot)
+    {
+        normalizedRoot = "";
+        if (string.IsNullOrWhiteSpace(root))
+            return false;
+
+        var expandedRoot = Environment.ExpandEnvironmentVariables(root.Trim());
+        if (string.IsNullOrWhiteSpace(expandedRoot) || !Path.IsPathFullyQualified(expandedRoot))
+            return false;
+
+        try
+        {
+            normalizedRoot = Path.GetFullPath(expandedRoot);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+        catch (PathTooLongException)
+        {
+            return false;
+        }
+
+        if (normalizedRoot.StartsWith(@"\\", StringComparison.Ordinal))
+            return false;
+
+        var candidateRoot = normalizedRoot;
+        return TrustedBackendParentRoots()
+            .Any(parent => IsSameOrUnderPath(candidateRoot, parent));
+    }
+
+    private static IEnumerable<string> TrustedBackendParentRoots()
+    {
+        yield return @"D:\Projects";
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfile))
+            yield break;
+
+        yield return Path.Combine(userProfile, "Projects");
+        yield return Path.Combine(userProfile, "source", "repos");
+    }
+
+    private static bool IsSameOrUnderPath(string path, string parent)
+    {
+        var normalizedParent = Path.GetFullPath(parent)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedPath = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        return string.Equals(normalizedPath, normalizedParent, StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith(normalizedParent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     private static JsonElement? ReadObject(JsonElement? parent, string name)

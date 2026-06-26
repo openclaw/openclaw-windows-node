@@ -19,6 +19,7 @@ public sealed partial class VoiceSettingsPage : Page
     private VoiceService? _voiceService;
     private AssistantBridgeService? _assistantBridgeService;
     private CancellationTokenSource? _assistantRequestCts;
+    private int _assistantOperationVersion;
     private bool _suppressEvents = true; // suppress until Initialize/LoadSettings runs
     // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper
     // download (and vice versa). Each download type owns its own token.
@@ -88,15 +89,15 @@ public sealed partial class VoiceSettingsPage : Page
     private async Task OnAssistantStartClickAsync()
     {
         var bridge = EnsureAssistantBridge();
-        SetAssistantBusy(true);
-        AssistantStatusText.Text = "Starting assistant...";
-        AssistantDetailText.Text = "Starting always-listening mode with local assistant routing and turn storage.";
+        var busyVersion = BeginAssistantOperation();
+        AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStarting");
+        AssistantDetailText.Text = L("VoiceSettingsPage_AssistantStartingDetail");
         try
         {
             var result = await bridge.StartListenServiceAsync(NewAssistantRequestToken());
             if (!result.Success)
             {
-                AssistantStatusText.Text = "Assistant did not start";
+                AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStartFailed");
                 AssistantDetailText.Text = result.ErrorMessage;
                 return;
             }
@@ -108,7 +109,7 @@ public sealed partial class VoiceSettingsPage : Page
         }
         finally
         {
-            SetAssistantBusy(false);
+            EndAssistantOperation(busyVersion);
         }
     }
 
@@ -121,15 +122,15 @@ public sealed partial class VoiceSettingsPage : Page
     private async Task OnAssistantStopClickAsync()
     {
         var bridge = EnsureAssistantBridge();
-        SetAssistantBusy(true);
-        AssistantStatusText.Text = "Stopping assistant...";
+        var busyVersion = BeginAssistantOperation();
+        AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStopping");
         AssistantDetailText.Text = "";
         try
         {
             var result = await bridge.StopListenServiceAsync(NewAssistantRequestToken());
             if (!result.Success)
             {
-                AssistantStatusText.Text = "Assistant did not stop";
+                AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStopFailed");
                 AssistantDetailText.Text = result.ErrorMessage;
                 return;
             }
@@ -141,14 +142,14 @@ public sealed partial class VoiceSettingsPage : Page
         }
         finally
         {
-            SetAssistantBusy(false);
+            EndAssistantOperation(busyVersion);
         }
     }
 
     private async Task RefreshAssistantAsync()
     {
         var bridge = EnsureAssistantBridge();
-        SetAssistantBusy(true);
+        var busyVersion = BeginAssistantOperation();
         try
         {
             var snapshot = await bridge.GetStatusAsync(NewAssistantRequestToken());
@@ -159,7 +160,7 @@ public sealed partial class VoiceSettingsPage : Page
         }
         finally
         {
-            SetAssistantBusy(false);
+            EndAssistantOperation(busyVersion);
         }
     }
 
@@ -188,17 +189,30 @@ public sealed partial class VoiceSettingsPage : Page
         AssistantStopButton.IsEnabled = !busy;
     }
 
+    private int BeginAssistantOperation()
+    {
+        var version = Interlocked.Increment(ref _assistantOperationVersion);
+        SetAssistantBusy(true);
+        return version;
+    }
+
+    private void EndAssistantOperation(int version)
+    {
+        if (Volatile.Read(ref _assistantOperationVersion) == version)
+            SetAssistantBusy(false);
+    }
+
     private void RenderAssistantSnapshot(AssistantBridgeSnapshot snapshot)
     {
         if (!snapshot.IsAvailable)
         {
-            AssistantStatusText.Text = "Assistant bridge unavailable";
+            AssistantStatusText.Text = L("VoiceSettingsPage_AssistantBridgeUnavailable");
             AssistantDetailText.Text = snapshot.ErrorMessage;
             AssistantLastRefreshText.Text = "";
             AssistantTurnsPanel.Children.Clear();
             AssistantTurnsPanel.Children.Add(new TextBlock
             {
-                Text = "No assistant turns loaded.",
+                Text = L("VoiceSettingsPage_AssistantNoTurnsLoaded"),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                 TextWrapping = TextWrapping.Wrap
@@ -207,32 +221,33 @@ public sealed partial class VoiceSettingsPage : Page
         }
 
         var listen = snapshot.ListenService;
-        var status = string.IsNullOrWhiteSpace(listen.Status) ? "unknown" : listen.Status;
+        var unknown = L("VoiceSettingsPage_AssistantUnknown");
+        var status = string.IsNullOrWhiteSpace(listen.Status) ? unknown : listen.Status;
         AssistantStatusText.Text = listen.IsRunning
-            ? $"Assistant listening (PID {listen.Pid?.ToString() ?? "unknown"})"
+            ? Lf("VoiceSettingsPage_AssistantListeningFormat", listen.Pid?.ToString(CultureInfo.CurrentCulture) ?? unknown)
             : listen.IsStopped
-                ? "Assistant stopped"
-                : $"Assistant {status}";
+                ? L("VoiceSettingsPage_AssistantStopped")
+                : Lf("VoiceSettingsPage_AssistantStatusFormat", status);
 
         var details = new[]
         {
-            string.IsNullOrWhiteSpace(listen.Transcriber) ? "" : $"Transcriber: {listen.Transcriber}",
-            string.IsNullOrWhiteSpace(snapshot.PreferredInputDevice) ? "" : $"Mic: {snapshot.PreferredInputDevice}",
-            string.IsNullOrWhiteSpace(snapshot.PreferredOutputDevice) ? "" : $"Speaker: {snapshot.PreferredOutputDevice}",
-            listen.AllowCloud ? "Cloud routing: on" : "Cloud routing: off",
-            listen.SpeakAloud ? "Speech output: on" : "Speech output: off"
+            string.IsNullOrWhiteSpace(listen.Transcriber) ? "" : Lf("VoiceSettingsPage_AssistantTranscriberFormat", listen.Transcriber),
+            string.IsNullOrWhiteSpace(snapshot.PreferredInputDevice) ? "" : Lf("VoiceSettingsPage_AssistantMicFormat", snapshot.PreferredInputDevice),
+            string.IsNullOrWhiteSpace(snapshot.PreferredOutputDevice) ? "" : Lf("VoiceSettingsPage_AssistantSpeakerFormat", snapshot.PreferredOutputDevice),
+            Lf("VoiceSettingsPage_AssistantCloudRoutingFormat", listen.AllowCloud ? L("VoiceSettingsPage_AssistantOn") : L("VoiceSettingsPage_AssistantOff")),
+            Lf("VoiceSettingsPage_AssistantSpeechOutputFormat", listen.SpeakAloud ? L("VoiceSettingsPage_AssistantOn") : L("VoiceSettingsPage_AssistantOff"))
         }.Where(s => !string.IsNullOrWhiteSpace(s));
         AssistantDetailText.Text = string.Join(" | ", details);
         AssistantLastRefreshText.Text = string.IsNullOrWhiteSpace(snapshot.GeneratedAt)
             ? ""
-            : $"Last bridge update: {snapshot.GeneratedAt}";
+            : Lf("VoiceSettingsPage_AssistantLastBridgeUpdateFormat", snapshot.GeneratedAt);
 
         AssistantTurnsPanel.Children.Clear();
         if (snapshot.RecentTurns.Count == 0)
         {
             AssistantTurnsPanel.Children.Add(new TextBlock
             {
-                Text = "No conversation turns yet.",
+                Text = L("VoiceSettingsPage_AssistantNoConversationTurns"),
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                 TextWrapping = TextWrapping.Wrap
@@ -247,26 +262,29 @@ public sealed partial class VoiceSettingsPage : Page
     private static Border CreateAssistantTurnView(AssistantTurnSnapshot turn)
     {
         var panel = new StackPanel { Spacing = 6 };
-        var source = string.IsNullOrWhiteSpace(turn.Source) ? "assistant" : turn.Source;
+        var source = string.IsNullOrWhiteSpace(turn.Source) ? L("VoiceSettingsPage_AssistantSourceDefault") : turn.Source;
+        var stage = string.IsNullOrWhiteSpace(turn.Stage) ? L("VoiceSettingsPage_AssistantUnknown") : turn.Stage;
         var model = string.IsNullOrWhiteSpace(turn.Provider)
             ? turn.ModelProfile
             : $"{turn.Provider} {turn.ModelProfile}".Trim();
-        var latency = turn.TotalMs is int ms ? $" | {ms} ms" : "";
+        var metadata = turn.TotalMs is int ms
+            ? Lf("VoiceSettingsPage_AssistantTurnMetadataWithLatencyFormat", source, stage, ms.ToString(CultureInfo.CurrentCulture))
+            : Lf("VoiceSettingsPage_AssistantTurnMetadataFormat", source, stage);
         panel.Children.Add(new TextBlock
         {
-            Text = $"{source} | {turn.Stage}{latency}".Trim(' ', '|'),
+            Text = metadata,
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             TextWrapping = TextWrapping.Wrap
         });
         panel.Children.Add(new TextBlock
         {
-            Text = $"You: {TrimForDisplay(turn.InputText)}",
+            Text = Lf("VoiceSettingsPage_AssistantUserTurnFormat", TrimForDisplay(turn.InputText)),
             TextWrapping = TextWrapping.Wrap
         });
         panel.Children.Add(new TextBlock
         {
-            Text = $"OpenClaw: {TrimForDisplay(turn.ResponseText)}",
+            Text = Lf("VoiceSettingsPage_AssistantResponseTurnFormat", TrimForDisplay(turn.ResponseText)),
             TextWrapping = TextWrapping.Wrap
         });
         if (!string.IsNullOrWhiteSpace(model))
@@ -292,7 +310,7 @@ public sealed partial class VoiceSettingsPage : Page
     private static string TrimForDisplay(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return "(empty)";
+            return L("VoiceSettingsPage_AssistantEmptyValue");
         value = value.Trim();
         return value.Length <= 220 ? value : value[..217] + "...";
     }

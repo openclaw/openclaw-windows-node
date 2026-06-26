@@ -2589,6 +2589,105 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="VoiceSettingsPage_PageDescription.Text" xml:space="preserve">
     <value>Configurez la reconnaissance vocale et les paramètres d'interaction vocale. Tout le traitement vocal s'exécute localement sur votre appareil.</value>
   </data>
+  <data name="VoiceSettingsPage_AssistantHeader.Text" xml:space="preserve">
+    <value>Assistant vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantDescription.Text" xml:space="preserve">
+    <value>Service d'assistant toujours à l'écoute et derniers tours de conversation.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantRefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Actualiser l'état de l'assistant</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStartButtonText.Text" xml:space="preserve">
+    <value>Démarrer</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopButtonText.Text" xml:space="preserve">
+    <value>Arrêter</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStatusChecking.Text" xml:space="preserve">
+    <value>Vérification de l'état de l'assistant...</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantRecentTurnsHeader.Text" xml:space="preserve">
+    <value>Tours récents</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStarting" xml:space="preserve">
+    <value>Démarrage de l'assistant...</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStartingDetail" xml:space="preserve">
+    <value>Démarrage du mode toujours à l'écoute avec routage local de l'assistant et stockage des tours.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStartFailed" xml:space="preserve">
+    <value>L'assistant n'a pas démarré</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopping" xml:space="preserve">
+    <value>Arrêt de l'assistant...</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopFailed" xml:space="preserve">
+    <value>L'assistant ne s'est pas arrêté</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantBridgeUnavailable" xml:space="preserve">
+    <value>Pont assistant indisponible</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantNoTurnsLoaded" xml:space="preserve">
+    <value>Aucun tour d'assistant chargé.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantUnknown" xml:space="preserve">
+    <value>inconnu</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantListeningFormat" xml:space="preserve">
+    <value>Assistant à l'écoute (PID {0})</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStopped" xml:space="preserve">
+    <value>Assistant arrêté</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantStatusFormat" xml:space="preserve">
+    <value>État de l'assistant : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantTranscriberFormat" xml:space="preserve">
+    <value>Transcripteur : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantMicFormat" xml:space="preserve">
+    <value>Micro : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantSpeakerFormat" xml:space="preserve">
+    <value>Haut-parleur : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantCloudRoutingFormat" xml:space="preserve">
+    <value>Routage cloud : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantSpeechOutputFormat" xml:space="preserve">
+    <value>Sortie vocale : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantOn" xml:space="preserve">
+    <value>activé</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantOff" xml:space="preserve">
+    <value>désactivé</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantLastBridgeUpdateFormat" xml:space="preserve">
+    <value>Dernière mise à jour du pont : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantNoConversationTurns" xml:space="preserve">
+    <value>Aucun tour de conversation pour le moment.</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantSourceDefault" xml:space="preserve">
+    <value>l'assistant</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantTurnMetadataFormat" xml:space="preserve">
+    <value>{0} / {1}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantTurnMetadataWithLatencyFormat" xml:space="preserve">
+    <value>{0} | {1} | {2} ms de latence</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantUserTurnFormat" xml:space="preserve">
+    <value>Vous : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantResponseTurnFormat" xml:space="preserve">
+    <value>OpenClaw : {0}</value>
+  </data>
+  <data name="VoiceSettingsPage_AssistantEmptyValue" xml:space="preserve">
+    <value>(vide)</value>
+  </data>
   <data name="VoiceSettingsPage_SttHeader.Text" xml:space="preserve">
     <value>Reconnaissance vocale</value>
   </data>
