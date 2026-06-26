@@ -9,7 +9,7 @@ namespace OpenClawTray.Services;
 /// Toast notification display with dedup and sound configuration.
 /// Extracted from App.xaml.cs to group toast-related state and logic.
 /// </summary>
-internal sealed class ToastService
+internal sealed class ToastService : IToastNotificationPublisher
 {
     private readonly Func<SettingsManager?> _getSettings;
     private readonly Dictionary<string, DateTime> _recentToastKeys = new(StringComparer.OrdinalIgnoreCase);

@@ -135,6 +135,7 @@ public sealed class AppNotificationChangedEventArgs(AppNotificationSnapshot snap
 
 internal sealed class AppNotificationService
 {
+    private const int MaxActiveNotifications = 100;
     private readonly object _gate = new();
     private readonly List<AppNotification> _queue = new();
     private AppNotification? _current;
@@ -170,6 +171,7 @@ internal sealed class AppNotificationService
             else
             {
                 _queue.Add(normalized);
+                PruneQueueLocked();
                 snapshot = CreateSnapshotLocked();
             }
         }
@@ -376,6 +378,13 @@ internal sealed class AppNotificationService
         var next = _queue[0];
         _queue.RemoveAt(0);
         return next;
+    }
+
+    private void PruneQueueLocked()
+    {
+        var maxQueued = _current is null ? MaxActiveNotifications : MaxActiveNotifications - 1;
+        while (_queue.Count > maxQueued)
+            _queue.RemoveAt(0);
     }
 
     private AppNotificationSnapshot CreateSnapshotLocked()
