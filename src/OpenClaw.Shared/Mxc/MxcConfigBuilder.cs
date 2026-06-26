@@ -65,7 +65,6 @@ public static class MxcConfigBuilder
         if (request is null) throw new ArgumentNullException(nameof(request));
         if (string.IsNullOrWhiteSpace(scratchDir)) throw new ArgumentException("scratchDir required", nameof(scratchDir));
         if (context is null) throw new ArgumentNullException(nameof(context));
-        var deniedPathExists = context.DeniedPathExists ?? PathExists;
         var readonlyGrantIsBackendSafe = context.ReadonlyGrantIsBackendSafe ?? IsBackendSafeReadonlyGrant;
 
         var policy = request.Policy;
@@ -107,13 +106,11 @@ public static class MxcConfigBuilder
             rwFromPolicy.Add(scratchDir);
 
         // denied list from policy (settings dir, ~/.ssh, browser profiles, ...).
-        // Use the full list for local allow-list filtering, but do not emit
-        // known host profile roots to the MXC DACL fallback: those paths often
-        // cannot be prepared and make the sandbox fail before command launch.
+        // Keep the full list for local allow-list filtering, but do not emit
+        // filesystem.deniedPaths to wxc-exec. Windows MXC 0.7 rejects that field;
+        // omitted grants remain denied by default inside the AppContainer.
         var deniedForFiltering = (policy?.Filesystem?.DeniedPaths ?? Array.Empty<string>()).ToList();
-        var deniedForBackend = deniedForFiltering
-            .Where(path => ShouldEmitDeniedPathToBackend(path, deniedPathExists))
-            .ToList();
+        string[]? deniedForBackend = null;
 
         // cwd auto-grant — AppContainer does not auto-grant the working
         // directory. Give ungranted cwd read access so shells can start, but
@@ -188,7 +185,7 @@ public static class MxcConfigBuilder
             {
                 ReadonlyPaths = roFromPolicy.ToArray(),
                 ReadwritePaths = rwFromPolicy.ToArray(),
-                DeniedPaths = deniedForBackend.ToArray(),
+                DeniedPaths = deniedForBackend,
                 // SDK output didn't include clearPolicyOnExit even when the
                 // input policy had it set, so we omit it here too.
                 ClearPolicyOnExit = null,
@@ -385,59 +382,6 @@ public static class MxcConfigBuilder
             .ToList();
     }
 
-    private static bool ShouldEmitDeniedPathToBackend(string path, Func<string, bool> pathExists)
-    {
-        var normalized = NormalizePath(path);
-        if (string.IsNullOrWhiteSpace(normalized))
-            return false;
-
-        foreach (var hostProfileRoot in HostProfileDenyRoots())
-        {
-            var root = NormalizePath(hostProfileRoot);
-            if (!string.IsNullOrWhiteSpace(root) && IsSameOrNested(normalized, root))
-                return false;
-        }
-
-        try
-        {
-            if (!pathExists(normalized))
-                return false;
-        }
-        catch
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool PathExists(string path) => Directory.Exists(path) || File.Exists(path);
-
-    private static IEnumerable<string> HostProfileDenyRoots()
-    {
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-
-        if (!string.IsNullOrWhiteSpace(userProfile))
-        {
-            yield return Path.Combine(userProfile, ".ssh");
-        }
-
-        if (!string.IsNullOrWhiteSpace(localAppData))
-        {
-            yield return Path.Combine(localAppData, "Google", "Chrome", "User Data");
-            yield return Path.Combine(localAppData, "Microsoft", "Edge", "User Data");
-            yield return Path.Combine(localAppData, "BraveSoftware", "Brave-Browser", "User Data");
-        }
-
-        if (!string.IsNullOrWhiteSpace(appData))
-        {
-            yield return Path.Combine(appData, "Mozilla", "Firefox", "Profiles");
-            yield return Path.Combine(appData, "Microsoft", "Windows", "PowerShell", "PSReadLine");
-        }
-    }
-
     private static bool IsCoveredBy(string candidate, IEnumerable<string> ancestors)
     {
         var nc = NormalizePath(candidate);
@@ -538,7 +482,6 @@ public static class MxcConfigBuilder
 internal sealed record MxcConfigBuildContext(
     string? ContainerId = null,
     string? PathEnvVar = null,
-    Func<string, bool>? DeniedPathExists = null,
     Func<string, bool>? ReadonlyGrantIsBackendSafe = null)
 {
     public static MxcConfigBuildContext Default { get; } = new();

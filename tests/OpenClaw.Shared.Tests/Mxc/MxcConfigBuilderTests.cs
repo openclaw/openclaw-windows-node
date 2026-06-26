@@ -42,8 +42,6 @@ public class MxcConfigBuilderTests
         P.Settings, P.Ssh, P.Chrome, P.Edge, P.Brave, P.Firefox, P.PsRead,
     };
 
-    private static readonly Func<string, bool> DeniedPathExists = _ => true;
-
     private static SandboxPolicy LockedDownPolicy() => new(
         Version: MxcPolicyBuilder.SupportedPolicyVersion,
         Filesystem: new FilesystemPolicy(
@@ -99,7 +97,6 @@ public class MxcConfigBuilderTests
         string scratchDir = P.Scratch,
         string? containerId = null,
         string? pathEnvVar = "",
-        Func<string, bool>? deniedPathExists = null,
         Func<string, bool>? readonlyGrantIsBackendSafe = null) =>
         MxcConfigBuilder.Build(
             request,
@@ -107,7 +104,6 @@ public class MxcConfigBuilderTests
             new MxcConfigBuildContext(
                 ContainerId: containerId,
                 PathEnvVar: pathEnvVar,
-                DeniedPathExists: deniedPathExists ?? DeniedPathExists,
                 ReadonlyGrantIsBackendSafe: readonlyGrantIsBackendSafe));
 
     private static string ExpectedSystemCmdExe()
@@ -295,7 +291,7 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void Build_FiltersHostProfileDeniedPathsBeforeBackendEmissionButStillFiltersAllows()
+    public void Build_OmitsDeniedPathsBeforeBackendEmissionButStillFiltersAllows()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrWhiteSpace(localAppData))
@@ -323,22 +319,20 @@ public class MxcConfigBuilderTests
 
         Assert.DoesNotContain(chromeProfile, config.Filesystem!.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain(userProfile, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
-        Assert.DoesNotContain(chromeProfile, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
-        Assert.DoesNotContain(sshPath, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(settingsDeny, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Null(config.Filesystem.DeniedPaths);
     }
 
     [Fact]
-    public void Build_FiltersMissingDeniedPathsBeforeBackendEmissionButStillFiltersAllows()
+    public void Build_RemovesParentReadwriteGrantContainingDeniedSettingsDirectory_WhenDeniedPathsAreNotEmitted()
     {
         var parent = "C:\\Users\\example\\AppData\\Roaming";
-        var missingSettingsDeny = Path.Combine(parent, "OpenClawTray");
+        var settingsDeny = Path.Combine(parent, "OpenClawTray");
         var policy = new SandboxPolicy(
             Version: MxcPolicyBuilder.SupportedPolicyVersion,
             Filesystem: new FilesystemPolicy(
-                ReadwritePaths: new[] { parent },
+                ReadwritePaths: new[] { parent, settingsDeny },
                 ReadonlyPaths: Array.Empty<string>(),
-                DeniedPaths: new[] { missingSettingsDeny },
+                DeniedPaths: new[] { settingsDeny },
                 ClearPolicyOnExit: true),
             Network: new NetworkPolicy(false, false),
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
@@ -346,11 +340,38 @@ public class MxcConfigBuilderTests
 
         var config = BuildConfig(
             RequestFor(policy),
-            pathEnvVar: "",
-            deniedPathExists: _ => false);
+            pathEnvVar: "");
 
         Assert.DoesNotContain(parent, config.Filesystem!.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
-        Assert.DoesNotContain(missingSettingsDeny, config.Filesystem.DeniedPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Null(config.Filesystem.DeniedPaths);
+    }
+
+    [Fact]
+    public void Build_RemovesParentReadonlyGrantContainingDeniedSettingsDirectory_WhenDeniedPathsAreNotEmitted()
+    {
+        var parent = "C:\\Users\\example\\AppData\\Roaming";
+        var settingsDeny = Path.Combine(parent, "OpenClawTray");
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: Array.Empty<string>(),
+                ReadonlyPaths: new[] { parent, settingsDeny },
+                DeniedPaths: new[] { settingsDeny },
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var config = BuildConfig(
+            RequestFor(policy),
+            pathEnvVar: "");
+
+        Assert.DoesNotContain(parent, config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Null(config.Filesystem.DeniedPaths);
     }
 
     [Fact]

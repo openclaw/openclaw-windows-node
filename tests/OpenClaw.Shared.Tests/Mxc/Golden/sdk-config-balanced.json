@@ -14,15 +14,6 @@
       "C:\\Golden\\Documents",
       "C:\\Golden\\Downloads",
       "C:\\Golden\\Desktop"
-    ],
-    "deniedPaths": [
-      "C:\\Golden\\Settings",
-      "C:\\Golden\\.ssh",
-      "C:\\Golden\\Chrome",
-      "C:\\Golden\\Edge",
-      "C:\\Golden\\Brave",
-      "C:\\Golden\\Firefox",
-      "C:\\Golden\\PSReadLine"
     ]
   },
   "ui": {
