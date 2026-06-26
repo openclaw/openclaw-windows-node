@@ -1604,6 +1604,7 @@ public sealed partial class ConnectionPage : Page
     {
         _editingGatewayId = null;
         _userIntent = UserIntent.AddingGateway;
+        ClearAddGatewaySshFields();
         // Direct is default — make sure the selector is on Direct.
         // Pre-fill the most common local gateway URL.
         DirectUrlBox.Text = "ws://127.0.0.1:18789";
@@ -1619,6 +1620,7 @@ public sealed partial class ConnectionPage : Page
     {
         _editingGatewayId = null;
         _userIntent = UserIntent.AddingGateway;
+        ClearAddGatewaySshFields();
         ShowAddPane("direct");
         AddDirectItem.IsSelected = true;
         RefreshFromSnapshot(_lastSnapshot);
@@ -1628,6 +1630,7 @@ public sealed partial class ConnectionPage : Page
     {
         _editingGatewayId = null;
         _userIntent = UserIntent.AddingGateway;
+        ClearAddGatewaySshFields();
         ShowAddPane("setup");
         AddSetupCodeItem.IsSelected = true;
         RefreshFromSnapshot(_lastSnapshot);
@@ -1648,6 +1651,7 @@ public sealed partial class ConnectionPage : Page
         AddResultText.Text = "";
         AddSetupCodeBox.Text = "";
         AddSetupCodePreviewPanel.Visibility = Visibility.Collapsed;
+        ClearAddGatewaySshFields();
         AddScanStatusText.Text = LocalizationHelper.GetString("ConnectionPage_PressScan");
         AddScanProgressBar.Visibility = Visibility.Collapsed;
         AddScanResultsPanel.Children.Clear();
@@ -1679,6 +1683,16 @@ public sealed partial class ConnectionPage : Page
             AddRemoteHelpTip.IsOpen = false;
 
         UpdateRemoteSetupAdvice();
+    }
+
+    private void ClearAddGatewaySshFields()
+    {
+        AddSshExpander.IsExpanded = false;
+        AddSshUserBox.Text = "";
+        AddSshHostBox.Text = "";
+        AddSshServerPortBox.Text = "";
+        AddSshRemotePortBox.Text = "";
+        AddSshLocalPortBox.Text = "";
     }
 
     private void OnRemoteHelpClick(object sender, RoutedEventArgs e)
