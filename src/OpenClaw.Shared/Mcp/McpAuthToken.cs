@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
@@ -99,9 +100,14 @@ public static class McpAuthToken
             TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            // Capture original ex for diagnostics — even though we re-throw,
+            // tracing it here ensures the cause is visible alongside any
+            // cleanup-failure trace below.
+            Trace.WriteLine($"McpAuthToken.Generate: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            catch (Exception delEx) { Trace.WriteLine($"McpAuthToken.Generate: temp cleanup failed: {delEx.Message}"); }
             throw;
         }
         TryRestrictSensitiveFileAcl(path);
@@ -130,9 +136,14 @@ public static class McpAuthToken
             TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            // Capture original ex for diagnostics — even though we re-throw,
+            // tracing it here ensures the cause is visible alongside any
+            // cleanup-failure trace below.
+            Trace.WriteLine($"McpAuthToken.Reset: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            catch (Exception delEx) { Trace.WriteLine($"McpAuthToken.Reset: temp cleanup failed: {delEx.Message}"); }
             throw;
         }
         // Move on Windows preserves the source's DACL; re-apply defensively in
@@ -151,7 +162,13 @@ public static class McpAuthToken
             var token = File.ReadAllText(path).Trim();
             return string.IsNullOrEmpty(token) ? null : token;
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            // ACL misconfig / IO failure surfaces here. Static helper has no
+            // logger in scope; emit a Trace breadcrumb so the cause is visible.
+            Trace.WriteLine($"McpAuthToken.TryLoad: failed to read token from '{path}': {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>
@@ -180,7 +197,7 @@ public static class McpAuthToken
         if (string.IsNullOrEmpty(dir)) return;
         if (!OperatingSystem.IsWindows()) return;
         try { RestrictDirectoryAclWindows(dir); }
-        catch { /* best-effort; acl restriction is defense-in-depth, not load-bearing */ }
+        catch (Exception ex) { Trace.WriteLine($"McpAuthToken: best-effort directory ACL restrict failed for {dir}: {ex.Message}"); }
     }
 
     public static void TryRestrictSensitiveFileAcl(string path)
@@ -188,7 +205,7 @@ public static class McpAuthToken
         if (string.IsNullOrEmpty(path)) return;
         if (!OperatingSystem.IsWindows()) return;
         try { RestrictFileAclWindows(path); }
-        catch { /* see above */ }
+        catch (Exception ex) { Trace.WriteLine($"McpAuthToken: best-effort file ACL restrict failed for {path}: {ex.Message}"); }
     }
 
     private static void TryRestrictDirectoryAcl(string dir) => TryRestrictDataDirectoryAcl(dir);

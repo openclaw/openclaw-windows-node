@@ -1,12 +1,15 @@
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
 
@@ -116,7 +119,13 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void PersistAutoStart()
+    private void PersistAutoStart() =>
+        AsyncEventHandlerGuard.Run(
+            PersistAutoStartAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(PersistAutoStart));
+
+    private async Task PersistAutoStartAsync()
     {
         if (_loading || CurrentApp.Settings == null) return;
         _saving = true;
@@ -124,7 +133,7 @@ public sealed partial class SettingsPage : Page
         {
             CurrentApp.Settings.AutoStart = AutoStartToggle.IsOn;
             CurrentApp.Settings.Save();
-            AutoStartManager.SetAutoStart(CurrentApp.Settings.AutoStart);
+            await AutoStartManager.SetAutoStartAsync(CurrentApp.Settings.AutoStart);
             ((IAppCommands)CurrentApp).NotifySettingsSaved();
             ShowSavedIndicator();
         }
@@ -201,10 +210,13 @@ public sealed partial class SettingsPage : Page
     private void LoadGatewaySection(SettingsManager settings)
     {
         var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
+        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive());
 
         _localGatewayInstalled = File.Exists(setupStatePath)
             || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);
 
+        OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
+            ? Visibility.Visible : Visibility.Collapsed;
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
         // MSIX warning: Path A (conservative) — show when packaged AND gateway installed.
@@ -212,17 +224,26 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>
-    /// Returns Visible when a local gateway exists OR an uninstall has been initiated this
-    /// view session (latch). The latch prevents the section from collapsing mid-flight when
+    /// Returns Visible for the installed-gateway management card when a local gateway exists
+    /// OR an uninstall has been initiated this view session (latch). The latch prevents the
+    /// card from collapsing mid-flight when
     /// the engine deletes setup-state.json before the result InfoBar is shown.
-    /// Resets on page navigation — section hides again on clean Settings re-open.
+    /// Resets on page navigation — the card hides again on clean Settings re-open.
     /// </summary>
     private Visibility ComputeLocalGatewaySectionVisibility()
     {
-        var visibility = (_localGatewayInstalled || _uninstallInitiatedThisSession)
+        return (_localGatewayInstalled || _uninstallInitiatedThisSession)
             ? Visibility.Visible : Visibility.Collapsed;
-        LocalGatewaySectionHeader.Visibility = visibility;
-        return visibility;
+    }
+
+    private void OnOpenLocalGatewaySetup(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).ShowOnboarding();
+    }
+
+    private void OnOpenGatewayWizard(object sender, RoutedEventArgs e)
+    {
+        ((IAppCommands)CurrentApp).ShowGatewayWizard();
     }
 
     private void OnTestNotification(object sender, RoutedEventArgs e)
@@ -234,7 +255,10 @@ public sealed partial class SettingsPage : Page
                 .AddText("This is a test notification from OpenClaw settings.")
                 .Show();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.Warn($"SettingsPage: Test notification failed: {ex.Message}");
+        }
     }
 
     private void OnRemoveGateway(object sender, RoutedEventArgs e) =>
@@ -295,42 +319,43 @@ public sealed partial class SettingsPage : Page
         UninstallResultBar.IsOpen = false;
 
         _uninstallCts = new CancellationTokenSource();
-        System.Diagnostics.Process? proc = null;
+        Process? proc = null;
         string? jsonOutput = null;
         try
         {
-            var setupExe = App.ResolveSetupEngineUiPath()
-                ?? throw new FileNotFoundException("SetupEngine.UI not found (searched app dir and sibling project output)");
+            var exePath = ResolveCurrentExecutablePath()
+                ?? throw new FileNotFoundException("OpenClaw tray executable could not be resolved for local gateway removal.");
 
             jsonOutput = Path.Combine(Path.GetTempPath(), $"openclaw-uninstall-{Guid.NewGuid():N}.json");
 
-            var psi = new System.Diagnostics.ProcessStartInfo(setupExe)
+            var psi = new ProcessStartInfo(exePath)
             {
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
             };
-            psi.ArgumentList.Add("--headless");
             psi.ArgumentList.Add("--uninstall");
             psi.ArgumentList.Add("--confirm-destructive");
             psi.ArgumentList.Add("--json-output");
             psi.ArgumentList.Add(jsonOutput);
 
-            proc = System.Diagnostics.Process.Start(psi)!;
+            proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenClaw uninstall process.");
             await proc.WaitForExitAsync(_uninstallCts.Token);
 
             if (proc.ExitCode == 0)
             {
+                CurrentApp.Registry?.Load();
+                OpenClawOnboardCard.Visibility = Visibility.Collapsed;
                 ApplyUninstallUiState(UninstallUiState.Success);
                 UninstallResultBar.Severity = InfoBarSeverity.Success;
-                UninstallResultBar.Title = "Local gateway removed";
-                UninstallResultBar.Message = "Setup is reset; you can re-run setup from the tray menu.";
+                UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedTitle");
+                UninstallResultBar.Message = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedMessage");
                 UninstallResultBar.ActionButton = null;
                 UninstallResultBar.IsOpen = true;
             }
             else
             {
                 ApplyUninstallUiState(UninstallUiState.Failure);
-                var errorMsg = "Removal completed with errors. Check logs for details.";
+                var errorMsg = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalErrorsMessage");
                 if (File.Exists(jsonOutput))
                 {
                     try
@@ -340,13 +365,17 @@ public sealed partial class SettingsPage : Page
                         if (doc.RootElement.TryGetProperty("message", out var msg) && msg.GetString() is { Length: > 0 } m)
                             errorMsg = m;
                     }
-                    catch { /* best effort */ }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"SettingsPage: Failed to parse uninstall result JSON '{jsonOutput}': {ex.Message}");
+                    }
                 }
                 ShowUninstallError(errorMsg);
             }
 
             // Clean up temp file
-            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to delete uninstall result file '{jsonOutput}': {ex.Message}"); }
         }
         catch (OperationCanceledException)
         {
@@ -358,26 +387,46 @@ public sealed partial class SettingsPage : Page
                     await proc.WaitForExitAsync(CancellationToken.None);
                 }
             }
-            catch { /* best effort cancellation cleanup */ }
+            catch (Exception ex)
+            {
+                Logger.Warn($"SettingsPage: Failed to stop uninstall process during cancellation: {ex.Message}");
+            }
 
             ApplyUninstallUiState(UninstallUiState.Failure);
             UninstallResultBar.Severity = InfoBarSeverity.Warning;
-            UninstallResultBar.Title = "Removal cancelled";
-            UninstallResultBar.Message = "Gateway may be in a partially-removed state. Review logs or retry.";
+            UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalCancelledTitle");
+            UninstallResultBar.Message = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalCancelledMessage");
             UninstallResultBar.ActionButton = null;
             UninstallResultBar.IsOpen = true;
         }
         catch (Exception ex)
         {
+            Logger.Warn($"SettingsPage: gateway uninstall failed: {ex}");
             ApplyUninstallUiState(UninstallUiState.Failure);
             ShowUninstallError(ex.Message);
         }
         finally
         {
             proc?.Dispose();
-            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); } catch { }
+            try { if (jsonOutput is not null && File.Exists(jsonOutput)) File.Delete(jsonOutput); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to delete uninstall result file '{jsonOutput}': {ex.Message}"); }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
+        }
+    }
+
+    private static string? ResolveCurrentExecutablePath()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
+            return Environment.ProcessPath;
+
+        try
+        {
+            return Process.GetCurrentProcess().MainModule?.FileName;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -387,14 +436,15 @@ public sealed partial class SettingsPage : Page
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenClawTray", "Logs");
 
-        var viewLogsButton = new Button { Content = "View Logs" };
+        var viewLogsButton = new Button { Content = LocalizationHelper.GetString("SettingsPage_ViewLogs") };
         viewLogsButton.Click += (_, _) =>
         {
-            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); } catch { }
+            try { System.Diagnostics.Process.Start("explorer.exe", logsPath); }
+            catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to open logs folder '{logsPath}': {ex.Message}"); }
         };
 
         UninstallResultBar.Severity = InfoBarSeverity.Error;
-        UninstallResultBar.Title = "Removal failed";
+        UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovalFailedTitle");
         UninstallResultBar.Message = message;
         UninstallResultBar.ActionButton = viewLogsButton;
         UninstallResultBar.IsOpen = true;
@@ -406,7 +456,7 @@ public sealed partial class SettingsPage : Page
         {
             case UninstallUiState.Idle:
             case UninstallUiState.Failure:
-                RemoveGatewayButton.Content = "Remove Local Gateway";
+                RemoveGatewayButton.Content = LocalizationHelper.GetString("SettingsPage_RemoveLocalGatewayButton");
                 RemoveGatewayButton.IsEnabled = true;
                 RemoveGatewayButton.Visibility = Visibility.Visible;
                 GatewayBodyText.Text = GatewayIdleBodyText;
@@ -424,13 +474,13 @@ public sealed partial class SettingsPage : Page
                 });
                 sp.Children.Add(new TextBlock
                 {
-                    Text = "Removing distro\u2026",
+                    Text = LocalizationHelper.GetString("SettingsPage_RemovingDistro"),
                     VerticalAlignment = VerticalAlignment.Center
                 });
                 RemoveGatewayButton.Content = sp;
                 RemoveGatewayButton.IsEnabled = false;
                 RemoveGatewayButton.Visibility = Visibility.Visible;
-                GatewayBodyText.Text = "Removing the local gateway. This may take 10\u201330 seconds\u2026";
+                GatewayBodyText.Text = LocalizationHelper.GetString("SettingsPage_RemovingLocalGatewayMessage");
                 break;
             }
 

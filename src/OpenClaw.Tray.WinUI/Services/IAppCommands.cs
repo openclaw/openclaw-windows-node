@@ -9,13 +9,13 @@ internal interface IAppCommands
 {
     void OpenDashboard(string? path = null);
     void Navigate(string pageTag);
-    void Navigate(string pageTag, string? originTag);
     void Reconnect();
     void Disconnect();
     void ShowVoiceOverlay();
     void ShowChat();
     void CheckForUpdates();
     void ShowOnboarding();
+    void ShowGatewayWizard();
     void ShowConnectionStatus();
     void NotifySettingsSaved();
 }

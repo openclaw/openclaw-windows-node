@@ -57,11 +57,14 @@ public sealed class SshTunnelService : ISshTunnelManager
         => EnsureStarted(user, host, remotePort, localPort, includeBrowserProxyForward: false);
 
     public void EnsureStarted(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward)
+        => EnsureStarted(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort: 22);
+
+    public void EnsureStarted(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward, int sshPort)
     {
         user = user.Trim();
         host = host.Trim();
 
-        var spec = BuildSpec(user, host, remotePort, localPort, includeBrowserProxyForward);
+        var spec = BuildSpec(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort);
 
         if (IsRunning && string.Equals(_lastSpec, spec, StringComparison.Ordinal))
         {
@@ -71,7 +74,7 @@ public sealed class SshTunnelService : ISshTunnelManager
 
         Stop();
         Status = TunnelStatus.Starting;
-        StartProcess(user, host, remotePort, localPort, includeBrowserProxyForward);
+        StartProcess(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort);
         _lastSpec = spec;
     }
 
@@ -103,7 +106,8 @@ public sealed class SshTunnelService : ISshTunnelManager
         }
         finally
         {
-            try { _process.Dispose(); } catch { }
+            try { _process.Dispose(); }
+            catch (Exception disposeEx) { _logger.Debug($"SshTunnelService.Stop: process dispose failed: {disposeEx.Message}"); }
             _process = null;
             _lastSpec = null;
             CurrentBrowserProxyLocalPort = 0;
@@ -122,12 +126,12 @@ public sealed class SshTunnelService : ISshTunnelManager
         Status = TunnelStatus.NotConfigured;
     }
 
-    private void StartProcess(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward)
+    private void StartProcess(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward, int sshPort)
     {
         var psi = new ProcessStartInfo
         {
             FileName = "ssh",
-            Arguments = SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort, includeBrowserProxyForward),
+            Arguments = SshTunnelCommandLine.BuildArguments(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -169,7 +173,8 @@ public sealed class SshTunnelService : ISshTunnelManager
                 LastError = $"SSH tunnel exited unexpectedly with code {exitCode}.";
                 StartedAtUtc = null;
                 Status = TunnelStatus.Failed;
-                try { process.Dispose(); } catch { }
+                try { process.Dispose(); }
+                catch (Exception disposeEx) { _logger.Debug($"SshTunnelService: process dispose after unexpected exit failed: {disposeEx.Message}"); }
                 _process = null;
                 _lastSpec = null;
                 CurrentBrowserProxyLocalPort = 0;
@@ -206,15 +211,15 @@ public sealed class SshTunnelService : ISshTunnelManager
         LastError = null;
         Status = TunnelStatus.Up;
 
-        _logger.Info($"SSH tunnel started: 127.0.0.1:{localPort} -> 127.0.0.1:{remotePort} via {user}@{host}");
+        _logger.Info($"SSH tunnel started: 127.0.0.1:{localPort} -> 127.0.0.1:{remotePort} via {user}@{host}:{sshPort}");
         if (includeBrowserProxyForward)
         {
-            _logger.Info($"SSH tunnel browser proxy forward started: 127.0.0.1:{localPort + 2} -> 127.0.0.1:{remotePort + 2} via {user}@{host}");
+            _logger.Info($"SSH tunnel browser proxy forward started: 127.0.0.1:{localPort + 2} -> 127.0.0.1:{remotePort + 2} via {user}@{host}:{sshPort}");
         }
     }
 
-    private static string BuildSpec(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward)
-        => $"{user}@{host}:{localPort}:{remotePort}:browserProxy={includeBrowserProxyForward}";
+    private static string BuildSpec(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward, int sshPort)
+        => $"{user}@{host}:{sshPort}:{localPort}:{remotePort}:browserProxy={includeBrowserProxyForward}";
 
     public void Dispose()
     {
@@ -223,7 +228,7 @@ public sealed class SshTunnelService : ISshTunnelManager
 
     public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
     {
-        EnsureStarted(config.User, config.Host, config.RemotePort, config.LocalPort, config.IncludeBrowserProxyForward);
+        EnsureStarted(config.User, config.Host, config.RemotePort, config.LocalPort, config.IncludeBrowserProxyForward, config.SshPort);
         var localUrl = $"ws://localhost:{config.LocalPort}";
         return Task.FromResult(localUrl);
     }

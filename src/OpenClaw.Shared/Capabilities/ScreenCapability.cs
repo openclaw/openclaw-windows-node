@@ -46,7 +46,14 @@ public class ScreenCapability : NodeCapabilityBase
 
     private async Task<NodeInvokeResponse> HandleCaptureAsync(NodeInvokeRequest request)
     {
-        var format = GetStringArg(request.Args, "format", "png");
+        // The format is interpolated into the data URI, so validate it before
+        // invoking the capture backend.
+        var requestedFormat = GetStringArg(request.Args, "format", "png");
+        if (!TryNormalizeSnapshotFormat(requestedFormat, out var format))
+        {
+            return Error("Unsupported screen snapshot format. Supported formats: png, jpeg.");
+        }
+
         var maxWidth = Clamp(GetIntArg(request.Args, "maxWidth", 1920), MinDimension, MaxScreenWidth);
         var quality = Clamp(GetIntArg(request.Args, "quality", 80), MinQuality, MaxQuality);
         var monitor = GetIntArg(request.Args, "monitor", 0);
@@ -64,17 +71,18 @@ public class ScreenCapability : NodeCapabilityBase
         {
             var result = await CaptureRequested(new ScreenCaptureArgs
             {
-                Format = format ?? "png",
+                Format = format,
                 MaxWidth = maxWidth,
                 Quality = quality,
                 MonitorIndex = screenIndex,
                 IncludePointer = includePointer
             });
-            
-            var image = $"data:image/{result.Format.ToLowerInvariant()};base64,{result.Base64}";
+
+            // Use the validated format for the MIME type instead of the backend echo.
+            var image = $"data:image/{format};base64,{result.Base64}";
             return Success(new 
             { 
-                format = result.Format,
+                format,
                 width = result.Width,
                 height = result.Height,
                 base64 = result.Base64,
@@ -85,6 +93,30 @@ public class ScreenCapability : NodeCapabilityBase
         {
             Logger.Error("Screen capture failed", ex);
             return Error("Capture failed");
+        }
+    }
+
+    // Keep encoded bytes and advertised MIME type aligned.
+    internal static bool TryNormalizeSnapshotFormat(string? requested, out string normalized)
+    {
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            normalized = "png";
+            return true;
+        }
+
+        switch (requested.Trim().ToLowerInvariant())
+        {
+            case "png":
+                normalized = "png";
+                return true;
+            case "jpeg":
+            case "jpg":
+                normalized = "jpeg";
+                return true;
+            default:
+                normalized = "png";
+                return false;
         }
     }
 
@@ -196,4 +228,3 @@ public class ScreenRecordResult
     public int Height { get; set; }
     public bool HasAudio { get; set; }
 }
-

@@ -10,20 +10,6 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <!-- Inline back link — only shown when the user arrived via a
-                 cross-page link from Connection. Set by PermissionsPage.Initialize
-                 based on HubWindow.LastNavigationOrigin. -->
-            <HyperlinkButton x:Name="BackToConnectionLink"
-                             Click="OnBackToConnectionClicked"
-                             Padding="0" Margin="0,0,0,4"
-                             Visibility="Collapsed"
-                             AutomationProperties.AutomationId="BackToConnectionLink">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon Glyph="&#xE72B;" FontSize="12"/>
-                    <TextBlock x:Uid="PermissionsPage_BackToConnection" Text="Back to Connection"/>
-                </StackPanel>
-            </HyperlinkButton>
-
             <!-- ───────── Page header ───────── -->
             <TextBlock x:Uid="PermissionsPage_Permissions" Text="Permissions"
                        Style="{StaticResource TitleTextBlockStyle}"
@@ -252,7 +238,7 @@
                               SelectionChanged="OnDefaultActionChanged">
                         <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_23" Content="Deny" Tag="deny"/>
                         <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_24" Content="Allow" Tag="allow"/>
-                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="ask"/>
+                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="prompt"/>
                     </ComboBox>
                 </Grid>
             </Border>
@@ -297,7 +283,7 @@
 
                     <!-- Empty state — visible when there are no rules -->
                     <TextBlock x:Uid="PermissionsPage_NoRulesYetAdd" x:Name="RulesEmptyState"
-                               Text="No rules yet. Add a pattern below to allow or deny specific commands."
+                              Text="No rules yet. Add a pattern below to deny, allow, or ask for specific commands."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                HorizontalAlignment="Center"
@@ -364,8 +350,9 @@
                                  PlaceholderText="Command pattern (e.g. echo *)"
                                  FontFamily="Consolas"/>
                         <ComboBox Grid.Column="1" x:Name="NewRuleAction" MinWidth="100" SelectedIndex="0">
-                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="allow" Tag="allow"/>
-                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="deny" Tag="deny"/>
+                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="Deny" Tag="deny"/>
+                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="Allow" Tag="allow"/>
+                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_56" Content="Ask" Tag="prompt"/>
                         </ComboBox>
                         <Button Grid.Column="2" x:Uid="PermissionsPage_Button_57" Content="Add" Click="OnAddRule"/>
                     </Grid>

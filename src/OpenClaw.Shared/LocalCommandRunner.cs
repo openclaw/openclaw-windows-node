@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace OpenClaw.Shared;
 
 /// <summary>
-/// Executes commands locally via Process.Start (pwsh.exe / cmd.exe).
+/// Executes commands locally via Process.Start (pwsh.exe / powershell.exe / cmd.exe).
 /// This is the default runner. Swap with DockerCommandRunner, WslCommandRunner, etc.
 /// </summary>
 public class LocalCommandRunner : ICommandRunner
@@ -22,17 +22,27 @@ public class LocalCommandRunner : ICommandRunner
     {
         _logger = logger ?? NullLogger.Instance;
     }
+
+    public string ResolveEffectiveShell(string? requestedShell) => ResolveEffectiveShellName(requestedShell);
     
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
     {
-        var (fileName, arguments) = BuildProcessArgs(request);
-        
-        _logger.Info($"[EXEC] {fileName} {arguments}");
-        
+        ExecutionPlan plan;
+        try
+        {
+            plan = PlanExecution(request);
+        }
+        catch (ArgumentException ex)
+        {
+            // Fail-closed: an invalid approved argv (empty, relative, or batch
+            // executable) must not fall back to a shell or crash the host.
+            _logger.Error($"[EXEC] Rejected command: {ex.Message}");
+            return new CommandResult { Stderr = ex.Message, ExitCode = -1 };
+        }
+
         var psi = new ProcessStartInfo
         {
-            FileName = fileName,
-            Arguments = arguments,
+            FileName = plan.FileName,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -40,6 +50,21 @@ public class LocalCommandRunner : ICommandRunner
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
+
+        if (plan.IsDirectArgv)
+        {
+            // The approved argv reaches the process verbatim via ArgumentList, with
+            // no shell re-parsing it. Log the arg count, not the values — args may
+            // carry secrets.
+            foreach (var arg in plan.ArgList!)
+                psi.ArgumentList.Add(arg);
+            _logger.Info($"[EXEC] {plan.FileName} ({plan.ArgList!.Count} args, direct argv)");
+        }
+        else
+        {
+            psi.Arguments = plan.Arguments;
+            _logger.Info($"[EXEC] {plan.FileName} {plan.Arguments}");
+        }
         
         if (!string.IsNullOrEmpty(request.Cwd))
         {
@@ -132,7 +157,7 @@ public class LocalCommandRunner : ICommandRunner
         var drainTask = Task.Run(() =>
         {
             try { process.WaitForExit(); }
-            catch { /* process may already be gone */ }
+            catch (Exception drainEx) { _logger.Debug($"LocalCommandRunner: WaitForExit during output drain threw: {drainEx.Message}"); }
         });
         if (await Task.WhenAny(drainTask, Task.Delay(OutputDrainTimeoutMs, CancellationToken.None)) != drainTask)
         {
@@ -162,9 +187,57 @@ public class LocalCommandRunner : ICommandRunner
         return result;
     }
     
-    private static (string fileName, string arguments) BuildProcessArgs(CommandRequest request)
+    /// <summary>
+    /// Decides how the process is launched: direct-argv (no shell) when the request
+    /// carries an approved <see cref="CommandRequest.Argv"/>, otherwise the legacy
+    /// shell-wrapped path. Kept separate from <see cref="RunAsync"/> so the decision
+    /// is unit-testable without spawning a process.
+    /// </summary>
+    internal static ExecutionPlan PlanExecution(CommandRequest request)
     {
-        var shell = request.Shell ?? "powershell";
+        // Argv set (non-null) means the caller approved a direct-argv execution and
+        // it takes precedence (ICommandRunner contract). An empty argv is a malformed
+        // approved payload, not a request to fall back to the shell — fail closed.
+        if (request.Argv is { } argv)
+        {
+            if (argv.Count == 0)
+                throw new ArgumentException("Direct-argv mode requires a non-empty argv.", nameof(request));
+            ValidateDirectExecutable(argv[0]);
+            return ExecutionPlan.Direct(argv);
+        }
+
+        var (fileName, arguments) = BuildProcessArgs(request);
+        return ExecutionPlan.Shell(fileName, arguments);
+    }
+
+    /// <summary>
+    /// Fail-closed guard for direct-argv mode. The approved executable must be a
+    /// fully-qualified path so Windows never guesses argv[0] from PATH/cwd (e.g. a
+    /// "C:\Program.exe" hijack), and must not be a batch script: .bat/.cmd cannot
+    /// run without cmd.exe, which re-parses arguments and breaks the verbatim-argv
+    /// guarantee. Both are bugs in the approval layer, not recoverable states —
+    /// throw rather than degrade to a shell.
+    /// </summary>
+    private static void ValidateDirectExecutable(string executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+            throw new ArgumentException("Direct-argv executable (argv[0]) must not be empty.", nameof(executable));
+
+        if (!Path.IsPathFullyQualified(executable))
+            throw new ArgumentException(
+                $"Direct-argv executable must be a fully-qualified path, got: {executable}", nameof(executable));
+
+        var ext = Path.GetExtension(executable);
+        if (ext.Equals(".bat", StringComparison.OrdinalIgnoreCase) ||
+            ext.Equals(".cmd", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                $"Direct-argv mode cannot guarantee argv fidelity for batch scripts: {executable}", nameof(executable));
+    }
+
+    internal static (string fileName, string arguments) BuildProcessArgs(CommandRequest request, string? pathEnvVar = null)
+    {
+        var defaultShell = string.IsNullOrWhiteSpace(request.Shell);
+        var shell = ResolveEffectiveShellName(request.Shell, pathEnvVar);
         var command = request.Command;
         var isCmd = shell.Equals("cmd", StringComparison.OrdinalIgnoreCase);
         
@@ -179,10 +252,104 @@ public class LocalCommandRunner : ICommandRunner
         if (isCmd)
             return ("cmd.exe", $"/C {command}");
         if (shell.Equals("pwsh", StringComparison.OrdinalIgnoreCase))
-            return ("pwsh.exe", $"-NoProfile -NonInteractive -Command {command}");
-        return ("powershell.exe", $"-NoProfile -NonInteractive -Command {command}");
+        {
+            var pwshPath = ResolveOnPath("pwsh.exe", pathEnvVar);
+            if (pwshPath is not null || !defaultShell)
+                return (pwshPath ?? "pwsh.exe", $"-NoProfile -NonInteractive -Command {command}");
+        }
+
+        return (ResolveWindowsPowerShellExe(), $"-NoProfile -NonInteractive -Command {command}");
+    }
+
+    internal static string ResolveEffectiveShellName(string? requestedShell)
+        => ResolveEffectiveShellName(requestedShell, pathEnvVar: null);
+
+    private static string ResolveEffectiveShellName(string? requestedShell, string? pathEnvVar)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedShell))
+        {
+            return requestedShell.Trim().ToLowerInvariant() switch
+            {
+                "cmd" => "cmd",
+                "pwsh" => "pwsh",
+                "powershell" => "powershell",
+                _ => "powershell",
+            };
+        }
+
+        return "powershell";
+    }
+
+    private static string? ResolveOnPath(string executableName, string? pathEnvVar = null)
+    {
+        var path = pathEnvVar
+            ?? Environment.GetEnvironmentVariable("PATH")
+            ?? Environment.GetEnvironmentVariable("Path");
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(dir, executableName);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch
+            {
+                // Ignore malformed PATH entries.
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolveWindowsPowerShellExe()
+    {
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        return string.IsNullOrWhiteSpace(systemRoot)
+            ? "powershell.exe"
+            : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
     }
     
+    /// <summary>
+    /// How <see cref="LocalCommandRunner"/> will launch the process. Either direct-argv
+    /// (<see cref="ArgList"/> non-null, no shell) or shell-wrapped (<see cref="Arguments"/>).
+    /// </summary>
+    internal sealed class ExecutionPlan
+    {
+        public string FileName { get; }
+
+        /// <summary>Argv[1..] passed verbatim via ArgumentList. Non-null = direct-argv mode.</summary>
+        public IReadOnlyList<string>? ArgList { get; }
+
+        /// <summary>Single command-line string for the shell-wrapped legacy path.</summary>
+        public string? Arguments { get; }
+
+        public bool IsDirectArgv => ArgList is not null;
+
+        private ExecutionPlan(string fileName, IReadOnlyList<string>? argList, string? arguments)
+        {
+            FileName = fileName;
+            ArgList = argList;
+            Arguments = arguments;
+        }
+
+        public static ExecutionPlan Direct(IReadOnlyList<string> argv)
+        {
+            // argv preserved verbatim (no trimming).
+            var rest = new string[argv.Count - 1];
+            for (var i = 1; i < argv.Count; i++)
+                rest[i - 1] = argv[i];
+            return new ExecutionPlan(argv[0], rest, null);
+        }
+
+        public static ExecutionPlan Shell(string fileName, string arguments)
+            => new(fileName, null, arguments);
+    }
+
     private void KillProcess(Process process)
     {
         try

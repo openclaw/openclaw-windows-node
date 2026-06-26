@@ -47,16 +47,52 @@ public class CronPayloadShapeTests
     }
 
     [Fact]
-    public void CronRun_Payload_Uses_Id()
+    public void CronRun_Payload_Uses_JobId()
     {
         // Mirrors the wire object built by RunCronJobAsync
-        var payload = new { id = "job-789", force = true };
+        var payload = new { jobId = "job-789" };
         var el = Serialize(payload);
 
-        Assert.True(el.TryGetProperty("id", out var idProp));
+        Assert.True(el.TryGetProperty("jobId", out var idProp));
         Assert.Equal("job-789", idProp.GetString());
-        Assert.False(el.TryGetProperty("jobId", out _));
-        Assert.True(el.GetProperty("force").GetBoolean());
+        Assert.False(el.TryGetProperty("id", out _));
+        Assert.False(el.TryGetProperty("force", out _));
+    }
+
+    [Fact]
+    public void CronRun_Response_EmptyPayload_IsAcceptedLegacyAck()
+    {
+        var payload = Serialize(new { });
+
+        var result = OpenClawGatewayClient.ParseCronRunRequestResult(payload);
+
+        Assert.True(result.Accepted);
+        Assert.True(result.Enqueued);
+        Assert.Null(result.RunId);
+    }
+
+    [Fact]
+    public void CronRun_Response_DetailedEnqueue_PreservesRunId()
+    {
+        var payload = Serialize(new { ok = true, enqueued = true, runId = "manual:job:1" });
+
+        var result = OpenClawGatewayClient.ParseCronRunRequestResult(payload);
+
+        Assert.True(result.Accepted);
+        Assert.True(result.Enqueued);
+        Assert.Equal("manual:job:1", result.RunId);
+    }
+
+    [Fact]
+    public void CronRun_Response_ExplicitRanFalse_IsNotEnqueued()
+    {
+        var payload = Serialize(new { ok = true, ran = false, reason = "not-due" });
+
+        var result = OpenClawGatewayClient.ParseCronRunRequestResult(payload);
+
+        Assert.True(result.Accepted);
+        Assert.False(result.Enqueued);
+        Assert.Equal("not-due", result.Reason);
     }
 
     [Fact]

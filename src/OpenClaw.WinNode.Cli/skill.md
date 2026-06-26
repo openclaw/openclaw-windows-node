@@ -272,13 +272,27 @@ Speak text aloud on the Windows node.
 ```
 {
   "text": "string",           // required
-  "provider": "piper|windows|elevenlabs",  // optional, falls back to TtsProvider setting
+  "provider": "piper|windows|elevenlabs",  // optional; omit to use TtsProvider setting
   "voiceId": "string",        // optional, overrides the per-provider configured voice
   "model": "string",          // optional, ElevenLabs only
   "interrupt": false          // default false; true cuts off any in-progress playback
 }
 ```
-Returns `{ spoken, provider, contentType, durationMs }`.
+When `provider` is omitted and the configured provider isn't usable (no
+ElevenLabs key, Piper voice not downloaded), the node falls back to Windows
+TTS so playback still happens. Explicit `provider` requests stay strict and
+do not silently reroute. Returns `{ spoken, provider, requestedProvider, fellBack, contentType, durationMs }`
+where `provider` is the provider that actually spoke.
+
+### tts.status
+TTS provider readiness. No params. Carries no PII (no voice ids, no key
+fragments, no device names).
+Returns `{ configuredProvider, effectiveProvider, willFallBack, providers[{ provider, readiness, isReady }] }`
+where `effectiveProvider` is what would run now after fallback and `readiness`
+∈ `"ready" | "needs-api-key" | "needs-voice" | "voice-not-downloaded" | "unavailable"`.
+The configured/effective view reflects configured defaults only; explicit
+`tts.speak` provider requests stay strict and may not match the default
+snapshot.
 
 ## App control (app.*)
 

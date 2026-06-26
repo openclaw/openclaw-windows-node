@@ -71,6 +71,15 @@ public sealed class SetupConfig
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = true
     };
+
+    /// <summary>
+    /// Minimal write-only options for producing human-readable JSON files.
+    /// Shared to avoid repeated heap allocation at call sites.
+    /// </summary>
+    internal static readonly JsonSerializerOptions JsonWriteOptions = new()
+    {
+        WriteIndented = true
+    };
 }
 
 // ─── WSL Configuration ───
@@ -134,7 +143,7 @@ public sealed class CapabilitiesConfig
         if (Screen) result.Add(("screen", ["screen.snapshot", "screen.record"]));
         if (Camera) result.Add(("camera", ["camera.list", "camera.snap", "camera.clip"]));
         if (Location) result.Add(("location", ["location.get"]));
-        if (Tts) result.Add(("tts", ["tts.speak"]));
+        if (Tts) result.Add(("tts", ["tts.speak", "tts.status"]));
         if (Stt) result.Add(("stt", ["stt.transcribe", "stt.listen", "stt.status"]));
         if (Device) result.Add(("device", ["device.info", "device.status"]));
         if (Browser) result.Add(("browser", ["browser.proxy"]));
@@ -220,7 +229,7 @@ public sealed class TraySettingsConfig
             settings.TryAdd(kvp.Key, kvp.Value);
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-        var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(settingsPath, json);
     }
 }

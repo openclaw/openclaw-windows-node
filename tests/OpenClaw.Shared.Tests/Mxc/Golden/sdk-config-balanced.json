@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-alpha",
+  "version": "0.7.0-alpha",
   "containerId": "golden-balanced",
   "lifecycle": {
     "destroyOnExit": true,
@@ -14,15 +14,6 @@
       "C:\\Golden\\Documents",
       "C:\\Golden\\Downloads",
       "C:\\Golden\\Desktop"
-    ],
-    "deniedPaths": [
-      "C:\\Golden\\Settings",
-      "C:\\Golden\\.ssh",
-      "C:\\Golden\\Chrome",
-      "C:\\Golden\\Edge",
-      "C:\\Golden\\Brave",
-      "C:\\Golden\\Firefox",
-      "C:\\Golden\\PSReadLine"
     ]
   },
   "ui": {
@@ -34,7 +25,7 @@
     "defaultPolicy": "allow",
     "enforcementMode": "capabilities"
   },
-  "appContainer": {
+  "processContainer": {
     "leastPrivilege": false,
     "capabilities": [
       "internetClient"

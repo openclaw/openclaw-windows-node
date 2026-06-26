@@ -31,6 +31,7 @@ public sealed class ConnectionManagerWindowsNodeConnectorTests : IDisposable
     public void Dispose()
     {
         _manager.Dispose();
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 
@@ -209,6 +210,7 @@ public sealed class ConnectionManagerWindowsNodeConnectorTests : IDisposable
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
 #pragma warning disable CS0067
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
 
@@ -223,6 +225,17 @@ public sealed class ConnectionManagerWindowsNodeConnectorTests : IDisposable
             PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(PairingStatus.Paired, deviceId: "stub-node"));
             StatusChanged?.Invoke(this, ConnectionStatus.Connected);
             return Task.CompletedTask;
+        }
+
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
         }
 
         public Task DisconnectAsync()

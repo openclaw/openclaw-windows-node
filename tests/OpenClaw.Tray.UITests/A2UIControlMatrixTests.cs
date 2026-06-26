@@ -243,7 +243,7 @@ public sealed class A2UIControlMatrixTests
     }
 
     [Fact]
-    public Task Icon_RendersFontIcon_WithSegoeFluentGlyph() => RunAsync(
+    public Task Icon_RendersFontIcon_WithSymbolThemeFontFamily() => RunAsync(
         "Icon → FontIcon",
         Surface("s", "i", new[]
         {
@@ -252,7 +252,8 @@ public sealed class A2UIControlMatrixTests
         root =>
         {
             var fi = FindLogical<FontIcon>(root).Single();
-            Assert.Equal("Segoe Fluent Icons", fi.FontFamily.Source);
+            var expectedFont = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];
+            Assert.Equal(expectedFont.Source, fi.FontFamily.Source);
             // "search" maps to the Segoe MDL2 Search glyph (U+E721).
             Assert.Equal("", fi.Glyph);
         });
@@ -489,6 +490,62 @@ public sealed class A2UIControlMatrixTests
             Assert.Equal(ListViewSelectionMode.Multiple, lv.SelectionMode);
             Assert.Equal(4, lv.Items.Count);
         });
+
+    /// <summary>
+    /// End-to-end proof that a v0.8 <c>dataModelUpdate.valueArray</c> flows
+    /// through parser → <c>DataModelStore</c> → renderer. A multi-select
+    /// MultipleChoice bound to <c>/picked</c> is seeded with <c>["g","b"]</c>
+    /// via <c>valueArray</c>; the rendered ListView must preselect those two
+    /// options, and the surface snapshot must carry the array. Before the fix
+    /// the parser dropped the value and nothing was selected.
+    /// </summary>
+    [Fact]
+    public async Task MultipleChoice_Multi_ValueArraySeed_PreselectsAndSnapshots()
+    {
+        var surface = Surface("s", "mc", new[]
+        {
+            Component("mc", "MultipleChoice", new()
+            {
+                ["maxAllowedSelections"] = 3,
+                ["selections"] = Path("/picked"),
+                ["options"] = new System.Text.Json.Nodes.JsonArray
+                {
+                    Option("Red", "r"),
+                    Option("Green", "g"),
+                    Option("Blue", "b"),
+                },
+            }),
+        });
+        // Insert the valueArray seed between surfaceUpdate and beginRendering so
+        // the initial render reads it (the agent's typical "seed then render").
+        var nl = surface.IndexOf('\n');
+        var jsonl = surface.Substring(0, nl) + "\n"
+            + DataUpdateStringArray("s", "picked", "g", "b")
+            + surface.Substring(nl);
+
+        await _ui.PauseAsync("MultipleChoice multi ← valueArray seed");
+        await _ui.ResetContainerAsync();
+        await _ui.RunOnUIAsync(() =>
+        {
+            var harness = BuildHarness(_ui);
+            harness.Router.Push(jsonl);
+            Assert.NotNull(harness.LastSurface);
+
+            // Parser → store → snapshot round-trip: the array landed in the model.
+            var snapshot = harness.LastSurface!.GetSnapshot();
+            var picked = Assert.IsType<System.Text.Json.Nodes.JsonArray>(snapshot["dataModel"]!["picked"]);
+            Assert.Equal(new[] { "g", "b" }, picked.Select(n => n!.GetValue<string>()));
+
+            // Renderer read it: Green + Blue are preselected.
+            var lv = FindLogical<ListView>(harness.LastSurface.RootElement).Single();
+            var selected = lv.SelectedItems.OfType<ListViewItem>()
+                .Select(i => i.Tag as string)
+                .OrderBy(s => s, System.StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(new[] { "b", "g" }, selected);
+        });
+        await _ui.PauseAsync();
+    }
 
     [Fact]
     public Task Slider_LiteralValue_AppliesRangeAndValue() => RunAsync(

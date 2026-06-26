@@ -166,13 +166,19 @@ Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `Set
 5. Gateway returns `hello-ok.auth.deviceToken` after pairing
 6. Connection manager persists the device token to the identity file
 
-**Auto-approval**: When the node requires pairing and the operator has `operator.admin` or `operator.pairing` scope, `GatewayConnectionManager` automatically approves the node pairing request, waits 1 second, then reconnects the node.
+**Approval boundaries**: `GatewayConnectionManager` leaves node-pair command-trust requests and reapproval pending for explicit operator approval. It may automatically approve and reconnect only an explicitly typed device-pair request used for a device role upgrade.
+
+## Inbound pairing approval (operator)
+
+When **another** device or node requests pairing, the gateway broadcasts `device.pair.requested` / `node.pair.requested` to operators with pairing scope. `OpenClawGatewayClient` refreshes the pending lists and raises `DevicePairListUpdated` / `NodePairListUpdated`, which `GatewayService` forwards via its `PairListsChanged` event.
+
+`PairingApprovalCoordinator` (tray) reconciles those snapshots through the pure `PairingApprovalQueue` (OpenClaw.Connection) into add/resolve deltas, de-duplicating, suppressing already-decided requests, and filtering out the local node's own pending request (handled by the auto-approve path above). For genuinely new requests — when `ShowPairingApprovalDialog` is enabled and the operator holds pairing scope — it raises `ApprovalRequested`, and the app presents a focused **`PairingApprovalDialog`** plus an awareness toast (with a "Review" action). The dialog shows the requester's identity and the **operator scopes being granted** (mapped to friendly text by `PairingScopeDescriptions`), with Approve / Reject / Decide-later. Approve is briefly disabled on each new request to prevent click-through. Approve/Reject call the `IOperatorGatewayClient.{Device,Node}Pair{Approve,Reject}Async` RPCs; the queue advances and the dialog closes when empty. The existing Connections-page "Pending approvals" banner remains as the passive fallback when the dialog is disabled. Pure queue/scope logic is unit-tested in `OpenClaw.Connection.Tests`.
 
 ## SSH tunnel integration
 
 `SshTunnelService` manages an SSH local port-forward process. `SshTunnelManager` wraps it behind `ISshTunnelManager` for the connection manager.
 
-When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`.
+When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`. The config stores the SSH daemon port (`sshPort`, default `22`) separately from the remote gateway port forwarded by `-L`.
 
 `SshTunnelSnapshot` provides a read-only point-in-time view of tunnel state for UI consumption (avoids coupling UI to the mutable service).
 
@@ -224,7 +230,7 @@ Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 - `GatewayRegistryTests` / `GatewayRegistryMigrationTests` — persistence, migration
 - `InteractiveGatewayCredentialResolverTests` — HTTP credential resolution
 - `NodeConnectorTests` — node client lifecycle
-- `PairingFlowTests` / `NodePairAutoApproveTests` — pairing lifecycle, auto-approve
+- `PairingFlowTests` / `NodePairAutoApproveTests` — pairing lifecycle, device role-upgrade auto-approval, and manual node command-trust boundary
 - `SetupCodeFlowTests` / `SetupCodeDecoderTests` — QR code → connect flow
 - `StaleEventGuardTests` — generation-guarded event handling
 - `SettingsChangeImpactTests` — settings change classification

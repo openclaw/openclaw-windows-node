@@ -8,20 +8,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
+    <InternalsVisibleTo Include="OpenClaw.Tray.WinUI" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
   <!-- Audio / Speech-to-Text (platform-agnostic components) -->
   <ItemGroup>
     <PackageReference Include="Whisper.net" Version="1.9.0" />
-    <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.26.0" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.0" />
   </ItemGroup>
 
 </Project>
-
 

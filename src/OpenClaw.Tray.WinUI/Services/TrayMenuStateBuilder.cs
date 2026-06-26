@@ -2,7 +2,9 @@
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Windows;
 using System;
@@ -304,7 +306,10 @@ internal sealed class TrayMenuStateBuilder
 
         // Setup Guide / Reconfigure entry — label flips based on whether prior
         // configuration exists; routes to the existing "setup" action handler.
-        menu.AddMenuItem(_snapshot.SetupMenuLabel, FluentIconCatalog.Build(FluentIconCatalog.Setup), "setup");
+        if (_snapshot.ShowSetupMenuEntry)
+        {
+            menu.AddMenuItem(_snapshot.SetupMenuLabel, FluentIconCatalog.Build(FluentIconCatalog.Setup), "setup");
+        }
 
         // ── Footer ──
         menu.AddSeparator();
@@ -371,6 +376,7 @@ internal sealed class TrayMenuStateBuilder
         var filled = new Microsoft.UI.Xaml.Controls.Border
         {
             Background = accent,
+            CornerRadius = new CornerRadius(3),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
             Opacity = p <= 0 ? 0 : 1,
@@ -656,7 +662,18 @@ internal sealed class TrayMenuStateBuilder
         // 2-row card:
         //   Row 0: {name}                                    {age}
         //   Row 1: {model}              [████░░░░] {used}/{ctx} ({pct}%)
-        var usedTokens = session.InputTokens + session.OutputTokens;
+        var usageText = ChatUsageFormatter.Format(new ChatThread
+        {
+            Id = session.Key,
+            Title = session.DisplayName ?? session.Key,
+            InputTokens = session.InputTokens,
+            OutputTokens = session.OutputTokens,
+            TotalTokens = session.TotalTokens,
+            ContextTokens = session.ContextTokens,
+        }) ?? "";
+        var usedTokens = session.TotalTokens > 0
+            ? session.TotalTokens
+            : session.InputTokens + session.OutputTokens;
         var contextTokens = session.ContextTokens > 0 ? session.ContextTokens : 200_000;
         var pct = usedTokens > 0 ? Math.Min(100.0, (double)usedTokens / contextTokens * 100.0) : 0.0;
 
@@ -723,7 +740,7 @@ internal sealed class TrayMenuStateBuilder
 
         var ratio = new TextBlock
         {
-            Text = $"{FormatTokenCount(usedTokens)}/{FormatTokenCount(contextTokens)} ({(int)pct}%)",
+            Text = usageText,
             Style = captionStyle, FontSize = 11, Foreground = secondaryText,
             VerticalAlignment = VerticalAlignment.Center,
             IsTextSelectionEnabled = false

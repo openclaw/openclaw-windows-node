@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -232,17 +233,10 @@ public sealed partial class UsagePage : Page
 
     private bool ShouldApplyUsageCost(GatewayCostUsageInfo cost)
     {
-        if (cost.Days <= 0)
-            return true;
-
-        // The gateway can compute the requested range inclusively (e.g. 8
-        // for a 7-day request). Allow ±1 so valid responses are not dropped.
-        if (Math.Abs(cost.Days - _currentPeriodDays) <= 1)
-            return true;
-
-        // If nothing has ever loaded, accept a mismatched period rather than
-        // leaving the page spinning forever when an older gateway ignores days.
-        return !_dailyCostLoading.HasLoaded;
+        return UsageCostApplicationPolicy.ShouldApply(
+            cost.Days,
+            _currentPeriodDays,
+            _dailyCostLoading.HasLoaded);
     }
 
     private void SyncSelectorToServerDays(int days)
@@ -330,8 +324,8 @@ public sealed partial class UsagePage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load usage data.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("UsagePage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
     }

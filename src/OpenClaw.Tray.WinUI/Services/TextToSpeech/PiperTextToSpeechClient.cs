@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
@@ -23,6 +24,10 @@ namespace OpenClawTray.Services;
 /// </summary>
 public sealed class PiperTextToSpeechClient : IDisposable
 {
+    private const string SherpaNativeLibrary = "sherpa-onnx-c-api";
+    private static readonly object s_nativeLibraryLock = new();
+    private static IntPtr s_nativeLibraryHandle;
+
     private readonly IOpenClawLogger _logger;
     private readonly string _voiceId;
     private readonly OfflineTts _tts;
@@ -53,6 +58,7 @@ public sealed class PiperTextToSpeechClient : IDisposable
         config.Model.Debug = 0;
         config.MaxNumSentences = 2;
 
+        EnsureNativeLibraryLoaded();
         _tts = new OfflineTts(config);
         _logger.Info($"Piper voice '{_voiceId}' loaded (sample rate {_tts.SampleRate} Hz, {config.Model.NumThreads} threads)");
     }
@@ -126,11 +132,34 @@ public sealed class PiperTextToSpeechClient : IDisposable
         return ms.ToArray();
     }
 
+    private static void EnsureNativeLibraryLoaded()
+    {
+        lock (s_nativeLibraryLock)
+        {
+            if (s_nativeLibraryHandle != IntPtr.Zero)
+                return;
+
+            if (!NativeLibrary.TryLoad(
+                    SherpaNativeLibrary,
+                    typeof(OfflineTts).Assembly,
+                    DllImportSearchPath.SafeDirectories,
+                    out s_nativeLibraryHandle))
+            {
+                throw new DllNotFoundException("Piper TTS native library could not be loaded.");
+            }
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        // SherpaOnnx suppresses its finalizer only after native cleanup succeeds.
+        // Suppress first so a cleanup failure cannot retry from the finalizer thread.
+        GC.SuppressFinalize(_tts);
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _tts.Dispose(); } catch { /* swallow */ }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _gate.Dispose(); } catch { /* swallow */ }
     }
 }

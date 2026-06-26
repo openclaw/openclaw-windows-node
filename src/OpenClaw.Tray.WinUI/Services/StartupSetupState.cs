@@ -40,9 +40,9 @@ internal static class StartupSetupState
                     return true;
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Best-effort scan
+            Logger.Debug($"Stored device token scan skipped a gateway directory: {ex.Message}");
         }
 
         return false;
@@ -79,6 +79,12 @@ internal static class StartupSetupState
         return HasStoredNodeDeviceToken(dataPath);
     }
 
+    internal static bool HasBootstrapGatewayRecord(GatewayRegistry? registry)
+    {
+        var active = registry?.GetActive();
+        return !string.IsNullOrWhiteSpace(active?.BootstrapToken);
+    }
+
     public static bool RequiresSetup(SettingsManager settings, string dataPath) =>
         RequiresSetup(settings, dataPath, registry: null);
 
@@ -91,7 +97,8 @@ internal static class StartupSetupState
 
         if (settings.EnableNodeMode)
         {
-            return !HasStoredNodeDeviceToken(dataPath);
+            return !HasStoredNodeDeviceToken(dataPath)
+                && !HasBootstrapGatewayRecord(registry);
         }
 
         if (registry is not null

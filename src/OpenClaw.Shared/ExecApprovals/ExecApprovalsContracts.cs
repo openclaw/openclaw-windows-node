@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace OpenClaw.Shared.ExecApprovals;
@@ -36,7 +37,6 @@ public sealed class ExecAllowlistEntry
     public Guid? Id { get; set; }
     public string? Pattern { get; set; }
     public double? LastUsedAt { get; set; }
-    public string? LastUsedCommand { get; set; }
     public string? LastResolvedPath { get; set; }
 }
 
@@ -52,7 +52,8 @@ public sealed class ExecApprovalsDefaults
 {
     public ExecSecurity? Security { get; set; }
     public ExecAsk? Ask { get; set; }
-    public ExecAsk? AskFallback { get; set; }
+    [JsonConverter(typeof(ExecSecurityFallbackConverter))]
+    public ExecSecurity? AskFallback { get; set; }
     public bool? AutoAllowSkills { get; set; }
 }
 
@@ -60,7 +61,8 @@ public sealed class ExecApprovalsAgent
 {
     public ExecSecurity? Security { get; set; }
     public ExecAsk? Ask { get; set; }
-    public ExecAsk? AskFallback { get; set; }
+    [JsonConverter(typeof(ExecSecurityFallbackConverter))]
+    public ExecSecurity? AskFallback { get; set; }
     public bool? AutoAllowSkills { get; set; }
     public List<ExecAllowlistEntry>? Allowlist { get; set; }
 }
@@ -73,13 +75,45 @@ public sealed class ExecApprovalsFile
     public Dictionary<string, ExecApprovalsAgent>? Agents { get; set; }
 }
 
+internal sealed class ExecSecurityFallbackConverter : JsonConverter<ExecSecurity?>
+{
+    public override ExecSecurity? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null) return null;
+        if (reader.TokenType != JsonTokenType.String) throw new JsonException("askFallback must be a string");
+        return reader.GetString()?.ToLowerInvariant() switch
+        {
+            "deny" or "always" => ExecSecurity.Deny,
+            "allowlist" or "on-miss" => ExecSecurity.Allowlist,
+            "full" or "off" => ExecSecurity.Full,
+            var value => throw new JsonException($"Unsupported askFallback value: {value}"),
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, ExecSecurity? value, JsonSerializerOptions options)
+    {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+        writer.WriteStringValue(value.Value switch
+        {
+            ExecSecurity.Deny => "deny",
+            ExecSecurity.Allowlist => "allowlist",
+            ExecSecurity.Full => "full",
+            _ => throw new JsonException($"Unsupported askFallback value: {value}"),
+        });
+    }
+}
+
 // ── Resolved/runtime contracts (not serialized) ───────────────────────────────
 
 public sealed class ExecApprovalsResolvedDefaults
 {
     public ExecSecurity Security { get; init; }
     public ExecAsk Ask { get; init; }
-    public ExecAsk AskFallback { get; init; }
+    public ExecSecurity AskFallback { get; init; }
     public bool AutoAllowSkills { get; init; }
 }
 

@@ -1,10 +1,10 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
+using OpenClaw.SetupEngine.UI;
 using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -104,14 +104,14 @@ public sealed partial class CompletePage : Page
 
     private void LaunchButton_Click(object sender, RoutedEventArgs e)
     {
-        // Register startup if toggled on
-        if (StartupToggle.Visibility == Visibility.Visible && StartupToggle.IsOn)
-            RegisterStartup();
-
-        // Launch tray on success, just close on failure
         if (LaunchButton.Content?.ToString() != "Close")
-            LaunchTray();
-        App.MainWindow?.Close();
+        {
+            var enableAutoStart = StartupToggle.Visibility == Visibility.Visible && StartupToggle.IsOn;
+            if (SetupWindow.Active?.RequestSetupCompleted(enableAutoStart) == true)
+                return;
+        }
+
+        SetupWindow.Active?.Close();
     }
 
     private void ViewLog_Click(object sender, RoutedEventArgs e)
@@ -119,35 +119,4 @@ public sealed partial class CompletePage : Page
         LogFileLauncher.RevealInExplorer(_logPath);
     }
 
-    private static void LaunchTray()
-    {
-        // Kill any existing tray instances so fresh one picks up new gateway
-        foreach (var proc in Process.GetProcessesByName("OpenClaw.Tray.WinUI"))
-        {
-            try { proc.Kill(); } catch { }
-        }
-
-        // Brief pause for process cleanup
-        Thread.Sleep(1000);
-
-        var trayPath = TrayExecutableResolver.Resolve();
-        if (trayPath != null)
-            Process.Start(new ProcessStartInfo(trayPath, "openclaw://chat") { UseShellExecute = true });
-        else
-            Process.Start(new ProcessStartInfo("openclaw://chat") { UseShellExecute = true });
-    }
-
-    private static void RegisterStartup()
-    {
-        try
-        {
-            var trayPath = TrayExecutableResolver.Resolve();
-            if (trayPath == null) return;
-
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", writable: true);
-            key?.SetValue("OpenClawTray", $"\"{Path.GetFullPath(trayPath)}\"");
-        }
-        catch { /* best effort */ }
-    }
 }

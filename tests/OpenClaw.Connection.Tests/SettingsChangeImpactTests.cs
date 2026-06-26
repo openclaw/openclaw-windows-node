@@ -9,6 +9,7 @@ public class SettingsChangeImpactTests
         bool useSshTunnel = false,
         string? sshTunnelUser = null,
         string? sshTunnelHost = null,
+        int sshTunnelSshPort = 22,
         int sshTunnelRemotePort = 0,
         int sshTunnelLocalPort = 0,
         bool enableNodeMode = false,
@@ -26,6 +27,7 @@ public class SettingsChangeImpactTests
         useSshTunnel,
         sshTunnelUser,
         sshTunnelHost,
+        sshTunnelSshPort,
         sshTunnelRemotePort,
         sshTunnelLocalPort,
         enableNodeMode,
@@ -76,6 +78,15 @@ public class SettingsChangeImpactTests
     {
         var prev = MakeSnapshot(gatewayUrl: "wss://test", useSshTunnel: false);
         var next = MakeSnapshot(gatewayUrl: "wss://test", useSshTunnel: true);
+        Assert.Equal(SettingsChangeImpact.OperatorReconnectRequired,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void SshTunnelSshPortChanged_ReturnsOperatorReconnect()
+    {
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", useSshTunnel: true, sshTunnelSshPort: 22);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", useSshTunnel: true, sshTunnelSshPort: 2222);
         Assert.Equal(SettingsChangeImpact.OperatorReconnectRequired,
             SettingsChangeClassifier.Classify(prev, next));
     }

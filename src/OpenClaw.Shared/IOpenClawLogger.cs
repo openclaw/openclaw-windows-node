@@ -10,6 +10,12 @@ public interface IOpenClawLogger
     void Debug(string message);
     void Warn(string message);
     void Error(string message, Exception? ex = null);
+
+    // Verbose diagnostic channel. Default implementation drops the call so
+    // existing implementers (tests, console logger, etc.) don't need to be
+    // updated. Implementations that have a backing log file can opt in and
+    // gate output behind a flag.
+    void Trace(string message) { }
 }
 
 /// <summary>

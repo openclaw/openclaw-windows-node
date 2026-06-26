@@ -5,6 +5,7 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Windows;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -16,6 +17,9 @@ public sealed partial class VoiceSettingsPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private VoiceService? _voiceService;
+    private AssistantBridgeService? _assistantBridgeService;
+    private CancellationTokenSource? _assistantRequestCts;
+    private int _assistantOperationVersion;
     private bool _suppressEvents = true; // suppress until Initialize/LoadSettings runs
     // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper
     // download (and vice versa). Each download type owns its own token.
@@ -33,9 +37,12 @@ public sealed partial class VoiceSettingsPage : Page
         {
             UpdateModelStatus();
             UpdatePiperVoiceState();
+            _ = RefreshAssistantAsync();
         };
         Unloaded += async (_, _) =>
         {
+            CancelAssistantRequest();
+
             if (App.Current is App app)
                 app.SpeakerMuteChanged -= OnAppSpeakerMuteChanged;
 
@@ -51,6 +58,7 @@ public sealed partial class VoiceSettingsPage : Page
     public void Initialize(VoiceService? voiceService)
     {
         _voiceService = voiceService;
+        _assistantBridgeService ??= new AssistantBridgeService(new AppLogger());
         if (App.Current is App app)
         {
             app.SpeakerMuteChanged -= OnAppSpeakerMuteChanged;
@@ -63,6 +71,248 @@ public sealed partial class VoiceSettingsPage : Page
         PiperPreviewLabel.Text = L("VoiceSettingsPage_PiperPreviewButtonContent");
         PreviewVoiceLabel.Text = L("VoiceSettingsPage_PreviewVoiceButtonContent");
         LoadSettings();
+        _ = RefreshAssistantAsync();
+    }
+
+    private void OnAssistantRefreshClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            RefreshAssistantAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnAssistantRefreshClick));
+
+    private void OnAssistantStartClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnAssistantStartClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnAssistantStartClick));
+
+    private async Task OnAssistantStartClickAsync()
+    {
+        var bridge = EnsureAssistantBridge();
+        var busyVersion = BeginAssistantOperation();
+        AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStarting");
+        AssistantDetailText.Text = L("VoiceSettingsPage_AssistantStartingDetail");
+        try
+        {
+            var result = await bridge.StartListenServiceAsync(NewAssistantRequestToken());
+            if (!result.Success)
+            {
+                AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStartFailed");
+                AssistantDetailText.Text = result.ErrorMessage;
+                return;
+            }
+
+            await RefreshAssistantAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            EndAssistantOperation(busyVersion);
+        }
+    }
+
+    private void OnAssistantStopClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnAssistantStopClickAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnAssistantStopClick));
+
+    private async Task OnAssistantStopClickAsync()
+    {
+        var bridge = EnsureAssistantBridge();
+        var busyVersion = BeginAssistantOperation();
+        AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStopping");
+        AssistantDetailText.Text = "";
+        try
+        {
+            var result = await bridge.StopListenServiceAsync(NewAssistantRequestToken());
+            if (!result.Success)
+            {
+                AssistantStatusText.Text = L("VoiceSettingsPage_AssistantStopFailed");
+                AssistantDetailText.Text = result.ErrorMessage;
+                return;
+            }
+
+            await RefreshAssistantAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            EndAssistantOperation(busyVersion);
+        }
+    }
+
+    private async Task RefreshAssistantAsync()
+    {
+        var bridge = EnsureAssistantBridge();
+        var busyVersion = BeginAssistantOperation();
+        try
+        {
+            var snapshot = await bridge.GetStatusAsync(NewAssistantRequestToken());
+            RenderAssistantSnapshot(snapshot);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            EndAssistantOperation(busyVersion);
+        }
+    }
+
+    private AssistantBridgeService EnsureAssistantBridge() =>
+        _assistantBridgeService ??= new AssistantBridgeService(new AppLogger());
+
+    private CancellationToken NewAssistantRequestToken()
+    {
+        CancelAssistantRequest();
+        _assistantRequestCts = new CancellationTokenSource();
+        return _assistantRequestCts.Token;
+    }
+
+    private void CancelAssistantRequest()
+    {
+        try { _assistantRequestCts?.Cancel(); }
+        catch (Exception ex) { Logger.Debug($"VoiceSettingsPage: assistant request cancel failed: {ex.Message}"); }
+        _assistantRequestCts?.Dispose();
+        _assistantRequestCts = null;
+    }
+
+    private void SetAssistantBusy(bool busy)
+    {
+        AssistantRefreshButton.IsEnabled = !busy;
+        AssistantStartButton.IsEnabled = !busy;
+        AssistantStopButton.IsEnabled = !busy;
+    }
+
+    private int BeginAssistantOperation()
+    {
+        var version = Interlocked.Increment(ref _assistantOperationVersion);
+        SetAssistantBusy(true);
+        return version;
+    }
+
+    private void EndAssistantOperation(int version)
+    {
+        if (Volatile.Read(ref _assistantOperationVersion) == version)
+            SetAssistantBusy(false);
+    }
+
+    private void RenderAssistantSnapshot(AssistantBridgeSnapshot snapshot)
+    {
+        if (!snapshot.IsAvailable)
+        {
+            AssistantStatusText.Text = L("VoiceSettingsPage_AssistantBridgeUnavailable");
+            AssistantDetailText.Text = snapshot.ErrorMessage;
+            AssistantLastRefreshText.Text = "";
+            AssistantTurnsPanel.Children.Clear();
+            AssistantTurnsPanel.Children.Add(new TextBlock
+            {
+                Text = L("VoiceSettingsPage_AssistantNoTurnsLoaded"),
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                TextWrapping = TextWrapping.Wrap
+            });
+            return;
+        }
+
+        var listen = snapshot.ListenService;
+        var unknown = L("VoiceSettingsPage_AssistantUnknown");
+        var status = string.IsNullOrWhiteSpace(listen.Status) ? unknown : listen.Status;
+        AssistantStatusText.Text = listen.IsRunning
+            ? Lf("VoiceSettingsPage_AssistantListeningFormat", listen.Pid?.ToString(CultureInfo.CurrentCulture) ?? unknown)
+            : listen.IsStopped
+                ? L("VoiceSettingsPage_AssistantStopped")
+                : Lf("VoiceSettingsPage_AssistantStatusFormat", status);
+
+        var details = new[]
+        {
+            string.IsNullOrWhiteSpace(listen.Transcriber) ? "" : Lf("VoiceSettingsPage_AssistantTranscriberFormat", listen.Transcriber),
+            string.IsNullOrWhiteSpace(snapshot.PreferredInputDevice) ? "" : Lf("VoiceSettingsPage_AssistantMicFormat", snapshot.PreferredInputDevice),
+            string.IsNullOrWhiteSpace(snapshot.PreferredOutputDevice) ? "" : Lf("VoiceSettingsPage_AssistantSpeakerFormat", snapshot.PreferredOutputDevice),
+            Lf("VoiceSettingsPage_AssistantCloudRoutingFormat", listen.AllowCloud ? L("VoiceSettingsPage_AssistantOn") : L("VoiceSettingsPage_AssistantOff")),
+            Lf("VoiceSettingsPage_AssistantSpeechOutputFormat", listen.SpeakAloud ? L("VoiceSettingsPage_AssistantOn") : L("VoiceSettingsPage_AssistantOff"))
+        }.Where(s => !string.IsNullOrWhiteSpace(s));
+        AssistantDetailText.Text = string.Join(" | ", details);
+        AssistantLastRefreshText.Text = string.IsNullOrWhiteSpace(snapshot.GeneratedAt)
+            ? ""
+            : Lf("VoiceSettingsPage_AssistantLastBridgeUpdateFormat", snapshot.GeneratedAt);
+
+        AssistantTurnsPanel.Children.Clear();
+        if (snapshot.RecentTurns.Count == 0)
+        {
+            AssistantTurnsPanel.Children.Add(new TextBlock
+            {
+                Text = L("VoiceSettingsPage_AssistantNoConversationTurns"),
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                TextWrapping = TextWrapping.Wrap
+            });
+            return;
+        }
+
+        foreach (var turn in snapshot.RecentTurns.Take(5))
+            AssistantTurnsPanel.Children.Add(CreateAssistantTurnView(turn));
+    }
+
+    private static Border CreateAssistantTurnView(AssistantTurnSnapshot turn)
+    {
+        var panel = new StackPanel { Spacing = 6 };
+        var source = string.IsNullOrWhiteSpace(turn.Source) ? L("VoiceSettingsPage_AssistantSourceDefault") : turn.Source;
+        var stage = string.IsNullOrWhiteSpace(turn.Stage) ? L("VoiceSettingsPage_AssistantUnknown") : turn.Stage;
+        var model = string.IsNullOrWhiteSpace(turn.Provider)
+            ? turn.ModelProfile
+            : $"{turn.Provider} {turn.ModelProfile}".Trim();
+        var metadata = turn.TotalMs is int ms
+            ? Lf("VoiceSettingsPage_AssistantTurnMetadataWithLatencyFormat", source, stage, ms.ToString(CultureInfo.CurrentCulture))
+            : Lf("VoiceSettingsPage_AssistantTurnMetadataFormat", source, stage);
+        panel.Children.Add(new TextBlock
+        {
+            Text = metadata,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = Lf("VoiceSettingsPage_AssistantUserTurnFormat", TrimForDisplay(turn.InputText)),
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = Lf("VoiceSettingsPage_AssistantResponseTurnFormat", TrimForDisplay(turn.ResponseText)),
+            TextWrapping = TextWrapping.Wrap
+        });
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = model,
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        return new Border
+        {
+            Child = panel,
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12)
+        };
+    }
+
+    private static string TrimForDisplay(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return L("VoiceSettingsPage_AssistantEmptyValue");
+        value = value.Trim();
+        return value.Length <= 220 ? value : value[..217] + "...";
     }
 
     private void OnAppSpeakerMuteChanged(bool muted)
@@ -454,7 +704,8 @@ public sealed partial class VoiceSettingsPage : Page
     {
         if (_inlineTestVoiceService != null && _inlineTestListening)
         {
-            try { await _inlineTestVoiceService.StopAsync(); } catch { }
+            try { await _inlineTestVoiceService.StopAsync(); }
+            catch (Exception ex) { Logger.Debug($"VoiceSettingsPage: inline test StopAsync failed: {ex.Message}"); }
         }
         _inlineTestListening = false;
         InlineTestBtnIcon.Glyph = "\uE720";
@@ -650,7 +901,8 @@ public sealed partial class VoiceSettingsPage : Page
 
         // Cancel any prior Piper download (only). Whisper downloads are
         // independent and continue running.
-        try { _piperDownloadCts?.Cancel(); } catch { /* swallow */ }
+        try { _piperDownloadCts?.Cancel(); }
+        catch (Exception ex) { Logger.Debug($"VoiceSettingsPage: cancel prior Piper download failed: {ex.Message}"); }
         _piperDownloadCts = new CancellationTokenSource();
         var ct = _piperDownloadCts.Token;
 

@@ -32,4 +32,5 @@ internal sealed record TrayMenuSnapshot
     // ── Permisos y setup ──
     internal required SettingsManager? Settings { get; init; }
     internal required string SetupMenuLabel { get; init; }
+    internal required bool ShowSetupMenuEntry { get; init; }
 }

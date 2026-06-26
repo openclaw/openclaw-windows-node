@@ -15,6 +15,7 @@ public class SettingsRoundTripTests
             UseSshTunnel= true,
             SshTunnelUser = "user1",
             SshTunnelHost = "remote-host",
+            SshTunnelSshPort = 2222,
             SshTunnelRemotePort = 18789,
             SshTunnelLocalPort = 28789,
             AutoStart = true,
@@ -55,6 +56,9 @@ public class SettingsRoundTripTests
             SkippedUpdateTag = "v1.2.3",
             NotifyChatResponses = false,
             PreferStructuredCategories = true,
+            SystemRunSandboxEnabled = true,
+            SystemRunBlockHostFallbackWhenMxcUnavailable = true,
+            SystemRunAllowOutbound = true,
             UserRules = new List<UserNotificationRule>
             {
                 new() { Pattern = "build.*fail", IsRegex = true, Category = "urgent", Enabled = true }
@@ -65,10 +69,12 @@ public class SettingsRoundTripTests
         var restored = SettingsData.FromJson(json);
 
         Assert.NotNull(restored);
+        Assert.Equal(original.SettingsSchemaVersion, restored.SettingsSchemaVersion);
         Assert.Equal(original.GatewayUrl, restored.GatewayUrl);
         Assert.Equal(original.UseSshTunnel, restored.UseSshTunnel);
         Assert.Equal(original.SshTunnelUser, restored.SshTunnelUser);
         Assert.Equal(original.SshTunnelHost, restored.SshTunnelHost);
+        Assert.Equal(original.SshTunnelSshPort, restored.SshTunnelSshPort);
         Assert.Equal(original.SshTunnelRemotePort, restored.SshTunnelRemotePort);
         Assert.Equal(original.SshTunnelLocalPort, restored.SshTunnelLocalPort);
         Assert.Equal(original.AutoStart, restored.AutoStart);
@@ -109,6 +115,9 @@ public class SettingsRoundTripTests
         Assert.Equal(original.SkippedUpdateTag, restored.SkippedUpdateTag);
         Assert.Equal(original.NotifyChatResponses, restored.NotifyChatResponses);
         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
+        Assert.Equal(original.SystemRunSandboxEnabled, restored.SystemRunSandboxEnabled);
+        Assert.Equal(original.SystemRunBlockHostFallbackWhenMxcUnavailable, restored.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.Equal(original.SystemRunAllowOutbound, restored.SystemRunAllowOutbound);
         Assert.NotNull(restored.UserRules);
         Assert.Single(restored.UserRules);
         Assert.Equal("build.*fail", restored.UserRules[0].Pattern);
@@ -140,6 +149,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
+        Assert.Equal(22, settings.SshTunnelSshPort);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
         Assert.True(settings.AutoStart);
@@ -173,6 +183,9 @@ public class SettingsRoundTripTests
         Assert.Null(settings.SkippedUpdateTag);
         Assert.True(settings.NotifyChatResponses);
         Assert.True(settings.PreferStructuredCategories);
+        Assert.True(settings.SystemRunSandboxEnabled);
+        Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.False(settings.SystemRunAllowOutbound);
         // HubNavPaneOpen defaults to true (NavView starts expanded for new
         // installs and for any settings file that predates the field).
         Assert.True(settings.HubNavPaneOpen);
@@ -189,6 +202,95 @@ public class SettingsRoundTripTests
         var settings = SettingsData.FromJson("{}");
         Assert.NotNull(settings);
         Assert.True(settings!.HubNavPaneOpen);
+    }
+
+    [Fact]
+    public void SettingsManager_PreservesLegacySandboxFallbackDefault()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+                "SystemRunSandboxEnabled": true,
+                "SystemRunBlockHostFallbackWhenMxcUnavailable": false
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.True(settings.SystemRunSandboxEnabled);
+            Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+
+            settings.Save();
+
+            using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
+            Assert.Equal(1, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
+            Assert.False(saved.RootElement.GetProperty(nameof(SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable)).GetBoolean());
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SettingsManager_PreservesVersionedSandboxFallbackCompatibility()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+                "SettingsSchemaVersion": 1,
+                "SystemRunSandboxEnabled": true,
+                "SystemRunBlockHostFallbackWhenMxcUnavailable": false
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.True(settings.SystemRunSandboxEnabled);
+            Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SettingsManager_PreservesVersionedStrictFallbackBlockingOptIn()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+                "SettingsSchemaVersion": 1,
+                "SystemRunSandboxEnabled": true,
+                "SystemRunBlockHostFallbackWhenMxcUnavailable": true
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.True(settings.SystemRunSandboxEnabled);
+            Assert.True(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]
@@ -220,6 +322,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.UseSshTunnel);
         Assert.Null(settings.SshTunnelUser);
         Assert.Null(settings.SshTunnelHost);
+        Assert.Equal(22, settings.SshTunnelSshPort);
         Assert.Equal(18789, settings.SshTunnelRemotePort);
         Assert.Equal(18789, settings.SshTunnelLocalPort);
         // New fields should have sensible defaults
@@ -255,6 +358,31 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
+    public void SettingsManager_DefaultsInvalidSshPort()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+              "SshTunnelSshPort": 70000
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.Equal(22, settings.SshTunnelSshPort);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SettingsManager_PersistsRecordingConsentFlags()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
@@ -283,6 +411,9 @@ public class SettingsRoundTripTests
     [WindowsFact]
     public void SettingsManager_ProtectsElevenLabsApiKeyForStorage()
     {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
         var protectedValue = SettingsManager.ProtectSettingSecret("elevenlabs-key");
 
         Assert.NotNull(protectedValue);
@@ -300,6 +431,9 @@ public class SettingsRoundTripTests
     [WindowsFact]
     public void SettingsManager_SaveProtectsSecretsWithoutMutatingInMemoryData()
     {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
         var settingsPath = Path.Combine(dir, "settings.json");
 

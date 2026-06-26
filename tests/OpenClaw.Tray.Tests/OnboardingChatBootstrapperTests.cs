@@ -1,3 +1,4 @@
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 using System.Text.Json;
@@ -16,6 +17,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_settingsDir, true); } catch { }
     }
 
@@ -26,6 +28,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-1", SessionKey = "agent:main:main" } };
 
         var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5));
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         await Task.Delay(50);
         client.RaiseFinalAssistant("run-1");
         var result = await task;
@@ -80,6 +83,302 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         Assert.False(settings.HasInjectedFirstRunBootstrap);
     }
 
+    [Fact]
+    public async Task BootstrapAsync_SkipsPromptAndMarksBootstrapped_WhenRegistryHasExistingGatewayWithSharedToken()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = CreateAgentFilesList("SOUL.md")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-existing");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-existing",
+            Url = "ws://192.168.1.10:18789",
+            SharedGatewayToken = "existing-shared-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+
+        Assert.True(result, "Should return true when existing gateway is detected.");
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap, "Gate should be marked so the check doesn't repeat.");
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SkipsPromptAndMarksBootstrapped_WhenRegistryHasExistingGatewayWithBootstrapToken()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = CreateAgentFilesList("MEMORY.md")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-bootstrap");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-bootstrap",
+            Url = "ws://my-gateway:18789",
+            BootstrapToken = "existing-bootstrap-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+
+        Assert.True(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_DoesNotSendPrompt_WhenExistingGatewayWorkspaceProbeTimesOut()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { IsConnectedToGateway = true };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-probe-timeout");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-existing-timeout",
+            Url = "ws://192.168.1.10:18789",
+            SharedGatewayToken = "existing-shared-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(
+            client,
+            settings,
+            TimeSpan.FromSeconds(5),
+            registry: registry,
+            existingWorkspaceProbeTimeout: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.False(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_DoesNotSendPrompt_WhenExistingGatewayWorkspaceProbeFails()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListException = new InvalidOperationException("agents.files.list unsupported")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-probe-failure");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-existing-failure",
+            Url = "ws://192.168.1.10:18789",
+            SharedGatewayToken = "existing-shared-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(
+            client,
+            settings,
+            TimeSpan.FromSeconds(5),
+            registry: registry,
+            existingWorkspaceProbeTimeout: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.False(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_UsesSettingsInstanceDirectory_WhenCheckingExistingGatewayConnection()
+    {
+        var settings = new SettingsManager(_settingsDir) { GatewayUrl = "wss://remote.example.com:443" };
+        var identity = new DeviceIdentity(_settingsDir);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "operator-device-token");
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = CreateAgentFilesList("SOUL.md")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-empty-with-legacy-token");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(
+            client,
+            settings,
+            TimeSpan.FromSeconds(5),
+            registry: registry);
+
+        Assert.True(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenFreshSetupRegistryHasCredentialButWorkspaceIsEmpty()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-fresh-credentialed" },
+            AgentFilesListResponse = CreateAgentFilesList()
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-fresh-credentialed");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-fresh",
+            Url = "ws://localhost:18789",
+            BootstrapToken = "fresh-bootstrap-token",
+            IsLocal = true
+        });
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-fresh-credentialed");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenFreshSetupWorkspaceOnlyHasSeedSoulFile()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-fresh-seed-soul" },
+            AgentFilesListResponse = CreateAgentFilesList("soul.md")
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-fresh-seed-soul");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-fresh-seed",
+            Url = "ws://localhost:18789",
+            BootstrapToken = "fresh-bootstrap-token",
+            IsLocal = true
+        });
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-fresh-seed-soul");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_IgnoresOtherAgentFileList_WhenCheckingForExistingWorkspace()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-main-empty" },
+            AgentFilesListResponses =
+            [
+                CreateAgentFilesListForAgent("sidecar", "SOUL.md"),
+                CreateAgentFilesList()
+            ]
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-agent-filter");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-filter",
+            Url = "ws://localhost:18789",
+            BootstrapToken = "fresh-bootstrap-token",
+            IsLocal = true
+        });
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-main-empty");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenRegistryIsEmptyAndGatewayIsNew()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-new" } };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-empty");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        // Registry has no records — this is a true first-run scenario.
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-new");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenNoRegistryProvided()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-noregistry" } };
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5));
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-noregistry");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    private static JsonElement CreateAgentFilesList(params string[] fileNames)
+        => CreateAgentFilesListForAgent("main", fileNames);
+
+    private static JsonElement CreateAgentFilesListForAgent(string agentId, params string[] fileNames)
+    {
+        var files = string.Join(
+            ",",
+            fileNames.Select(name => $$"""{"name":{{JsonSerializer.Serialize(name)}},"exists":true}"""));
+        return JsonDocument.Parse($$"""{"agentId":{{JsonSerializer.Serialize(agentId)}},"files":[{{files}}]}""").RootElement.Clone();
+    }
+
 #pragma warning disable CS0067
     private sealed class FakeOperatorGatewayClient : IOperatorGatewayClient
     {
@@ -89,6 +388,9 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public ChatSendResult Result { get; init; } = new();
         public string? FinalRunIdRaisedDuringSend { get; init; }
         public bool IsConnectedToGateway { get; init; } = true;
+        public JsonElement? AgentFilesListResponse { get; init; }
+        public IReadOnlyList<JsonElement>? AgentFilesListResponses { get; init; }
+        public Exception? AgentFilesListException { get; init; }
         public string? OperatorDeviceId => "operator";
         public IReadOnlyList<string> GrantedOperatorScopes => Array.Empty<string>();
         public string? MainSessionKey { get; init; } = "main";
@@ -164,6 +466,8 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task RequestCronListAsync() => Task.CompletedTask;
         public Task RequestCronStatusAsync() => Task.CompletedTask;
         public Task<bool> RunCronJobAsync(string jobId, bool force = true) => Task.FromResult(false);
+        public Task<CronRunRequestResult> RunCronJobDetailedAsync(string jobId, bool force = true, int timeoutMs = 12000) =>
+            Task.FromResult(CronRunRequestResult.NotAccepted("not implemented"));
         public Task<bool> RemoveCronJobAsync(string jobId) => Task.FromResult(false);
         // Stubbed for interface compliance — not exercised by these tests.
         public Task<bool> AddCronJobAsync(object jobDefinition) => Task.FromResult(false);
@@ -180,7 +484,24 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000) =>
             Task.FromResult(new ConfigPatchResult { Ok = false, Error = "stub" });
         public Task RequestAgentsListAsync() => Task.CompletedTask;
-        public Task RequestAgentFilesListAsync(string agentId = "main") => Task.CompletedTask;
+        public Task RequestAgentFilesListAsync(string agentId = "main")
+        {
+            if (AgentFilesListException is not null)
+                throw AgentFilesListException;
+
+            if (AgentFilesListResponses is { Count: > 0 })
+            {
+                foreach (var listedResponse in AgentFilesListResponses)
+                {
+                    AgentFilesListUpdated?.Invoke(this, listedResponse.Clone());
+                }
+                return Task.CompletedTask;
+            }
+
+            if (AgentFilesListResponse is { } response)
+                AgentFilesListUpdated?.Invoke(this, response.Clone());
+            return Task.CompletedTask;
+        }
         public Task RequestAgentFileGetAsync(string agentId, string name) => Task.CompletedTask;
         public Task RequestModelsListAsync() => Task.CompletedTask;
         public Task RequestNodePairListAsync() => Task.CompletedTask;

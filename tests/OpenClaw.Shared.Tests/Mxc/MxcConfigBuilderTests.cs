@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared.Mxc;
@@ -10,7 +11,7 @@ namespace OpenClaw.Shared.Tests.Mxc;
 /// <item>Golden tests vs SDK output captured by <c>tools/mxc/dump-sdk-config.cjs</c>.</item>
 /// <item>Per-Sandbox-UI-setting audit tests.</item>
 /// <item>Round-trip JSON shape (camelCase, no orphan fields).</item>
-/// <item>Env scrub case-insensitivity.</item>
+/// <item>Explicit env limitation for the Windows MXC 0.7 processcontainer backend.</item>
 /// <item><c>ResolveToolDirsFromPath</c> via synthetic PATH.</item>
 /// </list>
 /// </summary>
@@ -91,6 +92,29 @@ public class MxcConfigBuilderTests
         Policy: policy,
         TimeoutMs: 0); // explicitly zero so timeout in builder uses request.TimeoutMs=0 → default 30s
 
+    private static MxcConfig BuildConfig(
+        SandboxExecutionRequest request,
+        string scratchDir = P.Scratch,
+        string? containerId = null,
+        string? pathEnvVar = "",
+        Func<string, bool>? readonlyGrantIsBackendSafe = null) =>
+        MxcConfigBuilder.Build(
+            request,
+            scratchDir,
+            new MxcConfigBuildContext(
+                ContainerId: containerId,
+                PathEnvVar: pathEnvVar,
+                ReadonlyGrantIsBackendSafe: readonlyGrantIsBackendSafe));
+
+    private static string ExpectedSystemCmdExe()
+    {
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        return string.IsNullOrWhiteSpace(systemRoot)
+            ? "cmd.exe"
+            : Path.Combine(systemRoot, "System32", "cmd.exe");
+    }
+
     [Theory]
     [InlineData("locked-down", "LockedDown")]
     [InlineData("balanced", "Balanced")]
@@ -107,11 +131,15 @@ public class MxcConfigBuilderTests
         };
 
         // The golden test reproduces the exact harness recipe: no commandLine,
-        // no env, no cwd, no PATH-resolved tool dirs. We pass an empty PATH and
-        // an empty agent env. The harness stripped process.* (commandLine, cwd,
-        // env, timeout) too; do the same on the C# side before comparing.
-        var request = RequestFor(policy);
-        var config = MxcConfigBuilder.Build(
+        // no cwd, no shell PATH dirs. We pass an empty PATH and no
+        // caller env. The C# config still emits env: [] to make the sandbox env
+        // boundary explicit and bootstraps shell env in commandLine; the
+        // harness stripped process.* (commandLine, cwd, env, timeout), so do
+        // the same on the C# side before comparing. Use cmd so this pure
+        // policy golden stays independent from shell command-line encoding.
+        using var argsDoc = JsonDocument.Parse("""{"shell":"cmd"}""");
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+        var config = BuildConfig(
             request,
             scratchDir: P.Scratch,
             containerId: GoldenContainerId,
@@ -172,8 +200,8 @@ public class MxcConfigBuilderTests
     public void Build_OutboundOn_AddsInternetClientCapability()
     {
         var policy = BalancedPolicy();
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
-        Assert.Contains("internetClient", config.AppContainer!.Capabilities!);
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
+        Assert.Contains("internetClient", config.ProcessContainer!.Capabilities!);
         Assert.Equal("allow", config.Network!.DefaultPolicy);
     }
 
@@ -181,8 +209,8 @@ public class MxcConfigBuilderTests
     public void Build_OutboundOff_OmitsInternetClient_AndNetworkBlocks()
     {
         var policy = LockedDownPolicy();
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
-        Assert.DoesNotContain("internetClient", config.AppContainer!.Capabilities!);
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
+        Assert.DoesNotContain("internetClient", config.ProcessContainer!.Capabilities!);
         Assert.Equal("block", config.Network!.DefaultPolicy);
     }
 
@@ -194,19 +222,19 @@ public class MxcConfigBuilderTests
     public void Build_ClipboardMode_RoundTripsToWxcExecString(ClipboardPolicy mode, string expected)
     {
         var policy = LockedDownPolicy() with { Ui = new UiPolicy(false, mode, false) };
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
         Assert.Equal(expected, config.Ui!.Clipboard);
     }
 
     [Fact]
     public void Build_AddsScratchDirToReadwritePaths()
     {
-        var config = MxcConfigBuilder.Build(RequestFor(BalancedPolicy()), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(BalancedPolicy()), pathEnvVar: "");
         Assert.Contains(P.Scratch, config.Filesystem!.ReadwritePaths!);
     }
 
     [Fact]
-    public void Build_OverridesTempEnvVarsToScratch()
+    public void Build_RejectsExplicitEnvironmentUntilBackendSupportsIt()
     {
         var request = RequestFor(BalancedPolicy()) with
         {
@@ -217,18 +245,17 @@ public class MxcConfigBuilderTests
                 ["TMPDIR"] = "C:\\real-tmpdir",
             },
         };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
-        var env = config.Process.Env!;
-        Assert.Contains($"TEMP={P.Scratch}", env);
-        Assert.Contains($"TMP={P.Scratch}", env);
-        Assert.Contains($"TMPDIR={P.Scratch}", env);
+
+        var ex = Assert.Throws<NotSupportedException>(() =>
+            BuildConfig(request, pathEnvVar: ""));
+        Assert.Contains("Explicit environment variables", ex.Message);
     }
 
     [Fact]
     public void Build_AutoGrantsCwdAsReadonly_WhenNotAlreadyCovered()
     {
         var request = RequestFor(BalancedPolicy()) with { Cwd = "C:\\unrelated\\workdir" };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
         Assert.Contains("C:\\unrelated\\workdir", config.Filesystem!.ReadonlyPaths!);
         Assert.DoesNotContain("C:\\unrelated\\workdir", config.Filesystem!.ReadwritePaths!);
     }
@@ -238,7 +265,7 @@ public class MxcConfigBuilderTests
     {
         var policy = PermissivePolicy(); // Documents already in readwrite
         var request = RequestFor(policy) with { Cwd = Path.Combine(P.Documents, "subfolder") };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
 
         Assert.DoesNotContain(Path.Combine(P.Documents, "subfolder"), config.Filesystem!.ReadonlyPaths!);
         Assert.DoesNotContain(Path.Combine(P.Documents, "subfolder"), config.Filesystem!.ReadwritePaths!);
@@ -249,7 +276,7 @@ public class MxcConfigBuilderTests
     {
         var policy = BalancedPolicy(); // Documents already in readonly
         var request = RequestFor(policy) with { Cwd = Path.Combine(P.Documents, "subfolder") };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
         // Should not have added the subfolder explicitly (parent already grants).
         Assert.DoesNotContain(Path.Combine(P.Documents, "subfolder"), config.Filesystem!.ReadonlyPaths!);
     }
@@ -259,46 +286,201 @@ public class MxcConfigBuilderTests
     {
         var policy = BalancedPolicy();
         var request = RequestFor(policy) with { Cwd = Path.Combine(P.Ssh, "keys") };
-        var config = MxcConfigBuilder.Build(request, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(request, pathEnvVar: "");
         Assert.DoesNotContain(Path.Combine(P.Ssh, "keys"), config.Filesystem!.ReadonlyPaths!);
     }
 
     [Fact]
-    public void ResolvePathDirsForReadonly_ReturnsExistingPathDirs()
+    public void Build_OmitsDeniedPathsBeforeBackendEmissionButStillFiltersAllows()
     {
-        // Synthesize an existing dir on PATH; ensure it shows up as a readonly
-        // grant candidate. No tool-name filter — every existing PATH dir
-        // counts (mirrors the SDK's getAvailableToolsPolicy behavior).
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData))
+            return;
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfile))
+            return;
+
+        var chromeProfile = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+        var sshPath = Path.Combine(userProfile, ".ssh");
+        var settingsDeny = Path.Combine(P.Settings, "openclaw-settings");
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: new[] { chromeProfile, userProfile },
+                ReadonlyPaths: Array.Empty<string>(),
+                DeniedPaths: new[] { chromeProfile, sshPath, settingsDeny },
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
+
+        Assert.DoesNotContain(chromeProfile, config.Filesystem!.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(userProfile, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Null(config.Filesystem.DeniedPaths);
+    }
+
+    [Fact]
+    public void Build_RemovesParentReadwriteGrantContainingDeniedSettingsDirectory_WhenDeniedPathsAreNotEmitted()
+    {
+        var parent = "C:\\Users\\example\\AppData\\Roaming";
+        var settingsDeny = Path.Combine(parent, "OpenClawTray");
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: new[] { parent, settingsDeny },
+                ReadonlyPaths: Array.Empty<string>(),
+                DeniedPaths: new[] { settingsDeny },
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var config = BuildConfig(
+            RequestFor(policy),
+            pathEnvVar: "");
+
+        Assert.DoesNotContain(parent, config.Filesystem!.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Null(config.Filesystem.DeniedPaths);
+    }
+
+    [Fact]
+    public void Build_RemovesParentReadonlyGrantContainingDeniedSettingsDirectory_WhenDeniedPathsAreNotEmitted()
+    {
+        var parent = "C:\\Users\\example\\AppData\\Roaming";
+        var settingsDeny = Path.Combine(parent, "OpenClawTray");
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: Array.Empty<string>(),
+                ReadonlyPaths: new[] { parent, settingsDeny },
+                DeniedPaths: new[] { settingsDeny },
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var config = BuildConfig(
+            RequestFor(policy),
+            pathEnvVar: "");
+
+        Assert.DoesNotContain(parent, config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadwritePaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(settingsDeny, config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Null(config.Filesystem.DeniedPaths);
+    }
+
+    [Fact]
+    public void ResolvePathDirsForShellPath_ReturnsExistingPathDirs()
+    {
+        // Synthesize an existing dir on PATH; ensure it shows up in the shell
+        // PATH bootstrap.
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-tool-test-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
-            var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: tempDir);
+            var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: tempDir);
             Assert.Contains(tempDir, dirs);
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
 
     [Fact]
-    public void Build_SynthesizesPathEnvFromGrantedPathDirs()
+    public void Build_BootstrapsShellPathAndGrantsBackendSafePathDirsReadonly()
     {
         var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-test-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
-            var config = MxcConfigBuilder.Build(RequestFor(BalancedPolicy()), P.Scratch, pathEnvVar: tempDir);
-            Assert.Contains($"PATH={tempDir}", config.Process.Env!);
+            using var argsDoc = JsonDocument.Parse("""{"command":"git --version","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: tempDir);
+
+            Assert.NotNull(config.Process.Env);
+            Assert.Empty(config.Process.Env);
             Assert.Contains(tempDir, config.Filesystem!.ReadonlyPaths!);
+            Assert.Contains($"set \"TEMP={P.Scratch}\"", config.Process.CommandLine);
+            Assert.Contains($"set \"TMP={P.Scratch}\"", config.Process.CommandLine);
+            Assert.Contains($"set \"TMPDIR={P.Scratch}\"", config.Process.CommandLine);
+            Assert.Contains($"set \"PATH={tempDir}\"", config.Process.CommandLine);
+            Assert.Contains("git --version", config.Process.CommandLine);
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
 
     [Fact]
-    public void Build_AddsDriveRootReadonlyForGrantedFolderTraversal()
+    public void Build_BootstrapsUnsafePathDirsWithoutGrantingThem()
+    {
+        var unsafeDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-unsafe-" + Guid.NewGuid().ToString("N"))).FullName;
+        var safeDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-safe-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            using var argsDoc = JsonDocument.Parse("""{"command":"tool --version","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+            var pathEnv = string.Join(Path.PathSeparator, unsafeDir, safeDir);
+
+            var config = BuildConfig(
+                request,
+                pathEnvVar: pathEnv,
+                readonlyGrantIsBackendSafe: dir => !string.Equals(dir, unsafeDir, StringComparison.OrdinalIgnoreCase));
+
+            Assert.Contains($"set \"PATH={pathEnv}\"", config.Process.CommandLine);
+            Assert.DoesNotContain(unsafeDir, config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(safeDir, config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(unsafeDir, true); } catch { }
+            try { Directory.Delete(safeDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_CmdShell_RewritesBootstrapPercentEnvRefsToDelayedExpansion()
+    {
+        var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-path-env-test-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            using var argsDoc = JsonDocument.Parse("""
+            {
+                "command": "echo %TEMP% %TMP% %TMPDIR% %PATH%",
+                "shell": "cmd",
+                "args": ["%TEMP%\\out.txt"]
+            }
+            """);
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: tempDir);
+
+            Assert.Contains(" /V:ON /S /C \"", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.Contains("echo !TEMP! !TMP! !TMPDIR! !PATH!", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.Contains("!TEMP!\\out.txt", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.DoesNotContain("%TEMP%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("%TMP%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("%TMPDIR%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("%PATH%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_DoesNotAddDriveRootCompatibilityGrant()
     {
         var policy = new SandboxPolicy(
             Version: MxcPolicyBuilder.SupportedPolicyVersion,
@@ -311,8 +493,8 @@ public class MxcConfigBuilderTests
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
 
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
-        Assert.Contains("C:\\", config.Filesystem!.ReadonlyPaths!);
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
+        Assert.DoesNotContain("C:\\", config.Filesystem!.ReadonlyPaths!);
     }
 
     [Fact]
@@ -329,24 +511,57 @@ public class MxcConfigBuilderTests
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
 
-        var config = MxcConfigBuilder.Build(RequestFor(policy) with { Cwd = "C:\\workspace" }, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy) with { Cwd = "C:\\workspace" }, pathEnvVar: "");
         Assert.Contains("C:\\workspace", config.Filesystem!.ReadonlyPaths!);
         Assert.DoesNotContain("C:\\workspace", config.Filesystem!.ReadwritePaths!);
     }
 
     [Fact]
-    public void ResolvePathDirsForReadonly_SkipsNonExistentDirs()
+    public void ResolvePathDirsForShellPath_SkipsNonExistentDirs()
     {
         var fake = Path.Combine(Path.GetTempPath(), "definitely-not-real-xyzqq-" + Guid.NewGuid().ToString("N"));
-        var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: fake);
+        var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: fake);
         Assert.Empty(dirs);
     }
 
     [Fact]
-    public void ResolvePathDirsForReadonly_SkipsDriveRoots()
+    public void ResolvePathDirsForShellPath_SkipsDriveRoots()
     {
-        var dirs = MxcConfigBuilder.ResolvePathDirsForReadonly(pathEnvVar: "C:\\");
+        var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: "C:\\");
         Assert.Empty(dirs);
+    }
+
+    [Fact]
+    public void ResolvePathDirsForShellPath_KeepsProtectedDirsInPathOnly()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (string.IsNullOrWhiteSpace(programFiles))
+            return;
+
+        var dirs = MxcConfigBuilder.ResolvePathDirsForShellPath(pathEnvVar: programFiles);
+        Assert.Contains(programFiles, dirs, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_BootstrapsProtectedPathDirsWithoutGrantingThem()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (string.IsNullOrWhiteSpace(programFiles))
+            return;
+
+        using var argsDoc = JsonDocument.Parse("""{"command":"tool --version","shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: programFiles);
+
+        Assert.Contains($"set \"PATH={programFiles}\"", config.Process.CommandLine);
+        Assert.DoesNotContain(programFiles, config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -363,7 +578,7 @@ public class MxcConfigBuilderTests
             Network: new NetworkPolicy(false, false),
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
-        var config = MxcConfigBuilder.Build(RequestFor(policy), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
         Assert.DoesNotContain(Path.Combine(P.Ssh, "keys"), config.Filesystem!.ReadwritePaths!);
         Assert.DoesNotContain(Path.Combine(P.Chrome, "Profile 1"), config.Filesystem!.ReadonlyPaths!);
     }
@@ -371,7 +586,7 @@ public class MxcConfigBuilderTests
     [Fact]
     public void Build_TimeoutDefaultsTo30sWhenRequestZero()
     {
-        var config = MxcConfigBuilder.Build(RequestFor(BalancedPolicy()), P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(RequestFor(BalancedPolicy()), pathEnvVar: "");
         Assert.Equal(30_000, config.Process.TimeoutMs);
     }
 
@@ -379,11 +594,295 @@ public class MxcConfigBuilderTests
     public void Build_TimeoutHonorsRequestValue()
     {
         var req = RequestFor(BalancedPolicy()) with { TimeoutMs = 12_345 };
-        var config = MxcConfigBuilder.Build(req, P.Scratch, pathEnvVar: "");
+        var config = BuildConfig(req, pathEnvVar: "");
         Assert.Equal(12_345, config.Process.TimeoutMs);
     }
 
+    [Fact]
+    public void Build_DefaultShell_UsesCmdAndPreservesUiDeny()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo hi"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        Assert.StartsWith(ExpectedSystemCmdExe(), config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.ProcessContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_PowerShellShell_WhenPolicyAllowsWindows_EnablesDesktopIsolation()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"powershell"}""");
+        var policy = BalancedPolicy() with
+        {
+            Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+        };
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.ProcessContainer!.Ui!.Isolation);
+    }
+
+    [Theory]
+    [InlineData("powershell")]
+    [InlineData("pwsh")]
+    public void Build_PowerShellFamilyShell_WhenUiDenied_FailsClosed(string shell)
+    {
+        using var argsDoc = JsonDocument.Parse($$"""{"command":"Write-Output hi","shell":"{{shell}}"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("PowerShell-family shells require UI access", ex.Message);
+    }
+
+    [Fact]
+    public void Build_UnsupportedShell_FailsClosedBeforeCommandLineFallback()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"bash"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("Unsupported shell 'bash'", ex.Message);
+    }
+
+    [Fact]
+    public void Build_CmdShell_UsesResolvedCmdExe()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        Assert.StartsWith(ExpectedSystemCmdExe(), config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.ProcessContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_CmdShell_CommandWithLineBreak_FailsClosed()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo ok\r\nwhoami","shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("cannot contain CR or LF", ex.Message);
+    }
+
+    [Fact]
+    public void Build_CmdShell_ArgvWithLineBreak_FailsClosed()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"echo","args":["ok\r\nwhoami"],"shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("cannot contain CR or LF", ex.Message);
+    }
+
+    [Fact]
+    public void Build_CmdShell_IgnoresHostComSpec()
+    {
+        var previous = Environment.GetEnvironmentVariable("ComSpec");
+        try
+        {
+            Environment.SetEnvironmentVariable("ComSpec", "C:\\malicious\\cmd.exe");
+            using var argsDoc = JsonDocument.Parse("""{"command":"echo hi","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: "");
+
+            Assert.StartsWith(ExpectedSystemCmdExe(), config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("C:\\malicious\\cmd.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ComSpec", previous);
+        }
+    }
+
+    [Fact]
+    public void Build_PwshShell_WhenPolicyAllowsWindows_UsesPwshAndEnablesDesktopIsolation()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
+        var policy = BalancedPolicy() with
+        {
+            Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+        };
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        Assert.StartsWith("pwsh.exe", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.ProcessContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_PwshShell_ResolvesPwshFromPathBeforeClearingProcessEnvironment()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-pwsh-resolve-test-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var binDir = Directory.CreateDirectory(Path.Combine(tempRoot, "bin")).FullName;
+            var pwshPath = Path.Combine(binDir, "pwsh.exe");
+            File.WriteAllBytes(pwshPath, Array.Empty<byte>());
+            using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"pwsh"}""");
+            var policy = BalancedPolicy() with
+            {
+                Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+            };
+            var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: binDir);
+
+            var expectedPrefix = pwshPath.IndexOfAny(new[] { ' ', '\t', '"' }) < 0
+                ? pwshPath
+                : "\"" + pwshPath.Replace("\"", "\\\"") + "\"";
+            Assert.StartsWith(expectedPrefix, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(config.Process.Env!);
+            Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_PowerShellShell_UsesResolvedWindowsPowerShellExe()
+    {
+        using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output hi","shell":"powershell"}""");
+        var policy = BalancedPolicy() with
+        {
+            Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+        };
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        var expected = string.IsNullOrWhiteSpace(systemRoot)
+            ? "powershell.exe"
+            : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+
+        Assert.StartsWith(expected, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.ProcessContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_PowerShellShell_QuotesPathBootstrapValue()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-pwsh-path-test-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var dir1 = Directory.CreateDirectory(Path.Combine(tempRoot, "bin1")).FullName;
+            var dir2 = Directory.CreateDirectory(Path.Combine(tempRoot, "bin2")).FullName;
+            var pathEnv = string.Join(Path.PathSeparator, dir1, dir2);
+            using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output $env:PATH","shell":"powershell"}""");
+            var policy = BalancedPolicy() with
+            {
+                Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+            };
+            var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: pathEnv);
+            var script = DecodePowershellEncodedCommand(config.Process.CommandLine);
+
+            Assert.Contains("$env:PATH = '" + pathEnv.Replace("'", "''") + "';", script);
+            Assert.DoesNotContain("$env:PATH = " + pathEnv + ";", script);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_CmdShell_BoundsPathBootstrapBeforeCommandLine()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-cmd-long-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var dirs = Enumerable.Range(0, 180)
+                .Select(i => Directory.CreateDirectory(Path.Combine(tempRoot, $"bin{i:D3}")).FullName)
+                .ToArray();
+            var pathEnv = string.Join(Path.PathSeparator, dirs);
+            using var argsDoc = JsonDocument.Parse("""{"command":"echo %PATH%","shell":"cmd"}""");
+            var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: pathEnv);
+
+            Assert.Contains("set \"PATH=", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.Contains(dirs[0], config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(dirs[^1], config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+            Assert.True(config.Process.CommandLine.Length < 12_000, config.Process.CommandLine);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_PowerShellShell_BoundsPathBootstrapBeforeEncoding()
+    {
+        var tempRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "mxc-pwsh-long-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var dirs = Enumerable.Range(0, 180)
+                .Select(i => Directory.CreateDirectory(Path.Combine(tempRoot, $"bin{i:D3}")).FullName)
+                .ToArray();
+            var pathEnv = string.Join(Path.PathSeparator, dirs);
+            using var argsDoc = JsonDocument.Parse("""{"command":"Write-Output $env:PATH","shell":"powershell"}""");
+            var policy = BalancedPolicy() with
+            {
+                Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.Read, AllowInputInjection: false),
+            };
+            var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+            var config = BuildConfig(request, pathEnvVar: pathEnv);
+            var script = DecodePowershellEncodedCommand(config.Process.CommandLine);
+
+            Assert.Contains("$env:PATH = '", script, StringComparison.Ordinal);
+            Assert.Contains(dirs[0], script, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(dirs[^1], script, StringComparison.OrdinalIgnoreCase);
+            Assert.True(script.Length < 8_000, script);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
     // ---- helpers for tolerant JSON comparison ----
+
+    private static string DecodePowershellEncodedCommand(string commandLine)
+    {
+        const string marker = " -EncodedCommand ";
+        var markerIndex = commandLine.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        Assert.True(markerIndex >= 0, commandLine);
+        var encoded = commandLine[(markerIndex + marker.Length)..].Trim();
+        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
+    }
 
     private static void AssertJsonEqual(JsonObjectNode expected, JsonObjectNode actual, string path)
     {
@@ -428,14 +927,14 @@ public class MxcConfigBuilderTests
     {
         // commandLine/cwd/env/timeoutMs live under "process" — the SDK leaves
         // process empty when called with createConfigFromPolicy and we add
-        // these ourselves. appContainer.name is a per-invocation random hex
+        // these ourselves. processContainer.name is a per-invocation random hex
         // that we stripped from the goldens.
         return fullPath is
             "$.process.commandLine" or
             "$.process.cwd" or
             "$.process.env" or
             "$.process.timeoutMs" or
-            "$.appContainer.name";
+            "$.processContainer.name";
     }
 
     private static void AssertNodeEqual(object? expected, object? actual, string path)

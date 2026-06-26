@@ -22,22 +22,52 @@ internal sealed class CommandCenterStateBuilder
         var nodes = _snapshot.Nodes.Select(NodeCapabilityHealthInfo.FromNode).ToList();
         if (nodes.Count == 0 && _snapshot.NodeService?.GetLocalNodeInfo() is { } localNode)
         {
-            nodes.Add(NodeCapabilityHealthInfo.FromNode(localNode));
+            nodes.Add(NodeCapabilityHealthInfo.FromLocalDeclarations(localNode));
         }
 
-        var topology = GatewayTopologyClassifier.Classify(
-            _snapshot.Settings?.GatewayUrl,
+        var tunnelInputs = CommandCenterTopologyTunnelResolver.Derive(
+            _snapshot.HasActiveGatewayRecord,
+            _snapshot.ActiveGatewaySshTunnel,
             _snapshot.Settings?.UseSshTunnel == true,
             _snapshot.Settings?.SshTunnelHost,
             _snapshot.Settings?.SshTunnelLocalPort ?? 0,
             _snapshot.Settings?.SshTunnelRemotePort ?? 0);
-        var tunnel = BuildTunnelInfo();
-        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(topology, tunnel);
+        var topology = GatewayTopologyClassifier.Classify(
+            _snapshot.EffectiveGatewayUrl,
+            tunnelInputs.UsesSshTunnel,
+            tunnelInputs.SshHost,
+            tunnelInputs.LocalPort,
+            tunnelInputs.RemotePort);
+        var tunnel = BuildTunnelInfo(tunnelInputs);
+        var browserProxyTunnelState = BrowserProxyTunnelState.Resolve(
+            activeResolverSupplied: _snapshot.HasActiveGatewayRecord,
+            activeTunnel: _snapshot.ActiveGatewaySshTunnel,
+            activeGatewayUrl: _snapshot.EffectiveGatewayUrl,
+            settingsUseSshTunnel: _snapshot.Settings?.UseSshTunnel == true,
+            settingsLocalPort: _snapshot.Settings?.SshTunnelLocalPort,
+            settingsRemotePort: _snapshot.Settings?.SshTunnelRemotePort,
+            settingsGatewayUrl: _snapshot.Settings?.GatewayUrl);
+        var portDiagnostics = PortDiagnosticsService.BuildDiagnostics(
+            topology,
+            tunnel,
+            _snapshot.EffectiveBrowserControlPort,
+            useSshTunnelForBrowserProxy: browserProxyTunnelState.Enabled,
+            allowGatewayPortFallback: browserProxyTunnelState.AllowGatewayPortFallback);
         ApplyDetectedSshForwardTopology(topology, portDiagnostics);
         var runtime = BuildGatewayRuntimeInfo(portDiagnostics);
         var warnings = nodes.SelectMany(n => n.Warnings).ToList();
+        var localNodeId = _snapshot.NodeService?.FullDeviceId;
+        var hasAuthoritativePendingLocalNodeTrust =
+            !string.IsNullOrWhiteSpace(localNodeId) &&
+            nodes.Any(node =>
+                string.Equals(node.NodeId, localNodeId, StringComparison.OrdinalIgnoreCase) &&
+                node.ApprovalState is GatewayNodeApprovalState.PendingApproval or
+                    GatewayNodeApprovalState.PendingReapproval);
+        var shouldShowPendingLocalNodeApproval =
+            _snapshot.NodePairingApprovalKind == PairingApprovalKind.DevicePair ||
+            !hasAuthoritativePendingLocalNodeTrust;
         warnings.AddRange(CommandCenterDiagnostics.BuildTopologyWarnings(topology, tunnel));
-        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel));
+        warnings.AddRange(BuildPortDiagnosticWarnings(portDiagnostics, topology, tunnel, _snapshot.EffectiveBrowserControlPort));
         warnings.AddRange(BuildBrowserProxyAuthWarnings(nodes));
 
         if (!string.IsNullOrWhiteSpace(_snapshot.AuthFailureMessage))
@@ -46,20 +76,28 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Critical,
                 Category = "auth",
-                Title = "Gateway authentication failed",
+                Title = LocalizationHelper.GetString("CommandCenter_AuthFailed"),
                 Detail = _snapshot.AuthFailureMessage
             });
         }
 
-        if (_snapshot.NodeService?.IsPendingApproval == true && !string.IsNullOrWhiteSpace(_snapshot.NodeService.FullDeviceId))
+        if (shouldShowPendingLocalNodeApproval &&
+            _snapshot.NodeService?.IsPendingApproval == true &&
+            !string.IsNullOrWhiteSpace(_snapshot.NodeService.FullDeviceId))
         {
-            var approvalCommand = $"openclaw devices approve {_snapshot.NodeService.FullDeviceId}";
+            var approvalCommand = _snapshot.NodePairingApprovalKind switch
+            {
+                PairingApprovalKind.DevicePair => CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(
+                    _snapshot.NodePairingRequestId),
+                PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId),
+                _ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()
+            };
             warnings.Add(new GatewayDiagnosticWarning
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "pairing",
-                Title = "Node is waiting for approval",
-                Detail = $"Approve device {_snapshot.NodeService.ShortDeviceId} from the gateway CLI, then re-open the command center after reconnect.",
+                Title = LocalizationHelper.GetString("CommandCenter_NodePendingApproval"),
+                Detail = $"Resolve the pending node approval for {_snapshot.NodeService.ShortDeviceId} from the gateway CLI, then re-open the command center after reconnect.",
                 RepairAction = "Copy approval command",
                 CopyText = approvalCommand
             });
@@ -71,7 +109,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Critical,
                 Category = "gateway",
-                Title = "Gateway connection error",
+                Title = LocalizationHelper.GetString("CommandCenter_GatewayConnectionError"),
                 Detail = "The tray is not currently connected to the gateway."
             });
         }
@@ -81,7 +119,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "gateway",
-                Title = "Gateway is not connected",
+                Title = LocalizationHelper.GetString("CommandCenter_GatewayNotConnected"),
                 Detail = $"Current connection state is {_snapshot.Status}."
             });
         }
@@ -93,7 +131,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "gateway",
-                Title = "Gateway health is stale",
+                Title = LocalizationHelper.GetString("CommandCenter_GatewayHealthStale"),
                 Detail = $"Last health check was {_snapshot.LastCheckTime:t}. Run a health check or verify the localhost tunnel."
             });
         }
@@ -104,7 +142,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "channel",
-                Title = "No channels reported",
+                Title = LocalizationHelper.GetString("CommandCenter_NoChannelsReported"),
                 Detail = "The gateway health payload did not report any channels."
             });
         }
@@ -114,7 +152,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "gateway",
-                Title = "Waiting for gateway health",
+                Title = LocalizationHelper.GetString("CommandCenter_WaitingForGatewayHealth"),
                 Detail = "Node mode is connected. Channel/session inventories are filled from gateway health events when available."
             });
         }
@@ -124,7 +162,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "channel",
-                Title = "No channels are currently running",
+                Title = LocalizationHelper.GetString("CommandCenter_NoChannelsRunning"),
                 Detail = "Channels are configured but none are reporting a running/ready state."
             });
         }
@@ -135,7 +173,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "node",
-                Title = "No nodes reported",
+                Title = LocalizationHelper.GetString("CommandCenter_NoNodesReported"),
                 Detail = "node.list did not report any connected nodes. Pair a Windows node or verify the operator token has node inventory access."
             });
         }
@@ -146,7 +184,7 @@ internal sealed class CommandCenterStateBuilder
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "usage",
-                Title = "Some usage costs are missing",
+                Title = LocalizationHelper.GetString("CommandCenter_UsageCostsMissing"),
                 Detail = $"{_snapshot.UsageCost.Totals.MissingCostEntries} usage entr{(_snapshot.UsageCost.Totals.MissingCostEntries == 1 ? "y is" : "ies are")} missing cost data."
             });
         }
@@ -187,7 +225,10 @@ internal sealed class CommandCenterStateBuilder
     private IEnumerable<GatewayDiagnosticWarning> BuildBrowserProxyAuthWarnings(IReadOnlyList<NodeCapabilityHealthInfo> nodes)
     {
         if (_snapshot.Settings?.NodeBrowserProxyEnabled == false ||
-            !nodes.Any(node => node.BrowserDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
+            !nodes.Any(node =>
+                node.BrowserApprovedCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase) ||
+                node.UnverifiedDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase) ||
+                node.LocalDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
         {
             yield break;
         }
@@ -196,8 +237,8 @@ internal sealed class CommandCenterStateBuilder
         {
             Severity = GatewayDiagnosticSeverity.Info,
             Category = "browser",
-            Title = "Browser proxy auth may need a gateway token",
-            Detail = "This Windows node is advertising browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
+            Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyAuthMayNeed"),
+            Detail = "This Windows node reports or declares browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
             RepairAction = "Copy browser proxy auth guidance",
             CopyText = "If browser.proxy returns an auth error, enter the gateway shared token in Settings > Gateway Token, or configure the browser-control host to use auth compatible with the Windows node. Do not paste QR bootstrap tokens into the normal gateway token field."
         };
@@ -206,7 +247,8 @@ internal sealed class CommandCenterStateBuilder
     private static IEnumerable<GatewayDiagnosticWarning> BuildPortDiagnosticWarnings(
         IReadOnlyList<PortDiagnosticInfo> ports,
         GatewayTopologyInfo topology,
-        TunnelCommandCenterInfo? tunnel)
+        TunnelCommandCenterInfo? tunnel,
+        int? browserControlPort)
     {
         foreach (var port in ports)
         {
@@ -218,7 +260,7 @@ internal sealed class CommandCenterStateBuilder
                 {
                     Severity = GatewayDiagnosticSeverity.Warning,
                     Category = "port",
-                    Title = "SSH tunnel port is not listening",
+                    Title = LocalizationHelper.GetString("CommandCenter_SshTunnelPortNotListening"),
                     Detail = port.Detail
                 };
             }
@@ -231,7 +273,7 @@ internal sealed class CommandCenterStateBuilder
                 {
                     Severity = GatewayDiagnosticSeverity.Info,
                     Category = "port",
-                    Title = "No local gateway listener detected",
+                    Title = LocalizationHelper.GetString("CommandCenter_NoLocalGatewayListener"),
                     Detail = port.Detail
                 };
             }
@@ -245,10 +287,10 @@ internal sealed class CommandCenterStateBuilder
                     {
                         Severity = GatewayDiagnosticSeverity.Info,
                         Category = "browser",
-                        Title = "Browser proxy SSH forward is not listening",
+                        Title = LocalizationHelper.GetString("CommandCenter_BrowserProxySshForwardNotListening"),
                         Detail = $"browser.proxy over SSH needs a companion local forward for port {port.Port}. Add the browser-control forward to the same tunnel, or enable the managed SSH tunnel so Windows starts both forwards.",
                         RepairAction = "Copy browser proxy SSH forward",
-                        CopyText = BuildBrowserProxySshForwardHint(port.Port, tunnel)
+                        CopyText = BuildBrowserProxySshForwardHint(port.Port, tunnel, browserControlPort)
                     };
                     continue;
                 }
@@ -257,22 +299,22 @@ internal sealed class CommandCenterStateBuilder
                 {
                     Severity = GatewayDiagnosticSeverity.Info,
                     Category = "browser",
-                    Title = "Browser proxy host not detected",
+                    Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyHostNotDetected"),
                     Detail = "browser.proxy needs a compatible browser-control host listening on the gateway port + 2.",
                     RepairAction = "Copy browser setup guidance",
                     // string formatter — no UI
-                    CopyText = CommandCenterTextHelper.BuildBrowserSetupGuidance(port.Port, topology, tunnel)
+                    CopyText = CommandCenterTextHelper.BuildBrowserSetupGuidance(port.Port, topology, tunnel, browserControlPort)
                 };
             }
         }
     }
 
-    private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
+    private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel, int? browserControlPort)
     {
         if (browserProxyPort is < 1 or > 65535)
             return "ssh -N -L <local-browser-port>:127.0.0.1:<remote-browser-port> <user>@<host>";
 
-        var localBrowserPort = ResolveLocalBrowserProxyPort(browserProxyPort, tunnel);
+        var localBrowserPort = ResolveLocalBrowserProxyPort(browserProxyPort, tunnel, browserControlPort);
         var target = BuildSshTarget(tunnel);
         var remoteBrowserPort = ResolveRemoteBrowserProxyPort(localBrowserPort, tunnel);
         return remoteBrowserPort is >= 1 and <= 65535
@@ -291,8 +333,13 @@ internal sealed class CommandCenterStateBuilder
         return "<user>@<host>";
     }
 
-    private static int ResolveLocalBrowserProxyPort(int fallbackBrowserProxyPort, TunnelCommandCenterInfo? tunnel)
+    private static int ResolveLocalBrowserProxyPort(int fallbackBrowserProxyPort, TunnelCommandCenterInfo? tunnel, int? browserControlPort)
     {
+        // Honour the explicit BrowserControlPort override first so diagnostics + setup guidance
+        // resolve the same effective endpoint browser.proxy dials (BrowserControlEndpoint priority 1).
+        if (browserControlPort is { } overridePort && overridePort is >= 1 and <= 65535)
+            return overridePort;
+
         if (TryGetEndpointPort(tunnel?.BrowserProxyLocalEndpoint, out var browserLocalPort))
             return browserLocalPort;
 
@@ -380,50 +427,18 @@ internal sealed class CommandCenterStateBuilder
         };
     }
 
-    private TunnelCommandCenterInfo? BuildTunnelInfo()
+    // Resolve tunnel diagnostics from the active-GatewayRecord-first inputs (the same priority
+    // browser.proxy dialing and the topology classifier use) rather than the raw global
+    // SettingsManager. Otherwise a stale SettingsManager.UseSshTunnel could hide an active
+    // gateway's tunnel (or surface a tunnel a now-direct gateway no longer uses), so the Command
+    // Center diagnostics and the copied SSH guidance would not match the endpoint browser.proxy
+    // actually dials. The active-record-first SSH user is resolved the same way Derive resolves
+    // host/ports; CommandCenterTunnelInfoBuilder then layers live SshTunnelSnapshot values on top.
+    private TunnelCommandCenterInfo? BuildTunnelInfo(CommandCenterTopologyTunnelResolver.TunnelInputs tunnelInputs)
     {
-        if (_snapshot.Settings?.UseSshTunnel != true)
-        {
-            return null;
-        }
-
-        var localPort = _snapshot.SshTunnelSnapshot is { CurrentLocalPort: > 0 }
-            ? _snapshot.SshTunnelSnapshot.CurrentLocalPort
-            : _snapshot.Settings.SshTunnelLocalPort;
-        var remotePort = _snapshot.SshTunnelSnapshot is { CurrentRemotePort: > 0 }
-            ? _snapshot.SshTunnelSnapshot.CurrentRemotePort
-            : _snapshot.Settings.SshTunnelRemotePort;
-        var host = string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.CurrentHost)
-            ? _snapshot.Settings.SshTunnelHost
-            : _snapshot.SshTunnelSnapshot!.CurrentHost!;
-        var user = string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.CurrentUser)
-            ? _snapshot.Settings.SshTunnelUser
-            : _snapshot.SshTunnelSnapshot!.CurrentUser!;
-        var status = _snapshot.SshTunnelSnapshot?.Status is TunnelStatus.Up or TunnelStatus.Starting or TunnelStatus.Restarting or TunnelStatus.Failed
-            ? _snapshot.SshTunnelSnapshot.Status
-            : string.IsNullOrWhiteSpace(_snapshot.SshTunnelSnapshot?.LastError)
-                ? TunnelStatus.Stopped
-                : TunnelStatus.Failed;
-
-        return new TunnelCommandCenterInfo
-        {
-            Status = status,
-            LocalEndpoint = $"127.0.0.1:{localPort}",
-            RemoteEndpoint = string.IsNullOrWhiteSpace(host)
-                ? $"127.0.0.1:{remotePort}"
-                : $"{host}:127.0.0.1:{remotePort}",
-            BrowserProxyLocalEndpoint = _snapshot.SshTunnelSnapshot?.CurrentBrowserProxyLocalPort > 0
-                ? $"127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyLocalPort}"
-                : "",
-            BrowserProxyRemoteEndpoint = _snapshot.SshTunnelSnapshot?.CurrentBrowserProxyRemotePort > 0
-                ? string.IsNullOrWhiteSpace(host)
-                    ? $"127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyRemotePort}"
-                    : $"{host}:127.0.0.1:{_snapshot.SshTunnelSnapshot.CurrentBrowserProxyRemotePort}"
-                : "",
-            Host = host,
-            User = user,
-            LastError = _snapshot.SshTunnelSnapshot?.LastError,
-            StartedAt = _snapshot.SshTunnelSnapshot?.StartedAtUtc
-        };
+        var baseUser = _snapshot.HasActiveGatewayRecord
+            ? _snapshot.ActiveGatewaySshTunnel?.User
+            : _snapshot.Settings?.SshTunnelUser;
+        return CommandCenterTunnelInfoBuilder.Build(tunnelInputs, baseUser, _snapshot.SshTunnelSnapshot);
     }
 }

@@ -65,7 +65,9 @@ internal sealed class FakeMcpServer : IDisposable
 
             if (HoldForever)
             {
+                // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
                 try { await Task.Delay(Timeout.Infinite, _cts.Token); }
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
                 catch { /* server shutting down */ }
                 return;
             }
@@ -81,6 +83,7 @@ internal sealed class FakeMcpServer : IDisposable
         }
         catch
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { ctx.Response.Abort(); } catch { }
         }
     }
@@ -101,9 +104,13 @@ internal sealed class FakeMcpServer : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { _cts.Cancel(); } catch { }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { _listener.Stop(); } catch { }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { _listener.Close(); } catch { }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { _loop.Wait(TimeSpan.FromSeconds(2)); } catch { }
         _cts.Dispose();
     }

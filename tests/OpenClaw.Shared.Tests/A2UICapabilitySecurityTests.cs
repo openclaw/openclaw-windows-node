@@ -78,6 +78,7 @@ public class A2UICapabilitySecurityTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { File.Delete(tmpFile); } catch { }
         }
     }
@@ -129,7 +130,9 @@ public class A2UICapabilitySecurityTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { File.Delete(linkPath); } catch { }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(outsideDir, recursive: true); } catch { }
         }
     }

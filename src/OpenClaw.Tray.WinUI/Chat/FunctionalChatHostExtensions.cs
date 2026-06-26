@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClawTray.FunctionalUI.Hosting;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Chat;
@@ -26,12 +27,14 @@ public static class FunctionalChatHostExtensions
     public static Action<Action> AsPost(this DispatcherQueue dispatcher) =>
         action =>
         {
-            if (dispatcher.HasThreadAccess)
-            {
-                action();
-                return;
-            }
-
+            // Always queue rather than invoking inline when we already hold
+            // the dispatcher thread. The synchronous shortcut would let a
+            // UI-thread Publish jump ahead of background-thread Publishes
+            // that were already enqueued, so an older snapshot built before
+            // ours could fire LAST and overwrite the latest state in the
+            // subscribers (observed with the local exec-approval deny card
+            // being clobbered by a stale 135-entry snapshot one ms later).
+            // FIFO dispatch order keeps "newest build wins" for free.
             if (!dispatcher.TryEnqueue(() => action()))
                 System.Diagnostics.Debug.WriteLine("Dropped chat UI update because DispatcherQueue rejected the work item.");
         };
@@ -79,7 +82,10 @@ public sealed class MountedFunctionalChat(Border target, FunctionalHostControl h
     public OpenClawChatRoot ChatRoot => root;
 
     /// <summary>Push a picked file into the composer as a pending attachment.</summary>
-    public void AttachFile(ChatAttachment attachment) => root.OnFileAttached?.Invoke(attachment);
+    public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });
+
+    /// <summary>Push picked files into the composer as pending attachments.</summary>
+    public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) => root.OnFilesAttached?.Invoke(attachments);
 
     /// <summary>Push streaming voice transcript text into the composer.</summary>
     public void SetVoiceTranscript(string? text) => root.SetVoiceTranscript?.Invoke(text);

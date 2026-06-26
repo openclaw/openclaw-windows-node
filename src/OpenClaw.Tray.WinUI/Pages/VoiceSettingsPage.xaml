@@ -2,7 +2,8 @@
 <Page
     x:Class="OpenClawTray.Pages.VoiceSettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="using:OpenClawTray.Helpers">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
     <Grid HorizontalAlignment="Stretch">
@@ -14,6 +15,76 @@
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+            <!-- Assistant loop -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4">
+                            <TextBlock x:Uid="VoiceSettingsPage_AssistantHeader" Text="Assistant" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Uid="VoiceSettingsPage_AssistantDescription"
+                                      Text="Always-listening assistant service and latest conversation turns."
+                                      Style="{StaticResource CaptionTextBlockStyle}"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                      TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                            <Button x:Uid="VoiceSettingsPage_AssistantRefreshButton"
+                                    x:Name="AssistantRefreshButton" Click="OnAssistantRefreshClick" Padding="10,8"
+                                    ToolTipService.ToolTip="Refresh assistant status">
+                                <FontIcon Glyph="&#xE72C;" FontSize="14"/>
+                            </Button>
+                            <Button x:Name="AssistantStartButton" Click="OnAssistantStartClick"
+                                    Style="{StaticResource AccentButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_AssistantStartButtonText" Text="Start"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="AssistantStopButton" Click="OnAssistantStopClick">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE71A;" FontSize="14"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_AssistantStopButtonText" Text="Stop"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            CornerRadius="8" Padding="12">
+                        <Grid RowSpacing="4">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Uid="VoiceSettingsPage_AssistantStatusChecking"
+                                       x:Name="AssistantStatusText"
+                                       Text="Checking assistant status..."
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Name="AssistantDetailText" Grid.Row="1"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock x:Name="AssistantLastRefreshText" Grid.Row="2"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Uid="VoiceSettingsPage_AssistantRecentTurnsHeader" Text="Recent turns" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <StackPanel x:Name="AssistantTurnsPanel" Spacing="8"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <!-- Enable STT -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -193,7 +264,7 @@
                                     Width="100" Visibility="Collapsed">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon x:Name="PiperPreviewIcon" Glyph="&#xE768;" FontSize="14"/>
-                                    <TextBlock x:Name="PiperPreviewLabel" Text="Preview"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_PiperPreview" x:Name="PiperPreviewLabel" Text="Preview"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -216,7 +287,7 @@
                                 Width="140">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon x:Name="PreviewVoiceIcon" Glyph="&#xE768;" FontSize="14"/>
-                                <TextBlock x:Name="PreviewVoiceLabel" Text="Preview Voice"/>
+                                <TextBlock x:Uid="VoiceSettingsPage_PreviewVoice" x:Name="PreviewVoiceLabel" Text="Preview Voice"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

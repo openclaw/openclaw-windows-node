@@ -53,6 +53,7 @@ public class WindowsNodeClient : WebSocketClientBase
     };
 
     private static readonly Regex s_commandValidator = new(@"^[a-zA-Z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex s_pairingRequestIdValidator = new(@"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled);
 
     // Bounded concurrency for capability invocations: prevents a slow capability (e.g. a
     // 5-minute screen.record) from blocking health pings on the same WS receive loop.
@@ -128,12 +129,13 @@ public class WindowsNodeClient : WebSocketClientBase
         // Initialize device identity
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
+        _useV2Signature |= !string.IsNullOrEmpty(_bootstrapToken) && string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
         
         // Initialize registration
         _registration = new NodeRegistration
         {
             Id = _deviceIdentity.DeviceId,
-            Version = "1.0.0",
+            Version = AppVersionInfo.Version,
             Platform = WindowsPlatform,
             DeviceFamily = WindowsDeviceFamily,
             DisplayName = $"Windows Node ({Environment.MachineName})"
@@ -349,12 +351,26 @@ public class WindowsNodeClient : WebSocketClientBase
         _pairingBlocked = true;
         _pairingApprovedAwaitingReconnect = false;
 
-        _logger.Info($"[NODE] Pairing requested for this device via {eventType}");
-        _logger.Info($"To approve, run: openclaw devices approve {_deviceIdentity.DeviceId}");
+        var approvalKind = string.Equals(eventType, "node.pair.requested", StringComparison.OrdinalIgnoreCase)
+            ? PairingApprovalKind.NodePair
+            : PairingApprovalKind.DevicePair;
+        var requestId = TryGetSafePairingRequestId(payload);
+        var command = approvalKind == PairingApprovalKind.NodePair
+            ? "openclaw nodes approve"
+            : "openclaw devices approve";
+        var approvalCommand = !string.IsNullOrWhiteSpace(requestId)
+            ? $"{command} {requestId}"
+            : approvalKind == PairingApprovalKind.NodePair
+                ? "openclaw nodes pending"
+                : $"{command} {_deviceIdentity.DeviceId}";
+        _logger.Info($"[NODE] Pairing requested for this device via {eventType}; requestId={requestId ?? "none"}");
+        _logger.Info($"To approve, run: {approvalCommand}");
         EmitPairingStatusOnTransition(new PairingStatusEventArgs(
             PairingStatus.Pending,
             _deviceIdentity.DeviceId,
-            $"Run: openclaw devices approve {ShortDeviceId}..."));
+            $"Run: {approvalCommand}",
+            requestId: requestId,
+            approvalKind: approvalKind));
     }
 
     private async Task HandlePairingResolvedEventAsync(JsonElement root, string? eventType)
@@ -476,6 +492,8 @@ public class WindowsNodeClient : WebSocketClientBase
                 }
             }
         }
+
+        var sessionKey = ExtractNodeInvokeSessionKey(payload, args);
         
         _logger.Info($"[NODE] Invoking command: {command}");
         
@@ -484,7 +502,8 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             Id = requestId,
             Command = command,
-            Args = args
+            Args = args,
+            SessionKey = sessionKey
         };
         
         // Find capability that can handle this command
@@ -525,6 +544,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 stopwatch.Stop();
                 RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Client is shutting down; response is no longer needed
@@ -533,7 +553,8 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _logger.Error($"[NODE] Command execution failed: {command}", ex);
                 stopwatch.Stop();
-                try { await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed"); } catch { }
+                try { await SendNodeInvokeResultAsync(requestId, false, null, "Command execution failed"); }
+                catch (Exception sendEx) { _logger.Debug($"[NODE] Failed to send error response for {requestId}: {sendEx.Message}"); }
                 RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
             }
             finally
@@ -834,10 +855,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 {
                     pairingReason = reason;
                 }
-                if (TryGetString(detailsProp, "requestId", out var requestId))
-                {
-                    pairingRequestId = requestId;
-                }
+                pairingRequestId = TryGetSafePairingRequestId(detailsProp);
             }
         }
 
@@ -864,7 +882,8 @@ public class WindowsNodeClient : WebSocketClientBase
                 PairingStatus.Pending,
                 _deviceIdentity.DeviceId,
                 detail,
-                requestId: pairingRequestId));
+                requestId: pairingRequestId,
+                approvalKind: PairingApprovalKind.DevicePair));
             return;
         }
 
@@ -926,6 +945,17 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         return false;
+    }
+
+    private static string? TryGetSafePairingRequestId(JsonElement payload)
+    {
+        if (!TryGetString(payload, "requestId", out var requestId) ||
+            string.IsNullOrWhiteSpace(requestId))
+        {
+            return null;
+        }
+
+        return s_pairingRequestIdValidator.IsMatch(requestId) ? requestId : null;
     }
 
     private static bool TryGetString(JsonElement element, string propertyName, out string? value)
@@ -1025,6 +1055,7 @@ public class WindowsNodeClient : WebSocketClientBase
         var args = paramsEl.TryGetProperty("args", out var argsEl) 
             ? argsEl.Clone() 
             : default;
+        var sessionKey = ExtractNodeInvokeSessionKey(paramsEl, args);
         
         _logger.Info($"Received node.invoke: {command}");
         
@@ -1032,7 +1063,8 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             Id = requestId,
             Command = command,
-            Args = args
+            Args = args,
+            SessionKey = sessionKey
         };
         
         // Find capability that can handle this command
@@ -1073,6 +1105,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 stopwatch.Stop();
                 RaiseInvokeCompleted(requestId, command, response.Ok, response.Error, stopwatch.Elapsed);
             }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Client is shutting down; response is no longer needed
@@ -1081,7 +1114,8 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 _logger.Error($"Command execution failed: {command}", ex);
                 stopwatch.Stop();
-                try { await SendErrorResponseAsync(requestId, "Command execution failed"); } catch { }
+                try { await SendErrorResponseAsync(requestId, "Command execution failed"); }
+                catch (Exception sendEx) { _logger.Debug($"[NODE] Failed to send error response for {requestId}: {sendEx.Message}"); }
                 RaiseInvokeCompleted(requestId, command, false, "Command execution failed", stopwatch.Elapsed);
             }
             finally
@@ -1089,6 +1123,28 @@ public class WindowsNodeClient : WebSocketClientBase
                 _invokeSemaphore.Release();
             }
         }, CancellationToken.None);
+    }
+
+    private static string? ExtractNodeInvokeSessionKey(JsonElement envelope, JsonElement args)
+    {
+        if (envelope.TryGetProperty("sessionKey", out var envelopeSessionKey) &&
+            envelopeSessionKey.ValueKind == JsonValueKind.String)
+        {
+            var sessionKey = envelopeSessionKey.GetString();
+            if (!string.IsNullOrWhiteSpace(sessionKey))
+                return sessionKey;
+        }
+
+        if (args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty("sessionKey", out var argsSessionKey) &&
+            argsSessionKey.ValueKind == JsonValueKind.String)
+        {
+            var sessionKey = argsSessionKey.GetString();
+            if (!string.IsNullOrWhiteSpace(sessionKey))
+                return sessionKey;
+        }
+
+        return null;
     }
 
     private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)

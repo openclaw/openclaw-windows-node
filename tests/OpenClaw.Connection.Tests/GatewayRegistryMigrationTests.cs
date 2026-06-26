@@ -17,6 +17,7 @@ public class GatewayRegistryMigrationTests : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 
@@ -60,6 +61,21 @@ public class GatewayRegistryMigrationTests : IDisposable
         Assert.NotNull(record.SshTunnel);
         Assert.Equal("user", record.SshTunnel.User);
         Assert.Equal("host.com", record.SshTunnel.Host);
+    }
+
+    [Fact]
+    public void MigrateFromSettings_WithSshTunnelBrowserProxyForward_PreservesFlag()
+    {
+        var result = _registry.MigrateFromSettings(
+            "wss://test.example.com", "tok", null,
+            true, "user", "host.com", sshPort: 2222, sshRemotePort: 18789, sshLocalPort: 18789,
+            includeBrowserProxyForward: true, settingsDir: _tempDir);
+
+        Assert.True(result);
+        var record = _registry.GetActive()!;
+        Assert.NotNull(record.SshTunnel);
+        Assert.True(record.SshTunnel.IncludeBrowserProxyForward);
+        Assert.Equal(2222, record.SshTunnel.SshPort);
     }
 
     [Fact]

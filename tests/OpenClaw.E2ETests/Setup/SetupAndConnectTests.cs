@@ -42,15 +42,8 @@ public class SetupAndConnectTests
         var rawJson = root.GetRawText();
         Console.WriteLine($"[E2E] app.status response: {rawJson}");
 
-        var connectionStatus = root.GetProperty("connectionStatus").GetString();
-        Assert.True(connectionStatus is "Ready" or "Connected",
-            $"connectionStatus should be Ready or Connected, got '{connectionStatus}'; full status: {rawJson}");
-
-        var nodeConnected = root.GetProperty("nodeConnected").GetBoolean();
-        Assert.True(nodeConnected, $"nodeConnected should be true; full status: {rawJson}");
-
-        var nodePaired = root.GetProperty("nodePaired").GetBoolean();
-        Assert.True(nodePaired, $"nodePaired should be true; full status: {rawJson}");
+        AssertReadyStatus(root);
+        AssertOperatorCanApproveNodeTrust(root);
     }
 
     [E2EFact]
@@ -190,20 +183,314 @@ public class SetupAndConnectTests
         Assert.True(usesSharedGatewayToken, $"Expected tray dashboard link to use the shared HTTP gateway token; source={credentialSource}");
         Assert.False(hasTokenQuery, $"Expected tray dashboard link to avoid token query strings; source={credentialSource}");
         Assert.NotNull(dashboardUrl);
-        Assert.StartsWith($"http://localhost:{_fixture.GatewayPort}", dashboardUrl);
+        Assert.Contains($":{_fixture.GatewayPort}", dashboardUrl);
+        Assert.True(
+            dashboardUrl!.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase) ||
+            dashboardUrl.StartsWith("http://127.0.0.1:", StringComparison.OrdinalIgnoreCase),
+            $"Expected dashboard URL to use a loopback host, got {dashboardUrl}");
         Assert.Contains("#token=", dashboardUrl);
-        Console.WriteLine($"[E2E] tray dashboard URL source={credentialSource}; tokenQuery={hasTokenQuery}; length={dashboardUrl!.Length}");
+        Console.WriteLine($"[E2E] tray dashboard URL source={credentialSource}; tokenQuery={hasTokenQuery}; length={dashboardUrl.Length}");
 
-        var result = await _fixture.RunInWslAsync(
-            "curl -sS -o /tmp/openclaw-e2e-dashboard.html -w '%{http_code}' \"$OPENCLAW_DASHBOARD_URL\" --max-time 5",
-            TimeSpan.FromSeconds(15),
-            new Dictionary<string, string> { ["OPENCLAW_DASHBOARD_URL"] = dashboardUrl });
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        using var response = await http.GetAsync(dashboardUrl);
+        var body = await response.Content.ReadAsStringAsync();
+        Console.WriteLine($"[E2E] tray-generated dashboard URL HTTP status: {(int)response.StatusCode}; body length={body.Length}");
+        Assert.True(response.IsSuccessStatusCode, $"Expected dashboard/shared-token request to succeed, got HTTP {(int)response.StatusCode}");
+        Assert.DoesNotContain("incorrect token", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("invalid token", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("unauthorized", body, StringComparison.OrdinalIgnoreCase);
+    }
 
-        AssertCommandSucceeded(result, "probe tray-generated dashboard URL");
-        var status = result.Stdout.Trim();
-        Console.WriteLine($"[E2E] tray-generated dashboard URL HTTP status: {status}");
-        Assert.True(status is "200" or "301" or "302" or "303" or "307" or "308",
-            $"Expected dashboard/shared-token request to succeed, got HTTP {status}; stderr={result.Stderr}");
+    [E2EFact]
+    public async Task FullSetup_GatewayCliShowsPairedDeviceAndNode()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+
+        var devices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
+        AssertCommandSucceeded(devices, "list gateway devices");
+        Console.WriteLine($"[E2E] openclaw devices list --json:\n{devices.Stdout}");
+        AssertNoPendingRequests(devices.Stdout);
+
+        var nodes = await _fixture.RunInWslAsync("openclaw nodes list --json", TimeSpan.FromSeconds(30), env);
+        AssertCommandSucceeded(nodes, "list gateway nodes");
+        Console.WriteLine($"[E2E] openclaw nodes list --json:\n{nodes.Stdout}");
+        AssertNoPendingRequests(nodes.Stdout);
+        Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [E2EFact]
+    public async Task FullSetup_GatewayRestart_ReconnectsTrayAndNode()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+
+        var restart = await _fixture.RunInWslAsync(
+            "openclaw gateway restart || (systemctl --user restart openclaw-gateway.service && echo restarted-via-systemctl)",
+            TimeSpan.FromSeconds(60),
+            env);
+        AssertCommandSucceeded(restart, "restart real WSL gateway");
+        Console.WriteLine($"[E2E] gateway restart output:\n{restart.Stdout}");
+
+        await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+        await _fixture.WaitForNodeListReady(TimeSpan.FromSeconds(90));
+
+        using var statusDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.status");
+        AssertReadyStatus(statusDoc.RootElement);
+    }
+
+    [E2EFact]
+    public async Task RealGateway_QrSetupCodeFlow_ReconnectsThroughTrayMcp()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+
+        var setupCode = await MintRealGatewaySetupCodeAsync(env, "mint real gateway setup code");
+
+        using var applyDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.applySetupCode",
+            new { setupCode });
+        var apply = applyDoc.RootElement;
+        Console.WriteLine($"[E2E] applySetupCode response: {apply.GetRawText()}");
+        Assert.Equal("Success", apply.GetProperty("outcome").GetString());
+        var appliedGatewayUrl = apply.GetProperty("gatewayUrl").GetString();
+        Assert.NotNull(appliedGatewayUrl);
+        Assert.Contains($":{_fixture.GatewayPort}", appliedGatewayUrl, StringComparison.Ordinal);
+
+        var credentials = await _fixture.WaitForDurablePairedCredentialsAsync();
+        await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
+
+        Assert.True(credentials.HasOperatorToken, $"Expected operator device token in {credentials.IdentityDir}");
+        Assert.True(credentials.HasNodeToken, $"Expected node device token in {credentials.IdentityDir}");
+        Assert.False(credentials.HasBootstrapToken, "Bootstrap token should be cleared after both role tokens are durable");
+    }
+
+    [E2EFact]
+    public async Task RealGateway_ReusedSetupCode_IsSafeAndIdempotentForSameDevice()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+
+        var setupCode = await MintRealGatewaySetupCodeAsync(env, "mint real gateway setup code for reuse test");
+
+        using var firstDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.applySetupCode",
+            new { setupCode });
+        var first = firstDoc.RootElement;
+        Console.WriteLine($"[E2E] first applySetupCode response: {first.GetRawText()}");
+        Assert.Equal("Success", first.GetProperty("outcome").GetString());
+        var firstCredentials = await _fixture.WaitForDurablePairedCredentialsAsync();
+        Assert.True(firstCredentials.HasOperatorToken);
+        Assert.True(firstCredentials.HasNodeToken);
+        Assert.False(firstCredentials.HasBootstrapToken);
+
+        var before = _fixture.ReadActiveGatewayRecord();
+        using var secondDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.applySetupCode",
+            new { setupCode });
+        var second = secondDoc.RootElement;
+        Console.WriteLine($"[E2E] second applySetupCode response: {second.GetRawText()}");
+
+        Assert.Equal("Success", second.GetProperty("outcome").GetString());
+
+        var after = _fixture.ReadActiveGatewayRecord();
+        Assert.Equal(before.ActiveId, after.ActiveId);
+        Assert.Equal(before.SharedGatewayToken, after.SharedGatewayToken);
+
+        var afterCredentials = await _fixture.WaitForDurablePairedCredentialsAsync();
+        Assert.True(afterCredentials.HasOperatorToken, $"Expected operator token to survive in {afterCredentials.IdentityDir}");
+        Assert.True(afterCredentials.HasNodeToken, $"Expected node token to survive in {afterCredentials.IdentityDir}");
+        Assert.False(afterCredentials.HasBootstrapToken);
+
+        await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
+    }
+
+    [E2EFact]
+    public async Task ExternalLike_QrOnlyFreshTray_RequiresExplicitDeviceApproval()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+        var pendingBefore = await ReadPendingDeviceRequestIdsAsync();
+        var pendingNodeBefore = await ReadPendingNodeRequestIdsAsync();
+        var setupCode = await MintRealGatewaySetupCodeAsync(env, "mint real gateway setup code for external-like tray");
+
+        await using var externalTray = await IsolatedTrayInstance.StartAsync(_fixture.ArtifactDir, "external-qr-only");
+        using var applyDoc = await externalTray.Client.CallToolExpectSuccessAsync(
+            "app.connection.applySetupCode",
+            new { setupCode });
+        var apply = applyDoc.RootElement;
+        Console.WriteLine($"[E2E] external-like applySetupCode response: {apply.GetRawText()}");
+        Assert.Equal("Success", apply.GetProperty("outcome").GetString());
+
+        var active = externalTray.ReadActiveGatewayRecord();
+        Assert.NotNull(active.GatewayUrl);
+        Assert.Contains($":{_fixture.GatewayPort}", active.GatewayUrl, StringComparison.Ordinal);
+        Assert.True(string.IsNullOrWhiteSpace(active.SharedGatewayToken),
+            "QR-only external-like onboarding must not invent or persist the shared gateway token.");
+
+        var credentials = externalTray.ReadCredentialState();
+        Assert.False(credentials.HasNodeToken, "QR-only external-like onboarding should wait for explicit device approval before persisting a node token.");
+        Assert.False(credentials.HasOperatorToken,
+            "Current LKG QR-only external-like onboarding does not provide an admin operator token.");
+        Assert.True(credentials.HasBootstrapToken,
+            "Bootstrap remains as recovery material while explicit approval is pending.");
+
+        using var statusDoc = await externalTray.Client.CallToolExpectSuccessAsync("app.status");
+        var status = statusDoc.RootElement;
+        var rawStatus = status.GetRawText();
+        Assert.False(status.GetProperty("nodeConnected").GetBoolean(), $"Expected nodeConnected=false before approval; status={rawStatus}");
+        Assert.False(status.GetProperty("nodePaired").GetBoolean(), $"Expected nodePaired=false before approval; status={rawStatus}");
+        Assert.True(status.TryGetProperty("operatorScopes", out var scopes), $"operatorScopes missing: {rawStatus}");
+        Assert.DoesNotContain(ReadStringArray(scopes), scope => string.Equals(scope, "operator.admin", StringComparison.OrdinalIgnoreCase));
+
+        var requestId = await WaitForFirstPendingDeviceRequestIdAsync(pendingBefore);
+        Assert.False(string.IsNullOrWhiteSpace(requestId));
+
+        using var dashboardDoc = await externalTray.Client.CallToolExpectSuccessAsync("app.dashboard.url");
+        var dashboard = dashboardDoc.RootElement;
+        Assert.Equal("record.BootstrapToken", dashboard.GetProperty("credentialSource").GetString());
+        Assert.False(dashboard.GetProperty("usesSharedGatewayToken").GetBoolean());
+        Assert.False(dashboard.GetProperty("hasTokenQuery").GetBoolean());
+
+        using var rejectDoc = await RejectDevicePairingFromConnectionPageAsync(requestId);
+        Console.WriteLine($"[E2E] rejected external-like pending device request via Connection page: {rejectDoc.RootElement.GetRawText()}");
+
+        var nodeRequests = await ReadNewPendingNodeApprovalsUntilAsync(
+            pendingNodeBefore,
+            TimeSpan.FromSeconds(10));
+        foreach (var nodeRequest in nodeRequests)
+        {
+            using var rejectNodeDoc = await RejectNodePairingFromConnectionPageAsync(nodeRequest.RequestId);
+            Console.WriteLine($"[E2E] rejected external-like pending node-trust request via Connection page: {rejectNodeDoc.RootElement.GetRawText()}");
+        }
+    }
+
+    [E2EFact]
+    public async Task RealGateway_SharedTokenFlow_ReconnectsThroughTrayMcp()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var sharedGatewayToken = RequireSharedGatewayToken(gateway.SharedGatewayToken);
+
+        using var connectDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.connectSharedToken",
+            new
+            {
+                gatewayUrl = gateway.GatewayUrl,
+                token = sharedGatewayToken
+            });
+        var connect = connectDoc.RootElement;
+        Console.WriteLine($"[E2E] connectSharedToken response: {connect.GetRawText()}");
+        Assert.Equal("Success", connect.GetProperty("outcome").GetString());
+        Assert.Equal(gateway.GatewayUrl, connect.GetProperty("gatewayUrl").GetString());
+
+        var credentials = await _fixture.WaitForDurablePairedCredentialsAsync();
+        await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
+
+        using var dashboardDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.dashboard.url");
+        var dashboard = dashboardDoc.RootElement;
+        Assert.Equal("record.SharedGatewayToken", dashboard.GetProperty("credentialSource").GetString());
+        Assert.True(dashboard.GetProperty("usesSharedGatewayToken").GetBoolean());
+
+        Assert.True(credentials.HasOperatorToken, $"Expected operator device token in {credentials.IdentityDir}");
+        Assert.True(credentials.HasNodeToken, $"Expected node device token in {credentials.IdentityDir}");
+    }
+
+    [E2EFact]
+    public async Task ExternalLike_FreshTray_SharedTokenFlow_PairsOperatorAndNode()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var sharedGatewayToken = RequireSharedGatewayToken(gateway.SharedGatewayToken);
+        var pendingBefore = await ReadPendingDeviceRequestIdsAsync();
+        var pendingNodeBefore = await ReadPendingNodeRequestIdsAsync();
+
+        await using var externalTray = await IsolatedTrayInstance.StartAsync(_fixture.ArtifactDir, "external-shared-token");
+        using var connectDoc = await externalTray.Client.CallToolExpectSuccessAsync(
+            "app.connection.connectSharedToken",
+            new { gatewayUrl = gateway.GatewayUrl, token = sharedGatewayToken });
+        var connect = connectDoc.RootElement;
+        Console.WriteLine($"[E2E] external shared-token connect response: {connect.GetRawText()}");
+        Assert.Equal("Success", connect.GetProperty("outcome").GetString());
+
+        await ApproveNewPendingDeviceRequestsUntilReadyAsync(pendingBefore, externalTray);
+        var nodeRequest = Assert.Single(await ReadNewPendingNodeApprovalsUntilAsync(
+            pendingNodeBefore,
+            TimeSpan.FromSeconds(30)));
+        using (var approve = await ApproveNodePairingFromConnectionPageAsync(nodeRequest.RequestId))
+        {
+            Console.WriteLine($"[E2E] explicitly approved external node-trust request via Connection page: {approve.RootElement.GetRawText()}");
+        }
+
+        using var reconnectNode = await externalTray.Client.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+        Assert.True(reconnectNode.RootElement.GetProperty("reconnected").GetBoolean());
+        await externalTray.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+        await WaitForNodeEffectiveStateAsync(
+            externalTray.Client,
+            nodeRequest.NodeId,
+            new CapabilitiesConfig { Tts = false },
+            TimeSpan.FromSeconds(90));
+        AssertExternalTrayDurablePairing(externalTray);
+        await AssertGatewayCliStateHealthy();
+    }
+
+    [E2EFact]
+    public async Task RealGateway_BadSharedToken_DoesNotDestroyExistingPairing()
+    {
+        var before = _fixture.ReadActiveGatewayRecord();
+        Assert.False(string.IsNullOrWhiteSpace(before.SharedGatewayToken));
+        var beforeCredentials = _fixture.ReadActiveGatewayCredentialState();
+        Assert.True(beforeCredentials.HasOperatorToken, $"Expected existing operator token in {beforeCredentials.IdentityDir}");
+        Assert.True(beforeCredentials.HasNodeToken, $"Expected existing node token in {beforeCredentials.IdentityDir}");
+
+        using var connectDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.connectSharedToken",
+            new
+            {
+                gatewayUrl = before.GatewayUrl,
+                token = "definitely-not-the-real-shared-token"
+            });
+        var connect = connectDoc.RootElement;
+        Console.WriteLine($"[E2E] bad connectSharedToken response: {connect.GetRawText()}");
+        Assert.Equal("ConnectionFailed", connect.GetProperty("outcome").GetString());
+
+        var after = _fixture.ReadActiveGatewayRecord();
+        Assert.Equal(before.ActiveId, after.ActiveId);
+        Assert.Equal(before.GatewayUrl, after.GatewayUrl);
+        Assert.Equal(before.SharedGatewayToken, after.SharedGatewayToken);
+
+        var afterCredentials = _fixture.ReadActiveGatewayCredentialState();
+        Assert.True(afterCredentials.HasOperatorToken, $"Expected operator token to survive in {afterCredentials.IdentityDir}");
+        Assert.True(afterCredentials.HasNodeToken, $"Expected node token to survive in {afterCredentials.IdentityDir}");
+        Assert.False(afterCredentials.HasBootstrapToken);
+
+        await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
+    }
+
+    [E2EFact]
+    public async Task RealGateway_InvalidSetupCode_DoesNotDestroyExistingPairing()
+    {
+        var before = _fixture.ReadActiveGatewayRecord();
+        var beforeCredentials = _fixture.ReadActiveGatewayCredentialState();
+        Assert.True(beforeCredentials.HasOperatorToken, $"Expected existing operator token in {beforeCredentials.IdentityDir}");
+        Assert.True(beforeCredentials.HasNodeToken, $"Expected existing node token in {beforeCredentials.IdentityDir}");
+
+        using var applyDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.applySetupCode",
+            new { setupCode = "this-is-not-a-valid-openclaw-setup-code" });
+        var apply = applyDoc.RootElement;
+        Console.WriteLine($"[E2E] invalid applySetupCode response: {apply.GetRawText()}");
+        Assert.Equal("InvalidCode", apply.GetProperty("outcome").GetString());
+
+        var after = _fixture.ReadActiveGatewayRecord();
+        Assert.Equal(before.ActiveId, after.ActiveId);
+        Assert.Equal(before.GatewayUrl, after.GatewayUrl);
+        Assert.Equal(before.SharedGatewayToken, after.SharedGatewayToken);
+
+        var afterCredentials = _fixture.ReadActiveGatewayCredentialState();
+        Assert.True(afterCredentials.HasOperatorToken, $"Expected operator token to survive in {afterCredentials.IdentityDir}");
+        Assert.True(afterCredentials.HasNodeToken, $"Expected node token to survive in {afterCredentials.IdentityDir}");
+        Assert.False(afterCredentials.HasBootstrapToken);
+
+        await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
     }
 
     [E2EFact]
@@ -250,6 +537,433 @@ public class SetupAndConnectTests
         Assert.False(result.TimedOut, $"{description} timed out");
         Assert.Equal(0, result.ExitCode);
     }
+
+    private static void AssertReadyStatus(JsonElement root)
+    {
+        var rawJson = root.GetRawText();
+        var connectionStatus = root.GetProperty("connectionStatus").GetString();
+        Assert.True(connectionStatus is "Ready" or "Connected",
+            $"connectionStatus should be Ready or Connected, got '{connectionStatus}'; full status: {rawJson}");
+        Assert.True(root.GetProperty("nodeConnected").GetBoolean(), $"nodeConnected should be true; full status: {rawJson}");
+        Assert.True(root.GetProperty("nodePaired").GetBoolean(), $"nodePaired should be true; full status: {rawJson}");
+    }
+
+    private static void AssertOperatorCanApproveNodeTrust(JsonElement root)
+    {
+        var rawJson = root.GetRawText();
+        Assert.True(root.TryGetProperty("operatorScopes", out var scopes), $"operatorScopes missing from app.status: {rawJson}");
+        var values = ReadStringArray(scopes);
+        Assert.Contains(values, scope => string.Equals(scope, "operator.admin", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(values, scope => string.Equals(scope, "operator.pairing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task AssertGatewayCliStateHealthy()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+
+        var devices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
+        AssertCommandSucceeded(devices, "list gateway devices after reconnect");
+        AssertNoPendingRequests(devices.Stdout);
+
+        var nodes = await _fixture.RunInWslAsync("openclaw nodes list --json", TimeSpan.FromSeconds(30), env);
+        AssertCommandSucceeded(nodes, "list gateway nodes after reconnect");
+        AssertNoPendingRequests(nodes.Stdout);
+        Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task AssertPrimaryTrayReadyAndGatewayCliHealthyAsync()
+    {
+        await _fixture.WaitForConnectionReady();
+        await _fixture.WaitForNodeListReady();
+        var nodeId = _fixture.ReadActiveGatewayDeviceId();
+        if (await ApprovePendingNodeTrustRequestsForHealthyStateAsync(nodeId))
+            await ReconnectPrimaryNodeAndWaitForEffectiveStateAsync(nodeId);
+
+        await AssertGatewayCliStateHealthy();
+        using var statusDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.status");
+        AssertReadyStatus(statusDoc.RootElement);
+        AssertOperatorCanApproveNodeTrust(statusDoc.RootElement);
+    }
+
+    private async Task ReconnectPrimaryNodeAndWaitForEffectiveStateAsync(string nodeId)
+    {
+        using var reconnectNode = await _fixture.Client!.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+        Assert.True(reconnectNode.RootElement.GetProperty("reconnected").GetBoolean());
+        await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+        await WaitForNodeEffectiveStateAsync(
+            _fixture.Client!,
+            nodeId,
+            new CapabilitiesConfig(),
+            TimeSpan.FromSeconds(90));
+    }
+
+    private async Task<bool> ApprovePendingNodeTrustRequestsForHealthyStateAsync(string nodeId)
+    {
+        var approvedRequestIds = new HashSet<string>(StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        DateTime? quietSince = null;
+        string lastOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastOutput = approvals.RootElement.GetRawText();
+            var requests = ReadPendingNodeApprovals(approvals.RootElement)
+                .Where(request => string.Equals(request.NodeId, nodeId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            foreach (var request in requests.Where(request => approvedRequestIds.Add(request.RequestId)))
+            {
+                using var approve = await ApproveNodePairingFromConnectionPageAsync(request.RequestId);
+                Console.WriteLine($"[E2E] explicitly approved pending node-trust request via Connection page: {approve.RootElement.GetRawText()}");
+            }
+
+            if (requests.Length > 0)
+            {
+                quietSince = null;
+            }
+            else
+            {
+                quietSince ??= DateTime.UtcNow;
+                if (DateTime.UtcNow - quietSince >= TimeSpan.FromSeconds(3))
+                    return approvedRequestIds.Count > 0;
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException(
+            $"Timed out waiting for pending node approvals for {nodeId} to remain clear. Last output: {lastOutput}");
+    }
+
+    private async Task<string> MintRealGatewaySetupCodeAsync(Dictionary<string, string> env, string description)
+    {
+        var qr = await _fixture.RunInWslAsync("openclaw qr --json", TimeSpan.FromSeconds(30), env);
+        AssertCommandSucceeded(qr, description);
+
+        using var qrDoc = JsonDocument.Parse(ExtractJsonObject(qr.Stdout));
+        var setupCode = qrDoc.RootElement.GetProperty("setupCode").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(setupCode));
+        return setupCode!;
+    }
+
+    private static Dictionary<string, string> GatewayTokenEnv(string? sharedGatewayToken)
+    {
+        return new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = RequireSharedGatewayToken(sharedGatewayToken) };
+    }
+
+    private static string RequireSharedGatewayToken(string? sharedGatewayToken)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(sharedGatewayToken));
+        return sharedGatewayToken!;
+    }
+
+    private async Task<HashSet<string>> ReadPendingDeviceRequestIdsAsync()
+    {
+        using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+        return ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId");
+    }
+
+    private async Task<HashSet<string>> ReadPendingNodeRequestIdsAsync()
+    {
+        using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+        return ReadPendingNodeApprovals(approvals.RootElement)
+            .Select(request => request.RequestId)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private async Task<IReadOnlyList<PendingNodeApproval>> ReadNewPendingNodeApprovalsUntilAsync(
+        HashSet<string> ignoredRequestIds,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            var requests = ReadPendingNodeApprovals(approvals.RootElement)
+                .Where(request => !ignoredRequestIds.Contains(request.RequestId))
+                .ToArray();
+            if (requests.Length > 0)
+                return requests;
+
+            await Task.Delay(500);
+        }
+
+        return Array.Empty<PendingNodeApproval>();
+    }
+
+    private async Task<string> WaitForFirstPendingDeviceRequestIdAsync(
+        HashSet<string> ignoredRequestIds)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        string lastOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastOutput = approvals.RootElement.GetRawText();
+            var requestId = ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId")
+                .FirstOrDefault(id => !ignoredRequestIds.Contains(id));
+            if (!string.IsNullOrWhiteSpace(requestId))
+                return requestId;
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Timed out waiting for pending device approval. Last output: {lastOutput}");
+    }
+
+    private async Task ApproveNewPendingDeviceRequestsUntilReadyAsync(
+        HashSet<string> ignoredRequestIds,
+        IsolatedTrayInstance tray)
+    {
+        var approved = new HashSet<string>(ignoredRequestIds, StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        string lastDevicesOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            var credentials = tray.ReadCredentialState();
+            if (credentials.HasOperatorToken && credentials.HasNodeToken && !credentials.HasBootstrapToken)
+                return;
+
+            using var approvals = await ReadPendingApprovalsFromConnectionPageAsync();
+            lastDevicesOutput = approvals.RootElement.GetRawText();
+            var approvedAny = false;
+            foreach (var requestId in ReadPendingApprovalIds(approvals.RootElement, "devicePending", "RequestId", "DeviceId")
+                         .Where(id => approved.Add(id))
+                         .ToArray())
+            {
+                using var approve = await ApproveDevicePairingFromConnectionPageAsync(requestId);
+                Console.WriteLine($"[E2E] approved external-like device request via Connection page: {approve.RootElement.GetRawText()}");
+                approvedAny = true;
+            }
+
+            if (approvedAny)
+            {
+                var updatedCredentials = tray.ReadCredentialState();
+                if (!updatedCredentials.HasOperatorToken)
+                {
+                    using var reconnectDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnect");
+                    Assert.True(reconnectDoc.RootElement.GetProperty("reconnected").GetBoolean());
+                }
+                else if (!updatedCredentials.HasNodeToken)
+                {
+                    using var reconnectNodeDoc = await tray.Client.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+                    Assert.True(reconnectNodeDoc.RootElement.GetProperty("reconnected").GetBoolean());
+                }
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Timed out waiting for clean external-like tray credentials. Last devices list: {lastDevicesOutput}");
+    }
+
+    private async Task<JsonDocument> ReadPendingApprovalsFromConnectionPageAsync()
+    {
+        await NavigateAdminTrayToConnectionPageAsync();
+
+        return await _fixture.Client!.CallToolExpectSuccessAsync("app.connection.pendingApprovals");
+    }
+
+    private async Task<JsonDocument> ApproveDevicePairingFromConnectionPageAsync(string requestId)
+    {
+        await NavigateAdminTrayToConnectionPageAsync();
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.approveDevicePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "device", "approve", requestId);
+        return doc;
+    }
+
+    private async Task<JsonDocument> RejectDevicePairingFromConnectionPageAsync(string requestId)
+    {
+        await NavigateAdminTrayToConnectionPageAsync();
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.rejectDevicePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "device", "reject", requestId);
+        return doc;
+    }
+
+    private async Task<JsonDocument> ApproveNodePairingFromConnectionPageAsync(string requestId)
+    {
+        await NavigateAdminTrayToConnectionPageAsync();
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.approveNodePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "node", "approve", requestId);
+        return doc;
+    }
+
+    private async Task<JsonDocument> RejectNodePairingFromConnectionPageAsync(string requestId)
+    {
+        await NavigateAdminTrayToConnectionPageAsync();
+
+        var doc = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.rejectNodePairing",
+            new { requestId });
+        AssertConnectionPageDecisionSucceeded(doc.RootElement, "node", "reject", requestId);
+        return doc;
+    }
+
+    private async Task NavigateAdminTrayToConnectionPageAsync()
+    {
+        using var navigate = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.navigate",
+            new { page = "connection" });
+        Assert.True(navigate.RootElement.GetProperty("navigated").GetBoolean(), $"Expected admin tray to navigate to Connection page: {navigate.RootElement.GetRawText()}");
+    }
+
+    private static void AssertExternalTrayDurablePairing(IsolatedTrayInstance tray)
+    {
+        var credentials = tray.ReadCredentialState();
+        Assert.True(credentials.HasOperatorToken, "Expected isolated tray operator token after approval recovery.");
+        Assert.True(credentials.HasNodeToken, "Expected isolated tray node token after approval recovery.");
+        Assert.False(credentials.HasBootstrapToken, "Bootstrap token should be cleared after isolated tray role tokens are durable.");
+    }
+
+    private static void AssertConnectionPageDecisionSucceeded(JsonElement root, string kind, string action, string requestId)
+    {
+        Assert.True(root.GetProperty("connected").GetBoolean(), $"Admin tray should stay connected while deciding pairing request: {root.GetRawText()}");
+        Assert.True(root.TryGetProperty("decision", out var decision) && decision.ValueKind == JsonValueKind.Object,
+            $"Pairing decision response should include a decision object: {root.GetRawText()}");
+        Assert.Equal(kind, decision.GetProperty("kind").GetString());
+        Assert.Equal(action, decision.GetProperty("action").GetString());
+        Assert.Equal(requestId, decision.GetProperty("requestId").GetString());
+        Assert.True(decision.GetProperty("succeeded").GetBoolean(),
+            $"Connection page {action} action should succeed for {kind} request {requestId}: {root.GetRawText()}");
+    }
+
+    private static HashSet<string> ReadPendingApprovalIds(JsonElement root, string arrayProperty, string requestIdProperty, string fallbackIdProperty)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (!root.TryGetProperty(arrayProperty, out var pending) ||
+            pending.ValueKind != JsonValueKind.Array)
+        {
+            return ids;
+        }
+
+        foreach (var request in pending.EnumerateArray())
+        {
+            var requestId = ReadNonEmptyStringProperty(request, requestIdProperty);
+            var fallbackId = ReadNonEmptyStringProperty(request, fallbackIdProperty);
+            var id = requestId ?? fallbackId;
+            if (!string.IsNullOrWhiteSpace(id))
+                ids.Add(id);
+        }
+
+        return ids;
+    }
+
+    private static IReadOnlyList<PendingNodeApproval> ReadPendingNodeApprovals(JsonElement root)
+    {
+        if (!root.TryGetProperty("nodePending", out var pending) ||
+            pending.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<PendingNodeApproval>();
+        }
+
+        return pending.EnumerateArray()
+            .Select(request => new PendingNodeApproval(
+                ReadNonEmptyStringProperty(request, "RequestId") ?? "",
+                ReadNonEmptyStringProperty(request, "NodeId") ?? ""))
+            .Where(request => request.RequestId.Length > 0 && request.NodeId.Length > 0)
+            .ToArray();
+    }
+
+    private static async Task WaitForNodeEffectiveStateAsync(
+        McpClient client,
+        string nodeId,
+        CapabilitiesConfig expected,
+        TimeSpan timeout)
+    {
+        var expectedCapabilities = expected
+            .GetEnabledCapabilities()
+            .Select(capability => capability.Category)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var expectedCommands = expected
+            .GetEnabledCommandIds()
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var deadline = DateTime.UtcNow.Add(timeout);
+        string lastResponse = "<none>";
+
+        while (DateTime.UtcNow < deadline)
+        {
+            using var doc = await client.CallToolExpectSuccessAsync("app.nodes");
+            var root = doc.RootElement;
+            lastResponse = root.GetRawText();
+            var node = root.ValueKind == JsonValueKind.Array
+                ? root.EnumerateArray().FirstOrDefault(candidate =>
+                    string.Equals(
+                        ReadNonEmptyStringProperty(candidate, "NodeId"),
+                        nodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                : default;
+            if (node.ValueKind == JsonValueKind.Object &&
+                node.TryGetProperty("IsOnline", out var online) &&
+                online.GetBoolean() &&
+                node.TryGetProperty("Capabilities", out var capabilities) &&
+                node.TryGetProperty("Commands", out var commands) &&
+                expectedCapabilities.SequenceEqual(
+                    ReadStringArray(capabilities).Order(StringComparer.OrdinalIgnoreCase),
+                    StringComparer.OrdinalIgnoreCase) &&
+                expectedCommands.SequenceEqual(
+                    ReadStringArray(commands).Order(StringComparer.OrdinalIgnoreCase),
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException(
+            $"Node {nodeId} did not reconnect with its approved effective capabilities and commands. Last app.nodes response: {lastResponse}");
+    }
+
+    private static string? ReadNonEmptyStringProperty(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            return property.GetString();
+        }
+
+        var camelCase = char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
+        if (element.TryGetProperty(camelCase, out property) &&
+            property.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            return property.GetString();
+        }
+
+        return null;
+    }
+
+    private static void AssertNoPendingRequests(string output)
+    {
+        using var doc = JsonDocument.Parse(ExtractJsonObject(output));
+        if (doc.RootElement.TryGetProperty("pending", out var pending))
+        {
+            Assert.Equal(JsonValueKind.Array, pending.ValueKind);
+            Assert.Equal(0, pending.GetArrayLength());
+        }
+    }
+
+    private static string ExtractJsonObject(string output)
+    {
+        var start = output.IndexOf('{');
+        var end = output.LastIndexOf('}');
+        Assert.True(start >= 0 && end > start, $"Expected JSON object in output: {output}");
+        return output[start..(end + 1)];
+    }
+
+    private sealed record PendingNodeApproval(string RequestId, string NodeId);
 
     private static void AssertJsonPath(JsonElement root, string[] path, string expected)
     {

@@ -3,13 +3,17 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
+using OpenClawTray.Chat.Markdown;
+using OpenClawTray.FunctionalUI.Hosting;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.UI;
 
@@ -25,6 +29,9 @@ public sealed partial class CronPage : Page
     private HashSet<string> _runningJobIds = new(); // jobs currently being triggered
     private HashSet<string> _removedJobIds = new(); // jobs user explicitly removed (suppress auto-delete notification)
     private HashSet<string> _expandedJobIds = new(); // persisted expanded state
+    private readonly Dictionary<string, CancellationTokenSource> _runRefreshCts = new();
+    private readonly HashSet<string> _expandedRunFullResponseIds = new(); // persisted run response expansion state
+    private string? _lastHistoryRenderSignature = null;
     private CancellationTokenSource? _infoDismissCts = null; // auto-dismiss timer for InfoBar
     private readonly AsyncListLoadingState _cronLoading = new();
 
@@ -34,6 +41,7 @@ public sealed partial class CronPage : Page
         Unloaded += (_, _) =>
         {
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+            CancelAllRunRefreshLoops();
         };
     }
 
@@ -126,23 +134,37 @@ public sealed partial class CronPage : Page
         if (!_cronLoading.CanEdit) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         var vm = _jobs.Find(j => j.Id == jobId);
-        if (vm != null && !vm.IsEnabled) return;
+        if (_runningJobIds.Contains(jobId)) return;
         _runningJobIds.Add(jobId);
-        btn!.Content = "Running...";
-        btn.IsEnabled = false;
+        RefreshJobActionButtons(jobId);
 
-        CurrentApp.GatewayClient.RunCronJobAsync(jobId).ContinueWith(t =>
+        CurrentApp.GatewayClient.RunCronJobDetailedAsync(jobId).ContinueWith(t =>
         {
-            if (t.IsFaulted || (t.IsCompletedSuccessfully && !t.Result))
+            DispatcherQueue?.TryEnqueue(() =>
             {
-                // Request failed — clear running state immediately
-                DispatcherQueue?.TryEnqueue(() =>
+                var client = CurrentApp.GatewayClient;
+                var result = t.IsCompletedSuccessfully ? t.Result : null;
+                if (t.IsFaulted || result?.Enqueued != true)
                 {
-                    _runningJobIds.Remove(jobId);
-                    var client = CurrentApp.GatewayClient;
+                    var detail = t.IsFaulted
+                        ? t.Exception?.GetBaseException().Message ?? LocalizationHelper.GetString("AppNotification_CronRunFailed_DefaultDetail")
+                        : result?.Reason ?? result?.Error ?? LocalizationHelper.GetString("AppNotification_CronRunRejectedDetail");
+                    ClearRunningJob(jobId);
+                    ShowRunNotStartedNotification(vm?.Name ?? jobId, detail);
+                    ShowCronAppNotification(
+                        LocalizationHelper.GetString("AppNotification_CronRunFailed_Title"),
+                        LocalizationHelper.Format("AppNotification_CronRunFailed_MessageFormat", vm?.Name ?? jobId, detail),
+                        AppNotificationSeverity.Error,
+                        $"cron:{jobId}:run-failed");
                     if (client != null) _ = client.RequestCronListAsync();
-                });
-            }
+                    return;
+                }
+
+                if (client != null)
+                {
+                    StartRunRefreshLoop(jobId);
+                }
+            });
         });
 
         // Safety timeout: clear running state after 90s if gateway never reports completion
@@ -153,12 +175,92 @@ public sealed partial class CronPage : Page
             {
                 DispatcherQueue?.TryEnqueue(() =>
                 {
-                    _runningJobIds.Remove(jobId);
+                    ClearRunningJob(jobId);
                     var client = CurrentApp.GatewayClient;
-                    if (client != null) _ = client.RequestCronListAsync();
+                    if (client != null)
+                    {
+                        _ = client.RequestCronListAsync();
+                        if (_historyJobId == jobId)
+                            _ = client.RequestCronRunsAsync(jobId, limit: 20, offset: 0);
+                    }
                 });
             }
         });
+    }
+
+    private void StartRunRefreshLoop(string jobId)
+    {
+        CancelRunRefreshLoop(jobId);
+        var cts = new CancellationTokenSource();
+        _runRefreshCts[jobId] = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (var attempt = 0; attempt < 30; attempt++)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3), token);
+                    DispatcherQueue?.TryEnqueue(() =>
+                    {
+                        if (token.IsCancellationRequested)
+                            return;
+                        if (!_runningJobIds.Contains(jobId))
+                        {
+                            CancelRunRefreshLoop(jobId);
+                            return;
+                        }
+
+                        var client = CurrentApp.GatewayClient;
+                        if (client == null) return;
+
+                        _ = client.RequestCronRunsAsync(jobId, limit: 20, offset: 0);
+                    });
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // Expected when the run completes, times out, or the page unloads.
+            }
+            finally
+            {
+                var dispatcher = DispatcherQueue;
+                if (dispatcher != null)
+                {
+                    dispatcher.TryEnqueue(() =>
+                    {
+                        if (_runRefreshCts.TryGetValue(jobId, out var current) && ReferenceEquals(current, cts))
+                            _runRefreshCts.Remove(jobId);
+                        cts.Dispose();
+                    });
+                }
+                else
+                {
+                    cts.Dispose();
+                }
+            }
+        });
+    }
+
+    private void ClearRunningJob(string jobId)
+    {
+        _runningJobIds.Remove(jobId);
+        CancelRunRefreshLoop(jobId);
+        RefreshJobActionButtons(jobId);
+    }
+
+    private void CancelRunRefreshLoop(string jobId)
+    {
+        if (_runRefreshCts.Remove(jobId, out var cts))
+            cts.Cancel();
+    }
+
+    private void CancelAllRunRefreshLoops()
+    {
+        foreach (var cts in _runRefreshCts.Values)
+            cts.Cancel();
+        _runRefreshCts.Clear();
     }
 
     private void OnRemoveClick(object sender, RoutedEventArgs e)
@@ -166,6 +268,7 @@ public sealed partial class CronPage : Page
         var jobId = (sender as Button)?.Tag as string;
         if (string.IsNullOrEmpty(jobId)) return;
         if (!_cronLoading.CanEdit) return;
+        if (_runningJobIds.Contains(jobId)) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         _removedJobIds.Add(jobId);
         // Gateway client's HandleKnownResponse refreshes the list automatically on cron.remove
@@ -182,6 +285,7 @@ public sealed partial class CronPage : Page
 
         var vm = _jobs.Find(j => j.Id == jobId);
         if (vm == null) return;
+        if (_runningJobIds.Contains(jobId)) return;
         if (ts.IsOn == vm.IsEnabled) return; // no-op (e.g., programmatic init)
         _ = CurrentApp.GatewayClient.UpdateCronJobAsync(jobId, new { enabled = ts.IsOn });
     }
@@ -196,8 +300,8 @@ public sealed partial class CronPage : Page
         _editingJobId = null;
         RestoreFormFromInline(); // ensure form is back in its home position
         ResetForm();
-        FormTitle.Text = "New Job";
-        FormSaveButton.Content = "Create Job";
+        FormTitle.Text = LocalizationHelper.GetString("CronPage_NewJobTitle");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_CreateJobLabel");
         JobFormPanel.Visibility = Visibility.Visible;
     }
 
@@ -208,11 +312,11 @@ public sealed partial class CronPage : Page
         if (!_cronLoading.CanEdit) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         var vm = _jobs.Find(j => j.Id == jobId);
-        if (vm == null || !vm.IsEnabled) return;
+        if (vm == null || _runningJobIds.Contains(jobId)) return;
 
         _editingJobId = jobId;
-        FormTitle.Text = "Edit Job";
-        FormSaveButton.Content = "Save Changes";
+        FormTitle.Text = LocalizationHelper.GetString("CronPage_EditJob");
+        FormSaveButton.Content = LocalizationHelper.GetString("CronPage_SaveChanges");
 
         // Populate form fields from VM
         FormName.Text = vm.Name;
@@ -516,14 +620,53 @@ public sealed partial class CronPage : Page
         _infoDismissCts = new CancellationTokenSource();
         var cts = _infoDismissCts;
 
-        JobCompletedInfoBar.Title = "Job completed";
-        JobCompletedInfoBar.Message = $"\"{jobName}\" ran successfully and was removed.";
+        JobCompletedInfoBar.Title = LocalizationHelper.GetString("CronPage_JobCompleted");
+        JobCompletedInfoBar.Message = LocalizationHelper.Format("CronPage_JobCompletedRanSuccessfully", jobName);
+        JobCompletedInfoBar.Severity = InfoBarSeverity.Success;
         JobCompletedInfoBar.IsOpen = true;
         DispatcherQueue?.TryEnqueue(async () =>
         {
             try { await Task.Delay(10000, cts.Token); } catch (TaskCanceledException) { return; }
             JobCompletedInfoBar.IsOpen = false;
         });
+    }
+
+    private void ShowRunNotStartedNotification(string jobName, string? reason)
+    {
+        _infoDismissCts?.Cancel();
+        _infoDismissCts?.Dispose();
+        _infoDismissCts = new CancellationTokenSource();
+        var cts = _infoDismissCts;
+
+        JobCompletedInfoBar.Title = LocalizationHelper.GetString("CronPage_RunNotStarted");
+        JobCompletedInfoBar.Message = string.IsNullOrWhiteSpace(reason)
+            ? LocalizationHelper.Format("CronPage_RunNotStartedGeneric", jobName)
+            : LocalizationHelper.Format("CronPage_RunNotStartedWithReason", jobName, reason);
+        JobCompletedInfoBar.Severity = InfoBarSeverity.Warning;
+        JobCompletedInfoBar.IsOpen = true;
+        DispatcherQueue?.TryEnqueue(async () =>
+        {
+            try { await Task.Delay(10000, cts.Token); } catch (TaskCanceledException) { return; }
+            JobCompletedInfoBar.IsOpen = false;
+        });
+    }
+
+    private static void ShowCronAppNotification(
+        string title,
+        string message,
+        AppNotificationSeverity severity,
+        string dedupeKey)
+    {
+        AppNotificationPublisher.Show(
+            CurrentApp.AppNotifications,
+            title,
+            message,
+            "cron",
+            "jobs",
+            severity,
+            dedupeKey,
+            "cron",
+            LocalizationHelper.GetString("AppNotification_ActionOpenCron"));
     }
 
     private static string? GetSelectedTag(ComboBox combo)
@@ -772,19 +915,31 @@ public sealed partial class CronPage : Page
 
         DispatcherQueue?.TryEnqueue(() =>
         {
-            // Clear running state for jobs whose lastRunAtMs changed or runningAtMs is 0
+            var oldJobs = _jobs;
+            var hadRunningJobs = _runningJobIds.Count > 0;
+            var newIds = new HashSet<string>(jobs.Select(j => j.Id));
+            foreach (var runningJobId in _runningJobIds.ToArray())
+            {
+                if (!newIds.Contains(runningJobId))
+                    ClearRunningJob(runningJobId);
+            }
+
+            // Clear optimistic running state only after the gateway reports a completed run.
             foreach (var vm in jobs)
             {
                 if (_runningJobIds.Contains(vm.Id))
                 {
-                    var oldVm = _jobs.Find(j => j.Id == vm.Id);
-                    if (vm.RunningAtMs == 0 || oldVm == null || vm.LastRunAtMs != oldVm.LastRunAtMs)
-                        _runningJobIds.Remove(vm.Id);
+                    var oldVm = oldJobs.Find(j => j.Id == vm.Id);
+                    if (oldVm != null && vm.LastRunAtMs > 0 && vm.LastRunAtMs != oldVm.LastRunAtMs)
+                    {
+                        ClearRunningJob(vm.Id);
+                        if (_historyJobId == vm.Id && CurrentApp.GatewayClient != null)
+                            _ = CurrentApp.GatewayClient.RequestCronRunsAsync(vm.Id, limit: 20, offset: 0);
+                    }
                 }
             }
 
             // Detect one-shot jobs that disappeared (ran and deleted themselves)
-            var newIds = new HashSet<string>(jobs.Select(j => j.Id));
             foreach (var oldVm in _jobs)
             {
                 if (!newIds.Contains(oldVm.Id) && oldVm.DeleteAfterRun && !_removedJobIds.Contains(oldVm.Id))
@@ -794,6 +949,14 @@ public sealed partial class CronPage : Page
                 if (!newIds.Contains(oldVm.Id))
                     _removedJobIds.Remove(oldVm.Id);
             }
+
+            var oldIds = new HashSet<string>(oldJobs.Select(j => j.Id));
+            var sameJobSet = oldIds.SetEquals(newIds);
+            var shouldPreserveVisualTreeForRunningRefresh =
+                hadRunningJobs &&
+                _runningJobIds.Count > 0 &&
+                sameJobSet &&
+                _editingJobId == null;
 
             _jobs = jobs;
             _cronLoading.Complete(jobs.Count);
@@ -808,8 +971,20 @@ public sealed partial class CronPage : Page
             if (jobs.Count > 0)
             {
                 // Don't rebuild cards if we're currently editing inline (would lose the form)
-                if (_editingJobId == null)
-                    RebuildJobCards();
+                if (_editingJobId == null && !shouldPreserveVisualTreeForRunningRefresh)
+                {
+                    RebuildJobCards(preserveHistory: _historyJobId != null);
+                    if (_historyJobId != null && CurrentApp.GatewayClient != null)
+                    {
+                        ShowHistoryLoading(_historyJobId);
+                        _ = CurrentApp.GatewayClient.RequestCronRunsAsync(_historyJobId, limit: 20, offset: 0);
+                    }
+                }
+                else if (shouldPreserveVisualTreeForRunningRefresh)
+                {
+                    foreach (var runningJobId in _runningJobIds)
+                        RefreshJobActionButtons(runningJobId);
+                }
             }
             else
             {
@@ -845,7 +1020,7 @@ public sealed partial class CronPage : Page
                 ? (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"]
                 : (Brush)Application.Current.Resources["SystemFillColorNeutralBrush"];
             StorePathText.Text = storePath;
-            NextWakeText.Text = $"· Next wake: {nextWake}";
+            NextWakeText.Text = LocalizationHelper.Format("CronPage_NextWakeFormat", nextWake);
         });
     }
 
@@ -862,8 +1037,8 @@ public sealed partial class CronPage : Page
 
     private void ShowDisconnected()
     {
-        ConnectionInfoBar.Title = "Gateway disconnected";
-        ConnectionInfoBar.Message = "Connect to a gateway to load cron jobs.";
+        ConnectionInfoBar.Title = LocalizationHelper.GetString("CronPage_GatewayDisconnected.Title");
+        ConnectionInfoBar.Message = LocalizationHelper.GetString("CronPage_GatewayDisconnected.Message");
         ConnectionInfoBar.Severity = InfoBarSeverity.Warning;
         ConnectionInfoBar.IsOpen = true;
     }
@@ -1009,7 +1184,7 @@ public sealed partial class CronPage : Page
             var parent = fe;
             while (parent != null)
             {
-                if (parent is Button) return;
+                if (parent is Button or ToggleSwitch or Expander) return;
                 parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent) as FrameworkElement;
             }
         }
@@ -1104,9 +1279,24 @@ public sealed partial class CronPage : Page
 
     // --- Card building ---
 
-    private void RebuildJobCards()
+    private void RebuildJobCards(bool preserveHistory = false)
     {
-        _historyJobId = null; // history panel is destroyed on rebuild
+        var historyToRestore = preserveHistory ? _historyJobId : null;
+        if (historyToRestore != null)
+        {
+            var historyVm = _jobs.Find(j => j.Id == historyToRestore);
+            if (historyVm != null)
+            {
+                historyVm.IsExpanded = true;
+                _expandedJobIds.Add(historyToRestore);
+            }
+            else
+            {
+                historyToRestore = null;
+            }
+        }
+
+        _historyJobId = historyToRestore;
         JobsListPanel.Children.Clear();
         foreach (var vm in _jobs)
             JobsListPanel.Children.Add(BuildJobCard(vm));
@@ -1122,8 +1312,7 @@ public sealed partial class CronPage : Page
             CornerRadius = new CornerRadius(6),
             Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
             BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
-            BorderThickness = new Thickness(1),
-            Opacity = vm.CardOpacity
+            BorderThickness = new Thickness(1)
         };
 
         var grid = new Grid();
@@ -1168,19 +1357,25 @@ public sealed partial class CronPage : Page
             headerGrid.Children.Add(resultBadge);
         }
 
-        // Show "Running" badge when job is in-progress
-        if (_runningJobIds.Contains(vm.Id))
+        var runningBadge = new Border
         {
-            var runningBadge = new Border
+            Tag = $"running_{vm.Id}",
+            Visibility = _runningJobIds.Contains(vm.Id) ? Visibility.Visible : Visibility.Collapsed,
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(6, 2, 6, 2),
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"],
+            Child = new TextBlock
             {
-                CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
-            };
-            runningBadge.Child = new TextBlock { Text = "Running", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = (Brush)Application.Current.Resources["SystemFillColorAttentionBrush"] };
-            Grid.SetColumn(runningBadge, 3);
-            headerGrid.Children.Add(runningBadge);
-        }
+                Text = LocalizationHelper.GetString("CronPage_RunningBadge"),
+                FontSize = 10,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.Resources["SystemFillColorAttentionBrush"]
+            }
+        };
+        Grid.SetColumn(runningBadge, 3);
+        headerGrid.Children.Add(runningBadge);
 
         // Inline enabled/disabled toggle (right-aligned, before chevron).
         // Stop tapped from bubbling so the card doesn't toggle expand state.
@@ -1193,9 +1388,11 @@ public sealed partial class CronPage : Page
             MinWidth = 0,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 8, 0),
-            IsEnabled = _cronLoading.CanEdit
+            IsEnabled = _cronLoading.CanEdit && !vm.IsCompletedOneShot && !_runningJobIds.Contains(vm.Id)
         };
-        ToolTipService.SetToolTip(enabledToggle, vm.IsEnabled ? "Disable job" : "Enable job");
+        ToolTipService.SetToolTip(enabledToggle, vm.IsCompletedOneShot
+            ? LocalizationHelper.GetString("CronPage_CompletedOneTimeJobTooltip")
+            : vm.IsEnabled ? LocalizationHelper.GetString("CronPage_DisableJobTooltip") : LocalizationHelper.GetString("CronPage_EnableJobTooltip"));
         enabledToggle.Toggled += OnEnabledToggleChanged;
         enabledToggle.Tapped += (s, ev) => { ev.Handled = true; };
         Grid.SetColumn(enabledToggle, 5);
@@ -1266,30 +1463,32 @@ public sealed partial class CronPage : Page
 
         // Action buttons
         var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        var jobDisabled = !vm.IsEnabled;
+        var isRunning = _runningJobIds.Contains(vm.Id);
+        var canRunOrEditJob = _cronLoading.CanEdit && !isRunning;
 
         // "Run Now" button — show running state if job is in the running set
-        var runNowBtn = MakeActionButton("\uE768", "Run Now", vm.Id, OnRunNowClick);
-        if (_runningJobIds.Contains(vm.Id))
+        var runNowBtn = MakeActionButton("\uE768", LocalizationHelper.GetString("CronPage_RunNow"), vm.Id, OnRunNowClick, "RunNow");
+        if (isRunning)
         {
-            runNowBtn.Content = "Running...";
+            runNowBtn.Content = LocalizationHelper.GetString("CronPage_Running");
             runNowBtn.IsEnabled = false;
         }
-        else if (jobDisabled)
+        else if (!canRunOrEditJob)
         {
-            runNowBtn.Opacity = 0.4;
+            runNowBtn.IsEnabled = false;
         }
         buttonsPanel.Children.Add(runNowBtn);
 
-        var editBtn = MakeActionButton("\uE70F", "Edit", vm.Id, OnEditJobClick);
-        if (jobDisabled) editBtn.Opacity = 0.4;
+        var editBtn = MakeActionButton("\uE70F", LocalizationHelper.GetString("CronPage_EditAction"), vm.Id, OnEditJobClick, "Edit");
+        editBtn.IsEnabled = canRunOrEditJob;
         buttonsPanel.Children.Add(editBtn);
 
-        var histBtn = MakeActionButton("\uE81C", "History", vm.Id, OnHistoryClick);
-        if (jobDisabled) histBtn.Opacity = 0.4;
+        var histBtn = MakeActionButton("\uE81C", LocalizationHelper.GetString("CronPage_HistoryAction"), vm.Id, OnHistoryClick, "History");
+        histBtn.IsEnabled = _cronLoading.CanEdit && vm.HasRunHistory;
         buttonsPanel.Children.Add(histBtn);
 
-        var removeBtn = MakeActionButton("\uE711", "Remove", vm.Id, OnRemoveClick);
+        var removeBtn = MakeActionButton("\uE711", LocalizationHelper.GetString("CronPage_RemoveAction"), vm.Id, OnRemoveClick, "Remove");
+        removeBtn.IsEnabled = _cronLoading.CanEdit && !isRunning;
         buttonsPanel.Children.Add(removeBtn);
 
         panel.Children.Add(buttonsPanel);
@@ -1325,15 +1524,174 @@ public sealed partial class CronPage : Page
         return chip;
     }
 
-    private Button MakeActionButton(string glyph, string text, string jobId, RoutedEventHandler handler)
+    private Button MakeActionButton(string glyph, string text, string jobId, RoutedEventHandler handler, string actionName)
     {
-        var btn = new Button { Tag = jobId, FontSize = 12, Padding = new Thickness(8, 4, 8, 4), IsEnabled = _cronLoading.CanEdit };
+        var btn = new Button
+        {
+            Name = actionName,
+            Tag = jobId,
+            FontSize = 12,
+            Padding = new Thickness(8, 4, 8, 4),
+            IsEnabled = _cronLoading.CanEdit
+        };
+        btn.Content = MakeActionButtonContent(glyph, text);
+        btn.Click += handler;
+        return btn;
+    }
+
+    private static StackPanel MakeActionButtonContent(string glyph, string text)
+    {
         var sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         sp.Children.Add(new FontIcon { Glyph = glyph, FontSize = 12 });
         sp.Children.Add(new TextBlock { Text = text });
+        return sp;
+    }
+
+    private void RefreshJobActionButtons(string jobId)
+    {
+        var vm = _jobs.Find(j => j.Id == jobId);
+        var isRunning = _runningJobIds.Contains(jobId);
+
+        foreach (var button in FindVisualChildren<Button>(JobsListPanel))
+        {
+            if (button.Tag as string != jobId)
+                continue;
+
+            switch (button.Name)
+            {
+                case "RunNow":
+                    button.Content = isRunning
+                        ? LocalizationHelper.GetString("CronPage_Running")
+                        : MakeActionButtonContent("\uE768", LocalizationHelper.GetString("CronPage_RunNow"));
+                    button.IsEnabled = _cronLoading.CanEdit && !isRunning;
+                    break;
+                case "Edit":
+                    button.IsEnabled = _cronLoading.CanEdit && !isRunning;
+                    break;
+                case "History":
+                    button.IsEnabled = _cronLoading.CanEdit && vm?.HasRunHistory == true;
+                    break;
+                case "Remove":
+                    button.IsEnabled = _cronLoading.CanEdit && !isRunning;
+                    break;
+            }
+        }
+
+        foreach (var toggle in FindVisualChildren<ToggleSwitch>(JobsListPanel))
+        {
+            if (toggle.Tag as string == jobId)
+                toggle.IsEnabled = _cronLoading.CanEdit && vm?.IsCompletedOneShot != true && !isRunning;
+        }
+
+        foreach (var badge in FindVisualChildren<Border>(JobsListPanel))
+        {
+            if (badge.Tag as string == $"running_{jobId}")
+                badge.Visibility = isRunning ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent) where T : DependencyObject
+    {
+        var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T typed)
+                yield return typed;
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+                yield return descendant;
+        }
+    }
+
+    private UIElement BuildFullResponseExpander(string runEntryKey, string fullText, bool isError)
+    {
+        var expander = new Expander
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 6, 0, 0),
+            IsExpanded = _expandedRunFullResponseIds.Contains(runEntryKey),
+            Header = new TextBlock
+            {
+                Text = LocalizationHelper.GetString("CronPage_FullResponse"),
+                FontSize = 11,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            }
+        };
+        expander.Expanding += (_, _) => _expandedRunFullResponseIds.Add(runEntryKey);
+        expander.Collapsed += (_, _) => _expandedRunFullResponseIds.Remove(runEntryKey);
+
+        UIElement content;
+
+        if (isError)
+        {
+            content = new TextBlock
+            {
+                Text = fullText,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                IsTextSelectionEnabled = true,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 224, 85, 69))
+            };
+        }
+        else
+        {
+            var markdown = ChatMarkdownSanitizer.Sanitize(fullText);
+            var host = new FunctionalHostControl
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Background = new SolidColorBrush(Colors.Transparent)
+            };
+            host.Mount(_ => ChatMarkdownRenderer.Render(markdown)
+                ?? OpenClawTray.FunctionalUI.Factories.TextBlock(markdown));
+            content = host;
+        }
+
+        expander.Content = new Border
+        {
+            Padding = new Thickness(10, 8, 10, 10),
+            Margin = new Thickness(0, 4, 0, 0),
+            CornerRadius = new CornerRadius(6),
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+            BorderThickness = new Thickness(1),
+            Child = content
+        };
+
+        return expander;
+    }
+
+    private static Button MakeRunChatButton(string sessionKey)
+    {
+        var btn = new Button
+        {
+            Tag = sessionKey,
+            FontSize = 11,
+            Padding = new Thickness(8, 3, 8, 3),
+            Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        sp.Children.Add(new FontIcon { Glyph = "\uE8F2", FontSize = 11 });
+        sp.Children.Add(new TextBlock { Text = LocalizationHelper.GetString("CronPage_OpenChat") });
         btn.Content = sp;
-        btn.Click += handler;
+        btn.Click += OnOpenRunChatClick;
         return btn;
+    }
+
+    private static void OnOpenRunChatClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string sessionKey } || string.IsNullOrWhiteSpace(sessionKey))
+            return;
+
+        CurrentApp.PendingChatSessionKey = sessionKey;
+        if (CurrentApp.ActiveHubWindow is HubWindow hub)
+            hub.PendingChatSessionKey = sessionKey;
+
+        ((IAppCommands)CurrentApp).Navigate("chat");
     }
 
     // --- Run History ---
@@ -1345,7 +1703,7 @@ public sealed partial class CronPage : Page
         if (!_cronLoading.CanEdit) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         var vm = _jobs.Find(j => j.Id == jobId);
-        if (vm != null && !vm.IsEnabled) return;
+        if (vm != null && !vm.HasRunHistory) return;
         if (_historyJobId == jobId)
         {
             HideHistoryPanel(jobId);
@@ -1359,21 +1717,25 @@ public sealed partial class CronPage : Page
 
         _historyJobId = jobId;
 
-        // Show loading state
-        var histPanel = FindHistoryPanel(jobId);
-        if (histPanel != null)
-        {
-            histPanel.Children.Clear();
-            histPanel.Children.Add(new TextBlock
-            {
-                Text = "Loading run history...",
-                FontSize = 12,
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-            });
-            histPanel.Visibility = Visibility.Visible;
-        }
+        ShowHistoryLoading(jobId);
 
         _ = CurrentApp.GatewayClient.RequestCronRunsAsync(jobId, limit: 20, offset: 0);
+    }
+
+    private void ShowHistoryLoading(string jobId)
+    {
+        var histPanel = FindHistoryPanel(jobId);
+        if (histPanel == null) return;
+
+        _lastHistoryRenderSignature = null;
+        histPanel.Children.Clear();
+        histPanel.Children.Add(new TextBlock
+        {
+            Text = LocalizationHelper.GetString("CronPage_LoadingRunHistory"),
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        });
+        histPanel.Visibility = Visibility.Visible;
     }
 
     private void HideHistoryPanel(string jobId)
@@ -1381,6 +1743,7 @@ public sealed partial class CronPage : Page
         var panel = FindHistoryPanel(jobId);
         if (panel != null)
         {
+            _lastHistoryRenderSignature = null;
             panel.Children.Clear();
             panel.Visibility = Visibility.Collapsed;
         }
@@ -1415,17 +1778,23 @@ public sealed partial class CronPage : Page
     public void UpdateCronRuns(JsonElement data)
     {
         // data is the full response: { entries: [...], total, offset, limit, hasMore, ... }
-        if (_historyJobId == null) return;
+        if (data.TryGetProperty("entries", out var completionEntries) &&
+            completionEntries.ValueKind == JsonValueKind.Array)
+        {
+            DetectCompletedRunsFromHistory(completionEntries);
+        }
 
-        var histPanel = FindHistoryPanel(_historyJobId);
-        if (histPanel == null) return;
-        histPanel.Children.Clear();
+        if (_historyJobId == null) return;
 
         if (!data.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Array)
         {
-            histPanel.Children.Add(new TextBlock
+            var emptyHistoryPanel = FindHistoryPanel(_historyJobId);
+            if (emptyHistoryPanel == null) return;
+            _lastHistoryRenderSignature = null;
+            emptyHistoryPanel.Children.Clear();
+            emptyHistoryPanel.Children.Add(new TextBlock
             {
-                Text = "No run history available.",
+                Text = LocalizationHelper.GetString("CronPage_NoRunHistoryAvailable"),
                 FontSize = 12,
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
             });
@@ -1433,6 +1802,16 @@ public sealed partial class CronPage : Page
         }
 
         var total = data.TryGetProperty("total", out var totalEl) && totalEl.ValueKind == JsonValueKind.Number ? totalEl.GetInt32() : 0;
+        var hasMore = data.TryGetProperty("hasMore", out var hmEl) && hmEl.ValueKind == JsonValueKind.True;
+        var signature = BuildHistoryRenderSignature(entries, total, hasMore);
+        if (_runningJobIds.Count > 0 && string.Equals(_lastHistoryRenderSignature, signature, StringComparison.Ordinal))
+            return;
+
+        _lastHistoryRenderSignature = signature;
+        var histPanel = FindHistoryPanel(_historyJobId);
+        if (histPanel == null) return;
+        histPanel.Children.Clear();
+
         var entryCount = 0;
 
         // Header
@@ -1442,7 +1821,7 @@ public sealed partial class CronPage : Page
 
         var headerText = new TextBlock
         {
-            Text = "Run History",
+            Text = LocalizationHelper.GetString("CronPage_RunHistory"),
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
@@ -1466,16 +1845,17 @@ public sealed partial class CronPage : Page
         }
 
         // Update header with count
-        headerText.Text = total > 0 ? $"Run History — showing {entryCount} of {total}" : $"Run History — {entryCount} runs";
+        headerText.Text = total > 0
+            ? LocalizationHelper.Format("CronPage_RunHistoryShowing", entryCount, total)
+            : LocalizationHelper.Format("CronPage_RunHistoryCount", entryCount);
 
         // "Load more" if there are more
-        var hasMore = data.TryGetProperty("hasMore", out var hmEl) && hmEl.ValueKind == JsonValueKind.True;
         if (hasMore)
         {
             var nextOffset = data.TryGetProperty("nextOffset", out var noEl) && noEl.ValueKind == JsonValueKind.Number ? noEl.GetInt32() : entryCount;
             var loadMoreBtn = new Button
             {
-                Content = $"Load older runs ({total - entryCount - (nextOffset - entryCount)} more)...",
+                Content = LocalizationHelper.Format("CronPage_LoadOlderRuns", total - entryCount - (nextOffset - entryCount)),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 Margin = new Thickness(0, 6, 0, 0),
                 Padding = new Thickness(0, 6, 0, 6),
@@ -1486,9 +1866,9 @@ public sealed partial class CronPage : Page
             // Simple "load more" content
             var remaining = total - nextOffset;
             if (remaining > 0)
-                loadMoreBtn.Content = $"Load older runs ({remaining} more)...";
+                loadMoreBtn.Content = LocalizationHelper.Format("CronPage_LoadOlderRuns", remaining);
             else
-                loadMoreBtn.Content = "Load more runs...";
+                loadMoreBtn.Content = LocalizationHelper.GetString("CronPage_LoadMoreRuns");
 
             loadMoreBtn.Click += (s, args) =>
             {
@@ -1496,7 +1876,7 @@ public sealed partial class CronPage : Page
                 if (!string.IsNullOrEmpty(jid) && CurrentApp.GatewayClient != null)
                 {
                     loadMoreBtn.IsEnabled = false;
-                    loadMoreBtn.Content = "Loading...";
+                    loadMoreBtn.Content = LocalizationHelper.GetString("CronPage_Loading");
                     // For simplicity, reload with higher limit
                     _ = CurrentApp.GatewayClient.RequestCronRunsAsync(jid, limit: nextOffset + 20, offset: 0);
                 }
@@ -1507,31 +1887,73 @@ public sealed partial class CronPage : Page
         histPanel.Visibility = Visibility.Visible;
     }
 
-    // Redact tokens, secrets, and file paths from text before UI display
-    private static readonly Regex AbsolutePathPattern = new(
-        @"(?:[A-Za-z]:\\(?:Users|home|usr|var|tmp)\\[^\s""']+)|(?:/(?:home|Users|usr|var|tmp)/[^\s""']+)",
-        RegexOptions.Compiled);
-
-    private static string SanitizeForDisplay(string text)
+    private static string BuildHistoryRenderSignature(JsonElement entries, int total, bool hasMore)
     {
-        if (string.IsNullOrEmpty(text)) return text;
-        var sanitized = TokenSanitizer.Sanitize(text);
-        sanitized = AbsolutePathPattern.Replace(sanitized, m =>
+        var parts = new List<string> { total.ToString(), hasMore ? "more" : "done" };
+        foreach (var entry in entries.EnumerateArray())
         {
-            var sep = m.Value.Contains('\\') ? '\\' : '/';
-            var lastSep = m.Value.LastIndexOf(sep);
-            return lastSep >= 0 ? "…" + sep + m.Value[(lastSep + 1)..] : m.Value;
-        });
-        return sanitized;
+            if (entry.ValueKind != JsonValueKind.Object)
+                continue;
+
+            parts.Add(GetRunEntryKey(entry));
+            if (entry.TryGetProperty("summary", out var summaryEl) && summaryEl.ValueKind == JsonValueKind.String)
+                parts.Add((summaryEl.GetString()?.Length ?? 0).ToString());
+            if (entry.TryGetProperty("status", out var statusEl) && statusEl.ValueKind == JsonValueKind.String)
+                parts.Add(statusEl.GetString() ?? "");
+        }
+        return string.Join("|", parts);
+    }
+
+    private void DetectCompletedRunsFromHistory(JsonElement entries)
+    {
+        var completedJobIds = new HashSet<string>();
+        foreach (var entry in entries.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (!entry.TryGetProperty("jobId", out var jobIdEl) || jobIdEl.ValueKind != JsonValueKind.String)
+                continue;
+
+            var jobId = jobIdEl.GetString();
+            if (string.IsNullOrWhiteSpace(jobId) || !_runningJobIds.Contains(jobId))
+                continue;
+
+            var oldVm = _jobs.Find(j => j.Id == jobId);
+            if (oldVm == null)
+                continue;
+
+            var runAtMs = entry.TryGetProperty("runAtMs", out var runAtEl) && runAtEl.ValueKind == JsonValueKind.Number
+                ? runAtEl.GetInt64()
+                : (entry.TryGetProperty("ts", out var tsEl) && tsEl.ValueKind == JsonValueKind.Number ? tsEl.GetInt64() : 0);
+            if (runAtMs > oldVm.LastRunAtMs)
+                completedJobIds.Add(jobId);
+        }
+
+        if (completedJobIds.Count == 0)
+            return;
+
+        foreach (var jobId in completedJobIds)
+        {
+            ClearRunningJob(jobId);
+        }
+
+        var client = CurrentApp.GatewayClient;
+        if (client != null)
+        {
+            _ = client.RequestCronListAsync();
+            _ = client.RequestCronStatusAsync();
+        }
     }
 
     private Border BuildRunEntry(JsonElement entry)
     {
+        var runEntryKey = GetRunEntryKey(entry);
         var status = entry.TryGetProperty("status", out var sEl) ? sEl.GetString() ?? "" : "";
         var durationMs = entry.TryGetProperty("durationMs", out var dEl) && dEl.ValueKind == JsonValueKind.Number ? dEl.GetInt64() : 0;
-        var summary = SanitizeForDisplay(entry.TryGetProperty("summary", out var sumEl) ? sumEl.GetString() ?? "" : "");
-        var error = SanitizeForDisplay(entry.TryGetProperty("error", out var errEl) ? errEl.GetString() ?? "" : "");
         var model = entry.TryGetProperty("model", out var modEl) ? modEl.GetString() ?? "" : "";
+        var provider = entry.TryGetProperty("provider", out var providerEl) ? providerEl.GetString() ?? "" : "";
+        var sessionKey = entry.TryGetProperty("sessionKey", out var sessionEl) ? sessionEl.GetString() ?? "" : "";
         var tsMs = entry.TryGetProperty("runAtMs", out var tsEl) && tsEl.ValueKind == JsonValueKind.Number
             ? tsEl.GetInt64()
             : (entry.TryGetProperty("ts", out var ts2El) && ts2El.ValueKind == JsonValueKind.Number ? ts2El.GetInt64() : 0);
@@ -1548,6 +1970,7 @@ public sealed partial class CronPage : Page
 
         // Colors
         bool isError = status == "error" || status == "failed";
+        var text = CronRunHistoryDisplay.ExtractText(entry, isError);
         var statusBg = isError
             ? new SolidColorBrush(Color.FromArgb(40, 224, 85, 69))
             : new SolidColorBrush(Color.FromArgb(40, 76, 175, 80));
@@ -1581,10 +2004,12 @@ public sealed partial class CronPage : Page
 
         // Summary/error + metadata
         var contentPanel = new StackPanel { Margin = new Thickness(4, 0, 8, 0) };
-        var displayText = isError && !string.IsNullOrEmpty(error) ? error : summary;
+        var displayText = text.PreviewText;
         if (!string.IsNullOrEmpty(displayText))
         {
-            var truncated = displayText.Length > 120 ? displayText[..120] + "…" : displayText;
+            var truncated = displayText.Length > CronRunHistoryDisplay.PreviewMaxChars
+                ? displayText[..CronRunHistoryDisplay.PreviewMaxChars] + "…"
+                : displayText;
             contentPanel.Children.Add(new TextBlock
             {
                 Text = truncated,
@@ -1600,6 +2025,7 @@ public sealed partial class CronPage : Page
         // Meta line: model · tokens · delivery
         var metaParts = new List<string>();
         if (!string.IsNullOrEmpty(model)) metaParts.Add(model);
+        if (!string.IsNullOrEmpty(provider)) metaParts.Add(provider);
         if (totalTokens > 0) metaParts.Add($"{totalTokens:N0} tokens");
         if (delivered) metaParts.Add("delivered");
         else if (!string.IsNullOrEmpty(deliveryStatus)) metaParts.Add(deliveryStatus);
@@ -1614,6 +2040,10 @@ public sealed partial class CronPage : Page
                 Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"]
             });
         }
+        if (text.HasExpandableFullText)
+            contentPanel.Children.Add(BuildFullResponseExpander(runEntryKey, text.FullText!, isError));
+        if (!string.IsNullOrWhiteSpace(sessionKey))
+            contentPanel.Children.Add(MakeRunChatButton(sessionKey));
         Grid.SetColumn(contentPanel, 1);
         grid.Children.Add(contentPanel);
 
@@ -1657,6 +2087,24 @@ public sealed partial class CronPage : Page
 
         row.Child = grid;
         return row;
+    }
+
+    private static string GetRunEntryKey(JsonElement entry)
+    {
+        var runId = entry.TryGetProperty("runId", out var runIdEl) && runIdEl.ValueKind == JsonValueKind.String
+            ? runIdEl.GetString()
+            : null;
+        if (!string.IsNullOrWhiteSpace(runId))
+            return runId!;
+
+        var jobId = entry.TryGetProperty("jobId", out var jobIdEl) && jobIdEl.ValueKind == JsonValueKind.String
+            ? jobIdEl.GetString()
+            : "";
+        var runAtMs = entry.TryGetProperty("runAtMs", out var runAtEl) && runAtEl.ValueKind == JsonValueKind.Number
+            ? runAtEl.GetInt64()
+            : (entry.TryGetProperty("ts", out var tsEl) && tsEl.ValueKind == JsonValueKind.Number ? tsEl.GetInt64() : 0);
+
+        return $"{jobId}:{runAtMs}";
     }
 
     private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
@@ -1717,7 +2165,11 @@ public sealed partial class CronPage : Page
         public string Schedule { get; set; } = "";
         public bool IsEnabled { get; set; } = true;
         public bool IsExpanded { get; set; } = false;
-        public double CardOpacity => IsEnabled ? 1.0 : 0.5;
+        public bool IsCompletedOneShot =>
+            string.Equals(ScheduleKind, "at", StringComparison.OrdinalIgnoreCase) &&
+            LastRunAtMs > 0 &&
+            NextRunAtMs <= 0;
+        public bool HasRunHistory => LastRunAtMs > 0;
         public string LastRunTime { get; set; } = "—";
         public string LastResult { get; set; } = "";
         public SolidColorBrush ResultBadgeForeground { get; set; } = new(Colors.White);

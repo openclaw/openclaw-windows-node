@@ -392,6 +392,7 @@ public class SystemRunTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -426,6 +427,283 @@ public class SystemRunTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_UsesPayloadSessionKey_WhenArgsOmitSessionKey()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-session-1",
+                Command = "system.run",
+                Args = Parse("""{"command":"Write-Output hello","shell":"powershell"}"""),
+                SessionKey = "payload-session"
+            });
+
+            Assert.True(res.Ok, res.Error);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Equal("payload-session", prompt.LastRequest?.SessionKey);
+            Assert.NotNull(runner.LastRequest);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_PayloadSessionKeyOverridesArgsSessionKey()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-session-override",
+                Command = "system.run",
+                Args = Parse("""{"command":"Write-Output hello","shell":"powershell","sessionKey":"spoofed-session"}"""),
+                SessionKey = "trusted-session"
+            });
+
+            Assert.True(res.Ok, res.Error);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Equal("trusted-session", prompt.LastRequest?.SessionKey);
+            Assert.NotNull(runner.LastRequest);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPolicy_EvaluatesImplicitShellUsingRunnerEffectiveShell()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule
+                    {
+                        Pattern = "Get-Process",
+                        Action = ExecApprovalAction.Allow,
+                        Shells = new[] { "powershell" }
+                    }
+                },
+                ExecApprovalAction.Deny);
+            var runner = new FakeCommandRunner { EffectiveShellForNull = "pwsh" };
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "implicit-shell-policy",
+                Command = "system.run",
+                Args = Parse("""{"command":"Get-Process"}""")
+            });
+
+            Assert.False(res.Ok);
+            Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(runner.LastRequest);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPolicy_NormalizesUnsupportedExplicitShellBeforeApproval()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule
+                    {
+                        Pattern = "Get-Process",
+                        Action = ExecApprovalAction.Allow,
+                        Shells = new[] { "bash" }
+                    }
+                },
+                ExecApprovalAction.Deny);
+            var runner = new FakeCommandRunner();
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "unsupported-explicit-shell-policy",
+                Command = "system.run",
+                Args = Parse("""{"command":"Get-Process","shell":"bash"}""")
+            });
+
+            Assert.False(res.Ok);
+            Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(runner.LastRequest);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_PreservesOmittedShellWhenCallingRunner()
+    {
+        var logger = new ExecTestLogger();
+        var policy = new ExecApprovalPolicy(Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}"), logger);
+        policy.SetRules(
+            new[]
+            {
+                new ExecApprovalRule
+                {
+                    Pattern = "echo hi",
+                    Action = ExecApprovalAction.Allow,
+                    Shells = new[] { "cmd", "powershell" }
+                }
+            },
+            ExecApprovalAction.Deny);
+        var runner = new FakeCommandRunner
+        {
+            EffectiveShellForNull = "cmd",
+            HostFallbackShellForApproval = "powershell"
+        };
+        var cap = new SystemCapability(logger);
+        cap.SetCommandRunner(runner);
+        cap.SetApprovalPolicy(policy);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "preserve-omitted-shell",
+            Command = "system.run",
+            Args = Parse("""{"command":"echo hi"}""")
+        });
+
+        Assert.True(res.Ok, res.Error);
+        Assert.NotNull(runner.LastRequest);
+        Assert.Null(runner.LastRequest!.Shell);
+        Assert.Equal("powershell", runner.LastRequest.ApprovedHostFallbackShell);
+    }
+
+    [Fact]
+    public async Task SystemRun_DeniesOmittedShellWhenFallbackShellIsNotApproved()
+    {
+        var logger = new ExecTestLogger();
+        var policy = new ExecApprovalPolicy(Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}"), logger);
+        policy.SetRules(
+            new[]
+            {
+                new ExecApprovalRule
+                {
+                    Pattern = "echo hi",
+                    Action = ExecApprovalAction.Allow,
+                    Shells = new[] { "cmd" }
+                }
+            },
+            ExecApprovalAction.Deny);
+        var runner = new FakeCommandRunner
+        {
+            EffectiveShellForNull = "cmd",
+            HostFallbackShellForApproval = "powershell"
+        };
+        var cap = new SystemCapability(logger);
+        cap.SetCommandRunner(runner);
+        cap.SetApprovalPolicy(policy);
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "deny-unapproved-fallback-shell",
+            Command = "system.run",
+            Args = Parse("""{"command":"echo hi"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_PromptsOnceForShellWrapper_WhenUserApprovesOnce()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-wrapper-1",
+                Command = "system.run",
+                Args = Parse("""{"command":"cmd /c echo hello"}""")
+            });
+
+            Assert.True(res.Ok, res.Error);
+            Assert.NotNull(runner.LastRequest);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Empty(policy.Rules);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -460,6 +738,91 @@ public class SystemRunTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_AlwaysAllowWrapperPersistsSingleRule_AndCoversRepeat()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AlwaysAllow());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var req = new NodeInvokeRequest
+            {
+                Id = "prompt-wrapper-2",
+                Command = "system.run",
+                Args = Parse("""{"command":"cmd /c echo repeat"}""")
+            };
+
+            var first = await cap.ExecuteAsync(req);
+            Assert.True(first.Ok, first.Error);
+            Assert.Equal(1, prompt.CallCount);
+            Assert.Single(policy.Rules);
+            Assert.Equal("cmd /c echo repeat", policy.Rules[0].Pattern);
+
+            var second = await cap.ExecuteAsync(req);
+            Assert.True(second.Ok, second.Error);
+            Assert.Equal(1, prompt.CallCount);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPromptPolicy_StillDeniesExplicitBlockedShellWrapperPayload()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var logger = new ExecTestLogger();
+            var policy = new ExecApprovalPolicy(tempDir, logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "del *", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Prompt);
+            var runner = new FakeCommandRunner();
+            var prompt = new FakePromptHandler(ExecApprovalPromptDecision.AllowOnce());
+            var cap = new SystemCapability(logger);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+            cap.SetPromptHandler(prompt);
+
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "prompt-wrapper-3",
+                Command = "system.run",
+                Args = Parse("""{"command":"cmd /c del C:\\important.txt"}""")
+            });
+
+            Assert.False(res.Ok);
+            Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(runner.LastRequest);
+            Assert.Equal(1, prompt.CallCount);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -493,6 +856,7 @@ public class SystemRunTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -500,12 +864,31 @@ public class SystemRunTests
     /// <summary>
     /// Fake runner for unit testing — no actual process execution.
     /// </summary>
-    private class FakeCommandRunner : ICommandRunner
+    private class FakeCommandRunner : IHostFallbackAwareCommandRunner
     {
         public string Name => "fake";
         public CommandRequest? LastRequest { get; private set; }
         public CommandResult Result { get; set; } = new() { Stdout = "ok", ExitCode = 0 };
         public bool ShouldThrow { get; set; }
+        public string EffectiveShellForNull { get; set; } = "powershell";
+        public string? HostFallbackShellForApproval { get; set; }
+
+        public string ResolveEffectiveShell(string? requestedShell)
+        {
+            if (string.IsNullOrWhiteSpace(requestedShell))
+                return EffectiveShellForNull;
+
+            return requestedShell.Trim().ToLowerInvariant() switch
+            {
+                "cmd" => "cmd",
+                "pwsh" => "pwsh",
+                "powershell" => "powershell",
+                _ => "powershell",
+            };
+        }
+
+        public string? ResolveHostFallbackShellForApproval(string? requestedShell, string effectiveShell) =>
+            HostFallbackShellForApproval;
 
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
         {
@@ -525,10 +908,91 @@ public class SystemRunTests
             _decision = decision;
         }
 
+        public int CallCount { get; private set; }
+        public ExecApprovalPromptRequest? LastRequest { get; private set; }
+
         public Task<ExecApprovalPromptDecision> RequestAsync(
             ExecApprovalPromptRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(_decision);
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            LastRequest = request;
+            return Task.FromResult(_decision);
+        }
+    }
+}
+
+public class LocalCommandRunnerTests
+{
+    [Fact]
+    public void BuildProcessArgs_DefaultShellUsesWindowsPowerShellWhenPwshAvailableOnPath()
+    {
+        var tempDir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "openclaw-pwsh-path-" + Guid.NewGuid().ToString("N"))).FullName;
+        var fakePwsh = Path.Combine(tempDir, "pwsh.exe");
+        try
+        {
+            File.WriteAllBytes(fakePwsh, Array.Empty<byte>());
+
+            var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
+            {
+                Command = "Write-Output hi",
+            }, pathEnvVar: tempDir);
+
+            Assert.Equal(ExpectedWindowsPowerShellExe(), fileName);
+            Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup is best-effort and must not hide assertion failures.
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void BuildProcessArgs_DefaultShellFallsBackToWindowsPowerShellWhenPwshMissing()
+    {
+        var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
+        {
+            Command = "Write-Output hi",
+        }, pathEnvVar: string.Empty);
+
+        Assert.Equal(ExpectedWindowsPowerShellExe(), fileName);
+        Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
+    }
+
+    [Fact]
+    public void BuildProcessArgs_ExplicitPwshDoesNotFallback()
+    {
+        var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
+        {
+            Command = "Write-Output hi",
+            Shell = "pwsh",
+        }, pathEnvVar: string.Empty);
+
+        Assert.Equal("pwsh.exe", fileName);
+        Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
+    }
+
+    [Fact]
+    public void BuildProcessArgs_ExplicitWindowsPowerShellUsesWindowsPowerShell()
+    {
+        var (fileName, arguments) = LocalCommandRunner.BuildProcessArgs(new CommandRequest
+        {
+            Command = "Write-Output hi",
+            Shell = "powershell",
+        });
+
+        Assert.Equal(ExpectedWindowsPowerShellExe(), fileName);
+        Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
+    }
+
+    private static string ExpectedWindowsPowerShellExe()
+    {
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
+            ?? Environment.GetEnvironmentVariable("windir");
+        return string.IsNullOrWhiteSpace(systemRoot)
+            ? "powershell.exe"
+            : Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
     }
 }
 
@@ -698,5 +1162,131 @@ public class LocalCommandRunnerIntegrationTests
         // Without the fix this would block for ~30 s (the background child's lifetime).
         Assert.True(sw.ElapsedMilliseconds < 3000,
             $"Command took {sw.ElapsedMilliseconds}ms — expected < 3000ms (possible WaitForExitAsync hang regression)");
+    }
+}
+
+/// <summary>
+/// Unit tests for LocalCommandRunner.PlanExecution — the direct-argv vs shell-wrapped
+/// decision for the exec-approvals direct-argv path. Always-on: no process is spawned.
+/// </summary>
+public class LocalCommandRunnerPlanTests
+{
+    [Fact]
+    public void DirectArgv_UsesArgv0AsFileName_AndNoShell()
+    {
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
+        {
+            Argv = new[] { "C:\\tools\\where.exe", "dotnet" },
+            // These must be ignored when Argv is present.
+            Command = "Get-Process",
+            Shell = "powershell",
+            Args = new[] { "ignored" },
+        });
+
+        Assert.True(plan.IsDirectArgv);
+        Assert.Equal("C:\\tools\\where.exe", plan.FileName);
+        Assert.Equal(new[] { "dotnet" }, plan.ArgList);
+        Assert.Null(plan.Arguments);
+    }
+
+    [Fact]
+    public void DirectArgv_PreservesArgumentsVerbatim_NoTrimNoMangle()
+    {
+        // Arguments are passed through untouched. The nasty cases (whitespace, empty,
+        // quotes, backslashes, shell metacharacters, Unicode) are round-tripped by
+        // ProcessStartInfo.ArgumentList at the OS boundary; here we only assert our
+        // planner does not alter them.
+        var args = new[]
+        {
+            "  leading-and-trailing  ",
+            "",
+            "with \"quotes\"",
+            "trailing\\",
+            "% ! & | ^ > < ( )",
+            "café-ünïcode-日本語",
+        };
+        var argv = new List<string> { "C:\\probe.exe" };
+        argv.AddRange(args);
+
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest { Argv = argv });
+
+        Assert.True(plan.IsDirectArgv);
+        Assert.Equal("C:\\probe.exe", plan.FileName);
+        Assert.Equal(args, plan.ArgList);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void DirectArgv_RejectsEmptyExecutable(string exe)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest { Argv = new[] { exe } }));
+    }
+
+    [Theory]
+    [InlineData("where.exe")]          // bare name → Windows would guess from PATH
+    [InlineData("tools\\probe.exe")]   // relative path
+    [InlineData("\\probe.exe")]        // rooted but not fully qualified
+    public void DirectArgv_RejectsNonAbsoluteExecutable(string exe)
+    {
+        // argv[0] must be a fully-qualified path so Windows never guesses the
+        // executable (Program.exe hijack).
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest { Argv = new[] { exe } }));
+    }
+
+    [Theory]
+    [InlineData("C:\\scripts\\deploy.bat")]
+    [InlineData("C:\\scripts\\deploy.cmd")]
+    [InlineData("C:\\scripts\\DEPLOY.BAT")]
+    public void DirectArgv_RejectsBatchScripts(string exe)
+    {
+        // .bat/.cmd need cmd.exe, which re-parses args and breaks the verbatim-argv
+        // guarantee.
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest { Argv = new[] { exe, "arg" } }));
+    }
+
+    [Fact]
+    public void DirectArgv_SingleElement_HasEmptyArgList()
+    {
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
+        {
+            Argv = new[] { "C:\\Windows\\System32\\whoami.exe" },
+        });
+
+        Assert.True(plan.IsDirectArgv);
+        Assert.Empty(plan.ArgList!);
+    }
+
+    [Fact]
+    public void LegacyPath_WhenArgvNull_WrapsInPowerShell()
+    {
+        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
+        {
+            Command = "Write-Output hi",
+            Shell = "powershell",
+        });
+
+        Assert.False(plan.IsDirectArgv);
+        Assert.Null(plan.ArgList);
+        Assert.EndsWith("powershell.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Write-Output hi", plan.Arguments);
+    }
+
+    [Fact]
+    public void DirectArgv_WhenArgvEmptyButNotNull_ThrowsNotFallback()
+    {
+        // A non-null but empty Argv is a malformed approved payload. It must fail
+        // closed, never silently fall back to the shell (ICommandRunner contract:
+        // only null Argv means legacy).
+        Assert.Throws<ArgumentException>(() =>
+            LocalCommandRunner.PlanExecution(new CommandRequest
+            {
+                Argv = System.Array.Empty<string>(),
+                Command = "echo hi",
+                Shell = "cmd",
+            }));
     }
 }

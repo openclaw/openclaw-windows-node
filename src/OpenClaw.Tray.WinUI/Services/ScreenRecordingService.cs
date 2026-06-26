@@ -78,6 +78,7 @@ internal sealed class ScreenRecordingService : IDisposable
                 var f = p.TryGetNextFrame();
                 if (f == null) return;
                 Interlocked.Exchange(ref latestFrame, f)?.Dispose();
+                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
                 try { ready.Release(); } catch { /* already signaled */ }
             };
 

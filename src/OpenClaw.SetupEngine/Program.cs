@@ -99,7 +99,7 @@ public static class Program
         // cannot truncate the active run's log or journal files.
         using var logger = new SetupLogger(config.LogPath, Enum.TryParse<LogLevel>(config.LogLevel, true, out var lvl) ? lvl : LogLevel.Trace);
         var journalPath = Path.ChangeExtension(config.LogPath, ".journal.jsonl");
-        using var journal = new TransactionJournal(journalPath);
+        using var journal = new TransactionJournal(journalPath, logger);
         var commands = new CommandRunner(logger);
         using var cts = new CancellationTokenSource();
 
@@ -195,7 +195,7 @@ public static class Program
                 logPath = config.LogPath,
                 journalPath
             };
-            var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, SetupConfig.JsonWriteOptions);
             await AtomicFile.WriteAllTextAsync(jsonOutput, json);
         }
 

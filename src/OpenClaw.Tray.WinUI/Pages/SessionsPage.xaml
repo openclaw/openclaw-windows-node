@@ -8,30 +8,13 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid HorizontalAlignment="Stretch">
             <StackPanel Padding="24" Spacing="12"
-                        HorizontalAlignment="Stretch" MaxWidth="900">
+                    HorizontalAlignment="Stretch" MaxWidth="900">
 
-                <!-- Shown only when the user arrived via Connection's cross-page link. -->
-                <HyperlinkButton x:Name="BackToConnectionLink"
-                                 Click="OnBackToConnectionClicked"
-                                 Padding="0" Margin="0,0,0,4"
-                                 Visibility="Collapsed"
-                                 AutomationProperties.AutomationId="BackToConnectionLink">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE72B;"
-                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                  FontSize="12"
-                                  IsTextScaleFactorEnabled="False"/>
-                        <TextBlock x:Uid="SessionsPage_BackToConnection"
-                                   Text="Back to Connection"
-                                   Style="{StaticResource CaptionTextBlockStyle}"/>
-                    </StackPanel>
-                </HyperlinkButton>
-
-                <TextBlock x:Uid="SessionsPage_Sessions"
+            <TextBlock x:Uid="SessionsPage_Sessions"
                            Text="Sessions"
                            Style="{StaticResource TitleTextBlockStyle}"
                            Margin="0,0,0,2"/>
-                <TextBlock Text="Conversations this gateway is currently handling, grouped by channel."
+                <TextBlock x:Uid="SessionsPage_Subtitle" Text="Conversations this gateway is currently handling, grouped by channel."
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap" Margin="0,0,0,4"/>
@@ -100,7 +83,7 @@
                                    Text="No active sessions"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="Sessions appear here when a channel is connected and traffic is flowing."
+                        <TextBlock x:Uid="SessionsPage_EmptyHint" Text="Sessions appear here when a channel is connected and traffic is flowing."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap" TextAlignment="Center"
@@ -187,7 +170,7 @@
                                             <Button Tag="{Binding Key}"
                                                     Click="OnOpenChat"
                                                     Style="{StaticResource AccentButtonStyle}"
-                                                    Content="Open chat"
+                                                    x:Uid="SessionsPage_OpenChatButton" Content="Open chat"
                                                     ToolTipService.ToolTip="Open this session in Chat"
                                                     AutomationProperties.Name="Open in chat"/>
                                             <Button Tag="{Binding Key}"

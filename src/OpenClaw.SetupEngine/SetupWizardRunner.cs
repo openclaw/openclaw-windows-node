@@ -10,6 +10,10 @@ public sealed class SetupWizardRunner
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
     private static readonly Regex s_normalizeKeyRegex = new("[^a-z0-9]+", RegexOptions.Compiled);
+
+    // Progress steps can repeat while background work runs; keep bounded caps
+    // so setup fails with a diagnostic instead of hanging.
+
     private readonly SetupContext _ctx;
 
     public SetupWizardRunner(SetupContext ctx)
@@ -19,7 +23,7 @@ public sealed class SetupWizardRunner
 
     public async Task<StepResult> RunAsync(CancellationToken ct)
     {
-        var registry = new GatewayRegistry(_ctx.DataDir);
+        var registry = new GatewayRegistry(_ctx.DataDir, logger: new SetupOpenClawLogger(_ctx.Logger));
         registry.Load();
 
         var record = !string.IsNullOrWhiteSpace(_ctx.GatewayRecordId)
@@ -84,7 +88,45 @@ public sealed class SetupWizardRunner
 
             var visits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var restartAttempts = 0;
-            for (var i = 0; i < MaxWizardSteps; i++)
+            var progressPolls = 0;
+            var totalProgressPolls = 0;
+            var lastProgressStepId = "";
+            var interactiveSteps = 0;
+
+            // A reconnect restarts the wizard session, so reset replay-scoped
+            // counters before processing the replacement start payload.
+            async Task<JsonElement> SendWizardNextAsync(object parameters, int timeoutMs)
+            {
+                try
+                {
+                    return await client!.SendWizardRequestAsync("wizard.next", parameters, timeoutMs);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested && IsRestartLikeWizardDisconnect(ex) && restartAttempts < 2)
+                {
+                    restartAttempts++;
+                    _ctx.Logger.Warn($"Gateway restarted during wizard; reconnecting and replaying answers (attempt {restartAttempts}/2): {ex.Message}");
+
+                    try { await client!.DisconnectAsync(); } catch { }
+                    client!.Dispose();
+
+                    await Task.Delay(TimeSpan.FromSeconds(3), ct);
+                    client = CreateWizardClient(credential, identityPath, wsLogger);
+                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(30), ct);
+                    if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
+                        throw new WizardFatalException($"Gateway wizard reconnect failed after restart: {reconnect}");
+
+                    sessionId = "";
+                    visits.Clear();
+                    discoveredSteps.Clear();
+                    interactiveSteps = 0;
+                    progressPolls = 0;
+                    totalProgressPolls = 0;
+                    lastProgressStepId = "";
+                    return await client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+                }
+            }
+
+            while (true)
             {
                 ct.ThrowIfCancellationRequested();
 
@@ -123,6 +165,39 @@ public sealed class SetupWizardRunner
                 if (string.IsNullOrWhiteSpace(parsed.StepId))
                     return StepResult.Fail("Gateway wizard step is missing an id.");
 
+                var category = WizardStepClassifier.Categorize(parsed.StepType, parsed.Options.Count > 0);
+
+                // Progress carries no answer; poll until the gateway emits the
+                // next interactive step or reaches a bounded failure.
+                if (category == WizardStepCategory.Progress)
+                {
+                    if (!string.Equals(parsed.StepId, lastProgressStepId, StringComparison.Ordinal))
+                    {
+                        lastProgressStepId = parsed.StepId;
+                        progressPolls = 0;
+                    }
+
+                    progressPolls++;
+                    totalProgressPolls++;
+                    if (progressPolls > WizardTimeouts.MaxProgressPollsPerStep)
+                        return StepResult.Fail($"Gateway wizard progress step '{parsed.StepId}' did not complete after {WizardTimeouts.MaxProgressPollsPerStep} polls.");
+                    if (totalProgressPolls > WizardTimeouts.MaxTotalProgressPolls)
+                        return StepResult.Fail($"Gateway wizard did not finish after {WizardTimeouts.MaxTotalProgressPolls} progress updates.");
+
+                    var progressText = $"{parsed.Title} {parsed.Message}".Trim();
+                    _ctx.Logger.Info(string.IsNullOrWhiteSpace(progressText)
+                        ? $"Wizard progress step '{parsed.StepId}' — polling for next step"
+                        : $"Wizard progress: {progressText}");
+
+                    await Task.Delay(WizardTimeouts.ProgressPollDelay, ct);
+                    payload = await SendWizardNextAsync(WizardNextPayload.Acknowledge(sessionId, parsed.StepId), TimeoutFor(parsed));
+                    continue;
+                }
+
+                interactiveSteps++;
+                if (interactiveSteps > MaxWizardSteps)
+                    return StepResult.Fail($"Gateway wizard exceeded {MaxWizardSteps} steps.");
+
                 var visitKey = $"{parsed.StepId}:{parsed.StepIndex}";
                 visits.TryGetValue(visitKey, out var visitCount);
                 visits[visitKey] = visitCount + 1;
@@ -142,9 +217,9 @@ public sealed class SetupWizardRunner
 
                 _ctx.Logger.Info(answerResult.HasAnswer
                     ? $"Wizard step '{parsed.StepId}' ({parsed.StepType}, key={StableAnswerKey(parsed.Title, parsed.Message, parsed.StepId)}) answered with {(parsed.Sensitive ? "[sensitive]" : $"'{answerResult.Answer}'")}"
-                    : $"Wizard step '{parsed.StepId}' ({parsed.StepType}) continuing without explicit answer");
+                    : $"Wizard step '{parsed.StepId}' ({parsed.StepType}, {category}) continuing without explicit answer");
 
-                var parameters = answerResult.HasAnswer
+                object parameters = answerResult.HasAnswer
                     ? new
                     {
                         sessionId,
@@ -154,40 +229,20 @@ public sealed class SetupWizardRunner
                             value = AnswerValueForWire(parsed, answerResult.Answer)
                         }
                     }
-                    : (object)new { sessionId };
+                    : WizardNextPayload.Acknowledge(sessionId, parsed.StepId);
 
-                try
-                {
-                    payload = await client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutFor(parsed));
-                }
-                catch (Exception ex) when (!ct.IsCancellationRequested && IsRestartLikeWizardDisconnect(ex) && restartAttempts < 2)
-                {
-                    restartAttempts++;
-                    _ctx.Logger.Warn($"Gateway restarted during wizard; reconnecting and replaying answers (attempt {restartAttempts}/2): {ex.Message}");
-
-                    try { await client.DisconnectAsync(); } catch { }
-                    client.Dispose();
-
-                    await Task.Delay(TimeSpan.FromSeconds(3), ct);
-                    client = CreateWizardClient(credential, identityPath, wsLogger);
-                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(30), ct);
-                    if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
-                        return StepResult.Fail($"Gateway wizard reconnect failed after restart: {reconnect}");
-
-                    sessionId = "";
-                    visits.Clear();
-                    discoveredSteps.Clear();
-                    payload = await client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
-                }
+                payload = await SendWizardNextAsync(parameters, TimeoutFor(parsed));
             }
-
-            return StepResult.Fail($"Gateway wizard exceeded {MaxWizardSteps} steps.");
         }
         catch (OperationCanceledException)
         {
             if (client is not null && wizardStarted && !string.IsNullOrWhiteSpace(sessionId))
                 await TryCancelWizardAsync(client, sessionId);
             throw;
+        }
+        catch (WizardFatalException ex)
+        {
+            return StepResult.Fail(ex.Message, ex);
         }
         catch (Exception ex)
         {
@@ -224,6 +279,7 @@ public sealed class SetupWizardRunner
             _ctx.Logger.Warn("Cancelling gateway wizard session");
             await client.SendWizardRequestAsync("wizard.cancel", new { sessionId }, timeoutMs: 10_000);
         }
+
         catch (Exception ex)
         {
             _ctx.Logger.Warn($"Failed to cancel gateway wizard session: {ex.Message}");
@@ -279,7 +335,7 @@ public sealed class SetupWizardRunner
             Steps = discoveredSteps
         };
 
-        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(template, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(basePath, json);
         _ctx.Logger.Info($"Wizard answer template written: {basePath}");
         return basePath;
@@ -290,19 +346,34 @@ public sealed class SetupWizardRunner
         if (TryGetConfiguredAnswer(step, configuredAnswers, out var configured))
             return ValidateAnswer(step, configured, configuredAnswer: true);
 
-        var inferred = step.StepType switch
+        var category = WizardStepClassifier.Categorize(step.StepType, step.Options.Count > 0);
+        if (WizardStepClassifier.ContinuesWithoutAnswer(category))
         {
-            "note" => "true",
-            "confirm" => InferConfirmAnswer(step),
-            "select" => InferOptionAnswer(step),
-            "multiselect" => InferOptionAnswer(step),
-            "text" => InferTextAnswer(step),
-            _ => !string.IsNullOrWhiteSpace(step.InitialValue) ? step.InitialValue : null
-        };
+            return AnswerResolution.Continue();
+        }
+
+        switch (category)
+        {
+            case WizardStepCategory.Acknowledge:
+                return AnswerResolution.Ok("true");
+
+            case WizardStepCategory.Confirm:
+                return ValidateAnswer(step, InferConfirmAnswer(step), configuredAnswer: false);
+        }
+
+        // Unknown types with options are choice prompts for wire-shaping purposes.
+        var inferred = step.Options.Count > 0 && step.StepType != "text"
+            ? InferOptionAnswer(step)
+            : step.StepType switch
+            {
+                "select" or "multiselect" => InferOptionAnswer(step),
+                "text" => InferTextAnswer(step),
+                _ => !string.IsNullOrWhiteSpace(step.InitialValue) ? step.InitialValue : null
+            };
 
         if (inferred == null)
         {
-            return AnswerResolution.Fail($"Gateway wizard step '{step.StepId}' ({step.StepType}) requires a text answer.");
+            return AnswerResolution.Fail($"Gateway wizard step '{step.StepId}' ({step.StepType}) requires a value that was not provided.");
         }
 
         return ValidateAnswer(step, inferred, configuredAnswer: false);
@@ -336,18 +407,11 @@ public sealed class SetupWizardRunner
 
     private static object AnswerValueForWire(WizardPayload step, string answer)
     {
-        if (step.StepType == "confirm" && bool.TryParse(answer, out var booleanAnswer))
-            return booleanAnswer;
-
-        if (step.StepType == "multiselect")
-        {
-            if (string.Equals(answer, "__skip__", StringComparison.Ordinal))
-                return new[] { "__skip__" };
-
-            return SplitMultiSelect(answer);
-        }
-
-        return answer;
+        // Preserve the selected option's raw JSON value for unknown choice-style steps.
+        var effectiveType = step.Options.Count > 0 && step.StepType is not ("select" or "multiselect" or "text")
+            ? "select"
+            : step.StepType;
+        return WizardAnswerBuilder.BuildWireValue(effectiveType, answer, step.Options);
     }
 
     private static string? InferTextAnswer(WizardPayload step)
@@ -365,7 +429,7 @@ public sealed class SetupWizardRunner
     {
         if (step.StepType == "select")
         {
-            if (!step.Options.Any(o => string.Equals(o.Value, answer, StringComparison.Ordinal)))
+            if (!WizardAnswerBuilder.TryFindOption(step.Options, answer, out _))
             {
                 var source = configuredAnswer ? "configured" : "default";
                 return AnswerResolution.Fail($"The {source} answer for wizard step '{step.StepId}' is not one of the gateway-provided options.");
@@ -373,14 +437,11 @@ public sealed class SetupWizardRunner
         }
         else if (step.StepType == "multiselect")
         {
-            var values = SplitMultiSelect(answer);
-            if (values.Length == 0)
+            if (!WizardAnswerBuilder.TryResolveOptions(step.Options, answer, out var values))
                 return AnswerResolution.Fail($"Gateway wizard step '{step.StepId}' requires at least one selected value.");
 
-            var validValues = step.Options.Select(o => o.Value).ToHashSet(StringComparer.Ordinal);
-            var invalid = values.FirstOrDefault(v => !validValues.Contains(v));
-            if (invalid != null)
-                return AnswerResolution.Fail($"Wizard step '{step.StepId}' has invalid selected value '{invalid}'.");
+            if (values.Length == 0)
+                return AnswerResolution.Fail($"Gateway wizard step '{step.StepId}' requires at least one selected value.");
         }
 
         return AnswerResolution.Ok(answer);
@@ -417,17 +478,7 @@ public sealed class SetupWizardRunner
         return false;
     }
 
-    private static int TimeoutFor(WizardPayload step)
-    {
-        var text = $"{step.Title} {step.Message}";
-        return text.Contains("device", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("authorize", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("login", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("sign in", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("oauth", StringComparison.OrdinalIgnoreCase)
-            ? 300_000
-            : 30_000;
-    }
+    private static int TimeoutFor(WizardPayload step) => WizardTimeouts.ForStep(step.Title, step.Message);
 
     private static bool IsRestartLikeWizardDisconnect(Exception ex)
     {
@@ -447,7 +498,11 @@ public sealed class SetupWizardRunner
         {
             "select" => step.Options.FirstOrDefault()?.Value ?? "<select one option value>",
             "multiselect" => "<comma-separated option values>",
-            "text" => step.Sensitive ? "<sensitive value>" : "<text value>",
+            "text" => step.Sensitive
+                ? "<sensitive value>"
+                : step.AuthUrls.Count > 0
+                    ? $"<value obtained from: {step.AuthUrls[0]}>"
+                    : "<text value>",
             _ => step.SuggestedAnswer ?? "true"
         };
     }
@@ -462,9 +517,6 @@ public sealed class SetupWizardRunner
         return !string.IsNullOrWhiteSpace(messageKey) ? messageKey : stepId;
     }
 
-    private static string[] SplitMultiSelect(string stepInput) =>
-        stepInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
     private static string NormalizeKey(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -477,9 +529,11 @@ public sealed class SetupWizardRunner
     {
         public static AnswerResolution Ok(string answer) => new(true, true, answer, null);
         public static AnswerResolution Fail(string error) => new(false, false, "", error);
+
+        public static AnswerResolution Continue() => new(true, false, "", null);
     }
 
-    private sealed record WizardOption(string Value, string Label, string Hint);
+    private sealed class WizardFatalException(string message) : Exception(message);
 
     private sealed record WizardPayload(
         bool IsDone,
@@ -492,7 +546,7 @@ public sealed class SetupWizardRunner
         bool Sensitive,
         int StepIndex,
         int TotalSteps,
-        IReadOnlyList<WizardOption> Options,
+        IReadOnlyList<WizardOptionValue> Options,
         string? Error)
     {
         public static WizardPayload Parse(JsonElement payload)
@@ -517,34 +571,19 @@ public sealed class SetupWizardRunner
                 if (!payload.TryGetProperty("step", out var step) || step.ValueKind != JsonValueKind.Object)
                     return ErrorPayload("Gateway wizard response is missing a step object.");
 
-                var type = step.TryGetProperty("type", out var typeProperty) ? typeProperty.ToString() : "note";
+                var rawType = step.TryGetProperty("type", out var typeProperty) ? typeProperty.ToString() : "note";
+                var type = string.IsNullOrWhiteSpace(rawType) ? "note" : rawType.Trim().ToLowerInvariant();
                 var title = step.TryGetProperty("title", out var titleProperty) ? titleProperty.ToString() : "";
                 var message = step.TryGetProperty("message", out var messageProperty) ? messageProperty.ToString() : "";
                 var stepId = step.TryGetProperty("id", out var idProperty) ? idProperty.ToString() : "";
-                var initialValue = step.TryGetProperty("initialValue", out var initialProperty) ? initialProperty.ToString() : "";
+                var initialValue = step.TryGetProperty("initialValue", out var initialProperty)
+                    ? WizardAnswerBuilder.ValueKey(initialProperty)
+                    : "";
                 var sensitive = step.TryGetProperty("sensitive", out var sensitiveProperty) && sensitiveProperty.ValueKind == JsonValueKind.True;
                 var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
                 var totalSteps = payload.TryGetProperty("totalSteps", out var totalProperty) && totalProperty.TryGetInt32(out var total) ? total : 0;
 
-                var options = new List<WizardOption>();
-                if (step.TryGetProperty("options", out var optionsProperty) && optionsProperty.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var option in optionsProperty.EnumerateArray())
-                    {
-                        if (option.ValueKind == JsonValueKind.Object)
-                        {
-                            var label = option.TryGetProperty("label", out var labelProperty) ? labelProperty.ToString() : "";
-                            var value = option.TryGetProperty("value", out var valueProperty) ? valueProperty.ToString() : label;
-                            var hint = option.TryGetProperty("hint", out var hintProperty) ? hintProperty.ToString() : "";
-                            options.Add(new(value, label, hint));
-                        }
-                        else
-                        {
-                            var value = option.ToString();
-                            options.Add(new(value, value, ""));
-                        }
-                    }
-                }
+                var options = WizardAnswerBuilder.ReadOptions(step);
 
                 return new(false, sessionId, stepId, type, title, message, initialValue, sensitive, stepIndex, totalSteps, options, null);
             }
@@ -564,7 +603,8 @@ public sealed class SetupWizardRunner
         string Message,
         bool Sensitive,
         string? SuggestedAnswer,
-        IReadOnlyList<WizardOption> Options)
+        IReadOnlyList<WizardOptionValue> Options,
+        IReadOnlyList<string> AuthUrls)
     {
         public static WizardTemplateStep From(WizardPayload payload)
         {
@@ -583,7 +623,9 @@ public sealed class SetupWizardRunner
             if (payload.Sensitive && !string.IsNullOrWhiteSpace(suggested))
                 suggested = "<sensitive value>";
 
-            return new(payload.StepId, payload.StepType, payload.Title, payload.Message, payload.Sensitive, suggested, payload.Options);
+            var authUrls = WizardMessageFormatting.ExtractUrls($"{payload.Title}\n{payload.Message}");
+
+            return new(payload.StepId, payload.StepType, payload.Title, payload.Message, payload.Sensitive, suggested, payload.Options, authUrls);
         }
     }
 }

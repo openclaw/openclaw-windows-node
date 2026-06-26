@@ -10,7 +10,7 @@ namespace OpenClaw.Shared.Mxc;
 public sealed record MxcConfig
 {
     [JsonPropertyName("version")]
-    public string Version { get; init; } = "0.4.0-alpha";
+    public string Version { get; init; } = "0.7.0-alpha";
 
     [JsonPropertyName("containerId")]
     public required string ContainerId { get; init; }
@@ -22,9 +22,9 @@ public sealed record MxcConfig
     [JsonPropertyName("process")]
     public required MxcProcess Process { get; init; }
 
-    [JsonPropertyName("appContainer")]
+    [JsonPropertyName("processContainer")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public MxcAppContainer? AppContainer { get; init; }
+    public MxcProcessContainer? ProcessContainer { get; init; }
 
     [JsonPropertyName("filesystem")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -61,7 +61,7 @@ public sealed record MxcProcess
     public int? TimeoutMs { get; init; }
 }
 
-public sealed record MxcAppContainer
+public sealed record MxcProcessContainer
 {
     [JsonPropertyName("capabilities")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

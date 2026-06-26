@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.SetupEngine.UI;
 using OpenClaw.Shared;
 using Windows.UI;
 
@@ -111,12 +112,12 @@ public sealed partial class ProgressPage : Page
                     SubtitleText.Text = "Opening gateway setup...";
                     await Task.Delay(900);
                     finishRow?.SetStatus(StepStatus.Done);
-                    App.MainWindow?.NavigateToWizard();
+                    SetupWindow.Active?.NavigateToWizard();
                 }
                 else if (config.SkipPermissions)
-                    App.MainWindow?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
+                    SetupWindow.Active?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
                 else
-                    App.MainWindow?.NavigateToPermissions();
+                    SetupWindow.Active?.NavigateToPermissions();
             }
             else
             {
@@ -125,21 +126,21 @@ public sealed partial class ProgressPage : Page
                     : result.FailedStepId != null
                         ? $"Step '{result.FailedStepId}' failed: {result.Message}"
                         : result.Message;
-                App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, errorMsg);
+                SetupWindow.Active?.NavigateToComplete(false, sw.Elapsed, config.LogPath, errorMsg);
             }
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             sw.Stop();
             _pipelineFinished = true;
-            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, "Setup was cancelled.");
+            SetupWindow.Active?.NavigateToComplete(false, sw.Elapsed, config.LogPath, "Setup was cancelled.");
         }
         catch (Exception ex)
         {
             sw.Stop();
             _pipelineFinished = true;
             _logger?.Error($"Setup UI pipeline failed: {ex.Message}");
-            App.MainWindow?.NavigateToComplete(false, sw.Elapsed, config.LogPath, $"Setup crashed: {ex.Message}");
+            SetupWindow.Active?.NavigateToComplete(false, sw.Elapsed, config.LogPath, $"Setup crashed: {ex.Message}");
         }
         finally
         {
@@ -332,14 +333,28 @@ internal sealed class StepRow
 
     private static Border CreateEmptyBadge()
     {
-        return new Border
+        // Use a theme-aware stroke brush so the pending-step ring is visible
+        // in both light and dark mode. The previous hard-coded translucent
+        // white was invisible against light backgrounds.
+        var border = new Border
         {
             Width = 22,
             Height = 22,
             CornerRadius = new CornerRadius(11),
             BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
         };
+
+        if (Application.Current.Resources.TryGetValue("ControlStrongStrokeColorDefaultBrush", out var brush)
+            && brush is Brush themed)
+        {
+            border.BorderBrush = themed;
+        }
+        else
+        {
+            border.BorderBrush = new SolidColorBrush(Color.FromArgb(140, 128, 128, 128));
+        }
+
+        return border;
     }
 
     private static Border CreateIconBadge(string glyph, Color background, Color foreground)
@@ -354,7 +369,7 @@ internal sealed class StepRow
             {
                 Glyph = glyph,
                 FontSize = 12,
-                FontFamily = new FontFamily("Segoe Fluent Icons"),
+                FontFamily = IconFonts.SymbolThemeFontFamily,
                 Foreground = new SolidColorBrush(foreground),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,

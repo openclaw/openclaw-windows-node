@@ -65,6 +65,27 @@ public class MenuSizingHelperTests
     }
 
     [Fact]
+    public void ConvertViewUnits_StandardDpi96_ReturnsSameValue()
+    {
+        Assert.Equal(200, MenuSizingHelper.ConvertViewUnitsToPixels(200, 96));
+    }
+
+    [Fact]
+    public void ConvertViewUnits_Dpi120_RoundsUpToContainingPixel()
+    {
+        Assert.Equal(250, MenuSizingHelper.ConvertViewUnitsToPixels(200, 120));
+        Assert.Equal(251, MenuSizingHelper.ConvertViewUnitsToPixels(200.5, 120));
+    }
+
+    [Fact]
+    public void ConvertViewUnits_InvalidOrNonPositive_ReturnsZero()
+    {
+        Assert.Equal(0, MenuSizingHelper.ConvertViewUnitsToPixels(0, 96));
+        Assert.Equal(0, MenuSizingHelper.ConvertViewUnitsToPixels(-100, 96));
+        Assert.Equal(0, MenuSizingHelper.ConvertViewUnitsToPixels(double.NaN, 96));
+    }
+
+    [Fact]
     public void HasDpiOrScaleChanged_SameDpiAndScale_ReturnsFalse()
     {
         Assert.False(MenuSizingHelper.HasDpiOrScaleChanged(120, 1.25, 120, 1.25));

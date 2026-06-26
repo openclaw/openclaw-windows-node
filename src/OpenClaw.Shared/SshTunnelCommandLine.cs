@@ -27,6 +27,15 @@ public static class SshTunnelCommandLine
         int remotePort,
         int localPort,
         bool includeBrowserProxyForward)
+        => BuildArguments(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort: 22);
+
+    public static string BuildArguments(
+        string user,
+        string host,
+        int remotePort,
+        int localPort,
+        bool includeBrowserProxyForward,
+        int sshPort)
     {
         user = user.Trim();
         host = host.Trim();
@@ -37,6 +46,7 @@ public static class SshTunnelCommandLine
             throw new ArgumentException($"SSH host contains invalid characters: '{host}'", nameof(host));
         ValidatePort(remotePort, nameof(remotePort));
         ValidatePort(localPort, nameof(localPort));
+        ValidatePort(sshPort, nameof(sshPort));
         if (includeBrowserProxyForward)
         {
             ValidateBrowserProxyPort(remotePort, nameof(remotePort));
@@ -47,6 +57,12 @@ public static class SshTunnelCommandLine
         AppendLocalForward(sb, localPort, remotePort);
         if (includeBrowserProxyForward)
             AppendLocalForward(sb, localPort + 2, remotePort + 2);
+        if (sshPort != 22)
+        {
+            sb.Append("-p ");
+            sb.Append(sshPort);
+            sb.Append(' ');
+        }
         sb.Append(user);
         sb.Append('@');
         sb.Append(host);

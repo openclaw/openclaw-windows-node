@@ -139,8 +139,15 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox x:Uid="ConnectionStatusWindow_RemotePort" x:Name="DiagSshRemotePortBox" Grid.Column="0" Header="Remote Port" PlaceholderText="18789" Text="18789" FontSize="11"/>
-                            <TextBox x:Uid="ConnectionStatusWindow_LocalPort" x:Name="DiagSshLocalPortBox" Grid.Column="1" Header="Local Port" PlaceholderText="18790" Text="18790" FontSize="11"/>
+                            <TextBox x:Uid="ConnectionStatusWindow_SshServerPort" x:Name="DiagSshServerPortBox" Grid.Column="0" Header="SSH Port" PlaceholderText="22" Text="22" FontSize="11"/>
+                            <TextBox x:Uid="ConnectionStatusWindow_RemotePort" x:Name="DiagSshRemotePortBox" Grid.Column="1" Header="Remote Port" PlaceholderText="18789" Text="18789" FontSize="11"/>
+                        </Grid>
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Uid="ConnectionStatusWindow_LocalPort" x:Name="DiagSshLocalPortBox" Grid.Column="0" Header="Local Port" PlaceholderText="18790" Text="18790" FontSize="11"/>
                         </Grid>
                     </StackPanel>
                 </StackPanel>

@@ -5,9 +5,10 @@ public sealed class ToastActivationActions
     public required Action<string> OpenUrl { get; init; }
     public required Action OpenDashboard { get; init; }
     public required Action OpenSettings { get; init; }
-    public required Action OpenChat { get; init; }
+    public required Action<string?> OpenChat { get; init; }
     public required Action OpenActivity { get; init; }
     public required Action<string> CopyPairingCommand { get; init; }
+    public required Action ReviewPairing { get; init; }
 }
 
 public static class ToastActivationRouter
@@ -34,7 +35,8 @@ public static class ToastActivationRouter
                 actions.OpenSettings();
                 break;
             case "open_chat":
-                actions.OpenChat();
+                var sessionKey = getArgument("sessionKey");
+                actions.OpenChat(sessionKey);
                 break;
             case "open_activity":
                 actions.OpenActivity();
@@ -43,6 +45,9 @@ public static class ToastActivationRouter
                 var command = getArgument("command");
                 if (!string.IsNullOrWhiteSpace(command))
                     actions.CopyPairingCommand(command);
+                break;
+            case "review_pairing":
+                actions.ReviewPairing();
                 break;
         }
     }

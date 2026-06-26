@@ -26,7 +26,7 @@
                               HorizontalAlignment="Stretch"
                               HorizontalContentAlignment="Stretch">
                         <Expander.Header>
-                            <TextBlock x:Name="EnabledHeaderText" Text="Enabled"
+                            <TextBlock x:Uid="SkillsPage_EnabledHeader" x:Name="EnabledHeaderText" Text="Enabled"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        VerticalAlignment="Center"/>
                         </Expander.Header>
@@ -39,7 +39,7 @@
                               HorizontalContentAlignment="Stretch"
                               Visibility="Collapsed">
                         <Expander.Header>
-                            <TextBlock x:Name="DisabledHeaderText" Text="Disabled"
+                            <TextBlock x:Uid="SkillsPage_DisabledHeader" x:Name="DisabledHeaderText" Text="Disabled"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        VerticalAlignment="Center"/>
                         </Expander.Header>

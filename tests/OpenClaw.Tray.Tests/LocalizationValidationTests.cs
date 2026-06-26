@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -45,11 +47,24 @@ public class LocalizationValidationTests
         // VoiceOverlayWindow window-title key — matches the convention
         // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
+        // Brand name — identical across all locales.
+        "ConnectionPage_TopologyTailscale",
+        // Product/feature name — "OpenClaw Onboard" is kept identical across
+        // all locales (the card's description and button are translated).
+        "SettingsPage_OnboardWizard_Header.Text",
+        // Technical product term — "Gateway" is kept in English across
+        // supported locales per onboarding terminology.
+        "DiagnosticsPage_Section_Gateway.Text",
         "PermissionsPage_TtsElevenLabsModel.PlaceholderText",
         "PermissionsPage_TtsProviderElevenLabs.Content",
         // Sample IDs / brand identifiers — same across locales.
         "VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText",
         "VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText",
+        // Capability command identifier — should match the wire/API name.
+        "NotificationsPage_MetadataSystemRun",
+        // Punctuation-only layout format; localized parts are supplied by
+        // separate placeholders and should keep the same visual separator.
+        "ConfigPage_AccessSummaryFormat",
         // NodesPage detail labels — "Version", "Hardware", and "PATH" are
         // technical loanwords that read the same in every supported locale
         // in this app's audience. Translating them adds no clarity and
@@ -104,6 +119,10 @@ public class LocalizationValidationTests
         "PermissionsPage_TtsStatus_DefaultProviderFormat",
         "PermissionsPage_TtsStatus_ElevenLabsSaved",
         "PermissionsPage_McpStatus_TokenReadFailedFormat",
+        // Session key display formatter: "{agent} / {slot}" intentionally
+        // uses an invariant separator while the surrounding notification copy
+        // and common labels ("Main chat") are localized.
+        "AppNotification_ExecApprovalPending_AgentSlotLabelFormat",
         // Chat runtime warning seeded English-only until translations land.
         "Chat_Composer_Placeholder_IncompatibleGateway",
         // InstancesPage / ConnectionPage new strings — seeded English across
@@ -144,6 +163,21 @@ public class LocalizationValidationTests
         "InstancesPage_UpdateReason_Tooltip_NoReason",
         "ConnectionPage_NodePairing_Title.Text",
         "ConnectionPage_NodePairing_Subtitle.Text",
+        "ConnectionPage_CopyTrustApproval.Content",
+        "ConnectionPage_NodeApprovalRequired",
+        "ConnectionPage_NodeReapprovalRequired",
+        "ConnectionPage_NodeBodyApprovalRequired",
+        "ConnectionPage_NodeBodyReapprovalRequired",
+        "ConnectionPage_NodeTrustApprovalHelp",
+        "ConnectionPage_NodeTrustDiscoveryHelp",
+        "ConnectionPage_NodeReconnectAfterApproval",
+        "ConnectionPage_NodeSurfaceNone",
+        "ConnectionPage_NodeEffectiveCapabilities",
+        "ConnectionPage_NodeEffectiveCommands",
+        "ConnectionPage_NodeEffectivePermissions",
+        "ConnectionPage_NodePendingDeclaredCapabilities",
+        "ConnectionPage_NodePendingDeclaredCommands",
+        "ConnectionPage_NodePendingDeclaredPermissions",
         "AboutPage_MoreDiagnosticsLink.Content",
         "ConnectionStatusWindow.Title",
         // Hard-coded XAML strings resolved by issue #491 — seeded English-only across
@@ -177,6 +211,97 @@ public class LocalizationValidationTests
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
         "SandboxPage_SystemRun.Text",
+        // SessionsPage runtime accessibility strings — seeded English-only across
+        // all 5 locales using the deferred-translation pattern. These are
+        // tooltip / AutomationProperties.Name overrides on the OpenChat button.
+        // Same precedent as the PermissionsPage / InstancesPage / ConfigPage
+        // runtime keys above.
+        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
+        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        // CronPage / InfoBar / HubWindow nav / CommandCenter runtime strings —
+        // seeded English-only across all 5 locales using the deferred-translation
+        // pattern. Fetched at runtime via LocalizationHelper. Same precedent as
+        // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
+        "CronPage_JobCompleted",
+        "CronPage_JobCompletedRanSuccessfully",
+        "BindingsPage_CouldNotLoadBindings",
+        "ConfigPage_CheckingConfigPermissions",
+        "ConfigPage_ConfigUnavailable",
+        "ConfigPage_ConfigIsReadOnly",
+        // ConnectionPage gateway terminal controls — surfaced after PR #597
+        // landed in master. Seeded English-only across all 5 locales using the
+        // same deferred-translation pattern as the AgentEventsPage / SkillsPage
+        // / CronPage entries above. The Description_Format key takes the WSL
+        // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
+        "ConnectionPage_GatewayHostControlsDescription_Format",
+        // GatewayHostAccess plan strings (terminal label / tooltip / disabled
+        // reasons). Resolved in the classifier via LocalizationHelper so the
+        // OpenTerminal button and any consumers of DisabledReason show
+        // localized text.
+        "GatewayHostAccess_OpenTerminalLabel",
+        "GatewayHostAccess_OpenSshTerminalLabel",
+        "GatewayHostAccess_OpenTerminalInWslTooltip_Format",
+        "GatewayHostAccess_OpenSshTerminalTooltip_Format",
+        "GatewayHostAccess_NoTerminalAccess",
+        "GatewayHostAccess_NoWslOrSshDisabled",
+        "Command_GoToConnection_Title",
+        "Command_GoToConnection_Subtitle",
+        "Command_GoToChat_Title",
+        "Command_GoToChat_Subtitle",
+        "Command_GoToSessions_Title",
+        "Command_GoToSessions_Subtitle",
+        "Command_GoToAgentEvents_Title",
+        "Command_GoToAgentEvents_Subtitle",
+        "Command_GoToSkills_Title",
+        "Command_GoToSkills_Subtitle",
+        "Command_GoToCron_Title",
+        "Command_GoToCron_Subtitle",
+        "Command_GoToWorkspace_Title",
+        "Command_GoToWorkspace_Subtitle",
+        "Command_GoToChannels_Title",
+        "Command_GoToChannels_Subtitle",
+        "Command_GoToInstances_Title",
+        "Command_GoToInstances_Subtitle",
+        "Command_GoToConfig_Title",
+        "Command_GoToConfig_Subtitle",
+        "Command_GoToUsage_Title",
+        "Command_GoToUsage_Subtitle",
+        "Command_GoToBindings_Title",
+        "Command_GoToBindings_Subtitle",
+        "Command_GoToPermissions_Title",
+        "Command_GoToPermissions_Subtitle",
+        "Command_GoToSettings_Title",
+        "Command_GoToSettings_Subtitle",
+        "Command_GoToDiagnostics_Title",
+        "Command_GoToDiagnostics_Subtitle",
+        "Command_GoToInfo_Title",
+        "Command_GoToInfo_Subtitle",
+        "Command_OpenChatWindow_Title",
+        "Command_OpenChatWindow_Subtitle",
+        "Command_OpenDashboard_Title",
+        "Command_OpenDashboard_Subtitle",
+        "Command_ToggleNodeMode_Title",
+        "Command_ToggleCamera_Title",
+        "Command_ToggleCanvas_Title",
+        "Command_ToggleScreenCapture_Title",
+        "Command_ToggleBrowserControl_Title",
+        "Command_Subtitle_CurrentlyOn",
+        "Command_Subtitle_CurrentlyOff",
+        "CommandCenter_AuthFailed",
+        "CommandCenter_NodePendingApproval",
+        "CommandCenter_GatewayConnectionError",
+        "CommandCenter_GatewayNotConnected",
+        "CommandCenter_GatewayHealthStale",
+        "CommandCenter_NoChannelsReported",
+        "CommandCenter_WaitingForGatewayHealth",
+        "CommandCenter_NoChannelsRunning",
+        "CommandCenter_NoNodesReported",
+        "CommandCenter_UsageCostsMissing",
+        "CommandCenter_BrowserProxyAuthMayNeed",
+        "CommandCenter_SshTunnelPortNotListening",
+        "CommandCenter_NoLocalGatewayListener",
+        "CommandCenter_BrowserProxySshForwardNotListening",
+        "CommandCenter_BrowserProxyHostNotDetected",
     };
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =
@@ -193,27 +318,16 @@ public class LocalizationValidationTests
         "Onboarding_Ready_Node_Notify_Sub",
     ];
 
-    private static string GetRepositoryRoot()
-    {
-        var envRepoRoot = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(envRepoRoot) && Directory.Exists(envRepoRoot))
-            return envRepoRoot;
+    private static readonly IReadOnlyDictionary<char, byte> Windows1252Bytes = BuildWindows1252ByteMap();
 
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) &&
-                File.Exists(Path.Combine(directory.FullName, "README.md")))
-                return directory.FullName;
-            directory = directory.Parent;
-        }
+    private static readonly IReadOnlyDictionary<char, byte> CodePage437Bytes = BuildCodePage437ByteMap();
 
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
-    }
+    private static readonly UTF8Encoding StrictUtf8 = new(
+        encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
 
     private static string GetStringsDirectory() =>
-        Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
+        Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
 
     private static Dictionary<string, string> LoadResw(string path)
     {
@@ -223,6 +337,139 @@ public class LocalizationValidationTests
                 e => e.Attribute("name")!.Value,
                 e => e.Element("value")?.Value ?? string.Empty);
     }
+
+    private static Dictionary<char, byte> BuildWindows1252ByteMap()
+    {
+        var map = Enumerable.Range(0, 256)
+            .ToDictionary(i => (char)i, i => (byte)i);
+
+        map['€'] = 0x80;
+        map['‚'] = 0x82;
+        map['ƒ'] = 0x83;
+        map['„'] = 0x84;
+        map['…'] = 0x85;
+        map['†'] = 0x86;
+        map['‡'] = 0x87;
+        map['ˆ'] = 0x88;
+        map['‰'] = 0x89;
+        map['Š'] = 0x8A;
+        map['‹'] = 0x8B;
+        map['Œ'] = 0x8C;
+        map['Ž'] = 0x8E;
+        map['‘'] = 0x91;
+        map['’'] = 0x92;
+        map['“'] = 0x93;
+        map['”'] = 0x94;
+        map['•'] = 0x95;
+        map['–'] = 0x96;
+        map['—'] = 0x97;
+        map['˜'] = 0x98;
+        map['™'] = 0x99;
+        map['š'] = 0x9A;
+        map['›'] = 0x9B;
+        map['œ'] = 0x9C;
+        map['ž'] = 0x9E;
+        map['Ÿ'] = 0x9F;
+
+        return map;
+    }
+
+    private static Dictionary<char, byte> BuildCodePage437ByteMap()
+    {
+        var map = Enumerable.Range(0, 128)
+            .ToDictionary(i => (char)i, i => (byte)i);
+
+        const string high =
+            "ÇüéâäàåçêëèïîìÄÅ" +
+            "ÉæÆôöòûùÿÖÜ¢£¥₧ƒ" +
+            "áíóúñÑªº¿⌐¬½¼¡«»" +
+            "░▒▓│┤╡╢╖╕╣║╗╝╜╛┐" +
+            "└┴┬├─┼╞╟╚╔╩╦╠═╬╧" +
+            "╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀" +
+            "αßΓπΣσµτΦΘΩδ∞φε∩" +
+            "≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ";
+
+        for (var i = 0; i < high.Length; i++)
+            map[high[i]] = (byte)(i + 128);
+
+        return map;
+    }
+
+    private static bool TryDecodeKnownMojibake(string value, out string decoded)
+    {
+        return TryDecodeMojibake(value, Windows1252Bytes, out decoded)
+            || TryDecodeMojibake(value, CodePage437Bytes, out decoded);
+    }
+
+    private static bool TryDecodeMojibake(
+        string value,
+        IReadOnlyDictionary<char, byte> byteMap,
+        out string decoded)
+    {
+        decoded = string.Empty;
+
+        for (var start = 0; start < value.Length; start++)
+        {
+            if (!byteMap.ContainsKey(value[start]))
+                continue;
+
+            var runEnd = start;
+            while (runEnd < value.Length && byteMap.ContainsKey(value[runEnd]))
+                runEnd++;
+
+            for (var length = runEnd - start; length >= 2; length--)
+            {
+                for (var offset = start; offset <= runEnd - length; offset++)
+                {
+                    var candidate = value.Substring(offset, length);
+                    if (TryDecodeMojibakeRun(candidate, byteMap, out decoded))
+                        return true;
+                }
+            }
+
+            start = runEnd;
+        }
+
+        return false;
+    }
+
+    private static bool TryDecodeMojibakeRun(
+        string value,
+        IReadOnlyDictionary<char, byte> byteMap,
+        out string decoded)
+    {
+        decoded = string.Empty;
+
+        if (!value.Any(c => c > 0x7F))
+            return false;
+
+        var bytes = new byte[value.Length];
+        for (var i = 0; i < value.Length; i++)
+            bytes[i] = byteMap[value[i]];
+
+        try
+        {
+            decoded = StrictUtf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return false;
+        }
+
+        return !string.Equals(decoded, value, StringComparison.Ordinal) && IsPlausibleDecodedMojibake(decoded);
+    }
+
+    private static bool IsPlausibleDecodedMojibake(string decoded) =>
+        decoded.Any(char.IsLetter) &&
+        decoded.All(c =>
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(c);
+            return category != UnicodeCategory.Control &&
+                   category != UnicodeCategory.Format &&
+                   category != UnicodeCategory.NonSpacingMark &&
+                   category != UnicodeCategory.SpacingCombiningMark &&
+                   category != UnicodeCategory.EnclosingMark;
+        });
 
     private static bool IsNonLocalizableXamlValue(string value) =>
         string.IsNullOrWhiteSpace(value) ||
@@ -256,6 +503,26 @@ public class LocalizationValidationTests
         value.Contains("https://", StringComparison.Ordinal) ||
         value.Contains("~/", StringComparison.Ordinal);
 
+    [Fact]
+    public void MojibakeDetector_FindsWindows1252Substrings()
+    {
+        Assert.True(TryDecodeKnownMojibake("连接状态 è¿ž 👍", out var decoded));
+        Assert.Contains("连", decoded, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MojibakeDetector_FindsCodePage437Substrings()
+    {
+        Assert.True(TryDecodeKnownMojibake("SSH ΘÜºΘüô", out var decoded));
+        Assert.Contains("隧道", decoded, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MojibakeDetector_AllowsLegitimateUnicode()
+    {
+        Assert.False(TryDecodeKnownMojibake("连接状态 Café 👍", out _));
+    }
+
     /// <summary>
     /// Keys whose value is a Latin-script loanword (e.g. "OK") that reads
     /// natively in English/French/Dutch but should still be translated for
@@ -267,6 +534,8 @@ public class LocalizationValidationTests
     {
         "Update_OK",
         "Onboarding_IncompleteSetup_Close",
+        "ChatPage_OK",
+        "ConnectionPage_ViaSSH",
     };
 
     // Locales whose translations are allowed to remain identical to en-us
@@ -329,7 +598,7 @@ public class LocalizationValidationTests
     [Fact]
     public void XamlControlsWithXUid_HaveMatchingEnUsResources()
     {
-        var winUiRoot = Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var winUiRoot = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
         var resourceKeys = LoadResw(Path.Combine(GetStringsDirectory(), "en-us", "Resources.resw"))
             .Keys
             .ToHashSet(StringComparer.Ordinal);
@@ -339,7 +608,7 @@ public class LocalizationValidationTests
                      .Where(IsSourceXaml)
                      .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
-            var relativePath = Path.GetRelativePath(GetRepositoryRoot(), xamlPath);
+            var relativePath = Path.GetRelativePath(TestRepositoryPaths.GetRepositoryRoot(), xamlPath);
             var doc = XDocument.Load(xamlPath, LoadOptions.SetLineInfo);
 
             foreach (var element in doc.Descendants())
@@ -376,7 +645,7 @@ public class LocalizationValidationTests
 
     private static bool IsSourceXaml(string path)
     {
-        var relative = Path.GetRelativePath(GetRepositoryRoot(), path);
+        var relative = Path.GetRelativePath(TestRepositoryPaths.GetRepositoryRoot(), path);
         var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return !segments.Contains("bin", StringComparer.OrdinalIgnoreCase) &&
                !segments.Contains("obj", StringComparer.OrdinalIgnoreCase);
@@ -505,6 +774,31 @@ public class LocalizationValidationTests
             Assert.True(duplicates.Count == 0,
                 $"Locale '{locale}' has duplicate keys: {string.Join(", ", duplicates)}");
         }
+    }
+
+    [Fact]
+    public void NoLocale_HasWindows1252MojibakeValues()
+    {
+        var stringsDir = GetStringsDirectory();
+        var localeDirs = Directory.GetDirectories(stringsDir);
+        var offenders = new List<string>();
+
+        foreach (var localeDir in localeDirs)
+        {
+            var locale = Path.GetFileName(localeDir);
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            foreach (var (key, value) in LoadResw(reswPath))
+            {
+                if (TryDecodeKnownMojibake(value, out var decoded))
+                    offenders.Add($"{locale}::{key} decodes to '{decoded}'");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            $"Found {offenders.Count} Windows-1252 mojibake resource value(s): " +
+            string.Join("; ", offenders.Take(20)));
     }
 
     [Fact]

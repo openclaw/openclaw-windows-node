@@ -71,9 +71,13 @@ A `path` is a JSON Pointer into the surface's data model. The renderer subscribe
   { "key": "first",  "valueString": "Alice" },
   { "key": "last",   "valueString": "Smith" }
 ] }
+{ "key": "tags",     "valueArray": [
+  { "valueString": "admin" },
+  { "valueString": "beta" }
+] }
 ```
 
-Exactly one of `valueString` / `valueNumber` / `valueBoolean` / `valueMap` should be set per entry. `valueMap` is a recursive adjacency list (each item is itself an entry). Arrays of strings are not first-class on the data-model side — store them as a `path` consumed by `MultipleChoice.selections` or by a literalArray default.
+Exactly one of `valueString` / `valueNumber` / `valueBoolean` / `valueMap` / `valueArray` should be set per entry. `valueMap` is a recursive adjacency list (each item is itself an entry). `valueArray` is an ordered list whose items are value-typed entries with no `key` (they may be scalars, maps, or nested arrays) — this is the first-class way to seed an array the renderer consumes, e.g. `MultipleChoice.selections`. Bare-primitive arrays (`["a","b"]`) are also tolerated.
 
 ## Components
 

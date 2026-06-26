@@ -15,6 +15,7 @@ public class SetupConfigTests : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
@@ -179,6 +180,7 @@ public class SetupConfigTests : IDisposable
 
         Assert.Contains("system.notify", commands);
         Assert.Contains("tts.speak", commands);
+        Assert.Contains("tts.status", commands);
         Assert.DoesNotContain("camera.snap", commands);
         Assert.DoesNotContain("stt.listen", commands);
         Assert.Equal(commands.Count, commands.Distinct(StringComparer.OrdinalIgnoreCase).Count());

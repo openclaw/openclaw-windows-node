@@ -18,10 +18,23 @@ public sealed partial class HubWindow : WindowEx
     public bool IsClosed { get; private set; }
 
     private static App CurrentApp => (App)Application.Current;
+    private static TaskCompletionSource<bool> CreateCompletedContentReady()
+    {
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ready.SetResult(true);
+        return ready;
+    }
 
     internal AppState? AppModel { get; set; }
     private string _currentAgentId = "main";
     public string CurrentAgentId => _currentAgentId;
+    private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
+    private AppNotificationService? _appNotificationService;
+    private readonly AppNotificationBannerState _appNotificationBannerState = new();
+    private AppNotificationSnapshot? _lastAppNotificationSnapshot;
+    private AppNotification? _currentAppNotification;
+    private bool _suppressAppNotificationClosed;
+    private bool _appNotificationActionShowsMore;
 
     // Legacy compatibility alias
     public string SelectedAgentId => _currentAgentId;
@@ -80,7 +93,10 @@ public sealed partial class HubWindow : WindowEx
         Closed += (s, e) =>
         {
             IsClosed = true;
+            _contentReady.TrySetResult(true);
             _gatewayNavHideTimer?.Stop();
+            if (_appNotificationService != null)
+                _appNotificationService.Changed -= OnAppNotificationChanged;
             if (AppModel != null)
                 AppModel.PropertyChanged -= OnAppModelChanged;
         };
@@ -107,6 +123,147 @@ public sealed partial class HubWindow : WindowEx
             // Apply agents list that may have arrived before this window opened.
             if (AppModel.AgentsList.HasValue)
                 RebuildAgentNavItems(AppModel.AgentsList.Value);
+        }
+    }
+
+    internal void BindAppNotifications(AppNotificationService service)
+    {
+        if (_appNotificationService != null)
+            _appNotificationService.Changed -= OnAppNotificationChanged;
+
+        _appNotificationService = service;
+        _appNotificationService.Changed += OnAppNotificationChanged;
+        RenderAppNotification(service.Snapshot);
+    }
+
+    private void OnAppNotificationChanged(object? sender, AppNotificationChangedEventArgs args)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (IsClosed) return;
+            RenderAppNotification(args.Snapshot);
+        });
+    }
+
+    private void RenderAppNotification(AppNotificationSnapshot snapshot)
+    {
+        _lastAppNotificationSnapshot = snapshot;
+        var displayedNotificationWasRemoved = _currentAppNotification is not null
+            && AppNotificationInfoBar.IsOpen
+            && !snapshot.ActiveNotifications.Any(notification =>
+                string.Equals(notification.Id, _currentAppNotification.Id, StringComparison.Ordinal));
+        _currentAppNotification = _appNotificationBannerState.SelectVisibleNotification(
+            snapshot,
+            revealHiddenIfNeeded: displayedNotificationWasRemoved);
+        if (_currentAppNotification is null)
+        {
+            HideAppNotificationInfoBar();
+            return;
+        }
+
+        var notification = _currentAppNotification;
+        AppNotificationInfoBar.Visibility = Visibility.Visible;
+        AppNotificationInfoBar.Severity = ToInfoBarSeverity(notification.Severity);
+        AppNotificationInfoBar.Title = notification.Title;
+        AppNotificationInfoBar.Message = string.Empty;
+        AppNotificationMessageText.Text = notification.Message;
+
+        if (snapshot.HasMultipleActiveNotifications)
+        {
+            _appNotificationActionShowsMore = true;
+            AppNotificationActionButton.Content = LocalizationHelper.GetString("AppNotification_ShowMore");
+            AppNotificationActionButton.Visibility = Visibility.Visible;
+            UpdateAppNotificationActionEnabledState();
+        }
+        else if (!string.IsNullOrWhiteSpace(notification.ActionLabel) &&
+            !string.IsNullOrWhiteSpace(notification.ActionRoute))
+        {
+            _appNotificationActionShowsMore = false;
+            AppNotificationActionButton.Content = notification.ActionLabel;
+            AppNotificationActionButton.Visibility = Visibility.Visible;
+            UpdateAppNotificationActionEnabledState();
+        }
+        else
+        {
+            _appNotificationActionShowsMore = false;
+            AppNotificationActionButton.Visibility = Visibility.Collapsed;
+            AppNotificationActionButton.IsEnabled = true;
+        }
+
+        AppNotificationInfoBar.IsOpen = true;
+    }
+
+    private void HideAppNotificationInfoBar()
+    {
+        _suppressAppNotificationClosed = true;
+        AppNotificationInfoBar.IsOpen = false;
+        AppNotificationInfoBar.Visibility = Visibility.Collapsed;
+        AppNotificationInfoBar.Title = string.Empty;
+        AppNotificationInfoBar.Message = string.Empty;
+        AppNotificationMessageText.Text = string.Empty;
+        AppNotificationActionButton.Visibility = Visibility.Collapsed;
+        _appNotificationActionShowsMore = false;
+        _currentAppNotification = null;
+        _suppressAppNotificationClosed = false;
+        AppNotificationActionButton.IsEnabled = true;
+    }
+
+    private void UpdateAppNotificationActionEnabledState()
+    {
+        AppNotificationActionButton.IsEnabled = !_appNotificationActionShowsMore ||
+            !string.Equals(_currentNavTag, "notifications", StringComparison.Ordinal);
+    }
+
+    private static InfoBarSeverity ToInfoBarSeverity(AppNotificationSeverity severity) => severity switch
+    {
+        AppNotificationSeverity.Success => InfoBarSeverity.Success,
+        AppNotificationSeverity.Warning => InfoBarSeverity.Warning,
+        AppNotificationSeverity.Error => InfoBarSeverity.Error,
+        _ => InfoBarSeverity.Informational
+    };
+
+    private void OnAppNotificationInfoBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (_suppressAppNotificationClosed)
+            return;
+
+        if (_lastAppNotificationSnapshot is not null)
+        {
+            // Closing the InfoBar hides the entire banner strip for notifications
+            // that were already active. The Notifications page remains the source
+            // of truth, and deleting the displayed list item can still reveal a
+            // remaining hidden item via RenderAppNotification's fallback path.
+            _appNotificationBannerState.HideActiveNotifications(_lastAppNotificationSnapshot);
+        }
+
+        HideAppNotificationInfoBar();
+    }
+
+    private void OnAppNotificationActionButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (_appNotificationActionShowsMore)
+        {
+            NavigateTo("notifications");
+            return;
+        }
+
+        if (_currentAppNotification?.ActionRoute is { Length: > 0 } route)
+        {
+            if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
+            {
+                CurrentApp.PendingChatSessionKey = sessionKey;
+                PendingChatSessionKey = sessionKey;
+                if (CurrentPage is ChatPage chatPage)
+                    chatPage.SelectSession(sessionKey!);
+                else
+                    NavigateTo("chat");
+            }
+            else
+            {
+                NavigateTo(route);
+            }
+            _appNotificationService?.Dismiss(_currentAppNotification.Id);
+            return;
         }
     }
 
@@ -194,6 +351,39 @@ public sealed partial class HubWindow : WindowEx
         NavView.IsPaneOpen = !NavView.IsPaneOpen;
     }
 
+    // ── Back navigation (title-bar back button + Alt+Left) ──────────────────
+    //
+    // We host a single native-style back button in the custom title bar and
+    // drive it off ContentFrame's real back stack. NavigationView's own back
+    // button is collapsed because its chrome is hoisted into the custom title
+    // bar; this button is the equivalent affordance.
+
+    private void OnBackRequested(object sender, RoutedEventArgs e) => GoBack();
+
+    private void GoBack()
+    {
+        RemoveUnavailableGatewayBackStackEntries();
+
+        if (!ContentFrame.CanGoBack)
+        {
+            UpdateBackButton();
+            return;
+        }
+
+        ContentFrame.GoBack();
+    }
+
+    /// <summary>
+    /// Enable/disable the title-bar back button to mirror ContentFrame's back
+    /// stack (greyed out at the root, exactly like NavigationView's native
+    /// back button). Called after every navigation.
+    /// </summary>
+    private void UpdateBackButton()
+    {
+        RemoveUnavailableGatewayBackStackEntries();
+        NavBackButton.IsEnabled = ContentFrame.CanGoBack;
+    }
+
     /// <summary>
     /// Navigate to the default page. Call after setting AppModel.
     /// </summary>
@@ -212,45 +402,19 @@ public sealed partial class HubWindow : WindowEx
     // (rather than relying on NavView.SelectedItem) so navigation identity
     // includes the tag — important for agent-scoped pages where several tags
     // map to the same Page type (e.g. "sessions" vs "agent:main:sessions"
-    // both → SessionsPage), and for the per-page "Back to ..." link logic
-    // that needs to know whether the user arrived via a cross-page link.
+    // both → SessionsPage).
     private string? _currentNavTag;
 
     // Set true while a programmatic SelectedItem update is in flight, to
     // suppress the resulting SelectionChanged from re-entering NavigateInternal.
     private bool _syncingNavSelection;
 
-    // Set by NavigateTo(tag, originTag); consumed by OnContentFrameNavigated
-    // when the new page is initialized, then surfaced as LastNavigationOrigin
-    // so destination pages can decide whether to show an inline back link.
-    private string? _pendingNavigationOrigin;
-
-    /// <summary>
-    /// Tag of the page the user navigated FROM on the most recent navigation,
-    /// or <c>null</c> if the navigation didn't declare an origin (e.g. rail
-    /// click, deep link, app start). Destination pages read this in
-    /// <c>Initialize</c> to decide whether to surface a "Back to X" affordance.
-    /// </summary>
-    public string? LastNavigationOrigin { get; private set; }
-
     /// <summary>
     /// Navigate to a specific page by tag name (e.g. "connection", "sessions", "channels").
+    /// Cross-page links and the rail both flow through here; the resulting
+    /// <see cref="ContentFrame"/> back-stack entry powers the title-bar back button.
     /// </summary>
-    public void NavigateTo(string tag) => NavigateTo(tag, null);
-
-    /// <summary>
-    /// Navigate to a specific page by tag, declaring which logical surface
-    /// initiated the navigation. The destination page can read this via
-    /// <see cref="LastNavigationOrigin"/> to render an inline "Back to ..."
-    /// link — used by cross-page links on the Connection page so users have
-    /// a one-click return path without relying on the rail or a chrome back
-    /// button.
-    /// </summary>
-    public void NavigateTo(string tag, string? originTag)
-    {
-        _pendingNavigationOrigin = originTag;
-        NavigateInternal(NormalizeNavTag(tag));
-    }
+    public void NavigateTo(string tag) => NavigateInternal(NormalizeNavTag(tag));
 
     private string NormalizeNavTag(string tag)
     {
@@ -269,14 +433,7 @@ public sealed partial class HubWindow : WindowEx
     private void NavigateInternal(string tag)
     {
         var pageType = TagToPageType(tag);
-        if (pageType == null)
-        {
-            // Unknown tag: nothing to navigate, but we still need to discard
-            // any pending origin so it doesn't leak into the next real
-            // navigation (where it would surface a wrong "Back to ..." link).
-            _pendingNavigationOrigin = null;
-            return;
-        }
+        if (pageType == null) return;
 
         // Identity dedupe: navigation identity = (PageType, normalized tag).
         // Page-type-only dedupe would collapse distinct logical destinations
@@ -285,22 +442,30 @@ public sealed partial class HubWindow : WindowEx
         // re-invokes the current page.
         if (ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
-            // Same as above: Frame.Navigate is skipped, so
-            // OnContentFrameNavigated won't run to consume the origin. If the
-            // caller changed origin context, refresh the active page so inline
-            // back-link state stays accurate.
-            var pendingOrigin = _pendingNavigationOrigin;
-            _pendingNavigationOrigin = null;
-            if (!string.Equals(LastNavigationOrigin, pendingOrigin, StringComparison.Ordinal))
-            {
-                LastNavigationOrigin = pendingOrigin;
-                InitializeCurrentPage();
-            }
+            _contentReady = CreateCompletedContentReady();
             return;
         }
 
-        // Best-effort rail highlight. Suppress the selection-changed callback
-        // so this programmatic update doesn't re-enter NavigateInternal.
+        // Best-effort rail highlight before the page swaps in.
+        SyncNavSelection(tag);
+
+        // Pass the tag as the navigation parameter so OnContentFrameNavigated
+        // can recover the canonical destination on Back/Forward.
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _contentReady = ready;
+        if (!ContentFrame.Navigate(pageType, tag))
+            CompleteContentReady(ready);
+    }
+
+    /// <summary>
+    /// Reflect <paramref name="tag"/> in the NavigationView rail. Suppresses the
+    /// resulting SelectionChanged so this programmatic update does not re-enter
+    /// <see cref="NavigateInternal"/> (which would push a duplicate back-stack
+    /// entry). This matters when called from Back/Forward in OnContentFrameNavigated.
+    /// </summary>
+    private void SyncNavSelection(string? tag)
+    {
+        if (tag == null) return;
         var item = FindNavItemForTag(NavView.MenuItems, tag)
                 ?? FindNavItemForTag(NavView.FooterMenuItems, tag);
         if (item != null && !ReferenceEquals(NavView.SelectedItem, item))
@@ -309,10 +474,16 @@ public sealed partial class HubWindow : WindowEx
             try { NavView.SelectedItem = item; }
             finally { _syncingNavSelection = false; }
         }
+    }
 
-        // Pass the tag as the navigation parameter so OnContentFrameNavigated
-        // can recover the canonical destination on Back/Forward.
-        ContentFrame.Navigate(pageType, tag);
+    public async Task WaitForCurrentContentReadyAsync()
+    {
+        var ready = _contentReady;
+        var completed = await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        if (completed == ready.Task)
+            await ready.Task;
+        else
+            ready.TrySetResult(true);
     }
 
     private static NavigationViewItem? FindNavItemForTag(IList<object> items, string tag)
@@ -339,12 +510,12 @@ public sealed partial class HubWindow : WindowEx
 
     private void UpdateTitleBarStatus(ConnectionStatus status)
     {
-        var (color, text) = status switch
+        var color = status switch
         {
-            ConnectionStatus.Connected => (Microsoft.UI.Colors.LimeGreen, "Connected"),
-            ConnectionStatus.Connecting => (Microsoft.UI.Colors.Orange, "Connecting…"),
-            ConnectionStatus.Error => (Microsoft.UI.Colors.Red, "Error"),
-            _ => (Microsoft.UI.Colors.Gray, "Disconnected")
+            ConnectionStatus.Connected => Microsoft.UI.Colors.LimeGreen,
+            ConnectionStatus.Connecting => Microsoft.UI.Colors.Orange,
+            ConnectionStatus.Error => Microsoft.UI.Colors.Red,
+            _ => Microsoft.UI.Colors.Gray
         };
 
         TitleStatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
@@ -353,7 +524,7 @@ public sealed partial class HubWindow : WindowEx
         if (status == ConnectionStatus.Connected && LastGatewaySelf is { ServerVersion: { Length: > 0 } ver })
             TitleStatusText.Text = $"v{ver}";
         else
-            TitleStatusText.Text = text;
+            TitleStatusText.Text = LocalizationHelper.GetConnectionStatusText(status);
 
         // Update role indicator dots
         var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
@@ -452,8 +623,8 @@ public sealed partial class HubWindow : WindowEx
                 if (keepCurrentGatewayPageVisible)
                     return;
 
-                var gatewayTags = new HashSet<string> { "chat", "sessions", "skills", "channels", "instances", "agentevents", "bindings", "config", "usage", "cron", "workspace" };
-                if (currentTag != null && (gatewayTags.Contains(currentTag) || currentTag.StartsWith("agent:")))
+                RemoveUnavailableGatewayBackStackEntries();
+                if (GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(currentTag))
                 {
                     foreach (NavigationViewItem item in NavView!.MenuItems.OfType<NavigationViewItem>())
                     {
@@ -470,6 +641,21 @@ public sealed partial class HubWindow : WindowEx
         {
             Services.Logger.Warn($"[HubWindow] UpdateGatewayNavVisibility failed: {ex.Message}");
             throw;
+        }
+    }
+
+    private void RemoveUnavailableGatewayBackStackEntries()
+    {
+        if (AppModel?.Status == ConnectionStatus.Connected)
+            return;
+
+        for (var i = ContentFrame.BackStack.Count - 1; i >= 0; i--)
+        {
+            if (ContentFrame.BackStack[i].Parameter is string tag &&
+                GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(tag))
+            {
+                ContentFrame.BackStack.RemoveAt(i);
+            }
         }
     }
 
@@ -520,17 +706,15 @@ public sealed partial class HubWindow : WindowEx
 
     /// <summary>
     /// Authoritative post-navigation hook. Runs for every successful
-    /// Frame.Navigate, so it's the single place that rebuilds
-    /// <see cref="_currentNavTag"/> / <see cref="_currentAgentId"/> /
-    /// <see cref="LastNavigationOrigin"/> and re-runs
+    /// Frame.Navigate (including Back/Forward), so it's the single place that
+    /// rebuilds <see cref="_currentNavTag"/> / <see cref="_currentAgentId"/>,
+    /// re-syncs the rail + back button, and re-runs
     /// <see cref="InitializeCurrentPage"/> for the page that's now visible.
     /// </summary>
     private void OnContentFrameNavigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         var tag = e.Parameter as string;
         _currentNavTag = tag;
-        LastNavigationOrigin = _pendingNavigationOrigin;
-        _pendingNavigationOrigin = null;
 
         // Keep _currentAgentId aligned with the page that's now visible.
         if (tag != null && tag.StartsWith("agent:"))
@@ -543,7 +727,49 @@ public sealed partial class HubWindow : WindowEx
             }
         }
 
+        // Reflect the restored page in the rail. Back/Forward don't route
+        // through NavigateInternal, so this is the only place the rail
+        // highlight gets re-synced for them.
+        SyncNavSelection(tag);
+        UpdateBackButton();
+
         InitializeCurrentPage();
+        UpdateAppNotificationActionEnabledState();
+        ArmContentReady(e.Content as FrameworkElement);
+    }
+
+    private void OnContentFrameNavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+    {
+        _contentReady.TrySetResult(true);
+    }
+
+    private void ArmContentReady(FrameworkElement? element)
+    {
+        var ready = _contentReady;
+        if (element == null || element.IsLoaded)
+        {
+            CompleteContentReady(ready);
+            return;
+        }
+
+        RoutedEventHandler? loaded = null;
+        loaded = (_, _) =>
+        {
+            element.Loaded -= loaded;
+            CompleteContentReady(ready);
+        };
+        element.Loaded += loaded;
+    }
+
+    private void CompleteContentReady(TaskCompletionSource<bool> ready)
+    {
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (ReferenceEquals(_contentReady, ready))
+                    ready.TrySetResult(true);
+            });
     }
 
     /// <summary>
@@ -561,6 +787,7 @@ public sealed partial class HubWindow : WindowEx
         var newState = args is NavigationViewPaneClosingEventArgs ? false : true;
         if (settings.HubNavPaneOpen == newState) return;
         settings.HubNavPaneOpen = newState;
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         try { settings.Save(); } catch { /* swallow — don't block UI */ }
     }
 
@@ -611,6 +838,7 @@ public sealed partial class HubWindow : WindowEx
                 break;
             case BindingsPage bindings: bindings.Initialize(); break;
             case SettingsPage settings: settings.Initialize(); break;
+            case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
             case AboutPage about: about.Initialize(); break;
         }
@@ -641,6 +869,7 @@ public sealed partial class HubWindow : WindowEx
         // redirect to ChannelsPage via DeepLinkHandler.
         "activity" => typeof(ChannelsPage),
         "settings" => typeof(SettingsPage),
+        "notifications" => typeof(NotificationsPage),
         "debug" => typeof(DebugPage),
         "info" => typeof(AboutPage),
         // Legacy tags
@@ -696,6 +925,18 @@ public sealed partial class HubWindow : WindowEx
             e.Handled = true;
             TitleSearchBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
             TitleSearchBox.Text = "";
+            return;
+        }
+
+        // Alt+Left → back, matching the shell-wide navigation gesture and
+        // NavigationView's built-in keyboard accelerator.
+        var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(
+            global::Windows.System.VirtualKey.Menu).HasFlag(
+            global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (alt && e.Key == global::Windows.System.VirtualKey.Left && ContentFrame.CanGoBack)
+        {
+            e.Handled = true;
+            GoBack();
         }
     }
 
@@ -751,60 +992,63 @@ public sealed partial class HubWindow : WindowEx
         var commands = new List<CommandItem>
         {
             // Navigation
-            new() { Icon = "🔌", Title = "Go to Connection", Subtitle = "Gateway, node, saved gateways", Tag = "connection" },
-            new() { Icon = "💬", Title = "Go to Chat", Subtitle = "Open chat", Tag = "chat" },
-            new() { Icon = "🧠", Title = "Go to Sessions", Subtitle = "All sessions", Tag = "sessions" },
-            new() { Icon = "🧠", Title = "Go to Agent Events", Subtitle = "Agent event log", Tag = "agentevents" },
-            new() { Icon = "🧠", Title = "Go to Skills", Subtitle = "Registered skills", Tag = "skills" },
-            new() { Icon = "🧠", Title = $"Go to Cron ({agentId})", Subtitle = "Scheduled tasks", Tag = $"agent:{agentId}:cron" },
-            new() { Icon = "🧠", Title = $"Go to Workspace ({agentId})", Subtitle = "Workspace files", Tag = $"agent:{agentId}" },
-            new() { Icon = "📡", Title = "Go to Channels", Subtitle = "Gateway channels", Tag = "channels" },
-            new() { Icon = "📡", Title = "Go to Instances", Subtitle = "Gateway instances", Tag = "instances" },
-            new() { Icon = "📡", Title = "Go to Config", Subtitle = "Gateway configuration", Tag = "config" },
-            new() { Icon = "📡", Title = "Go to Usage", Subtitle = "Usage statistics", Tag = "usage" },
-            new() { Icon = "📡", Title = "Go to Bindings", Subtitle = "Gateway bindings", Tag = "bindings" },
-            new() { Icon = "🛡️", Title = "Go to Permissions", Subtitle = "Capabilities, exec policy & allowlists", Tag = "permissions" },
-            new() { Icon = "⚙️", Title = "Go to Settings", Subtitle = "Application settings", Tag = "settings" },
-            new() { Icon = "🐛", Title = "Go to Diagnostics", Subtitle = "Logs, support bundle, device identity, developer tools", Tag = "debug" },
-            new() { Icon = "ℹ️", Title = "Go to Info", Subtitle = "About this app", Tag = "info" },
+            new() { Icon = "🔌", Title = LocalizationHelper.GetString("Command_GoToConnection_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToConnection_Subtitle"), Tag = "connection" },
+            new() { Icon = "💬", Title = LocalizationHelper.GetString("Command_GoToChat_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToChat_Subtitle"), Tag = "chat" },
+            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToSessions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSessions_Subtitle"), Tag = "sessions" },
+            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToAgentEvents_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToAgentEvents_Subtitle"), Tag = "agentevents" },
+            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToSkills_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSkills_Subtitle"), Tag = "skills" },
+            new() { Icon = "🧠", Title = LocalizationHelper.Format("Command_GoToCron_Title", agentId), Subtitle = LocalizationHelper.GetString("Command_GoToCron_Subtitle"), Tag = $"agent:{agentId}:cron" },
+            new() { Icon = "🧠", Title = LocalizationHelper.Format("Command_GoToWorkspace_Title", agentId), Subtitle = LocalizationHelper.GetString("Command_GoToWorkspace_Subtitle"), Tag = $"agent:{agentId}" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToChannels_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToChannels_Subtitle"), Tag = "channels" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToInstances_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToInstances_Subtitle"), Tag = "instances" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToConfig_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToConfig_Subtitle"), Tag = "config" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToUsage_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToUsage_Subtitle"), Tag = "usage" },
+            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToBindings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToBindings_Subtitle"), Tag = "bindings" },
+            new() { Icon = "🛡️", Title = LocalizationHelper.GetString("Command_GoToPermissions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToPermissions_Subtitle"), Tag = "permissions" },
+            new() { Icon = "⚙️", Title = LocalizationHelper.GetString("Command_GoToSettings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSettings_Subtitle"), Tag = "settings" },
+            new() { Icon = "🔔", Title = LocalizationHelper.GetString("Command_GoToNotifications_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToNotifications_Subtitle"), Tag = "notifications" },
+            new() { Icon = "🐛", Title = LocalizationHelper.GetString("Command_GoToDiagnostics_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToDiagnostics_Subtitle"), Tag = "debug" },
+            new() { Icon = "ℹ️", Title = LocalizationHelper.GetString("Command_GoToInfo_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToInfo_Subtitle"), Tag = "info" },
 
             // Actions
-            new() { Icon = "💬", Title = "Open Chat Window", Subtitle = "Open standalone chat", Tag = "chat" },
-            new() { Icon = "🌐", Title = "Open Dashboard", Subtitle = "Open web dashboard", Execute = () => ((IAppCommands)Application.Current).OpenDashboard(null) },
+            new() { Icon = "💬", Title = LocalizationHelper.GetString("Command_OpenChatWindow_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenChatWindow_Subtitle"), Tag = "chat" },
+            new() { Icon = "🌐", Title = LocalizationHelper.GetString("Command_OpenDashboard_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenDashboard_Subtitle"), Execute = () => ((IAppCommands)Application.Current).OpenDashboard(null) },
         };
 
         // Toggle commands
         var settings = CurrentApp.Settings;
         if (settings != null)
         {
+            var on = LocalizationHelper.GetString("Command_Subtitle_CurrentlyOn");
+            var off = LocalizationHelper.GetString("Command_Subtitle_CurrentlyOff");
             commands.Add(new CommandItem
             {
-                Icon = "🔌", Title = "Toggle Node Mode",
-                Subtitle = settings.EnableNodeMode ? "Currently ON" : "Currently OFF",
+                Icon = "🔌", Title = LocalizationHelper.GetString("Command_ToggleNodeMode_Title"),
+                Subtitle = settings.EnableNodeMode ? on : off,
                 Execute = () => { settings.EnableNodeMode = !settings.EnableNodeMode; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "📷", Title = "Toggle Camera",
-                Subtitle = settings.NodeCameraEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "📷", Title = LocalizationHelper.GetString("Command_ToggleCamera_Title"),
+                Subtitle = settings.NodeCameraEnabled ? on : off,
                 Execute = () => { settings.NodeCameraEnabled = !settings.NodeCameraEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "🎨", Title = "Toggle Canvas",
-                Subtitle = settings.NodeCanvasEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "🎨", Title = LocalizationHelper.GetString("Command_ToggleCanvas_Title"),
+                Subtitle = settings.NodeCanvasEnabled ? on : off,
                 Execute = () => { settings.NodeCanvasEnabled = !settings.NodeCanvasEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "🖥️", Title = "Toggle Screen Capture",
-                Subtitle = settings.NodeScreenEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "🖥️", Title = LocalizationHelper.GetString("Command_ToggleScreenCapture_Title"),
+                Subtitle = settings.NodeScreenEnabled ? on : off,
                 Execute = () => { settings.NodeScreenEnabled = !settings.NodeScreenEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
             commands.Add(new CommandItem
             {
-                Icon = "🌐", Title = "Toggle Browser Control",
-                Subtitle = settings.NodeBrowserProxyEnabled ? "Currently ON" : "Currently OFF",
+                Icon = "🌐", Title = LocalizationHelper.GetString("Command_ToggleBrowserControl_Title"),
+                Subtitle = settings.NodeBrowserProxyEnabled ? on : off,
                 Execute = () => { settings.NodeBrowserProxyEnabled = !settings.NodeBrowserProxyEnabled; settings.Save(); RaiseSettingsSaved(); }
             });
         }
@@ -868,6 +1112,7 @@ public sealed partial class HubWindow : WindowEx
         { "permissions", "\uEA18" },
         { "sandbox",     "\uE72E" },
         { "activity",    "\uEA95" },
+        { "notifications", "\uE7F4" },
         { "debug",       "\uEBE8" },
         { "info",        "\uE946" },
     };

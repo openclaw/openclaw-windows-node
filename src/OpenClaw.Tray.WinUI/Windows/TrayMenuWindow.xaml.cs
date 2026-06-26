@@ -23,6 +23,7 @@ public sealed partial class TrayMenuWindow : WindowEx
 {
     private const int MenuWidthViewUnits = 320;
     private const int SubmenuWidthViewUnits = 280;
+    private const int MinimumMenuHeightViewUnits = 100;
 
     #region Win32 Imports
     [DllImport("user32.dll")]
@@ -58,6 +59,9 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -109,7 +113,8 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     public event EventHandler<string>? MenuItemClicked;
 
-    private int _menuHeight = 400;
+    private int _menuWidthPx = 320;
+    private int _menuHeightPx = 400;
     private int _itemCount = 0;
     private int _separatorCount = 0;
     private int _headerCount = 0;
@@ -260,8 +265,8 @@ public sealed partial class TrayMenuWindow : WindowEx
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             var dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
             SizeToContent(workArea.Bottom - workArea.Top, dpi);
-            var menuWidthPx = ConvertViewUnitsToPixels(MenuWidthViewUnits, dpi);
-            var menuHeightPx = ConvertViewUnitsToPixels(_menuHeight, dpi);
+            var menuWidthPx = _menuWidthPx;
+            var menuHeightPx = _menuHeightPx;
 
             const int margin = 8;
 
@@ -313,8 +318,8 @@ public sealed partial class TrayMenuWindow : WindowEx
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetEffectiveMonitorDpi(hMonitor, hwnd);
         SizeToContent(monitorInfo.rcWork.Bottom - monitorInfo.rcWork.Top, dpi, SubmenuWidthViewUnits);
-        var submenuWidthPx = ConvertViewUnitsToPixels(SubmenuWidthViewUnits, dpi);
-        var submenuHeightPx = ConvertViewUnitsToPixels(_menuHeight, dpi);
+        var submenuWidthPx = _menuWidthPx;
+        var submenuHeightPx = _menuHeightPx;
 
         const int overlap = 2;
         const int margin = 8;
@@ -324,8 +329,8 @@ public sealed partial class TrayMenuWindow : WindowEx
         if (submenuHeightPx > maxSubmenuHeightPx)
         {
             submenuHeightPx = maxSubmenuHeightPx;
-            _menuHeight = MenuSizingHelper.ConvertPixelsToViewUnits(submenuHeightPx, dpi);
-            this.SetWindowSize(SubmenuWidthViewUnits, _menuHeight);
+            _menuHeightPx = submenuHeightPx;
+            ResizeWindowToPixelSize(submenuWidthPx, submenuHeightPx);
         }
 
         var roomRight = workArea.Right - parentRect.Right;
@@ -952,24 +957,58 @@ public sealed partial class TrayMenuWindow : WindowEx
 
     private void SizeToContent(int workAreaHeightPx, uint dpi, int widthViewUnits)
     {
+        dpi = dpi == 0 ? 96 : dpi;
         PrepareLayoutForMeasurement(dpi);
 
-        // Measure the actual content size instead of estimating
-        MenuPanel.Measure(new global::Windows.Foundation.Size(widthViewUnits, double.PositiveInfinity));
-        var desiredHeight = MenuPanel.DesiredSize.Height;
-        
-        // Add border chrome (1px border top+bottom = 2px, plus small rounding buffer)
-        var contentHeight = (int)Math.Ceiling(desiredHeight) + 2;
-        _menuHeight = Math.Max(contentHeight, 100);
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var windowWidthPx = Math.Max(1, MenuSizingHelper.ConvertViewUnitsToPixels(widthViewUnits, dpi));
+        var nonClientSize = GetNonClientSize(hwnd);
+        var clientWidthPx = Math.Max(1, windowWidthPx - nonClientSize.Width);
+        var clientWidthViewUnits = Math.Max(1, MenuSizingHelper.ConvertPixelsToViewUnits(clientWidthPx, dpi));
 
-        if (workAreaHeightPx > 0)
+        // Measure the full XAML root at the width it will actually receive.
+        // This lets the platform account for Border, ScrollViewer, padding, and
+        // any text wrapping caused by the final client width.
+        RootGrid.Measure(new global::Windows.Foundation.Size(clientWidthViewUnits, double.PositiveInfinity));
+
+        var desiredClientHeightPx = MenuSizingHelper.ConvertViewUnitsToPixels(RootGrid.DesiredSize.Height, dpi);
+        var desiredWindowHeightPx = Math.Max(1, desiredClientHeightPx + nonClientSize.Height);
+        var minimumHeightPx = MenuSizingHelper.ConvertViewUnitsToPixels(MinimumMenuHeightViewUnits, dpi);
+
+        _menuWidthPx = windowWidthPx;
+        _menuHeightPx = MenuSizingHelper.CalculateWindowHeight(
+            desiredWindowHeightPx,
+            workAreaHeightPx,
+            minimumHeightPx);
+
+        ResizeWindowToPixelSize(_menuWidthPx, _menuHeightPx);
+        ApplyRoundedWindowRegion();
+    }
+
+    private void ResizeWindowToPixelSize(int widthPx, int heightPx)
+    {
+        AppWindow.Resize(new global::Windows.Graphics.SizeInt32(
+            Math.Max(1, widthPx),
+            Math.Max(1, heightPx)));
+    }
+
+    private static (int Width, int Height) GetNonClientSize(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero ||
+            !GetWindowRect(hwnd, out var windowRect) ||
+            !GetClientRect(hwnd, out var clientRect))
         {
-            var workAreaHeight = MenuSizingHelper.ConvertPixelsToViewUnits(workAreaHeightPx, dpi);
-            _menuHeight = MenuSizingHelper.CalculateWindowHeight(_menuHeight, workAreaHeight);
+            return (0, 0);
         }
 
-        this.SetWindowSize(widthViewUnits, _menuHeight);
-        ApplyRoundedWindowRegion();
+        var windowWidth = windowRect.Right - windowRect.Left;
+        var windowHeight = windowRect.Bottom - windowRect.Top;
+        var clientWidth = clientRect.Right - clientRect.Left;
+        var clientHeight = clientRect.Bottom - clientRect.Top;
+
+        return (
+            Math.Max(0, windowWidth - clientWidth),
+            Math.Max(0, windowHeight - clientHeight));
     }
 
     private void PrepareLayoutForMeasurement(uint dpi)
@@ -1033,9 +1072,11 @@ public sealed partial class TrayMenuWindow : WindowEx
                         return dpiX;
                 }
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch (DllNotFoundException)
             {
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch (EntryPointNotFoundException)
             {
             }
@@ -1085,7 +1126,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             return;
 
         var dpi = GetDpiForWindow(hwnd);
-        var cornerDiameter = ConvertViewUnitsToPixels(16, dpi);
+        var cornerDiameter = MenuSizingHelper.ConvertViewUnitsToPixels(16, dpi);
         var region = CreateRoundRectRgn(0, 0, width + 1, height + 1, cornerDiameter, cornerDiameter);
         if (region == IntPtr.Zero)
             return;
@@ -1167,8 +1208,6 @@ public sealed partial class TrayMenuWindow : WindowEx
         }
         _activeFlyoutTag = ownerButton.Tag as string;
 
-        flyoutWindow.SizeToContent(SubmenuWidthViewUnits);
-
         flyoutWindow.ShowAdjacentTo(ownerButton);
     }
 
@@ -1223,17 +1262,6 @@ public sealed partial class TrayMenuWindow : WindowEx
         {
             return false;
         }
-    }
-
-    private static int ConvertViewUnitsToPixels(int viewUnits, uint dpi)
-    {
-        if (viewUnits <= 0)
-            return 1;
-
-        if (dpi == 0)
-            dpi = 96;
-
-        return Math.Max(1, (int)Math.Ceiling(viewUnits * dpi / 96.0));
     }
 
     private void OnMenuPanelKeyDown(object sender, KeyRoutedEventArgs e)

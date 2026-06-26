@@ -33,7 +33,7 @@ on:
       - "package-lock.json"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [master, main]
+    branches: [main, master]
     paths:
       - ".github/codeql/**"
       - ".github/workflows/**"
@@ -89,7 +89,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -124,7 +124,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

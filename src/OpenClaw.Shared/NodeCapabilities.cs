@@ -24,6 +24,7 @@ public class NodeInvokeRequest
     public string Id { get; set; } = "";
     public string Command { get; set; } = "";
     public JsonElement Args { get; set; }
+    public string? SessionKey { get; set; }
 }
 
 public class NodeInvokeCompletedEventArgs : EventArgs

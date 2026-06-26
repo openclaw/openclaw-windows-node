@@ -2,10 +2,10 @@ name: Build and Test
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ main, master ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ main, master ]
 
 permissions:
   contents: read
@@ -14,7 +14,7 @@ jobs:
   repo-hygiene:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Ensure .squad stays untracked
       shell: bash
@@ -38,7 +38,7 @@ jobs:
         Write-Error "repo-hygiene failed; see the repo-hygiene job output."
         exit 1
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
@@ -214,14 +214,25 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
-    # framework MSIX — the test fixture calls Bootstrap.Initialize(2.1, stable),
-    # which looks up the framework package by identity. The hosted windows-2025
-    # runner image doesn't preinstall it, so we install it explicitly here.
-    # Version pinned to match Microsoft.WindowsAppSDK 2.1.3 in the csprojs.
-    - name: Install WindowsAppRuntime 2.1.3
+    # framework MSIX. The hosted windows-2025 runner image doesn't preinstall it,
+    # so install the runtime that matches the repo-level WindowsAppSDK version.
+    - name: Install WindowsAppRuntime
       shell: pwsh
       run: |
-        $url = "https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe"
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
         $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
         Invoke-WebRequest -Uri $url -OutFile $exe
         & $exe --quiet
@@ -282,7 +293,20 @@ jobs:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: setup-connect
+            timeout_minutes: 45
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
+          - name: revocation-recovery
+            timeout_minutes: 25
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
+          - name: network-recovery
+            timeout_minutes: 25
+            filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
     - name: Fail if repo hygiene failed
       if: ${{ needs.repo-hygiene.result != 'success' }}
@@ -291,7 +315,7 @@ jobs:
         Write-Error "repo-hygiene failed; see the repo-hygiene job output."
         exit 1
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
@@ -323,7 +347,7 @@ jobs:
     - name: Build E2E Tests
       run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
 
-    - name: Run E2E Tests
+    - name: Run E2E Tests (${{ matrix.name }})
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -334,22 +358,53 @@ jobs:
           -r win-x64 `
           --verbosity normal `
           --results-directory TestResults/E2E `
-          --logger "trx;LogFileName=OpenClaw.E2ETests.trx" `
-          --logger "console;verbosity=detailed"
+          --logger "trx;LogFileName=OpenClaw.E2ETests.${{ matrix.name }}.trx" `
+          --logger "console;verbosity=detailed" `
+          --filter "${{ matrix.filter }}"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-        [xml]$trx = Get-Content TestResults\E2E\OpenClaw.E2ETests.trx
+        [xml]$trx = Get-Content "TestResults\E2E\OpenClaw.E2ETests.${{ matrix.name }}.trx"
         $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
         if ($executed -lt 1) {
-          Write-Error "E2E test run executed zero tests. Check OPENCLAW_RUN_E2E gating before merging."
+          Write-Error "E2E shard '${{ matrix.name }}' executed zero tests. Check OPENCLAW_RUN_E2E gating/filter before merging."
           exit 1
+        }
+        if ("${{ matrix.name }}" -eq "setup-connect") {
+          $mxcProofNames = @(
+            "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
+            "RealGateway_SystemRun_BlocksWritesToTrayDataDirectoryInMxcSandbox"
+          )
+
+          foreach ($mxcProofName in $mxcProofNames) {
+            $mxcProof = @($trx.TestRun.Results.UnitTestResult | Where-Object { $_.testName -like "*$mxcProofName*" }) | Select-Object -First 1
+            if ($null -eq $mxcProof) {
+              Write-Error "E2E shard '${{ matrix.name }}' did not report the MXC proof test '$mxcProofName'. Check the setup-connect filter before merging."
+              exit 1
+            }
+
+            $mxcOutcome = [string]$mxcProof.outcome
+            if ($mxcOutcome -eq "Passed") {
+              Write-Host "MXC E2E proof passed: $mxcProofName"
+            } elseif ($mxcOutcome -eq "NotExecuted" -or $mxcOutcome -eq "Skipped") {
+              $mxcSkipReason = @($mxcProof.Output.ErrorInfo.Message, $mxcProof.Output.StdOut) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                Select-Object -First 1
+              if ([string]::IsNullOrWhiteSpace($mxcSkipReason)) {
+                $mxcSkipReason = "skip reason was not present in the trx output"
+              }
+              Write-Warning "MXC E2E proof skipped: $mxcProofName; $mxcSkipReason"
+            } else {
+              Write-Error "MXC E2E proof '$mxcProofName' had unexpected outcome '$mxcOutcome'."
+              exit 1
+            }
+          }
         }
 
     - name: Upload E2E Test Results & Logs
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results
+        name: e2e-test-results-${{ matrix.name }}
         path: |
           TestResults/E2E/
         if-no-files-found: warn
@@ -362,7 +417,7 @@ jobs:
         rid: [win-x64, win-arm64]
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
@@ -388,11 +443,19 @@ jobs:
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish
 
-    - name: Publish SetupEngine.UI
-      run: |
-        dotnet publish src/OpenClaw.SetupEngine.UI -c Release -r ${{ matrix.rid }} --self-contained -o publish-setup
-        mkdir publish\SetupEngine
-        copy publish-setup\* publish\SetupEngine\ -Recurse
+    - name: Verify x64 Native Runtime Payload
+      if: matrix.rid == 'win-x64'
+      shell: pwsh
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime
+
+    - name: Verify ARM64 Native Runtime Payload
+      if: matrix.rid == 'win-arm64'
+      shell: pwsh
+      # -SkipNativeLoadProbe: an ARM64 runner CAN LoadLibrary ARM64 DLLs, but
+      # the full tray native dependency chain may include components that are
+      # not in this payload here (WindowsAppSDK pieces, etc.). The probe is for
+      # x64 parity; signature + presence is what we actually care about.
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe
 
     - name: Verify GitVersion assembly metadata
       shell: pwsh
@@ -430,7 +493,7 @@ jobs:
             platform: ARM64
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
@@ -520,7 +583,7 @@ jobs:
       id-token: write
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Download win-x64 tray artifact
       uses: actions/download-artifact@v8
@@ -554,16 +617,12 @@ jobs:
       run: |
         New-Item -ItemType Directory -Path signing-input-x64 -Force | Out-Null
         New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-x64\OpenClaw.Tray.WinUI.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
 
     - name: Stage ARM64 OpenClaw Executables for Signing
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Path signing-input-arm64 -Force | Out-Null
         New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-arm64\OpenClaw.Tray.WinUI.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
 
     - name: Sign x64 OpenClaw Executables
       uses: azure/artifact-signing-action@v2
@@ -599,10 +658,48 @@ jobs:
       shell: pwsh
       run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireSignedOpenClaw
 
-    # Create ZIP files for Updatum auto-update (needs "win-x64" in filename)
-    - name: Create Release ZIPs
+    - name: Verify x64 Release Native Dependencies
+      shell: pwsh
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-x64 -RequireAppLocalVCRuntime
+
+    - name: Verify ARM64 Release Native Dependencies
+      shell: pwsh
+      # -SkipNativeLoadProbe: this release job runs on the x64 windows-latest
+      # runner and cannot LoadLibrary an ARM64 DLL. The signature and presence
+      # checks still run.
+      run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireAppLocalVCRuntime -SkipNativeLoadProbe
+
+    - name: Download Visual C++ Runtime Redistributables
+      shell: pwsh
+      run: |
+        $redists = @(
+          @{ Uri = "https://aka.ms/vc14/vc_redist.x64.exe"; Path = "vc_redist.x64.exe" },
+          @{ Uri = "https://aka.ms/vc14/vc_redist.arm64.exe"; Path = "vc_redist.arm64.exe" }
+        )
+
+        foreach ($redist in $redists) {
+          Invoke-WebRequest -Uri $redist.Uri -OutFile $redist.Path
+          $signature = Get-AuthenticodeSignature -LiteralPath $redist.Path
+          if ($signature.Status -ne "Valid") {
+            throw "$($redist.Path) Authenticode signature was $($signature.Status)."
+          }
+          $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "" }
+          if ($subject -notmatch "O=Microsoft Corporation") {
+            throw "$($redist.Path) signer was not Microsoft Corporation: $subject"
+          }
+        }
+
+    # Create ZIP files for Updatum auto-update (asset name must contain the RID).
+    # We ship both x64 and arm64 portables now that the build job produces an
+    # app-local VC runtime for both architectures (the
+    # arm64 leg sources its loose Microsoft.VC*.CRT DLLs from the VS install
+    # on the windows-11-arm runner; see src/Directory.Build.targets).
+    - name: Create x64 Release ZIP
       run: |
         Compress-Archive -Path artifacts/tray-win-x64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
+
+    - name: Create arm64 Release ZIP
+      run: |
         Compress-Archive -Path artifacts/tray-win-arm64/* -DestinationPath OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
 
     # Inno Setup installer for x64
@@ -614,16 +711,21 @@ jobs:
         # Prepare x64 files
         mkdir publish-x64
         copy artifacts/tray-win-x64/* publish-x64/ -Recurse
+        .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-x64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.x64.exe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 /DvcRedist=vc_redist.x64.exe installer.iss
 
     - name: Build arm64 Installer
       run: |
         # Prepare arm64 files
         mkdir publish-arm64
         copy artifacts/tray-win-arm64/* publish-arm64/ -Recurse
+        # -RequireAppLocalVCRuntime: arm64 payload now ships VC runtime DLLs from the build job.
+        # -SkipNativeLoadProbe:      this verifier runs on the x64 release runner and cannot
+        #                             LoadLibrary an arm64 DLL.
+        .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 /DvcRedist=vc_redist.arm64.exe installer.iss
 
     - name: Sign Installers
       uses: azure/artifact-signing-action@v2

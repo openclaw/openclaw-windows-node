@@ -56,7 +56,9 @@ public class IdentityFileMigrationTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(legacyDir, recursive: true); } catch { }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(perGatewayDir, recursive: true); } catch { }
         }
     }
@@ -88,7 +90,9 @@ public class IdentityFileMigrationTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(legacyDir, recursive: true); } catch { }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(perGatewayDir, recursive: true); } catch { }
         }
     }

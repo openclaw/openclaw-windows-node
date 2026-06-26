@@ -21,6 +21,7 @@ public class ExecApprovalPolicyTests : IDisposable
     
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, true); } catch { }
     }
     
@@ -280,6 +281,103 @@ public class ExecApprovalPolicyTests : IDisposable
         var result = policy.Evaluate("echo hello");
         Assert.True(result.Allowed);
     }
+
+    [Fact]
+    public void Load_AcceptsLegacyAskAlias_WithoutDataLoss()
+    {
+        var legacy = """
+        {
+          "defaultAction": "ask",
+          "rules": [
+            { "pattern": "my-custom *", "action": "ask" },
+            { "pattern": "secret-only", "action": "allow" }
+          ]
+        }
+        """;
+        File.WriteAllText(Path.Combine(_tempDir, "exec-policy.json"), legacy);
+
+        var policy = CreatePolicy();
+
+        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
+        Assert.Equal(2, policy.Rules.Count);
+        Assert.Equal("my-custom *", policy.Rules[0].Pattern);
+        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
+        Assert.Equal(ExecApprovalAction.Allow, policy.Rules[1].Action);
+    }
+
+    [Fact]
+    public void Load_AcceptsLegacyNumericActionValues_WithoutDataLoss()
+    {
+        var legacy = """
+        {
+          "defaultAction": 2,
+          "rules": [
+            { "pattern": "my-numeric-prompt *", "action": 2 },
+            { "pattern": "my-numeric-allow *", "action": 0 },
+            { "pattern": "my-numeric-deny *", "action": 1 }
+          ]
+        }
+        """;
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        File.WriteAllText(path, legacy);
+
+        var policy = CreatePolicy();
+
+        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
+        Assert.Equal(3, policy.Rules.Count);
+        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
+        Assert.Equal(ExecApprovalAction.Allow, policy.Rules[1].Action);
+        Assert.Equal(ExecApprovalAction.Deny, policy.Rules[2].Action);
+        Assert.Contains("my-numeric-prompt", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Load_LegacyAskFile_DoesNotOverwriteWithDefaultRules()
+    {
+        var legacy = """
+        {
+          "defaultAction": "ask",
+          "rules": [
+            { "pattern": "my-unique-pattern-xyz *", "action": "allow" }
+          ]
+        }
+        """;
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        File.WriteAllText(path, legacy);
+
+        _ = CreatePolicy();
+
+        var after = File.ReadAllText(path);
+        Assert.Contains("my-unique-pattern-xyz", after);
+    }
+
+    [Fact]
+    public void Save_AfterLoadingLegacyAsk_EmitsCanonicalPrompt()
+    {
+        var legacy = """{"defaultAction":"ask","rules":[]}""";
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        File.WriteAllText(path, legacy);
+
+        var policy = CreatePolicy();
+        policy.Save();
+
+        var after = File.ReadAllText(path);
+        Assert.Contains("\"prompt\"", after);
+        Assert.DoesNotContain("\"ask\"", after);
+    }
+
+    [Fact]
+    public void Load_AcceptsCanonicalPromptValue()
+    {
+        var canonical = """{"defaultAction":"prompt","rules":[{"pattern":"x","action":"prompt"}]}""";
+        File.WriteAllText(Path.Combine(_tempDir, "exec-policy.json"), canonical);
+
+        var policy = CreatePolicy();
+
+        Assert.Equal(ExecApprovalAction.Prompt, policy.DefaultAction);
+        Assert.Single(policy.Rules);
+        Assert.Equal(ExecApprovalAction.Prompt, policy.Rules[0].Action);
+    }
     
     [Fact]
     public void InsertRule_ClampsToZero_ForNegativeIndex()
@@ -391,6 +489,166 @@ public class ExecApprovalPolicyTests : IDisposable
         var result = policy.Evaluate("dir C:\\", null); // null shell -> defaults to "powershell"
         Assert.False(result.Allowed); // cmd rule didn't match, default deny applies
     }
+
+    // ── Hot-reload regression tests ──
+    // The Permissions UI writes exec-policy.json directly. The engine holds an
+    // ExecApprovalPolicy in memory, so without hot-reload the user's edits had
+    // no effect on the running engine until restart. Evaluate() now stats the
+    // file and reloads on (mtime, length) change — without overwriting in-memory
+    // state if the on-disk content is torn/corrupt.
+
+    private static void WritePolicyFile(string path, string json, DateTime mtimeUtc)
+    {
+        // Atomic write — production callers (ExecApprovalPolicy.Save and the
+        // permissions UI) both use tmp+rename so the Evaluate hot-reload never
+        // observes a partially-written file. Retries on AccessDenied because
+        // the concurrency test runs Evaluate in parallel and File.ReadAllText
+        // briefly holds a share-deny that can race File.Move on Windows.
+        var tmp = $"{path}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(tmp, json);
+        File.SetLastWriteTimeUtc(tmp, mtimeUtc);
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(tmp, path, overwrite: true);
+                return;
+            }
+            catch (UnauthorizedAccessException) when (attempt < 20)
+            {
+                System.Threading.Thread.Sleep(5);
+            }
+            catch (IOException) when (attempt < 20)
+            {
+                System.Threading.Thread.Sleep(5);
+            }
+        }
+    }
+
+    [Fact]
+    public void Evaluate_HotReloads_WhenExternalProcessChangesDefaultAction()
+    {
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        WritePolicyFile(path, """{"defaultAction":"allow","rules":[]}""", DateTime.UtcNow.AddSeconds(-5));
+
+        var policy = CreatePolicy();
+        Assert.True(policy.Evaluate("anything goes").Allowed);
+
+        // External writer changes default to deny. Bump mtime so the signature
+        // changes even if the back-to-back write lands on the same second.
+        WritePolicyFile(path, """{"defaultAction":"deny","rules":[]}""", DateTime.UtcNow.AddSeconds(5));
+
+        var result = policy.Evaluate("anything goes");
+        Assert.False(result.Allowed);
+        Assert.Equal(ExecApprovalAction.Deny, result.Action);
+    }
+
+    [Fact]
+    public void Evaluate_PreservesInMemoryState_OnTornOrCorruptFile()
+    {
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        WritePolicyFile(path, """{"defaultAction":"deny","rules":[{"pattern":"keep-me *","action":"allow"}]}""",
+                        DateTime.UtcNow.AddSeconds(-5));
+
+        var policy = CreatePolicy();
+        Assert.True(policy.Evaluate("keep-me please").Allowed);
+
+        var diskBefore = File.ReadAllText(path);
+
+        // Simulate a torn write: a truncated/invalid JSON document with a
+        // newer mtime. The engine must NOT clobber its in-memory state.
+        WritePolicyFile(path, "{ \"defaultAct", DateTime.UtcNow.AddSeconds(5));
+
+        var result = policy.Evaluate("keep-me please");
+        Assert.True(result.Allowed); // in-memory rule still active
+
+        // The engine must not have rewritten the file in response to bad JSON.
+        Assert.Equal("{ \"defaultAct", File.ReadAllText(path));
+        _ = diskBefore; // baseline for readers
+    }
+
+    [Fact]
+    public void Evaluate_PicksUpValidWriteAfterCorruptFile()
+    {
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        WritePolicyFile(path, """{"defaultAction":"allow","rules":[]}""", DateTime.UtcNow.AddSeconds(-10));
+
+        var policy = CreatePolicy();
+        Assert.True(policy.Evaluate("foo").Allowed);
+
+        // Step 1: torn write. Should be a no-op for in-memory state.
+        WritePolicyFile(path, "{ broken", DateTime.UtcNow.AddSeconds(-5));
+        Assert.True(policy.Evaluate("foo").Allowed);
+
+        // Step 2: external writer finishes with a valid file. Engine must
+        // notice (signature was not bumped on the bad read) and reload.
+        WritePolicyFile(path, """{"defaultAction":"deny","rules":[]}""", DateTime.UtcNow.AddSeconds(5));
+
+        Assert.False(policy.Evaluate("foo").Allowed);
+    }
+
+    [Fact]
+    public void Evaluate_DoesNotThrow_OnConcurrentInvocations()
+    {
+        var path = Path.Combine(_tempDir, "exec-policy.json");
+        WritePolicyFile(path, """{"defaultAction":"deny","rules":[{"pattern":"echo *","action":"allow"}]}""",
+                        DateTime.UtcNow);
+
+        var policy = CreatePolicy();
+
+        // Mix of evaluators and one writer racing the hot-reload code path.
+        // Just verifying no exception escapes the lock-protected snapshot.
+        var ex = Record.Exception(() =>
+            Parallel.For(0, 200, i =>
+            {
+                if (i % 50 == 0)
+                {
+                    WritePolicyFile(path,
+                        $$"""{"defaultAction":"deny","rules":[{"pattern":"echo {{i}}","action":"allow"}]}""",
+                        DateTime.UtcNow.AddMilliseconds(i));
+                }
+                _ = policy.Evaluate("echo hello");
+            }));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Evaluate_DoesNotThrow_WhenRulesMutateInProcess()
+    {
+        var policy = CreatePolicy();
+        var rules = new ExecApprovalRule[750];
+        for (var i = 0; i < rules.Length; i++)
+        {
+            rules[i] = new ExecApprovalRule
+            {
+                Pattern = $"definitely-no-match-{i}",
+                Action = ExecApprovalAction.Deny
+            };
+        }
+        policy.SetRules(rules, ExecApprovalAction.Deny);
+
+        // Regression: Evaluate used to keep a reference to _rules after releasing
+        // the state lock, so AddRule/RemoveRule could invalidate enumeration.
+        var ex = Record.Exception(() =>
+            Parallel.For(0, 300, i =>
+            {
+                if (i % 25 == 0)
+                {
+                    policy.AddRule(new ExecApprovalRule
+                    {
+                        Pattern = $"added-no-match-{i}",
+                        Action = ExecApprovalAction.Deny
+                    });
+                    _ = policy.RemoveRule(0);
+                    return;
+                }
+
+                _ = policy.Evaluate("target command");
+            }));
+
+        Assert.Null(ex);
+    }
 }
 
 public class SystemCapabilityExecApprovalsTests
@@ -433,6 +691,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -463,6 +722,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -497,6 +757,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -528,6 +789,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -570,6 +832,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -617,6 +880,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -650,6 +914,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -696,6 +961,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -738,6 +1004,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -798,6 +1065,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -842,6 +1110,7 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
@@ -890,9 +1159,94 @@ public class SystemCapabilityExecApprovalsTests
         }
         finally
         {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task SystemRun_PolicyAutoDeny_FiresPolicyAutoDecidedEvent()
+    {
+        // Regression: when policy denies without a prompt (default Deny + no match,
+        // or explicit Deny rule), SystemCapability must raise PolicyAutoDecided so
+        // chat surfaces a denial card. Without this, user sees silence after
+        // approving the gateway-level request.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(new[]
+            {
+                new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow },
+            }, ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+
+            ExecApprovalPromptDecidedEventArgs? captured = null;
+            cap.PolicyAutoDecided += (_, args) => captured = args;
+
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"tasklist\"}").RootElement
+            };
+            var result = await cap.ExecuteAsync(request);
+
+            Assert.False(result.Ok);
+            Assert.NotNull(captured);
+            Assert.Equal(ExecApprovalPromptDecisionSource.PolicyAutoDeny, captured!.Source);
+            Assert.Equal("tasklist", captured.Request.Command);
+            Assert.Equal(ExecApprovalPromptDecisionKind.Deny, captured.Decision.Kind);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_PromptApproved_DoesNotFirePolicyAutoDecidedEvent()
+    {
+        // Sanity: when the policy action is Prompt and a handler exists, we go down
+        // the prompt path. PolicyAutoDecided must NOT fire — the prompt service's
+        // own Decided event covers that case.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(System.Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+
+            var cap = CreateCapability(policy);
+            cap.SetPromptHandler(new AllowOncePromptHandler());
+
+            var fired = false;
+            cap.PolicyAutoDecided += (_, _) => fired = true;
+
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"tasklist\"}").RootElement
+            };
+            var result = await cap.ExecuteAsync(request);
+
+            Assert.True(result.Ok);
+            Assert.False(fired, "PolicyAutoDecided should not fire when a prompt handles the decision");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+}
+
+internal class AllowOncePromptHandler : IExecApprovalPromptHandler
+{
+    public Task<ExecApprovalPromptDecision> RequestAsync(
+        ExecApprovalPromptRequest request,
+        System.Threading.CancellationToken cancellationToken = default)
+        => Task.FromResult(ExecApprovalPromptDecision.AllowOnce());
 }
 
 /// <summary>Mock command runner that always succeeds</summary>

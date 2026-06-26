@@ -1,6 +1,7 @@
 using OpenClaw.Connection;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -11,6 +12,8 @@ public class SetupStepsTests : IDisposable
     private readonly string _localTempDir;
     private readonly string? _prevDataDir;
     private readonly string? _prevLocalDataDir;
+    private const string DevicePairPluginNotFoundOutput = "plugins.entries.device-pair: plugin not found: device-pair";
+    private const string OtherPluginNotFoundOutput = "plugins.entries.other-plugin: plugin not found: other-plugin";
 
     public SetupStepsTests()
     {
@@ -28,7 +31,9 @@ public class SetupStepsTests : IDisposable
     {
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", _prevDataDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", _prevLocalDataDir);
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_localTempDir, recursive: true); } catch { }
     }
 
@@ -207,6 +212,60 @@ public class SetupStepsTests : IDisposable
         {
             listener.Stop();
         }
+    }
+
+    [Fact]
+    public async Task WaitForPortFree_ReturnsImmediately_WhenPortIsAlreadyFree()
+    {
+        var port = GetFreeTcpPort();
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+
+        // Should complete well within 1 second because the port is already free
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await PreflightPortStep.WaitForPortFreeAsync(port, "loopback", logger, cts.Token, maxWaitSeconds: 10);
+        // No assertion needed — completing without cancellation/timeout is the success condition
+    }
+
+    [Fact]
+    public async Task WaitForPortFree_PollsUntilPortReleased()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+
+        // Release the port after a short delay (simulates WSL proxy teardown lag)
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(400);
+            listener.Stop();
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await PreflightPortStep.WaitForPortFreeAsync(port, "loopback", logger, cts.Token, maxWaitSeconds: 5);
+
+        // Port should now be free
+        Assert.True(PreflightPortStep.CanBind(IPAddress.Loopback, port, out _));
+    }
+
+    [Fact]
+    public async Task PreflightPort_Loopback_SucceedsAfterPortReleasedDuringPoll()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        // Release after 300ms — simulates a slow WSL proxy shutdown
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            listener.Stop();
+        });
+
+        var ctx = CreateContext(new SetupConfig { GatewayPort = port });
+        var result = await new PreflightPortStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]
@@ -496,6 +555,7 @@ public class SetupStepsTests : IDisposable
     public void WslInstallSupport_ParsesVersionAndVerboseDistroList()
     {
         Assert.True(WslInstallSupport.TryParseWslVersion("WSL version: 2.7.3.0", out var version));
+        Assert.Equal(new Version(2, 7, 3, 0), version);
         Assert.True(WslInstallSupport.SupportsDirectNamedInstall(version));
 
         Assert.True(WslInstallSupport.TryGetDistroVersion(
@@ -505,6 +565,93 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(2, distroVersion);
     }
 
+    // Regression: wsl.exe emits UTF-16LE on some Windows builds, and localized
+    // Windows changes the human-readable label around the stable WSL product token.
+    [Theory]
+    [InlineData("WSL version: 2.7.3.0", "2.7.3.0")]                       // English
+    [InlineData("WSL-Version: 2.7.7.0", "2.7.7.0")]                       // German / NUL-stripped UTF-16
+    [InlineData("WSL-Version: 2.7.7.0\nKernelversion: 6.18.26.1-1\nWSLg-Version: 1.0.73.2\nWindows-Version: 10.0.26300.8553", "2.7.7.0")]
+    [InlineData("Versión de WSL: 2.7.3.0", "2.7.3.0")]                    // Spanish
+    [InlineData("Versión de WSL: 2.7.3.0\nKernel: 5.15.0.1", "2.7.3.0")]  // Spanish with trailing lines
+    [InlineData("WSL バージョン: 2.7.8.0", "2.7.8.0")]                    // Japanese-style label
+    [InlineData("WSL版本: 2.7.9.0", "2.7.9.0")]                          // No separator after WSL
+    public void WslInstallSupport_TryParseWslVersion_HandlesLocalizedAndHyphenatedLabels(string output, string expectedVersion)
+    {
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version),
+            $"Expected TryParseWslVersion to succeed for: {output}");
+        Assert.Equal(Version.Parse(expectedVersion), version);
+        Assert.True(WslInstallSupport.SupportsDirectNamedInstall(version),
+            $"Expected parsed version {version} to satisfy minimum install requirement");
+    }
+
+    // Mirrors microsoft/WSL localization/strings/*/Resources.resw MessagePackageVersions.
+    [Theory]
+    [InlineData("cs-CZ", "Verze WSL: 2.7.3.0")]
+    [InlineData("da-DK", "WSL-version: 2.7.3.0")]
+    [InlineData("de-DE", "WSL-Version: 2.7.3.0")]
+    [InlineData("en-GB", "WSL version: 2.7.3.0")]
+    [InlineData("en-US", "WSL version: 2.7.3.0")]
+    [InlineData("es-ES", "Versión de WSL: 2.7.3.0")]
+    [InlineData("fi-FI", "WSL-versio: 2.7.3.0")]
+    [InlineData("fr-FR", "Version WSL : 2.7.3.0")]
+    [InlineData("hu-HU", "WSL-verzió: 2.7.3.0")]
+    [InlineData("it-IT", "Versione WSL: 2.7.3.0")]
+    [InlineData("ja-JP", "WSL バージョン: 2.7.3.0")]
+    [InlineData("ko-KR", "WSL 버전: 2.7.3.0")]
+    [InlineData("nb-NO", "WSL-versjon: 2.7.3.0")]
+    [InlineData("nl-NL", "WSL-versie: 2.7.3.0")]
+    [InlineData("pl-PL", "Wersja podsystemu WSL: 2.7.3.0")]
+    [InlineData("pt-BR", "Versão do WSL: 2.7.3.0")]
+    [InlineData("pt-PT", "Versão WSL: 2.7.3.0")]
+    [InlineData("ru-RU", "Версия WSL: 2.7.3.0")]
+    [InlineData("sv-SE", "WSL-version: 2.7.3.0")]
+    [InlineData("tr-TR", "WSL sürümü: 2.7.3.0")]
+    [InlineData("zh-CN", "WSL 版本: 2.7.3.0")]
+    [InlineData("zh-TW", "WSL 版本： 2.7.3.0")]
+    public void WslInstallSupport_TryParseWslVersion_HandlesMicrosoftLocalizedPackageVersionLabels(
+        string locale,
+        string output)
+    {
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version),
+            $"Expected TryParseWslVersion to succeed for {locale}: {output}");
+        Assert.Equal(new Version(2, 7, 3, 0), version);
+    }
+
+    [Theory]
+    [InlineData("WSL-Version: 2.7.7.0", "2.7.7.0")]
+    [InlineData("Versión de WSL: 2.7.3.0", "2.7.3.0")]
+    public void WslInstallSupport_TryParseWslVersion_NulStrippedUtf16_ParsesCorrectVersion(string raw, string expectedVersion)
+    {
+        // Simulate UTF-16LE NUL-byte injection then NUL-stripping.
+        var utf16Encoded = string.Join("\0", raw.ToCharArray()) + "\0";
+        var stripped = utf16Encoded.Replace("\0", "");
+        Assert.True(WslInstallSupport.TryParseWslVersion(stripped, out var version),
+            $"Expected TryParseWslVersion to succeed for NUL-stripped: {raw}");
+        Assert.Equal(Version.Parse(expectedVersion), version);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryParseWslVersion_IgnoresAdjacentWslAndWindowsVersionLines()
+    {
+        var output = "WSLg-Version: 1.0.73.2\n"
+            + "Windows-Version: 10.0.26300.8553\n"
+            + "Kernelversion: 6.18.26.1-1\n"
+            + "WSL-Version: 2.7.7.0\n";
+
+        Assert.True(WslInstallSupport.TryParseWslVersion(output, out var version));
+        Assert.Equal(new Version(2, 7, 7, 0), version);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryParseWslVersion_FailsWhenOnlyAdjacentComponentVersionsArePresent()
+    {
+        var output = "WSLg-Version: 1.0.73.2\n"
+            + "Windows-Version: 10.0.26300.8553\n"
+            + "Kernelversion: 6.18.26.1-1\n";
+
+        Assert.False(WslInstallSupport.TryParseWslVersion(output, out _));
+    }
+
     [Fact]
     public void WslInstallSupport_TryGetEnvironmentIssue_DetectsFirmwareVirtualizationOff()
     {
@@ -512,9 +659,29 @@ public class SetupStepsTests : IDisposable
             "WSL2 is unable to start since virtualization is not enabled on this machine. "
             + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
             + "and virtualization is turned on in your computer's firmware settings.",
+            Architecture.X64,
             out var message));
         Assert.Contains("BIOS", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("VT-x", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_UsesArm64WordingOnArm64()
+    {
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(
+            "WSL2 is unable to start since virtualization is not enabled on this machine. "
+            + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
+            + "and virtualization is turned on in your computer's firmware settings.",
+            Architecture.Arm64,
+            out var message));
+        Assert.Contains("ARM64", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UEFI", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+        // Must not name x86-specific extensions on ARM64.
+        Assert.DoesNotContain("VT-x", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AMD-V", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SVM", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -530,6 +697,22 @@ public class SetupStepsTests : IDisposable
             out var message));
         Assert.Contains("Virtual Machine Platform", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("wsl --install --no-distribution", message);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_DetectsUnsupportedMachineConfigurationStatus()
+    {
+        var status = NulSeparated("Default Version: 2\r\n\r\n"
+            + "WSL2 is not supported with your current machine configuration.\r\n\r\n"
+            + "Please enable the \"Virtual Machine Platform\" optional component and ensure virtualization is enabled in the BIOS.\r\n\r\n"
+            + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
+            + "For information please visit https://aka.ms/enablevirtualization\r\n");
+
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(status, out var message));
+        Assert.Contains("Virtual Machine Platform", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", message);
+        Assert.Contains("reboot", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -561,7 +744,8 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("BIOS", result.Message, StringComparison.OrdinalIgnoreCase);
+        // Don't assert on "BIOS" / "UEFI" here -- the wording flexes by host
+        // CPU architecture (this test runs on either x64 or Arm64 dev boxes).
     }
 
     [Fact]
@@ -585,6 +769,33 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("Virtual Machine Platform", result.Message);
         Assert.Contains("wsl --install --no-distribution", result.Message);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_FailsTerminalWhenStatusReportsUnsupportedMachineConfiguration()
+    {
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args is ["--version"])
+                return Ok("WSL version: 2.5.9.0\n");
+            if (args is ["--status"])
+                return Ok(NulSeparated(
+                    "Default Version: 2\r\n\r\n"
+                    + "WSL2 is not supported with your current machine configuration.\r\n\r\n"
+                    + "Please enable the \"Virtual Machine Platform\" optional component and ensure virtualization is enabled in the BIOS.\r\n\r\n"
+                    + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
+                    + "For information please visit https://aka.ms/enablevirtualization\r\n"));
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Virtual Machine Platform", result.Message);
+        Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", result.Message);
+        Assert.DoesNotContain(commands.Calls, c => c.Arguments.Contains("--install"));
     }
 
     [Fact]
@@ -717,6 +928,81 @@ public class SetupStepsTests : IDisposable
             commands);
     }
 
+    // Issue: device-pair plugin must be enabled, not just configured. Otherwise
+    // OAuth providers (Codex, etc.) hang at scope-upgrade and never emit auth URLs.
+    [Fact]
+    public void ConfigureGateway_EnablesDevicePairPluginForLoopbackGateway()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "loopback" },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_EnablesDevicePairPluginWhenPublicUrlOverridden()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "lan",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.DevicePairPublicUrlKey] = "https://gateway.example.test",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_DoesNotEnableDevicePairWhenNoPublicUrlAvailable()
+    {
+        // LAN bind with no operator-supplied publicUrl: we don't know where the plugin
+        // would be reachable, so don't enable it; preserves the prior behavior.
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "lan" },
+            18789,
+            "'[]'");
+
+        Assert.DoesNotContain(
+            "openclaw config set plugins.entries.device-pair.enabled",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_RespectsExplicitDevicePairEnabledOverride()
+    {
+        // If the operator explicitly sets the enabled flag via ExtraConfig, the
+        // ExtraConfig loop writes it and we don't append a duplicate.
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "loopback",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.DevicePairEnabledKey] = "false",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set plugins.entries.device-pair.enabled 'false'",
+            commands);
+        Assert.DoesNotContain(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            commands);
+    }
+
     [Fact]
     public void ConfigureGateway_DoesNotOverrideExplicitDevicePairPublicUrl()
     {
@@ -736,6 +1022,83 @@ public class SetupStepsTests : IDisposable
         Assert.Contains(
             "openclaw config set plugins.entries.device-pair.config.publicUrl 'https://gateway.example.test'",
             commands);
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_UsesExtendedTimeoutForWslConfig()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok("GATEWAY_CONFIGURED"));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var wslCall = Assert.Single(commands.WslCalls);
+        Assert.Equal(
+            ConfigureGatewayStep.ComputeConfigurationTimeout(wslCall.Command),
+            wslCall.Timeout);
+        Assert.True(wslCall.Timeout >= ConfigureGatewayStep.MinConfigurationTimeout);
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_ReturnsTimeoutSpecificFailure()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, timeout) => new CommandResult(-1, "", "", timeout, TimedOut: true));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        var message = Assert.IsType<string>(result.Message);
+        Assert.Contains("Gateway configuration timed out after", message);
+        Assert.DoesNotContain("exit -1", message);
+    }
+
+    [Fact]
+    public void ComputeConfigurationTimeout_ScalesWithConfigCommandCount()
+    {
+        // Each `openclaw config set` pays a cold Node start inside WSL. As more keys are
+        // configured the budget must grow, otherwise the step silently regresses toward a
+        // timeout (the failure mode the fixed 120s cap only partially closed).
+        var fewCommands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "lan" },
+            18789,
+            "'[]'");
+        var manyCommands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "loopback",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.extra.one"] = "1",
+                    ["gateway.extra.two"] = "2",
+                    ["gateway.extra.three"] = "3",
+                    ["gateway.extra.four"] = "4",
+                },
+            },
+            18789,
+            "'[]'");
+
+        var fewTimeout = ConfigureGatewayStep.ComputeConfigurationTimeout(fewCommands);
+        var manyTimeout = ConfigureGatewayStep.ComputeConfigurationTimeout(manyCommands);
+
+        Assert.True(
+            manyTimeout > fewTimeout,
+            $"Timeout should grow with config command count; few={fewTimeout}, many={manyTimeout}");
+    }
+
+    [Fact]
+    public void ComputeConfigurationTimeout_NeverBelowFloor()
+    {
+        // A minimal config set must still receive the safety floor, never base + one.
+        var timeout = ConfigureGatewayStep.ComputeConfigurationTimeout(
+            "openclaw config set gateway.mode local");
+
+        Assert.True(timeout >= ConfigureGatewayStep.MinConfigurationTimeout);
     }
 
     [Theory]
@@ -916,6 +1279,75 @@ public class SetupStepsTests : IDisposable
             "OpenClawGateway"));
     }
 
+    [Fact]
+    public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, "device-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApprovePairing_KeepsOtherMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, "device-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Device approval failed", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_ReturnsTerminalWhenPendingListReportsDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_KeepsOtherPendingListMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not list pending node pairing requests", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_ReturnsTerminalWhenApproveReportsDevicePairPluginNotFound()
+    {
+        var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "node-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_KeepsOtherApproveMissingPluginRetriable()
+    {
+        var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "node-req-1", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Node approval failed", result.Message);
+        Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
     // ─── Bind validation ───
 
     [Fact]
@@ -966,15 +1398,100 @@ public class SetupStepsTests : IDisposable
         Assert.Empty(scopeProps);
     }
 
+    [Fact]
+    public async Task ValidateWslLockdown_RetriesWslConfReadAfterStartupTimeout()
+    {
+        var catAttempts = 0;
+        var ctx = CreateContext(commands: new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command == "cat /etc/wsl.conf")
+                {
+                    catAttempts++;
+                    return catAttempts == 1
+                        ? TimedOut()
+                        : Ok("""
+                            [boot]
+                            systemd=true
+
+                            [automount]
+                            enabled=false
+                            mountFsTab=false
+
+                            [interop]
+                            enabled=false
+                            appendWindowsPath=false
+
+                            [user]
+                            default=openclaw
+                            """);
+                }
+
+                if (command.Contains("LOCKDOWN_VALID", StringComparison.Ordinal))
+                    return Ok("LOCKDOWN_VALID\n");
+
+                return Fail("unexpected WSL command");
+            }));
+        ctx.DistroName = "test-distro";
+
+        var result = await new ValidateWslLockdownStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, catAttempts);
+    }
+
+    // ─── PairOperatorStep: Windows-side gateway health check ───
+
+    [Fact]
+    public async Task PairOperatorStep_FailsWhenGatewayNotReachableFromWindows()
+    {
+        // Allocate a port and immediately release it so nothing is listening on it.
+        var port = GetFreeTcpPort();
+
+        var config = new SetupConfig { GatewayPort = port };
+        var ctx = CreateContext(config);
+        ctx.SharedGatewayToken = "test-shared-token";
+
+        var step = new PairOperatorStep();
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static CommandResult Ok(string stdout = "", string stderr = "")
         => new(0, stdout, stderr, TimeSpan.Zero, TimedOut: false);
 
     private static CommandResult Fail(string stderr = "")
         => new(1, "", stderr, TimeSpan.Zero, TimedOut: false);
 
-    private sealed class FakeCommandRunner(Func<string[], CommandResult> run) : ICommandRunner
+    private static CommandResult FailWithStdout(string stdout)
+        => new(1, stdout, "", TimeSpan.Zero, TimedOut: false);
+
+    private static CommandResult TimedOut()
+        => new(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
+
+    private static string NulSeparated(string value)
+        => string.Join("\0", value.ToCharArray()) + "\0";
+
+    private SetupContext CreatePairingContext(string failureStdout)
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => FailWithStdout(failureStdout));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "shared-token";
+        return ctx;
+    }
+
+    private sealed class FakeCommandRunner(
+        Func<string[], CommandResult> run,
+        Func<string, string, TimeSpan, CommandResult>? runInWsl = null) : ICommandRunner
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
+        public List<(string DistroName, string Command, TimeSpan Timeout)> WslCalls { get; } = [];
 
         public Task<CommandResult> RunAsync(
             string executable,
@@ -996,6 +1513,12 @@ public class SetupStepsTests : IDisposable
             IReadOnlyDictionary<string, string>? environment = null,
             CancellationToken ct = default,
             string? user = null)
-            => throw new NotSupportedException("RunInWslAsync is not expected in these tests.");
+        {
+            if (runInWsl == null)
+                throw new NotSupportedException("RunInWslAsync is not expected in these tests.");
+
+            WslCalls.Add((distroName, command, timeout));
+            return Task.FromResult(runInWsl(distroName, command, timeout));
+        }
     }
 }

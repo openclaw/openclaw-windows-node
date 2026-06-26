@@ -3,6 +3,7 @@ using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -11,6 +12,9 @@ namespace OpenClawTray.Helpers;
 
 internal static class CommandCenterTextHelper
 {
+    private const int RecentTrayLogTailLines = 120;
+    private const int RecentTrayLogMaxChars = 24_000;
+
     // Pre-compiled patterns used in RedactSupportPath / RedactSupportValue.
     // Compiled once at startup; reused on every diagnostic / support-text build.
     private static readonly Regex PathWindowsUserPattern = new(
@@ -24,7 +28,7 @@ internal static class CommandCenterTextHelper
         TimeSpan.FromMilliseconds(100));
 
     private static readonly Regex ValueUrlHostPattern = new(
-        @"\b[a-z][a-z0-9+.-]*://(?:[^@\s/]+@)?([^:/\s]+)",
+        @"\b(?<scheme>[a-z][a-z0-9+.-]*)://(?:[^@\s/]+@)?(?<host>\[[^\]\s]+\]|[^:/\s]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
 
@@ -32,6 +36,10 @@ internal static class CommandCenterTextHelper
         @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
         RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
+
+    // IPv6 regex is shared with TokenSanitizer to keep log sanitization and support-context
+    // redaction in lock-step. See TokenSanitizer.IpV6Pattern for the alternative-by-alternative
+    // breakdown and the rationale for the trailing negative lookahead.
 
     private static readonly Regex ValueEmailPattern = new(
         @"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b",
@@ -120,6 +128,7 @@ internal static class CommandCenterTextHelper
         AppendSection(builder, "Channel Summary", BuildChannelSummaryText(state.Channels));
         AppendSection(builder, "Activity Summary", BuildActivitySummary(state.RecentActivity));
         AppendSection(builder, "Extensibility Summary", BuildExtensibilitySummary(state.Channels));
+        AppendSection(builder, "Recent Tray Log", BuildRecentTrayLogTail(Logger.LogFilePath));
         return builder.ToString();
     }
 
@@ -135,10 +144,16 @@ internal static class CommandCenterTextHelper
     internal static string BuildBrowserSetupGuidance(
         int browserProxyPort,
         GatewayTopologyInfo? topology,
-        TunnelCommandCenterInfo? tunnel)
+        TunnelCommandCenterInfo? tunnel,
+        int? browserControlPort = null)
     {
-        var portText = browserProxyPort is >= 1 and <= 65535
-            ? browserProxyPort.ToString(CultureInfo.InvariantCulture)
+        // An explicit BrowserControlPort override pins the effective endpoint browser.proxy dials,
+        // so the copied setup guidance reports the same port (BrowserControlEndpoint priority 1).
+        var effectivePort = browserControlPort is { } overridePort && overridePort is >= 1 and <= 65535
+            ? overridePort
+            : browserProxyPort;
+        var portText = effectivePort is >= 1 and <= 65535
+            ? effectivePort.ToString(CultureInfo.InvariantCulture)
             : "<gateway-port+2>";
         var gatewayHost = string.IsNullOrWhiteSpace(topology?.Host) ? "<gateway-host>" : topology.Host;
         var gatewayPort = ResolveGatewayPort(topology?.GatewayUrl);
@@ -235,12 +250,29 @@ internal static class CommandCenterTextHelper
         {
             var displayName = string.IsNullOrWhiteSpace(node.DisplayName) ? node.NodeId : node.DisplayName;
             builder.AppendLine($"- {displayName} ({node.Platform ?? "unknown"}, {(node.IsOnline ? "online" : "offline")})");
-            builder.AppendLine($"  declared commands: {FormatCommandList(node.Commands)}");
-            builder.AppendLine($"  safe companion commands: {FormatCommandList(node.SafeDeclaredCommands)}");
-            builder.AppendLine($"  privacy-sensitive opt-ins: {FormatCommandList(node.DangerousDeclaredCommands)}");
-            builder.AppendLine($"  browser proxy commands: {FormatCommandList(node.BrowserDeclaredCommands)}");
-            builder.AppendLine($"  Windows-specific commands: {FormatCommandList(node.WindowsSpecificDeclaredCommands)}");
-            builder.AppendLine($"  filtered by gateway policy: {FormatCommandList(node.BlockedDeclaredCommands)}");
+            builder.AppendLine($"  approval state: {FormatApprovalState(node.ApprovalState)}");
+            builder.AppendLine($"  approved/effective capabilities: {FormatCommandList(node.Capabilities)}");
+            builder.AppendLine($"  approved/effective commands: {FormatCommandList(node.Commands)}");
+            builder.AppendLine($"  approved/effective permissions: {FormatPermissions(node.Permissions)}");
+            builder.AppendLine($"  pending declared capabilities: {FormatCommandList(node.PendingDeclaredCapabilities)}");
+            builder.AppendLine($"  pending declared commands: {FormatCommandList(node.PendingDeclaredCommands)}");
+            builder.AppendLine($"  pending declared permissions: {FormatPermissions(node.PendingDeclaredPermissions)}");
+            builder.AppendLine($"  legacy declared/unverified commands: {FormatCommandList(node.UnverifiedDeclaredCommands)}");
+            builder.AppendLine($"  local declared/unverified capabilities: {FormatCommandList(node.LocalDeclaredCapabilities)}");
+            builder.AppendLine($"  local declared/unverified commands: {FormatCommandList(node.LocalDeclaredCommands)}");
+            builder.AppendLine($"  local declared/unverified permissions: {FormatPermissions(node.LocalDeclaredPermissions)}");
+            if (IsApprovalPending(node.ApprovalState))
+            {
+                if (CommandCenterDiagnostics.TryBuildNodeApprovalCommand(node.PendingRequestId, out var approvalCommand))
+                    builder.AppendLine($"  approval command: {approvalCommand}");
+                else
+                    builder.AppendLine("  pending request discovery command: openclaw nodes pending");
+            }
+            builder.AppendLine($"  safe approved commands: {FormatCommandList(node.SafeApprovedCommands)}");
+            builder.AppendLine($"  privacy-sensitive approved commands: {FormatCommandList(node.PrivacySensitiveApprovedCommands)}");
+            builder.AppendLine($"  browser proxy approved commands: {FormatCommandList(node.BrowserApprovedCommands)}");
+            builder.AppendLine($"  Windows-specific approved commands: {FormatCommandList(node.WindowsSpecificApprovedCommands)}");
+            builder.AppendLine($"  denied by effective permissions: {FormatCommandList(node.PermissionBlockedCommands)}");
             builder.AppendLine($"  disabled in Settings: {FormatCommandList(node.DisabledBySettingsCommands)}");
             builder.AppendLine($"  missing safe allowlist: {FormatCommandList(node.MissingSafeAllowlistCommands)}");
             builder.AppendLine($"  missing privacy-sensitive allowlist: {FormatCommandList(node.MissingDangerousAllowlistCommands)}");
@@ -304,11 +336,11 @@ internal static class CommandCenterTextHelper
         foreach (var node in nodes.OrderBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
             builder.AppendLine(BuildNodeSummary(node).TrimEnd());
-            builder.AppendLine($"Safe companion commands: {FormatCommandList(node.SafeDeclaredCommands)}");
-            builder.AppendLine($"Privacy-sensitive commands: {FormatCommandList(node.DangerousDeclaredCommands)}");
-            builder.AppendLine($"Browser proxy commands: {FormatCommandList(node.BrowserDeclaredCommands)}");
-            builder.AppendLine($"Windows-specific commands: {FormatCommandList(node.WindowsSpecificDeclaredCommands)}");
-            builder.AppendLine($"Filtered by gateway policy: {FormatCommandList(node.BlockedDeclaredCommands)}");
+            builder.AppendLine($"Safe approved commands: {FormatCommandList(node.SafeApprovedCommands)}");
+            builder.AppendLine($"Privacy-sensitive approved commands: {FormatCommandList(node.PrivacySensitiveApprovedCommands)}");
+            builder.AppendLine($"Browser proxy approved commands: {FormatCommandList(node.BrowserApprovedCommands)}");
+            builder.AppendLine($"Windows-specific approved commands: {FormatCommandList(node.WindowsSpecificApprovedCommands)}");
+            builder.AppendLine($"Denied by effective permissions: {FormatCommandList(node.PermissionBlockedCommands)}");
             builder.AppendLine($"Missing browser proxy allowlist: {FormatCommandList(node.MissingBrowserAllowlistCommands)}");
             builder.AppendLine($"Disabled in Settings: {FormatCommandList(node.DisabledBySettingsCommands)}");
             builder.AppendLine($"Missing Mac parity: {FormatCommandList(node.MissingMacParityCommands)}");
@@ -324,6 +356,61 @@ internal static class CommandCenterTextHelper
         builder.AppendLine(content.TrimEnd());
         builder.AppendLine();
     }
+
+    private static string BuildRecentTrayLogTail(string? logPath)
+    {
+        if (string.IsNullOrWhiteSpace(logPath))
+            return "Tray log path is not configured.";
+
+        if (!File.Exists(logPath))
+            return $"Tray log does not exist: {RedactSupportPath(logPath)}";
+
+        var lines = new Queue<string>(RecentTrayLogTailLines);
+        try
+        {
+            using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                lines.Enqueue(RedactSupportLogLine(line));
+                while (lines.Count > RecentTrayLogTailLines)
+                    lines.Dequeue();
+            }
+        }
+        catch (IOException ex)
+        {
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
+        }
+
+        if (lines.Count == 0)
+            return $"Tray log is empty: {RedactSupportPath(logPath)}";
+
+        var builder = new StringBuilder();
+        builder.AppendLine($"Source: {RedactSupportPath(logPath)}");
+        builder.AppendLine($"Showing the last {lines.Count} lines. Sensitive values are redacted before writing and again before bundling.");
+        foreach (var line in lines)
+        {
+            if (builder.Length >= RecentTrayLogMaxChars)
+            {
+                builder.AppendLine("... truncated ...");
+                break;
+            }
+
+            builder.AppendLine(line);
+        }
+
+        return builder.ToString();
+    }
+
+    // SanitizeLogMessage already performs the same folder + Windows/Unix user-path redactions
+    // that an earlier version of this helper duplicated here. Delegating avoids redundant
+    // allocations on every diagnostic-bundle line.
+    private static string RedactSupportLogLine(string line)
+        => TokenSanitizer.SanitizeLogMessage(line);
 
     private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
     {
@@ -368,31 +455,39 @@ internal static class CommandCenterTextHelper
         if (string.IsNullOrWhiteSpace(path))
             return "not configured";
 
-        var redacted = path;
-        var knownFolders = new Dictionary<string, string>
+        try
         {
-            [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)] = "%USERPROFILE%",
-            [Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)] = "%APPDATA%",
-            [Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)] = "%LOCALAPPDATA%",
-            [Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)] = "%USERPROFILE%\\Documents"
-        };
-
-        foreach (var (folder, replacement) in knownFolders
-                     .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
-                     .OrderByDescending(pair => pair.Key.Length))
-        {
-            if (redacted.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+            var redacted = path;
+            var knownFolders = new Dictionary<string, string>
             {
-                redacted = replacement + redacted[folder.Length..];
-                break;
+                [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)] = "%USERPROFILE%",
+                [Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)] = "%APPDATA%",
+                [Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)] = "%LOCALAPPDATA%",
+                [Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)] = "%USERPROFILE%\\Documents"
+            };
+
+            foreach (var (folder, replacement) in knownFolders
+                         .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+                         .OrderByDescending(pair => pair.Key.Length))
+            {
+                if (redacted.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+                {
+                    redacted = replacement + redacted[folder.Length..];
+                    break;
+                }
             }
+
+            redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
+
+            redacted = PathUnixUserPattern.Replace(redacted, "$HOME");
+
+            return redacted;
         }
-
-        redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
-
-        redacted = PathUnixUserPattern.Replace(redacted, "$HOME");
-
-        return redacted;
+        catch (RegexMatchTimeoutException)
+        {
+            // Fail-closed: see TokenSanitizer.SanitizerTimeoutSentinel.
+            return TokenSanitizer.SanitizerTimeoutSentinel;
+        }
     }
 
     private static string RedactSupportValue(string? value)
@@ -400,21 +495,31 @@ internal static class CommandCenterTextHelper
         if (string.IsNullOrWhiteSpace(value))
             return "unknown";
 
-        var redacted = ValueUrlHostPattern.Replace(
-            value,
-            match => match.Value.Replace(match.Groups[1].Value, "<host>"));
+        try
+        {
+            var redacted = ValueUrlHostPattern.Replace(
+                value,
+                match => $"{match.Groups["scheme"].Value}://<host>");
 
-        redacted = ValueIpPattern.Replace(redacted, "<ip>");
+            redacted = TokenSanitizer.IpV6Pattern.Replace(redacted, TokenSanitizer.RedactIfValidIpV6);
 
-        redacted = ValueEmailPattern.Replace(redacted, "<email>");
+            redacted = ValueIpPattern.Replace(redacted, "<ip>");
 
-        redacted = ValueUserAtHostPattern.Replace(redacted, "<user>@<host>");
+            redacted = ValueEmailPattern.Replace(redacted, "<email>");
 
-        redacted = ValueHostAfterToPattern.Replace(redacted, "<host>");
+            redacted = ValueUserAtHostPattern.Replace(redacted, "<user>@<host>");
 
-        redacted = ValueLeadingHostPattern.Replace(redacted, "<host>");
+            redacted = ValueHostAfterToPattern.Replace(redacted, "<host>");
 
-        return redacted;
+            redacted = ValueLeadingHostPattern.Replace(redacted, "<host>");
+
+            return redacted;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // Fail-closed: see TokenSanitizer.SanitizerTimeoutSentinel.
+            return TokenSanitizer.SanitizerTimeoutSentinel;
+        }
     }
 
     private static string BuildChannelDetail(ChannelCommandCenterInfo channel)
@@ -454,6 +559,28 @@ internal static class CommandCenterTextHelper
         return ordered.Count == 0 ? "none" : string.Join(", ", ordered);
     }
 
+    private static string FormatPermissions(IReadOnlyDictionary<string, bool> permissions)
+    {
+        if (permissions.Count == 0)
+            return "none";
+
+        return string.Join(", ", permissions
+            .OrderBy(permission => permission.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(permission => $"{permission.Key}={permission.Value.ToString().ToLowerInvariant()}"));
+    }
+
+    private static bool IsApprovalPending(GatewayNodeApprovalState approvalState) =>
+        approvalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval;
+
+    private static string FormatApprovalState(GatewayNodeApprovalState approvalState) => approvalState switch
+    {
+        GatewayNodeApprovalState.Approved => "approved",
+        GatewayNodeApprovalState.PendingApproval => "pending-approval",
+        GatewayNodeApprovalState.PendingReapproval => "pending-reapproval",
+        GatewayNodeApprovalState.Unapproved => "unapproved",
+        _ => "unknown"
+    };
+
     private static string BuildActivityDetail(CommandCenterActivityInfo activity)
     {
         var details = new List<string>();
@@ -482,8 +609,24 @@ internal static class CommandCenterTextHelper
         builder.AppendLine($"Node ID: {node.NodeId}");
         builder.AppendLine($"Platform: {node.Platform ?? "unknown"}");
         builder.AppendLine($"Status: {(node.IsOnline ? "online" : "offline")}");
-        builder.AppendLine($"Capabilities: {string.Join(", ", node.Capabilities.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))}");
-        builder.AppendLine($"Commands: {string.Join(", ", node.Commands.OrderBy(c => c, StringComparer.OrdinalIgnoreCase))}");
+        builder.AppendLine($"Approval state: {FormatApprovalState(node.ApprovalState)}");
+        builder.AppendLine($"Approved/effective capabilities: {FormatCommandList(node.Capabilities)}");
+        builder.AppendLine($"Approved/effective commands: {FormatCommandList(node.Commands)}");
+        builder.AppendLine($"Approved/effective permissions: {FormatPermissions(node.Permissions)}");
+        builder.AppendLine($"Pending declared capabilities: {FormatCommandList(node.PendingDeclaredCapabilities)}");
+        builder.AppendLine($"Pending declared commands: {FormatCommandList(node.PendingDeclaredCommands)}");
+        builder.AppendLine($"Pending declared permissions: {FormatPermissions(node.PendingDeclaredPermissions)}");
+        builder.AppendLine($"Legacy declared/unverified commands: {FormatCommandList(node.UnverifiedDeclaredCommands)}");
+        builder.AppendLine($"Local declared/unverified capabilities: {FormatCommandList(node.LocalDeclaredCapabilities)}");
+        builder.AppendLine($"Local declared/unverified commands: {FormatCommandList(node.LocalDeclaredCommands)}");
+        builder.AppendLine($"Local declared/unverified permissions: {FormatPermissions(node.LocalDeclaredPermissions)}");
+        if (IsApprovalPending(node.ApprovalState))
+        {
+            if (CommandCenterDiagnostics.TryBuildNodeApprovalCommand(node.PendingRequestId, out var approvalCommand))
+                builder.AppendLine($"Approval command: {approvalCommand}");
+            else
+                builder.AppendLine("Pending request discovery command: openclaw nodes pending");
+        }
         if (node.DisabledBySettingsCommands.Count > 0)
             builder.AppendLine($"Disabled in Settings: {string.Join(", ", node.DisabledBySettingsCommands)}");
         if (node.Warnings.Count > 0)

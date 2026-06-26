@@ -142,11 +142,13 @@ public sealed class MxcExecutor
 
             if (!completed)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
+                try { process.Kill(entireProcessTree: true); }
+                catch (Exception ex) { Trace.WriteLine($"MxcExecutor: process kill (cancellation path) failed: {ex.Message}"); }
                 // WaitForExit() (sync) blocks until both stdout and stderr async
                 // readers have drained the redirected pipes. Without this the
                 // event handlers can still be appending while ToString() runs.
-                try { process.WaitForExit(); } catch { }
+                try { process.WaitForExit(); }
+                catch (Exception ex) { Trace.WriteLine($"MxcExecutor: process drain (cancellation path) failed: {ex.Message}"); }
                 sw.Stop();
                 string capturedOut;
                 lock (outLock) { capturedOut = stdoutBuilder.ToString(); }
@@ -162,7 +164,8 @@ public sealed class MxcExecutor
             }
 
             // Flush async readers before reading the StringBuilders.
-            try { process.WaitForExit(); } catch { }
+            try { process.WaitForExit(); }
+            catch (Exception ex) { Trace.WriteLine($"MxcExecutor: post-exit drain WaitForExit failed: {ex.Message}"); }
             sw.Stop();
             string outRaw, errRaw;
             lock (outLock) { outRaw = stdoutBuilder.ToString().Trim(); }

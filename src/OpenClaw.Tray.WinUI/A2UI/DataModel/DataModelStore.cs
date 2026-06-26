@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Dispatching;
+using OpenClawTray.Services;
 
 namespace OpenClawTray.A2UI.DataModel;
 
@@ -95,6 +96,7 @@ public sealed class DataModelStore
         var changed = new List<string>(entries.Count);
         var prefix = NormalizePath(basePath ?? "/");
         if (prefix == "/") prefix = "";
+        var droppedEntries = 0;
 
         foreach (var entry in entries)
         {
@@ -103,6 +105,7 @@ public sealed class DataModelStore
             if (entry.Key.Length > MaxKeyLength) continue;
             if (entry.ValueString != null && entry.ValueString.Length > MaxStringValueLength) continue;
             if (!IsWithinDepth(entry.ValueMap, depth: 1, max: MaxValueMapDepth)) continue;
+            if (!IsWithinDepth(entry.ValueArray, depth: 1, max: MaxValueMapDepth)) continue;
 
             try
             {
@@ -113,22 +116,32 @@ public sealed class DataModelStore
                 model.SetByPointer(pointer, entry.ToJsonNode());
                 changed.Add(NormalizePath(pointer));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // bad pointer; skip — router logs aggregate.
+                droppedEntries++;
+                if (droppedEntries == 1)
+                    Logger.Warn($"DataModelStore: Dropped data model entry for surface '{surfaceId}' at key '{entry.Key}': {ex.Message}");
             }
         }
+
+        if (droppedEntries > 1)
+            Logger.Warn($"DataModelStore: Dropped {droppedEntries} data model entries for surface '{surfaceId}'.");
 
         if (changed.Count > 0)
             new DataModelObservable(model, _dispatcher).NotifyPaths(changed);
     }
 
-    private static bool IsWithinDepth(IReadOnlyList<Protocol.DataModelEntry>? map, int depth, int max)
+    private static bool IsWithinDepth(IReadOnlyList<Protocol.DataModelEntry>? children, int depth, int max)
     {
-        if (map == null) return true;
+        if (children == null) return true;
         if (depth > max) return false;
-        foreach (var e in map)
+        foreach (var e in children)
+        {
+            // Both nested maps and nested arrays add a level — bound either path
+            // so a deeply-nested valueArray can't bypass the valueMap depth cap.
             if (!IsWithinDepth(e.ValueMap, depth + 1, max)) return false;
+            if (!IsWithinDepth(e.ValueArray, depth + 1, max)) return false;
+        }
         return true;
     }
 
@@ -234,14 +247,14 @@ public sealed class DataModelStore
                     if (obj[tok] == null)
                     {
                         if (!createMissing) return (null, null, false, -1);
-                        var nextIsIndex = int.TryParse(tokens[i + 1], out _);
+                        var nextIsIndex = TryParseArrayIndex(tokens[i + 1], out _);
                         obj[tok] = nextIsIndex ? new JsonArray() : new JsonObject();
                     }
                     cursor = obj[tok];
                 }
                 else if (cursor is JsonArray arr)
                 {
-                    if (!int.TryParse(tok, out var ai)) return (null, null, false, -1);
+                    if (!TryParseArrayIndex(tok, out var ai)) return (null, null, false, -1);
                     while (createMissing && arr.Count <= ai) arr.Add(null);
                     if (ai < 0 || ai >= arr.Count) return (null, null, false, -1);
                     cursor = arr[ai];
@@ -253,9 +266,26 @@ public sealed class DataModelStore
             }
 
             var last = tokens[^1];
-            if (cursor is JsonArray finalArr && int.TryParse(last, out var idx))
+            if (cursor is JsonArray finalArr && TryParseArrayIndex(last, out var idx))
                 return (finalArr, last, true, idx);
             return (cursor, last, false, -1);
+        }
+
+        private static bool TryParseArrayIndex(string token, out int index)
+        {
+            index = -1;
+            if (token.Length == 0) return false;
+            if (token.Length > 1 && token[0] == '0') return false;
+
+            foreach (var c in token)
+                if (c < '0' || c > '9')
+                    return false;
+
+            return int.TryParse(
+                token,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out index);
         }
 
         private static List<string> SplitPointer(string pointer)
@@ -314,7 +344,10 @@ public sealed class DataModelObservable
             _model.SetByPointer(pointer, value);
             NotifyPaths(new[] { Normalize(pointer) });
         }
-        catch { /* swallow; bad pointer */ }
+        catch (Exception ex)
+        {
+            Logger.Warn($"DataModelStore: Failed to write data model pointer '{pointer}': {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -346,22 +379,55 @@ public sealed class DataModelObservable
             var current = key;
             while (true)
             {
-                List<Action>? subs;
-                lock (_model.Subscribers)
-                {
-                    _model.Subscribers.TryGetValue(current, out subs);
-                    subs = subs == null ? null : new List<Action>(subs);
-                }
-                if (subs != null)
-                {
-                    foreach (var s in subs)
-                        if (fired.Add(s)) Dispatch(s);
-                }
+                DispatchSubscribers(current, fired);
                 if (current == "/" || string.IsNullOrEmpty(current)) break;
                 var slash = current.LastIndexOf('/');
                 current = slash <= 0 ? "/" : current.Substring(0, slash);
             }
+
+            // Replacing a container at /x also changes /x/... descendants. Most
+            // component bindings subscribe to the exact leaf path they read, so
+            // notify those subtree subscribers as well.
+            DispatchDescendantSubscribers(key, fired);
         }
+    }
+
+    private void DispatchSubscribers(string key, HashSet<Action> fired)
+    {
+        List<Action>? subs;
+        lock (_model.Subscribers)
+        {
+            _model.Subscribers.TryGetValue(key, out subs);
+            subs = subs == null ? null : new List<Action>(subs);
+        }
+
+        if (subs == null) return;
+
+        foreach (var s in subs)
+            if (fired.Add(s))
+                Dispatch(s);
+    }
+
+    private void DispatchDescendantSubscribers(string key, HashSet<Action> fired)
+    {
+        List<Action> subs = [];
+        var prefix = key == "/" ? "/" : key + "/";
+
+        lock (_model.Subscribers)
+        {
+            foreach (var (subscriberPath, callbacks) in _model.Subscribers)
+            {
+                if (subscriberPath == key)
+                    continue;
+
+                if (key == "/" || subscriberPath.StartsWith(prefix, StringComparison.Ordinal))
+                    subs.AddRange(callbacks);
+            }
+        }
+
+        foreach (var s in subs)
+            if (fired.Add(s))
+                Dispatch(s);
     }
 
     internal void NotifyAllPaths()
@@ -377,8 +443,26 @@ public sealed class DataModelObservable
 
     private void Dispatch(Action callback)
     {
-        if (_dispatcher == null || _dispatcher.HasThreadAccess) { try { callback(); } catch { } return; }
-        _dispatcher.TryEnqueue(() => { try { callback(); } catch { } });
+        if (_dispatcher == null || _dispatcher.HasThreadAccess)
+        {
+            InvokeSubscriber(callback);
+            return;
+        }
+
+        if (!_dispatcher.TryEnqueue(() => InvokeSubscriber(callback)))
+            Logger.Warn("DataModelStore: Data model subscriber callback could not be queued because the dispatcher rejected the work item");
+    }
+
+    private static void InvokeSubscriber(Action callback)
+    {
+        try
+        {
+            callback();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"DataModelStore: Data model subscriber callback failed: {ex.Message}");
+        }
     }
 
     private static string Normalize(string p) =>

@@ -15,6 +15,14 @@ public static class MenuSizingHelper
         return Math.Max(1, (int)Math.Floor(pixels * 96.0 / dpi));
     }
 
+    public static int ConvertViewUnitsToPixels(double viewUnits, uint dpi)
+    {
+        if (!double.IsFinite(viewUnits) || viewUnits <= 0) return 0;
+        if (dpi == 0) dpi = 96;
+
+        return Math.Max(1, (int)Math.Ceiling(viewUnits * dpi / 96.0));
+    }
+
     public static bool HasDpiOrScaleChanged(uint previousDpi, double previousRasterizationScale, uint currentDpi, double currentRasterizationScale)
     {
         previousDpi = NormalizeDpi(previousDpi);

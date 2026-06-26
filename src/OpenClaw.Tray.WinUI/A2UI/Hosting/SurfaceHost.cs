@@ -9,6 +9,7 @@ using OpenClawTray.A2UI.DataModel;
 using OpenClawTray.A2UI.Protocol;
 using OpenClawTray.A2UI.Rendering;
 using OpenClawTray.A2UI.Theming;
+using OpenClawTray.Helpers;
 
 namespace OpenClawTray.A2UI.Hosting;
 
@@ -260,7 +261,7 @@ public sealed class SurfaceHost : IDisposable
         stack.Children.Add(new FontIcon
         {
             Glyph = "",
-            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontFamily = FluentIconCatalog.SymbolThemeFontFamily,
         });
         stack.Children.Add(new TextBlock
         {
@@ -282,6 +283,7 @@ public sealed class SurfaceHost : IDisposable
     {
         foreach (var s in _subscriptions.Values)
         {
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { s.Dispose(); } catch { }
         }
         _subscriptions.Clear();

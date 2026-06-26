@@ -10,6 +10,7 @@ namespace OpenClaw.Shared.Tests;
 /// at startup. Tests use <see cref="AppVersionInfo.TestOverride"/> to inject a
 /// deterministic version string without relying on the running host process.
 /// </summary>
+[Collection(AppVersionInfoTestCollection.Name)]
 public sealed class AppVersionInfoTests : IDisposable
 {
     public AppVersionInfoTests()

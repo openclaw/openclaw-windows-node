@@ -16,6 +16,7 @@ public sealed class TrayExecutableResolverTests : IDisposable
 
     public void Dispose()
     {
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
@@ -42,5 +43,44 @@ public sealed class TrayExecutableResolverTests : IDisposable
         var resolved = TrayExecutableResolver.Resolve(setupEngineDir);
 
         Assert.Null(resolved);
+    }
+
+    [Fact]
+    public void StartupTaskRegistration_UsesLogonTrigger()
+    {
+        var trayPath = Path.Combine(_tempDir, "OpenClaw Tray", "OpenClaw.Tray.WinUI.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(trayPath)!);
+        File.WriteAllText(trayPath, string.Empty);
+
+        var psi = StartupTaskRegistration.CreateRegisterProcessStartInfo(trayPath);
+
+        Assert.Equal(StartupTaskRegistration.ResolveSchtasksPath(), psi.FileName);
+        Assert.Contains("/SC", psi.ArgumentList);
+        Assert.Contains("ONLOGON", psi.ArgumentList);
+        Assert.Contains("OpenClaw Companion", psi.ArgumentList);
+        Assert.Contains("\"" + trayPath + "\"", psi.ArgumentList);
+    }
+
+    [Fact]
+    public void StartupTaskRegistration_UnregisterDeletesTask()
+    {
+        var psi = StartupTaskRegistration.CreateUnregisterProcessStartInfo();
+
+        Assert.Equal(StartupTaskRegistration.ResolveSchtasksPath(), psi.FileName);
+        Assert.Contains("/Delete", psi.ArgumentList);
+        Assert.Contains("/TN", psi.ArgumentList);
+        Assert.Contains("OpenClaw Companion", psi.ArgumentList);
+        Assert.Contains("/F", psi.ArgumentList);
+    }
+
+    [Fact]
+    public void StartupTaskRegistration_QueryChecksTask()
+    {
+        var psi = StartupTaskRegistration.CreateQueryProcessStartInfo();
+
+        Assert.Equal(StartupTaskRegistration.ResolveSchtasksPath(), psi.FileName);
+        Assert.Contains("/Query", psi.ArgumentList);
+        Assert.Contains("/TN", psi.ArgumentList);
+        Assert.Contains("OpenClaw Companion", psi.ArgumentList);
     }
 }

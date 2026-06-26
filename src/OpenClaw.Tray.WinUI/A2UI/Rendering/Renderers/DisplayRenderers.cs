@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.A2UI.Protocol;
+using OpenClawTray.Helpers;
 
 namespace OpenClawTray.A2UI.Rendering.Renderers;
 
@@ -20,7 +21,8 @@ internal sealed class RendererCleanup : IDisposable
     public void Dispose()
     {
         var action = System.Threading.Interlocked.Exchange(ref _onDispose, null);
-        try { action?.Invoke(); } catch { /* cleanup must never throw */ }
+        try { action?.Invoke(); }
+        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"RendererCleanup: cleanup action threw: {ex.Message}"); }
     }
 }
 
@@ -94,7 +96,8 @@ public sealed class ImageRenderer : IComponentRenderer
                 loadCts = null;
                 if (prev != null)
                 {
-                    try { prev.Cancel(); } catch { }
+                    try { prev.Cancel(); }
+                    catch (Exception ex) { ctx.Logger?.Debug($"[A2UI] Image url-cleared: prev CTS cancel failed: {ex.Message}"); }
                     prev.Dispose();
                 }
                 image.Source = null;
@@ -113,7 +116,8 @@ public sealed class ImageRenderer : IComponentRenderer
             loadCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20));
             if (prevCts != null)
             {
-                try { prevCts.Cancel(); } catch { }
+                try { prevCts.Cancel(); }
+                catch (Exception ex) { ctx.Logger?.Debug($"[A2UI] Image swap: prev CTS cancel failed: {ex.Message}"); }
                 prevCts.Dispose();
             }
             _ = LoadAsync(image, url, generation, token, loadCts.Token, ctx.Logger);
@@ -127,7 +131,8 @@ public sealed class ImageRenderer : IComponentRenderer
             var cts = loadCts;
             loadCts = null;
             if (cts == null) return;
-            try { cts.Cancel(); } catch { }
+            try { cts.Cancel(); }
+            catch (Exception ex) { ctx.Logger?.Debug($"[A2UI] Image surface rebuild: CTS cancel failed: {ex.Message}"); }
             cts.Dispose();
         }));
         // A2UI carries alt text in `description` (preferred) or `label` for images.
@@ -228,7 +233,7 @@ public sealed class IconRenderer : IComponentRenderer
     {
         var fontIcon = new FontIcon
         {
-            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontFamily = FluentIconCatalog.SymbolThemeFontFamily,
             FontSize = 16,
         };
         var nameVal = ctx.GetValue(c, "name");

@@ -41,15 +41,15 @@ public enum ClipboardPolicy
 /// <summary>
 /// When <see cref="SettingsData.SystemRunSandboxEnabled"/> is <c>true</c>, system.run
 /// is contained via MXC AppContainer. When MXC is unavailable on the host, system.run
-/// falls back to the host runner with a warning so older Windows builds are not
-/// completely blocked. When the toggle is <c>false</c>, system.run runs on the host
-/// as before.
+/// uses compatibility host fallback by default and blocks only when
+/// <see cref="SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable"/> is enabled.
+/// When the toggle is <c>false</c>, system.run runs on the host without attempting MXC.
 /// </summary>
 public enum SandboxMode
 {
-    /// <summary>Use MXC when available; otherwise fall back uncontained with a warning.</summary>
+    /// <summary>Use MXC when available; otherwise use compatibility fallback unless strict blocking is enabled.</summary>
     Enabled,
 
-    /// <summary>Bypass MXC entirely.</summary>
+    /// <summary>Bypass MXC entirely and run on the host.</summary>
     Disabled,
 }

@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-alpha",
+  "version": "0.7.0-alpha",
   "containerId": "golden-permissive",
   "lifecycle": {
     "destroyOnExit": true,
@@ -13,16 +13,7 @@
       "C:\\Golden\\Desktop",
       "C:\\Golden\\Scratch"
     ],
-    "readonlyPaths": [],
-    "deniedPaths": [
-      "C:\\Golden\\Settings",
-      "C:\\Golden\\.ssh",
-      "C:\\Golden\\Chrome",
-      "C:\\Golden\\Edge",
-      "C:\\Golden\\Brave",
-      "C:\\Golden\\Firefox",
-      "C:\\Golden\\PSReadLine"
-    ]
+    "readonlyPaths": []
   },
   "ui": {
     "disable": true,
@@ -33,7 +24,7 @@
     "defaultPolicy": "allow",
     "enforcementMode": "capabilities"
   },
-  "appContainer": {
+  "processContainer": {
     "leastPrivilege": false,
     "capabilities": [
       "internetClient"

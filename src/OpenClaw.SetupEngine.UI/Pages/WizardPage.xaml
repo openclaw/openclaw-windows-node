@@ -22,34 +22,88 @@
                     <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" />
                     <TextBlock x:Name="TitleText" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
                     <StackPanel x:Name="MessagePanel" Spacing="8" />
+                    <Border x:Name="ConsoleBanner"
+                            Visibility="Collapsed"
+                            CornerRadius="6"
+                            Padding="12,10"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Live gateway output"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Opacity="0.7"
+                                       CharacterSpacing="60" />
+                            <StackPanel x:Name="ConsoleBannerLines" Spacing="6" />
+                        </StackPanel>
+                    </Border>
                     <StackPanel x:Name="SelectOptions" Visibility="Collapsed" Spacing="8" />
                     <StackPanel x:Name="MultiOptions" Visibility="Collapsed" Spacing="8" />
                     <TextBox x:Name="TextInput" Visibility="Collapsed" PlaceholderText="Enter value" />
                     <PasswordBox x:Name="SecretInput" Visibility="Collapsed" PlaceholderText="Enter value" />
-                    <TextBlock x:Name="ErrorText" Visibility="Collapsed" Foreground="#FF6B6B" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ErrorText"
+                               Visibility="Collapsed"
+                               Foreground="#FF6B6B"
+                               TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" />
+                    <StackPanel x:Name="GatewayRecovery"
+                                Visibility="Collapsed"
+                                Orientation="Horizontal"
+                                Spacing="12">
+                        <Button x:Name="OpenGatewayTerminalButton"
+                                Content="Open terminal"
+                                Height="40"
+                                MinWidth="120"
+                                Click="OpenGatewayTerminal_Click" />
+                        <Button x:Name="RestartGatewayButton"
+                                Content="Restart gateway"
+                                Height="40"
+                                MinWidth="120"
+                                Click="RestartGateway_Click" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Spacing="12">
-            <Button x:Name="SecondaryButton" Content="Skip" Height="44"
-                    MinWidth="96"
-                    Click="Secondary_Click" IsEnabled="False" />
-            <Button x:Name="PrimaryButton" Content="Continue" Height="44"
-                    MinWidth="120"
-                    Click="Primary_Click" IsEnabled="False">
-                <Button.Resources>
-                    <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
-                    <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
-                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
-                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
-                </Button.Resources>
-            </Button>
-        </StackPanel>
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+            <StackPanel x:Name="RecoveryActions"
+                        Grid.Column="0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Left"
+                        Spacing="12"
+                        Visibility="Collapsed">
+                <Button x:Name="StartOverButton"
+                        Content="Start over"
+                        Height="44"
+                        MinWidth="104"
+                        Click="StartOver_Click" />
+                <Button x:Name="SkipWizardButton"
+                        Content="Skip wizard"
+                        Height="44"
+                        MinWidth="104"
+                        Click="SkipWizard_Click" />
+            </StackPanel>
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="12">
+                <Button x:Name="SecondaryButton" Content="Skip" Height="44"
+                        MinWidth="96"
+                        Click="Secondary_Click" IsEnabled="False" />
+                <Button x:Name="PrimaryButton" Content="Continue" Height="44"
+                        MinWidth="120"
+                        Click="Primary_Click" IsEnabled="False">
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
+                        <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
+                        <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
+                        <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
+                    </Button.Resources>
+                </Button>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Page>

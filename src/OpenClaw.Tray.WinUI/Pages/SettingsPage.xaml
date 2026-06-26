@@ -251,11 +251,68 @@
                     </Grid>
                 </Border>
 
-                <!-- ═════════ Local Gateway (conditional) ═════════ -->
+                <!-- ═════════ Local Gateway ═════════ -->
                 <TextBlock x:Uid="SettingsPage_LocalGateway" x:Name="LocalGatewaySectionHeader" Text="Local Gateway"
                            Style="{StaticResource BodyStrongTextBlockStyle}"
-                           Margin="{StaticResource SectionHeaderMargin}"
-                           Visibility="Collapsed"/>
+                           Margin="{StaticResource SectionHeaderMargin}"/>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8"
+                        Padding="{StaticResource SettingsRowPadding}"
+                        AutomationProperties.AutomationId="LocalGatewaySetupCard">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                           <ColumnDefinition Width="*"/>
+                           <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                           <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Header"
+                                      Text="Set up or reconfigure Local Gateway"
+                                      Style="{StaticResource BodyTextBlockStyle}"/>
+                           <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Description"
+                                      Text="Launches setup to install an app-owned OpenClawGateway WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation."
+                                      Style="{StaticResource CaptionTextBlockStyle}"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                      TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                               x:Uid="SettingsPage_OpenLocalGatewaySetup"
+                               Content="Open setup"
+                               Click="OnOpenLocalGatewaySetup"
+                               AutomationProperties.AutomationId="OpenLocalGatewaySetupButton"/>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="OpenClawOnboardCard"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8"
+                        Padding="{StaticResource SettingsRowPadding}"
+                        Visibility="Collapsed"
+                        AutomationProperties.AutomationId="OpenClawOnboardCard">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                           <ColumnDefinition Width="*"/>
+                           <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                           <TextBlock x:Uid="SettingsPage_OnboardWizard_Header"
+                                      Text="OpenClaw Onboard"
+                                      Style="{StaticResource BodyTextBlockStyle}"/>
+                           <TextBlock x:Uid="SettingsPage_OnboardWizard_Description"
+                                      Text="Open the OpenClaw onboarding on an installed Local Gateway. Skips WSL installation and jumps straight to configuration."
+                                      Style="{StaticResource CaptionTextBlockStyle}"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                      TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                x:Uid="SettingsPage_OpenOnboardWizard"
+                                Content="Open onboarding"
+                                Click="OnOpenGatewayWizard"
+                                AutomationProperties.AutomationId="OpenClawOnboardButton"/>
+                    </Grid>
+                </Border>
 
                 <Border x:Name="LocalGatewayExpander"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"

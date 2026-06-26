@@ -22,4 +22,4 @@ When adding or changing user-facing text:
 4. Keep only true identifiers, URLs, model names, and brand names hard-coded.
 5. Re-run the localization check and the tray tests.
 
-The `localization-audit` agentic workflow runs this audit on a schedule and can open a draft PR when it finds localization drift.
+There is no scheduled localization-audit workflow; run this check manually when changing UI text.

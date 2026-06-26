@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -13,20 +14,62 @@ namespace OpenClawTray.Pages;
 public sealed partial class SandboxPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
+    private static string L(string key) => LocalizationHelper.GetString(key);
+    private static string Lf(string key, params object?[] args) => LocalizationHelper.Format(key, args);
     private bool _suppress;
     private bool _dialogOpen;
-    private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;
 
     public ObservableCollection<CustomFolderRow> CustomFolders { get; } = new();
 
     /// <summary>
-    /// Cached MxcAvailability for the lifetime of this page instance. Probe() does
-    /// registry reads and filesystem walks; we don't need to repeat that work on every
-    /// toggle/preset change. The result is stable as long as the OS doesn't change
-    /// under us, which is fine for a settings page.
+    /// Cached MxcAvailability for the lifetime of this page instance, or null until
+    /// the first background probe completes. Probe() spawns <c>wxc-exec --probe</c>
+    /// (up to ~15s on a misbehaving host) plus filesystem walks, so we never run it
+    /// on the UI thread; <see cref="RefreshAvailabilityAsync"/> populates this
+    /// off-thread and re-renders. Availability-driven UI treats null as "checking".
     /// </summary>
-    private OpenClaw.Shared.Mxc.MxcAvailability GetAvailability()
-        => _cachedAvailability ??= OpenClaw.Shared.Mxc.MxcAvailability.Probe();
+    private OpenClaw.Shared.Mxc.MxcAvailability? _cachedAvailability;
+    private bool _availabilityProbeInFlight;
+
+    /// <summary>
+    /// Probe MXC availability off the UI thread (once), cache it, then refresh the
+    /// availability-driven UI. No-op once a definitive result is cached or while a
+    /// probe is already running.
+    /// </summary>
+    private async System.Threading.Tasks.Task RefreshAvailabilityAsync()
+    {
+        // Re-probe when we have no result yet, or the last one was a transient
+        // probe error. A definitive verdict (supported / host-unsupported) is kept
+        // for the page-instance lifetime.
+        if (_cachedAvailability is { ProbeErrored: false }) return;
+        if (_availabilityProbeInFlight) return;
+
+        _availabilityProbeInFlight = true;
+        try
+        {
+            _cachedAvailability = await System.Threading.Tasks.Task.Run(
+                static () => OpenClaw.Shared.Mxc.MxcAvailability.Probe());
+        }
+        catch (Exception)
+        {
+            // Probe() is designed not to throw, but never leave the page stuck in
+            // "Checking…": synthesize an errored result so the UI shows Retry.
+            _cachedAvailability = new OpenClaw.Shared.Mxc.MxcAvailability(
+                false, false, false, null,
+                new[] { L("SandboxPage_ProbeErrorReason") }, probeErrored: true);
+        }
+        finally
+        {
+            _availabilityProbeInFlight = false;
+
+            // await resumed us on the UI thread (DispatcherQueue sync context), so it
+            // is safe to touch controls here. Always re-render — on both the happy
+            // path and the failure path — so the page never stays in "Checking…".
+            NormalizeSandboxToggleForAvailability();
+            UpdateSandboxStatusCard();
+            UpdateControlsEnabledState();
+        }
+    }
 
     // ── Quick-preset definitions ─────────────────────────────────────
     //
@@ -90,6 +133,15 @@ public sealed partial class SandboxPage : Page
         LoadState();
         ProbeStatus();
         UpdateControlsEnabledState();
+
+        // Kick off the (potentially slow) MXC probe off the UI thread. The page
+        // renders a neutral "checking" state until it completes, then re-renders
+        // with the real availability — so the settings UI never blocks on
+        // wxc-exec --probe.
+        AsyncEventHandlerGuard.Run(
+            RefreshAvailabilityAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(RefreshAvailabilityAsync));
     }
 
     // ── Load + probe ─────────────────────────────────────────────────
@@ -133,6 +185,7 @@ public sealed partial class SandboxPage : Page
             _suppress = false;
         }
 
+        NormalizeSandboxToggleForAvailability();
         UpdatePresetHighlight();
         UpdateSandboxStatusCard();
         UpdateControlsEnabledState();
@@ -140,28 +193,50 @@ public sealed partial class SandboxPage : Page
 
     /// <summary>
     /// Drives the page header (icon + title + subtext + toggle visibility) based on
-    /// MXC availability AND the current sandbox toggle state. Three visual states:
-    ///   1. Available + ON   → 🛡 "Sandbox is on" + toggle visible
-    ///   2. Available + OFF  → ⚠ "Sandbox is off — high risk" + toggle visible
-    ///   3. Unavailable      → ⚠ "Sandbox unavailable — commands run uncontained" + toggle hidden
-    /// When MXC is unavailable the toggle is hidden and MxcCommandRunner falls
-    /// back to host execution with a warning so older Windows builds are not
-    /// completely blocked.
+    /// MXC availability AND the current sandbox toggle state. Definitively
+    /// unavailable MXC is normalized to OFF so the UI never claims Node Sandbox is
+    /// on when containment cannot run. Transient probe errors can still render the
+    /// enabled/strict-blocking state until retry resolves the probe.
     /// </summary>
     private void UpdateSandboxStatusCard()
     {
-        var availability = GetAvailability();
+        var availability = _cachedAvailability;
         var enabled = SandboxEnabledToggle.IsOn;
+        var blockHostFallback = CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false;
+
+        UpdateUnavailableActionBar(availability, enabled);
+
+        if (availability is null)
+        {
+            // Probe still running on the background thread — neutral interim state.
+            SandboxStatusIcon.Text = "⏳";
+            SandboxStatusTitle.Text = "Checking sandbox availability…";
+            SandboxStatusSubtext.Text = "Verifying that this PC can contain commands the agent runs.";
+            SandboxEnabledToggle.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         var available = availability.HasAnyBackend;
-
-        UpdateUnavailableActionBar(availability);
-
         if (!available)
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox unavailable — commands run uncontained";
-            SandboxStatusSubtext.Text = "Containment isn't available on this PC, so commands run without sandbox protection.";
-            SandboxEnabledToggle.Visibility = Visibility.Collapsed;
+            SandboxEnabledToggle.Visibility = Visibility.Visible;
+
+            if (enabled && blockHostFallback)
+            {
+                SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableBlockedTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableBlockedSubtext");
+            }
+            else if (enabled)
+            {
+                SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableSubtext");
+            }
+            else
+            {
+                SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableOffTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableOffSubtext");
+            }
             return;
         }
 
@@ -170,27 +245,42 @@ public sealed partial class SandboxPage : Page
         if (enabled)
         {
             SandboxStatusIcon.Text = "🛡";
-            SandboxStatusTitle.Text = "Node Sandbox is on";
-            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are contained.";
+            if (availability.IsDegradedContainment)
+            {
+                // Contained, but only via a weaker, last-resort isolation tier
+                // (e.g. DACL augmentation). Surface as a caution rather than a block.
+                SandboxStatusTitle.Text = "Node Sandbox is on — limited containment";
+                SandboxStatusSubtext.Text =
+                    "Programs the agent runs are contained, but this PC only supports a fallback isolation tier" +
+                    $"{(string.IsNullOrEmpty(availability.IsolationTier) ? "" : $" ({availability.IsolationTier})")}. " +
+                    "Containment is weaker than on a fully supported build; install the latest Windows updates to strengthen it.";
+            }
+            else
+            {
+                SandboxStatusTitle.Text = L("SandboxPage_StatusOnTitle");
+                SandboxStatusSubtext.Text = L("SandboxPage_StatusOnSubtext");
+            }
         }
         else
         {
             SandboxStatusIcon.Text = "⚠";
-            SandboxStatusTitle.Text = "Node Sandbox is off — high risk";
-            SandboxStatusSubtext.Text = "Programs the agent runs on this PC are not contained.";
+            SandboxStatusTitle.Text = L("SandboxPage_StatusOffTitle");
+            SandboxStatusSubtext.Text = L("SandboxPage_StatusOffSubtext");
         }
     }
 
     /// <summary>
     /// Shows or hides the prominent "Sandbox unavailable" InfoBar based on availability,
     /// and categorizes the failure mode so we can suggest a relevant action:
-    ///   - Windows build/UBR too old → "Open Windows Update"
+    ///   - probe errored (transient) → "Retry"
+    ///   - host doesn't support sandboxing → "Open Windows Update"
     ///   - wxc-exec.exe missing → "Show install instructions"
     ///   - Anything else → no primary action, just the learn-more hyperlink
     /// </summary>
-    private void UpdateUnavailableActionBar(OpenClaw.Shared.Mxc.MxcAvailability availability)
+    private void UpdateUnavailableActionBar(OpenClaw.Shared.Mxc.MxcAvailability? availability, bool sandboxEnabled)
     {
-        if (availability.HasAnyBackend)
+        // Null = still probing; hide the bar until we have a verdict.
+        if (availability is null || availability.HasAnyBackend)
         {
             UnavailableActionBar.IsOpen = false;
             return;
@@ -199,43 +289,89 @@ public sealed partial class SandboxPage : Page
         var reasons = availability.UnsupportedReasons;
         var reasonText = reasons.Count > 0
             ? string.Join("  ·  ", reasons)
-            : "MXC sandboxing primitives are not available on this machine.";
+            : L("SandboxPage_UnavailableDefaultReason");
 
-        var isWindowsIssue = reasons.Any(r =>
-            r.Contains("Windows build", StringComparison.OrdinalIgnoreCase) ||
-            r.Contains("Windows UBR", StringComparison.OrdinalIgnoreCase));
+        // A transient probe error (timeout / couldn't launch / garbled output) is NOT
+        // the same as the host being unsupported — don't push the user at Windows
+        // Update. Offer a retry; the next probe may succeed.
+        var isProbeError = availability.ProbeErrored;
+
+        // wxc-exec is present and the probe gave a definitive negative → the Windows
+        // host itself doesn't support the sandbox (vs. a missing binary).
+        var isWindowsIssue = !isProbeError
+            && availability.IsWxcExecResolvable
+            && !availability.IsAppContainerAvailable;
 
         var isSetupIssue = !availability.IsWxcExecResolvable;
+        var blockHostFallback = sandboxEnabled
+            && (CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false);
+        var unavailableBehavior = L(blockHostFallback
+            ? "SandboxPage_UnavailableBehaviorBlocked"
+            : "SandboxPage_UnavailableBehaviorHostFallback");
 
-        if (isWindowsIssue)
+        if (isProbeError)
         {
-            UnavailableActionBar.Title = "Your Windows version doesn't support sandboxing yet";
-            UnavailableActionMessage.Text =
-                $"{reasonText}\n\nCommands run uncontained on this machine — sandboxing requires a recent Windows build with the AppContainer primitives shipped. " +
-                "Install the latest Windows updates (or join the Windows Insider Program for the newest builds) to enable containment.";
-            UnavailablePrimaryButton.Content = "Open Windows Update";
+            UnavailableActionBar.Title = L("SandboxPage_ProbeErrorTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_ProbeErrorMessageFormat", reasonText, unavailableBehavior);
+            UnavailablePrimaryButton.Content = L("SandboxPage_Retry");
+            UnavailablePrimaryButton.Tag = "retry";
+            UnavailablePrimaryButton.Visibility = Visibility.Visible;
+        }
+        else if (isWindowsIssue)
+        {
+            UnavailableActionBar.Title = L("SandboxPage_WindowsUnsupportedTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_WindowsUnsupportedMessageFormat", reasonText, unavailableBehavior);
+            UnavailablePrimaryButton.Content = L("SandboxPage_OpenWindowsUpdate");
             UnavailablePrimaryButton.Tag = "windowsupdate";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else if (isSetupIssue)
         {
-            UnavailableActionBar.Title = "Sandboxing components are missing";
-            UnavailableActionMessage.Text =
-                $"{reasonText}\n\nThe wxc-exec binary couldn't be located, so commands run uncontained. " +
-                "If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. " +
-                "Otherwise reinstall the companion app to restore sandboxing.";
-            UnavailablePrimaryButton.Content = "Show install instructions";
+            UnavailableActionBar.Title = L("SandboxPage_ComponentsMissingTitle");
+            UnavailableActionMessage.Text = Lf("SandboxPage_ComponentsMissingMessageFormat", reasonText, unavailableBehavior);
+            UnavailablePrimaryButton.Content = L("SandboxPage_ShowInstallInstructions");
             UnavailablePrimaryButton.Tag = "install";
             UnavailablePrimaryButton.Visibility = Visibility.Visible;
         }
         else
         {
-            UnavailableActionBar.Title = "Sandbox unavailable — commands run uncontained";
-            UnavailableActionMessage.Text = reasonText;
+            UnavailableActionBar.Title = blockHostFallback
+                ? L("SandboxPage_UnavailableBlockedTitle")
+                : L("SandboxPage_UnavailableTitle");
+            UnavailableActionMessage.Text = $"{reasonText}\n\n{unavailableBehavior}";
             UnavailablePrimaryButton.Visibility = Visibility.Collapsed;
         }
 
         UnavailableActionBar.IsOpen = true;
+    }
+
+    private bool IsSandboxDefinitivelyUnavailable()
+    {
+        return _cachedAvailability is { HasAnyBackend: false, ProbeErrored: false };
+    }
+
+    private bool NormalizeSandboxToggleForAvailability()
+    {
+        if (!IsSandboxDefinitivelyUnavailable())
+            return false;
+        if (CurrentApp.Settings is not { } settings || !settings.SystemRunSandboxEnabled)
+            return false;
+        if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
+            return false;
+
+        _suppress = true;
+        try
+        {
+            settings.SystemRunSandboxEnabled = false;
+            SandboxEnabledToggle.IsOn = false;
+        }
+        finally
+        {
+            _suppress = false;
+        }
+
+        Save();
+        return true;
     }
 
     private void OnUnavailableActionClick(object sender, RoutedEventArgs e) =>
@@ -248,6 +384,17 @@ public sealed partial class SandboxPage : Page
     {
         if (sender is not Button btn) return;
         var tag = btn.Tag as string;
+
+        // Transient probe error → clear the cached verdict and re-probe off-thread.
+        if (tag == "retry")
+        {
+            _cachedAvailability = null;
+            UpdateSandboxStatusCard();
+            UpdateControlsEnabledState();
+            await RefreshAvailabilityAsync();
+            return;
+        }
+
         try
         {
             var uri = tag switch
@@ -259,6 +406,7 @@ public sealed partial class SandboxPage : Page
             if (uri != null)
                 await global::Windows.System.Launcher.LaunchUriAsync(uri);
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch
         {
             // Best-effort — if the URI handler isn't available we just no-op.
@@ -273,8 +421,9 @@ public sealed partial class SandboxPage : Page
     /// </summary>
     private void UpdateControlsEnabledState()
     {
-        var availability = GetAvailability();
-        var available = availability.HasAnyBackend;
+        // Null availability = still probing; treat as not-yet-active so the
+        // controls stay dimmed until the background probe resolves.
+        var available = _cachedAvailability?.HasAnyBackend ?? false;
         var sandboxOn = SandboxEnabledToggle.IsOn;
         var active = available && sandboxOn;
 
@@ -455,6 +604,7 @@ public sealed partial class SandboxPage : Page
     {
         if (_suppress) return;
         CurrentApp.Settings?.Save();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
         UpdatePresetHighlight();
     }
 
@@ -479,6 +629,15 @@ public sealed partial class SandboxPage : Page
 
         var newValue = SandboxEnabledToggle.IsOn;
         var oldValue = s.SystemRunSandboxEnabled;
+
+        if (newValue
+            && !oldValue
+            && IsSandboxDefinitivelyUnavailable()
+            && !s.SystemRunBlockHostFallbackWhenMxcUnavailable)
+        {
+            await RejectSandboxEnableWhenUnavailableAsync();
+            return;
+        }
 
         // Confirm before turning sandbox OFF — this is the high-risk transition.
         if (!newValue && oldValue)
@@ -534,6 +693,48 @@ public sealed partial class SandboxPage : Page
         UpdateSandboxStatusCard();
         UpdateControlsEnabledState();
         Save();
+    }
+
+    private async Task RejectSandboxEnableWhenUnavailableAsync()
+    {
+        _suppress = true;
+        try { SandboxEnabledToggle.IsOn = false; }
+        finally { _suppress = false; }
+
+        UpdateSandboxStatusCard();
+        UpdateControlsEnabledState();
+
+        if (_dialogOpen)
+            return;
+
+        var reasonText = _cachedAvailability?.UnsupportedReasons.Count > 0
+            ? string.Join("\n", _cachedAvailability.UnsupportedReasons)
+            : L("SandboxPage_UnavailableDefaultReason");
+        var dialog = new ContentDialog
+        {
+            Title = "Node Sandbox unavailable",
+            Content =
+                "Node Sandbox can't be turned on because this PC does not currently have a usable MXC backend.\n\n" +
+                $"{reasonText}\n\n" +
+                "Agent-started commands will keep using the host execution path until MXC is available.",
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+
+        _dialogOpen = true;
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Another dialog is already open. The toggle has already been restored.
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
     }
 
     private void OnNetInternetToggled(object sender, RoutedEventArgs e)

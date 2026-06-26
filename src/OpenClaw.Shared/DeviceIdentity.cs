@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared.Mcp;
-using NSec.Cryptography;
+using Org.BouncyCastle.Math.EC.Rfc8032;
 
 namespace OpenClaw.Shared;
 
@@ -17,18 +17,16 @@ public class DeviceIdentity
 {
     private readonly string _keyPath;
     private readonly IOpenClawLogger _logger;
-    private Key? _privateKey;
-    private PublicKey? _publicKey;
+    private byte[]? _privateKey;
+    private byte[]? _publicKey;
     private string? _deviceId;
     private string? _deviceToken;
     private string[]? _deviceTokenScopes;
     private string? _nodeDeviceToken;
     private string[]? _nodeDeviceTokenScopes;
     
-    private static readonly SignatureAlgorithm Ed25519Algorithm = SignatureAlgorithm.Ed25519;
-    
     public string DeviceId => _deviceId ?? throw new InvalidOperationException("Device not initialized");
-    public string PublicKeyBase64Url => _publicKey != null ? Base64UrlEncode(_publicKey.Export(KeyBlobFormat.RawPublicKey)) : throw new InvalidOperationException("Device not initialized");
+    public string PublicKeyBase64Url => _publicKey != null ? Base64UrlEncode(_publicKey) : throw new InvalidOperationException("Device not initialized");
     public string? DeviceToken => _deviceToken;
     public IReadOnlyList<string>? DeviceTokenScopes => _deviceTokenScopes;
     public string? NodeDeviceToken => _nodeDeviceToken;
@@ -192,9 +190,9 @@ public class DeviceIdentity
                 return;
             }
             
-            var privateKeyBytes = Convert.FromBase64String(data.PrivateKeyBase64);
-            _privateKey = Key.Import(Ed25519Algorithm, privateKeyBytes, KeyBlobFormat.RawPrivateKey);
-            _publicKey = _privateKey.PublicKey;
+            _privateKey = Convert.FromBase64String(data.PrivateKeyBase64);
+            _publicKey = new byte[Ed25519.PublicKeySize];
+            Ed25519.GeneratePublicKey(_privateKey, 0, _publicKey, 0);
             _deviceId = data.DeviceId;
             _deviceToken = data.DeviceToken;
             _deviceTokenScopes = NormalizeScopes(data.DeviceTokenScopes);
@@ -205,7 +203,7 @@ public class DeviceIdentity
         }
         catch (Exception ex)
         {
-            _logger.Error($"Failed to load device key: {ex.Message}");
+            _logger.Error($"Failed to load device key: {DescribeException(ex)}");
             GenerateNew();
         }
     }
@@ -214,12 +212,13 @@ public class DeviceIdentity
     {
         _logger.Info("Generating new Ed25519 device keypair...");
         
-        // Generate Ed25519 keypair using NSec
-        _privateKey = Key.Create(Ed25519Algorithm, new KeyCreationParameters { ExportPolicy = KeyExportPolicies.AllowPlaintextExport });
-        _publicKey = _privateKey.PublicKey;
+        _privateKey = new byte[Ed25519.SecretKeySize];
+        RandomNumberGenerator.Fill(_privateKey);
+        _publicKey = new byte[Ed25519.PublicKeySize];
+        Ed25519.GeneratePublicKey(_privateKey, 0, _publicKey, 0);
         
         // Get raw 32-byte public key
-        var publicKeyBytes = _publicKey.Export(KeyBlobFormat.RawPublicKey);
+        var publicKeyBytes = _publicKey;
         
         // Device ID is SHA256 hash of raw 32-byte public key (hex encoded)
         using var sha256 = SHA256.Create();
@@ -227,7 +226,7 @@ public class DeviceIdentity
         _deviceId = Convert.ToHexString(hashBytes).ToLowerInvariant();
         
         // Export private key for storage
-        var privateKeyBytes = _privateKey.Export(KeyBlobFormat.RawPrivateKey);
+        var privateKeyBytes = _privateKey;
         
         // Save to disk
         var data = new DeviceKeyData
@@ -268,7 +267,7 @@ public class DeviceIdentity
         
         // Sign with Ed25519
         var dataBytes = Encoding.UTF8.GetBytes(payload);
-        var signature = Ed25519Algorithm.Sign(_privateKey, dataBytes);
+        var signature = SignEd25519(dataBytes);
         
         // Return base64url encoded signature
         return Base64UrlEncode(signature);
@@ -304,7 +303,7 @@ public class DeviceIdentity
             deviceFamily);
 
         var dataBytes = Encoding.UTF8.GetBytes(payload);
-        var signature = Ed25519Algorithm.Sign(_privateKey, dataBytes);
+        var signature = SignEd25519(dataBytes);
         return Base64UrlEncode(signature);
     }
 
@@ -376,7 +375,7 @@ public class DeviceIdentity
             authToken);
 
         var dataBytes = Encoding.UTF8.GetBytes(payload);
-        var signature = Ed25519Algorithm.Sign(_privateKey, dataBytes);
+        var signature = SignEd25519(dataBytes);
         return Base64UrlEncode(signature);
     }
 
@@ -523,7 +522,7 @@ public class DeviceIdentity
     /// </summary>
     private static void AtomicWriteKeyFile(string path, DeviceKeyData data)
     {
-        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(data, JsonSerializerOptionsCache.WriteIndented);
         var dir = Path.GetDirectoryName(path);
         var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
         var tempPath = Path.Combine(tempDir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
@@ -533,9 +532,11 @@ public class DeviceIdentity
             McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort cleanup */ }
+            System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            catch (Exception delEx) { System.Diagnostics.Trace.WriteLine($"DeviceIdentity.AtomicWriteKeyFile: temp cleanup failed: {delEx.GetType().Name}: {delEx.Message}"); }
             throw;
         }
         McpAuthToken.TryRestrictSensitiveFileAcl(path);
@@ -552,6 +553,24 @@ public class DeviceIdentity
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string DescribeException(Exception ex)
+    {
+        var message = $"{ex.GetType().Name}: {ex.Message}";
+        return ex.InnerException == null
+            ? message
+            : $"{message} (inner {ex.InnerException.GetType().Name}: {ex.InnerException.Message})";
+    }
+
+    private byte[] SignEd25519(byte[] data)
+    {
+        if (_privateKey == null)
+            throw new InvalidOperationException("Device not initialized");
+
+        var signature = new byte[Ed25519.SignatureSize];
+        Ed25519.Sign(_privateKey, 0, data, 0, data.Length, signature, 0);
+        return signature;
     }
     
     private static string Base64UrlEncode(byte[] data)

@@ -69,7 +69,7 @@ internal static class ExecCommandResolver
             {
                 var token = ParseFirstToken(segment);
                 if (token is null) return [];
-                // -EncodedCommand and aliases in segment position: fail-closed (research doc 04 S1).
+                // -EncodedCommand and aliases in segment position: fail-closed.
                 if (SegmentUsesEncodedCommand(segment, token)) return [];
                 var res = ResolveExecutable(token, cwd, env);
                 if (res is null) return [];
@@ -494,7 +494,7 @@ internal static class ExecCommandResolver
     private static string TryNormalizePath(string path)
     {
         // GetFullPath resolves . and .. but does not expand 8.3 short names.
-        // Full GetLongPathName P/Invoke is left as OQ-R1 in the research docs.
+        // Full GetLongPathName P/Invoke is a known gap — short names not expanded.
         try { return Path.GetFullPath(path); }
         catch { return path; } // hostile path must not throw out of resolution
     }

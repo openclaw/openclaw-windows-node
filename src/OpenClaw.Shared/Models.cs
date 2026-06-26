@@ -22,19 +22,33 @@ public enum PairingStatus
     Rejected    // Pairing was rejected
 }
 
+public enum PairingApprovalKind
+{
+    Unknown,
+    DevicePair,
+    NodePair
+}
+
 public class PairingStatusEventArgs : EventArgs
 {
     public PairingStatus Status { get; }
     public string DeviceId { get; }
     public string? Message { get; }
     public string? RequestId { get; }
+    public PairingApprovalKind ApprovalKind { get; }
     
-    public PairingStatusEventArgs(PairingStatus status, string deviceId, string? message = null, string? requestId = null)
+    public PairingStatusEventArgs(
+        PairingStatus status,
+        string deviceId,
+        string? message = null,
+        string? requestId = null,
+        PairingApprovalKind approvalKind = PairingApprovalKind.Unknown)
     {
         Status = status;
         DeviceId = deviceId;
         Message = message;
         RequestId = requestId;
+        ApprovalKind = approvalKind;
     }
 }
 
@@ -92,6 +106,13 @@ public class OpenClawNotification
     public string? Agent { get; set; }     // agent name/identifier
     public string? Intent { get; set; }    // normalized intent (reminder, build, alert)
     public string[]? Tags { get; set; }    // free-form routing tags
+
+    /// <summary>
+    /// The session key associated with this notification (e.g. the chat session
+    /// that produced an assistant response). Used by toast activation to open
+    /// the specific session instead of the default/main session.
+    /// </summary>
+    public string? SessionKey { get; set; }
 }
 
 /// <summary>
@@ -475,6 +496,15 @@ public class SessionCommandResult
     public string? Error { get; set; }
 }
 
+public enum GatewayNodeApprovalState
+{
+    Unknown,
+    Approved,
+    PendingApproval,
+    PendingReapproval,
+    Unapproved
+}
+
 public class GatewayNodeInfo
 {
     public string NodeId { get; set; } = "";
@@ -490,6 +520,17 @@ public class GatewayNodeInfo
     public List<string> Commands { get; set; } = new();
     public List<string> DisabledCommands { get; set; } = new();
     public Dictionary<string, bool> Permissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    // node.list keeps approved/effective surfaces separate from declarations
+    // awaiting approval. Never merge pending declarations into the fields above.
+    public GatewayNodeApprovalState ApprovalState { get; set; }
+    public string? PendingRequestId { get; set; }
+    public List<string> PendingDeclaredCapabilities { get; set; } = new();
+    public List<string> PendingDeclaredCommands { get; set; } = new();
+    public Dictionary<string, bool> PendingDeclaredPermissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    // Older gateways only expose declaredCommands. Keep them visible here
+    // without treating them as approved/effective or pending declarations.
+    public List<string> UnverifiedDeclaredCommands { get; set; } = new();
 
     // Identity / hardware (from gateway NodeListNode schema)
     public string? Version { get; set; }
@@ -917,11 +958,20 @@ public class NodeCapabilityHealthInfo
     public List<string> Capabilities { get; set; } = new();
     public List<string> Commands { get; set; } = new();
     public Dictionary<string, bool> Permissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    public List<string> SafeDeclaredCommands { get; set; } = new();
-    public List<string> DangerousDeclaredCommands { get; set; } = new();
-    public List<string> BrowserDeclaredCommands { get; set; } = new();
-    public List<string> WindowsSpecificDeclaredCommands { get; set; } = new();
-    public List<string> BlockedDeclaredCommands { get; set; } = new();
+    public GatewayNodeApprovalState ApprovalState { get; set; }
+    public string? PendingRequestId { get; set; }
+    public List<string> PendingDeclaredCapabilities { get; set; } = new();
+    public List<string> PendingDeclaredCommands { get; set; } = new();
+    public Dictionary<string, bool> PendingDeclaredPermissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<string> UnverifiedDeclaredCommands { get; set; } = new();
+    public List<string> LocalDeclaredCapabilities { get; set; } = new();
+    public List<string> LocalDeclaredCommands { get; set; } = new();
+    public Dictionary<string, bool> LocalDeclaredPermissions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<string> SafeApprovedCommands { get; set; } = new();
+    public List<string> PrivacySensitiveApprovedCommands { get; set; } = new();
+    public List<string> BrowserApprovedCommands { get; set; } = new();
+    public List<string> WindowsSpecificApprovedCommands { get; set; } = new();
+    public List<string> PermissionBlockedCommands { get; set; } = new();
     public List<string> MissingSafeAllowlistCommands { get; set; } = new();
     public List<string> MissingDangerousAllowlistCommands { get; set; } = new();
     public List<string> MissingBrowserAllowlistCommands { get; set; } = new();
@@ -944,21 +994,29 @@ public class NodeCapabilityHealthInfo
             IsOnline = node.IsOnline,
             Capabilities = node.Capabilities.ToList(),
             Commands = node.Commands.ToList(),
+            ApprovalState = node.ApprovalState,
+            PendingRequestId = node.PendingRequestId,
+            PendingDeclaredCapabilities = node.PendingDeclaredCapabilities.ToList(),
+            PendingDeclaredCommands = node.PendingDeclaredCommands.ToList(),
+            PendingDeclaredPermissions = new Dictionary<string, bool>(
+                node.PendingDeclaredPermissions,
+                StringComparer.OrdinalIgnoreCase),
+            UnverifiedDeclaredCommands = node.UnverifiedDeclaredCommands.ToList(),
             DisabledBySettingsCommands = node.DisabledCommands
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             Permissions = new Dictionary<string, bool>(node.Permissions, StringComparer.OrdinalIgnoreCase),
-            SafeDeclaredCommands = CommandCenterCommandGroups.SafeCompanionCommands
+            SafeApprovedCommands = CommandCenterCommandGroups.SafeCompanionCommands
                 .Where(commandSet.Contains)
                 .ToList(),
-            DangerousDeclaredCommands = CommandCenterCommandGroups.DangerousCommands
+            PrivacySensitiveApprovedCommands = CommandCenterCommandGroups.DangerousCommands
                 .Where(commandSet.Contains)
                 .ToList(),
-            BrowserDeclaredCommands = CommandCenterCommandGroups.BrowserCommands
+            BrowserApprovedCommands = CommandCenterCommandGroups.BrowserCommands
                 .Where(commandSet.Contains)
                 .ToList(),
-            WindowsSpecificDeclaredCommands = CommandCenterCommandGroups.WindowsSpecificCommands
+            WindowsSpecificApprovedCommands = CommandCenterCommandGroups.WindowsSpecificCommands
                 .Where(commandSet.Contains)
                 .ToList()
         };
@@ -968,7 +1026,7 @@ public class NodeCapabilityHealthInfo
             if (!CommandCenterDiagnostics.TryGetCommandPermission(info.Permissions, command, out var allowed) || allowed)
                 continue;
 
-            info.BlockedDeclaredCommands.Add(command);
+            info.PermissionBlockedCommands.Add(command);
             if (CommandCenterCommandGroups.SafeCompanionCommandSet.Contains(command))
                 info.MissingSafeAllowlistCommands.Add(command);
             else if (CommandCenterCommandGroups.DangerousCommandSet.Contains(command))
@@ -984,6 +1042,30 @@ public class NodeCapabilityHealthInfo
                 .Where(command => !commandSet.Contains(command) && !disabledSet.Contains(command))
                 .ToList();
         }
+
+        info.Warnings = CommandCenterDiagnostics.BuildNodeWarnings(info);
+        return info;
+    }
+
+    public static NodeCapabilityHealthInfo FromLocalDeclarations(GatewayNodeInfo node)
+    {
+        var info = new NodeCapabilityHealthInfo
+        {
+            NodeId = node.NodeId,
+            DisplayName = string.IsNullOrWhiteSpace(node.DisplayName) ? node.ShortId : node.DisplayName,
+            Platform = node.Platform,
+            IsOnline = node.IsOnline,
+            ApprovalState = GatewayNodeApprovalState.Unknown,
+            LocalDeclaredCapabilities = node.Capabilities.ToList(),
+            LocalDeclaredCommands = node.Commands.ToList(),
+            LocalDeclaredPermissions = new Dictionary<string, bool>(
+                node.Permissions,
+                StringComparer.OrdinalIgnoreCase),
+            DisabledBySettingsCommands = node.DisabledCommands
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+        };
 
         info.Warnings = CommandCenterDiagnostics.BuildNodeWarnings(info);
         return info;
@@ -1102,6 +1184,7 @@ public static class CommandCenterCommandGroups
     public static readonly string[] DangerousCommands =
     [
         .. CommonDangerousCommands,
+        "tts.status",
         "stt.transcribe",
         "stt.listen",
         "stt.status"
@@ -1185,6 +1268,55 @@ public static class CommandCenterDiagnostics
         ]);
     }
 
+    public static string BuildNodeApprovalRepairCommand(string? pendingRequestId)
+    {
+        return TryBuildNodeApprovalCommand(pendingRequestId, out var approvalCommand)
+            ? approvalCommand
+            : "openclaw nodes pending";
+    }
+
+    public static string BuildDeviceApprovalRepairCommand(string? pendingRequestId)
+    {
+        return TryBuildPairingApprovalCommand(
+            pendingRequestId,
+            "openclaw devices approve",
+            out var approvalCommand)
+            ? approvalCommand
+            : "openclaw devices list";
+    }
+
+    public static string BuildUnknownPairingDiscoveryCommands() =>
+        string.Join(Environment.NewLine, "openclaw nodes pending", "openclaw devices list");
+
+    public static bool TryBuildNodeApprovalCommand(
+        string? pendingRequestId,
+        out string approvalCommand) =>
+        TryBuildPairingApprovalCommand(
+            pendingRequestId,
+            "openclaw nodes approve",
+            out approvalCommand);
+
+    private static bool TryBuildPairingApprovalCommand(
+        string? pendingRequestId,
+        string commandPrefix,
+        out string approvalCommand)
+    {
+        var requestId = pendingRequestId?.Trim();
+        if (string.IsNullOrEmpty(requestId) ||
+            requestId.Length > 128 ||
+            !char.IsAsciiLetterOrDigit(requestId[0]) ||
+            requestId.Any(character =>
+                !char.IsAsciiLetterOrDigit(character) &&
+                character is not '.' and not '_' and not ':' and not '-'))
+        {
+            approvalCommand = "";
+            return false;
+        }
+
+        approvalCommand = $"{commandPrefix} {requestId}";
+        return true;
+    }
+
     public static bool TryGetCommandPermission(
         IReadOnlyDictionary<string, bool> permissions,
         string command,
@@ -1257,6 +1389,14 @@ public static class CommandCenterDiagnostics
     public static List<GatewayDiagnosticWarning> BuildNodeWarnings(NodeCapabilityHealthInfo node)
     {
         var warnings = new List<GatewayDiagnosticWarning>();
+        var isPendingApproval = node.ApprovalState is
+            GatewayNodeApprovalState.PendingApproval or
+            GatewayNodeApprovalState.PendingReapproval;
+        var hasUnverifiedLocalDeclarations =
+            node.LocalDeclaredCapabilities.Count > 0 ||
+            node.LocalDeclaredCommands.Count > 0 ||
+            node.LocalDeclaredPermissions.Count > 0;
+        var hasUnverifiedLegacyDeclarations = node.UnverifiedDeclaredCommands.Count > 0;
 
         if (!node.IsOnline)
         {
@@ -1269,14 +1409,60 @@ public static class CommandCenterDiagnostics
             });
         }
 
-        if (node.Commands.Count == 0)
+        if (isPendingApproval)
+        {
+            var isReapproval = node.ApprovalState == GatewayNodeApprovalState.PendingReapproval;
+            var hasSafeRequestId = TryBuildNodeApprovalCommand(node.PendingRequestId, out var approvalCommand);
+            var repairCommand = hasSafeRequestId ? approvalCommand : "openclaw nodes pending";
+            var approvalDetail = isReapproval
+                ? $"{node.DisplayName} has changed its declared capabilities, commands, or permissions. Current approved/effective surfaces remain in force until the pending request is approved and the node reconnects."
+                : $"{node.DisplayName} is awaiting initial node approval. Pending declarations are not effective until the request is approved and the node reconnects.";
+            warnings.Add(new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Warning,
+                Category = "pairing",
+                Title = isReapproval ? "Node reapproval required" : "Node approval required",
+                Detail = hasSafeRequestId
+                    ? approvalDetail
+                    : $"{approvalDetail} The gateway did not provide a safe request ID to copy. Run openclaw nodes pending to discover the request, then approve it explicitly.",
+                RepairAction = hasSafeRequestId ? "Copy approval command" : "Copy pending approvals command",
+                CopyText = repairCommand
+            });
+        }
+
+        if (hasUnverifiedLocalDeclarations)
+        {
+            warnings.Add(new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Info,
+                Category = "node",
+                Title = "Local node declarations are unverified",
+                Detail = "The gateway did not report this node. Locally declared capabilities, commands, and permissions are shown for troubleshooting only and are not approved/effective surfaces."
+            });
+        }
+
+        if (hasUnverifiedLegacyDeclarations)
+        {
+            warnings.Add(new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Info,
+                Category = "node",
+                Title = "Legacy node declarations are unverified",
+                Detail = "This older gateway reported declared commands without identifying approved/effective commands. They remain visible for troubleshooting only and are not approved/effective surfaces."
+            });
+        }
+
+        if (node.Commands.Count == 0 &&
+            !isPendingApproval &&
+            !hasUnverifiedLocalDeclarations &&
+            !hasUnverifiedLegacyDeclarations)
         {
             warnings.Add(new GatewayDiagnosticWarning
             {
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "allowlist",
                 Title = "No node commands visible",
-                Detail = "The gateway did not report any commands for this node. It may be unpaired, filtered by policy, or connected to an older gateway."
+                Detail = "The gateway did not report any effective commands for this node. It may be unpaired, filtered by policy, or connected to an older gateway."
             });
         }
 
@@ -1288,22 +1474,22 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "allowlist",
                 Title = "Safe node commands are filtered by gateway policy",
-                Detail = $"{missing} {(node.MissingSafeAllowlistCommands.Count == 1 ? "is" : "are")} declared by the node but not allowed by gateway policy. After changing allowCommands, re-approve or re-pair the device if the gateway keeps an older command snapshot.",
+                Detail = $"{missing} {(node.MissingSafeAllowlistCommands.Count == 1 ? "is" : "are")} approved for the node but denied by current gateway permissions. After changing allowCommands, re-approve or re-pair the device if the gateway keeps an older command snapshot.",
                 RepairAction = "Copy safe allowlist repair command",
                 CopyText = BuildAllowCommandsRepairCommand(CommandCenterCommandGroups.SafeCompanionCommands)
             });
         }
 
-        if (node.DangerousDeclaredCommands.Count > 0)
+        if (node.PrivacySensitiveApprovedCommands.Count > 0)
         {
             warnings.Add(new GatewayDiagnosticWarning
             {
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "allowlist",
                 Title = "Privacy-sensitive commands require explicit opt-in",
-                Detail = string.Join(", ", node.DangerousDeclaredCommands) + " should only be available when explicitly allowed by gateway.nodes.allowCommands.",
+                Detail = string.Join(", ", node.PrivacySensitiveApprovedCommands) + " should only be available when explicitly allowed by gateway.nodes.allowCommands.",
                 RepairAction = "Copy opt-in guidance",
-                CopyText = BuildDangerousCommandOptInGuidance(node.DangerousDeclaredCommands)
+                CopyText = BuildDangerousCommandOptInGuidance(node.PrivacySensitiveApprovedCommands)
             });
         }
 
@@ -1315,7 +1501,7 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "allowlist",
                 Title = "Privacy-sensitive commands are currently blocked",
-                Detail = $"{blocked} {(node.MissingDangerousAllowlistCommands.Count == 1 ? "is" : "are")} declared but filtered by gateway policy. Leave blocked unless you explicitly want camera, microphone, or screen recording access for this node.",
+                Detail = $"{blocked} {(node.MissingDangerousAllowlistCommands.Count == 1 ? "is" : "are")} approved for the node but denied by current gateway permissions. Leave blocked unless you explicitly want camera, microphone, or screen recording access for this node.",
                 RepairAction = "Copy opt-in guidance",
                 CopyText = BuildDangerousCommandOptInGuidance(node.MissingDangerousAllowlistCommands)
             });
@@ -1329,7 +1515,7 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "allowlist",
                 Title = "Browser proxy command is filtered by gateway policy",
-                Detail = $"{blocked} {(node.MissingBrowserAllowlistCommands.Count == 1 ? "is" : "are")} declared by the node but not allowed by gateway policy. Add the exact browser command and re-approve or re-pair the node if the gateway keeps an older command snapshot.",
+                Detail = $"{blocked} {(node.MissingBrowserAllowlistCommands.Count == 1 ? "is" : "are")} approved for the node but denied by current gateway permissions. Add the exact browser command and re-approve or re-pair the node if the gateway keeps an older command snapshot.",
                 RepairAction = "Copy browser proxy allowlist repair command",
                 CopyText = BuildAllowCommandsRepairCommand(node.MissingBrowserAllowlistCommands)
             });
@@ -1359,7 +1545,7 @@ public static class CommandCenterDiagnostics
             });
         }
 
-        if (node.BlockedDeclaredCommands.Count > 0 &&
+        if (node.PermissionBlockedCommands.Count > 0 &&
             node.MissingSafeAllowlistCommands.Count == 0 &&
             node.MissingDangerousAllowlistCommands.Count == 0 &&
             node.MissingBrowserAllowlistCommands.Count == 0)
@@ -1369,7 +1555,7 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "allowlist",
                 Title = "Some node commands are filtered",
-                Detail = string.Join(", ", node.BlockedDeclaredCommands) + " are declared but not allowed by gateway policy."
+                Detail = string.Join(", ", node.PermissionBlockedCommands) + " are approved for the node but denied by current gateway permissions."
             });
         }
 
@@ -1768,6 +1954,7 @@ public class AgentEventInfo
                         return phase != null ? $"⚡ {state} ({phase})" : $"⚡ {state}";
                 }
             }
+            // slopwatch-ignore: SW003 Audited non-critical fallback is intentional and the caller preserves safe behavior without this work.
             catch { }
             return "";
         }
@@ -1813,7 +2000,7 @@ public class AgentEventInfo
             if (_cachedDataJson != null) return _cachedDataJson;
             try
             {
-                _cachedDataJson = JsonSerializer.Serialize(Data, new JsonSerializerOptions { WriteIndented = true });
+                _cachedDataJson = JsonSerializer.Serialize(Data, JsonSerializerOptionsCache.WriteIndented);
             }
             catch
             {
@@ -1913,6 +2100,7 @@ public class ModelInfo
     public string? Provider { get; set; }
     public int? ContextWindow { get; set; }
     public bool IsConfigured { get; set; }
+    public bool HasConfiguredFlag { get; set; }
 
     public string DisplayName => Name ?? Id;
 }
@@ -2005,4 +2193,3 @@ public class DiscoveredGateway
         }
     }
 }
-

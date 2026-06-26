@@ -39,7 +39,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
             {
                 // Stop any currently playing speech immediately
                 try { (_nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService()).StopSpeaking(); }
-                catch { /* best effort */ }
+                catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: StopSpeaking during mute failed: {ex.Message}"); }
             }
         }
     }
@@ -113,7 +113,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
     public void StopSpeaking()
     {
         try { (_nodeServiceAccessor()?.TextToSpeech ?? GetFallbackTextToSpeechService()).StopSpeaking(); }
-        catch { /* best effort */ }
+        catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator.StopSpeaking failed: {ex.Message}"); }
     }
 
     public Task SpeakResponseAsync(string text) => SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: false);
@@ -138,7 +138,9 @@ public sealed class OpenClawChatCoordinator : IDisposable
             var speakArgs = new TtsSpeakArgs
             {
                 Text = speakText,
-                Provider = _settings.TtsProvider ?? TtsCapability.PiperProvider,
+                // Leave provider unset so TextToSpeechService treats this as
+                // configured/default playback and can fall back when needed.
+                Provider = null,
                 Interrupt = true
             };
 

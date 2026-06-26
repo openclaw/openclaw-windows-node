@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 namespace OpenClaw.Shared.ExecApprovals;
 
 // New store for exec-approvals.json. Separate from legacy ExecApprovalPolicy (exec-policy.json).
-// PR4 scope: read path only. Write path (recordAllowlistUse) is added in PR9.
+// Read path: ResolveReadOnly, LoadFile, EnsureFileAsync. Write path: AddAllowlistEntryAsync, RecordAllowlistUseAsync.
 public sealed class ExecApprovalsStore
 {
     // KebabCaseLower covers all macOS enum values: deny, allowlist, full, off, on-miss, always,
@@ -24,8 +24,16 @@ public sealed class ExecApprovalsStore
     };
 
     private readonly string _filePath;
+    private readonly string? _legacyFilePath;
     private readonly IOpenClawLogger _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
+
+    private enum LegacyMigrationStatus
+    {
+        NotNeeded,
+        Migrated,
+        Blocked,
+    }
 
     private enum LoadFileStatus
     {
@@ -37,20 +45,121 @@ public sealed class ExecApprovalsStore
     private readonly record struct LoadFileResult(LoadFileStatus Status, ExecApprovalsFile? File);
 
     public ExecApprovalsStore(string dataPath, IOpenClawLogger logger)
+        : this(
+            dataPath,
+            logger,
+            Environment.GetEnvironmentVariable("OPENCLAW_STATE_DIR"),
+            Environment.GetEnvironmentVariable("OPENCLAW_HOME"),
+            FirstUsablePathValue(
+                Environment.GetEnvironmentVariable("HOME"),
+                Environment.GetEnvironmentVariable("USERPROFILE"),
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)))
     {
-        _filePath = Path.Combine(dataPath, "exec-approvals.json");
+    }
+
+    internal ExecApprovalsStore(
+        string dataPath,
+        IOpenClawLogger logger,
+        string? stateDirOverride,
+        string? openClawHomeOverride = null,
+        string? osHomeOverride = null)
+    {
+        var stateDir = string.IsNullOrWhiteSpace(stateDirOverride)
+            ? dataPath
+            : ResolveStateDirPath(stateDirOverride, openClawHomeOverride, osHomeOverride);
+        _filePath = Path.Combine(stateDir, "exec-approvals.json");
+        var legacyFilePath = Path.Combine(dataPath, "exec-approvals.json");
+        _legacyFilePath = PathsEqual(_filePath, legacyFilePath) ? null : legacyFilePath;
         _logger = logger;
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    // No side effects; does not create the file. Used by the evaluator (PR5).
+    // No side effects; does not create the file.
     public ExecApprovalsResolved ResolveReadOnly(string? agentId)
     {
+        if (_legacyFilePath is not null && File.Exists(_legacyFilePath) && !File.Exists(_filePath))
+            return UnmigratedLegacyFallback(agentId);
+
         var result = LoadFile();
         return result.Status != LoadFileStatus.Loaded || result.File is null
             ? DefaultResolved(NormalizeAgentId(agentId))
             : ResolveFromFile(result.File, agentId);
+    }
+
+    // Adds a new allowlist entry for the agent. Best-effort: never throws.
+    // Returns true if the entry is present after the call (added or already there),
+    // false if the pattern was empty or the write was skipped/failed.
+    // Pattern validation is non-empty only — parity with macOS.
+    public async Task<bool> AddAllowlistEntryAsync(string? agentId, string pattern)
+    {
+        var trimmed = pattern?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            _logger.Debug("[EXEC-APPROVALS] AddAllowlistEntry skipped: empty pattern");
+            return false;
+        }
+        var key = NormalizeAgentId(agentId);
+        bool alreadyPresent = false;
+        var wrote = await UpdateFileAsync(file =>
+        {
+            var agents = file.Agents!;
+            if (!agents.TryGetValue(key, out var agent) || agent is null)
+            {
+                agent = new ExecApprovalsAgent();
+                agents[key] = agent;
+            }
+            var allowlist = agent.Allowlist ??= [];
+            // Dedup case-insensitive — consistent with NormalizeAllowlistEntries (OrdinalIgnoreCase HashSet).
+            if (allowlist.Any(e => string.Equals(
+                    e.Pattern?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)))
+            {
+                alreadyPresent = true;
+                return false;
+            }
+            allowlist.Add(new ExecAllowlistEntry
+            {
+                Id = Guid.NewGuid(),  // parity with macOS UUID()
+                Pattern = trimmed,
+                // LastUsedAt intentionally absent: macOS addAllowlistEntry only sets {id, pattern}.
+                // RecordAllowlistUseAsync stamps it on first successful use.
+            });
+            return true;
+        }).ConfigureAwait(false);
+        return wrote || alreadyPresent;
+    }
+
+    // Updates lastUsed* metadata for every allowlist entry whose pattern matches.
+    // Best-effort: never throws. No-op if the agent or pattern is not found.
+    // Returns true if at least one entry was updated and saved; false otherwise.
+    // Searches both the concrete agent bucket and the wildcard bucket ("*"),
+    // because ResolveReadOnly merges wildcard entries into the resolved allowlist —
+    // so a hit can be authorized by either source and metadata must follow.
+    public Task<bool> RecordAllowlistUseAsync(
+        string? agentId, string pattern, string? resolvedPath)
+    {
+        if (string.IsNullOrEmpty(pattern)) return Task.FromResult(false);
+        var key = NormalizeAgentId(agentId);
+        var buckets = key == "*" ? new[] { "*" } : new[] { key, "*" };
+        return UpdateFileAsync(file =>
+        {
+            var changed = false;
+            foreach (var bucketKey in buckets)
+            {
+                if (!file.Agents!.TryGetValue(bucketKey, out var agent) || agent?.Allowlist is null)
+                    continue;
+                foreach (var entry in agent.Allowlist)
+                {
+                    if (!string.Equals(entry.Pattern?.Trim(), pattern.Trim(),
+                            StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    entry.LastUsedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    entry.LastResolvedPath = resolvedPath;  // Id and Pattern preserved
+                    changed = true;
+                }
+            }
+            return changed;
+        });
     }
 
     // Side-effecting resolve: creates the file if missing, initializes agents dict.
@@ -69,14 +178,19 @@ public sealed class ExecApprovalsStore
         }
     }
 
+    public void MigrateLegacyFileIfNeeded() => TryMigrateLegacyFile();
+
     // ── File I/O ──────────────────────────────────────────────────────────────
 
     private LoadFileResult LoadFile()
+        => LoadFile(_filePath);
+
+    private LoadFileResult LoadFile(string filePath)
     {
-        if (!File.Exists(_filePath)) return new LoadFileResult(LoadFileStatus.Missing, null);
+        if (!File.Exists(filePath)) return new LoadFileResult(LoadFileStatus.Missing, null);
         try
         {
-            var json = File.ReadAllText(_filePath);
+            var json = File.ReadAllText(filePath);
             var file = JsonSerializer.Deserialize<ExecApprovalsFile>(json, JsonOptions);
             if (file is null)
             {
@@ -105,6 +219,9 @@ public sealed class ExecApprovalsStore
 
     private async Task<ExecApprovalsFile> EnsureFileAsync()
     {
+        if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
+            return UnmigratedLegacyFallbackFile();
+
         var result = LoadFile();
         if (result.Status == LoadFileStatus.Loaded && result.File is not null)
         {
@@ -129,12 +246,124 @@ public sealed class ExecApprovalsStore
             return new ExecApprovalsFile { Version = 1, Agents = [] };
         }
 
-        // socket intentionally omitted in Windows v1 (research doc 02 decision 3).
+        // socket intentionally omitted in Windows v1.
         var newFile = new ExecApprovalsFile { Version = 1, Agents = [] };
         await SaveFileAsync(newFile).ConfigureAwait(false);
         _logger.Info($"[EXEC-APPROVALS] Created {_filePath}");
         return newFile;
     }
+
+    private LegacyMigrationStatus TryMigrateLegacyFile()
+    {
+        if (_legacyFilePath is null || !File.Exists(_legacyFilePath) || File.Exists(_filePath))
+            return LegacyMigrationStatus.NotNeeded;
+
+        var legacyResult = LoadFile(_legacyFilePath);
+        if (legacyResult.Status != LoadFileStatus.Loaded || legacyResult.File is null)
+        {
+            _logger.Warn($"[EXEC-APPROVALS] Legacy approvals at {_legacyFilePath} could not be migrated; applying default-deny without creating {_filePath}");
+            return LegacyMigrationStatus.Blocked;
+        }
+
+        var targetDir = Path.GetDirectoryName(_filePath)!;
+        var archivePath = NextArchivePath(_legacyFilePath);
+        var tempPath = Path.Combine(targetDir, $".exec-approvals-migration-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            Directory.CreateDirectory(targetDir);
+            var data = File.ReadAllBytes(_legacyFilePath);
+            using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(data);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(tempPath, _filePath);
+            try
+            {
+                File.Move(_legacyFilePath, archivePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[EXEC-APPROVALS] Migrated approvals to {_filePath}, but could not archive {_legacyFilePath} ({ex.Message})");
+                return LegacyMigrationStatus.Migrated;
+            }
+            _logger.Info($"[EXEC-APPROVALS] Migrated {_legacyFilePath} to {_filePath}; archived source as {archivePath}");
+            return LegacyMigrationStatus.Migrated;
+        }
+        catch (IOException) when (File.Exists(_filePath))
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            return LegacyMigrationStatus.NotNeeded;
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            _logger.Warn($"[EXEC-APPROVALS] Failed to migrate {_legacyFilePath} to {_filePath} ({ex.Message}); applying default-deny without creating a replacement file");
+            return LegacyMigrationStatus.Blocked;
+        }
+    }
+
+    private static string NextArchivePath(string legacyFilePath)
+    {
+        var archivePath = $"{legacyFilePath}.migrated";
+        return File.Exists(archivePath) ? $"{archivePath}-{Guid.NewGuid():N}" : archivePath;
+    }
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveStateDirPath(
+        string stateDirOverride,
+        string? openClawHomeOverride,
+        string? osHomeOverride)
+    {
+        var osHome = NormalizePathValue(osHomeOverride) ?? Environment.CurrentDirectory;
+        var openClawHome = NormalizePathValue(openClawHomeOverride);
+        var effectiveHome = openClawHome is null
+            ? Path.GetFullPath(osHome)
+            : Path.GetFullPath(ExpandHomePrefix(openClawHome, osHome));
+        return Path.GetFullPath(ExpandHomePrefix(stateDirOverride.Trim(), effectiveHome));
+    }
+
+    private static string ExpandHomePrefix(string path, string home) =>
+        path == "~"
+            ? home
+            : path.StartsWith($"~{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                || path.StartsWith($"~{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal)
+                ? Path.Combine(home, path[2..])
+                : path;
+
+    private static string? NormalizePathValue(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrEmpty(trimmed) || trimmed is "undefined" or "null" ? null : trimmed;
+    }
+
+    private static string? FirstUsablePathValue(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            var normalized = NormalizePathValue(value);
+            if (normalized is not null) return normalized;
+        }
+        return null;
+    }
+
+    private static ExecApprovalsFile UnmigratedLegacyFallbackFile() =>
+        new()
+        {
+            Version = 1,
+            Defaults = new ExecApprovalsDefaults
+            {
+                Security = ExecSecurity.Deny,
+                Ask = ExecAsk.Always,
+                AskFallback = ExecSecurity.Deny,
+            },
+            Agents = [],
+        };
+
+    private static ExecApprovalsResolved UnmigratedLegacyFallback(string? agentId) =>
+        ResolveFromFile(UnmigratedLegacyFallbackFile(), agentId);
 
     private async Task SaveFileAsync(ExecApprovalsFile file)
     {
@@ -152,8 +381,58 @@ public sealed class ExecApprovalsStore
         catch (Exception ex)
         {
             _logger.Error($"[EXEC-APPROVALS] Failed to save {_filePath} ({ex.Message})");
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
             throw;
+        }
+    }
+
+    // Best-effort mutate-and-save. Serialized by the store lock.
+    // Never throws. Refuses to overwrite a malformed file.
+    // Returns true if the file was mutated and saved; false if the mutate was a no-op,
+    // the file was malformed/invalid, or any I/O failure occurred.
+    private async Task<bool> UpdateFileAsync(Func<ExecApprovalsFile, bool> mutate)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            // Migrate before any write: creating the target file here would permanently
+            // block TryMigrateLegacyFile and silently orphan the legacy configuration.
+            if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
+            {
+                _logger.Warn("[EXEC-APPROVALS] Refusing to write exec-approvals.json: "
+                    + "unmigrated legacy file is unreadable");
+                return false;
+            }
+
+            var result = LoadFile();
+            if (result.Status == LoadFileStatus.Invalid)
+            {
+                _logger.Warn("[EXEC-APPROVALS] Refusing to write exec-approvals.json: "
+                    + "file is malformed or has an unsupported version");
+                return false;
+            }
+            var file = result.Status == LoadFileStatus.Loaded && result.File is not null
+                ? result.File
+                : new ExecApprovalsFile { Version = 1, Agents = [] };
+            file.Agents ??= new Dictionary<string, ExecApprovalsAgent>();
+
+            if (!mutate(file)) return false; // no-op: nothing to persist
+
+            await SaveFileAsync(file).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Any failure (incl. transient IOException on the atomic move) degrades to a
+            // logged warning. The atomic write guarantees the file on disk is never left corrupt.
+            _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json write failed "
+                + $"({ex.Message}); side effect skipped");
+            return false;
+        }
+        finally
+        {
+            _lock.Release();
         }
     }
 
@@ -239,7 +518,7 @@ public sealed class ExecApprovalsStore
     // Mirrors macOS normalizeAllowlistEntries.
     // dropInvalid=false: discard only null/empty patterns; keep non-empty ones regardless of validity.
     // dropInvalid=true: same in v1 — pattern validity beyond non-empty is enforced by the allowlist
-    //   matcher in PR5, not here. The flag is preserved for API symmetry with macOS.
+    //   matcher, not here. The flag is preserved for API symmetry with macOS.
     internal static List<ExecAllowlistEntry> NormalizeAllowlistEntries(
         IEnumerable<ExecAllowlistEntry> entries, bool dropInvalid)
     {
@@ -255,7 +534,6 @@ public sealed class ExecApprovalsStore
                 Id = entry.Id,
                 Pattern = pattern,
                 LastUsedAt = entry.LastUsedAt,
-                LastUsedCommand = entry.LastUsedCommand,
                 LastResolvedPath = entry.LastResolvedPath,
             });
         }
@@ -275,7 +553,7 @@ public sealed class ExecApprovalsStore
         // Cascade: agentEntry → wildcard → defaults → systemDefault
         var security = agentEntry?.Security ?? wildcardEntry?.Security ?? defaults?.Security ?? ExecSecurity.Deny;
         var ask = agentEntry?.Ask ?? wildcardEntry?.Ask ?? defaults?.Ask ?? ExecAsk.OnMiss;
-        var askFallback = agentEntry?.AskFallback ?? wildcardEntry?.AskFallback ?? defaults?.AskFallback ?? ExecAsk.Deny;
+        var askFallback = agentEntry?.AskFallback ?? wildcardEntry?.AskFallback ?? defaults?.AskFallback ?? ExecSecurity.Deny;
         var autoAllowSkills = agentEntry?.AutoAllowSkills ?? wildcardEntry?.AutoAllowSkills ?? defaults?.AutoAllowSkills ?? false;
 
         // Allowlist: wildcard first, then agent; then normalize dropInvalid=true.
@@ -306,7 +584,7 @@ public sealed class ExecApprovalsStore
             {
                 Security = ExecSecurity.Deny,
                 Ask = ExecAsk.OnMiss,
-                AskFallback = ExecAsk.Deny,
+                AskFallback = ExecSecurity.Deny,
                 AutoAllowSkills = false,
             },
             Allowlist = [],

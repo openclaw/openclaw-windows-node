@@ -73,9 +73,9 @@ public sealed record A2UIComponentDef
 }
 
 /// <summary>
-/// Single dataModelUpdate.contents entry. Exactly one of Value*/ValueMap is
-/// expected on the wire; we expose them all and let the store apply whichever
-/// is set.
+/// Single dataModelUpdate.contents entry. Exactly one of
+/// Value*/ValueMap/ValueArray is expected on the wire; we expose them all and
+/// let the store apply whichever is set.
 /// </summary>
 public sealed record DataModelEntry
 {
@@ -85,6 +85,12 @@ public sealed record DataModelEntry
     public bool? ValueBoolean { get; init; }
     /// <summary>An adjacency-list map: each item is itself a DataModelEntry.</summary>
     public IReadOnlyList<DataModelEntry>? ValueMap { get; init; }
+    /// <summary>
+    /// An ordered array (v0.8 <c>valueArray</c>): each item is a value-typed
+    /// <see cref="DataModelEntry"/> whose <see cref="Key"/> is ignored. Items
+    /// may themselves be scalars, maps, or nested arrays.
+    /// </summary>
+    public IReadOnlyList<DataModelEntry>? ValueArray { get; init; }
 
     /// <summary>Convert this entry's value to a JsonNode for storage.</summary>
     public JsonNode? ToJsonNode()
@@ -98,6 +104,13 @@ public sealed record DataModelEntry
             foreach (var entry in ValueMap)
                 obj[entry.Key] = entry.ToJsonNode();
             return obj;
+        }
+        if (ValueArray != null)
+        {
+            var arr = new JsonArray();
+            foreach (var entry in ValueArray)
+                arr.Add(entry.ToJsonNode());
+            return arr;
         }
         return null;
     }
@@ -350,6 +363,7 @@ public static class A2UIMessageParser
             ValueNumber = e["valueNumber"] is JsonValue jvn && jvn.TryGetValue<double>(out var n) ? n : null,
             ValueBoolean = e["valueBoolean"] is JsonValue jvb && jvb.TryGetValue<bool>(out var b) ? b : null,
             ValueMap = ParseValueMap(e["valueMap"] as JsonArray),
+            ValueArray = ParseValueArray(e["valueArray"] as JsonArray),
         };
         return entry;
     }
@@ -365,6 +379,61 @@ public static class A2UIMessageParser
             if (nested != null) list.Add(nested);
         }
         return list;
+    }
+
+    /// <summary>
+    /// Parse a v0.8 <c>valueArray</c>. Each element is a value-typed object
+    /// with no key (e.g. <c>{ "valueString": "admin" }</c>). For robustness we
+    /// also tolerate bare primitives (<c>["a", 1, true]</c>) that an agent may
+    /// emit. A JSON <c>null</c> element is preserved as an explicit null slot so
+    /// array indices stay stable for position-sensitive consumers — matching how
+    /// a value-less wrapped object (<c>{}</c>) round-trips. Elements of an
+    /// unsupported kind are dropped, matching <see cref="ParseValueMap"/>'s
+    /// skip-bad-item tolerance.
+    /// </summary>
+    private static IReadOnlyList<DataModelEntry>? ParseValueArray(JsonArray? arr)
+    {
+        if (arr == null) return null;
+        var list = new List<DataModelEntry>(arr.Count);
+        foreach (var item in arr)
+        {
+            // A JSON null element surfaces as a C# null inside the JsonArray.
+            // Preserve it as a value-less entry (ToJsonNode → null) rather than
+            // dropping it, so [a, null, b] stays length 3.
+            if (item is null) { list.Add(NullArrayElement); continue; }
+            var element = ParseArrayElement(item);
+            if (element != null) list.Add(element);
+        }
+        return list;
+    }
+
+    /// <summary>Shared value-less entry representing a JSON null array slot.</summary>
+    private static readonly DataModelEntry NullArrayElement = new() { Key = string.Empty };
+
+    private static DataModelEntry? ParseArrayElement(JsonNode? item)
+    {
+        if (item is JsonObject e)
+        {
+            return new DataModelEntry
+            {
+                Key = string.Empty,
+                ValueString = OptionalString(e, "valueString"),
+                ValueNumber = e["valueNumber"] is JsonValue jvn && jvn.TryGetValue<double>(out var n) ? n : null,
+                ValueBoolean = e["valueBoolean"] is JsonValue jvb && jvb.TryGetValue<bool>(out var b) ? b : null,
+                ValueMap = ParseValueMap(e["valueMap"] as JsonArray),
+                ValueArray = ParseValueArray(e["valueArray"] as JsonArray),
+            };
+        }
+        // Bare primitive tolerance. Check string first (a JSON number/bool does
+        // not satisfy TryGetValue<string>), then bool (a JSON number does not
+        // satisfy TryGetValue<bool>), then number.
+        if (item is JsonValue v)
+        {
+            if (v.TryGetValue<string>(out var s)) return new DataModelEntry { Key = string.Empty, ValueString = s };
+            if (v.TryGetValue<bool>(out var bl)) return new DataModelEntry { Key = string.Empty, ValueBoolean = bl };
+            if (v.TryGetValue<double>(out var d)) return new DataModelEntry { Key = string.Empty, ValueNumber = d };
+        }
+        return null;
     }
 
     private static string RequireString(JsonObject o, string key)

@@ -21,31 +21,43 @@ public sealed class ConnectionRegressionSourceTests
         Assert.Contains("RollbackDirectConnect(previousActiveId", pageSource);
     }
 
-    private static string ReadSource(params string[] relativePathParts)
+    [Fact]
+    public void ReconnectNode_RefreshesVisibleEffectiveNodeList()
     {
-        var root = GetRepositoryRoot();
-        return File.ReadAllText(Path.Combine(new[] { root }.Concat(relativePathParts).ToArray()));
+        var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.CapabilityHandlers.cs");
+
+        Assert.Contains("await _connectionManager.ConnectNodeOnlyAsync();", appSource);
+        Assert.Contains("WaitForAppStateUpdateAsync(nameof(AppState.Nodes), client.RequestNodesAsync)", appSource);
     }
 
-    private static string GetRepositoryRoot()
+    [Fact]
+    public void NodeTrustPendingToast_CopiesNodeApprovalCommand()
     {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
+        var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "src")))
-            {
-                return directory.FullName;
-            }
+        Assert.Contains("args.ApprovalKind switch", appSource);
+        Assert.Contains(
+            "OpenClaw.Shared.PairingApprovalKind.DevicePair => BuildPairingApprovalCommand(args.DeviceId)",
+            appSource);
+        Assert.Contains(
+            "OpenClaw.Shared.PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(args.RequestId)",
+            appSource);
+        Assert.Contains("_ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()", appSource);
+        Assert.Contains("ShowPairingPendingNotification(args.DeviceId, approvalCommand)", appSource);
+    }
 
-            directory = directory.Parent;
-        }
+    [Fact]
+    public void LocalNodeTrustPairListUpdate_RefreshesVisibleNodeList()
+    {
+        var managerSource = ReadSource("src", "OpenClaw.Connection", "GatewayConnectionManager.cs");
 
-        throw new InvalidOperationException(
-            "Could not find repository root. Set OPENCLAW_REPO_ROOT to the repo path.");
+        Assert.Contains("operatorClient.RequestNodesAsync()", managerSource);
+        Assert.Contains("Node list refresh failed after local node trust request", managerSource);
+    }
+
+    private static string ReadSource(params string[] relativePathParts)
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(new[] { root }.Concat(relativePathParts).ToArray()));
     }
 }

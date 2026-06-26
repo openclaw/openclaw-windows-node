@@ -2,7 +2,7 @@
 
 ![OpenClaw Windows Node banner](docs/assets/readme-banner.jpg)
 
-A Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered personal assistant.
+A native Windows companion suite for [OpenClaw](https://openclaw.ai) - the AI-powered personal assistant.
 
 *Made with 🦞 love by Scott Hanselman and Molty*
 
@@ -26,7 +26,15 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 
 ## 🚀 Quick Start
 
-> **End-user installer?** See [docs/SETUP.md](docs/SETUP.md) for a step-by-step installation guide (no build required).
+> **End-user installer?** Download the latest stable x64 or ARM64 installer from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows), or see [docs/SETUP.md](docs/SETUP.md) for step-by-step installation (no build required).
+>
+> **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for editing `openclaw.json` as the `openclaw` user and using root for protected-file administration.
+
+Direct downloads from the latest OpenClaw release:
+
+- [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-x64.exe)
+- [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-arm64.exe)
+- [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt)
 
 ### Prerequisites
 - Windows 10 (20H2+) or Windows 11

@@ -758,7 +758,12 @@ public static class ElementExtensions
     public static ExpanderElement Set(this ExpanderElement element, Action<Expander> setter) => element.AddSetter(setter);
     public static T Set<T>(this T element, Action<FrameworkElement> setter) where T : Element => element.AddSetter(setter);
     public static T SetToolTip<T>(this T element, object tooltip) where T : Element =>
-        element.AddSetter((Action<FrameworkElement>)(e => ToolTipService.SetToolTip(e, tooltip)));
+        element.AddSetter((Action<FrameworkElement>)(e =>
+        {
+            var current = ToolTipService.GetToolTip(e);
+            if (!Equals(current, tooltip))
+                ToolTipService.SetToolTip(e, tooltip);
+        }));
 
     private static T Apply<T>(this T element, Action<T> change)
     {

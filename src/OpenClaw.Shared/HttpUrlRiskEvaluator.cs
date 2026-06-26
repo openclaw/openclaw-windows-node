@@ -191,15 +191,17 @@ public static class HttpUrlRiskEvaluator
                 ? (HttpUrlSecurityZone)zone
                 : HttpUrlSecurityZone.Unknown;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Trace.WriteLine($"HttpUrlRiskEvaluator.MapUrlToZone: {ex.GetType().Name}: {ex.Message}");
             return HttpUrlSecurityZone.Unknown;
         }
         finally
         {
             if (manager != null)
             {
-                try { Marshal.ReleaseComObject(manager); } catch { }
+                try { Marshal.ReleaseComObject(manager); }
+                catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"HttpUrlRiskEvaluator.ReleaseComObject: {ex.GetType().Name}: {ex.Message}"); }
             }
         }
     }

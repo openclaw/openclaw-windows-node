@@ -152,14 +152,8 @@ def output_dir(page: PageSpec) -> Path:
 # ---------------------------------------------------------------------------
 
 
-_PREVIEW_EXE_CACHE: Optional[Path] = None
-
-
 def ensure_preview_exe() -> Path:
     """Always run an incremental dotnet build (once per invocation) to pick up code changes, then locate the exe."""
-    global _PREVIEW_EXE_CACHE
-    if _PREVIEW_EXE_CACHE is not None:
-        return _PREVIEW_EXE_CACHE
     proj = repo_root() / "src" / "OpenClaw.SetupPreview" / "OpenClaw.SetupPreview.csproj"
     print("[vv] building OpenClaw.SetupPreview (incremental)...", flush=True)
     result = subprocess.run(
@@ -175,7 +169,6 @@ def ensure_preview_exe() -> Path:
     exe = preview_exe()
     if not exe or not exe.exists():
         raise RuntimeError("dotnet build succeeded but no exe was produced")
-    _PREVIEW_EXE_CACHE = exe
     return exe
 
 

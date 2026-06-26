@@ -5,8 +5,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
@@ -14,6 +16,7 @@ using OpenClawTray.Services;
 using WinUIEx;
 using Windows.Foundation;
 using Windows.Storage.Streams;
+using Windows.System;
 
 namespace OpenClawTray.Windows;
 
@@ -39,6 +42,7 @@ public sealed partial class CanvasWindow : WindowEx
     private const uint SWP_SHOWWINDOW = 0x0040;
 
     private bool _isWebViewInitialized;
+    private bool _isFullScreen;
     private string? _pendingUrl;
     private string? _pendingHtml;
     private readonly TaskCompletionSource<bool> _webViewReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -50,7 +54,7 @@ public sealed partial class CanvasWindow : WindowEx
     private FileSystemWatcher? _canvasWatcher;
     private long _lastReloadTicks = 0;
 
-    private readonly DispatcherQueue? _dispatcherQueue;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private TypedEventHandler<CoreWebView2, CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
     private TypedEventHandler<CoreWebView2, CoreWebView2WebResourceRequestedEventArgs>? _webResourceRequestedHandler;
     private string? _webResourceRequestedFilter;
@@ -134,6 +138,7 @@ public sealed partial class CanvasWindow : WindowEx
     
     public bool IsClosed { get; private set; }
     private string? _trustedGatewayOrigin;
+    private string? _configuredGatewayOrigin;
     private string? _gatewayOriginForRewrite;
     private string? _gatewayToken;
     // Plugin-node capability-scoped URL for the canvas surface, e.g.
@@ -150,7 +155,11 @@ public sealed partial class CanvasWindow : WindowEx
     /// Also rewrites gateway URLs to use the node's effective connection
     /// (e.g., localhost when connected via SSH tunnel).
     /// </summary>
-    public void SetTrustedGatewayOrigin(string? gatewayUrl, string? token = null, string? canvasSurfaceUrl = null)
+    public void SetTrustedGatewayOrigin(
+        string? gatewayUrl,
+        string? token = null,
+        string? configuredGatewayUrl = null,
+        string? canvasSurfaceUrl = null)
     {
         if (string.IsNullOrEmpty(gatewayUrl)) return;
         _gatewayToken = token;
@@ -159,11 +168,12 @@ public sealed partial class CanvasWindow : WindowEx
             : canvasSurfaceUrl!.TrimEnd('/');
         try
         {
-            var uri = new Uri(GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl));
-            var httpScheme = uri.Scheme == "wss" ? "https" : "http";
-            _trustedGatewayOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
+            _trustedGatewayOrigin = CanvasGatewayUrlRewriter.ToHttpOrigin(gatewayUrl);
+            _configuredGatewayOrigin = string.IsNullOrWhiteSpace(configuredGatewayUrl)
+                ? _trustedGatewayOrigin
+                : CanvasGatewayUrlRewriter.ToHttpOrigin(configuredGatewayUrl);
             _gatewayOriginForRewrite = _trustedGatewayOrigin;
-            Logger.Info($"[Canvas] Trusted gateway origin: {_trustedGatewayOrigin}");
+            Logger.Info($"[Canvas] Trusted gateway origin: {_trustedGatewayOrigin}; configured gateway origin: {_configuredGatewayOrigin}");
             if (_canvasSurfaceBaseUrl != null)
                 Logger.Info($"[Canvas] Canvas surface base URL (cap-scoped) registered");
             ConfigureGatewayAuthHeaderInjection();
@@ -207,32 +217,35 @@ public sealed partial class CanvasWindow : WindowEx
                     }
                 }
 
-                string rewritten;
                 if (_canvasSurfaceBaseUrl != null &&
                     url.StartsWith("/__openclaw__/canvas/", StringComparison.OrdinalIgnoreCase))
                 {
-                    rewritten = _canvasSurfaceBaseUrl + url;
+                    var capScopedUrl = _canvasSurfaceBaseUrl + url;
                     Logger.Info($"[Canvas] Resolved relative canvas URL via cap-scoped surface URL");
+                    return capScopedUrl;
                 }
-                else
+            }
+            else if (_canvasSurfaceBaseUrl != null)
+            {
+                var uri = new Uri(url);
+                var urlOrigin = $"{uri.Scheme}://{uri.Host}:{uri.Port}";
+                if (uri.PathAndQuery.StartsWith("/__openclaw__/canvas/", StringComparison.OrdinalIgnoreCase) &&
+                    (urlOrigin.Equals(_gatewayOriginForRewrite, StringComparison.OrdinalIgnoreCase) ||
+                     urlOrigin.Equals(_configuredGatewayOrigin, StringComparison.OrdinalIgnoreCase)))
                 {
-                    rewritten = _gatewayOriginForRewrite + url;
-                    rewritten = AppendGatewayToken(rewritten);
-                    Logger.Info($"[Canvas] Resolved relative URL to gateway origin");
+                    var capScopedUrl = _canvasSurfaceBaseUrl + uri.PathAndQuery;
+                    Logger.Info($"[Canvas] Rewrote canvas URL via cap-scoped surface URL");
+                    return capScopedUrl;
                 }
-                return rewritten;
             }
 
-            var uri = new Uri(url);
-            var httpScheme = uri.Scheme;
-            var urlOrigin = $"{httpScheme}://{uri.Host}:{uri.Port}";
-
-            // If the URL's origin differs from our effective gateway origin, rewrite it
-            if (!urlOrigin.Equals(_gatewayOriginForRewrite, StringComparison.OrdinalIgnoreCase))
+            var rewritten = CanvasGatewayUrlRewriter.Rewrite(url, _gatewayOriginForRewrite, _configuredGatewayOrigin);
+            if (!string.Equals(url, rewritten, StringComparison.Ordinal))
             {
-                var rewritten = _gatewayOriginForRewrite + uri.PathAndQuery;
                 rewritten = AppendGatewayToken(rewritten);
-                Logger.Info($"[Canvas] Rewrote URL to effective gateway origin");
+                Logger.Info(url.StartsWith("/", StringComparison.Ordinal)
+                    ? "[Canvas] Resolved relative URL to gateway origin"
+                    : "[Canvas] Rewrote URL to effective gateway origin");
                 return rewritten;
             }
 
@@ -282,7 +295,30 @@ public sealed partial class CanvasWindow : WindowEx
         this.SetIcon("Assets\\openclaw.ico");
         _dispatcherQueue = DispatcherQueue;
         this.Closed += OnWindowClosed;
-        
+
+        // F11 toggles borderless fullscreen; Escape exits it.
+        // KeyboardAccelerators on the root content get first-class handling
+        // when focus is in the XAML tree (title bar, toolbar, etc.).
+        // When focus is inside the WebView2, F11/Escape are also intercepted
+        // via an injected content script that posts bridge messages.
+        if (this.Content is FrameworkElement contentRoot)
+        {
+            var f11Accel = new KeyboardAccelerator { Key = VirtualKey.F11 };
+            f11Accel.Invoked += (_, args) =>
+            {
+                args.Handled = true;
+                ToggleFullScreen();
+            };
+            var escAccel = new KeyboardAccelerator { Key = VirtualKey.Escape };
+            escAccel.Invoked += (_, args) =>
+            {
+                if (_isFullScreen) { args.Handled = true; ExitFullScreen(); }
+            };
+            contentRoot.KeyboardAccelerators.Add(f11Accel);
+            contentRoot.KeyboardAccelerators.Add(escAccel);
+            contentRoot.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+        }
+
         // Initialize WebView2
         InitializeWebViewAsync();
     }
@@ -331,6 +367,24 @@ public sealed partial class CanvasWindow : WindowEx
             CanvasWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             CanvasWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
 
+            // Inject F11/Escape fullscreen bridge: intercepts these keys when
+            // WebView2 content has focus and routes them as bridge messages so
+            // the native window can toggle its presenter the same way the XAML
+            // keyboard accelerators do when focus is in the title bar.
+            await CanvasWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("""
+                (function () {
+                    document.addEventListener('keydown', function (e) {
+                        if (!window.chrome || !window.chrome.webview) return;
+                        if (e.key === 'F11') {
+                            e.preventDefault();
+                            window.chrome.webview.postMessage({ type: 'fullscreen-toggle' });
+                        } else if (e.key === 'Escape') {
+                            window.chrome.webview.postMessage({ type: 'fullscreen-exit' });
+                        }
+                    }, true);
+                })();
+                """);
+
             // Wire the bidirectional native↔SPA bridge
             // SPA → native: window.chrome.webview.postMessage({ type, payload })
             _webMessageReceivedHandler = (s, e) =>
@@ -344,6 +398,19 @@ public sealed partial class CanvasWindow : WindowEx
                 var msg = WebBridgeMessage.TryParse(e.WebMessageAsJson);
                 if (msg != null)
                 {
+                    // Fullscreen control messages are handled natively and not
+                    // forwarded to external bridge subscribers.
+                    if (msg.Type == WebBridgeMessage.TypeFullscreenToggle)
+                    {
+                        _dispatcherQueue?.TryEnqueue(ToggleFullScreen);
+                        return;
+                    }
+                    if (msg.Type == WebBridgeMessage.TypeFullscreenExit)
+                    {
+                        _dispatcherQueue?.TryEnqueue(ExitFullScreen);
+                        return;
+                    }
+
                     Logger.Debug($"[Canvas] bridge message from SPA, type={SanitizeBridgeLogValue(msg.Type)}");
                     BridgeMessageReceived?.Invoke(this, msg);
                 }
@@ -419,7 +486,7 @@ public sealed partial class CanvasWindow : WindowEx
         {
             LoadingRing.IsActive = false;
             ErrorPanel.Visibility = Visibility.Visible;
-            ErrorText.Text = $"Failed to initialize WebView2: {ex.Message}";
+            ErrorText.Text = LocalizationHelper.Format("CanvasWindow_WebViewInitFailedFormat", ex.Message);
             _webViewReadyTcs.TrySetException(ex);
         }
     }
@@ -491,7 +558,7 @@ public sealed partial class CanvasWindow : WindowEx
             // Show error for failed navigation
             ErrorPanel.Visibility = Visibility.Visible;
             CanvasWebView.Visibility = Visibility.Collapsed;
-            ErrorText.Text = $"Navigation failed: {args.WebErrorStatus}";
+            ErrorText.Text = LocalizationHelper.Format("CanvasWindow_NavigationFailedFormat", args.WebErrorStatus);
         }
         else
         {
@@ -520,6 +587,7 @@ public sealed partial class CanvasWindow : WindowEx
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        ExitFullScreen();
         _gatewayToken = null;
 
         if (CanvasWebView.CoreWebView2 != null)
@@ -536,6 +604,7 @@ public sealed partial class CanvasWindow : WindowEx
         _canvasWatcher?.Dispose();
         _canvasWatcher = null;
         _trustedGatewayOrigin = null;
+        _configuredGatewayOrigin = null;
         _gatewayOriginForRewrite = null;
     }
     
@@ -699,12 +768,37 @@ public sealed partial class CanvasWindow : WindowEx
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             }
         }
+        // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch
         {
             // Best-effort focus behavior only.
         }
     }
     
+    // ── Fullscreen ──────────────────────────────────────────────────────────
+
+    /// <summary>Toggle borderless fullscreen on F11.</summary>
+    public void ToggleFullScreen()
+    {
+        if (_isFullScreen) ExitFullScreen();
+        else EnterFullScreen();
+    }
+
+    private void EnterFullScreen()
+    {
+        _isFullScreen = true;
+        try { AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen); }
+        catch (Exception ex) { Logger.Debug($"[Canvas] EnterFullScreen failed: {ex.Message}"); }
+    }
+
+    private void ExitFullScreen()
+    {
+        if (!_isFullScreen) return;
+        _isFullScreen = false;
+        try { AppWindow.SetPresenter(AppWindowPresenterKind.Default); }
+        catch (Exception ex) { Logger.Debug($"[Canvas] ExitFullScreen failed: {ex.Message}"); }
+    }
+
     public async Task EnsureA2UIHostAsync(string url)
     {
         await EnsureWebViewReadyAsync();

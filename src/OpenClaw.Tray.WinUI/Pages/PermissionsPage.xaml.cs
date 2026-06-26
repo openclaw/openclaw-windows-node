@@ -12,6 +12,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace OpenClawTray.Pages;
 
@@ -38,14 +40,6 @@ public sealed partial class PermissionsPage : Page
     {
         HostnameText.Text = Environment.MachineName;
 
-        // Show "← Back to Connection" only when the user arrived from
-        // Connection's cross-page link; staying hidden when the rail nav
-        // is used keeps the page chrome quiet for direct navigation.
-        var hub = CurrentApp.ActiveHubWindow as HubWindow;
-        BackToConnectionLink.Visibility = hub?.LastNavigationOrigin == "connection"
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
         BindNodeModeMaster();
         BuildCapabilityToggles();
         UpdateMcpStatus();
@@ -57,9 +51,6 @@ public sealed partial class PermissionsPage : Page
         LoadExecPolicy();
         LoadAllowlist(CurrentApp.AppState?.Config);
     }
-
-    private void OnBackToConnectionClicked(object sender, RoutedEventArgs e)
-        => ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -582,9 +573,7 @@ public sealed partial class PermissionsPage : Page
         _loadingExecPolicy = true;
         try
         {
-            var policyPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "exec-policy.json");
+            var policyPath = ExecPolicyPath;
 
             if (File.Exists(policyPath))
             {
@@ -594,7 +583,7 @@ public sealed partial class PermissionsPage : Page
 
                 if (root.TryGetProperty("defaultAction", out var da))
                 {
-                    var action = da.GetString() ?? "deny";
+                    var action = NormalizeExecPolicyAction(da);
                     for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
                     {
                         if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
@@ -613,7 +602,10 @@ public sealed partial class PermissionsPage : Page
                             // Accept either case — earlier saves wrote "Pattern" capitalized
                             // due to an anonymous-type property name leak.
                             Pattern = TryGetStringCaseInsensitive(rule, "pattern", "Pattern") ?? "",
-                            Action = TryGetStringCaseInsensitive(rule, "action", "Action") ?? "deny",
+                            Action = ExecPolicyRuleList.TryGetActionCaseInsensitive(rule, "action", "Action") ?? "deny",
+                            Shells = TryGetStringArrayCaseInsensitive(rule, "shells", "Shells"),
+                            Description = TryGetStringCaseInsensitive(rule, "description", "Description"),
+                            Enabled = TryGetBoolCaseInsensitive(rule, "enabled", "Enabled") ?? true,
                             Index = idx++
                         });
                     }
@@ -636,13 +628,16 @@ public sealed partial class PermissionsPage : Page
         for (int i = 0; i < _policyRules.Count; i++) _policyRules[i].Index = i;
         var allowBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
         var denyBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+        var askBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
         PolicyRulesList.ItemsSource = null;
         PolicyRulesList.ItemsSource = _policyRules.Select(r => new
         {
             r.Pattern,
-            r.Action,
+            Action = DisplayExecPolicyAction(r.Action),
             r.Index,
-            ActionBrush = r.Action == "allow" ? allowBrush : denyBrush
+            ActionBrush = r.Action == "allow"
+                ? allowBrush
+                : r.Action == "prompt" ? askBrush : denyBrush
         }).ToList();
 
         // Header badge + empty state
@@ -663,8 +658,8 @@ public sealed partial class PermissionsPage : Page
         if (string.IsNullOrEmpty(pattern)) return;
         // Read .Tag (invariant identifier) instead of .Content so future localization
         // of the allow/deny strings can't break the JSON contract on disk.
-        var action = (NewRuleAction.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "deny";
-        _policyRules.Add(new ExecPolicyRule { Pattern = pattern, Action = action });
+        var action = NormalizeExecPolicyAction((NewRuleAction.SelectedItem as ComboBoxItem)?.Tag?.ToString());
+        ExecPolicyRuleList.UpsertByPattern(_policyRules, pattern, action);
         NewRulePattern.Text = "";
         RefreshPolicyRulesList();
         SaveExecPolicyToDisk();
@@ -688,25 +683,47 @@ public sealed partial class PermissionsPage : Page
 
     private bool _loadingExecPolicy;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _execSavedHintTimer;
+    private static string ExecPolicyPath => Path.Combine(CurrentApp.DataDirectoryPath, "exec-policy.json");
 
-    private void SaveExecPolicyToDisk()
+    private void SaveExecPolicyToDisk(bool showSavedHint = true)
     {
+        string? tmpPath = null;
         try
         {
-            var policyPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray", "exec-policy.json");
+            var policyPath = ExecPolicyPath;
 
-            var defaultAction = (DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "deny";
+            var defaultAction = NormalizeExecPolicyAction((DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString());
             var policy = new
             {
                 defaultAction,
-                rules = _policyRules.Select(r => new { pattern = r.Pattern, action = r.Action }).ToArray()
+                rules = _policyRules.Select(r => new
+                {
+                    pattern = r.Pattern,
+                    action = r.Action,
+                    shells = r.Shells,
+                    description = r.Description,
+                    enabled = ExecPolicyRuleList.PersistedEnabled(r.Enabled)
+                }).ToArray()
             };
 
-            var json = JsonSerializer.Serialize(policy, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(policy, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            });
             Directory.CreateDirectory(Path.GetDirectoryName(policyPath)!);
-            File.WriteAllText(policyPath, json);
+
+            // Atomic write: serialize to a sibling .tmp first, then replace.
+            // The engine hot-reloads exec-policy.json on mtime/length change;
+            // a non-atomic write could expose a partial file to a concurrent
+            // Evaluate() and the engine would skip the (broken) update.
+            tmpPath = $"{policyPath}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(tmpPath, json);
+            MoveFileWithRetry(tmpPath, policyPath);
+            tmpPath = null;
+
+            if (!showSavedHint)
+                return;
 
             // Brief inline "Saved" pill in the rules-card header. Reuses a single
             // DispatcherQueueTimer instance so rapid saves don't orphan timers.
@@ -720,6 +737,43 @@ public sealed partial class PermissionsPage : Page
             _execSavedHintTimer.Stop();
             _execSavedHintTimer.Start();
         }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        catch
+        {
+            TryDeleteTempFile(tmpPath);
+        }
+    }
+
+    private static void MoveFileWithRetry(string sourcePath, string destinationPath)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (IsTransientReplaceException(ex) && attempt < 20)
+            {
+                Thread.Sleep(5);
+            }
+        }
+    }
+
+    private static bool IsTransientReplaceException(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException;
+
+    private static void TryDeleteTempFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        // slopwatch-ignore: SW003 Cleanup is best-effort after save failure.
         catch { }
     }
 
@@ -732,6 +786,48 @@ public sealed partial class PermissionsPage : Page
         }
         return null;
     }
+
+    internal static string NormalizeExecPolicyAction(string? action) =>
+        ExecPolicyRuleList.NormalizeAction(action);
+
+    private static string NormalizeExecPolicyAction(JsonElement action) =>
+        ExecPolicyRuleList.NormalizeAction(action);
+
+    private static string[]? TryGetStringArrayCaseInsensitive(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!element.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var values = new List<string>();
+            foreach (var item in prop.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                    values.Add(item.GetString() ?? "");
+            }
+
+            return values.ToArray();
+        }
+
+        return null;
+    }
+
+    private static bool? TryGetBoolCaseInsensitive(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!element.TryGetProperty(name, out var prop))
+                continue;
+            if (prop.ValueKind == JsonValueKind.True) return true;
+            if (prop.ValueKind == JsonValueKind.False) return false;
+        }
+
+        return null;
+    }
+
+    private static string DisplayExecPolicyAction(string action) =>
+        string.Equals(action, "prompt", StringComparison.OrdinalIgnoreCase) ? "ask" : action;
 
     // ── Node Allowlist ───────────────────────────────────────────────
 
@@ -807,15 +903,10 @@ public sealed partial class PermissionsPage : Page
     private void OnOpenPrivacySettings(object sender, RoutedEventArgs e)
     {
         try { Process.Start(new ProcessStartInfo("ms-settings:privacy-webcam") { UseShellExecute = true }); }
+        // slopwatch-ignore: SW003 Diagnostic logging fallback is best-effort and logging failure must not cascade.
         catch { }
     }
 
     // ── Types ────────────────────────────────────────────────────────
 
-    private class ExecPolicyRule
-    {
-        public string Pattern { get; set; } = "";
-        public string Action { get; set; } = "deny";
-        public int Index { get; set; }
-    }
 }
