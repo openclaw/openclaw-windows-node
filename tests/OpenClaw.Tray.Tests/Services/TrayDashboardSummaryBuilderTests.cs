@@ -17,7 +17,6 @@ public sealed class TrayDashboardSummaryBuilderTests
         SessionInfo[]? sessions = null,
         GatewayUsageInfo? usage = null,
         DateTime? lastUpdated = null,
-        SessionPreviewInfo? recentPreview = null,
         PairingListInfo? nodePairList = null,
         DevicePairingListInfo? devicePairList = null) => new()
     {
@@ -41,7 +40,6 @@ public sealed class TrayDashboardSummaryBuilderTests
         SetupMenuLabel = "Reconfigure...",
         ShowSetupMenuEntry = true,
         LastUpdated = lastUpdated,
-        RecentPreview = recentPreview,
     };
 
     private static TrayDashboardSummary Build(TrayMenuSnapshot snapshot) =>
@@ -329,55 +327,6 @@ public sealed class TrayDashboardSummaryBuilderTests
         Assert.Equal(10, summary.ActiveSession!.ContextPercent);
     }
 
-    [Fact]
-    public void ActiveSession_IncludesPreviewTailWithRole()
-    {
-        var preview = new SessionPreviewInfo
-        {
-            Key = "main",
-            Items =
-            {
-                new SessionPreviewItemInfo { Role = "user", Text = "first" },
-                new SessionPreviewItemInfo { Role = "assistant", Text = "the latest reply" },
-            },
-        };
-        var sessions = new[] { new SessionInfo { Key = "main", IsMain = true, DisplayName = "Main" } };
-
-        var summary = Build(Base(sessions: sessions, recentPreview: preview));
-
-        Assert.Equal("assistant: the latest reply", summary.ActiveSession!.PreviewText);
-    }
-
-    [Fact]
-    public void ActiveSession_PreviewNullWhenNoPreviewItems()
-    {
-        var sessions = new[] { new SessionInfo { Key = "main", IsMain = true, DisplayName = "Main" } };
-
-        var summary = Build(Base(sessions: sessions, recentPreview: null));
-
-        Assert.Null(summary.ActiveSession!.PreviewText);
-    }
-
-    [Fact]
-    public void ActiveSession_PreviewCollapsesNewlinesAndTruncates()
-    {
-        var longText = new string('x', 200);
-        var preview = new SessionPreviewInfo
-        {
-            Key = "main",
-            Items = { new SessionPreviewItemInfo { Role = "assistant", Text = "line1\nline2\r" + longText } },
-        };
-        var sessions = new[] { new SessionInfo { Key = "main", IsMain = true, DisplayName = "Main" } };
-
-        var summary = Build(Base(sessions: sessions, recentPreview: preview));
-
-        var text = summary.ActiveSession!.PreviewText!;
-        Assert.DoesNotContain('\n', text);
-        Assert.DoesNotContain('\r', text);
-        Assert.True(text.Length <= 80);
-        Assert.EndsWith("…", text);
-    }
-
     // ── Edge cases: severity ordering, usage fallbacks, formatting ──
 
     [Fact]
@@ -487,51 +436,6 @@ public sealed class TrayDashboardSummaryBuilderTests
         var summary = Build(Base(sessions: sessions));
 
         Assert.Equal("Main", summary.ActiveSession!.Label);
-    }
-
-    [Fact]
-    public void Preview_IgnoredWhenKeyDoesNotMatchActiveSession()
-    {
-        var preview = new SessionPreviewInfo
-        {
-            Key = "other-session",
-            Items = { new SessionPreviewItemInfo { Role = "assistant", Text = "stale" } },
-        };
-        var sessions = new[] { new SessionInfo { Key = "main", IsMain = true, DisplayName = "Main" } };
-
-        var summary = Build(Base(sessions: sessions, recentPreview: preview));
-
-        Assert.Null(summary.ActiveSession!.PreviewText);
-    }
-
-    [Fact]
-    public void Preview_UsedWhenKeyEmptyOnEitherSide()
-    {
-        var preview = new SessionPreviewInfo
-        {
-            Key = "",
-            Items = { new SessionPreviewItemInfo { Role = "assistant", Text = "reply" } },
-        };
-        var sessions = new[] { new SessionInfo { Key = "main", IsMain = true, DisplayName = "Main" } };
-
-        var summary = Build(Base(sessions: sessions, recentPreview: preview));
-
-        Assert.Equal("assistant: reply", summary.ActiveSession!.PreviewText);
-    }
-
-    [Fact]
-    public void Preview_WhitespaceRole_OmitsRolePrefix()
-    {
-        var preview = new SessionPreviewInfo
-        {
-            Key = "main",
-            Items = { new SessionPreviewItemInfo { Role = "   ", Text = "bare text" } },
-        };
-        var sessions = new[] { new SessionInfo { Key = "main", IsMain = true, DisplayName = "Main" } };
-
-        var summary = Build(Base(sessions: sessions, recentPreview: preview));
-
-        Assert.Equal("bare text", summary.ActiveSession!.PreviewText);
     }
 
     [Fact]

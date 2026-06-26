@@ -18,8 +18,7 @@ internal sealed record TrayDashboardActiveSession(
     string Label,
     string Title,
     string? Detail,
-    int ContextPercent,
-    string? PreviewText);
+    int ContextPercent);
 
 /// <summary>
 /// Pure, render-free computation for the tray dashboard glance.
@@ -224,31 +223,7 @@ internal sealed class TrayDashboardSummaryBuilder
             Label: label,
             Title: title,
             Detail: detail,
-            ContextPercent: pct,
-            PreviewText: BuildPreviewText(session.Key));
-    }
-
-    private string? BuildPreviewText(string activeSessionKey)
-    {
-        var preview = _snapshot.RecentPreview;
-        if (preview?.Items == null || preview.Items.Count == 0)
-            return null;
-
-        if (!string.IsNullOrEmpty(activeSessionKey)
-            && !string.IsNullOrEmpty(preview.Key)
-            && !string.Equals(preview.Key, activeSessionKey, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var last = preview.Items[^1];
-        var text = last.Text?.Replace('\n', ' ').Replace('\r', ' ').Trim();
-        if (string.IsNullOrEmpty(text))
-            return null;
-
-        var role = string.IsNullOrWhiteSpace(last.Role) ? null : last.Role.Trim();
-        var line = role != null ? $"{role}: {text}" : text;
-        return Truncate(line, 80);
+            ContextPercent: pct);
     }
 
     private static string FormatTokenCount(long n)
@@ -266,9 +241,4 @@ internal sealed class TrayDashboardSummaryBuilder
         return $"{(int)age.TotalDays}d ago";
     }
 
-    private static string Truncate(string value, int max)
-    {
-        if (value.Length <= max) return value;
-        return value[..(max - 1)].TrimEnd() + "…";
-    }
 }

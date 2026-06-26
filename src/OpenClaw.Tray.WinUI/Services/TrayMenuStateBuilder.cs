@@ -484,21 +484,6 @@ internal sealed class TrayMenuStateBuilder
                 });
             }
 
-            if (!string.IsNullOrEmpty(active.PreviewText))
-            {
-                outer.Children.Add(new TextBlock
-                {
-                    Text = active.PreviewText,
-                    Style = captionStyle,
-                    FontSize = 11,
-                    Foreground = secondaryText,
-                    TextWrapping = TextWrapping.Wrap,
-                    MaxLines = 2,
-                    MaxWidth = 280,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    IsTextSelectionEnabled = false
-                });
-            }
         }
 
         AutomationProperties.SetName(outer, BuildGlanceAutomationName(summary));

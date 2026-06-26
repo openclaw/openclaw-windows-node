@@ -37,5 +37,4 @@ internal sealed record TrayMenuSnapshot
 
     // ── Dashboard glance ──
     internal DateTime? LastUpdated { get; init; }
-    internal SessionPreviewInfo? RecentPreview { get; init; }
 }
