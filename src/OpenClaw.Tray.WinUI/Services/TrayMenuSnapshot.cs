@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using OpenClawTray.Services;
+using System;
 
 namespace OpenClawTray.Services;
 
@@ -33,4 +34,8 @@ internal sealed record TrayMenuSnapshot
     internal required SettingsManager? Settings { get; init; }
     internal required string SetupMenuLabel { get; init; }
     internal required bool ShowSetupMenuEntry { get; init; }
+
+    // ── Dashboard glance ──
+    internal DateTime? LastUpdated { get; init; }
+    internal SessionPreviewInfo? RecentPreview { get; init; }
 }

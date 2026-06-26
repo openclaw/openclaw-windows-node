@@ -987,6 +987,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             case "connection": ShowHub("connection"); break;
             case "permissions": ShowHub("permissions"); break;
             case "dashboard": OpenDashboard(); break;
+            case "diagnostics": ShowHub("debug"); break;
             case "canvas": ShowCanvasWindow(); break;
             case "openchat": ShowHub("chat"); break;
             case "voice": ShowHub("voice"); break; // was: ShowVoiceOverlay()
@@ -1318,7 +1319,27 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Settings = _settings,
             SetupMenuLabel = setupMenuLabel,
             ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
+            LastUpdated = _appState?.LastCheckTime,
+            RecentPreview = CaptureActiveSessionPreview(),
         };
+    }
+
+    /// <summary>
+    /// Resolves the conversation preview for the dashboard glance's active
+    /// session. Uses the same selector as the summary builder so the title and
+    /// preview stay in sync.
+    /// </summary>
+    private SessionPreviewInfo? CaptureActiveSessionPreview()
+    {
+        var sessions = _appState?.Sessions;
+        if (sessions == null || sessions.Length == 0)
+            return null;
+
+        var session = TrayDashboardSummaryBuilder.SelectActiveSession(sessions);
+        if (session == null || string.IsNullOrEmpty(session.Key))
+            return null;
+
+        return _appState?.GetSessionPreview(session.Key);
     }
 
 
