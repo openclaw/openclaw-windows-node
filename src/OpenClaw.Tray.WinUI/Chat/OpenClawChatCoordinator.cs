@@ -138,7 +138,9 @@ public sealed class OpenClawChatCoordinator : IDisposable
             var speakArgs = new TtsSpeakArgs
             {
                 Text = speakText,
-                Provider = _settings.TtsProvider ?? TtsCapability.PiperProvider,
+                // Leave provider unset so TextToSpeechService treats this as
+                // configured/default playback and can fall back when needed.
+                Provider = null,
                 Interrupt = true
             };
 
