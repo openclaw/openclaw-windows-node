@@ -321,6 +321,29 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SetupWelcomePage_RunsExistingConfigDetectionOffUiThread()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
+        var method = ExtractMethod(source, "StartButtonClickAsync");
+
+        Assert.Contains("StartButton.IsEnabled = false", method);
+        Assert.Contains("CheckingButtonText", method);
+        Assert.Contains("var setupWindow = SetupWindow.Active", method);
+        Assert.Contains("await Task.Run(() => ExistingConfigDetector.Detect", method);
+        Assert.Contains("setupWindow is null or { IsClosed: true } || xamlRoot is null", method);
+        Assert.Contains("setupWindow is { IsClosed: false }", method);
+        Assert.Contains("StartButton.IsEnabled = true", method);
+        AssertInOrder(
+            method,
+            "StartButton.IsEnabled = false",
+            "await Task.Run(() => ExistingConfigDetector.Detect",
+            "setupWindow is null or { IsClosed: true } || xamlRoot is null",
+            "dialog.ShowAsync()",
+            "setupWindow.NavigateToCapabilities()");
+    }
+
+    [Fact]
     public void TrayIcon_UpdateDelegatesToCoordinator()
     {
         var source = ReadAppSources();

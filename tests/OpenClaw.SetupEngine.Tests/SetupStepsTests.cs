@@ -708,11 +708,34 @@ public class SetupStepsTests : IDisposable
             + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
             + "For information please visit https://aka.ms/enablevirtualization\r\n");
 
-        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(status, out var message));
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(status, Architecture.X64, out var message));
         Assert.Contains("Virtual Machine Platform", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("virtualization", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("wsl --install --no-distribution", message);
+        Assert.Contains("VT-x", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("BIOS/UEFI", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("reboot", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WslInstallSupport_TryGetEnvironmentIssue_UsesArm64WordingForUnsupportedMachineConfiguration()
+    {
+        var status = NulSeparated("Default Version: 2\r\n\r\n"
+            + "WSL2 is not supported with your current machine configuration.\r\n\r\n"
+            + "Please enable the \"Virtual Machine Platform\" optional component and ensure virtualization is enabled in the BIOS.\r\n\r\n"
+            + "Enable \"Virtual Machine Platform\" by running: wsl.exe --install --no-distribution\r\n\r\n"
+            + "For information please visit https://aka.ms/enablevirtualization\r\n");
+
+        Assert.True(WslInstallSupport.TryGetEnvironmentIssue(status, Architecture.Arm64, out var message));
+        Assert.Contains("Virtual Machine Platform", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ARM64", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Surface", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("device-management policy", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wsl --install --no-distribution", message);
+        Assert.DoesNotContain("BIOS", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("VT-x", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AMD-V", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SVM", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
