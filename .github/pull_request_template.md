@@ -5,6 +5,7 @@
 - Problem:
 - Why it matters:
 - What changed:
+- User impact:
 - What did NOT change (scope boundary):
 
 ## Change Type (select all)
@@ -47,16 +48,19 @@ In fresh worktrees, make sure tests actually ran and report non-zero test counts
 
 ## Real behavior proof
 
-<!-- Paste at least one after-change proof item that demonstrates real behavior.
+<!-- Paste at least one current-head after-change proof item that directly demonstrates the changed behavior.
 Use whatever proof best matches the change: copied live output, screenshot/video,
 developer-provided screenshot, copied UI diagnostics, winnode output, raw MCP
 JSON-RPC tools/list + tools/call, gateway invoke output, redacted runtime log,
-or linked artifact. -->
+or linked artifact. For UI changes, prefer screenshots/video of the active
+changed state, not only adjacent or empty UI. -->
 
 - Environment tested:
+- PR head / commit tested:
 - Exact steps or command run:
 - Evidence after fix:
 - Observed result:
+- Screenshot/artifact links verified? (`Yes/No/N/A`)
 - Not verified / blocked:
 
 <!-- Optional: add rubber-duck review notes in addition to runtime proof above. -->

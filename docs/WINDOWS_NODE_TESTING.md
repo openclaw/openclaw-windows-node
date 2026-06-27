@@ -16,29 +16,13 @@ The Windows Node feature allows the tray app to receive commands from the OpenCl
 
 ### Agent-driven UI and MCP validation
 
-For any change that touches tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, local MCP, gateway pairing/connection, permissions, or diagnostics, agents should use the repo-local validation skill at `.agents/skills/openclaw-proof-validation/SKILL.md`.
+For changes touching tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, local MCP, gateway pairing/connection, permissions, or diagnostics, use `.agents/skills/openclaw-proof-validation/SKILL.md`.
 
-The expected flow is:
-
-1. Run the required build and test suites from `AGENTS.md`.
-2. After implementation and automated/focused tests are complete, run a larger closeout proof pass before publishing/updating a PR. Avoid repeated computer-use during normal development because it blocks the user's desktop; mid-development rubber-duck, computer-use, and MCP validation are fine when the developer explicitly wants extra validation or the task is blocked without it.
-3. Launch the tray from the current worktree, preferably with isolated settings, using `.\run-app-local.ps1 -Isolated`.
-4. Use computer-use / desktop automation to click through the changed UI path and verify visible state, not just code paths.
-5. If the change affects MCP or Windows node capabilities, enable **Local MCP Server** in Settings and validate with `winnode --list-tools` plus `winnode --command <changed-command> --params '<json-object>'`.
-   Raw MCP server JSON-RPC output is also valid proof, especially for HTTP/MCP protocol changes: paste `tools/list` plus `tools/call` responses from the local server.
-6. If the changed behavior is gateway-mediated, also validate the gateway path when available. If a gateway, permission prompt, or hardware dependency blocks the smoke, record the exact blocker.
-7. Run rubber-duck review before PR publication for non-trivial UI/MCP/node-command/setup/security/diagnostics work, or mid-development when extra design/testing validation is requested.
-8. When publishing a PR, include copied live output under `## Real behavior proof`. ClawSweeper gives stronger proof credit to concrete after-change output, visible UI/media evidence, and real runtime path proof than to prose-only claims.
+Short version: run required tests, collect a closeout proof pass with `.\run-app-local.ps1 -Isolated` when UI is involved, use computer-use or developer-provided screenshots/output for the active changed UI state, prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and include current-head concrete output under `## Real behavior proof`. Mid-development computer-use/MCP/rubber-duck validation is fine when explicitly requested or needed to unblock work.
 
 ### New command MCP contract
 
-Every new Windows node call must also be exposed through the local MCP server and `winnode` before it is considered complete:
-
-1. Register the capability command in the tray node capability registry.
-2. Update `McpToolBridge.CommandDescriptions`.
-3. Update `src/OpenClaw.WinNode.Cli/skill.md`.
-4. Add/update capability, MCP, `winnode`, and UI/gateway tests as applicable.
-5. Prove the command with `winnode --list-tools` and `winnode --command ...`, or raw MCP `tools/list` plus `tools/call` server output, in PR proof.
+Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `src/OpenClaw.WinNode.Cli/skill.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
 
 ### 1. Settings Toggle
 - Verify the toggle appears in Settings under "ADVANCED"
