@@ -3947,10 +3947,10 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Connection state, gateway URL, runtime, tunnel.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Header" xml:space="preserve">
-    <value>Copy full debug bundle</value>
+    <value>Copier le résumé de diagnostic</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Description" xml:space="preserve">
-    <value>Everything the preview dialog produces, no preview.</value>
+    <value>Résumés générés uniquement ; exclut les extraits de journaux. Utilisez Créer un lot de diagnostics pour examiner les journaux avant de les partager.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyBrowserSetup.Header" xml:space="preserve">
     <value>Copy browser setup guidance</value>
@@ -4972,14 +4972,17 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
     <value>Examiner avant de partager</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
-    <value>Les jetons sensibles, les arguments de commande, les charges utiles et les enregistrements sont exclus par le générateur de lot.</value>
-  </data>
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Déconnecté</value>
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Avancé</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
+    <value>Les extraits de journaux sont assainis et tronqués. Les jetons sensibles, les charges utiles, les enregistrements et les fichiers de paramètres bruts sont exclus. Vérifiez avant de partager.</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
+    <value>Examiner avant de partager</value>
   </data>
   <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
     <value>En direct</value>

@@ -1,12 +1,11 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services;
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Windows.Storage;
-using Windows.Storage.Pickers;
-using WinRT.Interop;
 
 namespace OpenClawTray.Windows;
 
@@ -34,8 +33,8 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
     /// when "Save to file" is clicked, so we resolve the host HWND
     /// just-in-time (Hanselman v2 #4 + #7). If the host window has
     /// closed between Configure and Save, the provider returns
-    /// IntPtr.Zero and the picker silently no-ops instead of crashing
-    /// on a stale handle.
+    /// IntPtr.Zero and the picker reports a failure instead of crashing
+    /// on a stale handle or writing diagnostics somewhere unexpected.
     /// </summary>
     public void Configure(string bundleText, string headerCaption, string suggestedFileName, Func<IntPtr> hwndProvider)
     {
@@ -44,8 +43,16 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
             ? "openclaw-diagnostics.txt"
             : suggestedFileName;
         _hwndProvider = hwndProvider;
-        BundleText.Text = _bundleText;
         BundleHeaderText.Text = headerCaption ?? string.Empty;
+        SetBundleText(_bundleText, isReady: true);
+    }
+
+    public void SetBundleText(string bundleText, bool isReady)
+    {
+        _bundleText = bundleText ?? string.Empty;
+        BundleText.Text = _bundleText;
+        IsPrimaryButtonEnabled = isReady;
+        IsSecondaryButtonEnabled = isReady;
     }
 
     private void OnCopyClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
@@ -69,40 +76,24 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
     {
         // Keep the dialog open after Save so the user can also Copy
         // (or save again to a different location). Mirrors OnCopyClick.
-        // Previously this method used GetDeferral + ContinueWith but
-        // because we unconditionally cancel the close, the deferral was
-        // dead code (Hanselman review finding #6).
+        // Use a deferral so picker/write failures can update the button
+        // instead of vanishing in a fire-and-forget task.
         args.Cancel = true;
-        _ = SaveToFileAsync();
-    }
-
-    private async Task SaveToFileAsync()
-    {
-        try
-        {
-            // Resolve HWND just-in-time so a closed/recreated host
-            // window never lands a stale handle in
-            // InitializeWithWindow.Initialize (Hanselman v2 #4).
-            var hwnd = _hwndProvider?.Invoke() ?? IntPtr.Zero;
-            if (hwnd == IntPtr.Zero)
+        var deferral = args.GetDeferral();
+        AsyncEventHandlerGuard.Run(
+            async () =>
             {
-                System.Diagnostics.Debug.WriteLine("DiagnosticsBundleDialog save: no host hwnd; skipping picker.");
-                return;
-            }
+                try
+                {
+                    SecondaryButtonText = "Saving...";
+                    var result = await SaveToFileAsync();
+                    SecondaryButtonText = result.ButtonText;
+                }
+                finally
+                {
+                    deferral.Complete();
+                }
 
-            var picker = new FileSavePicker
-            {
-                SuggestedStartLocation = PickerLocationId.Desktop,
-                SuggestedFileName = Path.GetFileNameWithoutExtension(_suggestedFileName),
-            };
-            picker.FileTypeChoices.Add("Text file", new[] { ".txt" });
-            InitializeWithWindow.Initialize(picker, hwnd);
-
-            var file = await picker.PickSaveFileAsync();
-            if (file != null)
-            {
-                await FileIO.WriteTextAsync(file, _bundleText);
-                SecondaryButtonText = "Saved";
                 var timer = DispatcherQueue.CreateTimer();
                 timer.Interval = TimeSpan.FromSeconds(2);
                 timer.Tick += (_, _) =>
@@ -111,11 +102,43 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
                     timer.Stop();
                 };
                 timer.Start();
+            },
+            new OpenClawTray.AppLogger(),
+            nameof(OnSaveClick));
+    }
+
+    private async Task<SaveResult> SaveToFileAsync()
+    {
+        try
+        {
+            // Resolve HWND just-in-time so a closed/recreated host
+            // window never lands a stale handle in the native save dialog.
+            var hwnd = _hwndProvider?.Invoke() ?? IntPtr.Zero;
+            if (hwnd == IntPtr.Zero)
+            {
+                Logger.Warn("DiagnosticsBundleDialog save skipped: no host hwnd available for save picker.");
+                return new SaveResult(null, "Save failed");
             }
+
+            var selectedPath = await Win32FilePickerHelper.PickSaveFileAsync(
+                hwnd,
+                title: "Save diagnostics bundle",
+                suggestedFileName: Path.GetFileName(_suggestedFileName),
+                defaultExtension: "txt");
+            if (!string.IsNullOrWhiteSpace(selectedPath))
+            {
+                await File.WriteAllTextAsync(selectedPath, _bundleText);
+                return new SaveResult(selectedPath, "Saved");
+            }
+
+            return new SaveResult(null, "Save cancelled");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"DiagnosticsBundleDialog save failed: {ex.Message}");
+            Logger.Error($"DiagnosticsBundleDialog save failed: {ex}");
+            return new SaveResult(null, "Save failed");
         }
     }
+
+    private sealed record SaveResult(string? Path, string ButtonText);
 }

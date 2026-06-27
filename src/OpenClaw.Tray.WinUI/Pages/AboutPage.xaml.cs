@@ -143,7 +143,7 @@ public sealed partial class AboutPage : Page
                 + $"Gateway: {CurrentApp.Settings?.GetEffectiveGatewayUrl() ?? "n/a"}\n";
         }
 
-        ClipboardHelper.CopyText(context);
+        ClipboardHelper.CopyText(DiagnosticsExportSanitizer.SanitizeTextBlock(context));
         await Task.CompletedTask;
     }
 

@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
@@ -67,6 +68,12 @@ internal static class LocalizationHelper
 public sealed class OpenClawChatDataProvider : IChatDataProvider
 {
     private const long ResetTimestampToleranceMs = 1000;
+    private static readonly JsonSerializerOptions CacheJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     /// <summary>
     /// Process-wide cache mapping an attachment's filename to its raw image
     /// bytes. Populated by <see cref="SendMessageAsync"/> for image
@@ -86,6 +93,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly string _attachmentMetaCacheFilePath;
     private System.Threading.Timer? _toolMetaSaveTimer; // debounce cache writes
     private long _toolMetaSaveVersion;
+    private bool _toolMetaCacheDirty;
     private readonly Dictionary<string, ChatTimelineState> _timelines = new();
     private readonly Dictionary<string, LocalInlineApproval> _localInlineApprovals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _activeRunIds = new();   // sessionKey → runId
@@ -3301,7 +3309,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         saveAttachmentMeta = _attachmentMetaCache.Remove(threadId) || saveAttachmentMeta;
 
         if (saveToolMeta)
+        {
+            _toolMetaCacheDirty = true;
             _toolMetaSaveVersion++;
+        }
 
         if (_activeRunIds.TryGetValue(threadId, out var activeRunId) && !string.IsNullOrEmpty(activeRunId))
             AddResetIgnoredRunIdLocked(threadId, activeRunId);
@@ -4232,6 +4243,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 return new();
             var json = File.ReadAllText(cacheFilePath);
             var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<CachedToolMeta>>>(json);
+            if (dict is not null)
+            {
+                foreach (var entry in dict.Values.SelectMany(entries => entries))
+                {
+                    entry.ToolName = NormalizeCachedDisplayText(entry.ToolName);
+                    entry.Label = NormalizeCachedDisplayText(entry.Label);
+                }
+            }
             return dict ?? new();
         }
         catch (Exception ex)
@@ -4249,6 +4268,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 return new();
             var json = File.ReadAllText(cacheFilePath);
             var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<CachedAttachmentMeta>>>(json);
+            if (dict is not null)
+            {
+                foreach (var entry in dict.Values.SelectMany(entries => entries))
+                {
+                    entry.Text = NormalizeCachedDisplayText(entry.Text);
+                    foreach (var attachment in entry.Attachments)
+                        attachment.FileName = NormalizeCachedDisplayText(attachment.FileName);
+                }
+            }
             return dict ?? new();
         }
         catch (Exception ex)
@@ -4270,10 +4298,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     kv => kv.Value.Select(e => new CachedAttachmentMeta
                     {
                         Ts = e.Ts,
-                        Text = e.Text,
+                        Text = NormalizeCachedDisplayText(e.Text),
                         Attachments = e.Attachments.Select(a => new CachedAttachmentItem
                         {
-                            FileName = a.FileName,
+                            FileName = NormalizeCachedDisplayText(a.FileName),
                             IsImage = a.IsImage
                         }).ToList()
                     }).ToList(),
@@ -4290,8 +4318,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 foreach (var k in toRemove) snapshot.Remove(k);
             }
 
-            var json = System.Text.Json.JsonSerializer.Serialize(snapshot,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var json = System.Text.Json.JsonSerializer.Serialize(snapshot, CacheJsonOptions);
 
             lock (_attachmentMetaSaveGate)
             {
@@ -4339,7 +4366,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             .Where(a => !string.IsNullOrWhiteSpace(a.FileName))
             .Select(a => new CachedAttachmentItem
             {
-                FileName = a.FileName,
+                FileName = NormalizeCachedDisplayText(a.FileName),
                 IsImage = string.Equals(a.Type, "image", StringComparison.OrdinalIgnoreCase)
             })
             .ToList();
@@ -4367,7 +4394,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             list.Add(new CachedAttachmentMeta
             {
                 Ts = tsMs,
-                Text = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(text)),
+                Text = NormalizeCachedDisplayText(TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(text))),
                 Attachments = items
             });
 
@@ -4400,10 +4427,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         entries.Select(e => new CachedAttachmentMeta
         {
             Ts = e.Ts,
-            Text = e.Text,
+            Text = NormalizeCachedDisplayText(e.Text),
             Attachments = e.Attachments.Select(a => new CachedAttachmentItem
             {
-                FileName = a.FileName,
+                FileName = NormalizeCachedDisplayText(a.FileName),
                 IsImage = a.IsImage
             }).ToList()
         }).ToList();
@@ -4499,14 +4526,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             {
                 if (expectedVersion is long version && (version != _toolMetaSaveVersion || _disposed))
                     return;
+                if (!_toolMetaCacheDirty)
+                    return;
 
                 snapshot = _toolMetaCache.ToDictionary(
                     kv => kv.Key,
                     kv => kv.Value.Select(e => new CachedToolMeta
                     {
                         Ts = e.Ts,
-                        ToolName = e.ToolName,
-                        Label = e.Label
+                        ToolName = NormalizeCachedDisplayText(e.ToolName),
+                        Label = NormalizeCachedDisplayText(e.Label)
                     }).ToList(),
                     StringComparer.Ordinal);
             }
@@ -4522,8 +4551,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 foreach (var k in toRemove) snapshot.Remove(k);
             }
 
-            var json = System.Text.Json.JsonSerializer.Serialize(snapshot,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var json = System.Text.Json.JsonSerializer.Serialize(snapshot, CacheJsonOptions);
 
             lock (_toolMetaSaveGate)
             {
@@ -4545,6 +4573,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 {
                     File.WriteAllText(tempPath, json);
                     File.Move(tempPath, _toolMetaCacheFilePath, overwrite: true);
+                    MarkToolMetaCacheSaved(expectedVersion);
                 }
                 finally
                 {
@@ -4591,7 +4620,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (list.Count > 0 && list[^1].Ts == tsMs && list[^1].ToolName == toolName)
                 return;
 
-            list.Add(new CachedToolMeta { Ts = tsMs, ToolName = toolName, Label = label });
+            list.Add(new CachedToolMeta
+            {
+                Ts = tsMs,
+                ToolName = NormalizeCachedDisplayText(toolName),
+                Label = NormalizeCachedDisplayText(label)
+            });
 
             // Cap per-session entries
             if (list.Count > MaxToolEntriesPerSession)
@@ -4599,6 +4633,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             // Debounce save — reset the timer on each cache addition so we only
             // write once after 500ms of quiescence, avoiding concurrent file writes.
+            _toolMetaCacheDirty = true;
             saveVersion = ++_toolMetaSaveVersion;
             timerToDispose = _toolMetaSaveTimer;
             _toolMetaSaveTimer = new System.Threading.Timer(_ => SaveToolMetaCache(saveVersion), null, 500, Timeout.Infinite);
@@ -4654,7 +4689,30 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (historyTsMs > 0 && candidate.Ts > 0 && candidate.Ts > historyTsMs + 300_000)
             return null; // cached entry is >5 min after this history entry — not a match
 
-        return cache.Dequeue();
+        var match = cache.Dequeue();
+        match.ToolName = NormalizeCachedDisplayText(match.ToolName);
+        match.Label = NormalizeCachedDisplayText(match.Label);
+        return match;
+    }
+
+    private static string NormalizeCachedDisplayText(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        return value
+            .Replace("\r\n", " ", StringComparison.Ordinal)
+            .Replace('\r', ' ')
+            .Replace('\n', ' ');
+    }
+
+    private void MarkToolMetaCacheSaved(long? savedVersion)
+    {
+        lock (_gate)
+        {
+            if (savedVersion is null || savedVersion == _toolMetaSaveVersion)
+                _toolMetaCacheDirty = false;
+        }
     }
 
     /// <summary>

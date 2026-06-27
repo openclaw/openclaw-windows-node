@@ -3995,10 +3995,10 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Connection state, gateway URL, runtime, tunnel.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Header" xml:space="preserve">
-    <value>Copy full debug bundle</value>
+    <value>Copy summary debug bundle</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyDebugBundle.Description" xml:space="preserve">
-    <value>Everything the preview dialog produces, no preview.</value>
+    <value>Generated summaries only; excludes log tails. Use Create diagnostics bundle to review logs before sharing.</value>
   </data>
   <data name="DiagnosticsPage_Card_CopyBrowserSetup.Header" xml:space="preserve">
     <value>Copy browser setup guidance</value>
@@ -5020,14 +5020,17 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Title" xml:space="preserve">
     <value>Review before sharing</value>
   </data>
-  <data name="DiagnosticsBundleDialog_ReviewBeforeSharing.Message" xml:space="preserve">
-    <value>Sensitive tokens, command arguments, payloads, and recordings are excluded by the bundle builder.</value>
-  </data>
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Disconnected</value>
   </data>
   <data name="HubWindow_Advanced.Content" xml:space="preserve">
     <value>Advanced</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
+    <value>Log tails are sanitized and truncated. Sensitive tokens, payloads, recordings, and raw settings files are excluded. Review before sharing.</value>
+  </data>
+  <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
+    <value>Review before sharing</value>
   </data>
   <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
     <value>Live</value>

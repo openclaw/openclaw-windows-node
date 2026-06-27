@@ -545,7 +545,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
 
     private void OnCopyTimeline(object sender, RoutedEventArgs e)
     {
-        ClipboardHelper.CopyText(_plainBuffer.ToString());
+        ClipboardHelper.CopyText(DiagnosticsExportSanitizer.SanitizeTextBlock(_plainBuffer.ToString()));
     }
 
     private void OnClearTimeline(object sender, RoutedEventArgs e)

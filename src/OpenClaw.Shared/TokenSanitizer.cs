@@ -10,7 +10,58 @@ namespace OpenClaw.Shared;
 
 public static class TokenSanitizer
 {
-    private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(500);
+
+    private static readonly string[] SensitiveKeyFragments =
+    [
+        "authorization",
+        "api-key",
+        "apikey",
+        "bearer",
+        "bot-token",
+        "bottoken",
+        "browser-password",
+        "browserpassword",
+        "client-secret",
+        "clientsecret",
+        "cookie",
+        "device-id",
+        "deviceid",
+        "dpapi",
+        "identity",
+        "jwt",
+        "nonce",
+        "node",
+        "nsec",
+        "openclawid",
+        "password",
+        "private-key",
+        "privatekey",
+        "raw-error-response",
+        "raw_error_response",
+        "relay-url",
+        "relayurl",
+        "secret",
+        "session-key",
+        "sessionkey",
+        "setup-code",
+        "setupcode",
+        "signing",
+        "token",
+        "webhook",
+        "x-api-key",
+        "xapikey"
+    ];
+
+    private static readonly string[] SensitiveHeaders =
+    [
+        "authorization",
+        "cookie",
+        "proxy-authorization",
+        "set-cookie",
+        "x-api-key",
+        "x-openclaw-token"
+    ];
 
     private static readonly Regex AuthorizationBearerPattern = new(
         @"(?i)(Authorization\s*:\s*Bearer\s+)([^\s""',;]+)",
@@ -18,7 +69,7 @@ public static class TokenSanitizer
         RegexTimeout);
 
     private static readonly Regex JsonSecretFieldPattern = new(
-        @"""(?<key>[^""]*(?:token|secret|bearer|authorization)[^""]*)""\s*:\s*""(?<value>[^""]+)""",
+        @"""(?<key>[^""]*(?:token|secret|bearer|authorization)[^""]*)""\s*:\s*""(?<value>(?:\\.|[^""\\])*)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         RegexTimeout);
 
@@ -42,8 +93,23 @@ public static class TokenSanitizer
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         RegexTimeout);
 
+    private static readonly Regex PathWindowsUserForwardSlashPattern = new(
+        @"\b[A-Za-z]:/{1,4}Users/{1,4}[^/\s]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+        RegexTimeout);
+
+    private static readonly Regex PathWslMountedWindowsUserPattern = new(
+        @"/mnt/[a-z]/Users/[^/\s]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+        RegexTimeout);
+
     private static readonly Regex PathUnixUserPattern = new(
         @"/Users/[^/\s]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly Regex PathLinuxHomeUserPattern = new(
+        @"/home/[^/\s]+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
         RegexTimeout);
 
@@ -141,14 +207,22 @@ public static class TokenSanitizer
 
         try
         {
+            sanitized = RedactPrivateKeyBlocks(sanitized);
+            sanitized = RedactSignedHandshakeLines(sanitized);
+            sanitized = RedactDpapiBlobs(sanitized);
+            sanitized = RedactAgentSessionKeys(sanitized);
+            sanitized = RedactSensitiveCommandOptions(sanitized);
+            sanitized = RedactSensitiveKeyValues(sanitized);
+            sanitized = RedactGuidTokens(sanitized);
             sanitized = RedactLocalPaths(sanitized);
             // Reconstruct the URL as scheme://<host>[:port]/<first-segment>[/…] so credential-bearing
             // userinfo, query strings, fragments, and deeper path segments are dropped. Mirrors the
             // UrlLogSanitizer contract used elsewhere for disk-backed log safety.
             sanitized = UrlHostPattern.Replace(sanitized, RedactUrlMatch);
+            sanitized = EmailPattern.Replace(sanitized, "<email>");
+            sanitized = RedactLocalIdentityNames(sanitized);
             sanitized = IpV6Pattern.Replace(sanitized, RedactIfValidIpV6);
             sanitized = IpAddressPattern.Replace(sanitized, "<ip>");
-            sanitized = EmailPattern.Replace(sanitized, "<email>");
             sanitized = UserAtHostPattern.Replace(sanitized, "<user>@<host>");
             sanitized = HostAfterToPattern.Replace(sanitized, "<host>");
             return LeadingHostPattern.Replace(sanitized, "<host>");
@@ -157,6 +231,250 @@ public static class TokenSanitizer
         {
             return SanitizerTimeoutSentinel;
         }
+    }
+
+    private static string RedactPrivateKeyBlocks(string text)
+    {
+        const string beginMarker = "-----BEGIN ";
+        const string endPrefix = "-----END ";
+        const string endSuffix = "-----";
+
+        var builder = new System.Text.StringBuilder(text.Length);
+        var index = 0;
+        while (index < text.Length)
+        {
+            var begin = text.IndexOf(beginMarker, index, StringComparison.OrdinalIgnoreCase);
+            if (begin < 0)
+            {
+                builder.Append(text, index, text.Length - index);
+                break;
+            }
+
+            var beginLineEnd = text.IndexOf(endSuffix, begin + beginMarker.Length, StringComparison.Ordinal);
+            if (beginLineEnd < 0 ||
+                !text.AsSpan(begin, beginLineEnd + endSuffix.Length - begin).Contains("PRIVATE KEY", StringComparison.OrdinalIgnoreCase))
+            {
+                builder.Append(text, index, begin + beginMarker.Length - index);
+                index = begin + beginMarker.Length;
+                continue;
+            }
+
+            var end = text.IndexOf(endPrefix, beginLineEnd + endSuffix.Length, StringComparison.OrdinalIgnoreCase);
+            if (end < 0)
+            {
+                builder.Append(text, index, begin - index);
+                builder.Append("[REDACTED_PRIVATE_KEY]");
+                break;
+            }
+
+            var endLineEnd = text.IndexOf(endSuffix, end + endPrefix.Length, StringComparison.Ordinal);
+            builder.Append(text, index, begin - index);
+            builder.Append("[REDACTED_PRIVATE_KEY]");
+            index = endLineEnd < 0 ? text.Length : endLineEnd + endSuffix.Length;
+        }
+
+        return builder.ToString();
+    }
+
+    private static string RedactSignedHandshakeLines(string text)
+    {
+        const string marker = "signed:";
+        var builder = new System.Text.StringBuilder(text.Length);
+        var index = 0;
+        while (index < text.Length)
+        {
+            var start = text.IndexOf(marker, index, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                builder.Append(text, index, text.Length - index);
+                break;
+            }
+
+            var lineEnd = FindLineEnd(text, start);
+            builder.Append(text, index, start - index);
+            builder.Append("signed: [REDACTED_HANDSHAKE]");
+            builder.Append(text, lineEnd, FindLineBreakLength(text, lineEnd));
+            index = lineEnd + FindLineBreakLength(text, lineEnd);
+        }
+
+        return builder.ToString();
+    }
+
+    private static string RedactDpapiBlobs(string text) =>
+        RedactPrefixedToken(text, "dpapi:", "dpapi:[REDACTED]");
+
+    private static string RedactAgentSessionKeys(string text) =>
+        RedactPrefixedToken(text, "agent:", "[REDACTED_SESSION_KEY]");
+
+    private static string RedactPrefixedToken(string text, string prefix, string replacement)
+    {
+        var builder = new System.Text.StringBuilder(text.Length);
+        var index = 0;
+        while (index < text.Length)
+        {
+            var start = text.IndexOf(prefix, index, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                builder.Append(text, index, text.Length - index);
+                break;
+            }
+
+            var end = start + prefix.Length;
+            while (end < text.Length && !IsValueTerminator(text[end]) && !IsQuote(text[end]))
+                end++;
+
+            builder.Append(text, index, start - index);
+            builder.Append(replacement);
+            index = end;
+        }
+
+        return builder.ToString();
+    }
+
+    private static string RedactSensitiveCommandOptions(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length);
+        var index = 0;
+        while (index < text.Length)
+        {
+            var optionStart = text.IndexOf("--", index, StringComparison.Ordinal);
+            if (optionStart < 0)
+            {
+                builder.Append(text, index, text.Length - index);
+                break;
+            }
+
+            var optionEnd = optionStart + 2;
+            while (optionEnd < text.Length && IsKeyChar(text[optionEnd]))
+                optionEnd++;
+
+            var optionName = text[(optionStart + 2)..optionEnd];
+            if (!IsSensitiveKey(optionName))
+            {
+                builder.Append(text, index, optionEnd - index);
+                index = optionEnd;
+                continue;
+            }
+
+            var valueStart = optionEnd;
+            while (valueStart < text.Length && char.IsWhiteSpace(text[valueStart]))
+                valueStart++;
+
+            if (valueStart >= text.Length || IsValueTerminator(text[valueStart]))
+            {
+                builder.Append(text, index, valueStart - index);
+                index = valueStart;
+                continue;
+            }
+
+            var (valueContentStart, valueEnd) = FindValueSpan(text, valueStart);
+            if (IsAlreadyRedacted(text, valueContentStart, valueEnd))
+            {
+                builder.Append(text, index, valueEnd - index);
+                index = valueEnd;
+                continue;
+            }
+
+            builder.Append(text, index, valueContentStart - index);
+            builder.Append("[REDACTED]");
+            if (valueEnd < text.Length && IsQuote(text[valueEnd]))
+            {
+                builder.Append(text[valueEnd]);
+                valueEnd++;
+            }
+
+            index = valueEnd;
+        }
+
+        return builder.ToString();
+    }
+
+    private static string RedactSensitiveKeyValues(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length);
+        var index = 0;
+        while (index < text.Length)
+        {
+            var delimiter = FindNextKeyValueDelimiter(text, index);
+            if (delimiter < 0)
+            {
+                builder.Append(text, index, text.Length - index);
+                break;
+            }
+
+            var keyStart = FindKeyStart(text, delimiter - 1);
+            var keyToken = text[keyStart..delimiter];
+            var key = NormalizeKey(keyToken);
+            var isSensitiveHeader = IsSensitiveHeader(key);
+            if (!IsSensitiveKey(key) && !isSensitiveHeader)
+            {
+                builder.Append(text, index, delimiter + 1 - index);
+                index = delimiter + 1;
+                continue;
+            }
+
+            var valueStart = delimiter + 1;
+            while (valueStart < text.Length && char.IsWhiteSpace(text[valueStart]))
+                valueStart++;
+
+            if (valueStart >= text.Length)
+            {
+                builder.Append(text, index, valueStart - index);
+                index = valueStart;
+                continue;
+            }
+
+            var (valueContentStart, valueEnd) = isSensitiveHeader
+                ? (valueStart, FindLineEnd(text, valueStart))
+                : FindValueSpan(text, valueStart);
+            if (IsAlreadyRedacted(text, valueContentStart, valueEnd))
+            {
+                builder.Append(text, index, valueEnd - index);
+                index = valueEnd;
+                continue;
+            }
+
+            builder.Append(text, index, valueContentStart - index);
+            var valueIsQuoted = valueStart < text.Length && IsQuote(text[valueStart]);
+            var redactedReplacement = !isSensitiveHeader &&
+                !valueIsQuoted &&
+                text[delimiter] == ':' &&
+                IsQuotedKeyToken(keyToken)
+                    ? "\"[REDACTED]\""
+                    : "[REDACTED]";
+            builder.Append(redactedReplacement);
+            if (valueIsQuoted && valueEnd < text.Length && IsQuote(text[valueEnd]))
+            {
+                builder.Append(text[valueEnd]);
+                valueEnd++;
+            }
+
+            index = valueEnd;
+        }
+
+        return builder.ToString();
+    }
+
+    private static string RedactGuidTokens(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length);
+        var index = 0;
+        while (index < text.Length)
+        {
+            if (!IsGuidCandidateStart(text, index) ||
+                index + 36 > text.Length ||
+                !Guid.TryParse(text.AsSpan(index, 36), out _))
+            {
+                builder.Append(text[index]);
+                index++;
+                continue;
+            }
+
+            builder.Append("[REDACTED_ID]");
+            index += 36;
+        }
+
+        return builder.ToString();
     }
 
     // Validates an IPv6 regex match with System.Net.IPAddress so non-IPv6 substrings
@@ -255,8 +573,262 @@ public static class TokenSanitizer
         }
 
         redacted = PathWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
-        return PathUnixUserPattern.Replace(redacted, "$HOME");
+        redacted = PathWindowsUserForwardSlashPattern.Replace(redacted, "%USERPROFILE%");
+        redacted = PathWslMountedWindowsUserPattern.Replace(redacted, "%USERPROFILE%");
+        redacted = PathUnixUserPattern.Replace(redacted, "$HOME");
+        return PathLinuxHomeUserPattern.Replace(redacted, "$HOME");
     }
+
+    private static string RedactLocalIdentityNames(string message)
+    {
+        var redacted = message;
+        redacted = RedactKnownIdentityName(redacted, Environment.UserName, "<user>");
+        redacted = RedactKnownIdentityName(redacted, Environment.MachineName, "<host>");
+        return redacted;
+    }
+
+    private static string RedactKnownIdentityName(string text, string? value, string replacement)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 3)
+            return text;
+
+        var normalized = value.Trim();
+        if (normalized.Equals("user", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("admin", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("desktop", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return text;
+        }
+
+        return Regex.Replace(
+            text,
+            $@"(?<![A-Za-z0-9_-]){Regex.Escape(normalized)}(?![A-Za-z0-9_-])",
+            replacement,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            RegexTimeout);
+    }
+
+    private static int FindNextKeyValueDelimiter(string text, int start)
+    {
+        for (var i = start; i < text.Length; i++)
+        {
+            if (text[i] is not (':' or '='))
+                continue;
+
+            var keyEnd = i - 1;
+            while (keyEnd >= start && char.IsWhiteSpace(text[keyEnd]))
+                keyEnd--;
+
+            if (keyEnd >= start && IsKeyCharOrQuote(text[keyEnd]))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static int FindKeyStart(string text, int index)
+    {
+        while (index >= 0 && char.IsWhiteSpace(text[index]))
+            index--;
+
+        while (index >= 0 && IsKeyCharOrQuote(text[index]))
+            index--;
+        return index + 1;
+    }
+
+    private static string NormalizeKey(string key) =>
+        key.Trim().Trim('"', '\'').Replace("_", "-", StringComparison.Ordinal).ToLowerInvariant();
+
+    private static bool IsQuotedKeyToken(string key)
+    {
+        var trimmed = key.Trim();
+        return trimmed.Length >= 2 && IsQuote(trimmed[0]) && IsQuote(trimmed[^1]);
+    }
+
+    public static bool IsSensitiveMetadataKeyName(string? key) =>
+        IsSensitiveKey(key, includeBroadNodeFragment: false);
+
+    private static bool IsSensitiveKey(string? key) =>
+        IsSensitiveKey(key, includeBroadNodeFragment: true);
+
+    private static bool IsSensitiveKey(string? key, bool includeBroadNodeFragment)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
+
+        var normalized = NormalizeKey(key);
+        if (normalized == "id" || normalized.EndsWith("-id", StringComparison.Ordinal))
+            return true;
+
+        foreach (var fragment in SensitiveKeyFragments)
+        {
+            if (!includeBroadNodeFragment && fragment == "node")
+                continue;
+
+            if (normalized.Contains(fragment, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSensitiveHeader(string key)
+    {
+        var normalized = NormalizeKey(key);
+        foreach (var header in SensitiveHeaders)
+        {
+            if (string.Equals(normalized, header, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static (int ContentStart, int End) FindValueSpan(string text, int valueStart)
+    {
+        if (valueStart >= text.Length)
+            return (valueStart, valueStart);
+
+        if (text.AsSpan(valueStart).StartsWith("[REDACTED", StringComparison.Ordinal))
+        {
+            var markerEnd = text.IndexOf(']', valueStart);
+            if (markerEnd >= 0)
+            {
+                var afterMarker = markerEnd + 1;
+                if (afterMarker >= text.Length || IsValueTerminator(text[afterMarker]) || IsQuote(text[afterMarker]))
+                    return (valueStart, afterMarker);
+
+                var redactedSuffixEnd = afterMarker;
+                while (redactedSuffixEnd < text.Length && !IsValueTerminator(text[redactedSuffixEnd]))
+                    redactedSuffixEnd++;
+                return (valueStart, redactedSuffixEnd);
+            }
+        }
+
+        if (text[valueStart] is '{' or '[')
+            return (valueStart, FindCompoundValueEnd(text, valueStart));
+
+        if (IsQuote(text[valueStart]))
+        {
+            var quote = text[valueStart];
+            var endQuote = valueStart + 1;
+            while (endQuote < text.Length)
+            {
+                if (text[endQuote] == '\\' && endQuote + 1 < text.Length)
+                {
+                    endQuote += 2;
+                    continue;
+                }
+
+                if (text[endQuote] == quote)
+                    break;
+
+                endQuote++;
+            }
+            return (valueStart + 1, endQuote);
+        }
+
+        var end = valueStart;
+        while (end < text.Length && !IsValueTerminator(text[end]))
+            end++;
+        return (valueStart, end);
+    }
+
+    private static int FindCompoundValueEnd(string text, int valueStart)
+    {
+        var opener = text[valueStart];
+        var closer = opener == '{' ? '}' : ']';
+        var depth = 0;
+        var inString = false;
+        var quote = '\0';
+
+        for (var index = valueStart; index < text.Length; index++)
+        {
+            var c = text[index];
+            if (inString)
+            {
+                if (c == '\\' && index + 1 < text.Length)
+                {
+                    index++;
+                    continue;
+                }
+
+                if (c == quote)
+                    inString = false;
+                continue;
+            }
+
+            if (IsQuote(c))
+            {
+                inString = true;
+                quote = c;
+                continue;
+            }
+
+            if (c == opener)
+            {
+                depth++;
+                continue;
+            }
+
+            if (c != closer)
+                continue;
+
+            depth--;
+            if (depth == 0)
+                return index + 1;
+        }
+
+        return FindLineEnd(text, valueStart);
+    }
+
+    private static bool IsAlreadyRedacted(string text, int valueContentStart, int valueEnd)
+    {
+        while (valueContentStart < valueEnd && char.IsWhiteSpace(text[valueContentStart]))
+            valueContentStart++;
+        while (valueEnd > valueContentStart && char.IsWhiteSpace(text[valueEnd - 1]))
+            valueEnd--;
+
+        return valueContentStart < valueEnd &&
+            text.AsSpan(valueContentStart, valueEnd - valueContentStart).StartsWith("[REDACTED", StringComparison.Ordinal) &&
+            text[valueEnd - 1] == ']';
+    }
+
+    private static int FindLineEnd(string text, int start)
+    {
+        var index = start;
+        while (index < text.Length && text[index] != '\r' && text[index] != '\n')
+            index++;
+        return index;
+    }
+
+    private static int FindLineBreakLength(string text, int lineEnd)
+    {
+        if (lineEnd >= text.Length)
+            return 0;
+        if (text[lineEnd] == '\r' && lineEnd + 1 < text.Length && text[lineEnd + 1] == '\n')
+            return 2;
+        return 1;
+    }
+
+    private static bool IsGuidCandidateStart(string text, int index) =>
+        (index == 0 || !IsHexOrDash(text[index - 1])) && IsHex(text[index]);
+
+    private static bool IsHexOrDash(char c) => IsHex(c) || c == '-';
+
+    private static bool IsHex(char c) =>
+        c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+
+    private static bool IsKeyCharOrQuote(char c) => IsKeyChar(c) || IsQuote(c);
+
+    private static bool IsKeyChar(char c) =>
+        char.IsLetterOrDigit(c) || c is '_' or '-' or '.';
+
+    private static bool IsQuote(char c) => c is '"' or '\'';
+
+    private static bool IsValueTerminator(char c) =>
+        char.IsWhiteSpace(c) || c is ',' or ';' or '}' or ']';
 
     private static IEnumerable<(string Folder, string Replacement)> KnownLocalFolders()
     {

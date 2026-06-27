@@ -110,7 +110,24 @@ public class ConnectionDiagnosticsTests
         var all = _diag.GetAll();
         Assert.Equal("websocket", all[0].Category);
         Assert.Equal("Connected", all[0].Message);
-        Assert.Equal("wss://test", all[0].Detail);
+        Assert.Equal("wss://<host>/", all[0].Detail);
+    }
+
+    [Fact]
+    public void Record_SanitizesSensitiveValuesBeforeBuffering()
+    {
+        _diag.Record(
+            "websocket",
+            "Connecting with Authorization: Bearer secret-token",
+            "wss://alice:password@gateway.example.com/reset?token=secret");
+
+        var evt = Assert.Single(_diag.GetAll());
+        Assert.DoesNotContain("secret-token", evt.Message);
+        Assert.DoesNotContain("alice", evt.Detail);
+        Assert.DoesNotContain("password", evt.Detail);
+        Assert.DoesNotContain("token=secret", evt.Detail);
+        Assert.Contains("Authorization: [REDACTED]", evt.Message);
+        Assert.Contains("wss://<host>/reset", evt.Detail);
     }
 
     [Fact]

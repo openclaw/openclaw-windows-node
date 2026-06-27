@@ -12,9 +12,6 @@ namespace OpenClawTray.Helpers;
 
 internal static class CommandCenterTextHelper
 {
-    private const int RecentTrayLogTailLines = 120;
-    private const int RecentTrayLogMaxChars = 24_000;
-
     // Pre-compiled patterns used in RedactSupportPath / RedactSupportValue.
     // Compiled once at startup; reused on every diagnostic / support-text build.
     private static readonly Regex PathWindowsUserPattern = new(
@@ -24,40 +21,6 @@ internal static class CommandCenterTextHelper
 
     private static readonly Regex PathUnixUserPattern = new(
         @"/Users/[^/]+",
-        RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueUrlHostPattern = new(
-        @"\b(?<scheme>[a-z][a-z0-9+.-]*)://(?:[^@\s/]+@)?(?<host>\[[^\]\s]+\]|[^:/\s]+)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueIpPattern = new(
-        @"\b(?:\d{1,3}\.){3}\d{1,3}\b",
-        RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    // IPv6 regex is shared with TokenSanitizer to keep log sanitization and support-context
-    // redaction in lock-step. See TokenSanitizer.IpV6Pattern for the alternative-by-alternative
-    // breakdown and the rationale for the trailing negative lookahead.
-
-    private static readonly Regex ValueEmailPattern = new(
-        @"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueUserAtHostPattern = new(
-        @"\b(?<user>[A-Za-z0-9._-]+)@(?<host>[A-Za-z0-9._-]+)(?=[:\s]|$)",
-        RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueHostAfterToPattern = new(
-        @"(?<=\bto\s)[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        TimeSpan.FromMilliseconds(100));
-
-    private static readonly Regex ValueLeadingHostPattern = new(
-        @"^\s*[A-Za-z0-9._-]+(?=:\d{1,5}\b)",
         RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
 
@@ -128,7 +91,6 @@ internal static class CommandCenterTextHelper
         AppendSection(builder, "Channel Summary", BuildChannelSummaryText(state.Channels));
         AppendSection(builder, "Activity Summary", BuildActivitySummary(state.RecentActivity));
         AppendSection(builder, "Extensibility Summary", BuildExtensibilitySummary(state.Channels));
-        AppendSection(builder, "Recent Tray Log", BuildRecentTrayLogTail(Logger.LogFilePath));
         return builder.ToString();
     }
 
@@ -357,61 +319,6 @@ internal static class CommandCenterTextHelper
         builder.AppendLine();
     }
 
-    private static string BuildRecentTrayLogTail(string? logPath)
-    {
-        if (string.IsNullOrWhiteSpace(logPath))
-            return "Tray log path is not configured.";
-
-        if (!File.Exists(logPath))
-            return $"Tray log does not exist: {RedactSupportPath(logPath)}";
-
-        var lines = new Queue<string>(RecentTrayLogTailLines);
-        try
-        {
-            using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(stream);
-            while (reader.ReadLine() is { } line)
-            {
-                lines.Enqueue(RedactSupportLogLine(line));
-                while (lines.Count > RecentTrayLogTailLines)
-                    lines.Dequeue();
-            }
-        }
-        catch (IOException ex)
-        {
-            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            return $"Unable to read tray log '{RedactSupportPath(logPath)}': {RedactSupportLogLine(ex.Message)}";
-        }
-
-        if (lines.Count == 0)
-            return $"Tray log is empty: {RedactSupportPath(logPath)}";
-
-        var builder = new StringBuilder();
-        builder.AppendLine($"Source: {RedactSupportPath(logPath)}");
-        builder.AppendLine($"Showing the last {lines.Count} lines. Sensitive values are redacted before writing and again before bundling.");
-        foreach (var line in lines)
-        {
-            if (builder.Length >= RecentTrayLogMaxChars)
-            {
-                builder.AppendLine("... truncated ...");
-                break;
-            }
-
-            builder.AppendLine(line);
-        }
-
-        return builder.ToString();
-    }
-
-    // SanitizeLogMessage already performs the same folder + Windows/Unix user-path redactions
-    // that an earlier version of this helper duplicated here. Delegating avoids redundant
-    // allocations on every diagnostic-bundle line.
-    private static string RedactSupportLogLine(string line)
-        => TokenSanitizer.SanitizeLogMessage(line);
-
     private static string BuildBrowserProxySshForwardHint(int browserProxyPort, TunnelCommandCenterInfo? tunnel)
     {
         if (browserProxyPort is < 1 or > 65535)
@@ -495,31 +402,7 @@ internal static class CommandCenterTextHelper
         if (string.IsNullOrWhiteSpace(value))
             return "unknown";
 
-        try
-        {
-            var redacted = ValueUrlHostPattern.Replace(
-                value,
-                match => $"{match.Groups["scheme"].Value}://<host>");
-
-            redacted = TokenSanitizer.IpV6Pattern.Replace(redacted, TokenSanitizer.RedactIfValidIpV6);
-
-            redacted = ValueIpPattern.Replace(redacted, "<ip>");
-
-            redacted = ValueEmailPattern.Replace(redacted, "<email>");
-
-            redacted = ValueUserAtHostPattern.Replace(redacted, "<user>@<host>");
-
-            redacted = ValueHostAfterToPattern.Replace(redacted, "<host>");
-
-            redacted = ValueLeadingHostPattern.Replace(redacted, "<host>");
-
-            return redacted;
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            // Fail-closed: see TokenSanitizer.SanitizerTimeoutSentinel.
-            return TokenSanitizer.SanitizerTimeoutSentinel;
-        }
+        return TokenSanitizer.SanitizeLogMessage(value);
     }
 
     private static string BuildChannelDetail(ChannelCommandCenterInfo channel)

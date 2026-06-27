@@ -206,7 +206,7 @@ public sealed class DiagnosticsPageContractTests
         // Each copy handler must pass a human-readable label that
         // shows up in the feedback message.
         Assert.Contains("CopyDiagnosticText(\"Support context\"", cs);
-        Assert.Contains("CopyDiagnosticText(\"Debug bundle\"", cs);
+        Assert.Contains("CopyDiagnosticText(\r\n            \"Summary debug bundle\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Browser setup guidance\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Port diagnostics\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Capability diagnostics\"", cs);
@@ -230,17 +230,244 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void DebugPage_DetailView_UsesGenerationCounterForRaceSafety()
+    public void DebugPage_MainAndDetailViews_UseBoundedStretchLayout()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+
+        Assert.Matches(
+            new System.Text.RegularExpressions.Regex(
+                @"x:Name=""MainView""[\s\S]{0,500}<Grid HorizontalAlignment=""Stretch"">[\s\S]{0,300}<StackPanel HorizontalAlignment=""Stretch""[\s\S]{0,160}MaxWidth=""900""[\s\S]{0,160}Padding=""24,24,24,24"""),
+            xaml);
+        Assert.Matches(
+            new System.Text.RegularExpressions.Regex(
+                @"x:Name=""DetailView""[\s\S]{0,400}HorizontalAlignment=""Stretch""[\s\S]{0,300}<Grid MaxWidth=""900""[\s\S]{0,160}HorizontalAlignment=""Stretch""[\s\S]{0,160}Padding=""24,24,24,24"""),
+            xaml);
+    }
+
+    [Fact]
+    public void DebugPage_UsesFluentIconCatalog_NotLiteralGlyphs()
+    {
+        // Per docs/design/iconography.md and AGENT_HANDOFF.md "drift
+        // candidates", WinUI surfaces must route through
+        // FluentIconCatalog. Page should declare the helpers xmlns
+        // and bind glyphs from the catalog.
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+        Assert.Contains("xmlns:helpers=\"using:OpenClawTray.Helpers\"", xaml);
+        Assert.Contains("x:Bind helpers:FluentIconCatalog.", xaml);
+
+        // No literal PUA glyph hex entities in the body. We allow
+        // catalog references; we forbid raw "Glyph=&#xE..."
+        // declarations because that's exactly the drift the design
+        // reference calls out.
+        Assert.DoesNotContain("Glyph=\"&#x", xaml);
+    }
+
+    [Fact]
+    public void DebugPage_UsesSystemFillBrushes_NotLiteralColors()
+    {
+        // Per docs/design/tokens.md status colors must use
+        // SystemFillColor* tokens. Hard-coded ARGB / Color.FromArgb
+        // is the drift the handoff calls out for status dots.
+        // (Success/Attention tokens were used by the in-page timeline
+        // coloring; the timeline now lives in ConnectionStatusWindow,
+        // so only the Critical/Caution/Secondary tokens are still
+        // referenced from this page — which is what we assert.)
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("SystemFillColorCriticalBrush", cs);
+        Assert.Contains("SystemFillColorCautionBrush", cs);
+        Assert.Contains("TextFillColorSecondaryBrush", cs);
+        Assert.DoesNotContain("ColorHelper.FromArgb", cs);
+    }
+
+    [Fact]
+    public void DebugPage_UsesCanonicalReconfigureLabel()
+    {
+        // Per docs/design/naming.md, "Reconfigure…" (with ellipsis) is
+        // the canonical verb for "walk the user back through the
+        // onboarding wizard". The old "Relaunch first-run setup"
+        // label is prohibited.
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+        Assert.Contains("Reconfigure", xaml);
+        Assert.Contains("\u2026", xaml); // U+2026 HORIZONTAL ELLIPSIS
+        Assert.DoesNotContain("Relaunch first-run setup", xaml);
+    }
+
+    [Fact]
+    public void DebugPage_DetailView_HasLogMode()
     {
         var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("enum DetailMode", cs);
+        Assert.Contains("DetailMode.Log", cs);
+        // Both entry points present. OnOpenEventTimeline opens the
+        // ConnectionStatusWindow popup; OnShowRecentLog enters the
+        // in-page DetailView. OnOpen* vs OnShow* mirrors the rest of
+        // the page (popup vs in-page detail).
+        Assert.Contains("OnOpenEventTimeline", cs);
+        Assert.Contains("OnShowRecentLog", cs);
+        // Back navigation present.
+        Assert.Contains("OnBackToMain", cs);
+    }
 
-        Assert.Contains("_detailGeneration", cs);
-        Assert.Contains("LoadLogFileAsync(int generation)", cs);
-        Assert.Contains("_detailMode != DetailMode.Log || _detailGeneration != generation", cs);
-        Assert.Matches(
-            new Regex(
-                @"OnDetailRefresh[\s\S]{0,200}_detailGeneration\+\+[\s\S]{0,120}LoadLogFileAsync\(_detailGeneration\)"),
-            cs);
+    [Fact]
+    public void DebugPage_SharesLogColoringWithConnectionStatusWindow()
+    {
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        // The severity brushes used for log line coloring mirror
+        // ConnectionStatusWindow:33-40 so both surfaces speak the same
+        // visual language. (AuthTextBrush was timeline-only and is
+        // gone now that the timeline lives in ConnectionStatusWindow.)
+        Assert.Contains("ErrorTextBrush", cs);
+        Assert.Contains("WarnTextBrush", cs);
+        Assert.Contains("DimTextBrush", cs);
+
+        // Log lines must be parsed for severity so they get colored too.
+        Assert.Contains("LogSeverityPattern", cs);
+        Assert.Contains("CreateLogParagraph", cs);
+    }
+
+    [Fact]
+    public void DiagnosticsBundleDialog_Exists_And_ExposesCopyAndSaveAndCancel()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "DiagnosticsBundleDialog.xaml");
+        Assert.Contains("ContentDialog", xaml);
+        Assert.Contains("PrimaryButtonText=\"Copy to clipboard\"", xaml);
+        Assert.Contains("SecondaryButtonText=\"Save to file\"", xaml);
+        Assert.Contains("CloseButtonText=\"Close\"", xaml);
+        Assert.Contains("Height=\"420\"", xaml);
+        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", xaml);
+        Assert.Contains("HorizontalScrollBarVisibility=\"Auto\"", xaml);
+        Assert.DoesNotContain("MinWidth=\"720\"", xaml);
+        Assert.DoesNotContain("Width=\"720\"", xaml);
+
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "DiagnosticsBundleDialog.xaml.cs");
+        // The dialog must expose a Configure() that takes a HWND-provider
+        // delegate (not a captured IntPtr) so we can resolve the host
+        // window handle JUST-IN-TIME when Save is clicked, instead of
+        // trusting a possibly-stale handle captured at dialog open
+        // (Hanselman v2 review #4).
+        Assert.Contains("public void Configure(", cs);
+        Assert.Contains("Func<IntPtr>", cs);
+        Assert.Contains("hwndProvider", cs);
+        Assert.DoesNotContain("SaveToDesktopAsync", cs);
+        Assert.Contains("DiagnosticsBundleDialog save skipped: no host hwnd", cs);
+        // It must NOT auto-close on Copy — the user may want to also save.
+        Assert.Contains("args.Cancel = true", cs);
+    }
+
+    [Fact]
+    public void AppLogger_LogsFullExceptionDetails()
+    {
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "AppLogger.cs");
+        Assert.Contains(@"{message}: {ex}", cs);
+        Assert.DoesNotContain(@"{message}: {ex.Message}", cs);
+    }
+
+    [Fact]
+    public void AboutPage_CopySupportContext_UsesUnifiedHelper()
+    {
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs");
+        // Plan §4 / rubber-duck v2 #7: AboutPage's Copy Support Context
+        // must call the same CommandCenterTextHelper.BuildSupportContext
+        // that Diagnostics uses, not its old hand-rolled local string.
+        Assert.Contains("CommandCenterTextHelper.BuildSupportContext", cs);
+        Assert.Contains("DiagnosticsExportSanitizer.SanitizeTextBlock(context)", cs);
+        // And there must be a hyperlink that takes the user from About
+        // to the richer Diagnostics surface.
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml");
+        Assert.Contains("OnMoreDiagnosticsClick", xaml);
+    }
+
+    [Fact]
+    public void HubWindow_DebugNavItem_RoutesUnchanged_LabelRenamed()
+    {
+        // The Tag must still be "debug" so command-palette / deep-link
+        // aliases keep working, even though the visible label is now
+        // "Diagnostics".
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
+        Assert.Contains("Tag=\"debug\"", xaml);
+
+        var resw = Read("src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
+        Assert.Contains("<data name=\"HubWindow_NavigationViewItem_145.Content\"", resw);
+        // The resw entry must now say Diagnostics.
+        var navEntryStart = resw.IndexOf("<data name=\"HubWindow_NavigationViewItem_145.Content\"", StringComparison.Ordinal);
+        var navEntryEnd = resw.IndexOf("</data>", navEntryStart, StringComparison.Ordinal);
+        var entry = resw.Substring(navEntryStart, navEntryEnd - navEntryStart);
+        Assert.Contains("Diagnostics", entry);
+
+        // Internal route mapping unchanged.
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        Assert.Contains("\"debug\" => typeof(DebugPage)", cs);
+    }
+
+    [Fact]
+    public void HubWindow_NavPaneToggle_LivesInTitleBarAndHidesBuiltInToggle()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
+        Assert.Contains("x:Uid=\"NavPaneToggleButton\"", xaml);
+        Assert.Contains("x:Name=\"NavPaneToggleButton\"", xaml);
+        Assert.Contains("Click=\"OnNavPaneToggleButtonClick\"", xaml);
+        Assert.Contains("AutomationProperties.Name=\"Toggle navigation pane\"", xaml);
+        Assert.Contains("ToolTipService.ToolTip=\"Toggle navigation pane\"", xaml);
+        Assert.Contains("MinWidth=\"32\" MinHeight=\"32\"", xaml);
+        Assert.Contains("Padding=\"9,0,140,0\"", xaml);
+        Assert.Contains("Background=\"Transparent\"", xaml);
+        Assert.Contains("BorderBrush=\"Transparent\"", xaml);
+        Assert.Contains("BorderThickness=\"0\"", xaml);
+        Assert.Contains("FontSize=\"16\"", xaml);
+        Assert.Contains("Text=\"\ud83e\udd9e\" FontSize=\"18\"", xaml);
+        Assert.Contains("Translation=\"0,-1,0\"", xaml);
+        Assert.Contains("IsPaneToggleButtonVisible=\"False\"", xaml);
+        Assert.Contains("x:Name=\"NavContentHost\"", xaml);
+        Assert.Contains("x:Name=\"NavContentClip\"", xaml);
+        Assert.Contains("SizeChanged=\"OnNavContentHostSizeChanged\"", xaml);
+        Assert.DoesNotContain("x:Name=\"TitleContentDivider\"", xaml);
+
+        var titleBarIndex = xaml.IndexOf("x:Name=\"AppTitleBar\"", StringComparison.Ordinal);
+        var toggleIndex = xaml.IndexOf("x:Name=\"NavPaneToggleButton\"", StringComparison.Ordinal);
+        var iconIndex = xaml.IndexOf("Text=\"\ud83e\udd9e\"", StringComparison.Ordinal);
+        var navViewIndex = xaml.IndexOf("x:Name=\"NavView\"", StringComparison.Ordinal);
+        Assert.True(titleBarIndex >= 0, "The hub title bar must exist.");
+        Assert.True(toggleIndex > titleBarIndex, "The nav pane toggle must live inside the title bar block.");
+        Assert.True(toggleIndex < iconIndex, "The nav pane toggle must appear before the app icon/title.");
+        Assert.True(toggleIndex < navViewIndex, "The nav pane toggle must be outside the NavigationView pane.");
+
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        Assert.Contains("private void OnNavPaneToggleButtonClick", cs);
+        Assert.Contains("NavView.IsPaneOpen = !NavView.IsPaneOpen;", cs);
+        Assert.Contains("private void OnNavContentHostSizeChanged", cs);
+        Assert.Contains("NavContentClip.Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);", cs);
+    }
+
+    [Fact]
+    public void DebugPage_ObservesAppState_NotHubWindow()
+    {
+        // After Ranjesh's single-app-model rebase, the page must
+        // observe AppState directly per
+        // docs/DATA_FLOW_ARCHITECTURE.md and not depend on HubWindow.
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("private static App CurrentApp", cs);
+        Assert.Contains("AppState? _appState", cs);
+        Assert.Contains("_appState.PropertyChanged", cs);
+        // App provides BuildCommandCenterState() so the bundle preview
+        // dialog can render text without going through HubWindow.
+        var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        Assert.Contains("internal GatewayCommandCenterState BuildCommandCenterState", app);
+        // HubWindow no longer plumbs a state-action callback for pages.
+        var hub = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        Assert.DoesNotContain("GetCommandCenterStateAction", hub);
+    }
+
+    [Fact]
+    public void DebugPage_RefreshesOnSettingsChanged()
+    {
+        // The Status InfoBar shows the effective Gateway URL from
+        // SettingsManager. Settings-saved events must update the page
+        // immediately rather than waiting for the next Status flip
+        // (reactive-by-default ethos per docs/DATA_FLOW_ARCHITECTURE.md).
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("CurrentApp.SettingsChanged += OnSettingsChanged", cs);
+        Assert.Contains("CurrentApp.SettingsChanged -= OnSettingsChanged", cs);
+        Assert.Contains("OnSettingsChanged", cs);
     }
 
     [Fact]
@@ -254,14 +481,45 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void CommandCenterTextHelper_DebugBundle_IncludesSanitizedTrayLogTail()
+    public void CommandCenterTextHelper_DebugBundle_IsSummaryOnlyWithoutLogTail()
     {
         var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "CommandCenterTextHelper.cs");
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+        var resources = Read("src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
 
-        Assert.Contains("Recent Tray Log", helper);
-        Assert.Contains("BuildRecentTrayLogTail(Logger.LogFilePath)", helper);
-        Assert.Contains("TokenSanitizer.SanitizeLogMessage(line)", helper);
-        Assert.Contains("FileShare.ReadWrite | FileShare.Delete", helper);
+        Assert.DoesNotContain("Recent Tray Log", helper);
+        Assert.DoesNotContain("DiagnosticsLogTailReader.BuildSection", helper);
+        Assert.DoesNotContain("DiagnosticsTailOptions", helper);
+        Assert.DoesNotContain("RecentTrayLogTailLines", helper);
+        Assert.DoesNotContain("RecentTrayLogMaxChars", helper);
+        Assert.DoesNotContain("BuildRecentTrayLogTail", helper);
+        Assert.DoesNotContain("builder.AppendLine(line)", helper);
+        Assert.Contains("Generated summaries only; excludes log tails.", xaml);
+        Assert.Contains("Generated summaries only; excludes log tails.", resources);
+        Assert.DoesNotContain("sanitized recent tray log", xaml);
+        Assert.DoesNotContain("sanitized recent tray log", resources);
+    }
+
+    [Fact]
+    public void DiagnosticsCopyAndExport_UseSideEffectFreeExportSanitizer()
+    {
+        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        var service = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsClipboardService.cs");
+        var builder = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsBundleBuilder.cs");
+
+        Assert.Contains("DiagnosticsExportSanitizer.SanitizeTextBlock", page);
+        Assert.Contains("DiagnosticsExportSanitizer.SanitizeTextBlock", service);
+        Assert.Contains(
+            "DiagnosticsExportSanitizer.SanitizeTextBlock(_plainBuffer.ToString())",
+            Read("src", "OpenClaw.Tray.WinUI", "Windows", "ConnectionStatusWindow.xaml.cs"));
+        Assert.Contains("ReadSanitizedTail", page);
+        Assert.DoesNotContain("ReadLogTail(", page);
+        Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", page);
+        Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", service);
+        Assert.DoesNotContain("DiagnosticsBundleBuilder.Build(state)", service);
+        Assert.DoesNotContain("NormalizePersistedDiagnosticsLogs", builder);
+        Assert.DoesNotContain("File.WriteAllLines", builder);
+        Assert.Contains("Export is read-only", builder);
     }
 
     [Fact]
@@ -296,10 +554,53 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("TokenSanitizer.SanitizeLogMessage(message)", logger);
 
         var diagnosticsJsonl = Read("src", "OpenClaw.Tray.WinUI", "Services", "DiagnosticsJsonlService.cs");
-        Assert.Contains("TokenSanitizer.SanitizeLogMessage(JsonSerializer.Serialize(record))", diagnosticsJsonl);
+        Assert.Contains("FormatRecordLine(eventName, metadata)", diagnosticsJsonl);
+        Assert.Contains("metadata = SanitizeMetadata(metadata)", diagnosticsJsonl);
+        Assert.Contains("IsSensitiveMetadataKey(propertyName)", diagnosticsJsonl);
+        Assert.Contains("TokenSanitizer.IsSensitiveMetadataKeyName(key)", diagnosticsJsonl);
+        Assert.DoesNotContain("TokenSanitizer.SanitizeLogMessage(JsonSerializer.Serialize(record, JsonOptions))", diagnosticsJsonl);
 
         var crashLogger = Read("src", "OpenClaw.Tray.WinUI", "Services", "AppCrashLogger.cs");
         Assert.Contains("TokenSanitizer.SanitizeLogMessage", crashLogger);
+    }
+
+    [Fact]
+    public void FullDiagnosticsBundle_IsUsedForPreviewOnly()
+    {
+        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("OnCreateDiagnosticsBundle", page);
+        Assert.Contains("DiagnosticsBundleBuilder.Build", page);
+        Assert.Contains("ShowBundlePreviewAsync", page);
+
+        var handlerStart = page.IndexOf("private void OnCopyDebugBundle", StringComparison.Ordinal);
+        Assert.True(handlerStart >= 0, "OnCopyDebugBundle must exist.");
+        var handlerBody = page.Substring(handlerStart, Math.Min(260, page.Length - handlerStart));
+
+        Assert.Contains("CommandCenterTextHelper.BuildDebugBundle", handlerBody);
+        Assert.DoesNotContain("DiagnosticsBundleBuilder.BuildCached", handlerBody);
+    }
+
+    [Fact]
+    public void DebugPage_DetailView_UsesGenerationCounterForRaceSafety()
+    {
+        // Hanselman v2 review #5/#6: long log reads must check a
+        // generation counter after their async continuation so a
+        // page navigation mid-flight can't clobber the active view
+        // (or, post-popup, write into a no-longer-current generation).
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+        Assert.Contains("_detailGeneration", cs);
+        // LoadLogFileAsync takes the generation as a parameter.
+        Assert.Contains("LoadLogFileAsync(int generation)", cs);
+        // Log mode re-checks both mode AND generation after the
+        // background sanitized tail read returns.
+        Assert.Contains("_detailMode != DetailMode.Log || _detailGeneration != generation", cs);
+        // Manual refresh must also invalidate any in-flight read, otherwise
+        // rapid refresh clicks can let multiple reads append duplicate rows
+        // into the same detail view generation.
+        Assert.Matches(
+            new System.Text.RegularExpressions.Regex(
+                @"OnDetailRefresh[\s\S]{0,200}_detailGeneration\+\+[\s\S]{0,120}LoadLogFileAsync\(_detailGeneration\)"),
+            cs);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using System.Text.Json;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -237,6 +238,59 @@ public class TokenSanitizerTests
         Assert.Contains("%USERPROFILE%", sanitized);
     }
 
+    [Theory]
+    [InlineData(@"C:/Users/alice/AppData/Local/OpenClawTray/openclaw-tray.log")]
+    [InlineData(@"/mnt/c/Users/alice/AppData/Roaming/OpenClawTray/settings.json")]
+    [InlineData(@"""C:\\Users\\alice\\AppData\\Local\\OpenClawTray\\openclaw-tray.log""")]
+    [InlineData(@"""C:\\\\Users\\\\alice\\\\AppData\\\\Local\\\\OpenClawTray\\\\openclaw-tray.log""")]
+    public void SanitizeLogMessage_RedactsUserFolderPathVariants(string path)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage($"path={path}");
+
+        Assert.DoesNotContain("alice", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("%USERPROFILE%", sanitized);
+    }
+
+    [Theory]
+    [InlineData("/home/openclaw/.openclaw/sessions/abc123/session.jsonl")]
+    [InlineData("/home/alice/.config/openclaw/gateway-health.json")]
+    public void SanitizeLogMessage_RedactsLinuxHomePathVariants(string path)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage($"gateway payload path={path}");
+
+        Assert.DoesNotContain("/home/openclaw", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/home/alice", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("openclaw/.openclaw", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("alice/.config", sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("$HOME", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsCurrentUserAndMachineNames()
+    {
+        var user = Environment.UserName;
+        var machine = Environment.MachineName;
+        if (!ShouldRedactLocalIdentityName(user) || !ShouldRedactLocalIdentityName(machine))
+        {
+            return;
+        }
+
+        var sanitized = TokenSanitizer.SanitizeLogMessage($"user={user} machine={machine}");
+
+        Assert.DoesNotContain(user, sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(machine, sanitized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<user>", sanitized);
+        Assert.Contains("<host>", sanitized);
+    }
+
+    private static bool ShouldRedactLocalIdentityName(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length >= 3 &&
+        !value.Equals("user", StringComparison.OrdinalIgnoreCase) &&
+        !value.Equals("admin", StringComparison.OrdinalIgnoreCase) &&
+        !value.Equals("desktop", StringComparison.OrdinalIgnoreCase) &&
+        !value.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+
     [Fact]
     public void SanitizeLogMessage_RedactsNetworkAndIdentityValues()
     {
@@ -250,6 +304,128 @@ public class TokenSanitizerTests
         Assert.Contains("<email>", sanitized);
         Assert.Contains("<ip>", sanitized);
         Assert.Contains("<user>@<host>:22", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsDiagnosticSecretShapesBeforePersisting()
+    {
+        var dpapi = "dpapi:abcdefghijklmnopqrstuvwxyz0123456789+/=";
+        var guid = "c5cacc40-2732-4008-a4d9-56b6a2c0643a";
+        var input = string.Join(Environment.NewLine,
+            "-----BEGIN PRIVATE KEY-----",
+            "abcdefghijklmnopqrstuvwxyz",
+            "-----END PRIVATE KEY-----",
+            """{"setupCode":123456,"nonce":"nonce-secret","deviceId":"device-secret","raw_error_response":"raw-secret","ok":42}""",
+            "Cookie: sessionid=browser-cookie; csrftoken=csrf-secret",
+            $"protected={dpapi}",
+            "session=agent:abc123:some-session-key",
+            $"signed: v3|token|cli|operator|1779894994338|sig|{guid}|windows|desktop",
+            "openclaw connect --token shared-secret --setup-code setup-secret --password pass-secret");
+
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        foreach (var secret in new[]
+        {
+            "123456",
+            "nonce-secret",
+            "device-secret",
+            "raw-secret",
+            "browser-cookie",
+            "csrf-secret",
+            dpapi,
+            "agent:abc123:some-session-key",
+            "1779894994338",
+            guid,
+            "shared-secret",
+            "setup-secret",
+            "pass-secret",
+            "BEGIN PRIVATE KEY",
+            "abcdefghijklmnopqrstuvwxyz"
+        })
+        {
+            Assert.DoesNotContain(secret, sanitized, StringComparison.OrdinalIgnoreCase);
+        }
+
+        Assert.Contains("\"ok\":42", sanitized);
+        Assert.Contains("Cookie: [REDACTED]", sanitized);
+        Assert.Contains("signed: [REDACTED_HANDSHAKE]", sanitized);
+        Assert.Contains("[REDACTED_PRIVATE_KEY]", sanitized);
+        Assert.Contains("--token [REDACTED]", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsSensitiveKeyValuesWithWhitespaceBeforeDelimiter()
+    {
+        const string input = """setupCode = 123456 {"password" : "password-secret","ok":true}""";
+
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        Assert.DoesNotContain("123456", sanitized);
+        Assert.DoesNotContain("password-secret", sanitized);
+        Assert.Contains("setupCode = [REDACTED]", sanitized);
+        Assert.Contains("\"password\" : \"[REDACTED]\"", sanitized);
+        Assert.Contains("\"ok\":true", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsSensitiveJsonValuesWithEscapedQuotes()
+    {
+        const string input = """{"password":"abc\"def","apiToken":"ghi\"jkl","ok":"visible"}""";
+
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        using var document = JsonDocument.Parse(sanitized);
+        Assert.Equal("[REDACTED]", document.RootElement.GetProperty("password").GetString());
+        Assert.Equal("[REDACTED]", document.RootElement.GetProperty("apiToken").GetString());
+        Assert.Equal("visible", document.RootElement.GetProperty("ok").GetString());
+        Assert.DoesNotContain("abc", sanitized);
+        Assert.DoesNotContain("def", sanitized);
+        Assert.DoesNotContain("ghi", sanitized);
+        Assert.DoesNotContain("jkl", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsNumericJsonSensitiveValuesWithoutBreakingJson()
+    {
+        const string input = """{"setupCode":123456,"ok":42}""";
+
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        using var document = JsonDocument.Parse(sanitized);
+        Assert.Equal("[REDACTED]", document.RootElement.GetProperty("setupCode").GetString());
+        Assert.Equal(42, document.RootElement.GetProperty("ok").GetInt32());
+        Assert.DoesNotContain("123456", sanitized);
+    }
+
+    [Theory]
+    [InlineData("""{"apiToken":["secret1","secret2"],"ok":1}""", "apiToken")]
+    [InlineData("""{"password":{"nested":"secret"},"ok":1}""", "password")]
+    public void SanitizeLogMessage_RedactsSensitiveJsonCompoundValuesWithoutLeakingSuffixes(string input, string key)
+    {
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        using var document = JsonDocument.Parse(sanitized);
+        Assert.Equal("[REDACTED]", document.RootElement.GetProperty(key).GetString());
+        Assert.Equal(1, document.RootElement.GetProperty("ok").GetInt32());
+        Assert.DoesNotContain("secret", sanitized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SanitizeLogMessage_RedactsPrefixedTokensInsideJsonStringsWithoutBreakingJson()
+    {
+        const string input = """
+            {"session":"agent:abc123:some-session-key","protected":"dpapi:abcdefghijklmnopqrstuvwxyz0123456789+/=","ok":42}
+            """;
+
+        var sanitized = TokenSanitizer.SanitizeLogMessage(input);
+
+        using var document = JsonDocument.Parse(sanitized);
+        var root = document.RootElement;
+        Assert.Equal("[REDACTED_SESSION_KEY]", root.GetProperty("session").GetString());
+        Assert.Equal("dpapi:[REDACTED]", root.GetProperty("protected").GetString());
+        Assert.Equal(42, root.GetProperty("ok").GetInt32());
+        Assert.DoesNotContain("agent:abc123:some-session-key", sanitized);
+        Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz0123456789+/=", sanitized);
     }
 
     [Fact]
@@ -301,7 +477,7 @@ public class TokenSanitizerTests
     public void SanitizeLogMessage_DoesNotRedactBracketedTimestampsOrShortHexTokens()
     {
         // Bracketed values that lack IPv6 structure must not be redacted: [HH:MM:SS], [hexword], [hex:hex].
-        const string input = "Event [14:58:46] tag=[face] id=[abc] correlation=[dead:beef]";
+        const string input = "Event [14:58:46] tag=[face] label=[abc] correlation=[dead:beef]";
         var sanitized = TokenSanitizer.SanitizeLogMessage(input);
 
         Assert.Contains("[14:58:46]", sanitized);
