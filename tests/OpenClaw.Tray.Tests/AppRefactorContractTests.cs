@@ -41,6 +41,43 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void Startup_WslKeepAlive_IsOwnedByDedicatedService()
+    {
+        var source = ReadAppSources();
+        var startup = ExtractMethod(source, "OnLaunchedAsync");
+        var service = ReadWslKeepAliveServiceSource();
+
+        Assert.Contains("new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry)", startup);
+        Assert.Contains("Task.Run(wslKeepAlive.TryEnsureAsync)", startup);
+
+        foreach (var duplicateMethod in new[]
+        {
+            "TryEnsureLocalGatewayKeepAliveAsync",
+            "StopStaleLocalGatewayKeepAliveAsync",
+            "ReadKeepAliveMarkerDistroNames",
+            "ReadSetupStateDistroNameAsync",
+            "StopKeepAliveProcessesForDistro",
+            "DeleteKeepAliveMarker",
+            "GetProcessCommandLine",
+            "ResolveWslExePath",
+            "ResolveLocalGatewayDistroNameAsync",
+        })
+        {
+            Assert.DoesNotContain(duplicateMethod, source);
+        }
+
+        Assert.Contains("public async Task TryEnsureAsync()", service);
+        Assert.Contains("StopStaleLocalGatewayKeepAliveAsync", service);
+        Assert.Contains("ReadKeepAliveMarkerDistroNames", service);
+        Assert.Contains("ReadSetupStateDistroNameAsync", service);
+        Assert.Contains("StopKeepAliveProcessesForDistro", service);
+        Assert.Contains("DeleteKeepAliveMarker", service);
+        Assert.Contains("GetProcessCommandLine", service);
+        Assert.Contains("ResolveWslExePath", service);
+        Assert.Contains("ResolveLocalGatewayDistroNameAsync", service);
+    }
+
+    [Fact]
     public void McpOnlyStartup_DoesNotRequireGatewayCredentials()
     {
         var source = ReadAppSources();
@@ -415,6 +452,13 @@ public sealed class AppRefactorContractTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.Tray.WinUI", "Services", "TrayIconCoordinator.cs"));
+    }
+
+    private static string ReadWslKeepAliveServiceSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "WslGatewayKeepAliveService.cs"));
     }
 
     private static string ReadAppSources()

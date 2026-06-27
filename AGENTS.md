@@ -75,6 +75,17 @@ Start with these docs before changing connection, pairing, node, MCP, or tray UX
 - `docs/WINDOWS_NODE_TESTING.md` - Windows node capabilities, manual smokes, and gateway-dependent behavior.
 - `docs/ONBOARDING_WIZARD.md` - first-run setup flow, setup-code/bootstrap pairing, and test isolation.
 
+## Architecture Guardrails for Large Refactors
+
+`src\OpenClaw.Tray.WinUI\App.xaml.cs` and `src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs` are active god-file reduction targets. When touching either file:
+
+- Prefer completing a real ownership transfer over moving code to partial classes. A new partial file is not progress unless it introduces a narrower owner, pure projection, policy, service, or tested seam.
+- Keep `App` as the composition root. Shrink it by delegating cohesive behavior to focused services, but do not relocate startup ordering into another god object.
+- Keep `ConnectionPage.xaml.cs` as the WinUI applicator until a pure row/plan/workflow seam exists. Do not move named-control setters into a presenter that just wraps the page.
+- Add characterization tests before moving startup, credential, pairing, node/MCP, tray action, or direct-connect rollback behavior. Source-text contract tests are acceptable for WinUI-only seams, but prefer pure unit tests for policies and projections.
+- Keep PRs small and reviewable: one seam per PR, with a clear invariant protected by tests. Stop and re-plan if a PR moves hundreds of lines without behavior coverage.
+- In PR descriptions and handoffs, name the old owner, new owner, preserved invariant, and validation run so future agents do not reintroduce duplicate paths or grow new god objects.
+
 Important current facts:
 
 - Gateway credentials are no longer stored in `SettingsData.Token` / `SettingsData.BootstrapToken`. `SettingsManager` may read legacy JSON fields only for one-time migration; new writes must go through `GatewayRegistry`.
