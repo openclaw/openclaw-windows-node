@@ -105,6 +105,7 @@ public record ChatThread
     public string? Compute { get; init; }
     public string? ProfileName { get; init; }
     public string? Model { get; init; }
+    public string? ModelProvider { get; init; }
     public string? ThinkingLevel { get; init; }
     public long InputTokens { get; init; }
     public long OutputTokens { get; init; }
@@ -190,7 +191,8 @@ public record ChatDataSnapshot(
     string? DefaultThreadId,
     string? ConnectionStatus,
     string[] AvailableModels,
-    ChatComposeTarget ComposeTarget);
+    ChatComposeTarget ComposeTarget,
+    IReadOnlyList<ChatModelChoice>? ModelChoices = null);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from
@@ -257,6 +259,13 @@ public interface IChatDataProvider : IAsyncDisposable
     Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default);
     Task DeleteThreadAsync(string threadId, CancellationToken cancellationToken = default);
     Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Clears the session's explicit model override so it tracks the gateway's
+    /// agent/default model again. Providers that don't support clearing leave
+    /// the default no-op. Distinct from <see cref="SetModelAsync"/> because the
+    /// gateway models this as an explicit null (tri-state), not an empty string.
+    /// </summary>
+    Task ClearModelAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default);
     Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default);
     Task RespondToPermissionAsync(string threadId, string requestId, string action, CancellationToken cancellationToken = default);

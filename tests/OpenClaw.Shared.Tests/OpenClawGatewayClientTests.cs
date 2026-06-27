@@ -266,7 +266,7 @@ public class OpenClawGatewayClientTests
         public ModelsListInfo ParseModelsListPayload(string payloadJson)
         {
             ModelsListInfo? parsed = null;
-            EventHandler<ModelsListInfo> handler = (_, models) => parsed = models;
+            EventHandler<ModelsListInfo> handler = (_, info) => parsed = info;
             _client.ModelsListUpdated += handler;
 
             try
@@ -1683,6 +1683,97 @@ public class OpenClawGatewayClientTests
         var helper = new GatewayClientTestHelper();
         var nodes = helper.ParseNodeListPayload("""{ "nodes": [] }""");
         Assert.Empty(nodes);
+    }
+
+    [Fact]
+    public void ParseModelsList_PopulatesProviderRichMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            {
+              "models": [
+                {
+                  "id": "claude-opus-4.8",
+                  "name": "Claude Opus 4.8",
+                  "provider": "Anthropic",
+                  "contextWindow": 200000,
+                  "configured": true,
+                  "default": true
+                },
+                {
+                  "id": "gemini-3.1-pro",
+                  "name": "Gemini 3.1 Pro",
+                  "provider": "Google",
+                  "contextWindow": 1000000,
+                  "requiresAuth": true
+                },
+                {
+                  "id": "local-llama",
+                  "provider": "Ollama",
+                  "unavailable": true
+                }
+              ]
+            }
+            """);
+
+        Assert.Equal(3, info.Models.Count);
+
+        var opus = info.Models[0];
+        Assert.Equal("claude-opus-4.8", opus.Id);
+        Assert.Equal("Anthropic", opus.Provider);
+        Assert.Equal(200000, opus.ContextWindow);
+        Assert.True(opus.IsConfigured);
+        Assert.True(opus.IsDefault);
+        Assert.True(opus.IsAvailable);
+        Assert.False(opus.RequiresAuth);
+
+        var gemini = info.Models[1];
+        Assert.True(gemini.RequiresAuth);
+        Assert.False(gemini.IsDefault);
+        Assert.True(gemini.IsAvailable); // no availability signal → usable
+
+        var llama = info.Models[2];
+        Assert.False(llama.IsAvailable); // unavailable:true inverts to false
+        Assert.Equal("local-llama", llama.DisplayName); // name omitted → id
+    }
+
+    [Fact]
+    public void ParseModelsList_DefaultsAvailableTrue_WhenNoReadinessSignals()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            { "models": [ { "id": "gpt-5.5", "name": "GPT-5.5" } ] }
+            """);
+
+        var m = Assert.Single(info.Models);
+        Assert.True(m.IsAvailable);
+        Assert.False(m.RequiresAuth);
+        Assert.False(m.IsDefault);
+        Assert.False(m.IsConfigured);
+    }
+
+    [Fact]
+    public void ParseModelsList_AvailableFalse_MarksUnavailable()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            { "models": [ { "id": "x", "available": false } ] }
+            """);
+
+        Assert.False(Assert.Single(info.Models).IsAvailable);
+    }
+
+    [Fact]
+    public void ParseModelsList_AcceptsIsDefaultAndAuthNeededAliases()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            { "models": [ { "id": "x", "isDefault": true, "authNeeded": true } ] }
+            """);
+
+        var m = Assert.Single(info.Models);
+        Assert.True(m.IsDefault);
+        Assert.True(m.RequiresAuth);
     }
 
     [Fact]

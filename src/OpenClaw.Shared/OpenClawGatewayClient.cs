@@ -4126,8 +4126,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             {
                 foreach (var item in modelsArray.EnumerateArray())
                 {
+                    if (item.ValueKind != JsonValueKind.Object) continue;
+
+                    // Read readiness flags defensively; older gateways may omit
+                    // them, and the UI only uses them for labels/selectability.
                     var hasConfiguredFlag = item.TryGetProperty("configured", out var cfg)
                                             && (cfg.ValueKind == JsonValueKind.True || cfg.ValueKind == JsonValueKind.False);
+                    bool available = true;
+                    if (TryReadBool(item, out var av, "available")) available = av;
+                    else if (TryReadBool(item, out var un, "unavailable")) available = !un;
+
                     var model = new ModelInfo
                     {
                         Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
@@ -4135,7 +4143,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
                         ContextWindow = item.TryGetProperty("contextWindow", out var cw) && cw.ValueKind == JsonValueKind.Number ? cw.GetInt32() : null,
                         IsConfigured = hasConfiguredFlag && cfg.ValueKind == JsonValueKind.True,
-                        HasConfiguredFlag = hasConfiguredFlag
+                        HasConfiguredFlag = hasConfiguredFlag,
+                        IsDefault = ReadBool(item, "default", "isDefault"),
+                        IsAvailable = available,
+                        RequiresAuth = ReadBool(item, "requiresAuth", "authRequired", "needsAuth", "authNeeded")
                     };
                     if (!string.IsNullOrEmpty(model.Id))
                         info.Models.Add(model);
@@ -4147,6 +4158,25 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             _logger.Warn($"Failed to parse models.list: {ex.Message}");
         }
+    }
+
+    // Reads the first present boolean property among <paramref name="keys"/>.
+    // Returns false when none are present (or are non-boolean).
+    private static bool ReadBool(JsonElement obj, params string[] keys) =>
+        TryReadBool(obj, out var value, keys) && value;
+
+    private static bool TryReadBool(JsonElement obj, out bool value, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (obj.TryGetProperty(key, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.True) { value = true; return true; }
+                if (prop.ValueKind == JsonValueKind.False) { value = false; return true; }
+            }
+        }
+        value = false;
+        return false;
     }
 
     private void ParseNodePairList(JsonElement payload)

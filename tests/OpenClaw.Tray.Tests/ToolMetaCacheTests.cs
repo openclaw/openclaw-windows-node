@@ -366,6 +366,7 @@ public class ToolMetaCacheTests
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.CompletedTask;
         public Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.FromResult(new ChatSendResult());
         public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
+        public Task ClearSessionModelAsync(string sessionKey) => Task.CompletedTask;
         public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
         public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) => Task.FromResult(History);
         public Task SendChatAbortAsync(string runId, string? sessionKey = null) => Task.CompletedTask;

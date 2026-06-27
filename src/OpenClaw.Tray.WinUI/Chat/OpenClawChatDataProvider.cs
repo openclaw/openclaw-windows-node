@@ -109,6 +109,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly Dictionary<string, string> _sessionIds = new();      // sessionKey → immutable sessionId
     private readonly HashSet<string> _historyLoaded = new();              // sessionKey
     private readonly HashSet<string> _historyInFlight = new();            // sessionKey
+    private readonly Dictionary<string, Task> _pendingModelPatches = new(); // sessionKey -> in-flight model set/clear
     private readonly Dictionary<string, long> _resetVersions = new(); // sessionKey -> reset generation
     private readonly Dictionary<string, long> _resetCutoffUtcMs = new(); // sessionKey -> local reset time
     private readonly HashSet<string> _resetAwaitingUserMessage = new(); // threads reset and waiting for first post-reset turn
@@ -162,6 +163,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // false on disconnect alongside `_status`.
     private bool _sessionsListReceived;
     private string[] _availableModels = Array.Empty<string>();
+    private IReadOnlyList<ChatModelChoice> _modelChoices = Array.Empty<ChatModelChoice>();
     private ConnectionStatus _status;
     private bool _disposed;
 
@@ -211,11 +213,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // that completed before the provider was constructed will have its
         // models.list snapshot cached on the bridge).
         if (bridge.GetCurrentModelsList() is { } seedModels)
-            _availableModels = ExtractModelNames(seedModels);
+        {
+            _modelChoices = ChatModelChoice.FromModelsList(seedModels);
+            _availableModels = ModelIdsFromChoices(_modelChoices);
+        }
         // Fall back to last-known models so the composer shows a real model
         // name while reconnecting instead of the generic "model" placeholder.
         else if (_lastChatState?.AvailableModels is { Length: > 0 } cached)
+        {
             _availableModels = cached;
+            _modelChoices = ChoicesFromIds(cached);
+        }
 
         _bridge.StatusChanged += OnStatusChanged;
         _bridge.SessionsUpdated += OnSessionsUpdated;
@@ -244,6 +252,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             _sessions = sessions;
             EnsureTimelinesForSessionsLocked();
+            RememberLastSessionStateLocked();
             return Task.FromResult(BuildSnapshotLocked());
         }
     }
@@ -336,6 +345,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // 2. Send to gateway.
         try
         {
+            await AwaitPendingModelPatchAsync(threadId, cancellationToken);
             var sendResult = await _bridge.SendChatMessageForRunAsync(trimmed, threadId, sessionId, attachments);
             bool sendStillCurrent;
             lock (_gate)
@@ -921,7 +931,81 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     public async Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await _bridge.PatchSessionModelAsync(threadId, model);
+        // The gateway's sessions.patch schema treats `model` as a non-empty
+        // string; a blank value here is a no-op rather than a clear. Use
+        // ClearModelAsync to revert a session to the gateway default.
+        if (string.IsNullOrWhiteSpace(model)) return;
+        await TrackModelPatchAsync(threadId, () => _bridge.PatchSessionModelAsync(threadId, model));
+    }
+
+    public async Task ClearModelAsync(string threadId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Tri-state clear: removes the session's model override (explicit null)
+        // so it tracks the gateway/agent default again.
+        await TrackModelPatchAsync(threadId, () => _bridge.ClearSessionModelAsync(threadId));
+    }
+
+    private async Task TrackModelPatchAsync(string threadId, Func<Task> patchOperation)
+    {
+        var startSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? previous;
+        Task pending;
+        lock (_gate)
+        {
+            _pendingModelPatches.TryGetValue(threadId, out previous);
+            pending = RunModelPatchAsync(previous, patchOperation, startSignal.Task);
+            _pendingModelPatches[threadId] = pending;
+        }
+
+        startSignal.SetResult();
+        try
+        {
+            await pending;
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                if (_pendingModelPatches.TryGetValue(threadId, out var current)
+                    && ReferenceEquals(current, pending))
+                    _pendingModelPatches.Remove(threadId);
+            }
+        }
+    }
+
+    private static async Task RunModelPatchAsync(Task? previous, Func<Task> patchOperation, Task startSignal)
+    {
+        await startSignal;
+        if (previous is not null)
+        {
+            try { await previous; }
+            catch (Exception ex)
+            {
+                Logger.Debug($"ChatDataProvider: continuing model patch after previous patch failed: {ex.Message}");
+            }
+        }
+
+        await patchOperation();
+    }
+
+    private async Task AwaitPendingModelPatchAsync(string threadId, CancellationToken cancellationToken)
+    {
+        Task? pending;
+        lock (_gate)
+        {
+            _pendingModelPatches.TryGetValue(threadId, out pending);
+        }
+
+        if (pending is not null)
+        {
+            try { await pending.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                Logger.Debug($"ChatDataProvider: continuing send after model patch failed: {ex.Message}");
+            }
+        }
     }
 
     public async Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default)
@@ -1336,6 +1420,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             SeedSessionIdsFromSessionsLocked(_sessions);
             _sessionsListReceived = true;
             EnsureTimelinesForSessionsLocked();
+            RememberLastSessionStateLocked();
             foreach (var s in _sessions)
             {
                 if (string.IsNullOrEmpty(s.Key)) continue;
@@ -1401,30 +1486,44 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         ChatDataSnapshot snapshot;
         lock (_gate)
         {
-            _availableModels = ExtractModelNames(info);
+            _modelChoices = ChatModelChoice.FromModelsList(info);
+            _availableModels = ModelIdsFromChoices(_modelChoices);
             snapshot = BuildSnapshotLocked();
         }
         Logger.Info($"[ChatBridge] OnModelsListUpdated: count={_availableModels.Length}");
         Publish(snapshot);
     }
 
-    private static string[] ExtractModelNames(ModelsListInfo info)
+    // Wire ids (e.g. "claude-opus-4.5") in gateway order, used by the composer
+    // to match against SessionInfo.Model. Kept as a parallel string[] for
+    // back-compat with callers/persistence that only need the id list.
+    private static string[] ModelIdsFromChoices(IReadOnlyList<ChatModelChoice> choices)
     {
-        if (info?.Models is null || info.Models.Count == 0) return Array.Empty<string>();
-        // Use model Id (wire format, e.g. "claude-opus-4.5") so the composer
-        // can match against SessionInfo.Model (which is also the wire Id).
-        // The ComboBox will show Ids directly; a future pass could introduce
-        // a separate display-name array if prettier labels are desired.
+        if (choices.Count == 0) return Array.Empty<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var list = new List<string>(info.Models.Count);
-        foreach (var m in info.Models)
+        var ids = new List<string>(choices.Count);
+        foreach (var choice in choices)
         {
-            if (m.HasConfiguredFlag && !m.IsConfigured) continue;
-            var id = m.Id;
-            if (string.IsNullOrEmpty(id)) continue;
-            if (seen.Add(id)) list.Add(id);
+            if (seen.Add(choice.Id))
+                ids.Add(choice.Id);
         }
-        return list.ToArray();
+        return ids.ToArray();
+    }
+
+    // Rehydrate minimal choices from a cached id list (reconnect / pre-connect
+    // path) when richer gateway metadata isn't available yet.
+    private static IReadOnlyList<ChatModelChoice> ChoicesFromIds(string[] ids)
+    {
+        if (ids.Length == 0) return Array.Empty<ChatModelChoice>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var list = new List<ChatModelChoice>(ids.Length);
+        foreach (var id in ids)
+        {
+            if (string.IsNullOrEmpty(id)) continue;
+            if (!seen.Add(id)) continue;
+            list.Add(new ChatModelChoice(id, id));
+        }
+        return list;
     }
 
     private void OnChatMessageReceived(object? sender, ChatMessageInfo message)
@@ -3879,6 +3978,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 Id = ck,
                 Title = _lastChatState?.ThreadTitle ?? "OpenClaw Windows Tray",
                 Model = _lastChatState?.Model,
+                ModelProvider = _lastChatState?.ModelProvider,
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.Idle,
             });
@@ -3896,6 +3996,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.AwaitingPermission,
                 Model = _lastChatState?.Model,
+                ModelProvider = _lastChatState?.ModelProvider,
             });
         }
 
@@ -3932,7 +4033,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             DefaultThreadId: defaultThreadId,
             ConnectionStatus: connectionLabel,
             AvailableModels: _availableModels,
-            ComposeTarget: composeTarget);
+            ComposeTarget: composeTarget,
+            ModelChoices: _modelChoices);
     }
 
     private string? ResolveDefaultThreadIdLocked()
@@ -3956,6 +4058,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return null;
     }
 
+    private void RememberLastSessionStateLocked()
+    {
+        if (_sessions.Length == 0) return;
+        var session = _sessions.FirstOrDefault(s => s.IsMain && !string.IsNullOrEmpty(s.Key))
+            ?? _sessions.FirstOrDefault(s => !string.IsNullOrEmpty(s.Key));
+        if (session is null) return;
+
+        _lastChatState = new LastChatState
+        {
+            DefaultThreadId = session.Key,
+            ThreadTitle = BuildSessionTitle(session),
+            Model = session.Model,
+            ModelProvider = session.Provider,
+            AvailableModels = _availableModels,
+        };
+    }
+
     private static ChatThread ToThread(SessionInfo s)
     {
         var title = BuildSessionTitle(s);
@@ -3968,6 +4087,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Activity = string.IsNullOrEmpty(s.CurrentActivity) ? ChatActivity.Idle : ChatActivity.Working,
             Workspace = s.Channel,
             Model = s.Model,
+            ModelProvider = s.Provider,
             ThinkingLevel = s.ThinkingLevel,
             InputTokens = s.InputTokens,
             OutputTokens = s.OutputTokens,
@@ -4059,6 +4179,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         public string? DefaultThreadId { get; set; }
         public string? ThreadTitle { get; set; }
         public string? Model { get; set; }
+        public string? ModelProvider { get; set; }
         public string[]? AvailableModels { get; set; }
     }
 
@@ -4088,12 +4209,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             : snapshot.Threads.Length > 0 ? snapshot.Threads[0] : null;
 
         if (defaultThread is null && snapshot.AvailableModels.Length == 0) return;
+        var previous = _lastChatState;
 
         var state = new LastChatState
         {
-            DefaultThreadId = snapshot.DefaultThreadId,
-            ThreadTitle = defaultThread?.Title,
-            Model = defaultThread?.Model,
+            DefaultThreadId = snapshot.DefaultThreadId ?? previous?.DefaultThreadId,
+            ThreadTitle = defaultThread?.Title ?? previous?.ThreadTitle,
+            Model = defaultThread?.Model ?? previous?.Model,
+            ModelProvider = defaultThread?.ModelProvider ?? previous?.ModelProvider,
             AvailableModels = snapshot.AvailableModels,
         };
 
