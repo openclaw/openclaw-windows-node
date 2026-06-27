@@ -46,6 +46,7 @@ public record OpenClawComposerProps(
     ChannelGroup[] AvailableChannels,
     string[] AvailableModels,
     string? CurrentModel,
+    string? CurrentModelProvider,
     string? CurrentThinkingLevel,
     Action<string, IReadOnlyList<ChatAttachment>> OnSend,
     Action OnStop,
@@ -66,10 +67,18 @@ public record OpenClawComposerProps(
     Action<ChatAttachment>? OnAttachmentPasted = null,
     bool ShowToolCalls = true,
     Action<bool>? OnShowToolCallsChanged = null,
-    bool IsCompact = false);
+    bool IsCompact = false,
+    IReadOnlyList<ChatModelChoice>? ModelChoices = null,
+    Action? OnModelCleared = null);
 
 public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 {
+    // Distinct reference-equality sentinel used as the ComboBoxItem.Tag for the
+    // "Default" (clear model override) row, so it can never collide with a real
+    // model id string. Selecting it routes to OnModelCleared (tri-state clear)
+    // rather than OnModelChanged.
+    private static readonly object ClearModelTag = new();
+
     // Thinking levels matching the gateway's sessions.patch thinkingLevel values.
     // "medium" is the default when the session has no explicit thinkingLevel set.
     private static readonly string[] ThinkingLevelIds    = { "off", "minimal", "low", "medium", "high" };
@@ -257,26 +266,102 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 border.Child = cb;
             });
 
-        var models = Props.AvailableModels;
-        var modelIndex = models is { Length: > 0 } && Props.CurrentModel is { } cur
-            ? Array.IndexOf(models, cur) : -1;
-        if (modelIndex < 0 && models is { Length: > 0 }) modelIndex = 0;
-        var modelDisplay = models is { Length: > 0 } ? models : new[] { Props.CurrentModel ?? "model" };
+        // ── Model picker (provider-rich) ─────────────────────────────────
+        IReadOnlyList<ChatModelChoice> modelChoices = Props.ModelChoices is { Count: > 0 } mc
+            ? mc
+            : (Props.AvailableModels is { Length: > 0 } am
+                ? am.Select(id => new ChatModelChoice(id, id)).ToList()
+                : Array.Empty<ChatModelChoice>());
 
-        var modelCombo = ComboBox(modelDisplay, Math.Max(modelIndex, 0), idx =>
+        var currentModelId = Props.CurrentModel;
+        var currentSelectionId = ChatModelChoice.ResolveSelectionId(currentModelId, Props.CurrentModelProvider, modelChoices);
+        var trackingDefault = ChatModelLabels.IsTrackingDefault(currentModelId);
+        ChatModelChoice? currentChoice = null;
+        ChatModelChoice? defaultChoice = null;
+        foreach (var c in modelChoices)
         {
-            if (models is { Length: > 0 } && idx >= 0 && idx < models.Length)
-                Props.OnModelChanged(models[idx]);
-        }).Set(cb =>
+            if (defaultChoice is null && c.IsDefault) defaultChoice = c;
+            if (currentChoice is null && !trackingDefault
+                && string.Equals(c.SelectionId, currentSelectionId, StringComparison.Ordinal))
+                currentChoice = c;
+        }
+
+        // Keep stale/custom current models visible even if models.list omits them.
+        var effectiveChoices = modelChoices;
+        if (!trackingDefault && currentChoice is null && !string.IsNullOrWhiteSpace(currentModelId))
         {
-            cb.MinWidth = 0;
-            cb.Width = double.NaN;
-            cb.Height = 28;
-            cb.FontSize = 11;
-            cb.Padding = new Thickness(8, 0, 4, 0);
-            cb.CornerRadius = composerCornerRadius;
-            cb.HorizontalAlignment = HorizontalAlignment.Stretch;
-        }).VAlign(VerticalAlignment.Center);
+            var synthetic = new ChatModelChoice(currentModelId!, currentModelId!, Provider: Props.CurrentModelProvider);
+            currentChoice = synthetic;
+            var augmented = new List<ChatModelChoice>(modelChoices.Count + 1);
+            augmented.AddRange(modelChoices);
+            augmented.Add(synthetic);
+            effectiveChoices = augmented;
+            currentSelectionId = synthetic.SelectionId;
+        }
+
+        var modelEntries = new List<(string Label, object Tag, bool Selectable, bool IsCurrent)>();
+        if (effectiveChoices.Count > 0)
+            modelEntries.Add((ChatModelLabels.BuildDefaultEntryLabel(defaultChoice), ClearModelTag, true, trackingDefault));
+        foreach (var c in effectiveChoices)
+        {
+            var isCur = !trackingDefault && string.Equals(c.SelectionId, currentSelectionId, StringComparison.Ordinal);
+            modelEntries.Add((ChatModelLabels.BuildMenuLabel(c), c.SelectionId, c.IsSelectable, isCur));
+        }
+        if (modelEntries.Count == 0)
+        {
+            modelEntries.Add((Props.CurrentModel ?? "model", Props.CurrentModel ?? "", false, true));
+        }
+
+        var modelSelectedIndex = modelEntries.FindIndex(e => e.IsCurrent);
+
+        // Build directly so unavailable rows can be displayed but not selected.
+        var modelCombo = Border()
+            .Set(border =>
+            {
+                var cb = new ComboBox
+                {
+                    MinWidth = 0,
+                    Width = double.NaN,
+                    Height = 28,
+                    FontSize = 11,
+                    Padding = new Thickness(8, 0, 4, 0),
+                    CornerRadius = composerCornerRadius,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+
+                ComboBoxItem? selectedItem = null;
+                for (int i = 0; i < modelEntries.Count; i++)
+                {
+                    var entry = modelEntries[i];
+                    var item = new ComboBoxItem
+                    {
+                        Content = entry.Label,
+                        Tag = entry.Tag,
+                        IsEnabled = entry.Selectable,
+                        Padding = new Thickness(8, 4, 4, 4),
+                    };
+                    cb.Items.Add(item);
+                    if (i == modelSelectedIndex) selectedItem = item;
+                }
+
+                if (selectedItem != null)
+                    cb.SelectedItem = selectedItem;
+
+                var onModelChanged = Props.OnModelChanged;
+                var onModelCleared = Props.OnModelCleared;
+                cb.SelectionChanged += (_, _) =>
+                {
+                    if (cb.SelectedItem is not ComboBoxItem { IsEnabled: true } sel) return;
+                    if (ReferenceEquals(sel.Tag, ClearModelTag))
+                        onModelCleared?.Invoke();
+                    else if (sel.Tag is string id && !string.IsNullOrEmpty(id))
+                        onModelChanged(id);
+                };
+
+                border.Child = cb;
+            })
+            .VAlign(VerticalAlignment.Center);
 
         var thinkingLevel = Props.CurrentThinkingLevel ?? "medium";
         var thinkingIndex = Array.IndexOf(ThinkingLevelIds, thinkingLevel);

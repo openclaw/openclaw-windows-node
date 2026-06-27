@@ -260,6 +260,7 @@ public sealed class OpenClawChatRoot : Component
                 Id = composeKey,
                 Title = lastState?.ThreadTitle ?? "OpenClaw Windows Tray",
                 Model = lastState?.Model,
+                ModelProvider = lastState?.ModelProvider,
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.Idle,
             };
@@ -548,7 +549,9 @@ public sealed class OpenClawChatRoot : Component
                 AvailableChannels: channelGroups,
                 AvailableModels: snapshot.AvailableModels,
                 CurrentModel: composerThread.Model,
+                CurrentModelProvider: composerThread.ModelProvider,
                 CurrentThinkingLevel: composerThread.ThinkingLevel,
+                ModelChoices: snapshot.ModelChoices,
                 OnSend: (msg, attachments) =>
                 {
                     SetPendingAttachments(Array.Empty<ChatAttachment>());
@@ -560,7 +563,8 @@ public sealed class OpenClawChatRoot : Component
                     selectedIdState.Set(id);
                     selectedIdRef.Current = id;
                 },
-                OnModelChanged: model => RunFireAndForget(ct => _provider.SetModelAsync(composerThread.Id!, model, ct)),
+                OnModelChanged: model => ObserveFireAndForget(_provider.SetModelAsync(composerThread.Id!, model)),
+                OnModelCleared: () => ObserveFireAndForget(_provider.ClearModelAsync(composerThread.Id!)),
                 OnThinkingLevelChanged: level => RunFireAndForget(ct => _provider.SetThinkingLevelAsync(composerThread.Id!, level, ct)),
                 OnPermissionsChanged: allowAll => RunFireAndForget(ct => _provider.SetPermissionModeAsync(composerThread.Id!, allowAll, ct)),
                 OnVoiceRequest: _onVoiceRequest,
@@ -899,6 +903,19 @@ public sealed class OpenClawChatRoot : Component
             catch (OperationCanceledException) { /* expected */ }
             catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[chat] op failed: {ex}"); }
         });
+    }
+
+    private static void ObserveFireAndForget(Task task)
+    {
+        _ = ObserveAsync(task);
+
+        static async Task ObserveAsync(Task task)
+        {
+            try { await task; }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
+            catch (OperationCanceledException) { /* expected */ }
+            catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[chat] op failed: {ex}"); }
+        }
     }
 
     private static async Task LoadAsync(

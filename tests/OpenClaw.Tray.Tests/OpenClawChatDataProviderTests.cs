@@ -20,6 +20,8 @@ public class OpenClawChatDataProviderTests
         public Queue<ChatSendResult> SendResults { get; } = new();
         public List<string> AbortedRunIds { get; } = new();
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
+        public Func<string, string, Task>? PatchSessionModelBehavior { get; set; }
+        public Func<string, Task>? ClearSessionModelBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
@@ -44,7 +46,20 @@ public class OpenClawChatDataProviderTests
             return SendResults.Count > 0 ? SendResults.Dequeue() : new ChatSendResult();
         }
 
-        public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
+        public Task PatchSessionModelAsync(string sessionKey, string model)
+        {
+            PatchedModelKeys.Add(sessionKey);
+            PatchedModels.Add(model);
+            return PatchSessionModelBehavior?.Invoke(sessionKey, model) ?? Task.CompletedTask;
+        }
+        public List<string> PatchedModelKeys { get; } = new();
+        public List<string> PatchedModels { get; } = new();
+        public Task ClearSessionModelAsync(string sessionKey)
+        {
+            ClearedModelKeys.Add(sessionKey);
+            return ClearSessionModelBehavior?.Invoke(sessionKey) ?? Task.CompletedTask;
+        }
+        public List<string> ClearedModelKeys { get; } = new();
         public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
 
         public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
@@ -130,6 +145,20 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("Main session", snapshot.Threads[0].Title);
         Assert.Equal("main", snapshot.DefaultThreadId);
         Assert.True(snapshot.Timelines.ContainsKey("main"));
+    }
+
+    [Fact]
+    public async Task LoadAsync_CarriesSessionModelProviderToThreads()
+    {
+        var session = MainSession();
+        session.Model = "gpt-5.4";
+        session.Provider = "openrouter";
+        var (_, provider, _, _) = CreateProvider(new[] { session });
+
+        var snapshot = await provider.LoadAsync();
+
+        Assert.Equal("gpt-5.4", snapshot.Threads[0].Model);
+        Assert.Equal("openrouter", snapshot.Threads[0].ModelProvider);
     }
 
     [Fact]
@@ -1991,7 +2020,219 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(new[] { "x" }, snap.AvailableModels);
     }
 
-    // ── Iteration 4: per-entry metadata (timestamp + model) ──
+    [Fact]
+    public async Task ModelsListUpdated_PopulatesProviderRichChoices()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = new List<ModelInfo>
+            {
+                new() { Id = "claude-opus-4.8", Name = "Claude Opus 4.8", Provider = "Anthropic", ContextWindow = 200000, IsDefault = true },
+                new() { Id = "gemini-3.1-pro", Name = "Gemini 3.1 Pro", Provider = "Google", ContextWindow = 1000000, RequiresAuth = true },
+                new() { Id = "local-llama", Provider = "Ollama", IsAvailable = false },
+            }
+        });
+
+        var choices = snapshots[^1].ModelChoices;
+        Assert.NotNull(choices);
+        Assert.Equal(3, choices!.Count);
+
+        Assert.Equal("claude-opus-4.8", choices[0].Id);
+        Assert.Equal("Anthropic/claude-opus-4.8", choices[0].SelectionId);
+        Assert.Equal("Claude Opus 4.8", choices[0].DisplayName);
+        Assert.Equal("Anthropic", choices[0].Provider);
+        Assert.Equal(200000, choices[0].ContextWindow);
+        Assert.True(choices[0].IsDefault);
+
+        Assert.True(choices[1].RequiresAuth);
+        Assert.False(choices[2].IsAvailable);
+        Assert.False(choices[2].IsSelectable);
+
+        // AvailableModels stays a parallel id list for back-compat.
+        Assert.Equal(new[] { "claude-opus-4.8", "gemini-3.1-pro", "local-llama" }, snapshots[^1].AvailableModels);
+    }
+
+    [Fact]
+    public async Task ModelsListUpdated_DedupesChoicesById()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = new List<ModelInfo>
+            {
+                new() { Id = "gpt-5.4", Name = "GPT-5.4" },
+                new() { Id = "gpt-5.4", Name = "GPT-5.4 (dupe)" },
+                new() { Id = "", Name = "no id" },
+            }
+        });
+
+        var choices = snapshots[^1].ModelChoices!;
+        Assert.Single(choices);
+        Assert.Equal("gpt-5.4", choices[0].Id);
+        Assert.Equal("GPT-5.4", choices[0].DisplayName); // first wins
+    }
+
+    [Fact]
+    public async Task ModelsListUpdated_KeepsDuplicateRawModelIdsFromDifferentProviders()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = new List<ModelInfo>
+            {
+                new() { Id = "gpt-5.4", Name = "GPT-5.4", Provider = "openai" },
+                new() { Id = "gpt-5.4", Name = "GPT-5.4 via OpenRouter", Provider = "openrouter" },
+            }
+        });
+
+        var choices = snapshots[^1].ModelChoices!;
+        Assert.Equal(2, choices.Count);
+        Assert.Equal("openai/gpt-5.4", choices[0].SelectionId);
+        Assert.Equal("openrouter/gpt-5.4", choices[1].SelectionId);
+    }
+
+    [Fact]
+    public async Task SetModelAsync_ForwardsModelToBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        await provider.SetModelAsync("main", "claude-opus-4.8");
+
+        Assert.Equal(new[] { "main" }, bridge.PatchedModelKeys);
+        Assert.Equal(new[] { "claude-opus-4.8" }, bridge.PatchedModels);
+    }
+
+    [Fact]
+    public async Task SetModelAsync_EmptyModel_IsNoOp_NotSent()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        // The gateway's sessions.patch schema rejects an empty model (NonEmpty
+        // string); a blank Set is a no-op. Clearing goes through ClearModelAsync.
+        await provider.SetModelAsync("main", "");
+        await provider.SetModelAsync("main", "   ");
+
+        Assert.Empty(bridge.PatchedModels);
+        Assert.Empty(bridge.ClearedModelKeys);
+    }
+
+    [Fact]
+    public async Task ClearModelAsync_ClearsOverrideViaBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        // The picker's "Default" entry clears the session's model override
+        // (tri-state sessions.patch null) — distinct from a Set.
+        await provider.ClearModelAsync("main");
+
+        Assert.Equal(new[] { "main" }, bridge.ClearedModelKeys);
+        Assert.Empty(bridge.PatchedModels);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WaitsForInFlightModelPatchBeforeGatewaySend()
+    {
+        var patchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.PatchSessionModelBehavior = (_, _) =>
+        {
+            patchStarted.TrySetResult();
+            return releasePatch.Task;
+        };
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        var modelTask = provider.SetModelAsync("main", "openai/gpt-5.4");
+        var sendTask = provider.SendMessageAsync("main", "Hello");
+        await Task.Delay(50);
+
+        Assert.Single(snapshots);
+        Assert.Empty(bridge.SentMessages);
+
+        await patchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releasePatch.SetResult();
+        await Task.WhenAll(modelTask, sendTask);
+
+        Assert.Equal(new[] { "openai/gpt-5.4" }, bridge.PatchedModels);
+        Assert.Equal(new[] { "Hello" }, bridge.SentMessages);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ContinuesWhenInFlightModelPatchFails()
+    {
+        var patchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.PatchSessionModelBehavior = async (_, _) =>
+        {
+            patchStarted.SetResult();
+            await releasePatch.Task;
+            throw new InvalidOperationException("patch failed");
+        };
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        var modelTask = provider.SetModelAsync("main", "openai/gpt-5.4");
+        await patchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var sendTask = provider.SendMessageAsync("main", "Hello");
+        await Task.Delay(50);
+
+        Assert.Empty(bridge.SentMessages);
+        releasePatch.SetResult();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => modelTask);
+        await sendTask;
+
+        Assert.Equal(new[] { "openai/gpt-5.4" }, bridge.PatchedModels);
+        Assert.Equal(new[] { "Hello" }, bridge.SentMessages);
+        Assert.DoesNotContain(
+            snapshots.SelectMany(s => s.Timelines["main"].Entries),
+            e => e.Kind == ChatTimelineItemKind.Status && e.Text.Contains("patch failed"));
+    }
+
+    [Fact]
+    public async Task ModelPatches_AreSerializedSoLatestSelectionCannotBeOvertaken()
+    {
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.PatchSessionModelBehavior = (_, model) =>
+        {
+            if (model == "openai/gpt-5.4")
+                return releaseFirst.Task;
+            if (model == "openai/gpt-5.4-pro")
+                secondStarted.SetResult();
+            return Task.CompletedTask;
+        };
+        await provider.LoadAsync();
+
+        var firstTask = provider.SetModelAsync("main", "openai/gpt-5.4");
+        var secondTask = provider.SetModelAsync("main", "openai/gpt-5.4-pro");
+        await Task.Delay(50);
+
+        Assert.False(secondStarted.Task.IsCompleted);
+
+        releaseFirst.SetResult();
+        await Task.WhenAll(firstTask, secondTask);
+
+        Assert.True(secondStarted.Task.IsCompleted);
+        Assert.Equal(new[] { "openai/gpt-5.4", "openai/gpt-5.4-pro" }, bridge.PatchedModels);
+    }
+
 
     [Fact]
     public async Task LoadHistoryAsync_CapturesPerEntryTimestamps()
@@ -3864,6 +4105,37 @@ public class OpenClawChatDataProviderTests
             e.Kind == ChatTimelineItemKind.Status &&
             e.Text.Contains("Always allow", StringComparison.Ordinal) &&
             e.Text.Contains("del \"E:\\Temp\\sample.txt\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LocalExecApproval_SyntheticThreadUsesCachedModelProvider()
+    {
+        var session = MainSession();
+        session.Model = "gpt-5.4";
+        session.Provider = "openrouter";
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { session });
+        await provider.LoadAsync();
+        Assert.Equal("gpt-5.4", provider.CachedLastChatState?.Model);
+        Assert.Equal("openrouter", provider.CachedLastChatState?.ModelProvider);
+        bridge.RaiseSessions(Array.Empty<SessionInfo>());
+        Assert.Equal("gpt-5.4", provider.CachedLastChatState?.Model);
+        Assert.Equal("openrouter", provider.CachedLastChatState?.ModelProvider);
+        snapshots.Clear();
+
+        var promptTask = provider.RequestLocalExecApprovalAsync(new ExecApprovalPromptRequest
+        {
+            Command = "tasklist",
+            Shell = "cmd",
+            SessionKey = "main",
+            CorrelationId = "provider-context"
+        });
+
+        var synthetic = Assert.Single(snapshots[^1].Threads, t => t.Id == "main");
+        Assert.Equal("gpt-5.4", synthetic.Model);
+        Assert.Equal("openrouter", synthetic.ModelProvider);
+
+        await provider.RespondToPermissionAsync("main", "local-provider-context", ChatPermissionActionKeys.Deny);
+        await promptTask;
     }
 
     [Fact]
