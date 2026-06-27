@@ -1500,9 +1500,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private static string[] ModelIdsFromChoices(IReadOnlyList<ChatModelChoice> choices)
     {
         if (choices.Count == 0) return Array.Empty<string>();
-        var ids = new string[choices.Count];
-        for (int i = 0; i < choices.Count; i++) ids[i] = choices[i].Id;
-        return ids;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var ids = new List<string>(choices.Count);
+        foreach (var choice in choices)
+        {
+            if (seen.Add(choice.Id))
+                ids.Add(choice.Id);
+        }
+        return ids.ToArray();
     }
 
     // Rehydrate minimal choices from a cached id list (reconnect / pre-connect
@@ -1510,10 +1515,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private static IReadOnlyList<ChatModelChoice> ChoicesFromIds(string[] ids)
     {
         if (ids.Length == 0) return Array.Empty<ChatModelChoice>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         var list = new List<ChatModelChoice>(ids.Length);
         foreach (var id in ids)
         {
             if (string.IsNullOrEmpty(id)) continue;
+            if (!seen.Add(id)) continue;
             list.Add(new ChatModelChoice(id, id));
         }
         return list;

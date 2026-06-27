@@ -2101,6 +2101,7 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(2, choices.Count);
         Assert.Equal("openai/gpt-5.4", choices[0].SelectionId);
         Assert.Equal("openrouter/gpt-5.4", choices[1].SelectionId);
+        Assert.Equal(new[] { "gpt-5.4" }, snapshots[^1].AvailableModels);
     }
 
     [Fact]
