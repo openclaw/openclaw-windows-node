@@ -86,8 +86,10 @@ public class ChatModelChoiceTests
         {
             Models =
             {
-                // Provider explicitly reported as not configured → hidden.
-                new ModelInfo { Id = "needs-key", HasConfiguredFlag = true, IsConfigured = false },
+                // Provider explicitly reported as not configured with no auth path → hidden.
+                new ModelInfo { Id = "unconfigured", HasConfiguredFlag = true, IsConfigured = false },
+                // Auth-needed rows stay visible so users can choose the provider-auth path.
+                new ModelInfo { Id = "needs-key", HasConfiguredFlag = true, IsConfigured = false, RequiresAuth = true },
                 // Configured → kept.
                 new ModelInfo { Id = "ready", HasConfiguredFlag = true, IsConfigured = true },
                 // Flag omitted entirely → kept (we don't know, so don't hide).
@@ -95,8 +97,10 @@ public class ChatModelChoiceTests
             }
         };
 
-        var ids = ChatModelChoice.FromModelsList(info).Select(c => c.Id).ToArray();
-        Assert.Equal(new[] { "ready", "unknown" }, ids);
+        var choices = ChatModelChoice.FromModelsList(info);
+        Assert.Equal(new[] { "needs-key", "ready", "unknown" }, choices.Select(c => c.Id).ToArray());
+        Assert.True(choices[0].RequiresAuth);
+        Assert.True(choices[0].IsSelectable);
     }
 
     // ── Selectability ────────────────────────────────────────────────────

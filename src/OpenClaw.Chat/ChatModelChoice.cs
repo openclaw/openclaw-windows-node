@@ -55,10 +55,9 @@ public sealed record ChatModelChoice(
         foreach (var m in info.Models)
         {
             if (m is null || string.IsNullOrEmpty(m.Id)) continue;
-            // Hide models whose provider is explicitly reported as not configured
-            // (the gateway sent configured:false) — they can't be used. Models
-            // that simply omit the flag are kept (HasConfiguredFlag == false).
-            if (m.HasConfiguredFlag && !m.IsConfigured) continue;
+            // Hide explicitly unconfigured models unless the gateway reports an
+            // auth flow for them; auth-needed rows are useful picker actions.
+            if (m.HasConfiguredFlag && !m.IsConfigured && !m.RequiresAuth) continue;
             var choice = new ChatModelChoice(
                 Id: m.Id,
                 DisplayName: m.DisplayName,

@@ -1972,13 +1972,15 @@ public class OpenClawChatDataProviderTests
             {
                 new() { Id = "gpt-5.4", IsConfigured = true, HasConfiguredFlag = true },
                 new() { Id = "gpt-5.5", IsConfigured = false, HasConfiguredFlag = true },
+                new() { Id = "needs-auth", IsConfigured = false, HasConfiguredFlag = true, RequiresAuth = true },
                 new() { Id = "legacy-gateway-model" }
             }
         });
 
         Assert.Equal(
-            new[] { "gpt-5.4", "legacy-gateway-model" },
+            new[] { "gpt-5.4", "needs-auth", "legacy-gateway-model" },
             snapshots[^1].AvailableModels);
+        Assert.True(snapshots[^1].ModelChoices!.Single(c => c.Id == "needs-auth").RequiresAuth);
     }
 
     [Fact]
