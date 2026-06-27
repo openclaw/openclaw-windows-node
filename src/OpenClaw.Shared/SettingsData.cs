@@ -127,6 +127,8 @@ public record class SettingsData
     /// "User interface" section.
     /// </summary>
     public bool UseLegacyWebChat { get; set; } = false;
+    public string AppTheme { get; set; } = "System";
+    public bool? ShowDiagnostics { get; set; }
     public List<UserNotificationRule>? UserRules { get; set; }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────

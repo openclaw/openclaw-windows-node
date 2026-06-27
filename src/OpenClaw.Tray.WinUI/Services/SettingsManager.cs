@@ -20,6 +20,9 @@ public class SettingsManager
     private const string ProtectedSecretPrefix = "dpapi:";
     private const int CurrentSettingsSchemaVersion = 1;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
+    public const string AppThemeSystem = "System";
+    public const string AppThemeLight = "Light";
+    public const string AppThemeDark = "Dark";
 
     public static string SettingsDirectoryPath => GetDefaultSettingsDirectory();
     public static string SettingsPath => Path.Combine(SettingsDirectoryPath, "settings.json");
@@ -86,6 +89,9 @@ public class SettingsManager
     /// Default false (native).
     /// </summary>
     public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }
+    public string AppTheme { get => NormalizeAppTheme(_data.AppTheme); set => _data = _data with { AppTheme = NormalizeAppTheme(value) }; }
+    public bool? ShowDiagnosticsOverride { get => _data.ShowDiagnostics; set => _data = _data with { ShowDiagnostics = value }; }
+    public bool ShowDiagnosticsEffective => _data.ShowDiagnostics ?? OpenClawTray.Helpers.DiagnosticsGate.BuildDefault;
 
     // Node mode(gateway WebSocket connection — separate from MCP)
     public bool EnableNodeMode { get => _data.EnableNodeMode; set => _data = _data with { EnableNodeMode = value }; }
@@ -241,6 +247,7 @@ public class SettingsManager
         PreferStructuredCategories = true,
         UserRules = new(),
         UseLegacyWebChat = false,
+        AppTheme = AppThemeSystem,
         EnableNodeMode = false,
         NodeCanvasEnabled = true,
         NodeScreenEnabled = true,
@@ -306,6 +313,8 @@ public class SettingsManager
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
             SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
+            AppTheme = NormalizeAppTheme(loaded.AppTheme),
+            ShowDiagnostics = loaded.ShowDiagnostics,
             UserRules = loaded.UserRules != null ? new List<UserNotificationRule>(loaded.UserRules) : new(),
             SandboxCustomFolders = CloneSandboxCustomFolders(loaded.SandboxCustomFolders),
             SystemRunBlockHostFallbackWhenMxcUnavailable = loaded.SystemRunBlockHostFallbackWhenMxcUnavailable,
@@ -389,6 +398,8 @@ public class SettingsManager
         TtsElevenLabsVoiceId = string.IsNullOrWhiteSpace(TtsElevenLabsVoiceId) ? null : TtsElevenLabsVoiceId,
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
         TtsPiperVoiceId = TtsPiperVoiceId,
+        AppTheme = AppTheme,
+        ShowDiagnostics = ShowDiagnosticsOverride,
         A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
         SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
         PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
@@ -398,6 +409,15 @@ public class SettingsManager
         SandboxMaxOutputBytes = SandboxMaxOutputBytes,
         McpOnlyMode = null
     };
+
+    public static string NormalizeAppTheme(string? value)
+    {
+        if (string.Equals(value, AppThemeLight, StringComparison.OrdinalIgnoreCase))
+            return AppThemeLight;
+        if (string.Equals(value, AppThemeDark, StringComparison.OrdinalIgnoreCase))
+            return AppThemeDark;
+        return AppThemeSystem;
+    }
 
     public void Save()
     {

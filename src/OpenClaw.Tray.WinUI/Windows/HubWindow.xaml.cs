@@ -96,6 +96,7 @@ public sealed partial class HubWindow : WindowEx
     public HubWindow()
     {
         InitializeComponent();
+        RefreshDiagnosticsNavVisibility();
         ApplyHighContrastFallbackIfNeeded();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -119,6 +120,9 @@ public sealed partial class HubWindow : WindowEx
         ToolTipService.SetToolTip(StatusPillButton, LocalizationHelper.GetString("HubWindow_StatusPill_Tooltip"));
         ToolTipService.SetToolTip(NotificationsBellButton, LocalizationHelper.GetString("HubWindow_Bell_Tooltip"));
     }
+
+    public void RefreshDiagnosticsNavVisibility() =>
+        NavDiagnostics.Visibility = DiagnosticsGate.IsVisible ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
     /// Subscribe to AppState property changes for title bar and nav updates.
@@ -525,8 +529,6 @@ public sealed partial class HubWindow : WindowEx
                 {
                     if (IsClosed) return;
                     UpdateTitleBarStatus(AppModel!.Status);
-                    if (ContentFrame?.Content is AboutPage about)
-                        about.RefreshGatewayInfo();
                 });
                 break;
             case nameof(AppState.AgentsList):
@@ -648,7 +650,7 @@ public sealed partial class HubWindow : WindowEx
         // layout on Connection. Any caller still using "home" or "general"
         // (deep links, persisted nav state, command palette) lands here.
         if (tag == "home" || tag == "general") return "connection";
-        if (tag == "about") return "info";
+        if (tag == "about" || tag == "info") return "settings";
         if (tag == "nodes") return "instances";
         // Map legacy agent-scoped workspace/cron tags
         if (tag == "cron") return $"agent:{_currentAgentId}:cron";
@@ -658,6 +660,9 @@ public sealed partial class HubWindow : WindowEx
 
     private void NavigateInternal(string tag)
     {
+        if (tag == "debug" && !DiagnosticsGate.IsVisible)
+            tag = "settings";
+
         var pageType = TagToPageType(tag);
         if (pageType == null) return;
 
@@ -1072,7 +1077,6 @@ public sealed partial class HubWindow : WindowEx
             case SettingsPage settings: settings.Initialize(); break;
             case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
-            case AboutPage about: about.Initialize(); break;
         }
     }
 
@@ -1103,7 +1107,7 @@ public sealed partial class HubWindow : WindowEx
         "settings" => typeof(SettingsPage),
         "notifications" => typeof(NotificationsPage),
         "debug" => typeof(DebugPage),
-        "info" => typeof(AboutPage),
+        "info" => typeof(SettingsPage),
         // Legacy tags
         "home" => typeof(ConnectionPage),
         "general" => typeof(ConnectionPage),
@@ -1113,7 +1117,7 @@ public sealed partial class HubWindow : WindowEx
         "skills" => typeof(SkillsPage),
         "cron" => typeof(CronPage),
         "workspace" => typeof(WorkspacePage),
-        "about" => typeof(AboutPage),
+        "about" => typeof(SettingsPage),
         // Agent-scoped pages
         _ when tag?.StartsWith("agent:") == true => ResolveAgentPageType(tag),
         _ => null
@@ -1239,13 +1243,16 @@ public sealed partial class HubWindow : WindowEx
             new() { Icon = "🛡️", Title = LocalizationHelper.GetString("Command_GoToPermissions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToPermissions_Subtitle"), Tag = "permissions" },
             new() { Icon = "⚙️", Title = LocalizationHelper.GetString("Command_GoToSettings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSettings_Subtitle"), Tag = "settings" },
             new() { Icon = "🔔", Title = LocalizationHelper.GetString("Command_GoToNotifications_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToNotifications_Subtitle"), Tag = "notifications" },
-            new() { Icon = "🐛", Title = LocalizationHelper.GetString("Command_GoToDiagnostics_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToDiagnostics_Subtitle"), Tag = "debug" },
-            new() { Icon = "ℹ️", Title = LocalizationHelper.GetString("Command_GoToInfo_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToInfo_Subtitle"), Tag = "info" },
 
             // Actions
             new() { Icon = "💬", Title = LocalizationHelper.GetString("Command_OpenChatWindow_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenChatWindow_Subtitle"), Tag = "chat" },
             new() { Icon = "🌐", Title = LocalizationHelper.GetString("Command_OpenDashboard_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenDashboard_Subtitle"), Execute = () => ((IAppCommands)Application.Current).OpenDashboard(null) },
         };
+
+        if (DiagnosticsGate.IsVisible)
+        {
+            commands.Add(new CommandItem { Icon = "🐛", Title = LocalizationHelper.GetString("Command_GoToDiagnostics_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToDiagnostics_Subtitle"), Tag = "debug" });
+        }
 
         // Toggle commands
         var settings = CurrentApp.Settings;
@@ -1346,7 +1353,6 @@ public sealed partial class HubWindow : WindowEx
         { "activity",    "\uEA95" },
         { "notifications", "\uE7F4" },
         { "debug",       "\uEBE8" },
-        { "info",        "\uE946" },
     };
 
     // Glyphs for the two parent NavigationViewItems that don't carry a Tag

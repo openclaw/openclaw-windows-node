@@ -1515,57 +1515,6 @@
   <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
     <value>正在生成设置代码</value>
   </data>
-  <data name="AboutPage_TextBlock_10.Text" xml:space="preserve">
-    <value>关于</value>
-  </data>
-  <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
-    <value>OpenClaw Hub</value>
-  </data>
-  <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET / WinUI / Windows App SDK</value>
-  </data>
-  <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
-    <value>网关信息</value>
-  </data>
-  <data name="AboutPage_TextBlock_48.Text" xml:space="preserve">
-    <value>版本：</value>
-  </data>
-  <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>协议：</value>
-  </data>
-  <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
-    <value>身份验证模式：</value>
-  </data>
-  <data name="AboutPage_TextBlock_60.Text" xml:space="preserve">
-    <value>运行时间：</value>
-  </data>
-  <data name="AboutPage_TextBlock_72.Text" xml:space="preserve">
-    <value>调试</value>
-  </data>
-  <data name="OpenLogButton.Content" xml:space="preserve">
-    <value>打开日志文件</value>
-  </data>
-  <data name="OpenConfigButton.Content" xml:space="preserve">
-    <value>打开配置文件夹</value>
-  </data>
-  <data name="CopySupportButton.Content" xml:space="preserve">
-    <value>复制支持上下文</value>
-  </data>
-  <data name="CheckUpdatesButton.Content" xml:space="preserve">
-    <value>检查更新</value>
-  </data>
-  <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
-    <value>链接</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
-    <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_96.Content" xml:space="preserve">
-    <value>Dashboard → openclaw://dashboard</value>
-  </data>
   <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
     <value>代理事件</value>
   </data>
@@ -1731,7 +1680,7 @@
   <data name="DetailPath.Text" xml:space="preserve">
     <value>选择配置部分</value>
   </data>
-<data name="ConfigPage_TabViewItem_82.Text" xml:space="preserve">
+  <data name="ConfigPage_TabViewItem_82.Text" xml:space="preserve">
     <value>原始 JSON</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
@@ -2439,8 +2388,8 @@
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>调试</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
-    <value>信息</value>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>通知</value>
   </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>未知页面</value>
@@ -3940,9 +3889,6 @@
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>沙盒</value>
   </data>
-  <data name="AboutPage_MoreDiagnosticsLink.Content" xml:space="preserve">
-    <value>More diagnostics →</value>
-  </data>
   <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
     <value>Your gateway didn't list any channels</value>
   </data>
@@ -4074,15 +4020,6 @@
   </data>
   <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
     <value>Tray chat popup</value>
-  </data>
-  <data name="DiagnosticsPage_Card_Reconfigure.Header" xml:space="preserve">
-    <value>Reconfigure…</value>
-  </data>
-  <data name="DiagnosticsPage_Card_Reconfigure.Description" xml:space="preserve">
-    <value>Reopens the OpenClaw onboarding wizard. You will be asked to confirm.</value>
-  </data>
-  <data name="DiagnosticsPage_ReconfigureButton.Content" xml:space="preserve">
-    <value>Reconfigure…</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4864,6 +4801,21 @@
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>常规</value>
   </data>
+  <data name="SettingsRow_AppTheme_Header.Text" xml:space="preserve">
+    <value>应用主题</value>
+  </data>
+  <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
+    <value>选择浅色、深色，或使用 Windows 设置。</value>
+  </data>
+  <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
+    <value>系统</value>
+  </data>
+  <data name="SettingsPage_AppTheme_Light.Content" xml:space="preserve">
+    <value>浅色</value>
+  </data>
+  <data name="SettingsPage_AppTheme_Dark.Content" xml:space="preserve">
+    <value>深色</value>
+  </data>
   <data name="SettingsPage_Notifications.Text" xml:space="preserve">
     <value>通知</value>
   </data>
@@ -4872,6 +4824,57 @@
   </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>本地网关</value>
+  </data>
+  <data name="SettingsPage_Developer.Text" xml:space="preserve">
+    <value>开发者</value>
+  </data>
+  <data name="SettingsPage_AppInfoExpander.Header" xml:space="preserve">
+    <value>应用信息</value>
+  </data>
+  <data name="SettingsPage_AppInfoCheckUpdates.Content" xml:space="preserve">
+    <value>检查更新</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_AppName.Text" xml:space="preserve">
+    <value>应用名称</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Version.Text" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_BuildDate.Text" xml:space="preserve">
+    <value>生成日期</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Runtime.Text" xml:space="preserve">
+    <value>运行时</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Architecture.Text" xml:space="preserve">
+    <value>体系结构</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Windows.Text" xml:space="preserve">
+    <value>Windows 版本</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_UpdateChannel.Text" xml:space="preserve">
+    <value>更新通道</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_InstallType.Text" xml:space="preserve">
+    <value>安装类型</value>
+  </data>
+  <data name="SettingsPage_AppInfoRelatedLinks.Text" xml:space="preserve">
+    <value>相关链接</value>
+  </data>
+  <data name="SettingsPage_AppInfoDocumentation.Content" xml:space="preserve">
+    <value>文档</value>
+  </data>
+  <data name="SettingsPage_AppInfoGitHub.Content" xml:space="preserve">
+    <value>GitHub</value>
+  </data>
+  <data name="SettingsPage_AppInfoDashboard.Content" xml:space="preserve">
+    <value>仪表板</value>
+  </data>
+  <data name="SettingsRow_ShowDiagnostics_Header.Text" xml:space="preserve">
+    <value>Enable Diagnostics</value>
+  </data>
+  <data name="SettingsRow_ShowDiagnostics_Description.Text" xml:space="preserve">
+    <value>开发者和故障排除工具。默认对本地版本启用。</value>
   </data>
   <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
     <value>设置或重新配置本地网关</value>
@@ -5760,7 +5763,7 @@
     <value>关联您的 WhatsApp 手机</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>点击下方“关联”部分中的 &quot;Show QR&quot;。</value>
+    <value>点击下方“关联”部分中的 "Show QR"。</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
     <value>在手机上：WhatsApp → 设置 → 已关联设备 → 关联设备。</value>
@@ -5772,7 +5775,7 @@
     <value>关联您的 Signal 手机</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>点击下方“关联”部分中的 &quot;Show QR&quot;。</value>
+    <value>点击下方“关联”部分中的 "Show QR"。</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
     <value>在手机上：Signal → 设置 → 已关联设备 → 关联新设备。</value>
@@ -5793,7 +5796,7 @@
     <value>将令牌粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。频道将自动启动。</value>
+    <value>点击 "Save and start"。频道将自动启动。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
     <value>通过 webhook 连接 Discord</value>
@@ -5802,13 +5805,13 @@
     <value>打开您的 Discord 服务器设置 → 集成 → Webhooks。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>点击 &quot;New Webhook&quot;，为其命名，然后复制 webhook URL。</value>
+    <value>点击 "New Webhook"，为其命名，然后复制 webhook URL。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
     <value>将 URL 粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>通过 webhook 连接 Google Chat</value>
@@ -5823,7 +5826,7 @@
     <value>将 URL 粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
     <value>通过应用连接 Slack</value>
@@ -5838,7 +5841,7 @@
     <value>将两者粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
     <value>通过中继连接 Nostr</value>
@@ -5853,7 +5856,7 @@
     <value>将两者粘贴到下方的配置表单中。</value>
   </data>
   <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>点击 &quot;Save and start&quot;。</value>
+    <value>点击 "Save and start"。</value>
   </data>
   <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
     <value>iMessage 仅适用于 macOS</value>
@@ -5871,10 +5874,10 @@
     <value>连接此频道</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; 是一个插件频道。请参阅其文档以了解所需字段。</value>
+    <value>"{0}" 是一个插件频道。请参阅其文档以了解所需字段。</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>使用下方“配置”部分中的 &quot;Open Config page&quot; 在 channels.{0} 下添加设置。</value>
+    <value>使用下方“配置”部分中的 "Open Config page" 在 channels.{0} 下添加设置。</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
     <value>保存配置；OpenClaw 将自动启动频道。</value>
@@ -6091,12 +6094,6 @@
   </data>
   <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
     <value>Go to Diagnostics</value>
-  </data>
-  <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
-    <value>About this app</value>
-  </data>
-  <data name="Command_GoToInfo_Title" xml:space="preserve">
-    <value>Go to Info</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
     <value>查看活动的应用通知</value>
@@ -6495,7 +6492,9 @@
     <value>无法验证沙盒可用性</value>
   </data>
   <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）— 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
+    <value>{0}
+
+{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）— 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>重试</value>
@@ -6504,7 +6503,9 @@
     <value>你的 Windows 版本尚不支持沙盒</value>
   </data>
   <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;{1} 沙盒需要包含 AppContainer 基元的较新 Windows 版本。请安装最新 Windows 更新（或加入 Windows 预览体验计划以获取最新版本）以启用隔离。</value>
+    <value>{0}
+
+{1} 沙盒需要包含 AppContainer 基元的较新 Windows 版本。请安装最新 Windows 更新（或加入 Windows 预览体验计划以获取最新版本）以启用隔离。</value>
   </data>
   <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
     <value>打开 Windows 更新</value>
@@ -6513,7 +6514,9 @@
     <value>缺少沙盒组件</value>
   </data>
   <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;找不到 wxc-exec 二进制文件。{1} 如果这是开发者版本，请生成托盘应用，以便将 wxc-exec.exe 复制到输出文件夹。否则请重新安装伴侣应用以恢复沙盒。</value>
+    <value>{0}
+
+找不到 wxc-exec 二进制文件。{1} 如果这是开发者版本，请生成托盘应用，以便将 wxc-exec.exe 复制到输出文件夹。否则请重新安装伴侣应用以恢复沙盒。</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>显示安装说明</value>
@@ -6579,7 +6582,7 @@
     <value>Job completed</value>
   </data>
   <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
-    <value>&quot;{0}&quot; ran successfully and was removed.</value>
+    <value>"{0}" ran successfully and was removed.</value>
   </data>
   <data name="CronPage_RunNotStarted" xml:space="preserve">
     <value>运行未启动</value>
@@ -6826,5 +6829,23 @@
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
+  </data>
+  <data name="SettingsPage_About.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
+    <value>Gateway info</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Version.Text" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Protocol.Text" xml:space="preserve">
+    <value>Protocol</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_AuthMode.Text" xml:space="preserve">
+    <value>Auth mode</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
+    <value>Uptime</value>
   </data>
 </root>

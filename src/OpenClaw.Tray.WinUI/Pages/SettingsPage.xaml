@@ -2,7 +2,9 @@
 <Page
     x:Class="OpenClawTray.Pages.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:helpers="using:OpenClawTray.Helpers">
 
     <Page.Resources>
         <Thickness x:Key="SettingsRowPadding">16,14,16,14</Thickness>
@@ -51,6 +53,32 @@
                         <ToggleSwitch Grid.Column="1" x:Name="AutoStartToggle" MinWidth="0" OnContent="" OffContent=""
                                       AutomationProperties.AutomationId="SettingsPageAutoStart"
                                       AutomationProperties.Name="Start with Windows"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_AppTheme_Header" Text="App theme" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_AppTheme_Description"
+                                       Text="Choose light, dark, or use your Windows setting."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="AppThemeComboBox" MinWidth="160"
+                                  AutomationProperties.AutomationId="SettingsPageAppTheme"
+                                  AutomationProperties.Name="App theme">
+                            <ComboBoxItem x:Uid="SettingsPage_AppTheme_System" Content="System" Tag="System"/>
+                            <ComboBoxItem x:Uid="SettingsPage_AppTheme_Light" Content="Light" Tag="Light"/>
+                            <ComboBoxItem x:Uid="SettingsPage_AppTheme_Dark" Content="Dark" Tag="Dark"/>
+                        </ComboBox>
                     </Grid>
                 </Border>
 
@@ -345,6 +373,257 @@
                                  IsClosable="True"/>
                     </StackPanel>
                 </Border>
+
+                <!-- ═════════ Developer ═════════ -->
+                <TextBlock x:Uid="SettingsPage_Developer" Text="Developer" Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"/>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_ShowDiagnostics_Header"
+                                       Text="Enable Diagnostics"
+                                       Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_ShowDiagnostics_Description"
+                                       Text="Developer and troubleshooting tools. On by default for local builds."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      x:Name="ShowDiagnosticsToggle"
+                                      MinWidth="0"
+                                      OnContent=""
+                                      OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageShowDiagnostics"
+                                      AutomationProperties.Name="Enable Diagnostics"/>
+                    </Grid>
+                </Border>
+
+                <!-- ═════════ About ═════════ -->
+                <TextBlock x:Uid="SettingsPage_About" Text="About" Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"/>
+
+                <toolkit:SettingsExpander x:Uid="SettingsPage_AppInfoExpander"
+                                          Header="App info"
+                                          IsExpanded="True">
+                    <toolkit:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.About, Mode=OneTime}"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                    </toolkit:SettingsExpander.HeaderIcon>
+                    <toolkit:SettingsExpander.Content>
+                        <Button x:Uid="SettingsPage_AppInfoCheckUpdates"
+                                Content="Check for updates"
+                                Click="OnCheckUpdates"
+                                AutomationProperties.AutomationId="SettingsPageCheckUpdates"/>
+                    </toolkit:SettingsExpander.Content>
+                    <toolkit:SettingsExpander.ItemsHeader>
+                        <StackPanel Padding="16" Spacing="12">
+                            <Grid ColumnSpacing="24" RowSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="180"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_AppName"
+                                           Grid.Row="0" Grid.Column="0"
+                                           Text="App name"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1"
+                                           Text="OpenClaw Windows Companion"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"/>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_Version"
+                                           Grid.Row="1" Grid.Column="0"
+                                           Text="Version"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="AppInfoVersionText"
+                                           Grid.Row="1" Grid.Column="1"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"/>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_BuildDate"
+                                           x:Name="AppInfoBuildLabel"
+                                           Grid.Row="2" Grid.Column="0"
+                                           Text="Build date"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="AppInfoBuildText"
+                                           Grid.Row="2" Grid.Column="1"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"/>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_Runtime"
+                                           Grid.Row="3" Grid.Column="0"
+                                           Text="Runtime"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="AppInfoRuntimeText"
+                                           Grid.Row="3" Grid.Column="1"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"
+                                           TextWrapping="Wrap"/>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_Architecture"
+                                           Grid.Row="4" Grid.Column="0"
+                                           Text="Architecture"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="AppInfoArchText"
+                                           Grid.Row="4" Grid.Column="1"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"/>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_Windows"
+                                           Grid.Row="5" Grid.Column="0"
+                                           Text="Windows"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="AppInfoWindowsText"
+                                           Grid.Row="5" Grid.Column="1"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"/>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_UpdateChannel"
+                                           Grid.Row="6" Grid.Column="0"
+                                           Text="Update channel"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="AppInfoChannelText"
+                                           Grid.Row="6" Grid.Column="1"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"/>
+
+                                <TextBlock x:Uid="SettingsPage_AppInfoLabel_InstallType"
+                                           Grid.Row="7" Grid.Column="0"
+                                           Text="Install type"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="AppInfoInstallText"
+                                           Grid.Row="7" Grid.Column="1"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           IsTextSelectionEnabled="True"/>
+                            </Grid>
+
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="180"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Uid="SettingsPage_AppInfoRelatedLinks"
+                                           Grid.Column="0"
+                                           Text="Related links"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <HyperlinkButton x:Uid="SettingsPage_AppInfoDocumentation"
+                                                     Content="Documentation"
+                                                     Padding="0"
+                                                     Click="OnDocumentationLink"/>
+                                    <HyperlinkButton x:Uid="SettingsPage_AppInfoGitHub"
+                                                     Content="GitHub"
+                                                     Padding="0"
+                                                     Click="OnGitHubLink"/>
+                                    <HyperlinkButton x:Uid="SettingsPage_AppInfoDashboard"
+                                                     Content="Dashboard"
+                                                     Padding="0"
+                                                     Click="OnDashboardLink"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </toolkit:SettingsExpander.ItemsHeader>
+                </toolkit:SettingsExpander>
+
+                <toolkit:SettingsExpander x:Uid="SettingsPage_GatewayInfoExpander"
+                                          Header="Gateway info"
+                                          IsExpanded="False">
+                    <toolkit:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.ServerEnvironment, Mode=OneTime}"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                    </toolkit:SettingsExpander.HeaderIcon>
+                    <toolkit:SettingsExpander.ItemsHeader>
+                        <Grid Padding="16" ColumnSpacing="24" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock x:Uid="SettingsPage_GatewayInfoLabel_Version"
+                                       Grid.Row="0" Grid.Column="0"
+                                       Text="Version"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="GatewayVersionText"
+                                       Grid.Row="0" Grid.Column="1"
+                                       Text="—"
+                                       Style="{StaticResource BodyTextBlockStyle}"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"/>
+
+                            <TextBlock x:Uid="SettingsPage_GatewayInfoLabel_Protocol"
+                                       Grid.Row="1" Grid.Column="0"
+                                       Text="Protocol"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="GatewayProtocolText"
+                                       Grid.Row="1" Grid.Column="1"
+                                       Text="—"
+                                       Style="{StaticResource BodyTextBlockStyle}"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"/>
+
+                            <TextBlock x:Uid="SettingsPage_GatewayInfoLabel_AuthMode"
+                                       Grid.Row="2" Grid.Column="0"
+                                       Text="Auth mode"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="GatewayAuthText"
+                                       Grid.Row="2" Grid.Column="1"
+                                       Text="—"
+                                       Style="{StaticResource BodyTextBlockStyle}"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"/>
+
+                            <TextBlock x:Uid="SettingsPage_GatewayInfoLabel_Uptime"
+                                       Grid.Row="3" Grid.Column="0"
+                                       Text="Uptime"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock x:Name="GatewayUptimeText"
+                                       Grid.Row="3" Grid.Column="1"
+                                       Text="—"
+                                       Style="{StaticResource BodyTextBlockStyle}"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"/>
+                        </Grid>
+                    </toolkit:SettingsExpander.ItemsHeader>
+                </toolkit:SettingsExpander>
 
             </StackPanel>
             </Grid>

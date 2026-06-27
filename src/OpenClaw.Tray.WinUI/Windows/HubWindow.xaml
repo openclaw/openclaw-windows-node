@@ -411,7 +411,6 @@
                 <SvgImageSource x:Key="Activity_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Activity.svg"/>
                 <SvgImageSource x:Key="Notifications_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Notifications.svg"/>
                 <SvgImageSource x:Key="Debug_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Debug.svg"/>
-                <SvgImageSource x:Key="Info_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Info.svg"/>
             </NavigationView.Resources>
 
             <NavigationView.MenuItems>
@@ -471,23 +470,23 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Voice" Tag="voice" Content="Voice &amp; Audio">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Voice_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="Settings">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_136" Tag="permissions" Content="Permissions">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Permissions_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Sandbox" Tag="sandbox" Content="Sandbox">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sandbox_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="Settings">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" Tag="debug" Content="Debug">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Notifications" Tag="notifications" Content="Notifications">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Notifications_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_148" Tag="info" Content="Info">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Info_Icon}"/></NavigationViewItem.Icon>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Debug">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 

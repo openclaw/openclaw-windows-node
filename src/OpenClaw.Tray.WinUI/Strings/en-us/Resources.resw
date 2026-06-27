@@ -1563,58 +1563,7 @@ On your gateway host (Mac/Linux), run:
   <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
     <value>Capture screenshots</value>
   </data>
-  <data name="AboutPage_TextBlock_10.Text" xml:space="preserve">
-    <value>About</value>
-  </data>
-  <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
-    <value>OpenClaw Hub</value>
-  </data>
-  <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET / WinUI / Windows App SDK</value>
-  </data>
-  <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
-    <value>Gateway Info</value>
-  </data>
-  <data name="AboutPage_TextBlock_48.Text" xml:space="preserve">
-    <value>Version:</value>
-  </data>
-  <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>Protocol:</value>
-  </data>
-  <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
-    <value>Auth mode:</value>
-  </data>
-  <data name="AboutPage_TextBlock_60.Text" xml:space="preserve">
-    <value>Uptime:</value>
-  </data>
-  <data name="AboutPage_TextBlock_72.Text" xml:space="preserve">
-    <value>Debug</value>
-  </data>
-  <data name="OpenLogButton.Content" xml:space="preserve">
-    <value>Open Log File</value>
-  </data>
-  <data name="OpenConfigButton.Content" xml:space="preserve">
-    <value>Open Config Folder</value>
-  </data>
-  <data name="CopySupportButton.Content" xml:space="preserve">
-    <value>Copy Support Context</value>
-  </data>
-  <data name="CheckUpdatesButton.Content" xml:space="preserve">
-    <value>Check for Updates</value>
-  </data>
-  <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
-    <value>Links</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
-    <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_96.Content" xml:space="preserve">
-    <value>Dashboard → openclaw://dashboard</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
+<data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
     <value>Event Stream</value>
   </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
@@ -2487,12 +2436,12 @@ On your gateway host (Mac/Linux), run:
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Diagnostics</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
-    <value>Info</value>
+<data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+  <value>Notifications</value>
   </data>
-  <data name="Onboarding_UnknownPage" xml:space="preserve">
-    <value>Unknown page</value>
-  </data>
+<data name="Onboarding_UnknownPage" xml:space="preserve">
+  <value>Unknown page</value>
+</data>
   <data name="Onboarding_Retry" xml:space="preserve">
     <value>Retry</value>
   </data>
@@ -3988,10 +3937,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>Sandbox</value>
   </data>
-  <data name="AboutPage_MoreDiagnosticsLink.Content" xml:space="preserve">
-    <value>More diagnostics →</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
+<data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
     <value>Your gateway didn't list any channels</value>
   </data>
   <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
@@ -4123,16 +4069,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
     <value>Tray chat popup</value>
   </data>
-  <data name="DiagnosticsPage_Card_Reconfigure.Header" xml:space="preserve">
-    <value>Reconfigure…</value>
-  </data>
-  <data name="DiagnosticsPage_Card_Reconfigure.Description" xml:space="preserve">
-    <value>Reopens the OpenClaw onboarding wizard. You will be asked to confirm.</value>
-  </data>
-  <data name="DiagnosticsPage_ReconfigureButton.Content" xml:space="preserve">
-    <value>Reconfigure…</value>
-  </data>
-  <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
+<data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
   </data>
   <data name="SettingsRow_AutoStart_Description.Text" xml:space="preserve">
@@ -4912,6 +4849,21 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>General</value>
   </data>
+  <data name="SettingsRow_AppTheme_Header.Text" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
+    <value>Choose light, dark, or use your Windows setting.</value>
+  </data>
+  <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="SettingsPage_AppTheme_Light.Content" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="SettingsPage_AppTheme_Dark.Content" xml:space="preserve">
+    <value>Dark</value>
+  </data>
   <data name="SettingsPage_Notifications.Text" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -4920,6 +4872,15 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Local Gateway</value>
+  </data>
+  <data name="SettingsPage_Developer.Text" xml:space="preserve">
+    <value>Developer</value>
+  </data>
+  <data name="SettingsRow_ShowDiagnostics_Header.Text" xml:space="preserve">
+    <value>Enable Diagnostics</value>
+  </data>
+  <data name="SettingsRow_ShowDiagnostics_Description.Text" xml:space="preserve">
+    <value>Developer and troubleshooting tools. On by default for local builds.</value>
   </data>
   <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
     <value>Set up or reconfigure Local Gateway</value>
@@ -6145,13 +6106,7 @@ Make sure the gateway is running.</value>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
     <value>Go to Notifications</value>
   </data>
-  <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
-    <value>About this app</value>
-  </data>
-  <data name="Command_GoToInfo_Title" xml:space="preserve">
-    <value>Go to Info</value>
-  </data>
-  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
+<data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
   </data>
   <data name="Command_GoToInstances_Title" xml:space="preserve">
@@ -6873,5 +6828,65 @@ Make sure the gateway is running.</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
+  </data>
+  <data name="SettingsPage_About.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="SettingsPage_AppInfoExpander.Header" xml:space="preserve">
+    <value>App info</value>
+  </data>
+  <data name="SettingsPage_AppInfoCheckUpdates.Content" xml:space="preserve">
+    <value>Check for updates</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_AppName.Text" xml:space="preserve">
+    <value>App name</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Version.Text" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_BuildDate.Text" xml:space="preserve">
+    <value>Build date</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Runtime.Text" xml:space="preserve">
+    <value>Runtime</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Architecture.Text" xml:space="preserve">
+    <value>Architecture</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Windows.Text" xml:space="preserve">
+    <value>Windows</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_UpdateChannel.Text" xml:space="preserve">
+    <value>Update channel</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_InstallType.Text" xml:space="preserve">
+    <value>Install type</value>
+  </data>
+  <data name="SettingsPage_AppInfoRelatedLinks.Text" xml:space="preserve">
+    <value>Related links</value>
+  </data>
+  <data name="SettingsPage_AppInfoDocumentation.Content" xml:space="preserve">
+    <value>Documentation</value>
+  </data>
+  <data name="SettingsPage_AppInfoGitHub.Content" xml:space="preserve">
+    <value>GitHub</value>
+  </data>
+  <data name="SettingsPage_AppInfoDashboard.Content" xml:space="preserve">
+    <value>Dashboard</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
+    <value>Gateway info</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Version.Text" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Protocol.Text" xml:space="preserve">
+    <value>Protocol</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_AuthMode.Text" xml:space="preserve">
+    <value>Auth mode</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
+    <value>Uptime</value>
   </data>
 </root>

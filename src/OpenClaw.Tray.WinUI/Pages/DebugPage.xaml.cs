@@ -715,29 +715,4 @@ public sealed partial class DebugPage : Page
         DebugChatSurfaceOverrides.TrayChat = ParseOverride(TrayChatOverrideCombo);
     }
 
-    private void OnRelaunchOnboarding(object sender, RoutedEventArgs e) =>
-        AsyncEventHandlerGuard.Run(
-            OnRelaunchOnboardingAsync,
-            new OpenClawTray.AppLogger(),
-            nameof(OnRelaunchOnboarding));
-
-    private async Task OnRelaunchOnboardingAsync()
-    {
-        if (XamlRoot == null) return;
-
-        var confirm = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "Relaunch first-run setup?",
-            Content = "This will reopen the OpenClaw onboarding wizard. The current view will close.",
-            PrimaryButtonText = "Relaunch",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close
-        };
-        var result = await confirm.ShowAsync();
-        if (result == ContentDialogResult.Primary)
-        {
-            ((IAppCommands)CurrentApp).ShowOnboarding();
-        }
-    }
 }

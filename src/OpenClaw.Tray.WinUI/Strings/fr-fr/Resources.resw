@@ -1515,57 +1515,6 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
     <value>Génération du code de configuration</value>
   </data>
-  <data name="AboutPage_TextBlock_10.Text" xml:space="preserve">
-    <value>À propos</value>
-  </data>
-  <data name="AboutPage_TextBlock_19.Text" xml:space="preserve">
-    <value>OpenClaw Hub</value>
-  </data>
-  <data name="AboutPage_TextBlock_23.Text" xml:space="preserve">
-    <value>.NET / WinUI / Windows App SDK</value>
-  </data>
-  <data name="AboutPage_TextBlock_35.Text" xml:space="preserve">
-    <value>Infos passerelle</value>
-  </data>
-  <data name="AboutPage_TextBlock_48.Text" xml:space="preserve">
-    <value>Version :</value>
-  </data>
-  <data name="AboutPage_TextBlock_52.Text" xml:space="preserve">
-    <value>Protocole :</value>
-  </data>
-  <data name="AboutPage_TextBlock_56.Text" xml:space="preserve">
-    <value>Mode d’authentification :</value>
-  </data>
-  <data name="AboutPage_TextBlock_60.Text" xml:space="preserve">
-    <value>Temps de fonctionnement :</value>
-  </data>
-  <data name="AboutPage_TextBlock_72.Text" xml:space="preserve">
-    <value>Débogage</value>
-  </data>
-  <data name="OpenLogButton.Content" xml:space="preserve">
-    <value>Ouvrir le fichier journal</value>
-  </data>
-  <data name="OpenConfigButton.Content" xml:space="preserve">
-    <value>Ouvrir le dossier de configuration</value>
-  </data>
-  <data name="CopySupportButton.Content" xml:space="preserve">
-    <value>Copier le contexte de support</value>
-  </data>
-  <data name="CheckUpdatesButton.Content" xml:space="preserve">
-    <value>Rechercher des mises à jour</value>
-  </data>
-  <data name="AboutPage_TextBlock_91.Text" xml:space="preserve">
-    <value>Liens</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_92.Content" xml:space="preserve">
-    <value>Documentation → docs.openclaw.ai/platforms/windows</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_94.Content" xml:space="preserve">
-    <value>GitHub → github.com/openclaw/openclaw-windows-node</value>
-  </data>
-  <data name="AboutPage_HyperlinkButton_96.Content" xml:space="preserve">
-    <value>Dashboard → openclaw://dashboard</value>
-  </data>
   <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
     <value>Événements d’agent</value>
   </data>
@@ -2439,8 +2388,8 @@ Sur votre hôte passerelle (Mac/Linux), exécutez :
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Débogage</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_148.Content" xml:space="preserve">
-    <value>Informations</value>
+  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
+    <value>Alertes</value>
   </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>Page inconnue</value>
@@ -3940,9 +3889,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>Bac à sable</value>
   </data>
-  <data name="AboutPage_MoreDiagnosticsLink.Content" xml:space="preserve">
-    <value>More diagnostics →</value>
-  </data>
   <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
     <value>Your gateway didn't list any channels</value>
   </data>
@@ -4074,15 +4020,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
     <value>Tray chat popup</value>
-  </data>
-  <data name="DiagnosticsPage_Card_Reconfigure.Header" xml:space="preserve">
-    <value>Reconfigure…</value>
-  </data>
-  <data name="DiagnosticsPage_Card_Reconfigure.Description" xml:space="preserve">
-    <value>Reopens the OpenClaw onboarding wizard. You will be asked to confirm.</value>
-  </data>
-  <data name="DiagnosticsPage_ReconfigureButton.Content" xml:space="preserve">
-    <value>Reconfigure…</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4864,6 +4801,21 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>Général</value>
   </data>
+  <data name="SettingsRow_AppTheme_Header.Text" xml:space="preserve">
+    <value>Thème de l’application</value>
+  </data>
+  <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
+    <value>Choisissez clair, sombre ou utilisez votre paramètre Windows.</value>
+  </data>
+  <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
+    <value>Système</value>
+  </data>
+  <data name="SettingsPage_AppTheme_Light.Content" xml:space="preserve">
+    <value>Clair</value>
+  </data>
+  <data name="SettingsPage_AppTheme_Dark.Content" xml:space="preserve">
+    <value>Sombre</value>
+  </data>
   <data name="SettingsPage_Notifications.Text" xml:space="preserve">
     <value>Mes notifications</value>
   </data>
@@ -4872,6 +4824,57 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Passerelle locale</value>
+  </data>
+  <data name="SettingsPage_Developer.Text" xml:space="preserve">
+    <value>Développeur</value>
+  </data>
+  <data name="SettingsPage_AppInfoExpander.Header" xml:space="preserve">
+    <value>Infos sur l’application</value>
+  </data>
+  <data name="SettingsPage_AppInfoCheckUpdates.Content" xml:space="preserve">
+    <value>Rechercher les mises à jour</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_AppName.Text" xml:space="preserve">
+    <value>Nom de l’application</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Version.Text" xml:space="preserve">
+    <value>Version de l’application</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_BuildDate.Text" xml:space="preserve">
+    <value>Date de compilation</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Runtime.Text" xml:space="preserve">
+    <value>Environnement d’exécution</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Architecture.Text" xml:space="preserve">
+    <value>Architecture du processus</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_Windows.Text" xml:space="preserve">
+    <value>Version de Windows</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_UpdateChannel.Text" xml:space="preserve">
+    <value>Canal de mise à jour</value>
+  </data>
+  <data name="SettingsPage_AppInfoLabel_InstallType.Text" xml:space="preserve">
+    <value>Type d’installation</value>
+  </data>
+  <data name="SettingsPage_AppInfoRelatedLinks.Text" xml:space="preserve">
+    <value>Liens connexes</value>
+  </data>
+  <data name="SettingsPage_AppInfoDocumentation.Content" xml:space="preserve">
+    <value>Docs</value>
+  </data>
+  <data name="SettingsPage_AppInfoGitHub.Content" xml:space="preserve">
+    <value>GitHub</value>
+  </data>
+  <data name="SettingsPage_AppInfoDashboard.Content" xml:space="preserve">
+    <value>Tableau de bord</value>
+  </data>
+  <data name="SettingsRow_ShowDiagnostics_Header.Text" xml:space="preserve">
+    <value>Enable Diagnostics</value>
+  </data>
+  <data name="SettingsRow_ShowDiagnostics_Description.Text" xml:space="preserve">
+    <value>Outils de développement et de dépannage. Activé par défaut pour les builds locales.</value>
   </data>
   <data name="SettingsPage_LocalGatewaySetup_Header.Text" xml:space="preserve">
     <value>Configurer ou reconfigurer la passerelle locale</value>
@@ -5124,7 +5127,8 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle se trouve sur ce PC, elles peuvent toujours accéder à vos fichiers Windows, au presse-papiers et au réseau — vérifiez la configuration de votre passerelle.</value>
-  </data>  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
+  </data>
+  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
     <value>Tous les agents</value>
   </data>
   <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
@@ -5759,7 +5763,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Associer votre téléphone WhatsApp</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Cliquez sur &quot;Show QR&quot; dans la section Liaison ci-dessous.</value>
+    <value>Cliquez sur "Show QR" dans la section Liaison ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
     <value>Sur votre téléphone : WhatsApp → Paramètres → Appareils liés → Lier un appareil.</value>
@@ -5771,7 +5775,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Associer votre téléphone Signal</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Cliquez sur &quot;Show QR&quot; dans la section Liaison ci-dessous.</value>
+    <value>Cliquez sur "Show QR" dans la section Liaison ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
     <value>Sur votre téléphone : Signal → Paramètres → Appareils liés → Lier un nouvel appareil.</value>
@@ -5792,7 +5796,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Collez le jeton dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;. Le canal démarrera automatiquement.</value>
+    <value>Cliquez sur "Save and start". Le canal démarrera automatiquement.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
     <value>Connecter Discord via un webhook</value>
@@ -5801,13 +5805,13 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Ouvrez les paramètres de votre serveur Discord → Intégrations → Webhooks.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Cliquez sur &quot;New Webhook&quot;, donnez-lui un nom et copiez l’URL du webhook.</value>
+    <value>Cliquez sur "New Webhook", donnez-lui un nom et copiez l’URL du webhook.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
     <value>Collez l’URL dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>Connecter Google Chat via un webhook</value>
@@ -5822,7 +5826,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Collez l’URL dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
     <value>Connecter Slack via une application</value>
@@ -5837,7 +5841,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Collez les deux dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
     <value>Connecter Nostr via des relais</value>
@@ -5852,7 +5856,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Collez les deux dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Cliquez sur &quot;Save and start&quot;.</value>
+    <value>Cliquez sur "Save and start".</value>
   </data>
   <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
     <value>iMessage est réservé à macOS</value>
@@ -5870,10 +5874,10 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Connecter ce canal</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; est un canal de plugin. Consultez sa documentation pour connaître les champs requis.</value>
+    <value>"{0}" est un canal de plugin. Consultez sa documentation pour connaître les champs requis.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Utilisez &quot;Open Config page&quot; dans la section Configuration ci-dessous pour ajouter des paramètres sous channels.{0}.</value>
+    <value>Utilisez "Open Config page" dans la section Configuration ci-dessous pour ajouter des paramètres sous channels.{0}.</value>
   </data>
   <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
     <value>Enregistrez la configuration ; OpenClaw démarrera le canal automatiquement.</value>
@@ -6090,12 +6094,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="Command_GoToDiagnostics_Title" xml:space="preserve">
     <value>Go to Diagnostics</value>
-  </data>
-  <data name="Command_GoToInfo_Subtitle" xml:space="preserve">
-    <value>About this app</value>
-  </data>
-  <data name="Command_GoToInfo_Title" xml:space="preserve">
-    <value>Go to Info</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
     <value>Consulter les notifications actives de l'application</value>
@@ -6494,7 +6492,9 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Impossible de vérifier la disponibilité du sandbox</value>
   </data>
   <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;{1} La vérification des capacités du sandbox ne s'est pas terminée. C'est généralement transitoire (vérification lente ou bloquée) — réessayez, et si le problème persiste, vérifiez si un logiciel de sécurité bloque wxc-exec.</value>
+    <value>{0}
+
+{1} La vérification des capacités du sandbox ne s'est pas terminée. C'est généralement transitoire (vérification lente ou bloquée) — réessayez, et si le problème persiste, vérifiez si un logiciel de sécurité bloque wxc-exec.</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Réessayer</value>
@@ -6503,7 +6503,9 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Votre version de Windows ne prend pas encore en charge le sandboxing</value>
   </data>
   <data name="SandboxPage_WindowsUnsupportedMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;{1} Le sandboxing nécessite une version récente de Windows avec les primitives AppContainer. Installez les dernières mises à jour Windows (ou rejoignez le programme Windows Insider pour les versions les plus récentes) afin d'activer le confinement.</value>
+    <value>{0}
+
+{1} Le sandboxing nécessite une version récente de Windows avec les primitives AppContainer. Installez les dernières mises à jour Windows (ou rejoignez le programme Windows Insider pour les versions les plus récentes) afin d'activer le confinement.</value>
   </data>
   <data name="SandboxPage_OpenWindowsUpdate" xml:space="preserve">
     <value>Ouvrir Windows Update</value>
@@ -6512,7 +6514,9 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Des composants de sandboxing sont manquants</value>
   </data>
   <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, compilez l'application Tray pour copier wxc-exec.exe dans le dossier de sortie. Sinon, réinstallez le compagnon pour restaurer le sandboxing.</value>
+    <value>{0}
+
+Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, compilez l'application Tray pour copier wxc-exec.exe dans le dossier de sortie. Sinon, réinstallez le compagnon pour restaurer le sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Afficher les instructions d'installation</value>
@@ -6578,7 +6582,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Job completed</value>
   </data>
   <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
-    <value>&quot;{0}&quot; ran successfully and was removed.</value>
+    <value>"{0}" ran successfully and was removed.</value>
   </data>
   <data name="CronPage_RunNotStarted" xml:space="preserve">
     <value>Exécution non démarrée</value>
@@ -6825,5 +6829,23 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
+  </data>
+  <data name="SettingsPage_About.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
+    <value>Gateway info</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Version.Text" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Protocol.Text" xml:space="preserve">
+    <value>Protocol</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_AuthMode.Text" xml:space="preserve">
+    <value>Auth mode</value>
+  </data>
+  <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
+    <value>Uptime</value>
   </data>
 </root>

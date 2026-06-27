@@ -27,7 +27,6 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
-        "AboutPage_TextBlock_19.Text",
         "CanvasWindow_TextBlock_31.Text",
         "CanvasWindow_winexWindowEx_2.Title",
         "ChatWindow_winexWindowEx_2.Title",
@@ -99,6 +98,16 @@ public class LocalizationValidationTests
         "PermissionsPage_SttHint_FailedFormat",
         "PermissionsPage_SttHint_NotDownloaded",
         "PermissionsPage_NodeStatus_Disabled",
+        // About / Gateway info strings added as part of the Windows-native
+        // settings reorg are seeded in English across locales until the next
+        // translation pass lands. They are still present in every locale file
+        // so key parity stays strict; this set only documents deferred copy.
+        "SettingsPage_About.Text",
+        "SettingsPage_GatewayInfoExpander.Header",
+        "SettingsPage_GatewayInfoLabel_Version.Text",
+        "SettingsPage_GatewayInfoLabel_Protocol.Text",
+        "SettingsPage_GatewayInfoLabel_AuthMode.Text",
+        "SettingsPage_GatewayInfoLabel_Uptime.Text",
         "PermissionsPage_NodeStatus_DisabledDetails",
         "PermissionsPage_NodeStatus_Active",
         "PermissionsPage_NodeStatus_ActiveDetailsFormat",
@@ -178,7 +187,6 @@ public class LocalizationValidationTests
         "ConnectionPage_NodePendingDeclaredCapabilities",
         "ConnectionPage_NodePendingDeclaredCommands",
         "ConnectionPage_NodePendingDeclaredPermissions",
-        "AboutPage_MoreDiagnosticsLink.Content",
         "ConnectionStatusWindow.Title",
         // Hard-coded XAML strings resolved by issue #491 — seeded English-only across
         // all 5 locales using the deferred-translation pattern. Translations are a
@@ -274,8 +282,6 @@ public class LocalizationValidationTests
         "Command_GoToSettings_Subtitle",
         "Command_GoToDiagnostics_Title",
         "Command_GoToDiagnostics_Subtitle",
-        "Command_GoToInfo_Title",
-        "Command_GoToInfo_Subtitle",
         "Command_OpenChatWindow_Title",
         "Command_OpenChatWindow_Subtitle",
         "Command_OpenDashboard_Title",
@@ -327,6 +333,8 @@ public class LocalizationValidationTests
         "WorkspacePage_SearchResultsPath",
         "WorkspacePage_BrowserTruncated",
     };
+
+    private static readonly HashSet<string> EnUsOnlyFallbackResourceKeys = new(StringComparer.Ordinal);
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =
     [
@@ -604,7 +612,9 @@ public class LocalizationValidationTests
         var referencePath = Path.Combine(stringsDir, "en-us", "Resources.resw");
         Assert.True(File.Exists(referencePath), $"Reference file not found: {referencePath}");
 
-        var referenceKeys = LoadResw(referencePath).Keys.ToHashSet(StringComparer.Ordinal);
+        var referenceKeys = LoadResw(referencePath).Keys
+            .Except(EnUsOnlyFallbackResourceKeys)
+            .ToHashSet(StringComparer.Ordinal);
 
         var localeDirs = GetNonEnglishLocaleDirectories(stringsDir);
 
@@ -619,7 +629,11 @@ public class LocalizationValidationTests
             var localeKeys = LoadResw(reswPath).Keys.ToHashSet(StringComparer.Ordinal);
 
             var missing = referenceKeys.Except(localeKeys).OrderBy(k => k).ToList();
-            var extra = localeKeys.Except(referenceKeys).OrderBy(k => k).ToList();
+            var extra = localeKeys
+                .Except(referenceKeys)
+                .Except(EnUsOnlyFallbackResourceKeys)
+                .OrderBy(k => k)
+                .ToList();
 
             Assert.True(missing.Count == 0,
                 $"Locale '{locale}' is missing {missing.Count} key(s): {string.Join(", ", missing.Take(10))}");
@@ -839,7 +853,8 @@ public class LocalizationValidationTests
     {
         var stringsDir = GetStringsDirectory();
         var referencePath = Path.Combine(stringsDir, "en-us", "Resources.resw");
-        var referenceCount = LoadResw(referencePath).Count;
+        var referenceResw = LoadResw(referencePath);
+        var referenceCount = referenceResw.Count - EnUsOnlyFallbackResourceKeys.Count(referenceResw.ContainsKey);
 
         var localeDirs = Directory.GetDirectories(stringsDir);
         foreach (var localeDir in localeDirs)
@@ -848,7 +863,8 @@ public class LocalizationValidationTests
             var reswPath = Path.Combine(localeDir, "Resources.resw");
             if (!File.Exists(reswPath)) continue;
 
-            var count = LoadResw(reswPath).Count;
+            var localeResw = LoadResw(reswPath);
+            var count = localeResw.Count - EnUsOnlyFallbackResourceKeys.Count(localeResw.ContainsKey);
             Assert.Equal(referenceCount, count);
         }
     }

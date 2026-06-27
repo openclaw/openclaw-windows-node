@@ -48,7 +48,6 @@ public sealed partial class ConnectionPage : Page
     private bool _gatewayHostActionInProgress;
     private CancellationTokenSource? _gatewayHostActionCts;
     private string? _gatewayHostStatusGatewayId;
-
     // Tracks which gateway record the Add Gateway form is currently editing
     // (set by OnSavedRowEdit / OnEditTunnelSettings; null = creating a brand
     // new record). Used by DoDirectConnectFromAddFormAsync so a URL change
@@ -3142,6 +3141,8 @@ public sealed partial class ConnectionPage : Page
                 case nameof(AppState.Channels):
                 case nameof(AppState.UsageCost):
                 case nameof(AppState.Sessions):
+                    OnGlanceDataChanged();
+                    break;
                 case nameof(AppState.GatewaySelf):
                     OnGlanceDataChanged();
                     break;

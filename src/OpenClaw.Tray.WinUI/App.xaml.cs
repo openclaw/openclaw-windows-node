@@ -60,6 +60,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
     internal SettingsManager Settings => _settings ?? throw new InvalidOperationException("Settings are not initialized.");
+    internal SettingsManager? SettingsOrNull => _settings;
     internal string DataDirectoryPath => DataPath;
 
     /// <summary>The active hub window, exposed so pages can obtain an HWND for file pickers.</summary>
@@ -699,6 +700,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             !prewarmIsBootstrapToken)
         {
             _chatWindow = new ChatWindow(prewarmUrl, prewarmToken);
+            ApplyThemePreference(_chatWindow);
             // Window is created but hidden — WebView2 initializes in the background
         }
 
@@ -736,6 +738,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // This prevents GC/threading issues when creating windows after idle
         _keepAliveWindow = new Window();
         _keepAliveWindow.Content = new Microsoft.UI.Xaml.Controls.Grid();
+        ApplyThemePreference(_keepAliveWindow);
         _keepAliveWindow.AppWindow.IsShownInSwitchers = false;
         
         // Move off-screen and set minimal size
@@ -768,8 +771,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         // Pre-create menu window once - reuse to avoid crash on window creation after idle
         _trayMenuWindow = new TrayMenuWindow();
+        ApplyThemePreference(_trayMenuWindow);
         _trayMenuWindow.MenuItemClicked += OnTrayMenuItemClicked;
         // Don't close - just hide
+    }
+
+    internal void ApplyThemePreferenceToOpenWindows()
+    {
+        ApplyThemePreference(_keepAliveWindow);
+        ApplyThemePreference(_hubWindow);
+        ApplyThemePreference(_trayMenuWindow);
+        ApplyThemePreference(_chatWindow);
+        ApplyThemePreference(_connectionStatusWindow);
+    }
+
+    private void ApplyThemePreference(Window? window)
+    {
+        if (_settings is null)
+            return;
+
+        ThemeHelper.ApplyTheme(window, _settings.AppTheme);
     }
 
     private void OnTrayIconSelected(TrayIcon sender, TrayIconEventArgs e)
@@ -806,6 +827,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_chatWindow == null)
         {
             _chatWindow = new ChatWindow(url, token);
+            ApplyThemePreference(_chatWindow);
         }
 
         // Bug 2: cached ChatWindow may have been pre-warmed with empty/stale credentials
@@ -3334,6 +3356,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_hubWindow == null || _hubWindow.IsClosed)
         {
             _hubWindow = new HubWindow();
+            ApplyThemePreference(_hubWindow);
             _hubWindow.AppModel = _appState;
             _hubWindow.BindAppNotifications(_appNotificationService!);
             _hubWindow.ApplyNavPaneState(_settings!);
@@ -3489,7 +3512,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             WireAppCapabilityHandlers();
         }
 
-        // Non-connection settings always applied regardless of impact
         if (_settings!.GlobalHotkeyEnabled)
         {
             _globalHotkey ??= new GlobalHotkeyService();
@@ -3508,19 +3530,24 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             AutoStartManager.SetAutoStartAsync(_settings.AutoStart),
             "[App] Failed to apply auto-start setting");
 
-        // Notify ad-hoc listeners (e.g. ChatWindow may be alive but not
-        // owned by the hub) that settings have changed. Marshal onto the
-        // UI thread because IAppCommands.NotifySettingsSaved is a public
-        // entry point that may be invoked from background work; existing
-        // handlers (DebugPage, ChatWindow) update UI directly and would
-        // crash if dispatched from a non-UI thread (Hanselman v2 #7).
+        // Apply UI-only settings and notify ad-hoc listeners. This public
+        // entry point can be invoked from background work, while existing
+        // listeners update UI directly.
+        void ApplyUiSettingsAndNotify()
+        {
+            ApplyThemePreferenceToOpenWindows();
+            if (_hubWindow is { IsClosed: false })
+                _hubWindow.RefreshDiagnosticsNavVisibility();
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         if (_dispatcherQueue != null && !_dispatcherQueue.HasThreadAccess)
         {
-            _dispatcherQueue.TryEnqueue(() => SettingsChanged?.Invoke(this, EventArgs.Empty));
+            _dispatcherQueue.TryEnqueue(ApplyUiSettingsAndNotify);
         }
         else
         {
-            SettingsChanged?.Invoke(this, EventArgs.Empty);
+            ApplyUiSettingsAndNotify();
         }
     }
 
@@ -3581,6 +3608,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _connectionManager!.Diagnostics,
             _gatewayRegistry,
             _connectionManager);
+        ApplyThemePreference(_connectionStatusWindow);
         _connectionStatusWindow.Activate();
     }
 
