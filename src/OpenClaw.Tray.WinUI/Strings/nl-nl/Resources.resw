@@ -4872,7 +4872,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Dashboardpagina</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Header.Text" xml:space="preserve">
-    <value>Enable Diagnostics</value>
+    <value>Diagnostiek inschakelen</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Description.Text" xml:space="preserve">
     <value>Ontwikkelaars- en probleemoplossingshulpmiddelen. Standaard ingeschakeld voor lokale builds.</value>

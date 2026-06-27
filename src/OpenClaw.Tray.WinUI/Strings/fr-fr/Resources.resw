@@ -4871,7 +4871,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Tableau de bord</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Header.Text" xml:space="preserve">
-    <value>Enable Diagnostics</value>
+    <value>Activer les diagnostics</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Description.Text" xml:space="preserve">
     <value>Outils de développement et de dépannage. Activé par défaut pour les builds locales.</value>

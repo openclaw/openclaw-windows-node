@@ -4871,7 +4871,7 @@
     <value>儀表板</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Header.Text" xml:space="preserve">
-    <value>Enable Diagnostics</value>
+    <value>啟用診斷</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Description.Text" xml:space="preserve">
     <value>開發人員與疑難排解工具。預設會在本機組建中開啟。</value>

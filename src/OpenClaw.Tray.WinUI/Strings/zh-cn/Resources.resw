@@ -4871,7 +4871,7 @@
     <value>仪表板</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Header.Text" xml:space="preserve">
-    <value>Enable Diagnostics</value>
+    <value>启用诊断</value>
   </data>
   <data name="SettingsRow_ShowDiagnostics_Description.Text" xml:space="preserve">
     <value>开发者和故障排除工具。默认对本地版本启用。</value>
