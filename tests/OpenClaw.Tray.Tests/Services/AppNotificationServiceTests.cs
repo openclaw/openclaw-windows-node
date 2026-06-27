@@ -298,6 +298,20 @@ public sealed class AppNotificationServiceTests
     }
 
     [Fact]
+    public void Show_CapsActiveNotificationsAndKeepsNewestQueuedItems()
+    {
+        var service = new AppNotificationService();
+
+        for (var index = 1; index <= 105; index++)
+            service.Show(Notification($"Notification {index}", "Message"));
+
+        Assert.Equal(100, service.Snapshot.ActiveNotifications.Count);
+        Assert.Equal("Notification 1", service.Snapshot.Current?.Title);
+        Assert.DoesNotContain(service.Snapshot.ActiveNotifications, notification => notification.Title == "Notification 2");
+        Assert.Contains(service.Snapshot.ActiveNotifications, notification => notification.Title == "Notification 105");
+    }
+
+    [Fact]
     public void ClearSource_RemovesCurrentAndQueuedNotifications()
     {
         var service = new AppNotificationService();

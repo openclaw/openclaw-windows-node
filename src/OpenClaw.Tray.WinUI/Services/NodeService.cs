@@ -170,7 +170,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public event EventHandler<NodeInvokeCompletedEventArgs>? InvokeCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
-    public event EventHandler<ToastContentBuilder>? ToastRequested;
+    public event EventHandler<NodeToastRequestedEventArgs>? ToastRequested;
     public event EventHandler<ExecApprovalPromptRequestedEventArgs>? LocalExecApprovalRequested;
     public event EventHandler<ExecApprovalPromptDecidedEventArgs>? LocalExecApprovalDecided;
     
@@ -1711,6 +1711,31 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     #endregion
     
     #region Screen Capability Handlers
+
+    private void RequestNodeToast(
+        string title,
+        string message,
+        string dedupeKey,
+        AppNotificationSeverity severity = AppNotificationSeverity.Informational,
+        string category = "node.invoke",
+        bool mirrorInApp = false)
+    {
+        var appNotification = mirrorInApp
+            ? AppNotificationMapper.FromNodeActivity(
+                title,
+                message,
+                category,
+                severity,
+                dedupeKey)
+            : null;
+        ToastRequested?.Invoke(
+            this,
+            new NodeToastRequestedEventArgs(
+                new ToastContentBuilder()
+                    .AddText(title)
+                    .AddText(message),
+                appNotification));
+    }
     
     private async Task<ScreenCaptureResult> OnScreenCapture(ScreenCaptureArgs args)
     {
@@ -1724,9 +1749,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         if ((now - _lastScreenCaptureNotification).TotalSeconds > 10)
         {
             _lastScreenCaptureNotification = now;
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_ScreenCaptured"))
-                .AddText(LocalizationHelper.GetString("Toast_ScreenCapturedDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_ScreenCaptured"),
+                LocalizationHelper.GetString("Toast_ScreenCapturedDetail"),
+                "node:screen-captured");
         }
         
         return await _screenCaptureService.CaptureAsync(args);
@@ -1745,20 +1771,26 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         SetRecordingState(RecordingType.Screen, true, args.DurationMs);
         try
         {
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_ScreenRecordingStarted"))
-                .AddText(LocalizationHelper.GetString("Toast_ScreenRecordingStartedDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_ScreenRecordingStarted"),
+                LocalizationHelper.GetString("Toast_ScreenRecordingStartedDetail"),
+                "node:screen-recording-started");
             var result = await _screenRecordingService.RecordAsync(args);
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_ScreenRecordingComplete"))
-                .AddText(LocalizationHelper.GetString("Toast_ScreenRecordingCompleteDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_ScreenRecordingComplete"),
+                LocalizationHelper.GetString("Toast_ScreenRecordingCompleteDetail"),
+                "node:screen-recording-complete",
+                AppNotificationSeverity.Success);
             return result;
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_ScreenRecordingFailed"))
-                .AddText(LocalizationHelper.GetString("Toast_ScreenRecordingFailedDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_ScreenRecordingFailed"),
+                LocalizationHelper.GetString("Toast_ScreenRecordingFailedDetail"),
+                "node:screen-recording-failed",
+                AppNotificationSeverity.Error,
+                mirrorInApp: true);
             throw;
         }
         finally
@@ -1794,9 +1826,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
         catch (UnauthorizedAccessException ex)
         {
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_CameraBlocked"))
-                .AddText(LocalizationHelper.GetString("Toast_CameraBlockedDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_CameraBlocked"),
+                LocalizationHelper.GetString("Toast_CameraBlockedDetail"),
+                "node:camera-blocked",
+                AppNotificationSeverity.Error,
+                mirrorInApp: true);
             throw new InvalidOperationException(
                 "Camera access blocked. Enable camera access for desktop apps in Windows Privacy settings.",
                 ex);
@@ -1816,20 +1851,26 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         SetRecordingState(RecordingType.Camera, true, args.DurationMs);
         try
         {
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_CameraRecordingStarted"))
-                .AddText(LocalizationHelper.GetString("Toast_CameraRecordingStartedDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_CameraRecordingStarted"),
+                LocalizationHelper.GetString("Toast_CameraRecordingStartedDetail"),
+                "node:camera-recording-started");
             var result = await _cameraCaptureService.ClipAsync(args);
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_CameraRecordingComplete"))
-                .AddText(LocalizationHelper.GetString("Toast_CameraRecordingCompleteDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_CameraRecordingComplete"),
+                LocalizationHelper.GetString("Toast_CameraRecordingCompleteDetail"),
+                "node:camera-recording-complete",
+                AppNotificationSeverity.Success);
             return result;
         }
         catch (UnauthorizedAccessException ex)
         {
-            ToastRequested?.Invoke(this, new ToastContentBuilder()
-                .AddText(LocalizationHelper.GetString("Toast_CameraBlocked"))
-                .AddText(LocalizationHelper.GetString("Toast_CameraBlockedDetail")));
+            RequestNodeToast(
+                LocalizationHelper.GetString("Toast_CameraBlocked"),
+                LocalizationHelper.GetString("Toast_CameraBlockedDetail"),
+                "node:camera-blocked",
+                AppNotificationSeverity.Error,
+                mirrorInApp: true);
             throw new InvalidOperationException(
                 "Camera access blocked. Enable camera access for desktop apps in Windows Privacy settings.",
                 ex);

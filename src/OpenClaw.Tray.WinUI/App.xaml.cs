@@ -2213,6 +2213,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 {
                     _toastService!.MarkPairedToastShown(deviceKey);
                     AddRecentActivity("Node paired", category: "node", dashboardPath: "nodes", nodeId: args.DeviceId);
+                    AppNotificationPublisher.Show(
+                        _appNotificationService,
+                        LocalizationHelper.GetString("Toast_NodePaired"),
+                        LocalizationHelper.GetString("Toast_NodePairedDetail"),
+                        "node",
+                        "pairing",
+                        AppNotificationSeverity.Success,
+                        "node-paired:" + HashNotificationKey(deviceKey),
+                        "connection",
+                        LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
+                        id: BuildPairingPairedNotificationId(deviceKey));
                     _toastService!.ShowToast(new ToastContentBuilder()
                         .AddText(LocalizationHelper.GetString("Toast_NodePaired"))
                         .AddText(LocalizationHelper.GetString("Toast_NodePairedDetail")),
@@ -2268,6 +2279,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private static string BuildPairingPendingNotificationId(string deviceId) =>
         $"node-pairing-pending:{deviceId.Trim().ToLowerInvariant()}";
+
+    private static string BuildPairingPairedNotificationId(string deviceId) =>
+        $"node-paired:{deviceId.Trim().ToLowerInvariant()}";
 
     private static string BuildPairingRejectedNotificationId(string deviceId) =>
         $"node-pairing-rejected:{deviceId.Trim().ToLowerInvariant()}";
@@ -2461,9 +2475,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Agent requested a notification via node.invoke system.notify
         try
         {
-            _toastService!.ShowToast(new ToastContentBuilder()
-                .AddText(args.Title)
-                .AddText(args.Body));
+            AppNotificationPublisher.Publish(
+                _appNotificationService,
+                _toastService,
+                new AppNotificationPublishRequest(
+                    AppNotificationMapper.FromNodeSystemNotification(args),
+                    new ToastContentBuilder()
+                        .AddText(args.Title)
+                        .AddText(args.Body)));
         }
         catch (Exception ex)
         {
@@ -2471,9 +2490,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
     }
 
-    private void OnNodeToastRequested(object? sender, Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder builder)
+    private void OnNodeToastRequested(object? sender, NodeToastRequestedEventArgs args)
         => OnUiThread(() =>
-            NonFatalAction.Run(() => _toastService!.ShowToast(builder), msg => Logger.Warn($"Failed to show node toast: {msg}")));
+            NonFatalAction.Run(
+                () => AppNotificationPublisher.Publish(
+                    _appNotificationService,
+                    _toastService,
+                    new AppNotificationPublishRequest(
+                        args.AppNotification,
+                        args.ToastBuilder,
+                        args.ToastTag,
+                        args.ToastDeviceId)),
+                msg => Logger.Warn($"Failed to show node toast: {msg}")));
 
     private void OnLocalExecApprovalRequested(object? sender, ExecApprovalPromptRequestedEventArgs args)
     {
@@ -2787,9 +2815,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     dashboardPath: !string.IsNullOrWhiteSpace(result.Key) ? $"sessions/{result.Key}" : "sessions",
                     sessionKey: result.Key);
 
-                _toastService!.ShowToast(new ToastContentBuilder()
-                    .AddText(title)
-                    .AddText(message));
+                AppNotification? appNotification = result.Ok
+                    ? null
+                    : new AppNotification
+                    {
+                        Title = title,
+                        Message = message,
+                        Source = "session",
+                        Category = "status",
+                        Severity = AppNotificationSeverity.Error,
+                        DedupeKey = "session-command:" + HashNotificationKey($"{result.Method}|{key}|{message}")
+                    };
+
+                AppNotificationPublisher.Publish(
+                    _appNotificationService,
+                    _toastService,
+                    new AppNotificationPublishRequest(
+                        appNotification,
+                        new ToastContentBuilder()
+                            .AddText(title)
+                            .AddText(message)));
             }
             catch (Exception ex)
             {
@@ -2870,7 +2915,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     .AddArgument("sessionKey", notification.SessionKey ?? ""));
             }
 
-            _toastService!.ShowToast(builder);
+            AppNotificationPublisher.Publish(
+                _appNotificationService,
+                _toastService,
+                new AppNotificationPublishRequest(
+                    AppNotificationMapper.FromGatewayNotification(
+                        notification,
+                        LocalizationHelper.GetString("AppNotification_ExecApprovalPending_OpenChatAction")),
+                    builder));
         }
         catch (Exception ex)
         {
