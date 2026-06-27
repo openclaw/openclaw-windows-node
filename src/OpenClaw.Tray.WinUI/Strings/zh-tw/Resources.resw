@@ -4822,6 +4822,42 @@
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>刪除</value>
   </data>
+  <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
+    <value>重設工作階段？</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_BodyFormat" xml:space="preserve">
+    <value>為「{0}」啟動新的工作階段？目前的對話內容將被清除。</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
+    <value>重設</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
+    <value>壓縮工作階段記錄？</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_BodyFormat" xml:space="preserve">
+    <value>保留「{0}」的最新訊息並封存其餘內容。這會建立一個壓縮檢查點；如果需要完整歷程記錄，請先匯出逐字稿。</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_ConfirmLabel" xml:space="preserve">
+    <value>壓縮</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_Title" xml:space="preserve">
+    <value>刪除工作階段？</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_BodyFormat" xml:space="preserve">
+    <value>刪除「{0}」並封存其逐字稿？它將從工作階段清單中移除。</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_ConfirmLabel" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_Title" xml:space="preserve">
+    <value>還原檢查點？</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_BodyFormat" xml:space="preserve">
+    <value>將「{0}」回復到此壓縮檢查點？檢查點之後新增的訊息將被封存。</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
+    <value>還原</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
     <value>設定</value>
   </data>

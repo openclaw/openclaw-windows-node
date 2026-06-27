@@ -4822,6 +4822,42 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>Supprimer</value>
   </data>
+  <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
+    <value>Réinitialiser la session ?</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_BodyFormat" xml:space="preserve">
+    <value>Démarrer une nouvelle session pour « {0} » ? Le contexte de conversation actuel sera effacé.</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
+    <value>Réinitialiser</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
+    <value>Compacter le journal de session ?</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_BodyFormat" xml:space="preserve">
+    <value>Conserver les messages les plus récents pour « {0} » et archiver le reste. Cela crée un point de contrôle de compactage ; exportez d’abord la transcription si vous avez besoin de l’historique complet.</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_ConfirmLabel" xml:space="preserve">
+    <value>Compacter</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_Title" xml:space="preserve">
+    <value>Supprimer la session ?</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_BodyFormat" xml:space="preserve">
+    <value>Supprimer « {0} » et archiver sa transcription ? Elle sera retirée de la liste des sessions.</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_ConfirmLabel" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_Title" xml:space="preserve">
+    <value>Restaurer le point de contrôle ?</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_BodyFormat" xml:space="preserve">
+    <value>Restaurer « {0} » à ce point de contrôle de compactage ? Les messages ajoutés après le point de contrôle seront archivés.</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
+    <value>Restaurer</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
     <value>Paramètres</value>
   </data>

@@ -4823,6 +4823,42 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>Verwijderen</value>
   </data>
+  <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
+    <value>Sessie resetten?</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_BodyFormat" xml:space="preserve">
+    <value>Een nieuwe sessie starten voor '{0}'? De huidige gesprekscontext wordt gewist.</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
+    <value>Resetten</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
+    <value>Sessielog compact maken?</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_BodyFormat" xml:space="preserve">
+    <value>Bewaar de meest recente berichten voor '{0}' en archiveer de rest. Hiermee wordt een compactiecontrolepunt gemaakt; exporteer eerst het transcript als u de volledige geschiedenis nodig hebt.</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_ConfirmLabel" xml:space="preserve">
+    <value>Compact maken</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_Title" xml:space="preserve">
+    <value>Sessie verwijderen?</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_BodyFormat" xml:space="preserve">
+    <value>'{0}' verwijderen en het transcript archiveren? De sessie wordt uit de sessielijst verwijderd.</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_ConfirmLabel" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_Title" xml:space="preserve">
+    <value>Controlepunt herstellen?</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_BodyFormat" xml:space="preserve">
+    <value>'{0}' terugzetten naar dit compactiecontrolepunt? Berichten die na het controlepunt zijn toegevoegd, worden gearchiveerd.</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
+    <value>Herstellen</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
     <value>Instellingen</value>
   </data>

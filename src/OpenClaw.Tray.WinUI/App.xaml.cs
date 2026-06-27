@@ -1149,7 +1149,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 var prompt = SessionActionPlanner.BuildPrompt(kind, sessionKey, displayName, isMain);
                 if (prompt is not null)
                 {
-                    var confirmed = await ConfirmSessionActionAsync(prompt.Title, prompt.Body, prompt.ConfirmLabel);
+                    var localizedPrompt = SessionActionPromptLocalizer.Localize(prompt);
+                    var confirmed = await ConfirmSessionActionAsync(
+                        localizedPrompt.Title,
+                        localizedPrompt.Body,
+                        localizedPrompt.ConfirmLabel);
                     if (!confirmed) return;
                 }
             }
@@ -1221,7 +1225,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Title = title,
             Content = body,
             PrimaryButtonText = actionLabel,
-            CloseButtonText = "Cancel",
+            CloseButtonText = LocalizationHelper.GetString("CancelButton.Content"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = root.XamlRoot
         };

@@ -21,6 +21,8 @@ public enum SessionActionKind
 /// context-altering session action.
 /// </summary>
 public sealed record SessionActionPrompt(
+    SessionActionKind Kind,
+    string SessionName,
     string Title,
     string Body,
     string ConfirmLabel,
@@ -146,12 +148,16 @@ public static class SessionActionPlanner
         return kind switch
         {
             SessionActionKind.Reset => new SessionActionPrompt(
+                kind,
+                name,
                 "Reset session?",
                 $"Start a fresh session for \u201C{name}\u201D? The current conversation context will be cleared.",
                 "Reset",
                 IsDestructive: true),
 
             SessionActionKind.Compact => new SessionActionPrompt(
+                kind,
+                name,
                 "Compact session log?",
                 $"Keep the most recent messages for \u201C{name}\u201D and archive the rest. " +
                 "This creates a compaction checkpoint; export the transcript first if you need the full history.",
@@ -159,12 +165,16 @@ public static class SessionActionPlanner
                 IsDestructive: false),
 
             SessionActionKind.Delete => new SessionActionPrompt(
+                kind,
+                name,
                 "Delete session?",
                 $"Delete \u201C{name}\u201D and archive its transcript? It will be removed from the session list.",
                 "Delete",
                 IsDestructive: true),
 
             SessionActionKind.Restore => new SessionActionPrompt(
+                kind,
+                name,
                 "Restore checkpoint?",
                 $"Roll \u201C{name}\u201D back to this compaction checkpoint? Messages added after the checkpoint will be archived.",
                 "Restore",

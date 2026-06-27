@@ -4870,6 +4870,42 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>Delete</value>
   </data>
+  <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
+    <value>Reset session?</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_BodyFormat" xml:space="preserve">
+    <value>Start a fresh session for “{0}”? The current conversation context will be cleared.</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
+    <value>Compact session log?</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_BodyFormat" xml:space="preserve">
+    <value>Keep the most recent messages for “{0}” and archive the rest. This creates a compaction checkpoint; export the transcript first if you need the full history.</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_ConfirmLabel" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_Title" xml:space="preserve">
+    <value>Delete session?</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_BodyFormat" xml:space="preserve">
+    <value>Delete “{0}” and archive its transcript? It will be removed from the session list.</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_ConfirmLabel" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_Title" xml:space="preserve">
+    <value>Restore checkpoint?</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_BodyFormat" xml:space="preserve">
+    <value>Roll “{0}” back to this compaction checkpoint? Messages added after the checkpoint will be archived.</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
+    <value>Restore</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
     <value>Settings</value>
   </data>

@@ -4822,6 +4822,42 @@
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>删除</value>
   </data>
+  <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
+    <value>重置会话？</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_BodyFormat" xml:space="preserve">
+    <value>为“{0}”启动新会话？当前对话上下文将被清除。</value>
+  </data>
+  <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
+    <value>重置</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
+    <value>压缩会话日志？</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_BodyFormat" xml:space="preserve">
+    <value>保留“{0}”的最新消息并归档其余内容。这会创建一个压缩检查点；如果需要完整历史记录，请先导出转录。</value>
+  </data>
+  <data name="SessionActionPrompt_Compact_ConfirmLabel" xml:space="preserve">
+    <value>压缩</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_Title" xml:space="preserve">
+    <value>删除会话？</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_BodyFormat" xml:space="preserve">
+    <value>删除“{0}”并归档其转录？它将从会话列表中移除。</value>
+  </data>
+  <data name="SessionActionPrompt_Delete_ConfirmLabel" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_Title" xml:space="preserve">
+    <value>还原检查点？</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_BodyFormat" xml:space="preserve">
+    <value>将“{0}”回滚到此压缩检查点？检查点之后添加的消息将被归档。</value>
+  </data>
+  <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
+    <value>还原</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
     <value>设置</value>
   </data>

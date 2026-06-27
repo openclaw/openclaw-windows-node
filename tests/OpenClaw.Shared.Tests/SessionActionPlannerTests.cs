@@ -136,6 +136,8 @@ public class SessionActionPlannerTests
             SessionActionKind.Delete, "agent:main:wa", "WhatsApp · Bob", isMainSession: false);
 
         Assert.NotNull(prompt);
+        Assert.Equal(SessionActionKind.Delete, prompt!.Kind);
+        Assert.Equal("WhatsApp \u00B7 Bob", prompt.SessionName);
         Assert.True(prompt!.IsDestructive);
         Assert.Equal("Delete", prompt.ConfirmLabel);
         Assert.Contains("WhatsApp \u00B7 Bob", prompt.Body);

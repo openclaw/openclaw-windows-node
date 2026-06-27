@@ -1,4 +1,5 @@
 using System.IO;
+using System.Xml.Linq;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -52,6 +53,8 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("ResolveMainState", source);
         // Restore only acts on a provably-latest checkpoint and re-validates fresh.
         Assert.Contains("ResolveUnambiguousLatest", source);
+        // ID-less checkpoints are preserved for restore safety, but can't be used as branch targets.
+        Assert.Contains("FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Id))", source);
         // Destructive send failures are surfaced, not swallowed.
         Assert.Contains("\"The gateway didn't accept the request. Try again.\"", source);
     }
@@ -78,6 +81,50 @@ public sealed class SessionActionsWiringTests
         // The confirmation copy comes from the shared planner, not inline strings.
         Assert.DoesNotContain("Start a fresh session for '", source);
         Assert.DoesNotContain("Keep the latest log lines for '", source);
+    }
+
+    [Fact]
+    public void SessionActionPrompts_AreRuntimeLocalized()
+    {
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Helpers", "SessionActionPromptLocalizer.cs");
+        var requiredKeys = new[]
+        {
+            "SessionActionPrompt_Reset_Title",
+            "SessionActionPrompt_Reset_BodyFormat",
+            "SessionActionPrompt_Reset_ConfirmLabel",
+            "SessionActionPrompt_Compact_Title",
+            "SessionActionPrompt_Compact_BodyFormat",
+            "SessionActionPrompt_Compact_ConfirmLabel",
+            "SessionActionPrompt_Delete_Title",
+            "SessionActionPrompt_Delete_BodyFormat",
+            "SessionActionPrompt_Delete_ConfirmLabel",
+            "SessionActionPrompt_Restore_Title",
+            "SessionActionPrompt_Restore_BodyFormat",
+            "SessionActionPrompt_Restore_ConfirmLabel",
+        };
+
+        foreach (var prefix in new[]
+        {
+            "SessionActionPrompt_Reset",
+            "SessionActionPrompt_Compact",
+            "SessionActionPrompt_Delete",
+            "SessionActionPrompt_Restore",
+        })
+        {
+            Assert.Contains(prefix, source);
+        }
+
+        var stringsRoot = Path.Combine(GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
+        foreach (var resourcePath in Directory.EnumerateFiles(stringsRoot, "Resources.resw", SearchOption.AllDirectories))
+        {
+            var keys = XDocument.Load(resourcePath)
+                .Descendants("data")
+                .Select(e => e.Attribute("name")?.Value)
+                .Where(name => !string.IsNullOrEmpty(name))
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var key in requiredKeys)
+                Assert.Contains(key, keys);
+        }
     }
 
     private static string ReadSource(params string[] relativePathParts)

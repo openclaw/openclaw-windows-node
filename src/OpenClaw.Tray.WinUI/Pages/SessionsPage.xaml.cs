@@ -511,11 +511,11 @@ public sealed partial class SessionsPage : Page
             .OrderByDescending(c => c.CreatedAt ?? DateTime.MinValue)
             .ToList();
 
-        var branchTarget = checkpoints.FirstOrDefault();
+        var branchTarget = checkpoints.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Id));
         var restoreTarget = SessionCheckpointSelection.ResolveUnambiguousLatest(checkpoints);
         var canRestore = restoreTarget is not null
             && SessionActionPlanner.IsAllowed(SessionActionKind.Restore, isMainState, out _);
-        var actionHint = BuildCheckpointActionHint(checkpoints.Count, restoreTarget, canRestore, isMainState);
+        var actionHint = BuildCheckpointActionHint(checkpoints.Count, branchTarget, restoreTarget, canRestore, isMainState);
 
         var body = new StackPanel { Spacing = 12 };
 
@@ -560,7 +560,7 @@ public sealed partial class SessionsPage : Page
             Title = $"Checkpoints \u2014 {name}",
             Content = body,
             PrimaryButtonText = branchTarget is not null
-                ? (restoreTarget is not null ? "Branch from latest" : "Branch from top checkpoint")
+                ? (restoreTarget is not null ? "Branch from latest" : "Branch from latest targetable")
                 : "",
             SecondaryButtonText = canRestore ? "Restore latest" : "",
             CloseButtonText = "Close",
@@ -593,6 +593,7 @@ public sealed partial class SessionsPage : Page
 
     private static string BuildCheckpointActionHint(
         int checkpointCount,
+        SessionCompactionCheckpoint? branchTarget,
         SessionCompactionCheckpoint? restoreTarget,
         bool canRestore,
         SessionMainState mainState)
@@ -612,11 +613,20 @@ public sealed partial class SessionsPage : Page
                 ? "Restore is unavailable because the latest checkpoint can't be determined safely."
                 : "Restore is unavailable for this session.";
 
-        return "Branch starts a new session from the top checkpoint. " + reason;
+        var branchText = branchTarget is null
+            ? "Branch is unavailable because no checkpoint has a checkpoint id."
+            : "Branch starts a new session from the latest targetable checkpoint.";
+        return branchText + " " + reason;
     }
 
     private async Task BranchCheckpointAsync(string key, string checkpointId)
     {
+        if (string.IsNullOrWhiteSpace(checkpointId))
+        {
+            ShowActionInfo("Action unavailable", "This checkpoint can't be branched because it has no checkpoint id.", InfoBarSeverity.Informational);
+            return;
+        }
+
         var client = CurrentApp.GatewayClient;
         if (client == null) { ShowDisconnected(); return; }
 
@@ -719,16 +729,17 @@ public sealed partial class SessionsPage : Page
     private async Task<bool> ConfirmAsync(SessionActionPrompt prompt)
     {
         if (XamlRoot == null) return false;
+        var localizedPrompt = SessionActionPromptLocalizer.Localize(prompt);
         var dialog = new ContentDialog
         {
-            Title = prompt.Title,
-            Content = prompt.Body,
-            PrimaryButtonText = prompt.ConfirmLabel,
-            CloseButtonText = "Cancel",
+            Title = localizedPrompt.Title,
+            Content = localizedPrompt.Body,
+            PrimaryButtonText = localizedPrompt.ConfirmLabel,
+            CloseButtonText = LocalizationHelper.GetString("CancelButton.Content"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
-        if (prompt.IsDestructive)
+        if (localizedPrompt.IsDestructive)
             dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
