@@ -3,7 +3,7 @@ namespace OpenClaw.SetupEngine;
 public static class GatewayLkgVersion
 {
     public const string DefaultInstallUrl = "https://openclaw.ai/install-cli.sh";
-    public const string LkgVersion = "2026.6.9";
+    public const string LkgVersion = "2026.6.10";
 
     public static string ResolveLkgVersion() => LkgVersion;
 
