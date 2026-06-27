@@ -39,8 +39,24 @@ Direct downloads from the latest OpenClaw release:
 ### Prerequisites
 - Windows 10 (20H2+) or Windows 11
 - .NET 10.0 SDK - https://dotnet.microsoft.com/download/dotnet/10.0
+- Node.js LTS with npm (for WinUI build assets)
 - Windows 10 SDK (for WinUI build) - install via Visual Studio or standalone
 - WebView2 Runtime - pre-installed on modern Windows, or get from https://developer.microsoft.com/microsoft-edge/webview2
+
+### Developer / Agent Setup
+
+Use the setup script to install or verify local Windows build prerequisites:
+
+```powershell
+# Install missing prerequisites with winget, trust the checkout, and verify setup
+.\scripts\setup-dev.ps1
+
+# Check only; do not install packages or change git safe.directory
+.\scripts\setup-dev.ps1 -CheckOnly
+
+# Setup and run the required build/test validation
+.\scripts\setup-dev.ps1 -RunValidation
+```
 
 ### Build
 

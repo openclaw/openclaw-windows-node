@@ -22,6 +22,7 @@ If a command fails:
 Notes:
 
 - If a build/test is blocked by an environmental lock (for example running executable locking output assemblies), stop/close the locking process and rerun.
+- If validation is blocked by missing local Windows prerequisites, run `.\scripts\setup-dev.ps1` to install/verify developer and agent prerequisites, then rerun validation. Use `.\scripts\setup-dev.ps1 -CheckOnly` when you only need diagnostics.
 - **First-run gotcha**: `dotnet test --no-restore` silently no-ops in a fresh worktree where the test `bin/` doesn't exist yet (reports "Build succeeded in 0.5s" then exits 0 with no tests run). For first-run validation, either omit `--no-restore` OR run `dotnet build` on the test project first. Subsequent reruns honor `--no-restore` correctly.
 - In linked git worktrees, set `OPENCLAW_REPO_ROOT` to the worktree path before running tests that discover the repository root, for example:
   - `$env:OPENCLAW_REPO_ROOT='D:\github\openclaw-windows-node.<worktree-name>'`

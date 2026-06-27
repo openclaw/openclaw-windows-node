@@ -228,11 +228,23 @@ if (-not $nodeVersion) {
 # Check Windows SDK (for WinUI)
 $windowsSdkPath = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
 if (Test-Path $windowsSdkPath) {
-    $sdkVersions = Get-ChildItem $windowsSdkPath -Directory | Select-Object -ExpandProperty Name | Sort-Object -Descending
-    Write-Success "Windows SDK: $($sdkVersions[0])"
+    $sdkVersions = @(
+        Get-ChildItem $windowsSdkPath -Directory |
+            Where-Object { $_.Name -match "^\d+\.\d+\.\d+\.\d+$" } |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -ExpandProperty Name
+    )
+
+    if ($sdkVersions.Count -gt 0) {
+        Write-Success "Windows SDK: $($sdkVersions[0])"
+    } else {
+        Write-Warning "Windows 10 SDK not found (needed for WinUI build)"
+        Write-Info "Install via Visual Studio Installer, standalone SDK, or: winget install --id Microsoft.WindowsSDK.10.0.26100 -e"
+        $issues += "Windows 10 SDK not detected"
+    }
 } else {
     Write-Warning "Windows 10 SDK not found (needed for WinUI build)"
-    Write-Info "Install via Visual Studio Installer or standalone SDK"
+    Write-Info "Install via Visual Studio Installer, standalone SDK, or: winget install --id Microsoft.WindowsSDK.10.0.26100 -e"
     $issues += "Windows 10 SDK not detected"
 }
 
