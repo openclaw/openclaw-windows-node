@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using OpenClaw.Shared;
 
 namespace OpenClawTray.Pages;
@@ -142,6 +143,35 @@ internal static class WorkspaceFilesModel
         };
     }
 
+    /// <summary>
+    /// Project the legacy <c>agents.files.list</c> payload used by older
+    /// gateways. It does not support path browsing or session relevance badges,
+    /// but the rows remain previewable through <c>agents.files.get</c>.
+    /// </summary>
+    public static WorkspaceListState FromLegacyAgentFilesList(JsonElement payload)
+    {
+        var entries = new List<WorkspaceFileEntry>();
+        if (payload.ValueKind != JsonValueKind.Object)
+            return new WorkspaceListState();
+
+        if (payload.TryGetProperty("files", out var filesEl) &&
+            filesEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var fileEl in filesEl.EnumerateArray())
+            {
+                if (MapLegacyFileEntry(fileEl) is { } entry)
+                    entries.Add(entry);
+            }
+        }
+
+        return new WorkspaceListState
+        {
+            WorkspacePath = GetString(payload, "workspace") ?? GetString(payload, "root") ?? string.Empty,
+            Supported = true,
+            Entries = Sort(entries),
+        };
+    }
+
     private static WorkspaceFileEntry? MapFileEntry(SessionFileEntry f)
     {
         var requestPath = !string.IsNullOrEmpty(f.Path) ? f.Path : f.Name;
@@ -197,6 +227,31 @@ internal static class WorkspaceFilesModel
             Touched = touched,
             Read = read,
             ModifiedUtc = ToUtc(b.UpdatedAt),
+        };
+    }
+
+    private static WorkspaceFileEntry? MapLegacyFileEntry(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object) return null;
+
+        var requestPath = GetString(item, "path") ?? GetString(item, "name");
+        if (string.IsNullOrEmpty(requestPath)) return null;
+
+        var relative = NormalizePath(requestPath);
+        var name = GetString(item, "name") ?? LeafName(relative);
+        if (string.IsNullOrEmpty(name)) return null;
+
+        return new WorkspaceFileEntry
+        {
+            Name = name,
+            RelativePath = relative,
+            RequestPath = requestPath,
+            Size = GetLong(item, "size"),
+            Exists = GetBool(item, "exists") ?? !GetBool(item, "missing").GetValueOrDefault(),
+            IsDirectory = false,
+            IsSessionFile = true,
+            CanPreview = true,
+            ModifiedUtc = ToUtc(GetDateTime(item, "updatedAt") ?? GetDateTime(item, "modifiedAt")),
         };
     }
 
@@ -280,5 +335,38 @@ internal static class WorkspaceFilesModel
         return dt.Kind == DateTimeKind.Unspecified
             ? new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc))
             : new DateTimeOffset(dt.ToUniversalTime());
+    }
+
+    private static string? GetString(JsonElement item, string name)
+    {
+        return item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+    }
+
+    private static bool? GetBool(JsonElement item, string name)
+    {
+        return item.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : null;
+    }
+
+    private static long? GetLong(JsonElement item, string name)
+    {
+        return item.TryGetProperty(name, out var value) &&
+               value.ValueKind == JsonValueKind.Number &&
+               value.TryGetInt64(out var result) &&
+               result >= 0
+            ? result
+            : null;
+    }
+
+    private static DateTime? GetDateTime(JsonElement item, string name)
+    {
+        return item.TryGetProperty(name, out var value) &&
+               value.ValueKind == JsonValueKind.String &&
+               DateTime.TryParse(value.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var result)
+            ? result
+            : null;
     }
 }

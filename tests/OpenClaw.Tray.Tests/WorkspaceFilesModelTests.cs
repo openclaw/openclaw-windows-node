@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClawTray.Pages;
 using Xunit;
@@ -228,6 +229,36 @@ public class WorkspaceFilesModelTests
             File("README.md")));
 
         Assert.Equal(2, state.Entries.Count);
+    }
+
+    [Fact]
+    public void FromLegacyAgentFilesList_MapsExistingFilesAsPreviewableFallbackRows()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "workspace": "C:\\repo",
+              "files": [
+                { "name": "README.md", "size": 2048, "exists": true },
+                { "name": "gone.md", "missing": true }
+              ]
+            }
+            """);
+
+        var state = WorkspaceFilesModel.FromLegacyAgentFilesList(doc.RootElement);
+
+        Assert.True(state.Supported);
+        Assert.Equal(@"C:\repo", state.WorkspacePath);
+        Assert.Equal(2, state.Entries.Count);
+
+        var readme = Assert.Single(state.Entries, e => e.Name == "README.md");
+        Assert.True(readme.IsSessionFile);
+        Assert.True(readme.CanPreview);
+        Assert.True(readme.Exists);
+        Assert.Equal(2048, readme.Size);
+
+        var missing = Assert.Single(state.Entries, e => e.Name == "gone.md");
+        Assert.False(missing.Exists);
+        Assert.True(missing.CanPreview);
     }
 
     // ── Unsupported / null handling ─────────────────────────────────────

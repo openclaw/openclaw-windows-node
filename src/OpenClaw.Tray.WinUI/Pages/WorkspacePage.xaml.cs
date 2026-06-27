@@ -8,8 +8,10 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -18,6 +20,7 @@ namespace OpenClawTray.Pages;
 public sealed partial class WorkspacePage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
+    private AppState? _appState;
 
     // All entries from the latest list result, in display (sorted) order.
     private readonly List<WorkspaceFilesModel.WorkspaceFileEntry> _allEntries = new();
@@ -41,6 +44,7 @@ public sealed partial class WorkspacePage : Page
     private string? _browserParentPath;
     private string _searchQuery = string.Empty;
     private bool _suppressSearchTextChanged;
+    private bool _usingLegacyAgentFilesFallback;
     private bool _renderMarkdown = true;
 
     // Monotonic token guarding against out-of-order async results: a list/file
@@ -54,7 +58,12 @@ public sealed partial class WorkspacePage : Page
     public WorkspacePage()
     {
         InitializeComponent();
-        Unloaded += (_, _) => _searchDebounceTimer.Stop();
+        Unloaded += (_, _) =>
+        {
+            _searchDebounceTimer.Stop();
+            if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+            _appState = null;
+        };
         _searchDebounceTimer.Tick += (_, _) =>
         {
             _searchDebounceTimer.Stop();
@@ -74,6 +83,9 @@ public sealed partial class WorkspacePage : Page
 
     public void Initialize()
     {
+        if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+        _appState = CurrentApp.AppState;
+        if (_appState != null) _appState.PropertyChanged += OnAppStateChanged;
         _ = LoadAsync();
     }
 
@@ -104,6 +116,7 @@ public sealed partial class WorkspacePage : Page
         // connected/key early-returns — so a stale result can never render
         // after a newer (even failed) load.
         var token = ++_loadToken;
+        _usingLegacyAgentFilesFallback = false;
 
         var client = CurrentApp.GatewayClient;
         var status = CurrentApp.AppState?.Status ?? ConnectionStatus.Disconnected;
@@ -142,8 +155,68 @@ public sealed partial class WorkspacePage : Page
         }
 
         if (token != _loadToken) return; // a newer load superseded this one
+        if (!result.IsSupported)
+        {
+            await StartLegacyAgentFilesFallbackAsync(token);
+            return;
+        }
+
         EndLoading();
         ApplyListResult(result);
+    }
+
+    private async Task StartLegacyAgentFilesFallbackAsync(int token)
+    {
+        if (token != _loadToken) return;
+        _usingLegacyAgentFilesFallback = true;
+
+        var appState = _appState ?? CurrentApp.AppState;
+        if (appState != null && appState.TryGetCachedAgentFilesList(AgentId, out var cachedData))
+        {
+            EndLoading();
+            ApplyLegacyAgentFilesList(cachedData);
+            return;
+        }
+
+        var client = CurrentApp.GatewayClient;
+        if (client == null)
+        {
+            ShowDisconnected();
+            return;
+        }
+
+        try
+        {
+            await client.RequestAgentFilesListAsync(AgentId);
+        }
+        catch (Exception ex)
+        {
+            if (token != _loadToken) return;
+            Services.Logger.Warn($"[WorkspacePage] agents.files.list fallback failed: {ex.Message}");
+            ShowUnsupported();
+        }
+    }
+
+    private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!_usingLegacyAgentFilesFallback || _appState == null) return;
+
+        switch (e.PropertyName)
+        {
+            case nameof(AppState.AgentFilesList):
+                if (_appState.AgentFilesList.HasValue &&
+                    (string.IsNullOrEmpty(_appState.AgentFilesListAgentId) ||
+                     string.Equals(_appState.AgentFilesListAgentId, AgentId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    EndLoading();
+                    ApplyLegacyAgentFilesList(_appState.AgentFilesList.Value);
+                }
+                break;
+            case nameof(AppState.AgentFileContent):
+                if (_appState.AgentFileContent.HasValue)
+                    ApplyLegacyAgentFileContent(_appState.AgentFileContent.Value);
+                break;
+        }
     }
 
     private void ApplyListResult(SessionFileList result)
@@ -169,6 +242,33 @@ public sealed partial class WorkspacePage : Page
         }
 
         if (_allEntries.Count == 0 && string.IsNullOrWhiteSpace(_searchQuery) && string.IsNullOrEmpty(_browserPath))
+        {
+            ShowNoFiles();
+            return;
+        }
+
+        HideFallback();
+        BodyGrid.Visibility = Visibility.Visible;
+        ApplyFilter();
+    }
+
+    private void ApplyLegacyAgentFilesList(JsonElement payload)
+    {
+        ClearFiles();
+
+        var state = WorkspaceFilesModel.FromLegacyAgentFilesList(payload);
+        WorkspacePathText.Text = state.WorkspacePath;
+        _browserPath = state.BrowserPath;
+        _browserParentPath = state.BrowserParentPath;
+        UpdateBrowserChrome(state);
+
+        foreach (var entry in state.Entries)
+        {
+            _allEntries.Add(entry);
+            _entriesByPath[entry.RelativePath] = entry;
+        }
+
+        if (_allEntries.Count == 0)
         {
             ShowNoFiles();
             return;
@@ -493,10 +593,7 @@ public sealed partial class WorkspacePage : Page
 
             if (!result.IsSupported)
             {
-                // A gateway that lists but can't serve a single file is an
-                // inconsistent edge — surface it inline rather than tearing down
-                // the whole rail, and don't cache so re-selection can retry.
-                ShowFileUnavailable(entry.RelativePath);
+                await StartLegacyAgentFileGetFallbackAsync(entry, token);
                 return;
             }
 
@@ -515,6 +612,62 @@ public sealed partial class WorkspacePage : Page
             Services.Logger.Warn($"[WorkspacePage] sessions.files.get failed for '{entry.RequestPath}': {ex.Message}");
             ShowFileUnavailable(entry.RelativePath);
         }
+    }
+
+    private async Task StartLegacyAgentFileGetFallbackAsync(
+        WorkspaceFilesModel.WorkspaceFileEntry entry,
+        int token)
+    {
+        var client = CurrentApp.GatewayClient;
+        if (client == null)
+        {
+            ShowFileUnavailable(entry.RelativePath);
+            return;
+        }
+
+        _usingLegacyAgentFilesFallback = true;
+        try
+        {
+            await client.RequestAgentFileGetAsync(AgentId, entry.RequestPath);
+        }
+        catch (Exception ex)
+        {
+            if (token != _loadToken) return;
+            Services.Logger.Warn($"[WorkspacePage] agents.files.get fallback failed for '{entry.RequestPath}': {ex.Message}");
+            ShowFileUnavailable(entry.RelativePath);
+        }
+    }
+
+    private void ApplyLegacyAgentFileContent(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("file", out var fileEl) ||
+            fileEl.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var name = GetString(fileEl, "path") ?? GetString(fileEl, "name");
+        if (string.IsNullOrEmpty(name)) return;
+
+        var entry = _entriesByPath.Values.FirstOrDefault(e =>
+            string.Equals(e.RequestPath, name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(e.RelativePath, name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (entry == null) return;
+
+        bool missing = GetBool(fileEl, "missing") ?? false;
+        if (missing)
+        {
+            SetFileBody(entry.RelativePath, FileBodyKind.Missing, null);
+            return;
+        }
+
+        var content = GetString(fileEl, "content");
+        if (content is null)
+            ShowFileUnavailable(entry.RelativePath);
+        else
+            SetFileBody(entry.RelativePath, FileBodyKind.Loaded, content);
     }
 
     // Cache a stable body outcome (loaded content or confirmed-missing) and
@@ -1000,5 +1153,19 @@ public sealed partial class WorkspacePage : Page
         RepairLink.Visibility = Visibility.Collapsed;
         FallbackInfoBar.IsOpen = true;
         BodyGrid.Visibility = Visibility.Collapsed;
+    }
+
+    private static string? GetString(JsonElement item, string name)
+    {
+        return item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+    }
+
+    private static bool? GetBool(JsonElement item, string name)
+    {
+        return item.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : null;
     }
 }
