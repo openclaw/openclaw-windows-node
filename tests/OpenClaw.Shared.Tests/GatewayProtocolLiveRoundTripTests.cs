@@ -84,7 +84,15 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Equal("hello world", file.Content);
             Assert.Contains("\"sessionKey\"", server.FrameFor("sessions.files.get"));
 
-            // ── 3. sessions.compaction.list + branch (param key/checkpointId; branch returns sourceKey + new key) ──
+            // ── 3. chat.history (real client transcript export path) ──
+            var history = await client.RequestChatHistoryAsync(key, timeoutMs: rpc);
+            Assert.Equal("sid-1", history.SessionId);
+            var message = Assert.Single(history.Messages);
+            Assert.Equal("assistant", message.Role);
+            Assert.Equal("done", message.Text);
+            Assert.Contains("\"sessionKey\"", server.FrameFor("chat.history"));
+
+            // ── 4. sessions.compaction.list + branch (param key/checkpointId; branch returns sourceKey + new key) ──
             var checkpoints = await client.ListCompactionCheckpointsAsync(key, timeoutMs: rpc);
             Assert.True(checkpoints.IsSupported);
             Assert.Equal("cp1", Assert.Single(checkpoints.Checkpoints).Id);
@@ -95,7 +103,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Equal("agent:main:branch-1", branch.ResultSessionKey);
             Assert.Contains("\"checkpointId\"", server.FrameFor("sessions.compaction.branch"));
 
-            // ── 4. sessions.patch SET then CLEAR (the tri-state proof) ──
+            // ── 5. sessions.patch SET then CLEAR (the tri-state proof) ──
             // PatchSessionAsync is fire-and-tracked (returns on send, not on
             // response), so wait for the captured frame to arrive on the server.
             var setOk = await client.PatchSessionAsync(key, new SessionPatch { Model = "gpt-5", FastMode = SessionFastMode.Auto });
@@ -215,6 +223,20 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
                 size = 11,
                 updatedAtMs = 1700000000000L,
                 content = "hello world"
+            }
+        });
+
+        server.OnMethod("chat.history", _ => new
+        {
+            sessionId = "sid-1",
+            messages = new object[]
+            {
+                new
+                {
+                    role = "assistant",
+                    content = "done",
+                    timestamp = 1700000000001L
+                }
             }
         });
 

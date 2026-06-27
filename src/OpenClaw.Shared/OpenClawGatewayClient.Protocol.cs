@@ -434,8 +434,7 @@ public partial class OpenClawGatewayClient
             {
                 if (item.ValueKind != JsonValueKind.Object) continue;
                 var checkpoint = ParseCompactionCheckpoint(item);
-                if (!string.IsNullOrEmpty(checkpoint.Id))
-                    checkpoints.Add(checkpoint);
+                checkpoints.Add(checkpoint);
             }
         }
 

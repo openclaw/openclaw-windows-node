@@ -2,6 +2,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests;
@@ -536,6 +537,29 @@ public class GatewayProtocolModelsTests
         Assert.Equal(1200, cp.TokensAfter);
         Assert.Equal("snapshot", cp.Summary);
         Assert.NotNull(cp.CreatedAt);
+    }
+
+    [Fact]
+    public void ParseCompactionCheckpointList_PreservesUntargetableCheckpointsForRestoreSafety()
+    {
+        var payload = Parse("""
+        {
+          "ok": true,
+          "key": "agent:main:main",
+          "checkpoints": [
+            { "createdAt": 1700000001000, "reason": "missing-id" },
+            { "checkpointId": "cp1", "createdAt": 1700000000000, "reason": "manual" }
+          ]
+        }
+        """);
+
+        var list = OpenClawGatewayClient.ParseCompactionCheckpointList(payload, "agent:main:main");
+
+        Assert.Equal(2, list.Checkpoints.Count);
+        Assert.Equal("", list.Checkpoints[0].Id);
+        Assert.Equal("missing-id", list.Checkpoints[0].Reason);
+        Assert.Equal("cp1", list.Checkpoints[1].Id);
+        Assert.Null(SessionCheckpointSelection.ResolveUnambiguousLatest(list.Checkpoints));
     }
 
     [Fact]
