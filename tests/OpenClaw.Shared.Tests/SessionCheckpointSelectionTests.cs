@@ -58,10 +58,19 @@ public sealed class SessionCheckpointSelectionTests
     }
 
     [Fact]
-    public void ResolveUnambiguousLatest_IgnoresMissingIds()
+    public void ResolveUnambiguousLatest_ReturnsNull_WhenNewestCheckpointLacksId()
     {
-        var latest = Checkpoint("newer", new DateTime(2026, 1, 1, 12, 5, 0, DateTimeKind.Utc));
+        var older = Checkpoint("older", new DateTime(2026, 1, 1, 12, 5, 0, DateTimeKind.Utc));
         var missingId = Checkpoint("", new DateTime(2026, 1, 1, 12, 10, 0, DateTimeKind.Utc));
+
+        Assert.Null(SessionCheckpointSelection.ResolveUnambiguousLatest(new[] { older, missingId }));
+    }
+
+    [Fact]
+    public void ResolveUnambiguousLatest_ReturnsNewest_WhenOlderCheckpointLacksId()
+    {
+        var latest = Checkpoint("newer", new DateTime(2026, 1, 1, 12, 10, 0, DateTimeKind.Utc));
+        var missingId = Checkpoint("", new DateTime(2026, 1, 1, 12, 5, 0, DateTimeKind.Utc));
 
         Assert.Same(latest, SessionCheckpointSelection.ResolveUnambiguousLatest(new[] { latest, missingId }));
     }

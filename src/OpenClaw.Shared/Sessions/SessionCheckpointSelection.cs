@@ -16,14 +16,15 @@ public static class SessionCheckpointSelection
     public static SessionCompactionCheckpoint? ResolveUnambiguousLatest(
         IReadOnlyList<SessionCompactionCheckpoint> checkpoints)
     {
-        var valid = checkpoints.Where(c => !string.IsNullOrEmpty(c.Id)).ToList();
-        if (valid.Count == 0) return null;
+        if (checkpoints.Count == 0) return null;
 
-        if (valid.Any(c => c.CreatedAt is null)) return null;
+        if (checkpoints.Any(c => c.CreatedAt is null)) return null;
 
-        var ordered = valid.OrderByDescending(c => c.CreatedAt!.Value).ToList();
-        if (ordered.Count == 1) return ordered[0];
+        var ordered = checkpoints.OrderByDescending(c => c.CreatedAt!.Value).ToList();
+        var latest = ordered[0];
+        if (string.IsNullOrEmpty(latest.Id)) return null;
+        if (ordered.Count == 1) return latest;
 
-        return ordered[0].CreatedAt!.Value > ordered[1].CreatedAt!.Value ? ordered[0] : null;
+        return latest.CreatedAt!.Value > ordered[1].CreatedAt!.Value ? latest : null;
     }
 }
