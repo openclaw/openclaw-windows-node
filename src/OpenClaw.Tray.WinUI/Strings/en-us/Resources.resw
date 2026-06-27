@@ -4855,6 +4855,18 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SessionsPage_Compact.Text" xml:space="preserve">
     <value>Compact</value>
   </data>
+  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
+    <value>Checkpoints</value>
+  </data>
+  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>View, branch or restore compaction checkpoints</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
+    <value>Export transcript</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Save the conversation transcript to a text file</value>
+  </data>
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>Delete</value>
   </data>

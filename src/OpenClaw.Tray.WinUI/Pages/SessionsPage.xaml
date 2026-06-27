@@ -203,7 +203,8 @@
                                                                           IsTextScaleFactorEnabled="False"/>
                                                             </MenuFlyoutItem.Icon>
                                                         </MenuFlyoutItem>
-                                                        <MenuFlyoutItem Text="Checkpoints"
+                                                        <MenuFlyoutItem x:Uid="SessionsPage_Checkpoints"
+                                                                        Text="Checkpoints"
                                                                         Tag="{Binding Key}"
                                                                         Click="OnShowCheckpoints"
                                                                         ToolTipService.ToolTip="View, branch or restore compaction checkpoints">
@@ -213,7 +214,8 @@
                                                                           IsTextScaleFactorEnabled="False"/>
                                                             </MenuFlyoutItem.Icon>
                                                         </MenuFlyoutItem>
-                                                        <MenuFlyoutItem Text="Export transcript"
+                                                        <MenuFlyoutItem x:Uid="SessionsPage_ExportTranscript"
+                                                                        Text="Export transcript"
                                                                         Tag="{Binding Key}"
                                                                         Click="OnExportSession"
                                                                         ToolTipService.ToolTip="Save the conversation transcript to a text file">

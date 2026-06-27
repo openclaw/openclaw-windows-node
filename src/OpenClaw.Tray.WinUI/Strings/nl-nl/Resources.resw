@@ -4808,6 +4808,18 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SessionsPage_Compact.Text" xml:space="preserve">
     <value>Compact maken</value>
   </data>
+  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
+    <value>Controlepunten</value>
+  </data>
+  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Compactiecontrolepunten bekijken, vertakken of herstellen</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
+    <value>Transcript exporteren</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Het gesprekstranscript opslaan als tekstbestand</value>
+  </data>
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>Verwijderen</value>
   </data>

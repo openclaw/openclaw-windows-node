@@ -4807,6 +4807,18 @@
   <data name="SessionsPage_Compact.Text" xml:space="preserve">
     <value>压缩</value>
   </data>
+  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
+    <value>检查点</value>
+  </data>
+  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>查看、分支或还原压缩检查点</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
+    <value>导出转录</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>将对话转录保存到文本文件</value>
+  </data>
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>删除</value>
   </data>

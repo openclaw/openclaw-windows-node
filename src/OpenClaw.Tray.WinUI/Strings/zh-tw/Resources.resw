@@ -4807,6 +4807,18 @@
   <data name="SessionsPage_Compact.Text" xml:space="preserve">
     <value>壓縮</value>
   </data>
+  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
+    <value>檢查點</value>
+  </data>
+  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>檢視、分支或還原壓縮檢查點</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
+    <value>匯出逐字稿</value>
+  </data>
+  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>將對話逐字稿儲存為文字檔</value>
+  </data>
   <data name="SessionsPage_Delete.Text" xml:space="preserve">
     <value>刪除</value>
   </data>
