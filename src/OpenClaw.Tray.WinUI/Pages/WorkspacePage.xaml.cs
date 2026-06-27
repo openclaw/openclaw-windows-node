@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -7,24 +8,44 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
+using System.Linq;
 using System.Text;
-using System.Text.Json;
+using System.Threading.Tasks;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClawTray.Pages;
 
 public sealed partial class WorkspacePage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
-    private AppState? _appState;
 
-    // file name (case-insensitive) → its list item
-    private readonly Dictionary<string, ListViewItem> _fileItems = new(StringComparer.OrdinalIgnoreCase);
+    // All entries from the latest list result, in display (sorted) order.
+    private readonly List<WorkspaceFilesModel.WorkspaceFileEntry> _allEntries = new();
 
-    // file name → raw text content (null = missing on disk, absent = not loaded yet)
-    private readonly Dictionary<string, string?> _fileContent = new(StringComparer.OrdinalIgnoreCase);
+    // relativePath → entry, for selection lookup. Case-sensitive: workspace
+    // paths may differ only by case.
+    private readonly Dictionary<string, WorkspaceFilesModel.WorkspaceFileEntry> _entriesByPath =
+        new(StringComparer.Ordinal);
 
+    private enum FileBodyKind { Loaded, Missing }
+
+    // relativePath → resolved body. Only stable outcomes are cached (loaded
+    // content or confirmed-missing); transient/unavailable errors are NOT cached
+    // so re-selecting the file retries the fetch.
+    private readonly Dictionary<string, (FileBodyKind Kind, string? Content)> _fileContent =
+        new(StringComparer.Ordinal);
+
+    private readonly DispatcherTimer _searchDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+
+    private string _browserPath = string.Empty;
+    private string? _browserParentPath;
+    private string _searchQuery = string.Empty;
+    private bool _suppressSearchTextChanged;
     private bool _renderMarkdown = true;
+
+    // Monotonic token guarding against out-of-order async results: a list/file
+    // load applies only when its token still matches the latest request.
+    private int _loadToken;
 
     /// <summary>Set by HubWindow before <see cref="Initialize"/> to specify the active agent scope.</summary>
     public string AgentId { get; set; } = "main";
@@ -33,9 +54,11 @@ public sealed partial class WorkspacePage : Page
     public WorkspacePage()
     {
         InitializeComponent();
-        Unloaded += (_, _) =>
+        Unloaded += (_, _) => _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Tick += (_, _) =>
         {
-            if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+            _searchDebounceTimer.Stop();
+            _ = LoadAsync();
         };
     }
 
@@ -51,181 +74,488 @@ public sealed partial class WorkspacePage : Page
 
     public void Initialize()
     {
-        _appState = CurrentApp.AppState!;
-        _appState.PropertyChanged += OnAppStateChanged;
+        _ = LoadAsync();
+    }
 
-        if (_appState.TryGetCachedAgentFilesList(AgentId, out var cachedData))
+    /// <summary>
+    /// Resolve the gateway session key for the current agent. The typed
+    /// <c>sessions.files.*</c> API is keyed by session key (e.g.
+    /// <c>agent:main:main</c>), so map the agent to its canonical main session,
+    /// preferring the handshake-resolved key for the default agent. The
+    /// <c>agent:&lt;id&gt;:main</c> fallback assumes a simple slug agent id.
+    /// </summary>
+    private string? ResolveSessionKey()
+    {
+        var client = CurrentApp.GatewayClient;
+        if (client == null) return null;
+
+        var agentId = string.IsNullOrWhiteSpace(AgentId) ? "main" : AgentId.Trim();
+        if (string.Equals(agentId, "main", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(client.MainSessionKey))
         {
-            UpdateAgentFilesList(cachedData);
+            return client.MainSessionKey;
+        }
+        return $"agent:{agentId}:main";
+    }
+
+    private async Task LoadAsync()
+    {
+        // Invalidate any in-flight list/file loads up front — before the
+        // connected/key early-returns — so a stale result can never render
+        // after a newer (even failed) load.
+        var token = ++_loadToken;
+
+        var client = CurrentApp.GatewayClient;
+        var status = CurrentApp.AppState?.Status ?? ConnectionStatus.Disconnected;
+        if (client == null || status != ConnectionStatus.Connected)
+        {
+            ShowDisconnected();
             return;
         }
 
-        var hasMatchingCache = _appState?.AgentFilesList.HasValue == true &&
-            string.Equals(_appState?.AgentFilesListAgentId, AgentId, StringComparison.OrdinalIgnoreCase);
-        var status = CurrentApp.AppState?.Status ?? ConnectionStatus.Disconnected;
-        if (CurrentApp.GatewayClient != null && status == ConnectionStatus.Connected && !hasMatchingCache)
+        var key = ResolveSessionKey();
+        if (string.IsNullOrWhiteSpace(key))
         {
-            FallbackInfoBar.IsOpen = false;
-            LoadingRing.IsActive = true;
-            LoadingPanel.Visibility = Visibility.Visible;
-            ClearFiles();
-            _ = CurrentApp.GatewayClient.RequestAgentFilesListAsync(AgentId);
+            ShowDisconnected();
+            return;
         }
-        else if (hasMatchingCache)
+
+        BeginLoading();
+
+        SessionFileList result;
+        try
         {
-            UpdateAgentFilesList(_appState!.AgentFilesList!.Value);
+            var search = string.IsNullOrWhiteSpace(_searchQuery) ? null : _searchQuery.Trim();
+            var path = search is null ? _browserPath : string.Empty;
+            result = await client.ListSessionFilesAsync(key, path, search);
         }
-        else if (CurrentApp.GatewayClient == null || status != ConnectionStatus.Connected)
+        catch (Exception ex)
         {
-            FallbackInfoBar.IsOpen = true;
-            FallbackInfoBar.Message = LocalizationHelper.GetString("WorkspacePage_DisconnectedMessage");
+            if (token != _loadToken) return;
+            Services.Logger.Warn($"[WorkspacePage] sessions.files.list failed: {ex.Message}");
+            EndLoading();
+            if (CurrentApp.AppState?.Status == ConnectionStatus.Connected)
+                ShowLoadError();
+            else
+                ShowDisconnected();
+            return;
         }
+
+        if (token != _loadToken) return; // a newer load superseded this one
+        EndLoading();
+        ApplyListResult(result);
     }
 
-    private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
+    private void ApplyListResult(SessionFileList result)
     {
-        switch (e.PropertyName)
+        ClearFiles();
+
+        var state = WorkspaceFilesModel.FromSessionFileList(result);
+        WorkspacePathText.Text = state.WorkspacePath;
+        _browserPath = state.BrowserPath;
+        _browserParentPath = state.BrowserParentPath;
+        UpdateBrowserChrome(state);
+
+        if (!state.Supported)
         {
-            case nameof(AppState.AgentFilesList):
-                if (_appState!.AgentFilesList.HasValue) UpdateAgentFilesList(_appState.AgentFilesList.Value);
-                break;
-            case nameof(AppState.AgentFileContent):
-                if (_appState!.AgentFileContent.HasValue) UpdateAgentFileContent(_appState.AgentFileContent.Value);
-                break;
+            ShowUnsupported();
+            return;
         }
+
+        foreach (var entry in state.Entries)
+        {
+            _allEntries.Add(entry);
+            _entriesByPath[entry.RelativePath] = entry;
+        }
+
+        if (_allEntries.Count == 0 && string.IsNullOrWhiteSpace(_searchQuery) && string.IsNullOrEmpty(_browserPath))
+        {
+            ShowNoFiles();
+            return;
+        }
+
+        HideFallback();
+        BodyGrid.Visibility = Visibility.Visible;
+        ApplyFilter();
     }
 
-    public void UpdateAgentFilesList(JsonElement data)
+    private void BeginLoading()
+    {
+        HideFallback();
+        LoadingRing.IsActive = true;
+        LoadingPanel.Visibility = Visibility.Visible;
+        ClearFiles();
+        BrowserNoticeText.Visibility = Visibility.Collapsed;
+    }
+
+    private void EndLoading()
     {
         LoadingRing.IsActive = false;
         LoadingPanel.Visibility = Visibility.Collapsed;
-        ClearFiles();
+    }
 
-        if (data.TryGetProperty("workspace", out var workspaceEl))
+    private void ApplyFilter()
+    {
+        var filtered = WorkspaceFilesModel.Filter(_allEntries, _searchQuery);
+
+        FileList.SelectionChanged -= FileList_SelectionChanged;
+        FileList.Items.Clear();
+        foreach (var entry in filtered)
+            FileList.Items.Add(BuildFileRow(entry));
+        FileList.SelectionChanged += FileList_SelectionChanged;
+
+        FileCountText.Text = _allEntries.Count > 0
+            ? filtered.Count == _allEntries.Count ? $"({_allEntries.Count})" : $"({filtered.Count} of {_allEntries.Count})"
+            : string.Empty;
+
+        bool hasResults = filtered.Count > 0;
+        bool searching = !string.IsNullOrWhiteSpace(_searchQuery);
+        NoResultsText.Text = LocalizationHelper.GetString(searching
+            ? "WorkspacePage_NoSearchResults.Text"
+            : "WorkspacePage_NoFolderResults");
+        NoResultsText.Visibility = !hasResults ? Visibility.Visible : Visibility.Collapsed;
+
+        if (hasResults)
         {
-            var workspace = workspaceEl.GetString();
-            if (!string.IsNullOrEmpty(workspace))
-                WorkspacePathText.Text = workspace;
-        }
-
-        if (data.TryGetProperty("files", out var filesEl) && filesEl.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var fileEl in filesEl.EnumerateArray())
-            {
-                var name = fileEl.TryGetProperty("name", out var nameEl) ? nameEl.GetString() ?? "" : "";
-                long size = fileEl.TryGetProperty("size", out var sizeEl) && sizeEl.ValueKind == JsonValueKind.Number ? sizeEl.GetInt64() : 0;
-                bool exists = !fileEl.TryGetProperty("exists", out var existsEl) || existsEl.ValueKind != JsonValueKind.False;
-
-                if (!string.IsNullOrEmpty(name) && exists)
-                    AddFileItem(name, size);
-            }
-        }
-
-        if (_fileItems.Count == 0)
-        {
-            FallbackInfoBar.IsOpen = true;
-            FallbackInfoBar.Message = LocalizationHelper.GetString("WorkspacePage_NoFilesMessage");
-            BodyGrid.Visibility = Visibility.Collapsed;
+            SelectInitialRow(filtered);
         }
         else
         {
-            BodyGrid.Visibility = Visibility.Visible;
-            FileList.SelectedIndex = 0;
-            RequestSelectedFileIfNeeded();
+            FileBodyPresenter.Content = null;
+            SelectedFileText.Text = string.Empty;
+            SelectedFileMeta.Visibility = Visibility.Collapsed;
+            ViewModeSelector.Visibility = Visibility.Collapsed;
         }
     }
 
-    public void UpdateAgentFileContent(JsonElement data)
+    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (!data.TryGetProperty("file", out var fileEl)) return;
-
-        var name = fileEl.TryGetProperty("name", out var nameEl) ? nameEl.GetString() ?? "" : "";
-        var content = fileEl.TryGetProperty("content", out var contentEl) ? contentEl.GetString() ?? "" : "";
-        bool missing = fileEl.TryGetProperty("missing", out var missingEl) && missingEl.ValueKind == JsonValueKind.True;
-
-        if (string.IsNullOrEmpty(name) || !_fileItems.ContainsKey(name)) return;
-
-        _fileContent[name] = missing ? null : content;
-
-        if (FileList.SelectedItem is ListViewItem selected &&
-            selected.Tag is string selectedName &&
-            string.Equals(selectedName, name, StringComparison.OrdinalIgnoreCase))
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput &&
+            args.Reason != AutoSuggestionBoxTextChangeReason.ProgrammaticChange)
         {
-            RenderSelectedFile();
+            return;
         }
+        if (_suppressSearchTextChanged) return;
+        _searchQuery = sender.Text ?? string.Empty;
+        _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Start();
     }
 
-    private void AddFileItem(string fileName, long size)
+    private void SelectInitialRow(IReadOnlyList<WorkspaceFilesModel.WorkspaceFileEntry> filtered)
     {
-        var stack = new StackPanel { Spacing = 2 };
+        int index = -1;
+        for (int i = 0; i < filtered.Count; i++)
+        {
+            if (filtered[i].CanPreview || !filtered[i].Exists)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0)
+        {
+            FileList.SelectedIndex = -1;
+            SelectedFileText.Text = string.Empty;
+            SelectedFileMeta.Visibility = Visibility.Collapsed;
+            ViewModeSelector.Visibility = Visibility.Collapsed;
+            FileBodyPresenter.Content = null;
+            return;
+        }
+
+        FileList.SelectedIndex = index;
+    }
+
+    private ListViewItem BuildFileRow(WorkspaceFilesModel.WorkspaceFileEntry entry)
+    {
+        var row = new Grid { ColumnSpacing = 8 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var glyph = new FontIcon
+        {
+            Glyph = entry.IsDirectory ? FluentIconCatalog.Folder : FluentIconCatalog.Document,
+            FontSize = 16,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 2, 0, 0),
+            IsTextScaleFactorEnabled = false,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        };
+        Grid.SetColumn(glyph, 0);
+        row.Children.Add(glyph);
+
+        var stack = new StackPanel { Spacing = 4 };
+        Grid.SetColumn(stack, 1);
+
         stack.Children.Add(new TextBlock
         {
-            Text = fileName,
+            Text = entry.Name,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            TextWrapping = TextWrapping.NoWrap
+            TextWrapping = TextWrapping.NoWrap,
         });
-        if (size > 0)
+
+        var meta = BuildRowMeta(entry);
+        if (!string.IsNullOrEmpty(meta))
         {
             stack.Children.Add(new TextBlock
             {
-                Text = FormatSize(size),
+                Text = meta,
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
             });
         }
 
-        var item = new ListViewItem { Content = stack, Tag = fileName };
-        _fileItems[fileName] = item;
-        FileList.Items.Add(item);
+        row.Children.Add(stack);
+
+        var badges = BuildBadges(entry);
+        if (badges != null)
+        {
+            Grid.SetColumn(badges, 2);
+            row.Children.Add(badges);
+        }
+
+        var item = new ListViewItem { Content = row, Tag = entry.RelativePath };
+        AutomationProperties.SetName(item, BuildAutomationName(entry));
+        item.ContextFlyout = BuildRowContextFlyout(entry);
+        return item;
+    }
+
+    private MenuFlyout BuildRowContextFlyout(WorkspaceFilesModel.WorkspaceFileEntry entry)
+    {
+        var copyLabel = LocalizationHelper.GetString("WorkspacePage_CopyPath");
+        var copy = new MenuFlyoutItem
+        {
+            Text = copyLabel,
+            Tag = entry.RequestPath,
+            Icon = new FontIcon
+            {
+                Glyph = FluentIconCatalog.Copy,
+                FontSize = 16,
+                IsTextScaleFactorEnabled = false,
+            },
+        };
+        copy.Click += CopyPathButton_Click;
+
+        var menu = new MenuFlyout();
+        menu.Items.Add(copy);
+        return menu;
+    }
+
+    private static string BuildAutomationName(WorkspaceFilesModel.WorkspaceFileEntry entry)
+    {
+        var role = LocalizationHelper.GetString(entry.IsDirectory
+            ? "WorkspacePage_FileType_Folder"
+            : "WorkspacePage_FileType_File");
+        var parts = new List<string> { role, entry.Name };
+        var meta = BuildRowMeta(entry);
+        if (!string.IsNullOrEmpty(meta)) parts.Add(meta);
+        if (!entry.Exists) parts.Add(LocalizationHelper.GetString("WorkspacePage_Badge_Missing"));
+        if (entry.Touched) parts.Add(LocalizationHelper.GetString("WorkspacePage_Badge_Edited"));
+        else if (entry.Read) parts.Add(LocalizationHelper.GetString("WorkspacePage_Badge_Read"));
+        return string.Join(", ", parts);
+    }
+
+    // Second-line caption: parent folder · size. Modified time, when present,
+    // is shown in the detail header rather than crowding every row.
+    private static string BuildRowMeta(WorkspaceFilesModel.WorkspaceFileEntry entry)
+    {
+        var parts = new List<string>(2);
+        var dir = WorkspaceFilesModel.DirectoryOf(entry.RelativePath);
+        if (!string.IsNullOrEmpty(dir)) parts.Add(dir);
+        var size = WorkspaceFilesModel.FormatSize(entry.Size);
+        if (!string.IsNullOrEmpty(size)) parts.Add(size);
+        return string.Join(" · ", parts);
+    }
+
+    private StackPanel? BuildBadges(WorkspaceFilesModel.WorkspaceFileEntry entry)
+    {
+        var badges = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        if (!entry.Exists)
+            badges.Children.Add(BuildBadge("WorkspacePage_Badge_Missing", "SystemFillColorCautionBrush"));
+        if (entry.Touched)
+            badges.Children.Add(BuildBadge("WorkspacePage_Badge_Edited", "AccentTextFillColorPrimaryBrush"));
+        else if (entry.Read)
+            badges.Children.Add(BuildBadge("WorkspacePage_Badge_Read", "TextFillColorSecondaryBrush"));
+
+        return badges.Children.Count > 0 ? badges : null;
+    }
+
+    private static Border BuildBadge(string resKey, string foregroundBrushKey)
+    {
+        return new Border
+        {
+            Background = (Brush)Application.Current.Resources["ControlFillColorSecondaryBrush"],
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 0, 8, 0),
+            Child = new TextBlock
+            {
+                Text = LocalizationHelper.GetString(resKey),
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources[foregroundBrushKey],
+            },
+        };
     }
 
     private void ClearFiles()
     {
+        FileList.SelectionChanged -= FileList_SelectionChanged;
         FileList.Items.Clear();
-        _fileItems.Clear();
+        FileList.SelectionChanged += FileList_SelectionChanged;
+        _allEntries.Clear();
+        _entriesByPath.Clear();
         _fileContent.Clear();
         FileBodyPresenter.Content = null;
         SelectedFileText.Text = string.Empty;
+        SelectedFileMeta.Visibility = Visibility.Collapsed;
+        FileCountText.Text = string.Empty;
+        NoResultsText.Visibility = Visibility.Collapsed;
         BodyGrid.Visibility = Visibility.Collapsed;
         ViewModeSelector.Visibility = Visibility.Collapsed;
     }
 
+    private string? SelectedRelativePath() =>
+        FileList.SelectedItem is ListViewItem { Tag: string path } ? path : null;
+
     private void FileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (FileList.SelectedItem is not ListViewItem selected ||
-            selected.Tag is not string fileName)
+        if (SelectedRelativePath() is not string relativePath ||
+            !_entriesByPath.TryGetValue(relativePath, out var entry))
         {
             return;
         }
 
-        bool isMarkdown = IsMarkdown(fileName);
-        ViewModeSelector.Visibility = isMarkdown ? Visibility.Visible : Visibility.Collapsed;
-        SelectedFileText.Text = fileName;
+        SelectedFileText.Text = entry.Name;
+        UpdateDetailMeta(entry);
 
-        if (_fileContent.ContainsKey(fileName))
+        if (entry.IsDirectory)
+        {
+            ViewModeSelector.Visibility = Visibility.Collapsed;
+            BrowseToPath(entry.RequestPath);
+            return;
+        }
+
+        ViewModeSelector.Visibility = IsMarkdown(entry.Name) ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!entry.CanPreview)
+        {
+            ViewModeSelector.Visibility = Visibility.Collapsed;
+            FileBodyPresenter.Content = BuildNoteBody(
+                LocalizationHelper.GetString("WorkspacePage_BrowserOnlyFileNote"));
+            return;
+        }
+
+        // Files the list already reported as missing on disk never need a fetch.
+        if (!entry.Exists)
+        {
+            _fileContent[relativePath] = (FileBodyKind.Missing, null);
+            RenderSelectedFile();
+            return;
+        }
+
+        if (_fileContent.ContainsKey(relativePath))
         {
             RenderSelectedFile();
         }
         else
         {
             ShowLoadingBody();
-            if (CurrentApp.GatewayClient != null)
-                _ = CurrentApp.GatewayClient.RequestAgentFileGetAsync(AgentId, fileName);
+            _ = LoadFileAsync(entry);
         }
     }
 
-    private void RequestSelectedFileIfNeeded()
+    private async Task LoadFileAsync(WorkspaceFilesModel.WorkspaceFileEntry entry)
     {
-        if (FileList.SelectedItem is not ListViewItem selected ||
-            selected.Tag is not string fileName ||
-            _fileContent.ContainsKey(fileName))
+        var client = CurrentApp.GatewayClient;
+        var key = ResolveSessionKey();
+        if (client == null || string.IsNullOrWhiteSpace(key))
         {
+            ShowFileUnavailable(entry.RelativePath);
             return;
         }
 
-        ShowLoadingBody();
-        if (CurrentApp.GatewayClient != null)
-            _ = CurrentApp.GatewayClient.RequestAgentFileGetAsync(AgentId, fileName);
+        var token = _loadToken;
+        try
+        {
+            // Use the gateway's original path string, not the normalized display
+            // path, so the request matches exactly what the gateway indexed.
+            var result = await client.GetSessionFileAsync(key, entry.RequestPath);
+            if (token != _loadToken) return; // list reloaded underneath us
+
+            if (!result.IsSupported)
+            {
+                // A gateway that lists but can't serve a single file is an
+                // inconsistent edge — surface it inline rather than tearing down
+                // the whole rail, and don't cache so re-selection can retry.
+                ShowFileUnavailable(entry.RelativePath);
+                return;
+            }
+
+            if (result.Missing)
+                SetFileBody(entry.RelativePath, FileBodyKind.Missing, null);
+            else if (result.Content is null)
+                ShowFileUnavailable(entry.RelativePath);
+            else
+                SetFileBody(entry.RelativePath, FileBodyKind.Loaded, result.Content);
+        }
+        catch (Exception ex)
+        {
+            if (token != _loadToken) return;
+            // The gateway returns an error for missing / too-large files. Show it
+            // inline without caching so the user can retry by reselecting.
+            Services.Logger.Warn($"[WorkspacePage] sessions.files.get failed for '{entry.RequestPath}': {ex.Message}");
+            ShowFileUnavailable(entry.RelativePath);
+        }
+    }
+
+    // Cache a stable body outcome (loaded content or confirmed-missing) and
+    // render it if the file is still selected.
+    private void SetFileBody(string relativePath, FileBodyKind kind, string? content)
+    {
+        _fileContent[relativePath] = (kind, content);
+        if (string.Equals(SelectedRelativePath(), relativePath, StringComparison.Ordinal))
+            RenderSelectedFile();
+    }
+
+    // Transient/unavailable error: shown inline but NOT cached, so re-selecting
+    // the file retries the fetch instead of permanently reading as "missing".
+    private void ShowFileUnavailable(string relativePath)
+    {
+        if (string.Equals(SelectedRelativePath(), relativePath, StringComparison.Ordinal))
+        {
+            FileBodyPresenter.Content = BuildNoteBody(
+                LocalizationHelper.GetString("WorkspacePage_FileUnavailable"));
+        }
+    }
+
+    private void UpdateDetailMeta(WorkspaceFilesModel.WorkspaceFileEntry entry)
+    {
+        var parts = new List<string>(3);
+        var size = WorkspaceFilesModel.FormatSize(entry.Size);
+        if (!string.IsNullOrEmpty(size)) parts.Add(size);
+        if (entry.ModifiedUtc is { } modified)
+            parts.Add(modified.ToLocalTime().ToString("g"));
+        if (!entry.Exists)
+            parts.Add(LocalizationHelper.GetString("WorkspacePage_Badge_Missing"));
+
+        if (parts.Count > 0)
+        {
+            SelectedFileMeta.Text = string.Join(" · ", parts);
+            SelectedFileMeta.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            SelectedFileMeta.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void ViewModeSelector_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -252,39 +582,42 @@ public sealed partial class WorkspacePage : Page
         FileBodyPresenter.Content = loading;
     }
 
+    private static TextBlock BuildNoteBody(string text) => new()
+    {
+        Text = text,
+        Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
+        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+    };
+
     private void RenderSelectedFile()
     {
-        if (FileList.SelectedItem is not ListViewItem selected ||
-            selected.Tag is not string fileName)
+        if (SelectedRelativePath() is not string relativePath)
         {
             FileBodyPresenter.Content = null;
             return;
         }
 
-        if (!_fileContent.TryGetValue(fileName, out var content))
+        if (!_fileContent.TryGetValue(relativePath, out var body))
         {
             ShowLoadingBody();
             return;
         }
 
-        if (content == null)
+        if (body.Kind == FileBodyKind.Missing || body.Content == null)
         {
-            FileBodyPresenter.Content = new TextBlock
-            {
-                Text = LocalizationHelper.GetString("WorkspacePage_MissingFile"),
-                Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-            };
+            FileBodyPresenter.Content = BuildNoteBody(
+                LocalizationHelper.GetString("WorkspacePage_MissingFile"));
             return;
         }
 
-        if (IsMarkdown(fileName) && _renderMarkdown)
+        var name = _entriesByPath.TryGetValue(relativePath, out var entry) ? entry.Name : relativePath;
+        if (IsMarkdown(name) && _renderMarkdown)
         {
-            FileBodyPresenter.Content = BuildMarkdownView(content);
+            FileBodyPresenter.Content = BuildMarkdownView(body.Content);
         }
         else
         {
-            FileBodyPresenter.Content = BuildRawView(content);
+            FileBodyPresenter.Content = BuildRawView(body.Content);
         }
     }
 
@@ -550,20 +883,122 @@ public sealed partial class WorkspacePage : Page
 
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        if (CurrentApp.GatewayClient != null)
+        _ = LoadAsync();
+    }
+
+    private void ParentFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_browserParentPath is not null)
+            BrowseToPath(_browserParentPath);
+    }
+
+    private void CopyPathButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string path } || string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
         {
-            LoadingRing.IsActive = true;
-            LoadingPanel.Visibility = Visibility.Visible;
-            FallbackInfoBar.IsOpen = false;
-            ClearFiles();
-            _ = CurrentApp.GatewayClient.RequestAgentFilesListAsync(AgentId);
+            var data = new DataPackage();
+            data.SetText(path);
+            Clipboard.SetContent(data);
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[WorkspacePage] Clipboard copy failed: {ex.Message}");
+            BrowserNoticeText.Text = LocalizationHelper.GetString("WorkspacePage_CopyPathFailed");
+            BrowserNoticeText.Visibility = Visibility.Visible;
         }
     }
 
-    private static string FormatSize(long bytes)
+    private void BrowseToPath(string? path)
     {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        _browserPath = WorkspaceFilesModel.NormalizeBrowserPath(path);
+        _suppressSearchTextChanged = true;
+        try
+        {
+            SearchBox.Text = string.Empty;
+            _searchQuery = string.Empty;
+        }
+        finally
+        {
+            _suppressSearchTextChanged = false;
+        }
+        _ = LoadAsync();
+    }
+
+    private void UpdateBrowserChrome(WorkspaceFilesModel.WorkspaceListState state)
+    {
+        bool searching = !string.IsNullOrWhiteSpace(state.BrowserSearch);
+        ParentFolderButton.IsEnabled = !searching && state.BrowserParentPath is not null;
+        CurrentFolderText.Text = searching
+            ? LocalizationHelper.Format("WorkspacePage_SearchResultsPath", state.BrowserSearch.Trim())
+            : string.IsNullOrEmpty(state.BrowserPath)
+                ? LocalizationHelper.GetString("WorkspacePage_RootFolder")
+                : state.BrowserPath;
+
+        if (state.BrowserTruncated)
+        {
+            BrowserNoticeText.Text = LocalizationHelper.GetString("WorkspacePage_BrowserTruncated");
+            BrowserNoticeText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            BrowserNoticeText.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void RepairLink_Click(object sender, RoutedEventArgs e)
+        => ((IAppCommands)CurrentApp).Navigate("connection");
+
+    private void HideFallback()
+    {
+        FallbackInfoBar.IsOpen = false;
+        RepairLink.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowLoadError()
+    {
+        EndLoading();
+        ClearFiles();
+        FallbackInfoBar.Severity = InfoBarSeverity.Warning;
+        FallbackInfoBar.Message = LocalizationHelper.GetString("WorkspacePage_LoadErrorMessage");
+        RepairLink.Visibility = Visibility.Collapsed;
+        FallbackInfoBar.IsOpen = true;
+    }
+
+    // Gateway unreachable: offer a one-tap route to Connection settings so the
+    // user can repair pairing instead of hitting a silent dead end.
+    private void ShowDisconnected()
+    {
+        EndLoading();
+        ClearFiles();
+        WorkspacePathText.Text = string.Empty;
+        FallbackInfoBar.Severity = InfoBarSeverity.Warning;
+        FallbackInfoBar.Message = LocalizationHelper.GetString("WorkspacePage_DisconnectedMessage");
+        RepairLink.Visibility = Visibility.Visible;
+        FallbackInfoBar.IsOpen = true;
+    }
+
+    // Connected gateway that doesn't implement sessions.files.list (older
+    // gateway) or errored serving it. Same repair affordance, distinct copy so
+    // the user knows it's a capability gap.
+    private void ShowUnsupported()
+    {
+        EndLoading();
+        FallbackInfoBar.Severity = InfoBarSeverity.Warning;
+        FallbackInfoBar.Message = LocalizationHelper.GetString("WorkspacePage_UnsupportedMessage");
+        RepairLink.Visibility = Visibility.Visible;
+        FallbackInfoBar.IsOpen = true;
+        BodyGrid.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowNoFiles()
+    {
+        FallbackInfoBar.Severity = InfoBarSeverity.Informational;
+        FallbackInfoBar.Message = LocalizationHelper.GetString("WorkspacePage_NoFilesMessage");
+        RepairLink.Visibility = Visibility.Collapsed;
+        FallbackInfoBar.IsOpen = true;
+        BodyGrid.Visibility = Visibility.Collapsed;
     }
 }

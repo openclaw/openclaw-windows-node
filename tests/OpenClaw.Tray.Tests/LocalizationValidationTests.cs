@@ -302,6 +302,30 @@ public class LocalizationValidationTests
         "CommandCenter_NoLocalGatewayListener",
         "CommandCenter_BrowserProxySshForwardNotListening",
         "CommandCenter_BrowserProxyHostNotDetected",
+        // WorkspacePage session file rail strings — seeded English across all
+        // locales until translations land. Same deferred-translation precedent
+        // as the InstancesPage / ConnectionPage runtime keys above.
+        "WorkspacePage_SearchBox.PlaceholderText",
+        "WorkspacePage_ParentFolderButton.Content",
+        "WorkspacePage_OpenConnectionSettings.Content",
+        "WorkspacePage_NoSearchResults.Text",
+        "WorkspacePage_NoFolderResults",
+        "WorkspacePage_LoadErrorMessage",
+        "WorkspacePage_UnsupportedMessage",
+        "WorkspacePage_Badge_Missing",
+        "WorkspacePage_Badge_Edited",
+        "WorkspacePage_Badge_Read",
+        "WorkspacePage_FolderNote",
+        "WorkspacePage_FileUnavailable",
+        "WorkspacePage_BrowserOnlyFileNote",
+        "WorkspacePage_OpenFolder",
+        "WorkspacePage_CopyPath",
+        "WorkspacePage_CopyPathFailed",
+        "WorkspacePage_FileType_File",
+        "WorkspacePage_FileType_Folder",
+        "WorkspacePage_RootFolder",
+        "WorkspacePage_SearchResultsPath",
+        "WorkspacePage_BrowserTruncated",
     };
 
     private static readonly string[] RequiredRuntimeOnboardingKeys =

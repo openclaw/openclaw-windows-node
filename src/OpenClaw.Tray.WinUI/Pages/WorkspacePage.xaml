@@ -113,7 +113,15 @@
                 <InfoBar x:Uid="FallbackInfoBar" x:Name="FallbackInfoBar"
                          IsOpen="False" IsClosable="False"
                          Severity="Informational"
-                         Title="Workspace files"/>
+                         Title="Workspace files">
+                    <InfoBar.ActionButton>
+                        <HyperlinkButton x:Name="RepairLink"
+                                         x:Uid="WorkspacePage_OpenConnectionSettings"
+                                         Content="Open Connection settings"
+                                         Visibility="Collapsed"
+                                         Click="RepairLink_Click"/>
+                    </InfoBar.ActionButton>
+                </InfoBar>
             </StackPanel>
 
             <Border x:Name="BodyGrid" Grid.Row="3" Visibility="Collapsed"
@@ -134,10 +142,16 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0" Grid.Column="0" Padding="16,12,16,12">
-                        <TextBlock x:Uid="WorkspacePage_FilesHeader"
-                                   Text="Files"
-                                   Style="{StaticResource BodyStrongTextBlockStyle}"
-                                   VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock x:Uid="WorkspacePage_FilesHeader"
+                                       Text="Files"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="FileCountText"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Border>
 
                     <Grid Grid.Row="0" Grid.Column="2" Padding="16,8,12,8">
@@ -145,12 +159,20 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="SelectedFileText" Grid.Column="0"
-                                   Style="{StaticResource BodyStrongTextBlockStyle}"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+                            <TextBlock x:Name="SelectedFileText"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="SelectedFileMeta"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="Collapsed"/>
+                        </StackPanel>
                         <controls:SelectorBar x:Name="ViewModeSelector" Grid.Column="1"
+                                              VerticalAlignment="Center"
                                               Visibility="Collapsed"
                                               SelectionChanged="ViewModeSelector_SelectionChanged">
                             <controls:SelectorBarItem x:Uid="WorkspacePage_ViewMode_Rendered"
@@ -168,20 +190,69 @@
                     <Border Grid.Row="2" Grid.Column="1"
                             Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
 
-                    <ListView x:Name="FileList" Grid.Row="2" Grid.Column="0"
-                              SelectionMode="Single"
-                              SelectionChanged="FileList_SelectionChanged"
-                              ShowsScrollingPlaceholders="False"
-                              Padding="4,4,4,8">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                <Setter Property="Padding" Value="12,8"/>
-                                <Setter Property="Margin" Value="0"/>
-                                <Setter Property="CornerRadius" Value="4"/>
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                    </ListView>
+                    <Grid Grid.Row="2" Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="8,8,8,0" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="ParentFolderButton"
+                                    x:Uid="WorkspacePage_ParentFolderButton"
+                                    Content="Up"
+                                    MinWidth="48"
+                                    Padding="8,4"
+                                    Click="ParentFolderButton_Click"/>
+                            <TextBlock x:Name="CurrentFolderText" Grid.Column="1"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                        <AutoSuggestBox x:Name="SearchBox"
+                                        x:Uid="WorkspacePage_SearchBox"
+                                        Grid.Row="1"
+                                        Margin="8,4,8,4"
+                                        QueryIcon="Find"
+                                        PlaceholderText="Search files"
+                                        TextChanged="SearchBox_TextChanged"/>
+                        <TextBlock x:Name="BrowserNoticeText" Grid.Row="2"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="12,0,12,4"
+                                   Visibility="Collapsed"/>
+                        <ListView x:Name="FileList" Grid.Row="3"
+                                  SelectionMode="Single"
+                                  SelectionChanged="FileList_SelectionChanged"
+                                  ShowsScrollingPlaceholders="False"
+                                  Padding="4,0,4,8">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Padding" Value="12,8"/>
+                                    <Setter Property="Margin" Value="0"/>
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                        </ListView>
+                        <TextBlock x:Name="NoResultsText" Grid.Row="3"
+                                   x:Uid="WorkspacePage_NoSearchResults"
+                                   Text="No files match your search."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Margin="16"
+                                   Visibility="Collapsed"/>
+                    </Grid>
 
                     <ScrollViewer Grid.Row="2" Grid.Column="2"
                                   VerticalScrollBarVisibility="Auto"

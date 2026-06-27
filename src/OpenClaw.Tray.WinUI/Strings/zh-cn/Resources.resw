@@ -2283,6 +2283,69 @@
   <data name="WorkspacePage_LoadingContent" xml:space="preserve">
     <value>正在加载内容…</value>
   </data>
+  <data name="WorkspacePage_SearchBox.PlaceholderText" xml:space="preserve">
+    <value>Search files</value>
+  </data>
+  <data name="WorkspacePage_ParentFolderButton.Content" xml:space="preserve">
+    <value>Up</value>
+  </data>
+  <data name="WorkspacePage_OpenConnectionSettings.Content" xml:space="preserve">
+    <value>Open Connection settings</value>
+  </data>
+  <data name="WorkspacePage_NoSearchResults.Text" xml:space="preserve">
+    <value>No files match your search.</value>
+  </data>
+  <data name="WorkspacePage_NoFolderResults" xml:space="preserve">
+    <value>No files found in this folder.</value>
+  </data>
+  <data name="WorkspacePage_LoadErrorMessage" xml:space="preserve">
+    <value>Couldn't load workspace files. Try refreshing.</value>
+  </data>
+  <data name="WorkspacePage_UnsupportedMessage" xml:space="preserve">
+    <value>This gateway doesn't support listing workspace files.</value>
+  </data>
+  <data name="WorkspacePage_Badge_Missing" xml:space="preserve">
+    <value>Missing</value>
+  </data>
+  <data name="WorkspacePage_Badge_Edited" xml:space="preserve">
+    <value>Edited</value>
+  </data>
+  <data name="WorkspacePage_Badge_Read" xml:space="preserve">
+    <value>Read</value>
+  </data>
+  <data name="WorkspacePage_FolderNote" xml:space="preserve">
+    <value>This is a folder.</value>
+  </data>
+  <data name="WorkspacePage_FileUnavailable" xml:space="preserve">
+    <value>Couldn't load this file.</value>
+  </data>
+  <data name="WorkspacePage_BrowserOnlyFileNote" xml:space="preserve">
+    <value>Only files read or edited in this session can be previewed.</value>
+  </data>
+  <data name="WorkspacePage_OpenFolder" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="WorkspacePage_CopyPath" xml:space="preserve">
+    <value>Copy path</value>
+  </data>
+  <data name="WorkspacePage_CopyPathFailed" xml:space="preserve">
+    <value>Couldn't copy the path.</value>
+  </data>
+  <data name="WorkspacePage_FileType_File" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="WorkspacePage_FileType_Folder" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="WorkspacePage_RootFolder" xml:space="preserve">
+    <value>Root</value>
+  </data>
+  <data name="WorkspacePage_SearchResultsPath" xml:space="preserve">
+    <value>Search results for "{0}"</value>
+  </data>
+  <data name="WorkspacePage_BrowserTruncated" xml:space="preserve">
+    <value>Some results were omitted. Narrow your search or open a folder.</value>
+  </data>
   <data name="WorkspacePage_MissingFile" xml:space="preserve">
     <value>(磁盘上找不到文件)</value>
   </data>
