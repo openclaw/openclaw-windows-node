@@ -258,6 +258,12 @@ if ($RunValidation) {
     & "$repoRoot\build.ps1"
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+    dotnet build "$repoRoot\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    dotnet build "$repoRoot\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     dotnet test "$repoRoot\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj" --no-restore
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
