@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Sessions;
 using OpenClaw.Shared.Mxc;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
@@ -1121,30 +1122,53 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             if (action is "reset" or "compact" or "delete")
             {
-                var title = action switch
+                var kind = action switch
                 {
-                    "reset" => "Reset session?",
-                    "compact" => "Compact session log?",
-                    "delete" => "Delete session?",
-                    _ => "Confirm session action"
-                };
-                var body = action switch
-                {
-                    "reset" => $"Start a fresh session for '{sessionKey}'?",
-                    "compact" => $"Keep the latest log lines for '{sessionKey}' and archive the rest?",
-                    "delete" => $"Delete '{sessionKey}' and archive its transcript?",
-                    _ => "Continue?"
-                };
-                var button = action switch
-                {
-                    "reset" => "Reset",
-                    "compact" => "Compact",
-                    "delete" => "Delete",
-                    _ => "Continue"
+                    "reset" => SessionActionKind.Reset,
+                    "compact" => SessionActionKind.Compact,
+                    _ => SessionActionKind.Delete,
                 };
 
-                var confirmed = await ConfirmSessionActionAsync(title, body, button);
-                if (!confirmed) return;
+                var session = _appState?.Sessions?.FirstOrDefault(s => s.Key == sessionKey);
+                var mainState = SessionActionPlanner.ResolveMainState(
+                    sessionKey,
+                    rowIsMain: session?.IsMain,
+                    mainSessionKey: client.MainSessionKey,
+                    sessions: _appState?.Sessions);
+                var isMain = mainState == SessionMainState.Main;
+                var displayName = session?.DisplayName;
+
+                if (!SessionActionPlanner.IsAllowed(kind, mainState, out var blockedReason))
+                {
+                    _toastService!.ShowToast(new ToastContentBuilder()
+                        .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
+                        .AddText(blockedReason ?? string.Empty));
+                    return;
+                }
+
+                var prompt = SessionActionPlanner.BuildPrompt(kind, sessionKey, displayName, isMain);
+                if (prompt is not null)
+                {
+                    var confirmed = await ConfirmSessionActionAsync(prompt.Title, prompt.Body, prompt.ConfirmLabel);
+                    if (!confirmed) return;
+                }
+            }
+
+            if (action == "delete")
+            {
+                var session = _appState?.Sessions?.FirstOrDefault(s => s.Key == sessionKey);
+                var mainState = SessionActionPlanner.ResolveMainState(
+                    sessionKey,
+                    rowIsMain: session?.IsMain,
+                    mainSessionKey: client.MainSessionKey,
+                    sessions: _appState?.Sessions);
+                if (!SessionActionPlanner.IsAllowed(SessionActionKind.Delete, mainState, out var blockedReason))
+                {
+                    _toastService!.ShowToast(new ToastContentBuilder()
+                        .AddText(LocalizationHelper.GetString("Toast_SessionActionFailed"))
+                        .AddText(blockedReason ?? string.Empty));
+                    return;
+                }
             }
 
             var sent = action switch

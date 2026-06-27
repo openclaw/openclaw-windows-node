@@ -114,6 +114,8 @@ public sealed class PairingApprovalCoordinatorTests
         public void SetUserRules(IReadOnlyList<UserNotificationRule>? rules) { }
         public void SetPreferStructuredCategories(bool value) { }
         public Task SendChatMessageAsync(string message, string? sessionKey = null) => Task.CompletedTask;
+        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000) =>
+            Task.FromResult(new ChatHistoryInfo { SessionKey = sessionKey ?? "" });
         public Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null) => Task.FromResult(new ChatSendResult());
         public Task CheckHealthAsync() => Task.CompletedTask;
         public Task RequestSessionsAsync(string? agentId = null) => Task.CompletedTask;

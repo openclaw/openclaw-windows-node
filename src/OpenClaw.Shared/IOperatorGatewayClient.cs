@@ -59,6 +59,15 @@ public interface IOperatorGatewayClient
     // ─── Request Methods ───
     Task SendChatMessageAsync(string message, string? sessionKey = null);
     Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null);
+    /// <summary>
+    /// Fetches the normalized conversation transcript for a session
+    /// (<c>chat.history</c>). Ships with a default so adding it does not
+    /// source-break external implementers (test doubles); the real client
+    /// overrides it. Non-overriding clients fail explicitly instead of looking
+    /// like an empty transcript.
+    /// </summary>
+    Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000)
+        => Task.FromException<ChatHistoryInfo>(new NotSupportedException("chat.history is not supported by this gateway client."));
     Task CheckHealthAsync();
     Task RequestSessionsAsync(string? agentId = null);
     Task RequestUsageAsync();

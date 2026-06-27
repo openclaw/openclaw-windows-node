@@ -203,11 +203,32 @@
                                                                           IsTextScaleFactorEnabled="False"/>
                                                             </MenuFlyoutItem.Icon>
                                                         </MenuFlyoutItem>
+                                                        <MenuFlyoutItem Text="Checkpoints"
+                                                                        Tag="{Binding Key}"
+                                                                        Click="OnShowCheckpoints"
+                                                                        ToolTipService.ToolTip="View, branch or restore compaction checkpoints">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xE81C;"
+                                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                          IsTextScaleFactorEnabled="False"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <MenuFlyoutItem Text="Export transcript"
+                                                                        Tag="{Binding Key}"
+                                                                        Click="OnExportSession"
+                                                                        ToolTipService.ToolTip="Save the conversation transcript to a text file">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xEDE1;"
+                                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                          IsTextScaleFactorEnabled="False"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
                                                         <MenuFlyoutSeparator/>
                                                         <MenuFlyoutItem x:Uid="SessionsPage_Delete"
                                                                         Text="Delete"
                                                                         Tag="{Binding Key}"
                                                                         Click="OnDeleteSession"
+                                                                        IsEnabled="{Binding CanDelete}"
                                                                         Foreground="{ThemeResource SystemFillColorCriticalBrush}">
                                                             <MenuFlyoutItem.Icon>
                                                                 <FontIcon Glyph="&#xE74D;"

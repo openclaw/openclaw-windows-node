@@ -429,6 +429,9 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
 
         public Task SendChatMessageAsync(string message, string? sessionKey = null) => SendChatMessageForRunAsync(message, sessionKey);
 
+        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000) =>
+            Task.FromResult(new ChatHistoryInfo { SessionKey = sessionKey ?? "" });
+
         public Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null)
         {
             SendCount++;
