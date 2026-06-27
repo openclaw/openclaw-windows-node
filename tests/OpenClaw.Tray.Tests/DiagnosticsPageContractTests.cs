@@ -222,6 +222,16 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void HubWindow_RemovesDiagnosticsBackStack_WhenDiagnosticsHidden()
+    {
+        var source = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+
+        Assert.Contains("RemoveBackStackEntries(\"debug\")", source);
+        Assert.Contains("NavigateInternal(\"settings\")", source);
+        Assert.Contains("RefreshDiagnosticsNavVisibility()", source);
+    }
+
+    [Fact]
     public void DebugPage_CopyFeedbackTimer_IsStoppedOnTeardown()
     {
         var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");

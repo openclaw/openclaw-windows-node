@@ -222,7 +222,7 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("RemoveUnavailableGatewayBackStackEntries", source);
         Assert.Contains("ContentFrame.BackStack.RemoveAt(i)", source);
-        Assert.Contains("GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(tag)", source);
+        Assert.Contains("RemoveBackStackEntries(GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag)", source);
         Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "GoBack"));
         Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "UpdateGatewayNavVisibility"));
     }

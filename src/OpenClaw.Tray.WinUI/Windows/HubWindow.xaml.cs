@@ -121,8 +121,25 @@ public sealed partial class HubWindow : WindowEx
         ToolTipService.SetToolTip(NotificationsBellButton, LocalizationHelper.GetString("HubWindow_Bell_Tooltip"));
     }
 
-    public void RefreshDiagnosticsNavVisibility() =>
-        NavDiagnostics.Visibility = DiagnosticsGate.IsVisible ? Visibility.Visible : Visibility.Collapsed;
+    public void RefreshDiagnosticsNavVisibility()
+    {
+        var isVisible = DiagnosticsGate.IsVisible;
+        NavDiagnostics.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+        if (isVisible)
+            return;
+
+        RemoveBackStackEntries("debug");
+        if (string.Equals(_currentNavTag, "debug", StringComparison.Ordinal))
+        {
+            NavigateInternal("settings");
+            RemoveBackStackEntries("debug");
+            UpdateBackButton();
+        }
+        else
+        {
+            UpdateBackButton();
+        }
+    }
 
     /// <summary>
     /// Subscribe to AppState property changes for title bar and nav updates.
@@ -886,13 +903,18 @@ public sealed partial class HubWindow : WindowEx
         if (AppModel?.Status == ConnectionStatus.Connected)
             return;
 
+        RemoveBackStackEntries(GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag);
+    }
+
+    private void RemoveBackStackEntries(string tag) =>
+        RemoveBackStackEntries(candidate => string.Equals(candidate, tag, StringComparison.Ordinal));
+
+    private void RemoveBackStackEntries(Func<string, bool> shouldRemove)
+    {
         for (var i = ContentFrame.BackStack.Count - 1; i >= 0; i--)
         {
-            if (ContentFrame.BackStack[i].Parameter is string tag &&
-                GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(tag))
-            {
+            if (ContentFrame.BackStack[i].Parameter is string tag && shouldRemove(tag))
                 ContentFrame.BackStack.RemoveAt(i);
-            }
         }
     }
 
