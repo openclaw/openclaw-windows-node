@@ -186,7 +186,6 @@ public sealed class DiagnosticsPageContractTests
                     $@"x:Uid=""{cardUid}""[\s\S]{{0,600}}SettingsCard\.ActionIcon[\s\S]{{0,200}}FluentIconCatalog\.Copy"),
                 xaml);
         }
-
         // The transient "Copied to clipboard" feedback InfoBar must
         // be on the page and start collapsed (IsOpen=False).
         Assert.Contains("x:Name=\"CopyFeedbackInfoBar\"", xaml);
@@ -210,6 +209,16 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("CopyDiagnosticText(\"Browser setup guidance\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Port diagnostics\"", cs);
         Assert.Contains("CopyDiagnosticText(\"Capability diagnostics\"", cs);
+    }
+
+    [Fact]
+    public void DiagnosticsGate_DefaultsVisible_ForMissingSettingsCompatibility()
+    {
+        var source = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "DiagnosticsGate.cs");
+
+        Assert.Contains("public static bool BuildDefault =>", source);
+        Assert.Contains("true;", source);
+        Assert.DoesNotContain("PackageHelper.IsPackaged", source);
     }
 
     [Fact]

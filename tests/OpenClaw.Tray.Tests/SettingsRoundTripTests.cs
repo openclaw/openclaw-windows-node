@@ -199,6 +199,28 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
+    public void SettingsManager_MissingShowDiagnostics_DefaultsVisible_ForUpgradeCompatibility()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), "{}");
+
+            var settings = new SettingsManager(dir);
+
+            Assert.Null(settings.ShowDiagnosticsOverride);
+            Assert.True(settings.ShowDiagnosticsEffective);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void HubNavPaneOpen_DefaultsTrue_ForEmptyJson()
     {
         // Existing users have a settings file written before HubNavPaneOpen

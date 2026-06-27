@@ -12,18 +12,14 @@ using Microsoft.UI.Xaml;
 namespace OpenClawTray.Helpers;
 
 /// <summary>
-/// Gates the Diagnostics page. The build sets the DEFAULT (shown on local/Debug
-/// builds and unpackaged Release; hidden on the shipped MSIX). Users can override
-/// the default via Settings (SettingsManager.ShowDiagnosticsOverride).
+/// Gates the Diagnostics page. Diagnostics remain visible by default for
+/// compatibility with existing installs; users can explicitly hide or show them
+/// via Settings (SettingsManager.ShowDiagnosticsOverride).
 /// </summary>
 internal static class DiagnosticsGate
 {
     public static bool BuildDefault =>
-#if DEBUG
         true;
-#else
-        !PackageHelper.IsPackaged;
-#endif
 
     /// <summary>Effective visibility: user override if set, else the build default.</summary>
     public static bool IsVisible =>
