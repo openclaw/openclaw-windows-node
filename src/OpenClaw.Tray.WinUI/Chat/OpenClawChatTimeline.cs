@@ -141,6 +141,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     private const string MonoFontFamilySource = "Cascadia Code, Cascadia Mono, Consolas";
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
         Microsoft.UI.Dispatching.DispatcherQueue, FontFamily> s_monoFontByDispatcher = new();
+    private const string ChatTextFontFamilySource = "Segoe UI Variable Text, Segoe UI";
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        Microsoft.UI.Dispatching.DispatcherQueue, FontFamily> s_chatTextFontByDispatcher = new();
     private static FontFamily s_monoFontFamily
     {
         get
@@ -154,6 +157,23 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             {
                 family = new FontFamily(MonoFontFamilySource);
                 s_monoFontByDispatcher.Add(dispatcher, family);
+            }
+            return family;
+        }
+    }
+    private static FontFamily s_chatTextFontFamily
+    {
+        get
+        {
+            var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            if (dispatcher is null)
+            {
+                return new FontFamily(ChatTextFontFamilySource);
+            }
+            if (!s_chatTextFontByDispatcher.TryGetValue(dispatcher, out var family))
+            {
+                family = new FontFamily(ChatTextFontFamilySource);
+                s_chatTextFontByDispatcher.Add(dispatcher, family);
             }
             return family;
         }
@@ -1117,6 +1137,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             t.FontSize = 14;
                             t.Foreground = userBubbleFg;
                             t.IsTextSelectionEnabled = true;
+                            t.FontFamily = s_chatTextFontFamily;
+                            t.TextTrimming = TextTrimming.None;
+                            t.MaxLines = 0;
+                            t.LineHeight = 0;
+                            t.CharacterSpacing = 0;
+                            t.Width = double.NaN;
+                            t.MinWidth = 0;
+                            t.MaxWidth = double.PositiveInfinity;
                             // The default SelectionHighlightColor is the
                             // system accent — which equals the user bubble's
                             // background — so the highlight band is invisible
