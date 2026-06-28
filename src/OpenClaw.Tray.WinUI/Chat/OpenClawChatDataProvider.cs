@@ -646,6 +646,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             break;
 
                         case "assistant":
+                            if (ChatMessageInfo.IsSilentAssistantDirective(roleLower, text))
+                            {
+                                Logger.Debug("[ChatHistory]   → routed: SILENT assistant directive");
+                                break;
+                            }
+
                             // If this assistant response was aborted, show a placeholder
                             // instead of the actual (partial) content.
                             if (shouldMarkAborted)
@@ -1691,6 +1697,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
 
         if (roleLower != "assistant")
+            return;
+        if (ChatMessageInfo.IsSilentAssistantDirective(roleLower, message.Text))
             return;
         if (string.IsNullOrEmpty(message.Text))
             return;
