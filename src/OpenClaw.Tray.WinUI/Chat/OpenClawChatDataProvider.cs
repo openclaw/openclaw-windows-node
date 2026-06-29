@@ -1054,7 +1054,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         CommandCatalog catalog;
         try
         {
-            catalog = await _bridge.ListCommandsAsync().ConfigureAwait(false)
+            // Chat composer slash completion can only insert text-invokable
+            // commands. Request the protocol's text scope so native-only
+            // commands never surface in the composer catalog.
+            catalog = await _bridge.ListCommandsAsync(new CommandCatalogQuery { Scope = "text" }).ConfigureAwait(false)
                       ?? new CommandCatalog { IsSupported = true };
         }
         catch (Exception ex)

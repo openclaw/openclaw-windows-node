@@ -31,6 +31,7 @@ public class OpenClawChatDataProviderTests
         public CommandCatalog CommandCatalogResult { get; set; } = new CommandCatalog { IsSupported = true };
         public Func<CommandCatalogQuery?, Task<CommandCatalog>>? ListCommandsBehavior { get; set; }
         public int ListCommandsCallCount { get; private set; }
+        public CommandCatalogQuery? LastListCommandsQuery { get; private set; }
 
         public SessionInfo[] GetSessionList() => Sessions;
         public ModelsListInfo? GetCurrentModelsList() => CurrentModels;
@@ -39,6 +40,7 @@ public class OpenClawChatDataProviderTests
         public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null)
         {
             ListCommandsCallCount++;
+            LastListCommandsQuery = query;
             return ListCommandsBehavior?.Invoke(query) ?? Task.FromResult(CommandCatalogResult);
         }
 
@@ -2039,6 +2041,39 @@ public class OpenClawChatDataProviderTests
         Assert.NotNull(snap.AvailableCommands);
         Assert.Equal(2, snap.AvailableCommands!.Count);
         Assert.Contains(snap.AvailableCommands, c => c.Name == "clear");
+    }
+
+    [Fact]
+    public async Task EnsureCommandCatalogAsync_RequestsTextScopeAndExcludesNativeOnlyCommands()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        var mixedCatalog = new CommandCatalog
+        {
+            IsSupported = true,
+            Commands = new[]
+            {
+                new GatewayCommand { Name = "open-native-panel", NativeName = "open-native-panel", Scope = "native" },
+                new GatewayCommand { Name = "review", NativeName = "/review", Scope = "text" },
+                new GatewayCommand { Name = "model", NativeName = "/model", Scope = "both" },
+            }
+        };
+        bridge.ListCommandsBehavior = query => Task.FromResult(new CommandCatalog
+        {
+            IsSupported = mixedCatalog.IsSupported,
+            Commands = mixedCatalog.Commands.Where(c => query?.Matches(c) ?? true).ToArray(),
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.EnsureCommandCatalogAsync();
+
+        Assert.NotNull(bridge.LastListCommandsQuery);
+        Assert.Equal("text", bridge.LastListCommandsQuery!.Scope);
+        var commands = snapshots[^1].AvailableCommands!;
+        Assert.DoesNotContain(commands, c => c.Name == "open-native-panel");
+        Assert.Contains(commands, c => c.Name == "review");
+        Assert.Contains(commands, c => c.Name == "model");
     }
 
     [Fact]
