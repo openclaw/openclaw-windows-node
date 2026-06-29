@@ -2747,7 +2747,7 @@ public sealed partial class ConnectionPage : Page
                     fileUnchanged = true;
                 }
                 if (fileUnchanged)
-                    File.WriteAllText(identityKeyPath, identityBackup);
+                    DeviceIdentity.AtomicWriteKeyFileRaw(identityKeyPath, identityBackup);
                 // else: another writer touched the file; preserve it.
             }
             catch (Exception ex)

@@ -95,6 +95,72 @@ public class DeviceIdentity
         TryClearDeviceTokenForRole(dataPath, "operator", logger);
 
     /// <summary>
+    /// Atomically clears <em>all</em> device-token fields (DeviceToken,
+    /// DeviceTokenScopes, NodeDeviceToken, NodeDeviceTokenScopes) from
+    /// <c>device-key-ed25519.json</c> while preserving the Ed25519 keypair,
+    /// deviceId, algorithm, and all other properties. Uses raw JSON filtering
+    /// so unknown/extra fields are preserved, and writes atomically via
+    /// temp-file + rename.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> if at least one token field was present and cleared;
+    /// <c>false</c> if the file was absent or already had no tokens.
+    /// </returns>
+    public static bool TryClearAllDeviceTokens(string dataPath, IOpenClawLogger? logger = null)
+    {
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        if (!File.Exists(keyPath))
+            return false;
+
+        try
+        {
+            var json = File.ReadAllText(keyPath);
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            bool hadTokens = false;
+            using var ms = new MemoryStream();
+            using (var writer = new System.Text.Json.Utf8JsonWriter(ms, new System.Text.Json.JsonWriterOptions { Indented = true }))
+            {
+                writer.WriteStartObject();
+                foreach (var prop in root.EnumerateObject())
+                {
+                    if (prop.Name is "DeviceToken" or "DeviceTokenScopes" or "NodeDeviceToken" or "NodeDeviceTokenScopes")
+                    {
+                        hadTokens = true;
+                        continue;
+                    }
+                    prop.WriteTo(writer);
+                }
+                writer.WriteEndObject();
+            }
+
+            if (!hadTokens)
+                return false;
+
+            var content = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            AtomicWriteKeyFileRaw(keyPath, content);
+            logger?.Info("All device tokens cleared from device-key-ed25519.json (keypair preserved).");
+            return true;
+        }
+        catch (IOException ex)
+        {
+            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
+            return false;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Sets the role-specific device token field to <c>null</c> in
     /// <c>device-key-ed25519.json</c> without deleting the file. Preserves the
     /// Ed25519 keypair and unrelated role tokens.
@@ -523,12 +589,22 @@ public class DeviceIdentity
     private static void AtomicWriteKeyFile(string path, DeviceKeyData data)
     {
         var json = JsonSerializer.Serialize(data, JsonSerializerOptionsCache.WriteIndented);
+        AtomicWriteKeyFileRaw(path, json);
+    }
+
+    /// <summary>
+    /// Atomically writes pre-serialized JSON content to a device-key file path
+    /// using temp-file + rename. Use this when restoring a backup or writing
+    /// content that is already serialized.
+    /// </summary>
+    public static void AtomicWriteKeyFileRaw(string path, string jsonContent)
+    {
         var dir = Path.GetDirectoryName(path);
         var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
         var tempPath = Path.Combine(tempDir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         try
         {
-            File.WriteAllText(tempPath, json);
+            File.WriteAllText(tempPath, jsonContent);
             McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
