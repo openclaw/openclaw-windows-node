@@ -59,6 +59,44 @@ public static class GatewayCommandPresentation
         return command.RequiresArgs() ? token + " " : token;
     }
 
+    /// <summary>Inline argument template (e.g. "&lt;message&gt; [level]"), or "" when none.</summary>
+    public static string ArgTemplate(this GatewayCommand command)
+    {
+        if (command?.Args is null || command.Args.Count == 0) return "";
+        return string.Join(" ", command.Args
+            .Where(a => !string.IsNullOrWhiteSpace(a.Name))
+            .Select(a => a.Required ? $"<{a.Name}>" : $"[{a.Name}]"));
+    }
+
+    /// <summary>Static choice count on the first arg (for the "N options" badge); 0 when dynamic/none.</summary>
+    public static int OptionCount(this GatewayCommand command)
+    {
+        var first = command?.Args?.FirstOrDefault();
+        return first is { IsDynamic: false } ? first.Choices.Count : 0;
+    }
+
+    /// <summary>Static choices on the first declared arg (empty when dynamic or none).</summary>
+    public static IReadOnlyList<GatewayCommandArgChoice> FirstArgChoices(this GatewayCommand command)
+    {
+        var first = command?.Args?.FirstOrDefault();
+        return first is { IsDynamic: false } ? first.Choices : Array.Empty<GatewayCommandArgChoice>();
+    }
+
+    /// <summary>Composer text for a chosen arg value: "/name value".</summary>
+    public static string BuildArgInsertionText(this GatewayCommand command, string value) =>
+        command.DisplayName() + " " + (value ?? "").Trim();
+
+    /// <summary>True when <paramref name="name"/> (slash-stripped) matches this command's name/native/alias.</summary>
+    public static bool MatchesName(this GatewayCommand command, string name)
+    {
+        if (command is null || string.IsNullOrWhiteSpace(name)) return false;
+        var n = name.Trim().TrimStart('/');
+        bool Eq(string? a) => !string.IsNullOrWhiteSpace(a) &&
+            string.Equals(a!.Trim().TrimStart('/'), n, StringComparison.OrdinalIgnoreCase);
+        if (Eq(command.NativeName) || Eq(command.Name)) return true;
+        return command.TextAliases?.Any(Eq) ?? false;
+    }
+
     private static string Normalize(string value)
     {
         var v = (value ?? "").Trim();

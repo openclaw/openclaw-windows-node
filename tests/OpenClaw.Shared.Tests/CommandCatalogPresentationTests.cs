@@ -78,6 +78,91 @@ public class CommandCatalogPresentationTests
         Assert.Equal("/m ", withRequired.BuildInsertionText());
     }
 
+    // ── Mac-parity presentation helpers ──
+
+    [Fact]
+    public void ArgTemplate_FormatsRequiredAndOptionalArgs()
+    {
+        Assert.Equal("", new GatewayCommand { Name = "a" }.ArgTemplate());
+        var cmd = new GatewayCommand
+        {
+            Name = "a",
+            Args = new[]
+            {
+                new GatewayCommandArg { Name = "message", Required = true },
+                new GatewayCommandArg { Name = "level", Required = false },
+            },
+        };
+        Assert.Equal("<message> [level]", cmd.ArgTemplate());
+    }
+
+    [Fact]
+    public void OptionCount_CountsStaticChoicesOnFirstArgOnly()
+    {
+        Assert.Equal(0, new GatewayCommand { Name = "a" }.OptionCount());
+        var withChoices = new GatewayCommand
+        {
+            Name = "a",
+            Args = new[]
+            {
+                new GatewayCommandArg
+                {
+                    Name = "id",
+                    Choices = new[]
+                    {
+                        new GatewayCommandArgChoice { Value = "fast" },
+                        new GatewayCommandArgChoice { Value = "slow" },
+                    },
+                },
+            },
+        };
+        Assert.Equal(2, withChoices.OptionCount());
+        // Dynamic choices are not counted (resolved by the gateway at runtime).
+        var dynamic = new GatewayCommand
+        {
+            Name = "a",
+            Args = new[] { new GatewayCommandArg { Name = "id", IsDynamic = true, Choices = new[] { new GatewayCommandArgChoice { Value = "x" } } } },
+        };
+        Assert.Equal(0, dynamic.OptionCount());
+    }
+
+    [Fact]
+    public void FirstArgChoices_ReturnsStaticChoicesElseEmpty()
+    {
+        Assert.Empty(new GatewayCommand { Name = "a" }.FirstArgChoices());
+        var cmd = new GatewayCommand
+        {
+            Name = "a",
+            Args = new[]
+            {
+                new GatewayCommandArg { Name = "id", Choices = new[] { new GatewayCommandArgChoice { Value = "fast", Label = "Fast" } } },
+            },
+        };
+        Assert.Single(cmd.FirstArgChoices());
+        Assert.Equal("fast", cmd.FirstArgChoices()[0].Value);
+    }
+
+    [Fact]
+    public void BuildArgInsertionText_BuildsSlashNameValue()
+    {
+        var cmd = new GatewayCommand { Name = "model", NativeName = "/model" };
+        Assert.Equal("/model gpt-5", cmd.BuildArgInsertionText("gpt-5"));
+        Assert.Equal("/model gpt-5", cmd.BuildArgInsertionText("  gpt-5 "));
+    }
+
+    [Theory]
+    [InlineData("model", true)]
+    [InlineData("/model", true)]
+    [InlineData("MODEL", true)]
+    [InlineData("tldr", true)]   // text alias
+    [InlineData("nope", false)]
+    [InlineData("", false)]
+    public void MatchesName_MatchesNativeNameAndAliases(string probe, bool expected)
+    {
+        var cmd = new GatewayCommand { Name = "model", NativeName = "/model", TextAliases = new[] { "/tldr" } };
+        Assert.Equal(expected, cmd.MatchesName(probe));
+    }
+
     // ── ChatCommandCatalogView search ──
 
     [Fact]
