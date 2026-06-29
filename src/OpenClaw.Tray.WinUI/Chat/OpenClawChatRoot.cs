@@ -591,7 +591,10 @@ public sealed class OpenClawChatRoot : Component
                     s_showToolCalls = visible;
                     ToolCallsVisibilityChanged?.Invoke(null, EventArgs.Empty);
                 },
-                IsCompact: _isCompact))
+                IsCompact: _isCompact,
+                AvailableCommands: snapshot.AvailableCommands,
+                CommandsSupported: snapshot.CommandsSupported,
+                OnCommandsRequested: () => RunFireAndForget(ct => _provider.EnsureCommandCatalogAsync(ct))))
             : (bodyIsSkeleton ? RenderSkeletonComposer() : Empty());
 
         var divider = Empty();

@@ -363,6 +363,7 @@ public class ToolMetaCacheTests
         public SessionInfo[] GetSessionList() => Array.Empty<SessionInfo>();
         public ModelsListInfo? GetCurrentModelsList() => null;
         public void StartProactiveBootstrap() { }
+        public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) => Task.FromResult(new CommandCatalog { IsSupported = true });
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.CompletedTask;
         public Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.FromResult(new ChatSendResult());
         public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;

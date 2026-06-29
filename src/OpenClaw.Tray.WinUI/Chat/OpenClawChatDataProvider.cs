@@ -164,6 +164,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private bool _sessionsListReceived;
     private string[] _availableModels = Array.Empty<string>();
     private IReadOnlyList<ChatModelChoice> _modelChoices = Array.Empty<ChatModelChoice>();
+    // Gateway command catalog (commands.list), fetched on demand via the typed
+    // protocol API. Null until the first fetch completes so the UI can
+    // distinguish "still loading" from "loaded but empty". When the gateway
+    // reports the method unsupported the catalog carries IsSupported=false.
+    private CommandCatalog? _commandCatalog;
+    // Guards against overlapping in-flight commands.list fetches.
+    private bool _commandsFetchInFlight;
+    // Bumped on every transition out of Connected so a commands.list fetch that
+    // was already in flight at disconnect time is discarded on completion rather
+    // than resurrecting a catalog for a stale connection.
+    private int _commandsEpoch;
     private ConnectionStatus _status;
     private bool _disposed;
 
@@ -1014,6 +1025,95 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         await _bridge.PatchSessionThinkingLevelAsync(threadId, thinkingLevel);
     }
 
+    public async Task EnsureCommandCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        int epoch;
+        lock (_gate)
+        {
+            // Only fetch while connected — the command catalog is a property of
+            // the live gateway connection. A not-connected caller would just
+            // land in the catch below.
+            if (_status != ConnectionStatus.Connected)
+                return;
+            // Already loaded (or a fetch is running) → reuse the cached catalog
+            // rather than hammering commands.list every time the palette opens.
+            // A reconnect clears _commandCatalog (see OnStatusChanged), so a
+            // fresh fetch happens after reconnect.
+            if (_commandsFetchInFlight || _commandCatalog is not null)
+                return;
+            _commandsFetchInFlight = true;
+            // Capture the connection epoch BEFORE the await. If a disconnect (or
+            // reconnect) happens while ListCommandsAsync is in flight,
+            // OnStatusChanged bumps the epoch; the late result is then discarded
+            // rather than resurrecting a stale catalog for the new connection.
+            epoch = _commandsEpoch;
+        }
+
+        CommandCatalog catalog;
+        try
+        {
+            catalog = await _bridge.ListCommandsAsync().ConfigureAwait(false)
+                      ?? new CommandCatalog { IsSupported = true };
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[ChatProvider] EnsureCommandCatalogAsync failed: {ex.Message}");
+            lock (_gate)
+            {
+                // Only clear the flag if no status change has superseded this
+                // fetch (otherwise OnStatusChanged already reset it and a newer
+                // fetch may legitimately own the flag).
+                if (epoch == _commandsEpoch)
+                    _commandsFetchInFlight = false;
+            }
+            return;
+        }
+
+        lock (_gate)
+        {
+            // Drop the result if the connection changed during the await.
+            if (epoch != _commandsEpoch || _status != ConnectionStatus.Connected)
+                return;
+            _commandsFetchInFlight = false;
+            _commandCatalog = catalog;
+        }
+        Logger.Info($"[ChatProvider] commands.list: supported={catalog.IsSupported} count={catalog.Commands.Count}");
+        // Re-validate freshness at UI-thread delivery time rather than
+        // publishing a snapshot captured under the lock above. This closes the
+        // window where a disconnect occurring between snapshot build and
+        // Publish could let a stale "connected + commands" snapshot arrive after
+        // the disconnect snapshot.
+        PublishCommandCatalogIfFresh(epoch);
+    }
+
+    /// <summary>
+    /// Publishes a freshly-built snapshot on the UI thread, but only if the
+    /// connection <paramref name="epoch"/> captured for this commands.list fetch
+    /// is still current when delivery runs. If a disconnect/reconnect superseded
+    /// the fetch in the meantime, the stale publish is dropped (the status
+    /// handler's own publish carries the authoritative state).
+    /// </summary>
+    private void PublishCommandCatalogIfFresh(int epoch)
+    {
+        void Deliver()
+        {
+            ChatDataSnapshot snapshot;
+            lock (_gate)
+            {
+                if (epoch != _commandsEpoch) return;
+                snapshot = BuildSnapshotLocked();
+            }
+            Changed?.Invoke(this, new ChatDataChangedEventArgs(snapshot));
+        }
+
+        if (_post is null)
+            Deliver();
+        else
+            _post(Deliver);
+    }
+
     public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -1336,6 +1436,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // until the next sessions.list arrives.
             if (status != ConnectionStatus.Connected)
                 _sessionsListReceived = false;
+
+            // Drop the cached command catalog whenever we leave Connected so a
+            // reconnect re-fetches commands.list (the catalog can change across
+            // gateways / agent reconfigurations). Bumping the epoch invalidates
+            // any commands.list fetch still in flight so its late result is
+            // discarded instead of resurrecting a stale catalog.
+            if (status != ConnectionStatus.Connected)
+            {
+                _commandsEpoch++;
+                _commandCatalog = null;
+                _commandsFetchInFlight = false;
+            }
 
             // Reset the approval-dedupe LRU on every transition out of
             // Connected. IDs from a prior session must not block a fresh
@@ -4034,7 +4146,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ConnectionStatus: connectionLabel,
             AvailableModels: _availableModels,
             ComposeTarget: composeTarget,
-            ModelChoices: _modelChoices);
+            ModelChoices: _modelChoices,
+            // Null until the first commands.list fetch completes so the UI can
+            // distinguish "loading" from "loaded but empty". IsSupported=false
+            // surfaces the unsupported state.
+            AvailableCommands: _commandCatalog?.Commands,
+            CommandsSupported: _commandCatalog?.IsSupported ?? true);
     }
 
     private string? ResolveDefaultThreadIdLocked()

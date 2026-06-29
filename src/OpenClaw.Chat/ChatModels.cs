@@ -192,7 +192,9 @@ public record ChatDataSnapshot(
     string? ConnectionStatus,
     string[] AvailableModels,
     ChatComposeTarget ComposeTarget,
-    IReadOnlyList<ChatModelChoice>? ModelChoices = null);
+    IReadOnlyList<ChatModelChoice>? ModelChoices = null,
+    IReadOnlyList<OpenClaw.Shared.GatewayCommand>? AvailableCommands = null,
+    bool CommandsSupported = true);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from
@@ -275,4 +277,11 @@ public interface IChatDataProvider : IAsyncDisposable
             requestId,
             allow ? ChatPermissionActionKeys.AllowOnce : ChatPermissionActionKeys.Deny,
             cancellationToken);
+
+    /// <summary>
+    /// Requests a refresh of the gateway command catalog surfaced via
+    /// <see cref="ChatDataSnapshot.AvailableCommands"/>. Providers that have no
+    /// command catalog (e.g. previews/fakes) may treat this as a no-op.
+    /// </summary>
+    Task EnsureCommandCatalogAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

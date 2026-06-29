@@ -911,6 +911,7 @@ internal sealed class UiRenderer(Action requestRender)
 {
     private readonly Dictionary<string, UIElement> _controls = new();
     private readonly Dictionary<string, Component> _components = new();
+    private readonly Dictionary<string, Flyout> _contentFlyouts = new();
     private readonly HashSet<string> _mountedPaths = new();
 
     public UIElement Render(Element element, string path, List<Action> effects)
@@ -928,6 +929,7 @@ internal sealed class UiRenderer(Action requestRender)
 
         _components.Clear();
         _controls.Clear();
+        _contentFlyouts.Clear();
         _mountedPaths.Clear();
     }
 
@@ -1376,10 +1378,28 @@ internal sealed class UiRenderer(Action requestRender)
 
     private Flyout CreateContentFlyout(ContentFlyoutElement element, string path, List<Action> effects)
     {
-        var flyout = new Flyout { Placement = element.Placement };
+        // Cache the Flyout instance per path so its identity is STABLE across
+        // re-renders. ConfigureButton reassigns control.Flyout on every render,
+        // and a full-root re-render fires on every state change (including the
+        // flyout content's own search box). If we minted a `new Flyout()` each
+        // time, an already-open flyout would (a) become unreachable from
+        // control.Flyout (so callers' `Flyout.Hide()` would target an orphan and
+        // no-op) and (b) have its reused content control reparented out from
+        // under the visible popup. Reusing the same Flyout keeps it dismissable
+        // and stops the open popup from being torn apart mid-interaction.
+        if (!_contentFlyouts.TryGetValue(path, out var flyout))
+        {
+            flyout = new Flyout();
+            _contentFlyouts[path] = flyout;
+        }
+
+        flyout.Placement = element.Placement;
         var content = RenderElement(element.Content, path + ".content", effects);
-        RemoveFromParent(content);
-        flyout.Content = content;
+        if (!ReferenceEquals(flyout.Content, content))
+        {
+            RemoveFromParent(content);
+            flyout.Content = content;
+        }
         return flyout;
     }
 

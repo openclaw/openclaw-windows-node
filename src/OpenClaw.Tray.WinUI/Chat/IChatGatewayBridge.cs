@@ -36,6 +36,13 @@ public interface IChatGatewayBridge : IDisposable
 
     Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null);
     Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null);
+    /// <summary>
+    /// Fetches the gateway command catalog (<c>commands.list</c>) via the typed
+    /// protocol API. Returns a <see cref="CommandCatalog"/> whose
+    /// <see cref="CommandCatalog.IsSupported"/> is <c>false</c> when the gateway
+    /// does not implement the method. Request/response — no event subscription.
+    /// </summary>
+    Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null);
     Task PatchSessionModelAsync(string sessionKey, string model);
     /// <summary>
     /// Clears the session's model override (tri-state <c>sessions.patch</c> with
@@ -174,6 +181,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { ThinkingLevel = thinkingLevel });
+
+    public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
+        _client.ListCommandsAsync(query);
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);

@@ -4,6 +4,7 @@ using OpenClawTray.Helpers;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
@@ -69,7 +70,10 @@ public record OpenClawComposerProps(
     Action<bool>? OnShowToolCallsChanged = null,
     bool IsCompact = false,
     IReadOnlyList<ChatModelChoice>? ModelChoices = null,
-    Action? OnModelCleared = null);
+    Action? OnModelCleared = null,
+    IReadOnlyList<GatewayCommand>? AvailableCommands = null,
+    bool CommandsSupported = true,
+    Action? OnCommandsRequested = null);
 
 public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 {
@@ -92,6 +96,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // per compose cycle instead of one per keypress).
         var inputRef = UseRef("");
         var hasTextState = UseState(false, threadSafe: true);
+        // Slash-command menu state. Active when the composer holds a "/token"
+        // (a leading slash with no whitespace yet); Query is the text after the
+        // slash; Index is the highlighted row. Drives the inline command menu
+        // that mirrors the gateway/web "type / to open the command menu" UX.
+        var slashMenuState = UseState<(bool Active, string Query, int Index)>((false, "", 0), threadSafe: true);
 
         var composerCornerRadius = new CornerRadius(8);
         const double composerIconSize = 16;
@@ -108,6 +117,22 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         var voiceStoppedRef = UseRef(false);
         // TextBox reference for focusing after recording completes
         var textBoxRef = UseRef<TextBox?>(null);
+        // Slash-menu popup overlay (floats above the composer; does not push the
+        // input controls). Created once on first render, driven each render.
+        var slashPopupRef = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
+        // Tear the popup down when the composer unmounts so it isn't left rooted
+        // to the XamlRoot (which would keep its row-button closures alive).
+        UseEffect((Func<Action>)(() => () =>
+        {
+            var p = slashPopupRef.Current;
+            if (p is not null)
+            {
+                p.IsOpen = false;
+                p.Child = null;
+                p.PlacementTarget = null;
+                slashPopupRef.Current = null;
+            }
+        }));
         // One-time hook flag for the TextBox Paste event so we don't re-attach
         // the handler on every re-render (Set() runs each render).
         var pasteHookedRef = UseRef(false);
@@ -189,6 +214,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             Props.OnSend(msg ?? "", pendingAttachments.ToArray());
             inputRef.Current = "";
             hasTextState.Set(false);
+            // Clear any open slash menu so it doesn't re-open over the now-empty
+            // composer (programmatic text reset doesn't fire TextChanged).
+            slashMenuState.Set((false, "", 0));
             sendVersion.Set(sendVersion.Value + 1);
         };
         var sendActionRef = UseRef<Action>(sendAction);
@@ -399,10 +427,60 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             ? recTranscript
             : inputRef.Current;
 
+        // ── Slash command menu (type "/" to discover gateway commands inline) ──
+        // The composer text box doubles as the menu's search field: when the
+        // input is a bare "/token" the menu opens and filters as the user types,
+        // matching the gateway/web Control UI's primary command surface.
+        var slash = slashMenuState.Value;
+        var slashActive = isConnected && slash.Active && !recording;
+
+        // Lazily fetch the catalog the first time the menu opens for this
+        // connection (EnsureCommandCatalogAsync is cached + in-flight guarded).
+        if (slashActive && Props.AvailableCommands is null)
+            Props.OnCommandsRequested?.Invoke();
+
+        IReadOnlyList<GatewayCommand> slashResults = Array.Empty<GatewayCommand>();
+        if (slashActive && Props.CommandsSupported && Props.AvailableCommands is { } slashCmds)
+            slashResults = new ChatCommandCatalogView(slashCmds)
+                .Search(slash.Query)
+                .Take(SlashMenuMaxItems)
+                .ToList();
+
+        var slashIndex = slashResults.Count == 0
+            ? 0
+            : Math.Clamp(slash.Index, 0, slashResults.Count - 1);
+
+        // Inserts the chosen command, replacing the "/token" the user was typing,
+        // then dismisses the menu. Arg-taking commands keep a trailing space so
+        // the user can type the value rather than sending immediately.
+        Action<GatewayCommand> insertSlashCommand = cmd =>
+        {
+            var insert = cmd.BuildInsertionText();
+            inputRef.Current = insert;
+            hasTextState.Set(!string.IsNullOrWhiteSpace(insert));
+            slashMenuState.Set((false, "", 0));
+            // Bump the send version so the updated ref value is pushed into the
+            // TextBox on the next render (same mechanism the voice path uses).
+            sendVersion.Set(sendVersion.Value + 1);
+
+            var tbox = textBoxRef.Current;
+            tbox?.DispatcherQueue?.TryEnqueue(() =>
+            {
+                tbox.Focus(FocusState.Programmatic);
+                var c = tbox.Text?.Length ?? 0;
+                tbox.SelectionStart = c;
+                tbox.SelectionLength = 0;
+            });
+        };
+
         var textbox = TextField(displayText, v =>
             {
                 inputRef.Current = v;
                 hasTextState.Set(!string.IsNullOrWhiteSpace(v));
+                var (active, query) = ComputeSlashTrigger(v);
+                var cur = slashMenuState.Value;
+                if (active != cur.Active || query != cur.Query)
+                    slashMenuState.Set((active, query, 0));
             })
             .Set(tb =>
             {
@@ -470,7 +548,55 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             })
             .OnKeyDown((sender, e) =>
             {
-                if (e.Key == global::Windows.System.VirtualKey.Enter)
+                var key = e.Key;
+
+                // While the slash menu is open with results, the arrow keys
+                // navigate it and Enter/Tab autocompletes — instead of moving
+                // the caret or sending the message.
+                if (slashActive && slashResults.Count > 0)
+                {
+                    if (key == global::Windows.System.VirtualKey.Down)
+                    {
+                        e.Handled = true;
+                        slashMenuState.Set((slash.Active, slash.Query, Math.Min(slashIndex + 1, slashResults.Count - 1)));
+                        return;
+                    }
+                    if (key == global::Windows.System.VirtualKey.Up)
+                    {
+                        e.Handled = true;
+                        slashMenuState.Set((slash.Active, slash.Query, Math.Max(slashIndex - 1, 0)));
+                        return;
+                    }
+                    if (key == global::Windows.System.VirtualKey.Enter
+                        || key == global::Windows.System.VirtualKey.Tab)
+                    {
+                        e.Handled = true;
+                        insertSlashCommand(slashResults[slashIndex]);
+                        return;
+                    }
+                    if (key == global::Windows.System.VirtualKey.Escape)
+                    {
+                        e.Handled = true;
+                        slashMenuState.Set((false, "", 0));
+                        return;
+                    }
+                }
+                else if (slashActive)
+                {
+                    // Menu visible but loading / no matches: keep keyboard
+                    // behavior predictable while the popup is up. Escape or Tab
+                    // dismiss it (Tab must not silently move focus away while the
+                    // popup overlays), and selection keys are swallowed.
+                    if (key == global::Windows.System.VirtualKey.Escape
+                        || key == global::Windows.System.VirtualKey.Tab)
+                    {
+                        e.Handled = true;
+                        slashMenuState.Set((false, "", 0));
+                        return;
+                    }
+                }
+
+                if (key == global::Windows.System.VirtualKey.Enter)
                 {
                     var shift = Microsoft.UI.Input.InputKeyboardSource
                         .GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Shift);
@@ -858,6 +984,38 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             () => Props.OnShowToolCallsChanged?.Invoke(!Props.ShowToolCalls))
             .Set(b => b.Opacity = showTools ? 1.0 : 0.55);
 
+        // ── Slash command menu (gateway commands.list discovery) ──
+        // Hosted in a floating Popup above the composer so the input controls
+        // never move; it overlays content like standard command menus. The
+        // textbox stays focused (light-dismiss off) so typing keeps filtering
+        // and ↑/↓/Enter/Tab/Esc drive the menu.
+        FrameworkElement? slashPopupContent = null;
+        var slashMenuVisible = false;
+        if (slashActive)
+        {
+            if (!Props.CommandsSupported)
+            {
+                // Gateway has no command catalog → don't get in the way; let the
+                // user keep typing their "/..." as ordinary text.
+                slashMenuVisible = false;
+            }
+            else if (Props.AvailableCommands is null)
+            {
+                slashPopupContent = BuildSlashHintPopup("Loading commands…");
+                slashMenuVisible = true;
+            }
+            else if (slashResults.Count == 0)
+            {
+                slashPopupContent = BuildSlashHintPopup("No matching commands");
+                slashMenuVisible = true;
+            }
+            else
+            {
+                slashPopupContent = BuildSlashPopup(slashResults, slashIndex, insertSlashCommand);
+                slashMenuVisible = true;
+            }
+        }
+
         // Send button — always present so the user can queue follow-up messages
         // even while the assistant is responding.
         var sendBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
@@ -962,11 +1120,17 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // ── Optional working banner above the composer ──
         Element workingBanner2 = workingBanner;
 
+        var composerCore = VStack(8, dropdownsRow, composerInput, voiceIndicator, actionsRow.Margin(0, -8, 0, -4));
+
+        // Drive the floating slash-menu popup after the tree builds so it anchors
+        // above the (already mounted) textbox without shifting any controls.
+        var tbForPopup = textBoxRef.Current;
+        tbForPopup?.DispatcherQueue?.TryEnqueue(() =>
+            DriveSlashPopup(slashPopupRef, tbForPopup, slashPopupContent, slashMenuVisible));
+
         return VStack(0,
             workingBanner2,
-            Border(
-                VStack(8, dropdownsRow, composerInput, voiceIndicator, actionsRow.Margin(0, -8, 0, -4))
-            ).Padding(16, 12, 16, 12)
+            Border(composerCore).Padding(16, 12, 16, 12)
              .Set(b =>
              {
                  // Top divider only — mirrors Kenny's ChatShell ComposerBorder.
@@ -974,6 +1138,184 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                  b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SurfaceStrokeColorDefaultBrush"];
              })
         );
+    }
+
+    private const int SlashMenuMaxItems = 8;
+
+    /// <summary>
+    /// Decides whether the composer text should open the inline slash-command
+    /// menu. Active when the text is a single leading "/token" with no
+    /// whitespace yet (the user is still typing the command name). Returns the
+    /// query (text after the slash) so the menu can filter.
+    /// </summary>
+    private static (bool Active, string Query) ComputeSlashTrigger(string? text)
+    {
+        var t = text ?? string.Empty;
+        if (t.Length == 0 || t[0] != '/')
+            return (false, string.Empty);
+        for (int i = 1; i < t.Length; i++)
+        {
+            if (char.IsWhiteSpace(t[i]))
+                return (false, string.Empty);
+        }
+        return (true, t.Substring(1));
+    }
+
+    // ── Native slash-menu popup builders ──
+    // The menu is hosted in a WinUI Popup (overlay) so it floats above the
+    // composer without shifting controls. Content is built as native controls
+    // (not FunctionalUI elements) because it lives outside the functional tree.
+
+    private static readonly Microsoft.UI.Xaml.Media.FontFamily SlashBadgeFont = new("Segoe UI");
+
+    private static double SlashPopupWidth(double anchorWidth) =>
+        Math.Max(280, anchorWidth);
+
+    private static Border BuildSlashHintPopup(string text)
+    {
+        var label = new TextBlock
+        {
+            Text = text,
+            FontSize = 12,
+            Foreground = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"],
+            Margin = new Thickness(8, 6, 8, 6),
+        };
+        return SlashShell(label);
+    }
+
+    private static Border BuildSlashPopup(
+        IReadOnlyList<GatewayCommand> results, int selectedIndex, Action<GatewayCommand> onPick)
+    {
+        var primary = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
+        var secondary = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
+        var selectedBg = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+
+        var list = new StackPanel { Orientation = Orientation.Vertical };
+        for (int i = 0; i < results.Count; i++)
+        {
+            var cmd = results[i];
+            list.Children.Add(SlashRow(cmd, i == selectedIndex, primary, secondary, selectedBg, onPick));
+        }
+        var scroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Disabled,
+            MaxHeight = 280,
+            Content = list,
+        };
+        return SlashShell(scroll);
+    }
+
+    private static Border SlashShell(UIElement child)
+    {
+        // Match the composer card's own surface so the menu reads as part of the
+        // app: same background + stroke as the input box, with a soft shadow for
+        // separation from the chat content beneath.
+        var shell = new Border
+        {
+            Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SolidBackgroundFillColorSecondaryBrush"],
+            BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SurfaceStrokeColorDefaultBrush"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(4),
+            Child = child,
+        };
+        shell.Translation = new System.Numerics.Vector3(0, 0, 32);
+        shell.Shadow = new Microsoft.UI.Xaml.Media.ThemeShadow();
+        return shell;
+    }
+
+    private static Button SlashRow(
+        GatewayCommand cmd, bool selected, Brush primary, Brush secondary, Brush selectedBg, Action<GatewayCommand> onPick)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(new TextBlock
+        {
+            Text = cmd.DisplayName(),
+            FontSize = 13,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = primary,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        if (!string.IsNullOrWhiteSpace(cmd.Description))
+        {
+            row.Children.Add(new TextBlock
+            {
+                Text = cmd.Description!,
+                FontSize = 12,
+                Foreground = secondary,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxLines = 1,
+            });
+        }
+        var sourceLabel = cmd.SourceLabel();
+        if (!string.IsNullOrWhiteSpace(sourceLabel)) row.Children.Add(SlashBadge(sourceLabel, secondary));
+        if (cmd.RequiresArgs()) row.Children.Add(SlashBadge("args", secondary));
+
+        var btn = new Button
+        {
+            Content = row,
+            Padding = new Thickness(8, 4, 8, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            CornerRadius = new CornerRadius(6),
+            Background = selected ? selectedBg : new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+        };
+        btn.Click += (_, _) => onPick(cmd);
+        return btn;
+    }
+
+    private static Border SlashBadge(string text, Brush foreground) => new()
+    {
+        Padding = new Thickness(5, 1, 5, 1),
+        CornerRadius = new CornerRadius(4),
+        Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SubtleFillColorSecondaryBrush"],
+        BorderThickness = new Thickness(1),
+        BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["ControlStrokeColorDefaultBrush"],
+        VerticalAlignment = VerticalAlignment.Center,
+        Child = new TextBlock { Text = text, FontSize = 10, FontFamily = SlashBadgeFont, Foreground = foreground },
+    };
+
+    /// <summary>
+    /// Creates (once) and drives the floating slash-menu Popup so it overlays
+    /// just above the composer without affecting layout. Closed by clearing the
+    /// content or when the trigger is no longer active.
+    /// </summary>
+    private static void DriveSlashPopup(
+        Ref<Microsoft.UI.Xaml.Controls.Primitives.Popup?> popupRef,
+        TextBox anchor,
+        FrameworkElement? content,
+        bool visible)
+    {
+        var popup = popupRef.Current;
+        if (popup is null)
+        {
+            popup = new Microsoft.UI.Xaml.Controls.Primitives.Popup
+            {
+                IsLightDismissEnabled = false,
+                ShouldConstrainToRootBounds = true,
+            };
+            popupRef.Current = popup;
+        }
+
+        if (!visible || content is null || anchor.XamlRoot is null)
+        {
+            popup.IsOpen = false;
+            popup.Child = null;
+            popup.PlacementTarget = null;
+            return;
+        }
+
+        var width = SlashPopupWidth(anchor.ActualWidth > 0 ? anchor.ActualWidth : 360);
+        if (content is FrameworkElement fe) fe.Width = width;
+
+        popup.XamlRoot = anchor.XamlRoot;
+        popup.PlacementTarget = anchor;
+        popup.DesiredPlacement = Microsoft.UI.Xaml.Controls.Primitives.PopupPlacementMode.Top;
+        popup.Child = content;
+        popup.IsOpen = true;
     }
 
     /// <summary>
