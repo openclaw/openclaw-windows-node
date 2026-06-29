@@ -2057,6 +2057,29 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task EnsureCommandCatalogAsync_Exception_PublishesUnsupportedFallback()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.ListCommandsBehavior = _ => Task.FromException<CommandCatalog>(
+            new InvalidOperationException("catalog unavailable"));
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.EnsureCommandCatalogAsync();
+
+        var snap = snapshots[^1];
+        Assert.False(snap.CommandsSupported);
+        Assert.NotNull(snap.AvailableCommands);
+        Assert.Empty(snap.AvailableCommands!);
+
+        await provider.EnsureCommandCatalogAsync();
+        // The fallback is cached for this connection so reopening the menu does
+        // not retry immediately and put the composer back into "loading".
+        Assert.Equal(1, bridge.ListCommandsCallCount);
+    }
+
+    [Fact]
     public async Task EnsureCommandCatalogAsync_NotConnected_DoesNotFetch()
     {
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });

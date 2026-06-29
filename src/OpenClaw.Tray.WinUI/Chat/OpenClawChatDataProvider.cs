@@ -1060,14 +1060,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         catch (Exception ex)
         {
             Logger.Warn($"[ChatProvider] EnsureCommandCatalogAsync failed: {ex.Message}");
+            var shouldPublishFallback = false;
             lock (_gate)
             {
-                // Only clear the flag if no status change has superseded this
-                // fetch (otherwise OnStatusChanged already reset it and a newer
-                // fetch may legitimately own the flag).
-                if (epoch == _commandsEpoch)
+                // Only publish a fallback if no status change superseded this
+                // fetch. A failure must still move the UI out of its "loading"
+                // state; otherwise slash-leading text would keep trapping Enter
+                // until reconnect. Treat the catalog as temporarily unavailable
+                // for this connection and let reconnect clear/refetch it.
+                if (epoch == _commandsEpoch && _status == ConnectionStatus.Connected)
+                {
                     _commandsFetchInFlight = false;
+                    _commandCatalog = new CommandCatalog { IsSupported = false };
+                    shouldPublishFallback = true;
+                }
             }
+            if (shouldPublishFallback)
+                PublishCommandCatalogIfFresh(epoch);
             return;
         }
 
