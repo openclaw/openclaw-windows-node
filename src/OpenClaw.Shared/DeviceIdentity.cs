@@ -115,8 +115,13 @@ public class DeviceIdentity
         try
         {
             var json = File.ReadAllText(keyPath);
-            var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                logger?.Warn("Failed to clear all device tokens: device-key-ed25519.json root is not a JSON object.");
+                return false;
+            }
 
             bool hadTokens = false;
             using var ms = new MemoryStream();

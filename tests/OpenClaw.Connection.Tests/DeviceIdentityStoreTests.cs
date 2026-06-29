@@ -112,6 +112,18 @@ public class DeviceIdentityStoreTests : IDisposable
     }
 
     [Fact]
+    public void ClearStoredTokens_WhenJsonRootIsNotObject_DoesNotThrow()
+    {
+        var path = Path.Combine(_tempDir, "device-key-ed25519.json");
+        File.WriteAllText(path, "[]");
+
+        var ex = Record.Exception(() => DeviceIdentityStore.ClearStoredTokens(_tempDir));
+
+        Assert.Null(ex);
+        Assert.Equal("[]", File.ReadAllText(path));
+    }
+
+    [Fact]
     public void ClearStoredTokens_WhenNoTokenFields_PreservesAllProperties()
     {
         WriteIdentityFile(new
