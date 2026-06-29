@@ -39,6 +39,13 @@ public sealed class DeviceIdentityStore : IDeviceIdentityStore
     /// </summary>
     public static void ClearStoredTokens(string identityDir, IOpenClawLogger? logger = null)
     {
-        DeviceIdentity.TryClearAllDeviceTokens(identityDir, logger);
+        try
+        {
+            DeviceIdentity.TryClearAllDeviceTokens(identityDir, logger);
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn($"[IdentityStore] Failed to clear device tokens: {ex.Message}");
+        }
     }
 }
