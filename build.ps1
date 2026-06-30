@@ -138,6 +138,24 @@ function Ensure-GitVersionRepositoryTrust {
     Write-Success "Repository trusted for GitVersion"
 }
 
+function Ensure-GitVersionRepositoryHistory {
+    $insideWorkTree = & git -C $repoRoot rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -ne 0 -or $insideWorkTree -ne "true") {
+        Write-Error "Git metadata not found. GitVersion requires a git clone with full history."
+        Write-Info "Clone the repository with git, then rerun .\build.ps1."
+        $script:issues += "Repository is missing git metadata required by GitVersion"
+        return
+    }
+
+    $isShallow = & git -C $repoRoot rev-parse --is-shallow-repository 2>$null
+    if ($LASTEXITCODE -eq 0 -and $isShallow -eq "true") {
+        Write-Error "Repository is a shallow clone. GitVersion requires full git history."
+        Write-Info "Run this once, then retry the build:"
+        Write-Info "git fetch --unshallow --tags origin"
+        $script:issues += "Repository is shallow; GitVersion requires full history"
+    }
+}
+
 Write-Host @"
 
   🦞 OpenClaw Windows Hub - Build Script
@@ -200,6 +218,7 @@ if (-not $git) {
     }
 
     Ensure-GitVersionRepositoryTrust
+    Ensure-GitVersionRepositoryHistory
 }
 
 # Check Node.js + npm (WinUI build runs `npm ci` to restore @microsoft/mxc-sdk

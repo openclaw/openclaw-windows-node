@@ -56,6 +56,18 @@ public sealed class VersioningContractTests
     }
 
     [Fact]
+    public void BuildScript_PreflightsGitVersionRepositoryHistory()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var buildScript = File.ReadAllText(Path.Combine(repoRoot, "build.ps1"));
+
+        Assert.Contains("Git metadata not found. GitVersion requires a git clone with full history.", buildScript);
+        Assert.Contains("rev-parse --is-shallow-repository", buildScript);
+        Assert.Contains("GitVersion requires full git history", buildScript);
+        Assert.Contains("git fetch --unshallow --tags origin", buildScript);
+    }
+
+    [Fact]
     public void ActiveCodeAndTests_DoNotContainStaleReleaseVersion()
     {
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
