@@ -454,16 +454,24 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }, needsCatalog);
 
         IReadOnlyList<GatewayCommand> slashResults = Array.Empty<GatewayCommand>();
+        IReadOnlyList<CommandCategoryGroup> slashGroups = Array.Empty<CommandCategoryGroup>();
         if (slashActive && !slash.ArgsMode && Props.AvailableCommands is { } slashCmds)
         {
-            // Relevance-ranked; index 0 is the top match and is what Enter inserts
-            // when the user hasn't navigated. (No category re-sort — that would
-            // demote an exact match below a weakly-matched command in an
-            // earlier-ordered category.)
-            slashResults = new ChatCommandCatalogView(slashCmds)
-                .Search(slash.Query)
-                .Take(SlashMenuMaxItems)
-                .ToList();
+            // Category-grouped palette (Mac/web parity): commands render under
+            // their Mac display bucket (Session, Model, Tools, Agents) instead of
+            // one flat alphabetical list — so the run options (verbose/reasoning/
+            // exec/…, bucketed under "Model") surface under their heading. Within
+            // a bucket the relevance order from Search is preserved, so the top
+            // match stays the default Enter target.
+            slashGroups = new ChatCommandCatalogView(slashCmds)
+                .GroupBy(CommandCategories.Bucket, slash.Query, CommandCategories.DisplayOrder);
+
+            // Flatten in group/display order for keyboard navigation; BuildSlashPopup
+            // walks the same groups with a running index, so rendered rows stay
+            // index-aligned with this list. No item cap — the popup's ScrollViewer
+            // bounds the height, so no bucket is silently dropped (the Windows wire
+            // catalog carries no tier data to hide "power" commands the way Mac does).
+            slashResults = slashGroups.SelectMany(g => g.Commands).ToList();
         }
 
         // Args-mode: the command (parsed from the composer text) plus its static
@@ -1093,7 +1101,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             }
             else
             {
-                slashPopupContent = BuildSlashPopup(slashResults, slashIndex, insertSlashCommand);
+                slashPopupContent = BuildSlashPopup(slashGroups, slashIndex, insertSlashCommand);
                 slashMenuVisible = true;
             }
         }
@@ -1302,15 +1310,27 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
     }
 
     private static Border BuildSlashPopup(
-        IReadOnlyList<GatewayCommand> results, int selectedIndex, Action<GatewayCommand> onPick)
+        IReadOnlyList<CommandCategoryGroup> groups, int selectedIndex, Action<GatewayCommand> onPick)
     {
         var primary = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
         var secondary = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
         var selectedBg = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+        var headerBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorTertiaryBrush"];
 
         var list = new StackPanel { Orientation = Orientation.Vertical };
-        for (int i = 0; i < results.Count; i++)
-            list.Children.Add(SlashRow(results[i], i == selectedIndex, primary, secondary, selectedBg, onPick));
+        // Each group leads with a non-interactive category subheading; command
+        // rows follow. A single running index across all groups keeps the
+        // rendered rows aligned with the flattened keyboard-navigation list.
+        var idx = 0;
+        foreach (var group in groups)
+        {
+            list.Children.Add(SlashCategoryHeader(CommandCategories.Label(group.Category), headerBrush));
+            foreach (var cmd in group.Commands)
+            {
+                list.Children.Add(SlashRow(cmd, idx == selectedIndex, primary, secondary, selectedBg, onPick));
+                idx++;
+            }
+        }
         var scroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Auto,
@@ -1320,6 +1340,22 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         };
         return SlashShell(scroll);
     }
+
+    /// <summary>
+    /// Non-interactive category subheading for the slash palette: uppercase and
+    /// letter-spaced like Mac's .slash-menu-group__label, rendered in a muted
+    /// tone (Mac tints its label with the accent color; we keep it subdued to
+    /// match the reference design).
+    /// </summary>
+    private static TextBlock SlashCategoryHeader(string text, Brush foreground) => new()
+    {
+        Text = (text ?? "").ToUpperInvariant(),
+        FontSize = 11,
+        FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+        CharacterSpacing = 60,   // ~0.06em (units are 1/1000 em)
+        Foreground = foreground,
+        Margin = new Thickness(8, 8, 8, 2),
+    };
 
     private static Border BuildSlashArgPopup(
         GatewayCommand cmd, IReadOnlyList<GatewayCommandArgChoice> choices,
@@ -1425,60 +1461,104 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
     private static Button SlashRow(
         GatewayCommand cmd, bool selected, Brush primary, Brush secondary, Brush selectedBg, Action<GatewayCommand> onPick)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        row.Children.Add(new FontIcon
+        // Row layout mirrors Mac's .slash-menu-item: icon · /name · [args] on the
+        // left; description + "N options" badge pushed to the right edge (the
+        // description column is star-sized and right-aligned). Args use the mono
+        // font; the name keeps the default font (bold) for readability.
+        var mono = new Microsoft.UI.Xaml.Media.FontFamily("Consolas");
+
+        var grid = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        grid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = Microsoft.UI.Xaml.GridLength.Auto }); // icon
+        grid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = Microsoft.UI.Xaml.GridLength.Auto }); // name
+        grid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = Microsoft.UI.Xaml.GridLength.Auto }); // args
+        grid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new Microsoft.UI.Xaml.GridLength(1, Microsoft.UI.Xaml.GridUnitType.Star) }); // desc
+        grid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = Microsoft.UI.Xaml.GridLength.Auto }); // badge
+
+        var icon = new FontIcon
         {
             FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Microsoft.UI.Xaml.Application.Current.Resources["SymbolThemeFontFamily"],
             Glyph = SlashGlyph(cmd),
             FontSize = 14,
             Foreground = secondary,
             VerticalAlignment = VerticalAlignment.Center,
-        });
-        row.Children.Add(new TextBlock
+        };
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(icon, 0);
+        grid.Children.Add(icon);
+
+        var name = new TextBlock
         {
             Text = cmd.DisplayName(),
             FontSize = 13,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = primary,
             VerticalAlignment = VerticalAlignment.Center,
-        });
+        };
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(name, 1);
+        grid.Children.Add(name);
+
         var args = cmd.ArgTemplate();
         if (!string.IsNullOrWhiteSpace(args))
         {
-            row.Children.Add(new TextBlock
+            var argBlock = new TextBlock
             {
                 Text = args,
                 FontSize = 12,
+                FontFamily = mono,
                 Foreground = secondary,
+                Opacity = 0.75,
                 VerticalAlignment = VerticalAlignment.Center,
-            });
+            };
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(argBlock, 2);
+            grid.Children.Add(argBlock);
         }
+
         if (!string.IsNullOrWhiteSpace(cmd.Description))
         {
-            row.Children.Add(new TextBlock
+            var desc = new TextBlock
             {
                 Text = cmd.Description!,
                 FontSize = 12,
                 Foreground = secondary,
                 VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                TextAlignment = Microsoft.UI.Xaml.TextAlignment.Right,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxLines = 1,
-            });
+            };
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(desc, 3);
+            grid.Children.Add(desc);
         }
+
         var opts = cmd.OptionCount();
-        if (opts > 0) row.Children.Add(SlashBadge($"{opts} options", secondary));
+        if (opts > 0)
+        {
+            var badge = SlashBadge($"{opts} options");
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(badge, 4);
+            grid.Children.Add(badge);
+        }
 
         var btn = new Button
         {
-            Content = row,
+            Content = grid,
             Padding = new Thickness(8, 7, 8, 7),
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
+            // Stretch the content so the star-sized description column fills the
+            // row and its right-alignment actually pushes desc/badge to the edge.
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
             CornerRadius = new CornerRadius(6),
             Background = selected ? selectedBg : new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(0),
         };
         btn.Click += (_, _) => onPick(cmd);
+        // Auto-scroll: when this is the keyboard-selected row, bring it into view
+        // once it mounts so arrow navigation past the visible fold follows the
+        // selection (the popup content is rebuilt each render, so Loaded fires per
+        // navigation step). No animation to keep keypress scrolling snappy.
+        if (selected)
+        {
+            btn.Loaded += (_, _) =>
+                btn.StartBringIntoView(new Microsoft.UI.Xaml.BringIntoViewOptions { AnimationDesired = false });
+        }
         return btn;
     }
 
@@ -1509,16 +1589,27 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         };
     }
 
-    private static Border SlashBadge(string text, Brush foreground) => new()
+    // Accent-tinted pill mirroring Mac's .slash-menu-badge (accent text on a
+    // ~14% accent fill).
+    private static Border SlashBadge(string text)
     {
-        Padding = new Thickness(5, 1, 5, 1),
-        CornerRadius = new CornerRadius(4),
-        Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SubtleFillColorSecondaryBrush"],
-        BorderThickness = new Thickness(1),
-        BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["ControlStrokeColorDefaultBrush"],
-        VerticalAlignment = VerticalAlignment.Center,
-        Child = new TextBlock { Text = text, FontSize = 10, Foreground = foreground },
-    };
+        var accent = Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"] as SolidColorBrush
+            ?? new SolidColorBrush(Microsoft.UI.Colors.SteelBlue);
+        return new Border
+        {
+            Padding = new Thickness(6, 1, 6, 1),
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(accent.Color) { Opacity = 0.14 },
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 10,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = accent,
+            },
+        };
+    }
 
     /// <summary>
     /// Creates (once) and drives the floating slash-menu Popup so it overlays

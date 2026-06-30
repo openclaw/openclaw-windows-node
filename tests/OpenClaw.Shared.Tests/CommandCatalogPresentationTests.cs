@@ -259,6 +259,112 @@ public class CommandCatalogPresentationTests
     }
 
     [Fact]
+    public void GroupBy_WithExplicitCategoryOrder_OrdersBySequenceThenAlphabetical()
+    {
+        var view = new ChatCommandCatalogView(new[]
+        {
+            new GatewayCommand { Name = "verbose", NativeName = "/verbose", Category = "options" },
+            new GatewayCommand { Name = "stop", NativeName = "/stop", Category = "session" },
+            new GatewayCommand { Name = "send", NativeName = "/send", Category = "management" },
+            new GatewayCommand { Name = "zeta", NativeName = "/zeta", Category = "zzz-unknown" },
+        });
+
+        // Listed categories follow the supplied order; the unlisted one sorts last.
+        var order = new[] { "session", "options", "management" };
+        var categories = view.GroupByCategory(null, order).Select(g => g.Category).ToList();
+
+        Assert.Equal(new[] { "session", "options", "management", "zzz-unknown" }, categories);
+    }
+
+    [Fact]
+    public void GroupByCategory_NullCategoryOrder_StillOrdersAlphabetically()
+    {
+        var view = new ChatCommandCatalogView(Sample());
+        var categories = view.GroupByCategory(null, null).Select(g => g.Category).ToList();
+        Assert.Equal(categories.OrderBy(c => c, System.StringComparer.OrdinalIgnoreCase).ToList(), categories);
+    }
+
+    // ── CommandCategories: Mac 4-bucket mapping ──
+
+    [Fact]
+    public void GroupBy_MacBucket_GroupsRunOptionsUnderModel()
+    {
+        var view = new ChatCommandCatalogView(new[]
+        {
+            new GatewayCommand { Name = "verbose", NativeName = "/verbose", Category = "options" },
+            new GatewayCommand { Name = "exec", NativeName = "/exec", Category = "options" },
+            new GatewayCommand { Name = "usage", NativeName = "/usage", Category = "options" },   // override → tools
+            new GatewayCommand { Name = "stop", NativeName = "/stop", Category = "session" },
+            new GatewayCommand { Name = "send", NativeName = "/send", Category = "management" },   // → tools
+            new GatewayCommand { Name = "steer", NativeName = "/steer", Category = "tools" },      // override → agents
+        });
+
+        var groups = view.GroupBy(CommandCategories.Bucket, null, CommandCategories.DisplayOrder);
+        var keys = groups.Select(g => g.Category).ToList();
+
+        // Mac order: session, model, tools, agents.
+        Assert.Equal(new[] { "session", "model", "tools", "agents" }, keys);
+        Assert.Equal(new[] { "/exec", "/verbose" }, groups.Single(g => g.Category == "model").Commands.Select(c => c.DisplayName()).ToArray());
+        Assert.Contains(groups.Single(g => g.Category == "tools").Commands, c => c.Name == "usage");
+        Assert.Contains(groups.Single(g => g.Category == "tools").Commands, c => c.Name == "send");
+        Assert.Contains(groups.Single(g => g.Category == "agents").Commands, c => c.Name == "steer");
+    }
+
+    [Fact]
+    public void GroupBy_PreservesSearchRelevanceWithinGroup_NotAlphabetical()
+    {
+        // Both commands bucket under "model" (raw category options). For query
+        // "model", "model" is an exact match while "amodel" is only a contains
+        // match — relevance must keep "model" first even though "amodel" sorts
+        // first alphabetically. Guards against re-introducing a within-group sort.
+        var view = new ChatCommandCatalogView(new[]
+        {
+            new GatewayCommand { Name = "amodel", NativeName = "/amodel", Category = "options" },
+            new GatewayCommand { Name = "model", NativeName = "/model", Category = "options" },
+        });
+
+        var model = view.GroupBy(CommandCategories.Bucket, "model", CommandCategories.DisplayOrder)
+            .Single(g => g.Category == "model");
+
+        Assert.Equal(new[] { "/model", "/amodel" }, model.Commands.Select(c => c.DisplayName()).ToArray());
+    }
+
+    [Theory]
+    [InlineData("verbose", "options", "model")]   // run option → Model
+    [InlineData("exec", "options", "model")]
+    [InlineData("trace", "options", "model")]     // no override; raw "options" → model
+    [InlineData("usage", "options", "tools")]     // override wins over raw category
+    [InlineData("think", "options", "model")]
+    [InlineData("stop", "session", "session")]
+    [InlineData("send", "management", "tools")]    // raw "management" → tools
+    [InlineData("steer", "tools", "agents")]       // override → agents
+    [InlineData("mystery", "weirdcat", "tools")]   // unknown name + unknown category → tools
+    public void Bucket_MapsCommandToMacDisplayBucket(string name, string category, string expected)
+    {
+        var cmd = new GatewayCommand { Name = name, NativeName = "/" + name, Category = category };
+        Assert.Equal(expected, CommandCategories.Bucket(cmd));
+    }
+
+    [Theory]
+    [InlineData("session", "Session")]
+    [InlineData("model", "Model")]
+    [InlineData("tools", "Tools")]
+    [InlineData("agents", "Agents")]
+    [InlineData("custom", "Custom")]   // unknown → Title-cased
+    [InlineData("", "Other")]
+    [InlineData(null, "Other")]
+    public void CommandCategories_Label_MapsKnownAndTitleCasesUnknown(string? bucket, string expected)
+    {
+        Assert.Equal(expected, CommandCategories.Label(bucket));
+    }
+
+    [Fact]
+    public void CommandCategories_DisplayOrder_MatchesMac()
+    {
+        Assert.Equal(new[] { "session", "model", "tools", "agents" }, CommandCategories.DisplayOrder.ToArray());
+    }
+
+    [Fact]
     public void View_NullCommands_IsEmpty()
     {
         var view = new ChatCommandCatalogView(null);

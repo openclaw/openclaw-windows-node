@@ -161,16 +161,54 @@ public sealed class ChatCommandCatalogView
     }
 
     /// <summary>
-    /// Groups commands by category (falling back to source label, then "Other"),
-    /// optionally filtered by the same search used in <see cref="Search"/>.
-    /// Groups and their members are returned in a stable, display-friendly order.
+    /// Groups commands by their raw category (falling back to source label, then
+    /// "Other"), optionally filtered/ordered. See <see cref="GroupBy"/>.
     /// </summary>
-    public IReadOnlyList<CommandCategoryGroup> GroupByCategory(string? query = null)
+    public IReadOnlyList<CommandCategoryGroup> GroupByCategory(
+        string? query = null, IReadOnlyList<string>? categoryOrder = null)
+        => GroupBy(CategoryKey, query, categoryOrder);
+
+    /// <summary>
+    /// Groups commands using a caller-supplied category selector, optionally
+    /// filtered by the same search used in <see cref="Search"/>. Members within a
+    /// group preserve the relevance order produced by <see cref="Search"/>
+    /// (alphabetical when the query is empty), so the top match stays first. When
+    /// <paramref name="categoryOrder"/> is supplied, groups are ordered by that
+    /// sequence first (unlisted categories sort last, alphabetically); otherwise
+    /// groups are ordered alphabetically. The selector lets the palette group by a
+    /// mapped bucket (e.g. Mac's Session/Model/Tools/Agents) rather than the raw
+    /// wire category.
+    /// </summary>
+    public IReadOnlyList<CommandCategoryGroup> GroupBy(
+        Func<GatewayCommand, string> categorySelector,
+        string? query = null,
+        IReadOnlyList<string>? categoryOrder = null)
     {
         var matched = Search(query);
-        return matched
-            .GroupBy(CategoryKey, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new CommandCategoryGroup(g.Key, Ordered(g).ToList()))
+        // GroupBy preserves source (relevance) order within each group; do NOT
+        // re-sort the members — that would demote a strong match below a weaker
+        // one and change the default Enter target.
+        var groups = matched
+            .GroupBy(categorySelector, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new CommandCategoryGroup(g.Key, g.ToList()));
+
+        if (categoryOrder is { Count: > 0 })
+        {
+            int Rank(string category)
+            {
+                for (int i = 0; i < categoryOrder.Count; i++)
+                    if (string.Equals(categoryOrder[i], category, StringComparison.OrdinalIgnoreCase))
+                        return i;
+                return int.MaxValue;
+            }
+
+            return groups
+                .OrderBy(g => Rank(g.Category))
+                .ThenBy(g => g.Category, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        return groups
             .OrderBy(g => g.Category, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -214,5 +252,116 @@ public sealed class ChatCommandCatalogView
             best = 15;
 
         return best;
+    }
+}
+
+/// <summary>
+/// Mac/web parity for the slash command palette grouping (slash-commands.ts):
+/// maps each command into one of four display buckets — Session, Model, Tools,
+/// Agents — via per-command name overrides first, then a raw-category fallback
+/// (session→Session, options→Model, management→Tools, everything else→Tools).
+/// </summary>
+public static class CommandCategories
+{
+    /// <summary>Bucket display order, mirroring Mac's CATEGORY_ORDER.</summary>
+    public static readonly IReadOnlyList<string> DisplayOrder = new[]
+    {
+        "session", "model", "tools", "agents",
+    };
+
+    private static readonly Dictionary<string, string> Labels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["session"] = "Session",
+        ["model"] = "Model",
+        ["tools"] = "Tools",
+        ["agents"] = "Agents",
+    };
+
+    // Per-command bucket overrides keyed by normalized command name. Mirrors
+    // Mac's CATEGORY_OVERRIDES, applied before the raw-category fallback so e.g.
+    // /usage (raw category "options") lands in Tools rather than Model. This is a
+    // deliberate SUPERSET of Mac's map: it additionally pins export/kill/focus/
+    // unfocus, which Mac leaves to its raw-category fallback.
+    private static readonly Dictionary<string, string> BucketOverrides = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["help"] = "tools",
+        ["commands"] = "tools",
+        ["tools"] = "tools",
+        ["skill"] = "tools",
+        ["status"] = "tools",
+        ["export_session"] = "tools",
+        ["export"] = "tools",
+        ["usage"] = "tools",
+        ["tts"] = "tools",
+        ["agents"] = "agents",
+        ["subagents"] = "agents",
+        ["kill"] = "agents",
+        ["steer"] = "agents",
+        ["redirect"] = "agents",
+        ["session"] = "session",
+        ["stop"] = "session",
+        ["reset"] = "session",
+        ["new"] = "session",
+        ["compact"] = "session",
+        ["focus"] = "session",
+        ["unfocus"] = "session",
+        ["model"] = "model",
+        ["models"] = "model",
+        ["think"] = "model",
+        ["verbose"] = "model",
+        ["fast"] = "model",
+        ["reasoning"] = "model",
+        ["elevated"] = "model",
+        ["queue"] = "model",
+    };
+
+    /// <summary>
+    /// Display bucket (session/model/tools/agents) for a command, mirroring Mac's
+    /// mapCategory: name override first, then raw-category fallback.
+    /// </summary>
+    public static string Bucket(GatewayCommand command)
+    {
+        if (command is null) return "tools";
+        var key = NormalizeKey(command);
+        if (!string.IsNullOrEmpty(key) && BucketOverrides.TryGetValue(key, out var bucket))
+            return bucket;
+
+        return (command.Category?.Trim().ToLowerInvariant()) switch
+        {
+            "session" => "session",
+            "options" => "model",
+            "management" => "tools",
+            _ => "tools",
+        };
+    }
+
+    /// <summary>Friendly heading for a bucket key; Title-cases unknowns.</summary>
+    public static string Label(string? bucket)
+    {
+        if (string.IsNullOrWhiteSpace(bucket)) return "Other";
+        var key = bucket!.Trim();
+        if (Labels.TryGetValue(key, out var label)) return label;
+        return char.ToUpperInvariant(key[0]) + (key.Length > 1 ? key[1..] : "");
+    }
+
+    // Normalizes a command name to an override key the way Mac's normalizeUiKey
+    // does (lowercase, strip a leading slash, ':' '.' '-' → '_'). Mac keys off
+    // command.key; the wire command carries no key here, and the catalog is
+    // requested with text scope, so the text-surface Name is the closest analog —
+    // fall back to the first text alias, then the native name.
+    private static string NormalizeKey(GatewayCommand command)
+    {
+        var raw = !string.IsNullOrWhiteSpace(command.Name)
+            ? command.Name
+            : command.TextAliases?.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a));
+        if (string.IsNullOrWhiteSpace(raw)) raw = command.NativeName;
+        raw = (raw ?? "").Trim();
+        if (raw.Length == 0) return "";
+        if (raw[0] == '/') raw = raw[1..];
+        raw = raw.ToLowerInvariant();
+        var chars = raw.ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+            if (chars[i] is ':' or '.' or '-') chars[i] = '_';
+        return new string(chars);
     }
 }
