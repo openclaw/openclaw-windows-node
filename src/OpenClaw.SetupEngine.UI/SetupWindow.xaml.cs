@@ -140,12 +140,15 @@ public sealed partial class SetupWindow : Window
             "progress" => typeof(ProgressPage),
             "milestone" => typeof(ProgressPage),
             "wizard" => typeof(WizardPage),
+            "wizard-error" => typeof(WizardPage),
             "complete" => typeof(CompletePage),
+            "complete-error" => typeof(CompletePage),
             _ => typeof(SecurityNoticePage),
         },
         page switch
         {
             "complete" => new CompletePageArgs(true, TimeSpan.FromMinutes(3), null),
+            "complete-error" => new CompletePageArgs(false, TimeSpan.FromMinutes(3), null, "Setup could not finish. Review the details, then retry setup when you are ready."),
             "milestone" => new ProgressPageArgs(_config, ShowMilestoneOnly: true),
             _ => _config,
         });
