@@ -329,6 +329,53 @@ public class CommandCatalogPresentationTests
         Assert.Equal(new[] { "/model", "/amodel" }, model.Commands.Select(c => c.DisplayName()).ToArray());
     }
 
+    [Fact]
+    public void GroupForPalette_DefaultSelection_PinsGlobalBestAcrossBuckets()
+    {
+        // "exec" is an exact match in the Model bucket; "reexec" is only a contains
+        // match in the earlier Session bucket. Display grouping renders Session
+        // first, so the weak match is row 0 — but DefaultSelectionIndex must point
+        // at the global best (exec), so Enter/Tab still inserts the strongest match
+        // rather than the first visible row. Regression guard for grouped selection.
+        var view = new ChatCommandCatalogView(new[]
+        {
+            new GatewayCommand { Name = "reexec", NativeName = "/reexec", Category = "session" },
+            new GatewayCommand { Name = "exec", NativeName = "/exec", Category = "options" },
+        });
+
+        var palette = view.GroupForPalette(CommandCategories.Bucket, "exec", CommandCategories.DisplayOrder);
+
+        // Flattened (render/nav) order follows bucket order: weak Session match first.
+        Assert.Equal(new[] { "reexec", "exec" }, palette.Flattened.Select(c => c.Name).ToArray());
+        // But the default keyboard selection is the global best match, not row 0.
+        Assert.Equal(1, palette.DefaultSelectionIndex);
+        Assert.Equal("exec", palette.Flattened[palette.DefaultSelectionIndex].Name);
+    }
+
+    [Fact]
+    public void GroupForPalette_DefaultSelection_IsZeroWhenNoMatches()
+    {
+        var view = new ChatCommandCatalogView(new[]
+        {
+            new GatewayCommand { Name = "exec", NativeName = "/exec", Category = "options" },
+        });
+        var palette = view.GroupForPalette(CommandCategories.Bucket, "zzznope", CommandCategories.DisplayOrder);
+        Assert.Empty(palette.Flattened);
+        Assert.Equal(0, palette.DefaultSelectionIndex);
+    }
+
+    [Fact]
+    public void GroupForPalette_FlattenedMatchesGroupedOrder()
+    {
+        // Flattened must equal the groups concatenated in order, so the composer's
+        // running render index stays aligned with the keyboard-navigation list.
+        var view = new ChatCommandCatalogView(Sample());
+        var palette = view.GroupForPalette(CommandCategories.Bucket, null, CommandCategories.DisplayOrder);
+        Assert.Equal(
+            palette.Groups.SelectMany(g => g.Commands).Select(c => c.Name).ToArray(),
+            palette.Flattened.Select(c => c.Name).ToArray());
+    }
+
     [Theory]
     [InlineData("verbose", "options", "model")]   // run option → Model
     [InlineData("exec", "options", "model")]

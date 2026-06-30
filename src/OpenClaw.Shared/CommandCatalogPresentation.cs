@@ -111,6 +111,19 @@ public static class GatewayCommandPresentation
 public sealed record CommandCategoryGroup(string Category, IReadOnlyList<GatewayCommand> Commands);
 
 /// <summary>
+/// A grouped command palette: the display <see cref="Groups"/>; the same commands
+/// <see cref="Flattened"/> in group/display order (the keyboard-navigation list);
+/// and <see cref="DefaultSelectionIndex"/> — the index in <see cref="Flattened"/>
+/// of the GLOBAL best search match, i.e. the row keyboard selection should default
+/// to so that display grouping never demotes a strong later-bucket match behind a
+/// weak earlier-bucket one for Enter/Tab.
+/// </summary>
+public sealed record GroupedPalette(
+    IReadOnlyList<CommandCategoryGroup> Groups,
+    IReadOnlyList<GatewayCommand> Flattened,
+    int DefaultSelectionIndex);
+
+/// <summary>
 /// Ranked search + category grouping over a set of gateway commands for the chat
 /// command palette. Distinct from <see cref="CommandCatalogQuery"/> (a boolean
 /// filter mirroring the gateway's server-side filtering) — this adds relevance
@@ -211,6 +224,27 @@ public sealed class ChatCommandCatalogView
         return groups
             .OrderBy(g => g.Category, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// Groups commands for the chat command palette (visual grouping) and also
+    /// computes <see cref="GroupedPalette.DefaultSelectionIndex"/> — the index,
+    /// within the flattened group order, of the GLOBAL best <see cref="Search"/>
+    /// match. Display grouping orders by bucket, which can render a strong
+    /// later-bucket match after a weak earlier-bucket one; keyboard selection
+    /// should default to this index (not 0) to preserve the flat-search Enter/Tab
+    /// target.
+    /// </summary>
+    public GroupedPalette GroupForPalette(
+        Func<GatewayCommand, string> categorySelector,
+        string? query = null,
+        IReadOnlyList<string>? categoryOrder = null)
+    {
+        var groups = GroupBy(categorySelector, query, categoryOrder);
+        var flattened = groups.SelectMany(g => g.Commands).ToList();
+        var top = Search(query).FirstOrDefault();
+        var defaultIndex = top is null ? 0 : flattened.IndexOf(top);
+        return new GroupedPalette(groups, flattened, defaultIndex < 0 ? 0 : defaultIndex);
     }
 
     private static string CategoryKey(GatewayCommand cmd)
