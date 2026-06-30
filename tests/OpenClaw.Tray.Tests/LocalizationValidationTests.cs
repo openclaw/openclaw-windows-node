@@ -187,6 +187,14 @@ public class LocalizationValidationTests
         "ConnectionPage_NodePendingDeclaredCapabilities",
         "ConnectionPage_NodePendingDeclaredCommands",
         "ConnectionPage_NodePendingDeclaredPermissions",
+        // Node-card capability pills and technical-details disclosure — seeded
+        // English-only across all 5 locales using the deferred-translation pattern.
+        "ConnectionPage_NodeTechnicalDetails.Text",
+        "ConnectionPage_NodePillState_Active",
+        "ConnectionPage_NodePillState_Pending",
+        "ConnectionPage_NodePillState_Off",
+        "ConnectionPage_NodeCap_Device",
+        "ConnectionPage_NodeCap_System",
         "ConnectionStatusWindow.Title",
         // Hard-coded XAML strings resolved by issue #491 — seeded English-only across
         // all 5 locales using the deferred-translation pattern. Translations are a

@@ -410,30 +410,52 @@
                                       Glyph="{x:Bind helpers:FluentIconCatalog.StatusOk, Mode=OneTime}"
                                       FontSize="14"
                                       Foreground="{ThemeResource SystemFillColorNeutralBrush}"
-                                      VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      VerticalAlignment="Top" HorizontalAlignment="Center"
+                                      Margin="0,2,0,0"
                                       AutomationProperties.AccessibilityView="Raw"/>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <StackPanel Grid.Column="1" Spacing="2">
                                 <TextBlock x:Uid="ConnectionPage_NodeModeDisabled" x:Name="NodeStatusText"
                                            Text="Node mode disabled"
                                            Style="{StaticResource BodyTextBlockStyle}"/>
-                                <!-- Canonical capability list per design naming.md:
-                                     "Providing N capabilities: browser, camera, …"
-                                     Replaces the prior chip strip. -->
+                                <!-- MCP-only reachability line. Active node uses pills below. -->
                                 <TextBlock x:Name="NodeCapabilityText"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap"
                                            Visibility="Collapsed"/>
-                                <TextBlock x:Name="NodeCommandText"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           TextWrapping="Wrap"
-                                           Visibility="Collapsed"/>
-                                <TextBlock x:Name="NodePermissionText"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           TextWrapping="Wrap"
-                                           Visibility="Collapsed"/>
+                                <Border x:Name="NodeCapabilityPillsHost"
+                                        Margin="0,2,0,0"
+                                        Visibility="Collapsed"/>
+                                <Expander x:Name="NodeTechnicalDetailsExpander"
+                                          Margin="0,6,0,0"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          IsExpanded="False"
+                                          Visibility="Collapsed">
+                                    <Expander.Header>
+                                        <TextBlock x:Uid="ConnectionPage_NodeTechnicalDetails" Text="Show technical details"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                    </Expander.Header>
+                                    <StackPanel Spacing="6" Padding="0,4,0,0">
+                                        <TextBlock x:Name="NodeTechCapabilityText"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   IsTextSelectionEnabled="True"
+                                                   TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="NodeTechCommandText"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   IsTextSelectionEnabled="True"
+                                                   TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="NodeTechPermissionText"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   IsTextSelectionEnabled="True"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Expander>
                                 <StackPanel x:Name="NodePendingDeclarationsPanel"
                                             Spacing="2"
                                             Visibility="Collapsed">
@@ -518,15 +540,6 @@
                                 Style="{StaticResource AccentButtonStyle}"
                                 Margin="0,4,0,0"
                                 AutomationProperties.AutomationId="NodeReconnect"/>
-
-                        <!-- Capability chips removed in favor of NodeCapabilityText
-                             above. Element kept for back-compat with code-behind
-                             that may still reference it (currently inert). -->
-                        <ItemsRepeater x:Name="NodeCapabilityChipsHost" Visibility="Collapsed">
-                            <ItemsRepeater.Layout>
-                                <StackLayout Orientation="Horizontal" Spacing="6"/>
-                            </ItemsRepeater.Layout>
-                        </ItemsRepeater>
 
                         <!-- Deep link to per-capability config -->
                         <StackPanel x:Name="NodeDeepLinks" Orientation="Horizontal" Spacing="12">

@@ -1,5 +1,8 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -35,6 +38,7 @@ public sealed partial class ConnectionPage : Page
     private IGatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
     private GatewayDiscoveryService? _discoveryService;
+    private global::Windows.UI.ViewManagement.AccessibilitySettings? _accessibilitySettings;
     private IGatewayTerminalLauncher? _terminalLauncher;
     private WslGatewayController? _wslGatewayController;
 
@@ -79,14 +83,11 @@ public sealed partial class ConnectionPage : Page
     private bool _maskHasObservedTransient;
 
     // ─── Fingerprint caches ───
-    // ItemsSource swaps re-template every item even when the content is
-    // identical, which causes a visible flash on every snapshot tick.
-    // We stash a string fingerprint of the inputs and skip the swap when
-    // the rendered output would be identical. Keeps the page calm during
-    // the rapid-fire snapshot transitions a Node-mode toggle produces.
+    // Rebuilding rows/chips on every snapshot tick causes visible churn.
+    // Fingerprints let us update only when the rendered inputs change.
     private string? _savedGatewaysFingerprint;
     private string? _glanceChipsFingerprint;
-    private string? _capabilityChipsFingerprint;
+    private string? _capabilityPillsFingerprint;
 
     public ConnectionPage()
     {
@@ -125,6 +126,8 @@ public sealed partial class ConnectionPage : Page
         if (_gatewayRegistry != null)
             _gatewayRegistry.Changed += OnRegistryChanged;
 
+        ActualThemeChanged += OnPageActualThemeChanged;
+        TrySubscribeAccessibilitySettings();
         Unloaded += OnPageUnloaded;
 
         // Initialize Node mode toggle from settings (suppressed event)
@@ -168,6 +171,12 @@ public sealed partial class ConnectionPage : Page
             _connectionManager.StateChanged -= OnManagerStateChanged;
         if (_gatewayRegistry != null)
             _gatewayRegistry.Changed -= OnRegistryChanged;
+        ActualThemeChanged -= OnPageActualThemeChanged;
+        if (_accessibilitySettings != null)
+        {
+            _accessibilitySettings.HighContrastChanged -= OnHighContrastChanged;
+            _accessibilitySettings = null;
+        }
         _discoveryService?.Dispose();
         _discoveryService = null;
         if (_reconnectMaskTimer != null)
@@ -184,6 +193,38 @@ public sealed partial class ConnectionPage : Page
         }
         _gatewayHostActionInProgress = false;
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+    }
+
+    private void OnPageActualThemeChanged(FrameworkElement sender, object args)
+    {
+        RefreshAfterThemeVisualChange();
+    }
+
+    private void OnHighContrastChanged(
+        global::Windows.UI.ViewManagement.AccessibilitySettings sender,
+        object args)
+    {
+        DispatcherQueue?.TryEnqueue(RefreshAfterThemeVisualChange);
+    }
+
+    private void RefreshAfterThemeVisualChange()
+    {
+        _capabilityPillsFingerprint = null;
+        RefreshFromSnapshot(_lastSnapshot);
+    }
+
+    private void TrySubscribeAccessibilitySettings()
+    {
+        try
+        {
+            _accessibilitySettings = new global::Windows.UI.ViewManagement.AccessibilitySettings();
+            _accessibilitySettings.HighContrastChanged += OnHighContrastChanged;
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] Could not subscribe to High Contrast changes: {ex.Message}");
+            _accessibilitySettings = null;
+        }
     }
 
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snapshot)
@@ -860,8 +901,8 @@ public sealed partial class ConnectionPage : Page
             NodeCapabilityText.Visibility = Visibility.Visible;
             NodeCapabilityText.Text = LocalizationHelper.Format(
                 "ConnectionPage_NodeMcpOnlyReachable", NodeService.McpServerUrl);
-            NodeCommandText.Visibility = Visibility.Collapsed;
-            NodePermissionText.Visibility = Visibility.Collapsed;
+            NodeCapabilityPillsHost.Visibility = Visibility.Collapsed;
+            NodeTechnicalDetailsExpander.Visibility = Visibility.Collapsed;
             NodePendingDeclarationsPanel.Visibility = Visibility.Collapsed;
 
             var mcpError = CurrentApp.ActiveNodeService?.McpStartupError;
@@ -884,20 +925,55 @@ public sealed partial class ConnectionPage : Page
             bool showSurfaces = settings != null && plan.NodeCard != NodeCardState.Off
                                                  && plan.NodeCard != NodeCardState.Hidden
                                                  && plan.NodeCard != NodeCardState.OnNodeConnecting;
-            NodeCapabilityText.Visibility = showSurfaces ? Visibility.Visible : Visibility.Collapsed;
-            NodeCommandText.Visibility = showSurfaces ? Visibility.Visible : Visibility.Collapsed;
-            NodePermissionText.Visibility = showSurfaces ? Visibility.Visible : Visibility.Collapsed;
+
+            NodeCapabilityText.Visibility = Visibility.Collapsed;
+
+            if (showSurfaces && settings is not null)
+            {
+                var pillFp = BuildCapabilityPillFingerprint(
+                    plan.NodeCard,
+                    plan.NodeEffectiveCapabilities,
+                    plan.NodePendingDeclaredCapabilities,
+                    settings);
+                if (_capabilityPillsFingerprint != pillFp)
+                {
+                    _capabilityPillsFingerprint = pillFp;
+                    NodeCapabilityPillsHost.Child = BuildCapabilityPills(
+                        plan.NodeEffectiveCapabilities,
+                        plan.NodePendingDeclaredCapabilities,
+                        settings);
+                }
+
+                NodeCapabilityPillsHost.Visibility =
+                    NodeCapabilityPillsHost.Child is WrapPanel { Children.Count: > 0 }
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+            }
+            else
+            {
+                NodeCapabilityPillsHost.Visibility = Visibility.Collapsed;
+                _capabilityPillsFingerprint = null;
+            }
+
+            bool hasTechnicalSurfaces = plan.NodeEffectiveCapabilities.Count > 0
+                                     || plan.NodeEffectiveCommands.Count > 0
+                                     || plan.NodeEffectivePermissions.Count > 0;
+            NodeTechnicalDetailsExpander.Visibility =
+                showSurfaces && hasTechnicalSurfaces ? Visibility.Visible : Visibility.Collapsed;
+            if (NodeTechnicalDetailsExpander.Visibility == Visibility.Collapsed)
+                NodeTechnicalDetailsExpander.IsExpanded = false;
+
             if (showSurfaces)
             {
-                NodeCapabilityText.Text = BuildNodeSurfaceListString(
+                SetSurfaceInlines(NodeTechCapabilityText,
                     "ConnectionPage_NodeEffectiveCapabilities",
-                    plan.NodeEffectiveCapabilities);
-                NodeCommandText.Text = BuildNodeSurfaceListString(
+                    FormatSurfaceList(plan.NodeEffectiveCapabilities));
+                SetSurfaceInlines(NodeTechCommandText,
                     "ConnectionPage_NodeEffectiveCommands",
-                    plan.NodeEffectiveCommands);
-                NodePermissionText.Text = BuildNodePermissionListString(
+                    FormatSurfaceList(plan.NodeEffectiveCommands));
+                SetSurfaceInlines(NodeTechPermissionText,
                     "ConnectionPage_NodeEffectivePermissions",
-                    plan.NodeEffectivePermissions);
+                    FormatPermissionList(plan.NodeEffectivePermissions));
             }
 
             var showPendingDeclarations = showSurfaces &&
@@ -976,22 +1052,6 @@ public sealed partial class ConnectionPage : Page
         else
         {
             NodeReconnectButton.Visibility = Visibility.Collapsed;
-        }
-
-        // Capability chips — skip the rebuild if the rendered output would
-        // be identical. Fingerprint includes the full capability list from
-        // the gateway (same source as tray/instances) so new capabilities
-        // trigger a rebuild automatically.
-        var capNames = string.Join(
-            ",",
-            plan.NodeEffectiveCapabilities.OrderBy(c => c, StringComparer.OrdinalIgnoreCase));
-        var capFp = $"{plan.NodeCard}|{capNames}";
-        if (_capabilityChipsFingerprint != capFp)
-        {
-            _capabilityChipsFingerprint = capFp;
-            NodeCapabilityChipsHost.ItemsSource = BuildCapabilityChips(
-                plan.NodeEffectiveCapabilities,
-                plan.NodeCard);
         }
 
         // Permissions link is always visible (entry point even when sharing is off);
@@ -1120,79 +1180,198 @@ public sealed partial class ConnectionPage : Page
         return new Border { Child = grid };
     }
 
-    private List<Border> BuildCapabilityChips(IReadOnlyList<string>? capabilities, NodeCardState state)
+    private enum CapabilityPillState { Active, Pending, Off }
+
+    private WrapPanel BuildCapabilityPills(
+        IReadOnlyList<string> effective,
+        IReadOnlyList<string> pendingDeclared,
+        SettingsManager settings)
     {
-        var chips = new List<Border>();
-        if (capabilities == null || capabilities.Count == 0) return chips;
-        if (state == NodeCardState.Off || state == NodeCardState.Hidden
-            || state == NodeCardState.OffMcpOnly || state == NodeCardState.OnNodeConnecting)
-            return chips;
+        var panel = new WrapPanel { HorizontalSpacing = 6, VerticalSpacing = 6 };
+        var effectiveSet = new HashSet<string>(
+            effective.Where(c => !string.IsNullOrWhiteSpace(c)),
+            StringComparer.OrdinalIgnoreCase);
+        var pendingSet = new HashSet<string>(
+            pendingDeclared.Where(c => !string.IsNullOrWhiteSpace(c)),
+            StringComparer.OrdinalIgnoreCase);
+        var isHighContrast = IsHighContrastEnabled();
 
-        void Add(string label, bool enabled, bool warn = false, bool error = false)
+        var canonical = new (string Name, string LabelKey, string Glyph, bool Enabled)[]
         {
-            string bgKey;
-            string fgKey;
-            string glyph;
-            if (error)
-            {
-                bgKey = "SystemFillColorCriticalBackgroundBrush";
-                fgKey = "SystemFillColorCriticalBrush";
-                glyph = Helpers.FluentIconCatalog.StatusErr;
-            }
-            else if (warn)
-            {
-                bgKey = "SystemFillColorCautionBackgroundBrush";
-                fgKey = "SystemFillColorCautionBrush";
-                glyph = Helpers.FluentIconCatalog.StatusWarn;
-            }
-            else if (enabled)
-            {
-                bgKey = "SystemFillColorSuccessBackgroundBrush";
-                fgKey = "SystemFillColorSuccessBrush";
-                glyph = Helpers.FluentIconCatalog.StatusOk;
-            }
-            else
-            {
-                bgKey = "SubtleFillColorSecondaryBrush";
-                fgKey = "TextFillColorSecondaryBrush";
-                glyph = Helpers.FluentIconCatalog.CapabilityOff;
-            }
+            ("browser",  "PermissionsPage_Cap_Browser_Label",  FluentIconCatalog.Browser,  settings.NodeBrowserProxyEnabled),
+            ("camera",   "PermissionsPage_Cap_Camera_Label",   FluentIconCatalog.Camera,   settings.NodeCameraEnabled),
+            ("canvas",   "PermissionsPage_Cap_Canvas_Label",   FluentIconCatalog.Canvas,   settings.NodeCanvasEnabled),
+            ("screen",   "PermissionsPage_Cap_Screen_Label",   FluentIconCatalog.Screen,   settings.NodeScreenEnabled),
+            ("location", "PermissionsPage_Cap_Location_Label", FluentIconCatalog.Location, settings.NodeLocationEnabled),
+            ("tts",      "PermissionsPage_Cap_Tts_Label",      FluentIconCatalog.Voice,    settings.NodeTtsEnabled),
+            ("stt",      "PermissionsPage_Cap_Stt_Label",      FluentIconCatalog.Speech,   settings.NodeSttEnabled),
+        };
 
-            var stack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-            stack.Children.Add(new FontIcon
-            {
-                Glyph = glyph,
-                FontSize = 11,
-                Foreground = ResolveBrush(fgKey),
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-            stack.Children.Add(new TextBlock
-            {
-                Text = label,
-                FontSize = 11,
-                Foreground = ResolveBrush(fgKey),
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-            chips.Add(new Border
-            {
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(6, 2, 6, 2),
-                Background = ResolveBrush(bgKey),
-                Child = stack,
-            });
+        var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, labelKey, glyph, enabled) in canonical)
+        {
+            var state = effectiveSet.Contains(name)
+                ? CapabilityPillState.Active
+                : (pendingSet.Contains(name) || enabled)
+                    ? CapabilityPillState.Pending
+                    : CapabilityPillState.Off;
+            panel.Children.Add(MakeCapabilityPill(LocalizationHelper.GetString(labelKey), glyph, state, isHighContrast));
+            shown.Add(name);
         }
 
-        // Render a chip for each capability reported by the gateway —
-        // same source as tray menu and instances page.
-        foreach (var cap in capabilities)
+        var extras = effective.Select(c => (Name: c, State: CapabilityPillState.Active))
+            .Concat(pendingDeclared.Select(c => (Name: c, State: CapabilityPillState.Pending)))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name) && !shown.Contains(x.Name));
+        foreach (var (name, state) in extras)
         {
-            if (string.IsNullOrEmpty(cap)) continue;
-            // Capitalize first letter for display (e.g. "browser" → "Browser")
-            var label = char.ToUpperInvariant(cap[0]) + cap[1..];
-            Add(label, enabled: true);
+            if (!shown.Add(name)) continue;
+            var (label, glyph) = name.Trim().ToLowerInvariant() switch
+            {
+                "device" => (LocalizationHelper.GetString("ConnectionPage_NodeCap_Device"), FluentIconCatalog.Devices),
+                "system" => (LocalizationHelper.GetString("ConnectionPage_NodeCap_System"), FluentIconCatalog.System),
+                _ => (HumanizeNodeToken(name), FluentIconCatalog.System),
+            };
+            panel.Children.Add(MakeCapabilityPill(label, glyph, state, isHighContrast));
         }
 
-        return chips;
+        return panel;
+    }
+
+    private const double CapabilityPillFillOpacity = 0.14;
+
+    private Border MakeCapabilityPill(string label, string glyph, CapabilityPillState state, bool isHighContrast)
+    {
+        var (fillBrush, iconBrush, textBrush, stateKey, stateGlyph) = state switch
+        {
+            CapabilityPillState.Active => (
+                TintBrush(
+                    "SystemFillColorSuccessBrush",
+                    "SystemFillColorSuccessBackgroundBrush",
+                    CapabilityPillFillOpacity,
+                    isHighContrast),
+                ResolveBrush("SystemFillColorSuccessBrush"),
+                ResolveBrush("SystemFillColorSuccessBrush"),
+                "ConnectionPage_NodePillState_Active",
+                null),
+            CapabilityPillState.Pending => (
+                TintBrush(
+                    "SystemFillColorCautionBrush",
+                    "SystemFillColorCautionBackgroundBrush",
+                    CapabilityPillFillOpacity,
+                    isHighContrast),
+                ResolveBrush("SystemFillColorCautionBrush"),
+                ResolveBrush("SystemFillColorCautionBrush"),
+                "ConnectionPage_NodePillState_Pending",
+                FluentIconCatalog.StatusWarn),
+            _ => (
+                ResolveBrush("SubtleFillColorTertiaryBrush"),
+                ResolveBrush("TextFillColorTertiaryBrush"),
+                ResolveBrush("TextFillColorSecondaryBrush"),
+                "ConnectionPage_NodePillState_Off",
+                null),
+        };
+
+        var content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var capabilityIcon = new FontIcon
+        {
+            Glyph = glyph,
+            FontSize = 12,
+            Foreground = iconBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsTextScaleFactorEnabled = false,
+        };
+        AutomationProperties.SetAccessibilityView(capabilityIcon, AccessibilityView.Raw);
+        content.Children.Add(capabilityIcon);
+
+        var labelText = new TextBlock
+        {
+            Text = label,
+            FontSize = 12,
+            Foreground = textBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAccessibilityView(labelText, AccessibilityView.Raw);
+        content.Children.Add(labelText);
+
+        if (stateGlyph != null)
+        {
+            var stateIcon = new FontIcon
+            {
+                Glyph = stateGlyph,
+                FontSize = 10,
+                Foreground = textBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsTextScaleFactorEnabled = false,
+            };
+            AutomationProperties.SetAccessibilityView(stateIcon, AccessibilityView.Raw);
+            content.Children.Add(stateIcon);
+        }
+
+        var stateText = LocalizationHelper.GetString(stateKey);
+        var pill = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(8, 3, 11, 3),
+            Background = fillBrush,
+            Child = content,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pill, $"{label} — {stateText}");
+        ToolTipService.SetToolTip(pill, stateText);
+        return pill;
+    }
+
+    private Brush TintBrush(string colorKey, string highContrastBrushKey, double opacity, bool isHighContrast)
+    {
+        if (isHighContrast)
+            return ResolveBrush(highContrastBrushKey);
+
+        var color = ResolveBrush(colorKey) is SolidColorBrush scb
+            ? scb.Color
+            : ((SolidColorBrush)ResolveBrush("TextFillColorPrimaryBrush")).Color;
+        return new SolidColorBrush(color) { Opacity = opacity };
+    }
+
+    private bool IsHighContrastEnabled()
+    {
+        if (_accessibilitySettings is null)
+            return false;
+
+        try { return _accessibilitySettings.HighContrast; }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] Could not read High Contrast state: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static string BuildCapabilityPillFingerprint(
+        NodeCardState state,
+        IReadOnlyList<string> effective,
+        IReadOnlyList<string> pendingDeclared,
+        SettingsManager settings)
+    {
+        var eff = string.Join(
+            ",",
+            effective.Where(c => !string.IsNullOrWhiteSpace(c))
+                     .OrderBy(c => c, StringComparer.OrdinalIgnoreCase));
+        var pend = string.Join(
+            ",",
+            pendingDeclared.Where(c => !string.IsNullOrWhiteSpace(c))
+                           .OrderBy(c => c, StringComparer.OrdinalIgnoreCase));
+        var toggles = string.Concat(
+            settings.NodeBrowserProxyEnabled ? '1' : '0',
+            settings.NodeCameraEnabled ? '1' : '0',
+            settings.NodeCanvasEnabled ? '1' : '0',
+            settings.NodeScreenEnabled ? '1' : '0',
+            settings.NodeLocationEnabled ? '1' : '0',
+            settings.NodeTtsEnabled ? '1' : '0',
+            settings.NodeSttEnabled ? '1' : '0');
+        return $"{state}|{eff}|{pend}|{toggles}";
     }
 
     /// <summary>
@@ -1202,26 +1381,44 @@ public sealed partial class ConnectionPage : Page
     private static string BuildNodeSurfaceListString(
         string resourceKey,
         IReadOnlyList<string> values)
-    {
-        var display = values.Count == 0
+        => LocalizationHelper.Format(resourceKey, FormatSurfaceList(values));
+
+    private static string FormatSurfaceList(IReadOnlyList<string> values)
+        => values.Count == 0
             ? LocalizationHelper.GetString("ConnectionPage_NodeSurfaceNone")
             : string.Join(", ", values);
-        return LocalizationHelper.Format(resourceKey, display);
-    }
 
     private static string BuildNodePermissionListString(
         string resourceKey,
         IReadOnlyDictionary<string, bool> permissions)
-    {
-        var display = permissions.Count == 0
+        => LocalizationHelper.Format(resourceKey, FormatPermissionList(permissions));
+
+    private static string FormatPermissionList(IReadOnlyDictionary<string, bool> permissions)
+        => permissions.Count == 0
             ? LocalizationHelper.GetString("ConnectionPage_NodeSurfaceNone")
             : string.Join(", ", permissions
                 .OrderBy(permission => permission.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(permission =>
                     $"{permission.Key}={permission.Value.ToString().ToLowerInvariant()}"));
-        return LocalizationHelper.Format(resourceKey, display);
+
+    private static void SetSurfaceInlines(TextBlock target, string resourceKey, string value)
+    {
+        var format = LocalizationHelper.GetString(resourceKey);
+        var idx = format.IndexOf("{0}", StringComparison.Ordinal);
+        var label = idx >= 0 ? format[..idx] : format;
+        var suffix = idx >= 0 ? format[(idx + 3)..] : string.Empty;
+
+        target.Inlines.Clear();
+        target.Inlines.Add(new Run { Text = label, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        target.Inlines.Add(new Run { Text = value + suffix });
     }
 
+    private static string HumanizeNodeToken(string token)
+    {
+        var spaced = token.Trim().Replace('.', ' ').Replace('_', ' ');
+        if (spaced.Length == 0) return spaced;
+        return char.ToUpperInvariant(spaced[0]) + spaced[1..];
+    }
 
     private Brush ResolveBrush(string themeKey)
     {
