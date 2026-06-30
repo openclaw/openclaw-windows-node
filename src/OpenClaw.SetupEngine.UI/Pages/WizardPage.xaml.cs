@@ -60,12 +60,19 @@ public sealed partial class WizardPage : Page
     {
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
-        StatusText.Text = "A few quick questions to connect your agent";
         ShowRecoveryActions();
         AppendTranscriptTurn("Welcome — let's connect your agent", null);
         AppendTranscriptTurn("Choose your AI provider", "Anthropic — Claude");
         AppendTranscriptTurn("Paste your API key", "••••••");
 
+        if (SetupPreview.RequestedPage == "wizard-error")
+        {
+            TitleText.Text = "OpenClaw onboard hit a problem";
+            ShowError("The gateway restarted before the current wizard step finished. Your setup is still installed; choose Start wizard again, or use More options to restart onboard or skip and exit.");
+            return;
+        }
+
+        StatusText.Text = "A few quick questions to connect your agent";
         _stepType = "select";
         _stepId = "model";
         TitleText.Text = "Default AI model";
