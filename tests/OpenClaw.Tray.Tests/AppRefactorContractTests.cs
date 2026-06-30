@@ -447,6 +447,17 @@ public sealed class AppRefactorContractTests
         Assert.Contains("usable MXC backend", reject);
     }
 
+    [Fact]
+    public void ChatSlashPalette_HiddenNoMatchStateDoesNotTrapKeys()
+    {
+        var source = ReadOpenClawComposerSource();
+
+        Assert.Contains("else if (slashActive && Props.AvailableCommands is null)", source);
+        Assert.Contains("No-match input hides the popup", source);
+        Assert.Contains("ordinary composer text", source);
+        Assert.DoesNotContain("var slashLoading = Props.AvailableCommands is null;", source);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -478,6 +489,13 @@ public sealed class AppRefactorContractTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml.cs"));
+    }
+
+    private static string ReadOpenClawComposerSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs"));
     }
 
     private static string ExtractMethod(string source, string methodName)

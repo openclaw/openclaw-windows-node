@@ -653,11 +653,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         return;
                     }
                 }
-                else if (slashActive)
+                else if (slashActive && Props.AvailableCommands is null)
                 {
-                    // Popup is up but nothing is selectable: either the catalog is
-                    // still loading or no command matches the typed text.
-                    var slashLoading = Props.AvailableCommands is null;
+                    // The loading popup is visible but nothing is selectable yet.
+                    // No-match input hides the popup, so it must fall through as
+                    // ordinary composer text instead of trapping Tab/Escape/arrows.
                     if (key == global::Windows.System.VirtualKey.Escape
                         || key == global::Windows.System.VirtualKey.Tab)
                     {
@@ -674,12 +674,10 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         e.Handled = true;
                         return;
                     }
-                    if (slashLoading && key == global::Windows.System.VirtualKey.Enter)
+                    if (key == global::Windows.System.VirtualKey.Enter)
                     {
                         // We don't yet know whether "/token" is a real command, so
                         // don't let Enter send it as raw text and race the fetch.
-                        // (Once loaded with no match it's not a command, so Enter
-                        // falls through below and sends as an ordinary message.)
                         e.Handled = true;
                         return;
                     }
