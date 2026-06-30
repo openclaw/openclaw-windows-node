@@ -91,8 +91,7 @@ internal sealed class TestApp : Application
     {
         try
         {
-            if (!Resources.ContainsKey(key))
-                Resources[key] = new SolidColorBrush(color);
+            Resources[key] = new SolidColorBrush(color);
         }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
