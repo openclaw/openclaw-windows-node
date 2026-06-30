@@ -124,6 +124,15 @@ public class OpenClawGatewayClientTests
             method!.Invoke(_client, new object[] { json });
         }
 
+        public ChatHistoryInfo ParseChatHistoryPayload(string payloadJson, string sessionKey = "main")
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "ParseChatHistory",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            return (ChatHistoryInfo)method!.Invoke(null, new object[] { document.RootElement.Clone(), sessionKey })!;
+        }
+
         public long ExtractChatTimestampMs(string payloadJson)
         {
             using var document = JsonDocument.Parse(payloadJson);
@@ -843,6 +852,81 @@ public class OpenClawGatewayClientTests
         Assert.Equal("hello from assistant", received.Text);
         Assert.Equal("final", received.State);
         Assert.Equal(1781631280633, received.Ts);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_SessionMessageAssistantNoReply_DropsFrame()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        OpenClawNotification? notification = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+        helper.Client.NotificationReceived += (_, value) => notification = value;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "message": {
+              "role": "assistant",
+              "content": "  NO_REPLY\n",
+              "timestamp": 1781631280633
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.Null(received);
+        Assert.Null(notification);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_SessionMessageUserNoReply_IsNotDropped()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "message": {
+              "role": "user",
+              "content": "NO_REPLY",
+              "timestamp": 1781631280633
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal("user", received!.Role);
+        Assert.Equal("NO_REPLY", received.Text);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_AssistantNoReply_DropsTranscriptEntry()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            { "role": "user", "content": "before", "timestamp": 1 },
+            { "role": "assistant", "content": "NO_REPLY", "timestamp": 2 },
+            { "role": "assistant", "content": "visible reply", "timestamp": 3 }
+          ]
+        }
+        """);
+
+        Assert.Equal(["before", "visible reply"], history.Messages.Select(m => m.Text).ToArray());
     }
 
     [Fact]

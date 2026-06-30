@@ -547,6 +547,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             string text = ExtractMessageText(m);
             if (string.IsNullOrEmpty(text)) continue;
             if (string.IsNullOrEmpty(role)) continue;
+            if (ChatMessageInfo.IsSilentAssistantDirective(role, text)) continue;
 
             var (inputTokens, outputTokens, responseTokens, contextPercent) = ExtractChatUsage(m);
             list.Add(new ChatMessageInfo
@@ -3068,6 +3069,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
             var text = ExtractMessageText(message);
             if (string.IsNullOrEmpty(text)) return;
+            if (ChatMessageInfo.IsSilentAssistantDirective(role, text)) return;
 
             EmitChatMessageReceived(sessionKey, role, text, state, tsMs, inTok, outTok, respTok, ctxPct);
 
@@ -3089,6 +3091,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
             if (!string.IsNullOrEmpty(text))
             {
+                if (ChatMessageInfo.IsSilentAssistantDirective(role, text)) return;
+
                 EmitChatMessageReceived(sessionKey, role, text, state, tsMs, inTok, outTok, respTok, ctxPct);
 
                 if (role == "assistant")
@@ -3154,6 +3158,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private void EmitChatMessageReceived(string sessionKey, string role, string text, string? state, long tsMs,
         int? inputTokens = null, int? outputTokens = null, int? responseTokens = null, int? contextPct = null)
     {
+        if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
+            return;
+
         try
         {
             ChatMessageReceived?.Invoke(this, new ChatMessageInfo

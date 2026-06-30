@@ -251,6 +251,28 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ChatMessageReceived_AssistantNoReply_IsSuppressed()
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+        notifications.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "NO_REPLY",
+            State = "final"
+        });
+
+        var timeline = (await provider.LoadAsync()).Timelines["main"];
+        Assert.Empty(snapshots);
+        Assert.Empty(timeline.Entries);
+        Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.TurnComplete);
+    }
+
+    [Fact]
     public async Task ChatMessageReceived_DeltaAssistant_AppendsAssistantWithoutEndingTurn()
     {
         // Block-streamed deltas carry cumulative assistant text and should
@@ -1502,6 +1524,29 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("Hello!", timeline.Entries[1].Text);
         Assert.Equal(ChatTimelineItemKind.User, timeline.Entries[2].Kind);
         Assert.False(timeline.TurnActive);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_AssistantNoReply_IsSuppressed()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo { Role = "user", Text = "Hi", State = "final" },
+                new ChatMessageInfo { Role = "assistant", Text = "NO_REPLY", State = "final" },
+                new ChatMessageInfo { Role = "assistant", Text = "Visible", State = "final" }
+            }
+        });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        await provider.LoadHistoryAsync("main");
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.Equal(["Hi", "Visible"], timeline.Entries.Select(e => e.Text).ToArray());
     }
 
     [Fact]
