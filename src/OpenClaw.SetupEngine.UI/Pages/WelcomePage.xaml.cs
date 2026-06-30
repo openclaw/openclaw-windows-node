@@ -106,6 +106,7 @@ public sealed partial class WelcomePage : Page
 
     private void AdvancedSetup_Click(object sender, RoutedEventArgs e)
     {
-        SetupWindow.Active?.RequestAdvancedSetup();
+        // Show quick connect instructions before handing off to the companion app.
+        SetupWindow.Active?.NavigateToAdvancedSetup();
     }
 }

@@ -165,7 +165,7 @@ internal sealed class PreviewWindow : WindowEx
         AppWindow.Changed += (_, _) => UpdateTitleBarPadding();
         var lobster = new Image
         {
-            Source = new BitmapImage(new Uri("ms-appx:///Assets/Setup/Lobster.png")),
+            Source = new BitmapImage(new Uri("ms-appx:///Assets/Setup/OpenClawMascot.png")),
             Width = 14,
             Height = 14,
             VerticalAlignment = VerticalAlignment.Center,

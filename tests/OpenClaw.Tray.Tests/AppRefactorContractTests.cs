@@ -316,7 +316,7 @@ public sealed class AppRefactorContractTests
                 .OrderBy(Path.GetFileName)
                 .Select(File.ReadAllText));
 
-        Assert.Contains("ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png", xaml);
+        Assert.Contains("ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png", xaml);
         Assert.DoesNotContain("ms-appx:///Assets/Setup/", xaml);
     }
 

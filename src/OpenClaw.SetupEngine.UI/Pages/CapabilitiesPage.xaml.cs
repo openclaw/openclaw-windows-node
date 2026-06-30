@@ -58,8 +58,15 @@ public sealed partial class CapabilitiesPage : Page
         _skipPermissions = _config.SkipPermissions;
         BuildToggles();
         _suppressProfile = true;
-        ProfileRadio.SelectedIndex = DetectProfileIndex();
+        var profileIndex = DetectProfileIndex();
+        ProfileRadio.SelectedIndex = profileIndex;
         _suppressProfile = false;
+        // BuildToggles() seeded the toggles from the config (the shipped default has every
+        // capability on). When we fall back to the recommended Standard default — i.e. the
+        // config didn't exactly match Read-only or Standard — apply Standard so the toggles
+        // (and the capabilities we install) match the selected radio instead of staying Full.
+        if (profileIndex == 1 && !MatchesProfile(ProfileStandard))
+            ApplyProfile(1);
         // Only probe OS permissions when the permissions step will actually be shown.
         if (!_skipPermissions)
             _permissionsTask = BuildPermissionRows();
@@ -70,15 +77,7 @@ public sealed partial class CapabilitiesPage : Page
 
     // The permissions step (internal step 2) is hidden when SetupConfig.SkipPermissions
     // is set, so the flow is 2 visible steps instead of 3. Internal step ids stay 1/2/3;
-    // navigation routes around 2 and the "Step X of N" label is computed from these.
-    private int TotalSteps => _skipPermissions ? 2 : 3;
-
-    private int DisplayIndex(int step) => step switch
-    {
-        1 => 1,
-        2 => 2,
-        _ => _skipPermissions ? 2 : 3, // step 3 (review) is always the last visible step
-    };
+    // navigation routes around step 2 when it is hidden.
 
     private void GoToStep(int step)
     {
@@ -87,7 +86,6 @@ public sealed partial class CapabilitiesPage : Page
         Step2Content.Visibility = step == 2 ? Visibility.Visible : Visibility.Collapsed;
         Step3Content.Visibility = step == 3 ? Visibility.Visible : Visibility.Collapsed;
 
-        StepHint.Text = $"Step {DisplayIndex(step)} of {TotalSteps}";
         StepTitle.Text = step switch
         {
             1 => "What should your agent be able to do?",
@@ -95,7 +93,8 @@ public sealed partial class CapabilitiesPage : Page
             _ => "What setup will install on this PC",
         };
         PrimaryButton.Content = step == 3 ? "Install & set up" : "Next";
-        BackButton.Visibility = step == 1 ? Visibility.Collapsed : Visibility.Visible;
+        // Back is always available — from step 1 it returns to the Welcome screen.
+        BackButton.Visibility = Visibility.Visible;
 
         ScrollActiveIntoView();
     }
@@ -139,7 +138,11 @@ public sealed partial class CapabilitiesPage : Page
     private void Back_Click(object sender, RoutedEventArgs e)
     {
         if (_step <= 1)
+        {
+            // First capability step — step back to the Welcome screen.
+            SetupWindow.Active?.NavigateToWelcome(back: true);
             return;
+        }
         if (Transcript.Children.Count > 0)
             Transcript.Children.RemoveAt(Transcript.Children.Count - 1);
         // Skip back over the hidden permissions step when permissions are skipped.
@@ -309,7 +312,14 @@ public sealed partial class CapabilitiesPage : Page
         if (_suppressProfile || _toggles.Count == 0)
             return;
 
-        var on = ProfileRadio.SelectedIndex switch
+        ApplyProfile(ProfileRadio.SelectedIndex);
+    }
+
+    // Turns the capability toggles on/off to match a profile index (0=Read-only,
+    // 1=Standard, 2=Full access). Shared by the radio handler and the default-on-entry path.
+    private void ApplyProfile(int index)
+    {
+        var on = index switch
         {
             0 => ProfileReadOnly,
             1 => ProfileStandard,
@@ -325,7 +335,9 @@ public sealed partial class CapabilitiesPage : Page
     {
         if (MatchesProfile(ProfileReadOnly)) return 0;
         if (MatchesProfile(ProfileStandard)) return 1;
-        if (MatchesProfile(Capabilities.Select(c => c.Key).ToArray())) return 2;
+        // An "all capabilities on" config is the shipped placeholder default, not a
+        // deliberate Full-access choice, so we don't auto-select Full here. New users
+        // default to Standard (recommended) — the least-surprising, safer starting point.
         return 1;
     }
 

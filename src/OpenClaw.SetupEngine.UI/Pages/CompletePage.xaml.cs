@@ -94,14 +94,8 @@ public sealed partial class CompletePage : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Style the Node Mode banner with amber/brown background
-        var isDark = ActualTheme == ElementTheme.Dark;
-        NodeModeBanner.Background = new SolidColorBrush(isDark
-            ? Color.FromArgb(255, 0x4A, 0x3D, 0x10) // dark amber
-            : Color.FromArgb(255, 0xF5, 0xE6, 0xB8)); // light amber
-
-        // Default startup toggle to off (user can enable)
-        StartupToggle.IsOn = false;
+        // Default "launch at startup" to on — most users want OpenClaw ready after reboot.
+        StartupToggle.IsOn = true;
     }
 
     private void LaunchButton_Click(object sender, RoutedEventArgs e)

@@ -16,8 +16,6 @@ public sealed partial class WizardPage : Page
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
 
-    // Bound progress polling separately from interactive wizard steps.
-
     private SetupConfig? _config;
     private OpenClawGatewayClient? _client;
     private string _sessionId = "";
@@ -35,13 +33,9 @@ public sealed partial class WizardPage : Page
     private int _totalProgressPolls;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
-    // Tails the WSL gateway log and surfaces openclaw plugin console.log output
-    // (OAuth URLs, install fallback messages, etc) inline on the active step.
-    // wizard.payload frames don't carry this content.
+    // wizard.payload frames do not include plugin console output, so tail the gateway log inline.
     private WizardConsoleTail? _consoleTail;
-    // Host access for the active gateway, captured on connect. Drives the
-    // "Open terminal" / "Restart gateway" recovery affordances shown when the
-    // wizard fails because a tool is missing from an app-managed WSL gateway.
+    // Captured on connect for "Open terminal" / "Restart gateway" recovery actions.
     private GatewayHostAccessPlan _hostAccessPlan = GatewayHostAccessPlan.None();
 
     public WizardPage()
@@ -66,7 +60,7 @@ public sealed partial class WizardPage : Page
     {
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
-        StatusText.Text = "Answer the gateway setup question";
+        StatusText.Text = "A few quick questions to connect your agent";
         ShowRecoveryActions();
         AppendTranscriptTurn("Welcome — let's connect your agent", null);
         AppendTranscriptTurn("Choose your AI provider", "Anthropic — Claude");
@@ -74,7 +68,7 @@ public sealed partial class WizardPage : Page
 
         _stepType = "select";
         _stepId = "model";
-        TitleText.Text = "Default model";
+        TitleText.Text = "Default AI model";
         SelectOptions.Visibility = Visibility.Visible;
         foreach (var (val, lbl) in new[] { ("opus", "claude-opus-4.8"), ("sonnet", "claude-sonnet-4.6"), ("haiku", "claude-haiku-4.5") })
         {
@@ -233,10 +227,8 @@ public sealed partial class WizardPage : Page
                 if (generation != _operationGeneration || _errorState)
                     return;
 
-                if (_config!.SkipPermissions)
-                    SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
-                else
-                    SetupWindow.Active?.NavigateToPermissions();
+                // Permissions are collected before install, so the wizard completes straight to summary.
+                SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
                 return;
             }
 
@@ -336,7 +328,7 @@ public sealed partial class WizardPage : Page
             BusyRing.Visibility = Visibility.Collapsed;
             BusyRing.IsActive = false;
             ShowRecoveryActions();
-            StatusText.Text = "Answer the gateway setup question";
+            StatusText.Text = "A few quick questions to connect your agent";
             PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
             SecondaryButton.IsEnabled = true;
             PrimaryButton.Content = _stepType == "confirm" ? "Yes" : "Continue";
@@ -640,39 +632,39 @@ public sealed partial class WizardPage : Page
         return string.Join(", ", labels);
     }
 
-    // ── Transcript (vertical accreting list). Presentation only: each answered
-    // step is frozen into a compact ✓ row above the active step card. No protocol change.
+    // Presentation-only transcript; protocol frames are unchanged.
     private void AppendTranscriptTurn(string question, string? answer)
     {
         if (string.IsNullOrWhiteSpace(question))
             return;
 
-        var grid = new Grid { Padding = new Thickness(2, 6, 2, 6) };
+        var grid = new Grid { Padding = new Thickness(2, 4, 2, 4) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var dot = new Border
         {
-            Width = 22,
-            Height = 22,
-            CornerRadius = new CornerRadius(11),
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(9),
             Background = ResourceBrush("SystemFillColorSuccessBrush"),
-            Margin = new Thickness(0, 1, 12, 0),
+            Margin = new Thickness(0, 1, 10, 0),
             VerticalAlignment = VerticalAlignment.Top,
             Child = new FontIcon
             {
                 Glyph = "\uE73E",
-                FontSize = 11,
+                FontSize = 10,
                 Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+                IsTextScaleFactorEnabled = false,
             },
         };
 
-        var stack = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        var stack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(new TextBlock
         {
             Text = question,
-            FontSize = 14,
-            Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
+            FontSize = 13,
+            Foreground = ResourceBrush("TextFillColorTertiaryBrush"),
             TextWrapping = TextWrapping.Wrap,
         });
         if (!string.IsNullOrWhiteSpace(answer))
@@ -681,7 +673,7 @@ public sealed partial class WizardPage : Page
             {
                 Text = answer,
                 FontSize = 13,
-                Foreground = ResourceBrush("TextFillColorPrimaryBrush"),
+                Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
                 TextWrapping = TextWrapping.Wrap,
             });
         }
@@ -1149,10 +1141,10 @@ public sealed partial class WizardPage : Page
         HideRecoveryActions();
         SetBusy("Skipping wizard...");
         await CancelCurrentSessionAsync();
-        if (_config!.SkipPermissions)
-            SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
-        else
-            SetupWindow.Active?.NavigateToPermissions();
+        // Windows permissions are collected inline on CapabilitiesPage (before install),
+        // so skipping the gateway wizard completes straight to the summary — same as the
+        // wizard's done branch. (The legacy PermissionsPage remains for the dev preview route.)
+        SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
     }
 
     private async Task CancelCurrentSessionAsync()
@@ -1173,16 +1165,14 @@ public sealed partial class WizardPage : Page
         if (_errorState)
             return;
 
-        RecoveryActions.Visibility = Visibility.Visible;
-        StartOverButton.IsEnabled = true;
-        SkipWizardButton.IsEnabled = true;
+        MoreOptionsButton.Visibility = Visibility.Visible;
+        MoreOptionsButton.IsEnabled = true;
     }
 
     private void HideRecoveryActions()
     {
-        RecoveryActions.Visibility = Visibility.Collapsed;
-        StartOverButton.IsEnabled = false;
-        SkipWizardButton.IsEnabled = false;
+        MoreOptionsButton.Visibility = Visibility.Collapsed;
+        MoreOptionsButton.IsEnabled = false;
     }
 
     private async Task DisconnectAsync()

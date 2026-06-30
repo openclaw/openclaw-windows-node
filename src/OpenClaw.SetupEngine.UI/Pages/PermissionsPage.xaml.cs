@@ -5,9 +5,7 @@ using OpenClaw.SetupEngine.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
-// Legacy standalone permissions step. Its content now lives inline on the merged
-// CapabilitiesPage ("Windows permissions" section), so the main setup flow no longer
-// navigates here — it is retained for the dev preview route and as a fallback.
+// Retained for preview/fallback; the main flow collects permissions in CapabilitiesPage.
 public sealed partial class PermissionsPage : Page
 {
     private SetupConfig? _config;
@@ -36,7 +34,7 @@ public sealed partial class PermissionsPage : Page
     private void Refresh_Click(object sender, RoutedEventArgs e) => _ = RefreshPermissions();
 
     private void BackToWizard_Click(object sender, RoutedEventArgs e)
-        => SetupWindow.Active?.NavigateToWizard();
+        => SetupWindow.Active?.TryNavigateToWizard(back: true);
 
     private void Next_Click(object sender, RoutedEventArgs e)
         => SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, null);
