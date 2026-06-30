@@ -12,7 +12,7 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class WelcomePage : Page
 {
-    private const string InstallButtonText = "Install new WSL Gateway";
+    private const string InstallButtonText = "Install a local gateway (WSL)";
     private const string CheckingButtonText = "Checking existing setup...";
     private SetupConfig? _config;
 
@@ -63,8 +63,8 @@ public sealed partial class WelcomePage : Page
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
         var setupWindow = SetupWindow.Active;
 
-        StartButton.IsEnabled = false;
-        StartButton.Content = CheckingButtonText;
+        InstallButton.IsEnabled = false;
+        InstallTitle.Text = CheckingButtonText;
         var navigating = false;
         try
         {
@@ -98,8 +98,8 @@ public sealed partial class WelcomePage : Page
         {
             if (!navigating && setupWindow is { IsClosed: false })
             {
-                StartButton.Content = InstallButtonText;
-                StartButton.IsEnabled = true;
+                InstallTitle.Text = InstallButtonText;
+                InstallButton.IsEnabled = true;
             }
         }
     }

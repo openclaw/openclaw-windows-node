@@ -40,7 +40,8 @@
                     </Border>
                     <StackPanel Grid.Column="1" Spacing="3">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="Install a local gateway (WSL)"
+                            <TextBlock x:Name="InstallTitle"
+                                       Text="Install a local gateway (WSL)"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        VerticalAlignment="Center" />
                             <Border CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
@@ -89,9 +90,10 @@
         </StackPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,16,0,0"
-                    IsTabStop="False" AutomationProperties.Name="Step 2 of 5">
+                    IsTabStop="False" AutomationProperties.Name="Step 2 of 6">
             <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
             <Border Width="20" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupIndicatorAccentBrush}" />
+            <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
             <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
             <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
             <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />

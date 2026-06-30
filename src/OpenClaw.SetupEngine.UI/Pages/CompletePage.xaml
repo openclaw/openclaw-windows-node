@@ -109,7 +109,8 @@
 
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
             <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
-                        IsTabStop="False" AutomationProperties.Name="Step 5 of 5">
+                        IsTabStop="False" AutomationProperties.Name="Step 6 of 6">
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
