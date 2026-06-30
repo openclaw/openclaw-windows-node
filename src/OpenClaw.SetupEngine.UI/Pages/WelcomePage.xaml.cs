@@ -29,15 +29,15 @@ public sealed partial class WelcomePage : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        StartLobsterBreatheAnimation();
+        StartMascotBreatheAnimation();
     }
 
-    private void StartLobsterBreatheAnimation()
+    private void StartMascotBreatheAnimation()
     {
-        var visual = ElementCompositionPreview.GetElementVisual(LobsterHero);
+        var visual = ElementCompositionPreview.GetElementVisual(MascotHero);
         var compositor = visual.Compositor;
-        var centerX = LobsterHero.ActualWidth > 0 ? LobsterHero.ActualWidth / 2 : LobsterHero.Width / 2;
-        var centerY = LobsterHero.ActualHeight > 0 ? LobsterHero.ActualHeight / 2 : LobsterHero.Height / 2;
+        var centerX = MascotHero.ActualWidth > 0 ? MascotHero.ActualWidth / 2 : MascotHero.Width / 2;
+        var centerY = MascotHero.ActualHeight > 0 ? MascotHero.ActualHeight / 2 : MascotHero.Height / 2;
         visual.CenterPoint = new Vector3((float)centerX, (float)centerY, 0f);
 
         var pulse = compositor.CreateVector3KeyFrameAnimation();

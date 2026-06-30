@@ -103,6 +103,9 @@ public sealed partial class SetupWindow : Window
     public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
     public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), _config);
+    public void NavigateToGatewayInstalledMilestone() =>
+        NavigateTo(typeof(ProgressPage), new ProgressPageArgs(_config, ShowMilestoneOnly: true));
+
     public bool TryNavigateToWizard(bool back = false)
     {
         if (!CanNavigateToWizard)
@@ -117,7 +120,7 @@ public sealed partial class SetupWindow : Window
         if (!TryNavigateToWizard())
             throw new InvalidOperationException("Setup window is not ready to navigate to the gateway wizard.");
     }
-    public void NavigateToPermissions() => NavigateTo(typeof(PermissionsPage), _config);
+
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => NavigateTo(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
 
@@ -137,11 +140,15 @@ public sealed partial class SetupWindow : Window
             "progress" => typeof(ProgressPage),
             "milestone" => typeof(ProgressPage),
             "wizard" => typeof(WizardPage),
-            "permissions" => typeof(PermissionsPage),
             "complete" => typeof(CompletePage),
             _ => typeof(SecurityNoticePage),
         },
-        page == "complete" ? new CompletePageArgs(true, TimeSpan.FromMinutes(3), null) : _config);
+        page switch
+        {
+            "complete" => new CompletePageArgs(true, TimeSpan.FromMinutes(3), null),
+            "milestone" => new ProgressPageArgs(_config, ShowMilestoneOnly: true),
+            _ => _config,
+        });
 
     public void RequestAdvancedSetup()
     {

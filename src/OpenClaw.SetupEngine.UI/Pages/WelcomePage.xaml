@@ -8,7 +8,7 @@
     <Grid Padding="48,28,48,24" RowDefinitions="Auto,*,Auto">
 
         <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="12">
-            <Image x:Name="LobsterHero"
+            <Image x:Name="MascotHero"
                    Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
                    Width="96" Height="96" HorizontalAlignment="Center"
                    AutomationProperties.AccessibilityView="Raw" />

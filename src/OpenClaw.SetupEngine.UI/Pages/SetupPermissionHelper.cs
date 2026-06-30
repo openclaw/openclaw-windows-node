@@ -11,8 +11,8 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 /// <summary>
 /// Shared definition + passive status checks for the Windows OS permissions surfaced
-/// during setup. Used by both the merged CapabilitiesPage (each capability shows its
-/// matching Windows permission inline) and the legacy standalone PermissionsPage.
+/// during setup. Used by CapabilitiesPage so each capability shows its matching
+/// Windows permission inline.
 /// All checks are passive — they read current OS state and never trigger a consent dialog.
 /// </summary>
 internal sealed record PermDef(
@@ -36,8 +36,6 @@ internal static class SetupPermissionHelper
         new("Screen", "Screen capture", "\uE7F4", "", CheckScreenCaptureAsync);
 
     public static readonly PermDef[] All = [Notifications, Camera, Microphone, Location, ScreenCapture];
-
-    // ── Row rendering (themed SettingsCard-style row + status pill) ──
 
     public static Brush Res(string key) =>
         Application.Current.Resources.TryGetValue(key, out var v) && v is Brush b
@@ -147,8 +145,6 @@ internal static class SetupPermissionHelper
             Padding = new Thickness(14, 12, 14, 12),
         };
     }
-
-    // ── Passive permission checks (no OS consent dialogs) ──
 
     public static Task<(string, bool)> CheckNotificationsAsync()
     {

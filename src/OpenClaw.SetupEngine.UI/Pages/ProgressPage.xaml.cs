@@ -11,6 +11,8 @@ using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
+internal sealed record ProgressPageArgs(SetupConfig Config, bool ShowMilestoneOnly);
+
 public sealed partial class ProgressPage : Page
 {
     private SetupConfig? _config;
@@ -45,10 +47,20 @@ public sealed partial class ProgressPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        var args = e.Parameter as ProgressPageArgs;
+        _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
         SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
 
         BuildStepRows();
+        if (args?.ShowMilestoneOnly == true)
+        {
+            foreach (var (groupId, _, _) in StepGroups)
+                if (_rows.TryGetValue(groupId, out var row))
+                    row.SetStatus(StepStatus.Done);
+            ShowGatewayInstalledMilestone();
+            return;
+        }
+
         if (SetupPreview.IsActive)
         {
             if (SetupPreview.RequestedPage == "milestone")
