@@ -72,9 +72,14 @@ internal sealed class TestApp : Application
             "<Setter Property='CornerRadius' Value='4' />" +
             "</Style>");
 
+        EnsureFluentBrushFallbacks(Resources);
+    }
+
+    internal static void EnsureFluentBrushFallbacks(ResourceDictionary resources)
+    {
         foreach (var (key, color) in FluentBrushFallbacks)
         {
-            TryAddBrushResource(key, color);
+            TryAddBrushResource(resources, key, color);
         }
     }
 
@@ -91,11 +96,11 @@ internal sealed class TestApp : Application
         }
     }
 
-    private void TryAddBrushResource(string key, Windows.UI.Color color)
+    private static void TryAddBrushResource(ResourceDictionary resources, string key, Windows.UI.Color color)
     {
         try
         {
-            Resources[key] = new SolidColorBrush(color);
+            resources[key] = new SolidColorBrush(color);
         }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch

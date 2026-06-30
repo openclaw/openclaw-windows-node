@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Chat;
 using OpenClawTray.Chat;
@@ -32,6 +33,7 @@ public sealed class ChatTimelineVirtualizationProofTests
 
         await _ui.RunOnUIAsync(() =>
         {
+            TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
             _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 960, 720));
             _ui.Container.Width = 900;
             _ui.Container.Height = 640;
