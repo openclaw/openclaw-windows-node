@@ -142,11 +142,15 @@ internal static class WslInstallSupport
         // virtualization enabled, even though `wsl --version` succeeds.
         if (Contains(text, "WSL2 is not supported with your current machine configuration"))
         {
+            var hardwareVirtualizationGuidance = architecture == Architecture.Arm64
+                ? "On ARM64 devices (including Surface), also make sure hardware virtualization is allowed by firmware or device-management policy; many devices do not expose a firmware toggle. "
+                : "If setup still reports virtualization disabled after enabling the Windows feature, enable VT-x/AMD-V (Intel VT or AMD SVM) in BIOS/UEFI. ";
             message = "WSL2 is not supported with the current machine configuration. "
                 + "Enable the Windows 'Virtual Machine Platform' support by running "
                 + "`wsl --install --no-distribution` from an elevated PowerShell (or enable "
-                + "'Virtual Machine Platform' under 'Turn Windows features on or off'), ensure "
-                + "hardware virtualization is enabled in BIOS/UEFI, reboot, then retry setup.";
+                + "'Virtual Machine Platform' under 'Turn Windows features on or off'). "
+                + hardwareVirtualizationGuidance
+                + "Reboot, then retry setup.";
             return true;
         }
 
