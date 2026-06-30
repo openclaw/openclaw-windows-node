@@ -466,7 +466,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         var scrollViewRef = UseRef<Microsoft.UI.Xaml.Controls.ScrollViewer?>(null);
         var isFollowingRef = UseRef(true);
-        var contentRef = UseRef<Microsoft.UI.Xaml.Controls.StackPanel?>(null);
+        var contentRef = UseRef<FrameworkElement?>(null);
         var prevEntryCountRef = UseRef(0);
         var prevSessionIdRef = UseRef<string?>(null);
         var prevFirstEntryIdRef = UseRef<string?>(null);
@@ -509,7 +509,10 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         if (prevShowToolCallsRef.Current != showToolCalls)
         {
             prevShowToolCallsRef.Current = showToolCalls;
-            contentRef.Current?.Children.Clear();
+            if (contentRef.Current is ItemsRepeater repeater)
+                repeater.ItemsSource = Array.Empty<object>();
+            else if (contentRef.Current is StackPanel stackPanel)
+                stackPanel.Children.Clear();
         }
 
         // Hover state — set of entry ids currently under the pointer. Used to
@@ -2490,12 +2493,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
                         loadMoreButton.Grid(row: 0, column: 0),
                         Border(Empty()).Height(20).Grid(row: 1, column: 0),
-                        VStack(2, timelineRows).Set(sp =>
+                        VirtualVStack(2, timelineRows).Set(host =>
                         {
-                            if (contentRef.Current != sp)
+                            if (contentRef.Current != host)
                             {
-                                contentRef.Current = (Microsoft.UI.Xaml.Controls.StackPanel)sp;
-                                sp.SizeChanged += (_, _) =>
+                                contentRef.Current = host;
+                                host.SizeChanged += (_, _) =>
                                 {
                                     if (scrollViewRef.Current is not { } sv) return;
 

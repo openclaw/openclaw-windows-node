@@ -202,6 +202,7 @@ public sealed record ComboBoxElement(string[] Items, int SelectedIndex, Action<i
 public sealed record ImageElement(string Source) : Element;
 public sealed record BorderElement(Element? Child) : Element;
 public sealed record StackElement(Orientation Orientation, double Spacing, IReadOnlyList<Element?> Children) : Element;
+public sealed record VirtualStackElement(Orientation Orientation, double Spacing, IReadOnlyList<Element?> Children) : Element;
 public sealed record FlexRowElement(IReadOnlyList<Element?> Children) : Element
 {
     public double ColumnGap { get; init; }
@@ -597,6 +598,8 @@ public static class Factories
     public static StackElement VStack(double spacing, params Element?[] children) => new(Orientation.Vertical, spacing, children);
     public static StackElement HStack(params Element?[] children) => new(Orientation.Horizontal, 0, children);
     public static StackElement HStack(double spacing, params Element?[] children) => new(Orientation.Horizontal, spacing, children);
+    public static VirtualStackElement VirtualVStack(double spacing, params Element?[] children) => new(Orientation.Vertical, spacing, children);
+    public static VirtualStackElement VirtualHStack(double spacing, params Element?[] children) => new(Orientation.Horizontal, spacing, children);
     public static GridElement Grid(string[] columns, string[] rows, params Element?[] children) => new(columns, rows, children);
     public static GridElement Grid(GridSize[] columns, GridSize[] rows, params Element?[] children) =>
         new(columns.Select(c => c.ToString()).ToArray(), rows.Select(r => r.ToString()).ToArray(), children);
@@ -964,6 +967,7 @@ internal sealed class UiRenderer(Action requestRender)
             ImageElement e => ConfigureImage(GetOrCreate<Image>(path), e),
             BorderElement e => ConfigureBorder(GetOrCreate<Border>(path), e, path, effects),
             StackElement e => ConfigureStack(GetOrCreate<Border>(path), e, path, effects),
+            VirtualStackElement e => ConfigureVirtualStack(GetOrCreate<Border>(path), e, path),
             FlexRowElement e => ConfigureFlexRow(GetOrCreate<Border>(path), e, path, effects),
             GridElement e => ConfigureGrid(GetOrCreate<Border>(path), e, path, effects),
             ScrollViewElement e => ConfigureScrollView(GetOrCreate<ScrollViewer>(path), e, path, effects),
@@ -1277,6 +1281,56 @@ internal sealed class UiRenderer(Action requestRender)
         ApplyModifiers(wrapper, element);
         ApplySetters(panel, element);
         return wrapper;
+    }
+
+    private Border ConfigureVirtualStack(Border wrapper, VirtualStackElement element, string path)
+    {
+        var repeater = GetOrCreate<ItemsRepeater>(path + ".repeater");
+        if (repeater.Layout is not StackLayout layout)
+        {
+            layout = new StackLayout();
+            repeater.Layout = layout;
+        }
+        layout.Orientation = element.Orientation;
+        layout.Spacing = element.Spacing;
+
+        repeater.ItemsSource = element.Children
+            .Select((child, index) => child is null ? null : new VirtualStackItem(index, child))
+            .Where(item => item is not null)
+            .Cast<VirtualStackItem>()
+            .ToArray();
+        repeater.ItemTemplate = new VirtualStackItemTemplate(this, path);
+        repeater.HorizontalAlignment = HorizontalAlignment.Stretch;
+        repeater.VerticalAlignment = VerticalAlignment.Stretch;
+
+        SetChild(wrapper, repeater);
+        ApplyModifiers(wrapper, element);
+        ApplySetters(repeater, element);
+        return wrapper;
+    }
+
+    private sealed record VirtualStackItem(int Index, Element Element);
+
+    private sealed class VirtualStackItemTemplate(UiRenderer renderer, string path) : IElementFactory
+    {
+        public UIElement GetElement(ElementFactoryGetArgs args)
+        {
+            if (args.Data is not VirtualStackItem item)
+                return new Border();
+
+            var effects = new List<Action>();
+            var control = renderer.RenderElement(item.Element, ChildPath(path, item.Index, item.Element), effects);
+            foreach (var effect in effects)
+                effect();
+            return control;
+        }
+
+        public void RecycleElement(ElementFactoryRecycleArgs args)
+        {
+            // The renderer cache owns element identity by path. ItemsRepeater
+            // detaches recycled rows; re-realization asks for the same path and
+            // gets a refreshed control without rebuilding the whole list.
+        }
     }
 
     private Border ConfigureFlexRow(Border wrapper, FlexRowElement element, string path, List<Action> effects)
