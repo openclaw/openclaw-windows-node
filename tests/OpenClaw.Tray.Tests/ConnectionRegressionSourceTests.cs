@@ -67,6 +67,18 @@ public sealed class ConnectionRegressionSourceTests
         Assert.Contains("AddSshHostBox.Text = \"\";", pageSource);
     }
 
+    [Fact]
+    public void NodeCapabilityPills_ExposeStateThroughReadableTextPeer()
+    {
+        var pageSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+
+        Assert.Contains("AutomationProperties.SetName(labelText", pageSource);
+        Assert.DoesNotContain(
+            "AutomationProperties.SetAccessibilityView(labelText, AccessibilityView.Raw);",
+            pageSource);
+        Assert.DoesNotContain("AutomationProperties.SetName(pill", pageSource);
+    }
+
     private static string ReadSource(params string[] relativePathParts)
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

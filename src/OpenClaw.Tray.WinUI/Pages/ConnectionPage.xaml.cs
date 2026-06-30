@@ -1288,6 +1288,7 @@ public sealed partial class ConnectionPage : Page
         AutomationProperties.SetAccessibilityView(capabilityIcon, AccessibilityView.Raw);
         content.Children.Add(capabilityIcon);
 
+        var stateText = LocalizationHelper.GetString(stateKey);
         var labelText = new TextBlock
         {
             Text = label,
@@ -1295,7 +1296,7 @@ public sealed partial class ConnectionPage : Page
             Foreground = textBrush,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        AutomationProperties.SetAccessibilityView(labelText, AccessibilityView.Raw);
+        AutomationProperties.SetName(labelText, $"{label} — {stateText}");
         content.Children.Add(labelText);
 
         if (stateGlyph != null)
@@ -1312,7 +1313,6 @@ public sealed partial class ConnectionPage : Page
             content.Children.Add(stateIcon);
         }
 
-        var stateText = LocalizationHelper.GetString(stateKey);
         var pill = new Border
         {
             CornerRadius = new CornerRadius(12),
@@ -1320,7 +1320,6 @@ public sealed partial class ConnectionPage : Page
             Background = fillBrush,
             Child = content,
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pill, $"{label} — {stateText}");
         ToolTipService.SetToolTip(pill, stateText);
         return pill;
     }
