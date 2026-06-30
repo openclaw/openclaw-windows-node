@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Markup;
@@ -50,9 +51,14 @@ internal sealed class TestApp : Application
     /// </summary>
     public void MergeStandardResources()
     {
+        if (!TryGetResources(out var resources))
+        {
+            return;
+        }
+
         try
         {
-            Resources.MergedDictionaries.Add(new Microsoft.UI.Xaml.Controls.XamlControlsResources());
+            resources.MergedDictionaries.Add(new Microsoft.UI.Xaml.Controls.XamlControlsResources());
         }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
@@ -61,14 +67,17 @@ internal sealed class TestApp : Application
             // going — the renderers degrade gracefully without theme styles.
         }
 
-        TryAddResource("AccentButtonStyle",
+        TryAddResource(resources, "LobsterAccentBrush",
+            "<SolidColorBrush xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Color='#E74C3C' />");
+
+        TryAddResource(resources, "AccentButtonStyle",
             "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' " +
             "TargetType='Button'>" +
             "<Setter Property='Foreground' Value='White' />" +
             "<Setter Property='CornerRadius' Value='4' />" +
             "</Style>");
 
-        EnsureFluentBrushFallbacks(Resources);
+        EnsureFluentBrushFallbacks(resources);
     }
 
     internal static void EnsureFluentBrushFallbacks(ResourceDictionary resources)
@@ -79,11 +88,31 @@ internal sealed class TestApp : Application
         }
     }
 
-    private void TryAddResource(string key, string xaml)
+    private bool TryGetResources(out ResourceDictionary resources)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                resources = Resources;
+                return true;
+            }
+            // slopwatch-ignore: SW003 Test fixture resource setup is best-effort and must not hide the test outcome.
+            catch
+            {
+                Thread.Sleep(10);
+            }
+        }
+
+        resources = null!;
+        return false;
+    }
+
+    private static void TryAddResource(ResourceDictionary resources, string key, string xaml)
     {
         try
         {
-            Resources[key] = XamlReader.Load(xaml);
+            resources[key] = XamlReader.Load(xaml);
         }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
