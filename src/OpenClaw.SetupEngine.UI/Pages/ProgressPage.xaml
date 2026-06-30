@@ -5,56 +5,113 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Padding="56,14,56,0" Spacing="4">
-            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png" Width="44" Height="44"
-                   HorizontalAlignment="Center" Margin="0,0,0,2" />
-            <TextBlock Text="Setting up your gateway"
+        <StackPanel x:Name="InstallHeader" Grid.Row="0" Padding="48,14,48,0" Spacing="8">
+            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png" Width="44" Height="44"
+                   HorizontalAlignment="Center" Margin="0,0,0,2"
+                   AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="Setting up WSL gateway"
                        Style="{StaticResource TitleTextBlockStyle}"
                        HorizontalAlignment="Center" />
             <TextBlock x:Name="SubtitleText"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       AutomationProperties.LiveSetting="Polite"
                        HorizontalAlignment="Center" />
         </StackPanel>
 
-        <!-- Steps + live activity flow together in one scroll region so the
-             ledger opens downward naturally instead of being pinned to the bottom. -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Padding="56,12,56,16" Spacing="16" VerticalAlignment="Top">
+        <ScrollViewer x:Name="InstallContent" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="48,12,48,16" Spacing="16" VerticalAlignment="Top">
 
-                <!-- Step rows -->
-                <StackPanel x:Name="StepsPanel" Spacing="4" />
+                <StackPanel x:Name="StepsPanel" Spacing="2" />
 
-                <!-- Live activity ledger -->
-                <Expander IsExpanded="True"
+                <Expander IsExpanded="False"
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                           Header="Live activity">
                     <Grid RowDefinitions="*,Auto">
-                        <Border Grid.Row="0" CornerRadius="4" Height="128" Padding="12,8"
-                                Background="#0E0F12">
+                        <Border Grid.Row="0" CornerRadius="4" MinHeight="160" MaxHeight="200" Padding="12,8"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                             <ScrollViewer x:Name="LogScroller"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Auto">
                                 <TextBlock x:Name="LogText"
                                            FontFamily="Cascadia Mono, Consolas"
-                                           FontSize="11"
-                                           Foreground="#C3CAD4"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            TextWrapping="NoWrap"
                                            IsTextSelectionEnabled="True" />
                             </ScrollViewer>
                         </Border>
-                        <Button x:Name="OpenLogButton" Grid.Row="1"
+                        <HyperlinkButton x:Name="OpenLogButton" Grid.Row="1"
                                 Content="Open log file" FontSize="12"
-                                HorizontalAlignment="Right" Margin="0,6,0,0"
-                                Click="OpenLog_Click" Padding="10,4" />
+                                HorizontalAlignment="Right" Margin="0,4,0,0"
+                                Click="OpenLog_Click" Padding="6,2" />
                     </Grid>
                 </Expander>
 
             </StackPanel>
         </ScrollViewer>
+
+        <StackPanel x:Name="MilestonePanel" Grid.Row="1" Visibility="Collapsed"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Spacing="16" MaxWidth="480" Padding="48,0">
+            <Grid Width="100" Height="100" HorizontalAlignment="Center" Margin="0,0,0,4">
+                <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
+                       Width="100" Height="100"
+                       AutomationProperties.AccessibilityView="Raw" />
+                <Border Width="36" Height="36" CornerRadius="18"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Background="{ThemeResource SystemFillColorSuccessBrush}"
+                        BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}" BorderThickness="3">
+                    <FontIcon Glyph="&#xE73E;" FontSize="16" IsTextScaleFactorEnabled="False"
+                              Foreground="#FFFFFF"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              AutomationProperties.AccessibilityView="Raw" />
+                </Border>
+            </Grid>
+            <StackPanel Spacing="6">
+                <TextBlock Text="Gateway installed"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           HorizontalAlignment="Center" TextAlignment="Center"
+                           AutomationProperties.LiveSetting="Assertive" />
+                <TextBlock Text="Your private OpenClaw gateway is up and running on this PC."
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+            </StackPanel>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="4" Padding="16,14" HorizontalAlignment="Stretch">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                    <FontIcon Grid.Column="0" Glyph="&#xE72A;" FontSize="18" IsTextScaleFactorEnabled="False"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Text="Up next: OpenClaw onboard" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="A few quick questions — choose your AI provider, model, and key — to connect your agent."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,16">
+            <StackPanel x:Name="DotsPanel" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsTabStop="False" AutomationProperties.Name="Step 4 of 5">
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="20" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupIndicatorAccentBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+            </StackPanel>
+            <Button x:Name="OnboardButton" Grid.Column="1" Content="Start OpenClaw onboard"
+                    Visibility="Collapsed" MinHeight="44" MinWidth="180" HorizontalAlignment="Right"
+                    Margin="48,0" Style="{StaticResource AccentButtonStyle}"
+                    Click="Onboard_Click" />
+        </Grid>
 
     </Grid>
 </Page>

@@ -3,6 +3,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using OpenClaw.SetupEngine.UI.Pages;
 using System.Runtime.InteropServices;
 
@@ -41,7 +42,7 @@ public sealed partial class SetupWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarDrag);
 
-        // Mica backdrop
+        // Mica backdrop — the signature Windows 11 material (native).
         SystemBackdrop = new MicaBackdrop();
 
         // Load config: explicit --config arg, or bundled default-config.json (required)
@@ -91,21 +92,23 @@ public sealed partial class SetupWindow : Window
 
         if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out _setupLock, out var lockMessage))
         {
-            RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
+            NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
             return;
         }
 
-        RootFrame.Navigate(typeof(WelcomePage), _config);
+        NavigateTo(typeof(SecurityNoticePage), _config);
     }
 
-    public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
-    public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
-    public bool TryNavigateToWizard()
+    public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
+    public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
+    public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
+    public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), _config);
+    public bool TryNavigateToWizard(bool back = false)
     {
         if (!CanNavigateToWizard)
             return false;
 
-        RootFrame.Navigate(typeof(WizardPage), _config);
+        NavigateTo(typeof(WizardPage), _config, back);
         return true;
     }
 
@@ -114,21 +117,29 @@ public sealed partial class SetupWindow : Window
         if (!TryNavigateToWizard())
             throw new InvalidOperationException("Setup window is not ready to navigate to the gateway wizard.");
     }
-    public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
+    public void NavigateToPermissions() => NavigateTo(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
-        => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
+        => NavigateTo(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
 
-    // Dev-only: OPENCLAW_SETUP_PREVIEW_PAGE=<welcome|capabilities|progress|wizard|permissions|complete>
-    // opens a page directly with sample content (no pipeline, no gateway). Used for visual iteration only.
+    // Directional page transition: forward steps slide in from the right, Back from the left.
+    private void NavigateTo(Type page, object? parameter, bool back = false) =>
+        RootFrame.Navigate(page, parameter, new SlideNavigationTransitionInfo
+        {
+            Effect = back ? SlideNavigationTransitionEffect.FromLeft : SlideNavigationTransitionEffect.FromRight,
+        });
+
     private void NavigatePreview(string page) => RootFrame.Navigate(
         page switch
         {
+            "welcome" => typeof(WelcomePage),
+            "advanced" => typeof(AdvancedSetupPage),
             "capabilities" => typeof(CapabilitiesPage),
             "progress" => typeof(ProgressPage),
+            "milestone" => typeof(ProgressPage),
             "wizard" => typeof(WizardPage),
             "permissions" => typeof(PermissionsPage),
             "complete" => typeof(CompletePage),
-            _ => typeof(WelcomePage),
+            _ => typeof(SecurityNoticePage),
         },
         page == "complete" ? new CompletePageArgs(true, TimeSpan.FromMinutes(3), null) : _config);
 

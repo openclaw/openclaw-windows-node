@@ -5,11 +5,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="48,28,48,28">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="48,28,48,24">
         <StackPanel Grid.Row="0" Spacing="6" HorizontalAlignment="Center">
-            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png"
-                   Width="44" Height="44" HorizontalAlignment="Center" />
-            <TextBlock Text="Gateway onboard"
+            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
+                   Width="44" Height="44" HorizontalAlignment="Center"
+                   AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="OpenClaw onboard"
                        Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
             <TextBlock x:Name="StatusText" Text="Connecting to gateway..."
                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -28,7 +29,7 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                 <StackPanel Spacing="16">
-                    <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
+                    <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" Foreground="{ThemeResource SetupIndicatorAccentBrush}" />
                     <TextBlock x:Name="TitleText" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                     <StackPanel x:Name="MessagePanel" Spacing="8" />
                     <Border x:Name="ConsoleBanner"
@@ -41,8 +42,7 @@
                         <StackPanel Spacing="6">
                             <TextBlock Text="Live gateway output"
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       CharacterSpacing="60" />
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <StackPanel x:Name="ConsoleBannerLines" Spacing="6" />
                         </StackPanel>
                     </Border>
@@ -76,23 +76,37 @@
         </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-            <StackPanel x:Name="RecoveryActions"
-                        Grid.Column="0"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Left"
-                        Spacing="12"
-                        Visibility="Collapsed">
-                <Button x:Name="StartOverButton"
-                        Content="Start over"
-                        Height="44"
-                        MinWidth="104"
-                        Click="StartOver_Click" />
-                <Button x:Name="SkipWizardButton"
-                        Content="Skip wizard"
-                        Height="44"
-                        MinWidth="104"
-                        Click="SkipWizard_Click" />
+            <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsTabStop="False" AutomationProperties.Name="Step 4 of 5">
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="20" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupIndicatorAccentBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
             </StackPanel>
+            <DropDownButton x:Name="MoreOptionsButton"
+                            Grid.Column="0"
+                            Content="More options"
+                            Height="44"
+                            HorizontalAlignment="Left"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="More onboarding options">
+                <DropDownButton.Flyout>
+                    <MenuFlyout Placement="Top">
+                        <MenuFlyoutItem Text="Restart onboard" Click="StartOver_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72C;" IsTextScaleFactorEnabled="False" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Skip &amp; exit" Click="SkipWizard_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72A;" IsTextScaleFactorEnabled="False" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
             <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"

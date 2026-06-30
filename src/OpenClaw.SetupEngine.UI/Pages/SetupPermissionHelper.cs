@@ -1,5 +1,6 @@
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32;
@@ -30,7 +31,7 @@ internal static class SetupPermissionHelper
     public static readonly PermDef Microphone =
         new("Microphone", "Microphone", "\uE720", "ms-settings:privacy-microphone", CheckMicrophoneAsync);
     public static readonly PermDef Location =
-        new("Location", "Location (optional)", "\uE81D", "ms-settings:privacy-location", CheckLocationAsync);
+        new("Location", "Location", "\uE81D", "ms-settings:privacy-location", CheckLocationAsync);
     public static readonly PermDef ScreenCapture =
         new("Screen", "Screen capture", "\uE7F4", "", CheckScreenCaptureAsync);
 
@@ -58,7 +59,6 @@ internal static class SetupPermissionHelper
         var cardBg = Res("CardBackgroundFillColorDefaultBrush");
         var cardStroke = Res("CardStrokeColorDefaultBrush");
         var ok = Res("SystemFillColorSuccessBrush");
-        var caution = Res("SystemFillColorCautionBrush");
         var iconFg = Res("TextFillColorPrimaryBrush");
         var subFg = Res("TextFillColorSecondaryBrush");
 
@@ -69,6 +69,7 @@ internal static class SetupPermissionHelper
             Foreground = iconFg,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 14, 0),
+            IsTextScaleFactorEnabled = false,
         };
 
         var textStack = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
@@ -80,33 +81,40 @@ internal static class SetupPermissionHelper
         textStack.Children.Add(new TextBlock { Text = status, FontSize = 12, Foreground = subFg });
 
         FrameworkElement actionCol;
-        if (granted)
+        if (string.IsNullOrEmpty(perm.SettingsUri))
+        {
+            // No standing OS grant (screen capture) — the user picks what to share each time
+            // via the Windows Graphics Capture picker, so there's nothing to pre-allow here.
+            var pill = Pill(granted ? "Ask every time" : "Unavailable", subFg);
+            if (granted)
+                ToolTipService.SetToolTip(pill,
+                    "Windows has no on/off setting for screen capture. Each time the agent captures your screen, Windows shows a picker so you choose exactly what to share — there's nothing to allow in advance.");
+            actionCol = pill;
+        }
+        else if (granted)
         {
             actionCol = Pill("Allowed", ok);
         }
-        else if (!string.IsNullOrEmpty(perm.SettingsUri))
+        else
         {
             var btn = new Button
             {
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderBrush = caution,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(10, 3, 10, 3),
+                CornerRadius = new CornerRadius(4),
+                MinWidth = 140,
+                Padding = new Thickness(12, 5, 12, 5),
                 VerticalAlignment = VerticalAlignment.Center,
-                Content = new TextBlock { Text = "Open Settings", FontSize = 12, Foreground = caution },
+                Content = new TextBlock { Text = "Open Settings", FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center },
             };
+            AutomationProperties.SetName(btn, $"Open {perm.Name} settings");
             var uri = perm.SettingsUri;
-            btn.Click += async (_, _) =>
+            // Sync handler (no async-void lambda): launching a settings deep link is
+            // best-effort and fire-and-forget, so we don't await the operation.
+            btn.Click += (_, _) =>
             {
-                try { await Windows.System.Launcher.LaunchUriAsync(new Uri(uri)); }
+                try { _ = Windows.System.Launcher.LaunchUriAsync(new Uri(uri)); }
                 catch { /* best effort */ }
             };
             actionCol = btn;
-        }
-        else
-        {
-            actionCol = Pill("Per-capture", caution);
         }
 
         var grid = new Grid
@@ -115,10 +123,13 @@ internal static class SetupPermissionHelper
             {
                 new ColumnDefinition { Width = GridLength.Auto },
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
-                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = new GridLength(152) },
             },
             VerticalAlignment = VerticalAlignment.Center,
         };
+        // Right-align the status/action in a fixed-width rail so chips and buttons line up.
+        if (actionCol is FrameworkElement fe)
+            fe.HorizontalAlignment = HorizontalAlignment.Right;
         Grid.SetColumn(icon, 0);
         Grid.SetColumn(textStack, 1);
         Grid.SetColumn(actionCol, 2);
@@ -146,12 +157,12 @@ internal static class SetupPermissionHelper
             using var key = Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\PushNotifications");
             if (key?.GetValue("ToastEnabled") is int val && val == 0)
-                return Task.FromResult(("Disabled", false));
-            return Task.FromResult(("Enabled", true));
+                return Task.FromResult(("Turn on in Settings to get alerts", false));
+            return Task.FromResult(("Windows notifications are on", true));
         }
         catch
         {
-            return Task.FromResult(("Unable to check", false));
+            return Task.FromResult(("Couldn't check status", false));
         }
     }
 
@@ -163,10 +174,10 @@ internal static class SetupPermissionHelper
             if (devices.Count == 0) return ("No camera detected", false);
             var access = DeviceAccessInformation.CreateFromDeviceClass(DeviceClass.VideoCapture);
             return access.CurrentStatus == DeviceAccessStatus.Allowed
-                ? ("Allowed", true)
-                : ("Denied — open Settings to allow", false);
+                ? ("Windows camera access is on", true)
+                : ("Turn on in Settings to use the camera", false);
         }
-        catch { return ("Unable to check", false); }
+        catch { return ("Couldn't check status", false); }
     }
 
     public static async Task<(string, bool)> CheckMicrophoneAsync()
@@ -177,10 +188,10 @@ internal static class SetupPermissionHelper
             if (devices.Count == 0) return ("No microphone detected", false);
             var access = DeviceAccessInformation.CreateFromDeviceClass(DeviceClass.AudioCapture);
             return access.CurrentStatus == DeviceAccessStatus.Allowed
-                ? ("Allowed", true)
-                : ("Denied — open Settings to allow", false);
+                ? ("Windows microphone access is on", true)
+                : ("Turn on in Settings to use the microphone", false);
         }
-        catch { return ("Unable to check", false); }
+        catch { return ("Couldn't check status", false); }
     }
 
     public static Task<(string, bool)> CheckLocationAsync()
@@ -190,17 +201,17 @@ internal static class SetupPermissionHelper
             using var sysKey = Registry.LocalMachine.OpenSubKey(
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location");
             if (sysKey?.GetValue("Value") is string sv && sv.Equals("Deny", StringComparison.OrdinalIgnoreCase))
-                return Task.FromResult(("Location services disabled", false));
+                return Task.FromResult(("Turn on in Settings to share location", false));
 
             using var userKey = Registry.CurrentUser.OpenSubKey(
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location");
             var uv = userKey?.GetValue("Value") as string;
             if (uv != null && uv.Equals("Deny", StringComparison.OrdinalIgnoreCase))
-                return Task.FromResult(("Disabled for this user", false));
+                return Task.FromResult(("Turn on in Settings to share location", false));
 
-            return Task.FromResult(("Location services enabled", true));
+            return Task.FromResult(("Windows location is on", true));
         }
-        catch { return Task.FromResult(("Unable to check", false)); }
+        catch { return Task.FromResult(("Couldn't check status", false)); }
     }
 
     public static Task<(string, bool)> CheckScreenCaptureAsync()
@@ -208,9 +219,9 @@ internal static class SetupPermissionHelper
         try
         {
             return Task.FromResult(GraphicsCaptureSession.IsSupported()
-                ? ("Available — uses picker per capture", true)
+                ? ("You choose what to share each capture", true)
                 : ("Not supported on this device", false));
         }
-        catch { return Task.FromResult(("Unable to check", false)); }
+        catch { return Task.FromResult(("Couldn't check status", false)); }
     }
 }
