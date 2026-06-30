@@ -339,7 +339,8 @@ public sealed class AppRefactorContractTests
         Assert.Contains("new SetupWindow()", source);
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
         Assert.Contains("ShowGatewayWizardAsync", source);
-        Assert.Contains("setupWindow.TryNavigateToWizard()", source);
+        Assert.Contains("setupWindow.NavigateToGatewayInstalledMilestone()", source);
+        Assert.DoesNotContain("setupWindow.TryNavigateToWizard()", source);
         Assert.Contains("CanNavigateToWizard", setupWindow);
         // Direct onboarding must not hijack an already-open setup window: it
         // only navigates a freshly created window so it cannot cancel an
@@ -356,6 +357,7 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("ResolveSetupEngineUiPath", source);
         Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);
         Assert.DoesNotContain("Process.GetProcessesByName(\"OpenClaw.SetupEngine.UI\")", source);
+        Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "SetupWizardWindow.cs")));
     }
 
     [Fact]
@@ -465,6 +467,20 @@ public sealed class AppRefactorContractTests
             "setupWindow is null or { IsClosed: true } || xamlRoot is null",
             "dialog.ShowAsync()",
             "setupWindow.NavigateToCapabilities()");
+    }
+
+    [Fact]
+    public void WizardErrorState_UsesMoreOptionsAndPreservesTranscriptOnGatewayRestart()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var showError = ExtractMethod(source, "ShowError");
+        var restart = ExtractMethod(source, "RestartGatewayAsync");
+
+        Assert.Contains("SecondaryButton.Visibility = Visibility.Collapsed", showError);
+        Assert.Contains("ShowRecoveryActions()", showError);
+        Assert.DoesNotContain("SecondaryButton.Content = \"Skip wizard\"", showError);
+        Assert.Contains("StartWizardAsync(clearTranscript: false)", restart);
     }
 
     [Fact]

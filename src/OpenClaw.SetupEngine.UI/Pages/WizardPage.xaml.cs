@@ -91,7 +91,7 @@ public sealed partial class WizardPage : Page
         _ = DisconnectAsync();
     }
 
-    private async Task StartWizardAsync()
+    private async Task StartWizardAsync(bool clearTranscript = true)
     {
         var generation = AdvanceOperationGeneration();
         try
@@ -109,7 +109,6 @@ public sealed partial class WizardPage : Page
             _totalProgressPolls = 0;
             _lastProgressStepId = "";
             _stepVisits.Clear();
-            TranscriptPanel.Children.Clear();
             SetBusy("Connecting to gateway...");
             _client = await ConnectClientAsync();
             _client.StatusChanged += OnWizardClientStatusChanged;
@@ -119,6 +118,8 @@ public sealed partial class WizardPage : Page
             if (generation != _operationGeneration)
                 return;
 
+            if (clearTranscript)
+                TranscriptPanel.Children.Clear();
             await ApplyPayloadAsync(payload);
         }
         catch (Exception ex)
@@ -1010,10 +1011,9 @@ public sealed partial class WizardPage : Page
         ErrorText.Visibility = Visibility.Visible;
         PrimaryButton.Content = "Start wizard again";
         PrimaryButton.IsEnabled = true;
-        SecondaryButton.Content = "Skip wizard";
-        SecondaryButton.IsEnabled = true;
-        SecondaryButton.Visibility = Visibility.Visible;
-        HideRecoveryActions();
+        SecondaryButton.IsEnabled = false;
+        SecondaryButton.Visibility = Visibility.Collapsed;
+        ShowRecoveryActions();
         MaybeShowGatewayRecovery();
     }
 
@@ -1025,9 +1025,8 @@ public sealed partial class WizardPage : Page
         // Invalidate in-flight wizard.next calls before tearing down the connection.
         AdvanceOperationGeneration();
         _errorState = true;
-        // Cancel the server-side wizard session before disconnecting so that
-        // subsequent retries (Start wizard again / Skip wizard) don't hit a
-        // "wizard already running" error from a lingering gateway session.
+        // Cancel the server-side wizard session before disconnecting so retries
+        // don't hit a "wizard already running" error from a lingering session.
         await CancelCurrentSessionAsync();
         ShowError(detail);
     }
@@ -1124,7 +1123,7 @@ public sealed partial class WizardPage : Page
             // onboarding) — we do NOT return to Welcome or re-install WSL. The
             // gateway restart wiped its wizard session, so this resumes at the
             // first config question rather than the exact step that failed.
-            await StartWizardAsync();
+            await StartWizardAsync(clearTranscript: false);
         }
         catch (Exception ex)
         {
@@ -1141,9 +1140,8 @@ public sealed partial class WizardPage : Page
         HideRecoveryActions();
         SetBusy("Skipping wizard...");
         await CancelCurrentSessionAsync();
-        // Windows permissions are collected inline on CapabilitiesPage (before install),
-        // so skipping the gateway wizard completes straight to the summary — same as the
-        // wizard's done branch. (The legacy PermissionsPage remains for the dev preview route.)
+        // Permissions were already collected before install, so skipping OpenClaw
+        // onboard completes straight to the summary.
         SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
     }
 
@@ -1162,9 +1160,6 @@ public sealed partial class WizardPage : Page
 
     private void ShowRecoveryActions()
     {
-        if (_errorState)
-            return;
-
         MoreOptionsButton.Visibility = Visibility.Visible;
         MoreOptionsButton.IsEnabled = true;
     }

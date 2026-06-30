@@ -3745,7 +3745,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (setupWindow == null)
             return;
 
-        // Only steer a freshly created setup window to the gateway wizard. An
+        // Only steer a freshly created setup window to the onboard handoff. An
         // already-open setup window may be mid-install on ProgressPage, whose
         // Unloaded handler cancels the running setup pipeline — navigating it
         // away would abort an in-progress install. In that case leave the
@@ -3759,8 +3759,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         await setupWindow.WaitForInitialContentReadyAsync();
         if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
         {
-            if (!setupWindow.TryNavigateToWizard())
-                Logger.Warn("Setup window is not ready for direct gateway wizard navigation; leaving current setup page visible");
+            setupWindow.NavigateToGatewayInstalledMilestone();
         }
     }
 
