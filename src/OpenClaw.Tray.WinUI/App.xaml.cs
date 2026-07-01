@@ -2672,6 +2672,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // if the user enabled "Read responses aloud".
         if (notification.IsChat && !string.IsNullOrEmpty(notification.Message))
         {
+            var speechText = notification.FullMessage ?? notification.Message;
+
             // Suppress TTS/voice overlay when the user has aborted the response.
             if (ChatProvider?.IsResponseSuppressed == true)
                 return;
@@ -2692,7 +2694,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             // TTS: read response aloud whenever the toggle is on (any chat surface).
             if (_settings?.VoiceTtsEnabled == true)
             {
-                _ = (_chatCoordinator?.SpeakResponseAsync(notification.Message) ?? Task.CompletedTask);
+                _ = (_chatCoordinator?.SpeakResponseAsync(speechText) ?? Task.CompletedTask);
             }
         }
 
