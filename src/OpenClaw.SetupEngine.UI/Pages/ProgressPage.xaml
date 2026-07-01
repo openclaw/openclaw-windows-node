@@ -80,6 +80,11 @@
                            Style="{StaticResource BodyTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                <TextBlock x:Name="MilestoneStatusText"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                           AutomationProperties.LiveSetting="Assertive"
+                           HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
             </StackPanel>
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"

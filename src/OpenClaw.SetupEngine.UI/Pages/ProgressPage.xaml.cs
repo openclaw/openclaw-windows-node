@@ -291,7 +291,10 @@ public sealed partial class ProgressPage : Page
 
     private void Onboard_Click(object sender, RoutedEventArgs e)
     {
-        SetupWindow.Active?.NavigateToWizard();
+        if (SetupWindow.Active?.TryNavigateToWizard() == true)
+            return;
+
+        MilestoneStatusText.Text = "Another setup task is still active. Wait for it to finish, then start OpenClaw onboard.";
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)

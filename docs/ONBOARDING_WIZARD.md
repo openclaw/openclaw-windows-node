@@ -19,7 +19,7 @@ The setup flow no longer configures remote/manual gateways. The Welcome page's *
 ## Screen Details
 
 ### Welcome
-Displays the OpenClaw lobster icon, app title, and a brief description. If an app-owned local WSL gateway already exists, the primary CTA reads **Install new WSL Gateway** and confirmation warns that the current OpenClaw WSL gateway and distro will be deleted. If only an external gateway exists, the CTA remains **Set up locally** and confirmation explains that the external connection remains available in Connections.
+Displays the OpenClaw icon, app title, and a brief description. If an app-owned local WSL gateway already exists, the primary CTA reads **Install new WSL Gateway** and confirmation warns that the current OpenClaw WSL gateway and distro will be deleted. If only an external gateway exists, the CTA remains **Set up locally** and confirmation explains that the external connection remains available in Connections.
 
 ### Local setup progress
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
@@ -87,16 +87,15 @@ Use a temp settings directory for tests that construct `SettingsManager`, or set
 
 | Path | Purpose |
 |------|---------|
-| `Onboarding/OnboardingWindow.cs` | Host window for the V2 setup shell |
-| `src/OpenClawTray.OnboardingV2/OnboardingV2App.cs` | V2 Functional UI root component and page navigation |
-| `src/OpenClawTray.OnboardingV2/OnboardingV2State.cs` | V2 shared setup state |
-| `Onboarding/GatewayWizard/GatewayWizardState.cs` | Host-owned state for the embedded gateway wizard |
-| `Onboarding/GatewayWizard/GatewayWizardPage.cs` | Embedded provider/model setup page inside V2 |
-| `Services/LocalGatewaySetup/SetupCodeDecoder.cs` | Base64url setup code parsing used from Connections |
-| `Onboarding/Services/InputValidator.cs` | Security input validation |
-| `Onboarding/Services/WizardStepParser.cs` | Wizard JSON step parsing |
-| `Onboarding/Services/LocalGatewayApprover.cs` | Local gateway URL classification |
-| `Onboarding/Services/PermissionChecker.cs` | Windows permission checks |
-| `Services/Connection/GatewayRegistry.cs` | Persistent gateway records and migration target |
-| `Services/Connection/GatewayConnectionManager.cs` | Operator/node connection lifecycle used by onboarding |
-| `Services/SetupExistingGatewayClassifier.cs` | Existing gateway classification for V2 Welcome and startup gating |
+| `src/OpenClaw.SetupEngine.UI/SetupWindow.xaml(.cs)` | Tray-hosted setup shell, run lock, preview routing, and page navigation |
+| `src/OpenClaw.SetupEngine.UI/Pages/SecurityNoticePage.xaml(.cs)` | First-run device-trust warning before setup choices |
+| `src/OpenClaw.SetupEngine.UI/Pages/WelcomePage.xaml(.cs)` | Install-new-WSL vs connect-existing choice and existing-gateway replacement prompt |
+| `src/OpenClaw.SetupEngine.UI/Pages/AdvancedSetupPage.xaml(.cs)` | Connect-existing handoff to Connection settings |
+| `src/OpenClaw.SetupEngine.UI/Pages/CapabilitiesPage.xaml(.cs)` | Capability profile, inline Windows permission status, and install review |
+| `src/OpenClaw.SetupEngine.UI/Pages/ProgressPage.xaml(.cs)` | WSL gateway install progress and gateway-installed handoff |
+| `src/OpenClaw.SetupEngine.UI/Pages/WizardPage.xaml(.cs)` | OpenClaw onboard provider/model/key wizard driven by gateway `wizard.*` frames |
+| `src/OpenClaw.SetupEngine.UI/Pages/CompletePage.xaml(.cs)` | Success, failure, log/help, and startup preference summary |
+| `src/OpenClaw.SetupEngine.UI/Pages/SetupPermissionHelper.cs` | Passive Windows permission checks and inline permission rows |
+| `src/OpenClaw.Connection/GatewayRegistry.cs` | Persistent gateway records and migration target |
+| `src/OpenClaw.Connection/GatewayConnectionManager.cs` | Operator/node connection lifecycle used by onboarding |
+| `src/OpenClaw.Tray.WinUI/Services/SetupExistingGatewayClassifier.cs` | Existing gateway classification for Welcome and startup gating |

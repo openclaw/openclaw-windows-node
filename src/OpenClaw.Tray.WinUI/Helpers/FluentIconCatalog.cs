@@ -73,7 +73,7 @@ public static class FluentIconCatalog
     public const string ChevronR = "\uE76C";       // ChevronRight
     public const string Check = "\uE73E";          // CheckMark
 
-    // ── Brand placeholder (lobster emoji currently retained) ───────
+    // ── Brand placeholder ──────────────────────────────────────────
     public const string Brand = "🦞";
 
     // ── Diagnostics page glyphs ────────────────────────────────────

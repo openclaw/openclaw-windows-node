@@ -8,7 +8,7 @@ namespace OpenClawTray.Helpers;
 
 /// <summary>
 /// Provides icon resources for the tray application.
-/// Creates dynamic status icons with lobster pixel art.
+/// Creates fallback dynamic status icons when packaged assets are unavailable.
 /// </summary>
 public static class IconHelper
 {
@@ -65,7 +65,7 @@ public static class IconHelper
         }
         else
         {
-            _appIcon = CreateLobsterIcon(Color.FromArgb(255, 99, 71)); // Lobster red
+            _appIcon = CreateFallbackStatusIcon(Color.FromArgb(255, 99, 71));
         }
 
         return _appIcon;
@@ -90,17 +90,16 @@ public static class IconHelper
                 ConnectionStatus.Error => Color.FromArgb(244, 67, 54),       // Red
                 _ => Color.FromArgb(158, 158, 158)                           // Gray
             };
-            cached = CreateLobsterIcon(color);
+            cached = CreateFallbackStatusIcon(color);
         }
 
         return cached;
     }
 
     /// <summary>
-    /// Creates a simple colored lobster icon programmatically.
-    /// Uses pixel art style matching the original WinForms version.
+    /// Creates a simple colored fallback status icon.
     /// </summary>
-    public static Icon CreateLobsterIcon(Color color)
+    public static Icon CreateFallbackStatusIcon(Color color)
     {
         const int size = 16;
         using var bitmap = new Bitmap(size, size);
@@ -108,13 +107,11 @@ public static class IconHelper
         
         g.Clear(Color.Transparent);
 
-        // Simple lobster silhouette (pixel art style)
         using var brush = new SolidBrush(color);
         
         // Body
         g.FillRectangle(brush, 6, 6, 4, 6);
         
-        // Claws
         g.FillRectangle(brush, 3, 4, 2, 2);
         g.FillRectangle(brush, 11, 4, 2, 2);
         g.FillRectangle(brush, 4, 6, 2, 2);

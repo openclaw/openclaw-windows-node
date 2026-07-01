@@ -115,12 +115,6 @@ public sealed partial class SetupWindow : Window
         return true;
     }
 
-    public void NavigateToWizard()
-    {
-        if (!TryNavigateToWizard())
-            throw new InvalidOperationException("Setup window is not ready to navigate to the gateway wizard.");
-    }
-
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
         => NavigateTo(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
 
