@@ -245,6 +245,20 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void TraySettingsConfig_UpdateAutoStartInSettingsFile_PreservesCapabilitySettings()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, """{"AutoStart": false, "NodeCameraEnabled": false, "NodeSystemRunEnabled": false}""");
+
+        TraySettingsConfig.UpdateAutoStartInSettingsFile(settingsPath, autoStart: true);
+
+        var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.True(result.RootElement.GetProperty("AutoStart").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeSystemRunEnabled").GetBoolean());
+    }
+
+    [Fact]
     public void TraySettingsConfig_CorruptExistingFile_BacksUpAndThrows()
     {
         var settingsPath = Path.Combine(_tempDir, "settings.json");

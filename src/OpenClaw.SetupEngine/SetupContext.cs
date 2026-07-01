@@ -226,8 +226,43 @@ public sealed class TraySettingsConfig
         AtomicFile.WriteAllText(settingsPath, json);
     }
 
+    public static void UpdateAutoStartInSettingsFile(string settingsPath, bool autoStart)
+    {
+        Dictionary<string, JsonElement>? existing = null;
+
+        if (File.Exists(settingsPath))
+        {
+            try
+            {
+                var content = File.ReadAllText(settingsPath);
+                existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(content, SetupConfig.JsonOptions);
+            }
+            catch (JsonException ex)
+            {
+                var backupPath = settingsPath + $".corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.bak";
+                File.Copy(settingsPath, backupPath, overwrite: false);
+                throw new InvalidDataException($"settings.json is corrupt; backed up to {backupPath}", ex);
+            }
+        }
+
+        var settings = new Dictionary<string, object>();
+        if (existing != null)
+        {
+            foreach (var kvp in existing)
+                settings[kvp.Key] = kvp.Value;
+        }
+
+        settings["AutoStart"] = autoStart;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+        var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);
+        AtomicFile.WriteAllText(settingsPath, json);
+    }
+
     public void ApplyCapabilities(CapabilitiesConfig capabilities)
     {
+        // Device info has no independent runtime setting; it is always registered
+        // when node mode is enabled.
         NodeSystemRunEnabled = capabilities.System;
         NodeCanvasEnabled = capabilities.Canvas;
         NodeScreenEnabled = capabilities.Screen;

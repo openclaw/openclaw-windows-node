@@ -261,11 +261,11 @@ public sealed class AppRefactorContractTests
         var method = ExtractMethod(source, "RequestSetupCompleted");
 
         Assert.Contains("_config.Settings.AutoStart = enableAutoStart", method);
-        Assert.Contains("_config.Settings.MergeIntoSettingsFile", method);
+        Assert.Contains("TraySettingsConfig.UpdateAutoStartInSettingsFile", method);
         AssertInOrder(
             method,
             "_config.Settings.AutoStart = enableAutoStart",
-            "_config.Settings.MergeIntoSettingsFile",
+            "TraySettingsConfig.UpdateAutoStartInSettingsFile",
             "handler.Invoke");
     }
 
