@@ -1358,6 +1358,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
+            if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, nodeGeneration))
+                return false;
+
             _stateMachine.SetNodeCredentialSource(nodeCredential.Source);
         }
         finally
@@ -1398,6 +1401,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             _logger.Error($"[ConnMgr] Node connect failed: {ex.Message}");
             _diagnostics.Record("node", "Node connect failed", ex.Message);
+            await BlockNodeStartAsync(
+                $"Node connect failed: {ex.Message}",
+                cancellationToken,
+                expectedLifecycleGeneration,
+                nodeGeneration);
+            return false;
         }
 
         return !cancellationToken.IsCancellationRequested &&

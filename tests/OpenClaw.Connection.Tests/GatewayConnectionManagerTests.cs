@@ -474,6 +474,40 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task HandshakeSucceeded_NodeConnectorThrows_ReportsBlockedNode()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            ConnectAction = (_, _) => throw new InvalidOperationException("connector boom")
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Equal(1, nodeConnector.ConnectCount);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Contains("connector boom", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(snapshots, snapshot =>
+            snapshot.NodeState == RoleConnectionState.Error &&
+            snapshot.NodeError?.Contains("connector boom", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.NotEqual(RoleConnectionState.Connecting, snapshots.Last().NodeState);
+    }
+
+    [Fact]
     public async Task BlockNodeStartAsync_StaleLifecycleGeneration_DoesNotOverwriteCurrentSnapshot()
     {
         SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
