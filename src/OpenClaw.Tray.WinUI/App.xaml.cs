@@ -1247,8 +1247,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Title = title,
             Content = body,
             PrimaryButtonText = actionLabel,
-            CloseButtonText = LocalizationHelper.GetString("CancelButton.Content"),
-            DefaultButton = ContentDialogButton.Close,
+            CloseButtonText = LocalizationHelper.GetString("SessionActionPrompt_CancelLabel"),
+            DefaultButton = ContentDialogButton.None,
             XamlRoot = root.XamlRoot
         };
         var result = await dialog.ShowAsync();

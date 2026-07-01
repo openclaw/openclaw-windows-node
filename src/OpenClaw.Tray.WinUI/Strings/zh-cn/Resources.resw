@@ -4768,6 +4768,9 @@
   <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
     <value>重置</value>
   </data>
+  <data name="SessionActionPrompt_CancelLabel" xml:space="preserve">
+    <value>取消</value>
+  </data>
   <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
     <value>压缩会话日志？</value>
   </data>

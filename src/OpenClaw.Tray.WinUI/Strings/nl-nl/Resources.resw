@@ -4769,6 +4769,9 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
     <value>Resetten</value>
   </data>
+  <data name="SessionActionPrompt_CancelLabel" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
   <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
     <value>Sessielog compact maken?</value>
   </data>

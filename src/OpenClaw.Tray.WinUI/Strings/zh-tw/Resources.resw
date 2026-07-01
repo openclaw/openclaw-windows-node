@@ -4768,6 +4768,9 @@
   <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
     <value>重設</value>
   </data>
+  <data name="SessionActionPrompt_CancelLabel" xml:space="preserve">
+    <value>取消</value>
+  </data>
   <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
     <value>壓縮工作階段記錄？</value>
   </data>
