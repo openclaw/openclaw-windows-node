@@ -211,8 +211,37 @@ public class SetupConfigTests : IDisposable
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
         Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
         Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
-        Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
         Assert.Equal("custom_value", result.RootElement.GetProperty("CustomKey").GetString());
+    }
+
+    [Fact]
+    public void TraySettingsConfig_ApplyCapabilities_MapsSetupCapabilitiesToRuntimeNodeSettings()
+    {
+        var caps = new CapabilitiesConfig
+        {
+            System = false,
+            Canvas = true,
+            Screen = true,
+            Camera = false,
+            Location = false,
+            Browser = false,
+            Device = true,
+            Tts = true,
+            Stt = false,
+        };
+
+        var traySettings = new TraySettingsConfig();
+        traySettings.ApplyCapabilities(caps);
+
+        Assert.False(traySettings.NodeSystemRunEnabled);
+        Assert.True(traySettings.NodeCanvasEnabled);
+        Assert.True(traySettings.NodeScreenEnabled);
+        Assert.False(traySettings.NodeCameraEnabled);
+        Assert.False(traySettings.NodeLocationEnabled);
+        Assert.False(traySettings.NodeBrowserProxyEnabled);
+        Assert.True(traySettings.NodeTtsEnabled);
+        Assert.False(traySettings.NodeSttEnabled);
     }
 
     [Fact]

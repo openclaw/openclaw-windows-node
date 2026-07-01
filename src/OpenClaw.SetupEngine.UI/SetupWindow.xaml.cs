@@ -158,6 +158,17 @@ public sealed partial class SetupWindow : Window
         if (handler == null)
             return false;
 
+        try
+        {
+            _config.Settings.AutoStart = enableAutoStart;
+            _config.Settings.MergeIntoSettingsFile(Path.Combine(SetupContext.ResolveDataDir(), "settings.json"));
+        }
+        catch (Exception ex)
+        {
+            NavigateToComplete(false, TimeSpan.Zero, null, $"Setup completed, but saving your startup preference failed: {ex.Message}");
+            return true;
+        }
+
         handler.Invoke(this, new SetupCompletedEventArgs(enableAutoStart));
         return true;
     }

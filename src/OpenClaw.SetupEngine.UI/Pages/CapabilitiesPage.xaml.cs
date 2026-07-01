@@ -152,7 +152,8 @@ public sealed partial class CapabilitiesPage : Page
 
     private void WriteCapabilities()
     {
-        var caps = _config!.Capabilities;
+        var config = _config!;
+        var caps = config.Capabilities;
         foreach (var (key, _, _, _) in Capabilities)
         {
             if (_toggles.TryGetValue(key, out var toggle))
@@ -161,6 +162,7 @@ public sealed partial class CapabilitiesPage : Page
                 prop?.SetValue(caps, toggle.IsOn);
             }
         }
+        config.Settings.ApplyCapabilities(caps);
     }
 
     private string ProfileSummary()
