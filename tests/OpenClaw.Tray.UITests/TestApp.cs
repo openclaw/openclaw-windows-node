@@ -1,6 +1,9 @@
 using System;
+using System.Threading;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Markup;
+using Microsoft.UI.Xaml.Media;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -20,6 +23,27 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 internal sealed class TestApp : Application
 {
+    private static readonly (string Key, Windows.UI.Color Color)[] FluentBrushFallbacks =
+    [
+        ("SolidBackgroundFillColorBaseBrush", Colors.White),
+        ("LayerFillColorDefaultBrush", Colors.White),
+        ("CardBackgroundFillColorDefaultBrush", Colors.White),
+        ("CardStrokeColorDefaultBrush", ColorHelper.FromArgb(0x33, 0x00, 0x00, 0x00)),
+        ("ControlFillColorTertiaryBrush", ColorHelper.FromArgb(0x0F, 0x00, 0x00, 0x00)),
+        ("ControlStrokeColorDefaultBrush", ColorHelper.FromArgb(0x33, 0x00, 0x00, 0x00)),
+        ("SubtleFillColorSecondaryBrush", ColorHelper.FromArgb(0x0F, 0x00, 0x00, 0x00)),
+        ("SubtleFillColorTertiaryBrush", ColorHelper.FromArgb(0x14, 0x00, 0x00, 0x00)),
+        ("AccentFillColorDefaultBrush", ColorHelper.FromArgb(0xFF, 0x00, 0x66, 0xCC)),
+        ("AccentFillColorSecondaryBrush", ColorHelper.FromArgb(0xCC, 0x00, 0x66, 0xCC)),
+        ("TextFillColorPrimaryBrush", Colors.Black),
+        ("TextFillColorSecondaryBrush", ColorHelper.FromArgb(0xE3, 0x00, 0x00, 0x00)),
+        ("TextFillColorTertiaryBrush", ColorHelper.FromArgb(0x99, 0x00, 0x00, 0x00)),
+        ("TextOnAccentFillColorPrimaryBrush", Colors.White),
+        ("SystemFillColorSuccessBrush", ColorHelper.FromArgb(0xFF, 0x0F, 0x7B, 0x0F)),
+        ("SystemFillColorCautionBrush", ColorHelper.FromArgb(0xFF, 0x9D, 0x5D, 0x00)),
+        ("SystemFillColorCriticalBrush", ColorHelper.FromArgb(0xFF, 0xC4, 0x2B, 0x1C)),
+    ];
+
     /// <summary>
     /// Merge XamlControlsResources + the production App.xaml's custom keys
     /// (LobsterAccentBrush, AccentButtonStyle) so renderers that look them up
@@ -28,9 +52,14 @@ internal sealed class TestApp : Application
     /// </summary>
     public void MergeStandardResources()
     {
+        if (!TryGetResources(out var resources))
+        {
+            return;
+        }
+
         try
         {
-            Resources.MergedDictionaries.Add(new Microsoft.UI.Xaml.Controls.XamlControlsResources());
+            resources.MergedDictionaries.Add(new Microsoft.UI.Xaml.Controls.XamlControlsResources());
         }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
@@ -39,22 +68,65 @@ internal sealed class TestApp : Application
             // going — the renderers degrade gracefully without theme styles.
         }
 
-        TryAddResource("LobsterAccentBrush",
+        TryAddResource(resources, "LobsterAccentBrush",
             "<SolidColorBrush xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Color='#E74C3C' />");
 
-        TryAddResource("AccentButtonStyle",
+        TryAddResource(resources, "AccentButtonStyle",
             "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' " +
             "TargetType='Button'>" +
             "<Setter Property='Foreground' Value='White' />" +
             "<Setter Property='CornerRadius' Value='4' />" +
             "</Style>");
+
+        EnsureFluentBrushFallbacks(resources);
     }
 
-    private void TryAddResource(string key, string xaml)
+    internal static void EnsureFluentBrushFallbacks(ResourceDictionary resources)
+    {
+        foreach (var (key, color) in FluentBrushFallbacks)
+        {
+            TryAddBrushResource(resources, key, color);
+        }
+    }
+
+    private bool TryGetResources(out ResourceDictionary resources)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                resources = Resources;
+                return true;
+            }
+            // slopwatch-ignore: SW003 Test fixture resource setup is best-effort and must not hide the test outcome.
+            catch
+            {
+                Thread.Sleep(10);
+            }
+        }
+
+        resources = null!;
+        return false;
+    }
+
+    private static void TryAddResource(ResourceDictionary resources, string key, string xaml)
     {
         try
         {
-            Resources[key] = XamlReader.Load(xaml);
+            resources[key] = XamlReader.Load(xaml);
+        }
+        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+        catch
+        {
+            // best-effort; missing key just means renderers fall back.
+        }
+    }
+
+    private static void TryAddBrushResource(ResourceDictionary resources, string key, Windows.UI.Color color)
+    {
+        try
+        {
+            resources[key] = new SolidColorBrush(color);
         }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         catch
