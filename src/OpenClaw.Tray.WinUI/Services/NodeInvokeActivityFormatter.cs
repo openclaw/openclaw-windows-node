@@ -31,7 +31,8 @@ internal static class NodeInvokeActivityFormatter
         if (string.IsNullOrEmpty(command)) return Metadata;
 
         if (command.StartsWith("stt.", StringComparison.OrdinalIgnoreCase) ||
-            command.StartsWith("tts.", StringComparison.OrdinalIgnoreCase))
+            command.StartsWith("tts.", StringComparison.OrdinalIgnoreCase) ||
+            command.StartsWith("app.chat.", StringComparison.OrdinalIgnoreCase))
         {
             return PrivacySensitive;
         }

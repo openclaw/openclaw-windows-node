@@ -364,6 +364,33 @@ Build the same gateway dashboard URL the tray opens.
 ```
 Returns `{ url, credentialSource, usesSharedGatewayToken, hasTokenQuery }`.
 
+### app.chat.snapshot
+Read the current native chat snapshot for local automation and diagnostics.
+**READ-ALL:** returns recent chat text from the selected timeline.
+```
+{"threadId": "string"}       // optional; "sessionKey" alias also accepted
+```
+Returns `{ connectionStatus, defaultThreadId, composeTarget, threads, selectedTimeline }`.
+
+### app.chat.send
+Send a message through the same native chat provider used by the Chat UI.
+```
+{
+  "message": "string",       // required
+  "threadId": "string"       // optional; defaults to compose/default thread
+}
+```
+Returns `{ sent, threadId, entryCount, turnActive, error? }`.
+
+### app.chat.reset
+Reset the target chat session through the gateway `sessions.reset` path.
+```
+{"threadId": "string"}       // optional; "sessionKey" alias also accepted
+```
+When `threadId`/`sessionKey` is omitted this resets the current compose/default
+thread, which usually means the active chat session. Returns `{ reset, threadId,
+error? }`.
+
 ## Location (location.*)
 
 ### location.get

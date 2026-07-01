@@ -274,6 +274,12 @@ public class McpToolBridge
             "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
         ["app.dashboard.url"] =
             "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }.",
+        ["app.chat.snapshot"] =
+            "READ-ALL: Return the current native chat snapshot for local automation. Args: threadId/sessionKey (string, optional). Returns connection state, compose target, thread summaries, and recent timeline entries including chat text.",
+        ["app.chat.send"] =
+            "Send a message through the native chat provider. Args: message (string, required), threadId/sessionKey (string, optional; defaults to the current compose/default thread). Returns { sent, threadId, entryCount, turnActive, error? }.",
+        ["app.chat.reset"] =
+            "Reset a chat session through the gateway sessions.reset path. Args: threadId/sessionKey (string, optional; defaults to the current compose/default thread, so no-arg reset clears the active chat). Returns { reset, threadId, error? }.",
 
         // location.*
         ["location.get"] =

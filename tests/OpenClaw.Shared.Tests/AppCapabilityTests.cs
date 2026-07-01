@@ -27,7 +27,8 @@ public class AppCapabilityTests
     {
         var cap = new AppCapability(NullLogger.Instance);
         var expected = new[] { "app.navigate", "app.status", "app.sessions", "app.agents",
-            "app.nodes", "app.config.get", "app.settings.get", "app.settings.set", "app.menu", "app.search" };
+            "app.nodes", "app.config.get", "app.settings.get", "app.settings.set", "app.menu", "app.search",
+            "app.dashboard.url", "app.chat.snapshot", "app.chat.send", "app.chat.reset" };
         foreach (var cmd in expected)
         {
             Assert.Contains(cmd, cap.Commands);
@@ -91,5 +92,75 @@ public class AppCapabilityTests
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Unknown", res.Error);
+    }
+
+    [Fact]
+    public async Task ChatSend_WithHandler_SendsMessageToDefaultThread()
+    {
+        var cap = new AppCapability(NullLogger.Instance);
+        string? capturedThreadId = "unset";
+        string? capturedMessage = null;
+        cap.ChatSendHandler = (threadId, message) =>
+        {
+            capturedThreadId = threadId;
+            capturedMessage = message;
+            return Task.FromResult<object?>(new { sent = true });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.chat.send",
+            Args = ParseArgs("{\"message\":\"hello\"}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        Assert.Null(capturedThreadId);
+        Assert.Equal("hello", capturedMessage);
+    }
+
+    [Fact]
+    public async Task ChatSend_WithSessionKeyAlias_ForwardsThreadId()
+    {
+        var cap = new AppCapability(NullLogger.Instance);
+        string? capturedThreadId = null;
+        cap.ChatSendHandler = (threadId, message) =>
+        {
+            capturedThreadId = threadId;
+            return Task.FromResult<object?>(new { sent = true, message });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.chat.send",
+            Args = ParseArgs("{\"sessionKey\":\"agent:main:default\",\"message\":\"hello\"}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        Assert.Equal("agent:main:default", capturedThreadId);
+    }
+
+    [Fact]
+    public async Task ChatSend_WithoutMessage_ReturnsError()
+    {
+        var cap = new AppCapability(NullLogger.Instance);
+        cap.ChatSendHandler = (_, _) => Task.FromResult<object?>(new { sent = true });
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.chat.send",
+            Args = ParseArgs("{}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Contains("message", res.Error);
     }
 }
