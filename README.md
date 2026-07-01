@@ -33,6 +33,8 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 > **End-user installer?** Download the latest stable x64 or ARM64 installer from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows), or see [docs/SETUP.md](docs/SETUP.md) for step-by-step installation (no build required).
 >
 > **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for editing `openclaw.json` as the `openclaw` user and using root for protected-file administration.
+>
+> **Operator or node?** Start with [Operator and node concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the beginner-facing glossary of gateway, operator, node, pairing, reapproval, and allowlisted node capabilities.
 
 Direct downloads from the latest OpenClaw Windows release:
 
@@ -217,6 +219,8 @@ These features are available in Windows but not in the Mac app:
 | First-run onboarding | 6-screen guided setup wizard (Welcome → Connection → Wizard → Permissions → Chat → Ready) |
 
 ### 🔌 Node Mode (Agent Control)
+
+If the operator/node split is new to you, read [Operator and node concepts](docs/OPERATOR_NODE_CONCEPTS.md) before enabling Node Mode.
 
 When Node Mode is enabled in Settings, your Windows PC becomes a **node** that the OpenClaw agent can control - just like the Mac app! The agent can:
 
