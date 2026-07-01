@@ -224,6 +224,7 @@ public sealed class AppRefactorContractTests
         Assert.Contains("CanNavigateToGatewayInstalledMilestone", setupWindow);
         Assert.Contains("RootFrame.Content is not ProgressPage { IsPipelineRunning: true }", setupWindow);
         Assert.Contains("TryNavigateToGatewayInstalledMilestone", setupWindow);
+        Assert.Contains("setupWindow.TryNavigateToGatewayInstalledMilestone()", source);
         AssertInOrder(
             setupWindow,
             "SetupRunLock.TryAcquire",
@@ -234,7 +235,6 @@ public sealed class AppRefactorContractTests
         // must not cancel an in-progress install running on ProgressPage.
         Assert.Contains("EnsureSetupWindowAsync", source);
         Assert.Contains("if (!createdNew)", source);
-        Assert.Contains("setupWindow.TryNavigateToGatewayInstalledMilestone()", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
@@ -310,6 +310,8 @@ public sealed class AppRefactorContractTests
             method,
             "prop?.SetValue(caps, toggle.IsOn)",
             "config.Settings.ApplyCapabilities(caps)");
+        Assert.Contains("_config.UsesBundledDefaultConfig", source);
+        Assert.Contains("!(_config?.UsesBundledDefaultConfig ?? false)", source);
     }
 
     [Fact]
