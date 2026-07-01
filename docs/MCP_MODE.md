@@ -100,12 +100,12 @@ public bool EnableNodeMode { get; set; }      // open WebSocket to gateway
 public bool EnableMcpServer { get; set; }     // run local MCP HTTP server
 ```
 
-| `EnableNodeMode` | `EnableMcpServer` | Result |
+| `EnableNodeMode` | `EnableMcpServer` | Behavior |
 |---|---|---|
-| off | off | Operator-only (legacy default) |
-| off | on | **MCP server only, no gateway** |
-| on | off | Gateway node, no MCP |
-| on | on | Gateway node + MCP |
+| false | false | Operator-only (legacy default) |
+| false | true | **MCP server only, no gateway** |
+| true | false | Gateway node, no MCP |
+| true | true | Gateway node + MCP |
 
 Settings UI exposes both toggles in the Advanced section, with the live MCP endpoint URL and current status (`Listening` / `Stopped — save and restart to start` / `Disabled`).
 

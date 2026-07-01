@@ -6,7 +6,7 @@
     Builds all projects, checks prerequisites, and provides clear guidance.
 
 .PARAMETER Project
-    Which project to build: All, Tray, WinUI, Shared, Cli
+    Which project to build: All, Tray, WinUI, Shared, Cli, WinNodeCli, SetupEngine
     Default: All
 
 .PARAMETER Configuration

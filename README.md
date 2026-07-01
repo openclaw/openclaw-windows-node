@@ -21,8 +21,12 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 | Project | Description |
 |---------|-------------|
 | **OpenClaw.Tray.WinUI** | System tray application (WinUI 3) for quick access to OpenClaw |
-| **OpenClaw.Shared** | Shared gateway client library |
+| **OpenClaw.Connection** | Gateway registry, credential resolution, and connection manager |
+| **OpenClaw.Shared** | Shared gateway client library, capabilities, and MCP bridge |
+| **OpenClaw.Chat** | Native chat model and timeline reducer |
 | **OpenClaw.Cli** | CLI validator for WebSocket connect/send/probe using tray settings |
+| **OpenClaw.WinNode.Cli** | `winnode` CLI for invoking local Windows node/MCP capabilities |
+| **OpenClaw.SetupEngine** | Local gateway setup, WSL installation, and setup-code support |
 
 ## 🚀 Quick Start
 
@@ -30,11 +34,11 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 >
 > **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for editing `openclaw.json` as the `openclaw` user and using root for protected-file administration.
 
-Direct downloads from the latest OpenClaw release:
+Direct downloads from the latest OpenClaw Windows release:
 
-- [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-x64.exe)
-- [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-arm64.exe)
-- [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt)
+- [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-x64.exe)
+- [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-arm64.exe)
+- [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt)
 
 ### Prerequisites
 - Windows 10 (20H2+) or Windows 11
@@ -53,6 +57,9 @@ Use the setup script to install or verify local Windows build prerequisites:
 
 # Check only; do not install packages or change git safe.directory
 .\scripts\setup-dev.ps1 -CheckOnly
+
+# Install/verify prerequisites without adding the checkout to git safe.directory
+.\scripts\setup-dev.ps1 -NoTrustRepository
 
 # Setup and run the required build/test validation
 .\scripts\setup-dev.ps1 -RunValidation

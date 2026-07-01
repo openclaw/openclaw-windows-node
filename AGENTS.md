@@ -13,6 +13,8 @@ Required steps:
 3. Run tray tests:
    - `dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore`
 
+This is the required local closeout subset for agents. CI also builds and runs additional connection, setup, CLI, UI, integration, and E2E suites; see `docs/TEST_COVERAGE.md` for the broader inventory.
+
 If a command fails:
 
 1. Fix the issue.
