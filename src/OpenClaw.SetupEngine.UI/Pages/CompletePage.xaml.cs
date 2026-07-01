@@ -17,7 +17,6 @@ public sealed partial class CompletePage : Page
     public CompletePage()
     {
         InitializeComponent();
-        Loaded += OnLoaded;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -30,6 +29,8 @@ public sealed partial class CompletePage : Page
             {
                 SuccessIcon.Visibility = Visibility.Visible;
                 FailureIcon.Visibility = Visibility.Collapsed;
+                StartupToggle.IsOn = args.DefaultAutoStart;
+                StartupRow.Visibility = args.ShowStartupPreference ? Visibility.Visible : Visibility.Collapsed;
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
                 ErrorCard.Visibility = Visibility.Collapsed;
@@ -90,12 +91,6 @@ public sealed partial class CompletePage : Page
             return null;
 
         return Uri.TryCreate(match.Value, UriKind.Absolute, out var uri) ? uri : null;
-    }
-
-    private void OnLoaded(object sender, RoutedEventArgs e)
-    {
-        // Default "launch at startup" to on — most users want OpenClaw ready after reboot.
-        StartupToggle.IsOn = true;
     }
 
     private void LaunchButton_Click(object sender, RoutedEventArgs e)
