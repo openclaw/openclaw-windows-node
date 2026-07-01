@@ -61,11 +61,11 @@ public sealed partial class CapabilitiesPage : Page
         var profileIndex = DetectProfileIndex();
         ProfileRadio.SelectedIndex = profileIndex;
         _suppressProfile = false;
-        // BuildToggles() seeded the toggles from the config (the shipped default has every
-        // capability on). When we fall back to the recommended Standard default — i.e. the
-        // config didn't exactly match Read-only or Standard — apply Standard so the toggles
-        // (and the capabilities we install) match the selected radio instead of staying Full.
-        if (profileIndex == 1 && !MatchesProfile(ProfileStandard))
+        // BuildToggles() seeded the toggles from the config. The bundled
+        // default-config.json still ships with every capability on as a
+        // placeholder, so default that implicit case to Standard. Explicit
+        // custom configs are preserved even when they do not match a preset.
+        if (_config.UsesBundledDefaultConfig && profileIndex == 1 && !MatchesProfile(ProfileStandard))
             ApplyProfile(1);
         // Only probe OS permissions when the permissions step will actually be shown.
         if (!_skipPermissions)
@@ -337,9 +337,12 @@ public sealed partial class CapabilitiesPage : Page
     {
         if (MatchesProfile(ProfileReadOnly)) return 0;
         if (MatchesProfile(ProfileStandard)) return 1;
-        // An "all capabilities on" config is the shipped placeholder default, not a
-        // deliberate Full-access choice, so we don't auto-select Full here. New users
-        // default to Standard (recommended) — the least-surprising, safer starting point.
+        if (MatchesProfile(Capabilities.Select(c => c.Key).ToArray()) && !(_config?.UsesBundledDefaultConfig ?? false))
+            return 2;
+
+        // An "all capabilities on" bundled config is the shipped placeholder
+        // default, not a deliberate Full-access choice, so new users default to
+        // Standard (recommended) — the least-surprising, safer starting point.
         return 1;
     }
 

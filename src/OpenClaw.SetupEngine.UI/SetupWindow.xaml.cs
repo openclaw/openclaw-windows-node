@@ -53,7 +53,8 @@ public sealed partial class SetupWindow : Window
 
         // Load config: explicit --config arg, or bundled default-config.json (required)
         var args = Environment.GetCommandLineArgs();
-        configPath ??= GetArg(args, "--config");
+        var explicitConfigPath = configPath ?? GetArg(args, "--config");
+        configPath = explicitConfigPath;
         if (configPath == null)
         {
             var defaultPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
@@ -75,6 +76,7 @@ public sealed partial class SetupWindow : Window
         }
 
         _config = SetupConfig.LoadFromFile(configPath);
+        _config.UsesBundledDefaultConfig = explicitConfigPath == null;
         _config = SetupConfig.FromEnvironment(_config);
         GatewayLkgVersion.ApplyToConfig(_config);
         _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));

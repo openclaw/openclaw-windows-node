@@ -24,6 +24,8 @@ public sealed class SetupConfig
     public string? GatewayUrl { get; set; }
     public string? BootstrapToken { get; set; }
     public Dictionary<string, string>? WizardAnswers { get; set; }
+    [JsonIgnore]
+    public bool UsesBundledDefaultConfig { get; set; }
 
     // Nested config sections — everything is configurable
     public WslConfig Wsl { get; set; } = new();

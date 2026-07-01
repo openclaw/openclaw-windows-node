@@ -245,6 +245,18 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void SetupConfig_UsesBundledDefaultConfig_IsRuntimeOnly()
+    {
+        var config = new SetupConfig { UsesBundledDefaultConfig = true };
+        var path = Path.Combine(_tempDir, "config.json");
+
+        File.WriteAllText(path, JsonSerializer.Serialize(config, SetupConfig.JsonWriteOptions));
+        var roundTripped = SetupConfig.LoadFromFile(path);
+
+        Assert.False(roundTripped.UsesBundledDefaultConfig);
+    }
+
+    [Fact]
     public void TraySettingsConfig_UpdateAutoStartInSettingsFile_PreservesCapabilitySettings()
     {
         var settingsPath = Path.Combine(_tempDir, "settings.json");
