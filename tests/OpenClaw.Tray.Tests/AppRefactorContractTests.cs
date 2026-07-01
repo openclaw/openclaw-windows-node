@@ -413,6 +413,7 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ShowStartupPreference: _showStartupPreferenceOnComplete", navigate);
         Assert.Contains("StartupToggle.IsOn = args.DefaultAutoStart", complete);
         Assert.Contains("StartupRow.Visibility = args.ShowStartupPreference ? Visibility.Visible : Visibility.Collapsed", complete);
+        Assert.Contains("StartupRow.Visibility == Visibility.Visible && StartupToggle.IsOn", complete);
         Assert.DoesNotContain("StartupToggle.IsOn = true", complete);
     }
 
