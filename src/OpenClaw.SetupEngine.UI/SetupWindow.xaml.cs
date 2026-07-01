@@ -25,6 +25,10 @@ public sealed partial class SetupWindow : Window
     public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
     public bool IsClosed => _isClosed;
     public bool CanNavigateToWizard => !_isClosed && _setupLock is not null;
+    public bool CanNavigateToGatewayInstalledMilestone =>
+        !_isClosed &&
+        _setupLock is not null &&
+        RootFrame.Content is not ProgressPage { IsPipelineRunning: true };
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -115,6 +119,17 @@ public sealed partial class SetupWindow : Window
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), _config);
     public void NavigateToGatewayInstalledMilestone() =>
         NavigateTo(typeof(ProgressPage), new ProgressPageArgs(_config, ShowMilestoneOnly: true));
+
+    public bool TryNavigateToGatewayInstalledMilestone()
+    {
+        if (!CanNavigateToGatewayInstalledMilestone)
+            return false;
+
+        _persistStartupPreferenceOnComplete = false;
+        _showStartupPreferenceOnComplete = false;
+        NavigateToGatewayInstalledMilestone();
+        return true;
+    }
 
     public bool TryNavigateToWizard(bool back = false)
     {

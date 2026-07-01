@@ -24,6 +24,8 @@ public sealed partial class ProgressPage : Page
     private bool _pipelineFinished;
     private const int MaxLogLines = 200;
 
+    internal bool IsPipelineRunning => _runCts != null && !_pipelineFinished;
+
     // Map pipeline step IDs to display groups (N:1)
     private static readonly (string GroupId, string DisplayName, string[] StepIds)[] StepGroups =
     [

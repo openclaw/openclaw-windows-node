@@ -191,9 +191,7 @@ public sealed class TraySettingsConfig
             }
             catch (JsonException ex)
             {
-                var backupPath = settingsPath + $".corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.bak";
-                File.Copy(settingsPath, backupPath, overwrite: false);
-                throw new InvalidDataException($"settings.json is corrupt; backed up to {backupPath}", ex);
+                throw BackupCorruptSettingsFile(settingsPath, ex);
             }
         }
 
@@ -239,9 +237,7 @@ public sealed class TraySettingsConfig
             }
             catch (JsonException ex)
             {
-                var backupPath = settingsPath + $".corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.bak";
-                File.Copy(settingsPath, backupPath, overwrite: false);
-                throw new InvalidDataException($"settings.json is corrupt; backed up to {backupPath}", ex);
+                throw BackupCorruptSettingsFile(settingsPath, ex);
             }
         }
 
@@ -271,6 +267,13 @@ public sealed class TraySettingsConfig
         NodeBrowserProxyEnabled = capabilities.Browser;
         NodeTtsEnabled = capabilities.Tts;
         NodeSttEnabled = capabilities.Stt;
+    }
+
+    private static InvalidDataException BackupCorruptSettingsFile(string settingsPath, JsonException ex)
+    {
+        var backupPath = settingsPath + $".corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}.bak";
+        File.Copy(settingsPath, backupPath, overwrite: false);
+        return new InvalidDataException($"settings.json is corrupt; backed up to {backupPath}", ex);
     }
 }
 

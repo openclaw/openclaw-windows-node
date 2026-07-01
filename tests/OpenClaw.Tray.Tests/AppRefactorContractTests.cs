@@ -221,17 +221,20 @@ public sealed class AppRefactorContractTests
         Assert.Contains("startAtGatewayInstalledMilestone", setupWindow);
         Assert.Contains("_persistStartupPreferenceOnComplete = false", setupWindow);
         Assert.Contains("_showStartupPreferenceOnComplete = false", setupWindow);
+        Assert.Contains("CanNavigateToGatewayInstalledMilestone", setupWindow);
+        Assert.Contains("RootFrame.Content is not ProgressPage { IsPipelineRunning: true }", setupWindow);
+        Assert.Contains("TryNavigateToGatewayInstalledMilestone", setupWindow);
         AssertInOrder(
             setupWindow,
             "SetupRunLock.TryAcquire",
             "if (startAtGatewayInstalledMilestone)",
             "NavigateToGatewayInstalledMilestone()");
         Assert.Contains("CanNavigateToWizard", setupWindow);
-        // Direct onboarding must not hijack an already-open setup window: it
-        // only navigates a freshly created window so it cannot cancel an
-        // in-progress install running on ProgressPage.
+        // Direct onboarding may reuse an already-open idle setup window, but
+        // must not cancel an in-progress install running on ProgressPage.
         Assert.Contains("EnsureSetupWindowAsync", source);
         Assert.Contains("if (!createdNew)", source);
+        Assert.Contains("setupWindow.TryNavigateToGatewayInstalledMilestone()", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
@@ -322,6 +325,18 @@ public sealed class AppRefactorContractTests
         Assert.Contains("new InfoBar", build);
         Assert.Contains("Couldn't read Windows permission status", build);
         Assert.Contains("Review permissions later in Settings", build);
+    }
+
+    [Fact]
+    public void WizardSecondaryButton_DoesNotSkipEntireWizardInErrorState()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var method = ExtractMethod(source, "SecondaryClickAsync");
+
+        Assert.DoesNotContain("_errorState", method);
+        Assert.DoesNotContain("SkipWizardAsync", method);
+        Assert.Contains("SendCurrentAnswerAsync(skip: true)", method);
     }
 
     [Fact]
