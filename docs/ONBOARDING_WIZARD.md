@@ -1,20 +1,22 @@
 # Onboarding Wizard
 
-The onboarding wizard is now the V2 setup flow for installing a new app-owned local WSL gateway on Windows.
+The onboarding wizard installs a new app-owned local WSL gateway on Windows and then runs OpenClaw onboard.
 
 ## Overview
 
 On first launch, the wizard appears only when there is no usable saved gateway connection. Users with existing gateways manage connections from the tray app's Connections tab. The local WSL setup affordance in Connections is shown only when setup has not already created an app-owned WSL gateway on this device.
 
-The V2 setup flow walks users through:
+The setup flow walks users through:
 
-1. **Welcome** — Greeting and introduction
-2. **Local setup progress** — Fresh app-owned `OpenClawGateway` WSL installation
-3. **Gateway setup** — Gateway-driven provider/model configuration hosted by `GatewayWizardPage`
-4. **Permissions** — Windows system permission review
-5. **All set** — Feature summary and completion
+1. **Security notice** — Device-trust warning before setup choices
+2. **Welcome / Advanced** — Install app-owned WSL gateway or connect existing gateway from Settings
+3. **Capabilities** — Recommended profile, inline Windows permission status, and install review
+4. **Local setup progress** — Fresh app-owned `OpenClawGateway` WSL installation
+5. **Gateway installed** — Explicit handoff from infrastructure setup to OpenClaw onboard
+6. **OpenClaw onboard** — Gateway-driven provider/model/key configuration
+7. **All set** — Feature summary, startup preference, and completion
 
-The setup flow no longer configures remote/manual gateways. The Welcome page's **Advanced setup** link closes setup and opens the tray app's Connections tab.
+The setup flow no longer configures remote/manual gateways inline. The Welcome page's **Connect to an existing gateway** option closes setup and opens the tray app's Connections tab.
 
 ## Screen Details
 
@@ -26,7 +28,12 @@ Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clea
 
 The managed distro is locked down and is not intended to be a normal interactive Ubuntu profile. For editing `openclaw.json` as the `openclaw` user and using root for protected-file administration, see [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md).
 
-### Wizard
+### Capabilities and Windows permissions
+
+The Capabilities page applies the selected profile to both setup config and runtime `Node*` settings. Inline Windows permission rows are shown only for capabilities that need OS-level state (camera, microphone, location, screen capture). Notifications are always shown as an app-level permission. Screen capture is passive: Windows asks what to share each capture through the Graphics Capture picker.
+
+### OpenClaw onboard
+
 Renders server-defined setup steps via RPC (`wizard.start` / `wizard.next`). The gateway controls the flow — steps can be:
 - **Note** — informational messages
 - **Confirm** — yes/no decisions
@@ -40,18 +47,8 @@ The wizard keeps recovery choices visible while setup steps are running so users
 
 When the gateway config wizard surfaces an error and the active gateway is an app-managed WSL distro, the error state also offers **Open terminal** and **Restart gateway**. The wizard does not parse or classify the gateway's error text; it leaves the message visible and selectable so the user can copy any command the gateway reports. The buttons reuse the shared `GatewayTerminalLauncher` and `WslGatewayController` (in `OpenClaw.Connection`, also used by the Connections tab). Restart re-enters the gateway config wizard (the provider/model onboarding step — not the whole V2 onboarding, and without re-installing the WSL distro) so fixes such as newly-installed tools are picked up on `PATH`. Because the gateway restart clears its wizard session, this resumes at the first config question rather than the exact step that failed. Detection is gated on `GatewayRecord.SetupManagedDistroName`, so it never appears for remote/SSH gateways.
 
-### Permissions
-Checks 5 Windows permissions using native APIs and registry:
-- Notifications (Toast capability)
-- Camera (Windows.Devices.Enumeration)
-- Microphone (Windows.Devices.Enumeration)
-- Screen Capture (Graphics.Capture)
-- Location (optional, registry-based)
-
-Each permission shows its current status (Enabled/Disabled/Allowed/Denied) with an "Open Settings" button linking to the relevant `ms-settings:` URI.
-
 ### All set
-Displays a completion summary, a Launch at startup toggle, and a Finish button that saves settings and closes setup.
+Displays a completion summary, a Launch at startup toggle, and a Finish button that saves the startup preference before restarting the tray. Launch at startup defaults on so OpenClaw is ready after reboot.
 
 ## Security
 

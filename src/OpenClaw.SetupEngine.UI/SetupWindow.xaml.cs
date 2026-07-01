@@ -161,7 +161,9 @@ public sealed partial class SetupWindow : Window
         try
         {
             _config.Settings.AutoStart = enableAutoStart;
-            _config.Settings.MergeIntoSettingsFile(Path.Combine(SetupContext.ResolveDataDir(), "settings.json"));
+            TraySettingsConfig.UpdateAutoStartInSettingsFile(
+                Path.Combine(SetupContext.ResolveDataDir(), "settings.json"),
+                enableAutoStart);
         }
         catch (Exception ex)
         {
