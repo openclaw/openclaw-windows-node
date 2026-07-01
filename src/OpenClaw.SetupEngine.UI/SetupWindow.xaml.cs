@@ -16,6 +16,8 @@ public sealed partial class SetupWindow : Window
     private readonly TaskCompletionSource<bool> _initialContentReady =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _isClosed;
+    private bool _persistStartupPreferenceOnComplete = true;
+    private bool _showStartupPreferenceOnComplete = true;
 
     public static SetupWindow? Active { get; private set; }
 
@@ -72,6 +74,11 @@ public sealed partial class SetupWindow : Window
         _config = SetupConfig.FromEnvironment(_config);
         GatewayLkgVersion.ApplyToConfig(_config);
         _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
+        if (startAtGatewayInstalledMilestone)
+        {
+            _persistStartupPreferenceOnComplete = false;
+            _showStartupPreferenceOnComplete = false;
+        }
 
         Closed += (_, _) =>
         {
@@ -119,7 +126,15 @@ public sealed partial class SetupWindow : Window
     }
 
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
-        => NavigateTo(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
+        => NavigateTo(
+            typeof(CompletePage),
+            new CompletePageArgs(
+                success,
+                elapsed,
+                logPath,
+                errorMessage,
+                DefaultAutoStart: true,
+                ShowStartupPreference: _showStartupPreferenceOnComplete));
 
     // Directional page transition: forward steps slide in from the right, Back from the left.
     private void NavigateTo(Type page, object? parameter, bool back = false) =>
@@ -163,10 +178,13 @@ public sealed partial class SetupWindow : Window
 
         try
         {
-            _config.Settings.AutoStart = enableAutoStart;
-            TraySettingsConfig.UpdateAutoStartInSettingsFile(
-                Path.Combine(SetupContext.ResolveDataDir(), "settings.json"),
-                enableAutoStart);
+            if (_persistStartupPreferenceOnComplete)
+            {
+                _config.Settings.AutoStart = enableAutoStart;
+                TraySettingsConfig.UpdateAutoStartInSettingsFile(
+                    Path.Combine(SetupContext.ResolveDataDir(), "settings.json"),
+                    enableAutoStart);
+            }
         }
         catch (Exception ex)
         {
@@ -260,5 +278,11 @@ public sealed partial class SetupWindow : Window
         => args.Any(a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
 }
 
-public sealed record CompletePageArgs(bool Success, TimeSpan Elapsed, string? LogPath, string? ErrorMessage = null);
+public sealed record CompletePageArgs(
+    bool Success,
+    TimeSpan Elapsed,
+    string? LogPath,
+    string? ErrorMessage = null,
+    bool DefaultAutoStart = true,
+    bool ShowStartupPreference = true);
 public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

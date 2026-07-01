@@ -341,6 +341,8 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ShowGatewayWizardAsync", source);
         Assert.Contains("EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: true)", source);
         Assert.Contains("startAtGatewayInstalledMilestone", setupWindow);
+        Assert.Contains("_persistStartupPreferenceOnComplete = false", setupWindow);
+        Assert.Contains("_showStartupPreferenceOnComplete = false", setupWindow);
         AssertInOrder(
             setupWindow,
             "SetupRunLock.TryAcquire",
@@ -388,13 +390,30 @@ public sealed class AppRefactorContractTests
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
         var method = ExtractMethod(source, "RequestSetupCompleted");
 
+        Assert.Contains("if (_persistStartupPreferenceOnComplete)", method);
         Assert.Contains("_config.Settings.AutoStart = enableAutoStart", method);
         Assert.Contains("TraySettingsConfig.UpdateAutoStartInSettingsFile", method);
         AssertInOrder(
             method,
+            "if (_persistStartupPreferenceOnComplete)",
             "_config.Settings.AutoStart = enableAutoStart",
             "TraySettingsConfig.UpdateAutoStartInSettingsFile",
             "handler.Invoke");
+    }
+
+    [Fact]
+    public void CompletePage_UsesCompletionArgsForStartupPreference()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var complete = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CompletePage.xaml.cs"));
+        var navigate = ExtractMethod(setupWindow, "NavigateToComplete");
+
+        Assert.Contains("DefaultAutoStart: true", navigate);
+        Assert.Contains("ShowStartupPreference: _showStartupPreferenceOnComplete", navigate);
+        Assert.Contains("StartupToggle.IsOn = args.DefaultAutoStart", complete);
+        Assert.Contains("StartupRow.Visibility = args.ShowStartupPreference ? Visibility.Visible : Visibility.Collapsed", complete);
+        Assert.DoesNotContain("StartupToggle.IsOn = true", complete);
     }
 
     [Fact]
