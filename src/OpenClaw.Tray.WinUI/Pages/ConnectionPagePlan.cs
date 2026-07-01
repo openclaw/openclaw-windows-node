@@ -359,6 +359,7 @@ internal sealed record ConnectionPagePlan
                 RoleConnectionState.PairingRejected => "Node pairing was rejected.",
                 RoleConnectionState.RateLimited => "Node is rate-limited by the gateway.",
                 RoleConnectionState.Error => "Node reported an error.",
+                RoleConnectionState.Idle when snap.NodeConnectionIntended => "Node mode is enabled, but the node has not connected.",
                 _ => "Connection is impaired.",
             };
 
@@ -710,6 +711,7 @@ internal sealed record ConnectionPagePlan
             RoleConnectionState.PairingRejected => NodeCardState.OnNodeRejected,
             RoleConnectionState.RateLimited => NodeCardState.OnNodeRateLimited,
             RoleConnectionState.Error => NodeCardState.OnNodeError,
+            RoleConnectionState.Idle when snap.NodeConnectionIntended => NodeCardState.OnNodeError,
             _ when CountEnabledCapabilities(settings) == 0 => NodeCardState.OnPermissionsIncomplete,
             _ => NodeCardState.OnHealthy,
         };

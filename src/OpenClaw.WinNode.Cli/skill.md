@@ -340,7 +340,7 @@ Read a local app setting by name.
 Returns the setting value (type depends on the setting).
 
 ### app.settings.set
-Set a local app setting.
+Set a local app setting, persist it, and apply the same reconnect/reload behavior as saving settings in the app UI.
 ```
 {"name": "string", "value": "string"}  // both required
 ```

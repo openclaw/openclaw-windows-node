@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
@@ -12,6 +13,57 @@ internal enum ConnectionStatusAccent
 
 internal static class ConnectionStatusPresenter
 {
+    public static ConnectionStatus ToLegacyStatus(OverallConnectionState overall) => overall switch
+    {
+        OverallConnectionState.Connected or OverallConnectionState.Ready or OverallConnectionState.Degraded => ConnectionStatus.Connected,
+        OverallConnectionState.Connecting => ConnectionStatus.Connecting,
+        OverallConnectionState.Idle or OverallConnectionState.Disconnecting => ConnectionStatus.Disconnected,
+        OverallConnectionState.PairingRequired or
+        OverallConnectionState.Error => ConnectionStatus.Error,
+        _ => ConnectionStatus.Disconnected,
+    };
+
+    public static ConnectionStatus ToLegacyStatus(GatewayConnectionSnapshot snapshot)
+    {
+        if (snapshot.OperatorState == RoleConnectionState.Connected)
+            return ConnectionStatus.Connected;
+
+        return ToLegacyStatus(snapshot.OverallState);
+    }
+
+    public static bool IsHealthy(OverallConnectionState? overall, ConnectionStatus fallback) =>
+        overall is OverallConnectionState.Connected or OverallConnectionState.Ready ||
+        (overall is null && fallback == ConnectionStatus.Connected);
+
+    public static bool IsLiveOrPending(OverallConnectionState? overall, ConnectionStatus fallback) =>
+        overall is OverallConnectionState.Connected
+            or OverallConnectionState.Ready
+            or OverallConnectionState.Degraded
+            or OverallConnectionState.PairingRequired
+            or OverallConnectionState.Connecting ||
+        (overall is null && fallback is ConnectionStatus.Connected or ConnectionStatus.Connecting);
+
+    public static bool IsOperatorChannelLive(GatewayConnectionSnapshot snapshot) =>
+        snapshot.OperatorState == RoleConnectionState.Connected;
+
+    public static string PlainText(OverallConnectionState? overall, ConnectionStatus fallback) => overall switch
+    {
+        OverallConnectionState.Connected or OverallConnectionState.Ready => "Connected",
+        OverallConnectionState.Connecting => "Connecting",
+        OverallConnectionState.Degraded => "Degraded",
+        OverallConnectionState.PairingRequired => "Pairing required",
+        OverallConnectionState.Error => "Connection error",
+        OverallConnectionState.Disconnecting => "Disconnecting",
+        OverallConnectionState.Idle => "Disconnected",
+        _ => fallback switch
+        {
+            ConnectionStatus.Connected => "Connected",
+            ConnectionStatus.Connecting => "Connecting",
+            ConnectionStatus.Error => "Connection error",
+            _ => "Disconnected",
+        },
+    };
+
     public static (string LabelKey, ConnectionStatusAccent Accent) Pill(OverallConnectionState overall) => overall switch
     {
         OverallConnectionState.Connected or OverallConnectionState.Ready =>

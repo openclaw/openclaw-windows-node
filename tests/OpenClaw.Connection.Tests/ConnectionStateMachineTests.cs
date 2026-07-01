@@ -279,6 +279,22 @@ public class ConnectionStateMachineTests
     }
 
     [Fact]
+    public void NodePairingRequired_FromNodeError_ClearsStaleNodeError()
+    {
+        _sm.SetNodeEnabled(true);
+        GoToConnected();
+        _sm.StartNodeConnecting();
+        Assert.True(_sm.TryTransition(ConnectionTrigger.NodeError, "transport failed"));
+
+        Assert.True(_sm.TryTransition(ConnectionTrigger.NodePairingRequired));
+
+        Assert.Equal(OverallConnectionState.PairingRequired, _sm.Current.OverallState);
+        Assert.Equal(RoleConnectionState.PairingRequired, _sm.Current.NodeState);
+        Assert.Null(_sm.Current.NodeError);
+        Assert.Equal(OpenClaw.Shared.PairingStatus.Pending, _sm.Current.NodePairingStatus);
+    }
+
+    [Fact]
     public void SetNodeInfo_PendingWithoutRequestId_ClearsStaleRequestIdAndKind()
     {
         _sm.SetNodeInfo(
@@ -337,15 +353,17 @@ public class ConnectionStateMachineTests
     }
 
     [Fact]
-    public void NodeDisconnected_FromConnected_DerivesConnected()
+    public void NodeDisconnected_FromConnected_DerivesDegradedWhenNodeStillIntended()
     {
         _sm.SetNodeEnabled(true);
         GoToConnected();
         _sm.StartNodeConnecting();
         _sm.TryTransition(ConnectionTrigger.NodeConnected);
         Assert.True(_sm.TryTransition(ConnectionTrigger.NodeDisconnected));
-        // Operator still connected, node idle → Connected (not Ready)
+        // Operator still connected, node mode still intended, node idle → Degraded (not healthy).
         Assert.Equal(RoleConnectionState.Idle, _sm.Current.NodeState);
+        Assert.Equal(OverallConnectionState.Degraded, _sm.Current.OverallState);
+        Assert.True(_sm.Current.NodeConnectionIntended);
     }
 
     [Fact]
@@ -378,6 +396,7 @@ public class ConnectionStateMachineTests
     {
         _sm.SetNodeEnabled(true);
         Assert.Equal(RoleConnectionState.Idle, _sm.Current.NodeState);
+        Assert.True(_sm.Current.NodeConnectionIntended);
     }
 
     [Fact]
@@ -385,6 +404,32 @@ public class ConnectionStateMachineTests
     {
         _sm.SetNodeEnabled(false);
         Assert.Equal(RoleConnectionState.Disabled, _sm.Current.NodeState);
+        Assert.False(_sm.Current.NodeConnectionIntended);
+    }
+
+    [Fact]
+    public void BlockNodeStart_WithOperatorConnected_DerivesDegradedAndKeepsReason()
+    {
+        _sm.SetNodeEnabled(true);
+        GoToConnected();
+
+        _sm.BlockNodeStart("No node credential available");
+
+        Assert.Equal(OverallConnectionState.Degraded, _sm.Current.OverallState);
+        Assert.Equal(RoleConnectionState.Error, _sm.Current.NodeState);
+        Assert.Equal("No node credential available", _sm.Current.NodeError);
+        Assert.True(_sm.Current.NodeConnectionIntended);
+    }
+
+    [Fact]
+    public void BlockNodeStart_WithoutOperatorConnected_DerivesErrorAndKeepsReason()
+    {
+        _sm.BlockNodeStart("No node credential available");
+
+        Assert.Equal(OverallConnectionState.Error, _sm.Current.OverallState);
+        Assert.Equal(RoleConnectionState.Error, _sm.Current.NodeState);
+        Assert.Equal("No node credential available", _sm.Current.NodeError);
+        Assert.True(_sm.Current.NodeConnectionIntended);
     }
 
     // ─── Reset ───
@@ -420,10 +465,14 @@ public class ConnectionStateMachineTests
     [InlineData(RoleConnectionState.Connected, RoleConnectionState.RateLimited, false, OverallConnectionState.Ready)]
     // Node connecting is ignored when node mode is disabled → Ready (not Connecting).
     [InlineData(RoleConnectionState.Connected, RoleConnectionState.Connecting, false, OverallConnectionState.Ready)]
-    // Operator connected, node idle, node enabled → operator-only connected (fallthrough).
-    [InlineData(RoleConnectionState.Connected, RoleConnectionState.Idle, true, OverallConnectionState.Connected)]
+    // Operator connected, node idle, node enabled → intended node is blocked/degraded.
+    [InlineData(RoleConnectionState.Connected, RoleConnectionState.Idle, true, OverallConnectionState.Degraded)]
     // Node PairingRequired is reported regardless of nodeEnabled.
     [InlineData(RoleConnectionState.Connected, RoleConnectionState.PairingRequired, false, OverallConnectionState.PairingRequired)]
+    [InlineData(RoleConnectionState.Idle, RoleConnectionState.Connecting, true, OverallConnectionState.Connecting)]
+    [InlineData(RoleConnectionState.Idle, RoleConnectionState.Error, true, OverallConnectionState.Error)]
+    [InlineData(RoleConnectionState.Idle, RoleConnectionState.PairingRequired, true, OverallConnectionState.PairingRequired)]
+    [InlineData(RoleConnectionState.Idle, RoleConnectionState.Connected, true, OverallConnectionState.Connected)]
     public void DeriveOverall_ReturnsCorrectState(
         RoleConnectionState op, RoleConnectionState node, bool nodeEnabled, OverallConnectionState expected)
     {

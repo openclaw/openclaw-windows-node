@@ -111,6 +111,8 @@ Settings UI exposes both toggles in the Advanced section, with the live MCP endp
 
 A legacy `McpOnlyMode` field is migrated automatically on load and never re-written.
 
+MCP startup is reported from the actual listener state. `NodeService.McpStartupError` is populated when capability registration or the HTTP listener fails, and MCP-only startup is not treated as successful unless the loopback MCP server is running. Tray, Permissions, and Command Center surfaces show local MCP-only separately from gateway connectivity so a working local MCP listener is never presented as a gateway connection.
+
 ## Why this matters
 
 ### Testing

@@ -161,6 +161,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public string McpEndpoint => McpServerUrl;
     /// <summary>Last MCP server startup error, or null if it started cleanly. Surfaced by Settings UI.</summary>
     public string? McpStartupError => _mcpStartupError;
+    public void SetMcpStartupError(string? error) => _mcpStartupError = string.IsNullOrWhiteSpace(error) ? null : error;
     
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -243,8 +244,16 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // and are consumed by the MCP bridge directly.
         _logger.Info("Starting Windows Node in MCP-only mode (no gateway)");
         _token = null;
+        _mcpStartupError = null;
 
-        RegisterCapabilities();
+        try
+        {
+            RegisterCapabilities();
+        }
+        catch (Exception ex)
+        {
+            SetMcpStartupFailure(ex, "capability registration");
+        }
 
         return Task.CompletedTask;
     }
@@ -760,10 +769,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
     }
 
-    private void StartMcpServer()
+    private bool StartMcpServer()
     {
-        if (!_enableMcpServer) return;
-        if (_mcpServer != null) return;
+        if (!_enableMcpServer) return true;
+        if (_mcpServer != null) return true;
         McpHttpServer? attempt = null;
         try
         {
@@ -807,6 +816,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             attempt.Start();
             _mcpServer = attempt;
             _mcpStartupError = null;
+            return true;
         }
         catch (Exception ex)
         {
@@ -822,6 +832,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 _logger.Debug($"[MCP] Cleanup of half-started listener failed: {cleanupEx.Message}");
             }
             _mcpServer = null;
+            return false;
         }
     }
 
@@ -838,8 +849,15 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             32 or 183 => $"Port {port} is already in use. Stop the other process or change the MCP port.",
             _ => $"HTTP listener error {hle.ErrorCode}: {hle.Message}",
         },
-        _ => ex.Message,
+        InvalidOperationException => $"Configuration error: {ex.Message}",
+        _ => $"MCP server startup failed: {ex.Message}",
     };
+
+    private void SetMcpStartupFailure(Exception ex, string phase)
+    {
+        _mcpStartupError = DescribeMcpStartupFailure(ex, McpPort);
+        _logger.Error($"[MCP] Failed during {phase}: {_mcpStartupError}", ex);
+    }
 
     private void StopMcpServer()
     {
@@ -889,16 +907,30 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             if (_mcpServer != null) return; // already running
 
             _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
+            _mcpStartupError = null;
 
             bool needsCapabilities;
             lock (_capabilitiesLock) { needsCapabilities = _capabilities.Count == 0; }
-            if (needsCapabilities)
+            try
             {
-                RegisterCapabilities();
+                if (needsCapabilities)
+                {
+                    RegisterCapabilities();
+                }
+                else
+                {
+                    StartMcpServer();
+                }
             }
-            else
+            catch (Exception ex)
             {
-                StartMcpServer();
+                SetMcpStartupFailure(ex, "MCP enable");
+            }
+
+            if (_mcpServer == null && string.IsNullOrWhiteSpace(_mcpStartupError))
+            {
+                _mcpStartupError = "MCP server startup failed: listener did not start.";
+                _logger.Error($"[MCP] {_mcpStartupError}");
             }
         }
         else

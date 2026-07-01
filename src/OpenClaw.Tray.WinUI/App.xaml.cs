@@ -172,10 +172,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// <summary>
     /// Cached connection status — sole writer is OnManagerStateChanged.
     /// Reads are safe from any thread; derives from the connection manager's state machine.
-    /// SSH tunnel errors in EnsureSshTunnelConfigured also write this temporarily (Phase 3 moves tunnel to manager).
     /// </summary>
     private WeakReference<ToggleSwitch>? _connectionToggleRef;
     private bool _suspendConnectionToggleEvent;
+    private string? _lastManagerConnectedSideEffectsKey;
 
     // FrozenDictionary for O(1) case-insensitive notification type → setting lookup — no per-call allocation.
     private static readonly System.Collections.Frozen.FrozenDictionary<string, Func<SettingsManager, bool>> s_notifTypeMap =
@@ -212,6 +212,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private const string ConnectionIssueNotificationId = "connection:issue";
     private const string ConnectionIssueNotificationDedupeKey = "connection:issue";
+    private const string McpStartupNotificationId = "mcp:startup";
+    private const string McpStartupNotificationDedupeKey = "mcp:startup";
     private const string SandboxRiskNotificationId = "sandbox:risk";
     private const string SandboxRiskNotificationDedupeKey = "sandbox:risk";
     private static readonly TimeSpan SandboxRiskProbeRefreshInterval = TimeSpan.FromMinutes(5);
@@ -1351,6 +1353,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return new TrayMenuSnapshot
         {
             CurrentStatus = _appState!.Status,
+            OverallState = _connectionManager?.CurrentSnapshot.OverallState,
             AuthFailureMessage = _appState?.AuthFailureMessage,
             GatewayUrl = _gatewayRegistry?.GetActive()?.Url ?? _settings?.GetEffectiveGatewayUrl(),
             GatewaySelf = _appState?.GatewaySelf,
@@ -1370,6 +1373,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             SetupMenuLabel = setupMenuLabel,
             ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
             LastUpdated = _appState?.LastCheckTime,
+            IsMcpRunning = _nodeService?.IsMcpRunning == true,
+            McpStartupError = _nodeService?.McpStartupError,
         };
     }
 
@@ -1793,13 +1798,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         try
         {
             nodeService.StartLocalOnlyAsync().GetAwaiter().GetResult();
+            if (!nodeService.IsMcpRunning || !string.IsNullOrWhiteSpace(nodeService.McpStartupError))
+            {
+                var error = nodeService.McpStartupError ?? "Local MCP server did not start.";
+                Logger.Error($"Failed to start MCP-only node service: {error}");
+                ShowMcpStartupFailureNotification(error);
+                UpdateTrayIcon();
+                return false;
+            }
+
             WireAppCapabilityHandlers();
+            _appNotificationService?.Dismiss(McpStartupNotificationId);
             Logger.Info("Started MCP-only node service without gateway connection");
             return true;
         }
         catch (Exception ex)
         {
             Logger.Error($"Failed to start MCP-only node service: {ex}");
+            nodeService.SetMcpStartupError($"MCP server startup failed: {ex.Message}");
+            ShowMcpStartupFailureNotification(nodeService.McpStartupError!);
+            UpdateTrayIcon();
             return false;
         }
     }
@@ -1854,30 +1872,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// <summary>
     /// Handles the connection manager's StateChanged event.
     /// Maps the snapshot to the existing tray icon / UI status system.
-    /// Authoritative writer of gateway lifecycle status. Local prerequisite
-    /// failures can still mark the app Error before the manager can connect.
+    /// Authoritative writer of gateway lifecycle status.
     /// </summary>
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snap)
     {
-        // Map OverallConnectionState to the existing ConnectionStatus enum
-        // for backward compat with tray icon and hub window
-        var mapped = snap.OverallState switch
-        {
-            OverallConnectionState.Idle => ConnectionStatus.Disconnected,
-            OverallConnectionState.Connecting => ConnectionStatus.Connecting,
-            OverallConnectionState.Connected => ConnectionStatus.Connected,
-            OverallConnectionState.Ready => ConnectionStatus.Connected,
-            OverallConnectionState.Degraded => ConnectionStatus.Connected,
-            OverallConnectionState.PairingRequired => ConnectionStatus.Connecting,
-            OverallConnectionState.Error => ConnectionStatus.Error,
-            OverallConnectionState.Disconnecting => ConnectionStatus.Disconnected,
-            _ => ConnectionStatus.Disconnected
-        };
+        var mapped = ConnectionStatusPresenter.ToLegacyStatus(snap);
+        var connectedSideEffectsKey = snap.OperatorState == RoleConnectionState.Connected
+            ? $"{snap.GatewayId ?? snap.GatewayUrl ?? "unknown"}|{snap.OperatorDeviceId ?? "unknown"}"
+            : null;
         OnUiThread(() =>
         {
             if (_appState != null) _appState.Status = mapped;
+            _hubWindow?.UpdateTitleBarStatus(snap, mapped);
             UpdateTrayIcon();
-            SyncConnectionToggle(mapped);
+            SyncConnectionToggle(mapped, snap.OverallState);
             UpdateConnectionIssueNotification(snap);
             if (mapped is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
             {
@@ -1885,6 +1893,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _trayMenuWindow?.HideCascade();
             }
         });
+
+        if (connectedSideEffectsKey != null)
+        {
+            if (!string.Equals(_lastManagerConnectedSideEffectsKey, connectedSideEffectsKey, StringComparison.Ordinal))
+            {
+                _lastManagerConnectedSideEffectsKey = connectedSideEffectsKey;
+                _ = RunHealthCheckAsync();
+                _ = TryConnectLocalNodeServiceAsync();
+            }
+        }
+        else
+        {
+            _lastManagerConnectedSideEffectsKey = null;
+        }
     }
 
     private NodeService? EnsureNodeService(SettingsManager settings)
@@ -2222,6 +2244,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             id: ConnectionIssueNotificationId);
     }
 
+    private void ShowMcpStartupFailureNotification(string message)
+    {
+        AppNotificationPublisher.Show(
+            _appNotificationService,
+            "Local MCP failed",
+            message,
+            "connection",
+            "mcp",
+            AppNotificationSeverity.Error,
+            McpStartupNotificationDedupeKey,
+            "connection",
+            LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
+            id: McpStartupNotificationId);
+    }
+
     private static bool TryBuildConnectionIssueNotification(
         GatewayConnectionSnapshot snapshot,
         out string title,
@@ -2236,18 +2273,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         category = "lifecycle";
         key = "";
 
-        if (snapshot.OverallState == OverallConnectionState.Error)
-        {
-            title = LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_Title");
-            var rawError = snapshot.OperatorError;
-            message = string.IsNullOrWhiteSpace(rawError)
-                ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
-                : rawError;
-            severity = AppNotificationSeverity.Error;
-            key = $"operator-error:{rawError ?? "default"}";
-            return true;
-        }
-
         if (snapshot.OperatorPairingRequired)
         {
             title = LocalizationHelper.GetString("AppNotification_GatewayPairingRequired_Title");
@@ -2261,26 +2286,67 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return true;
         }
 
-        if (snapshot.OverallState == OverallConnectionState.Degraded)
+        if (snapshot.OverallState == OverallConnectionState.PairingRequired &&
+            snapshot.NodeState == RoleConnectionState.PairingRequired)
         {
-            if (snapshot.NodeState == RoleConnectionState.Error)
-            {
-                title = LocalizationHelper.GetString("AppNotification_WindowsNodeConnectionFailed_Title");
-                message = snapshot.NodeError ?? LocalizationHelper.GetString("AppNotification_WindowsNodeConnectionFailed_DefaultMessage");
-                severity = AppNotificationSeverity.Error;
-                category = "node";
-                key = $"node-error:{message}";
-                return true;
-            }
+            title = LocalizationHelper.GetString("AppNotification_GatewayPairingRequired_Title");
+            message = "Approve the Windows node pairing request on the gateway host.";
+            category = "pairing";
+            key = $"node-pairing:{snapshot.NodeDeviceId ?? snapshot.NodePairingRequestId ?? "unknown"}";
+            return true;
+        }
 
-            if (snapshot.NodeState == RoleConnectionState.RateLimited)
-            {
-                title = LocalizationHelper.GetString("AppNotification_WindowsNodeRateLimited_Title");
-                message = snapshot.NodeError ?? LocalizationHelper.GetString("AppNotification_WindowsNodeRateLimited_DefaultMessage");
-                category = "node";
-                key = $"node-rate-limited:{message}";
-                return true;
-            }
+        if (TryBuildNodeConnectionIssueNotification(snapshot, out title, out message, out severity, out category, out key))
+            return true;
+
+        if (snapshot.OverallState == OverallConnectionState.Error)
+        {
+            title = LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_Title");
+            var rawError = snapshot.OperatorError;
+            message = string.IsNullOrWhiteSpace(rawError)
+                ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
+                : rawError;
+            severity = AppNotificationSeverity.Error;
+            key = $"operator-error:{rawError ?? "default"}";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryBuildNodeConnectionIssueNotification(
+        GatewayConnectionSnapshot snapshot,
+        out string title,
+        out string message,
+        out AppNotificationSeverity severity,
+        out string category,
+        out string key)
+    {
+        title = "";
+        message = "";
+        severity = AppNotificationSeverity.Warning;
+        category = "node";
+        key = "";
+
+        if (snapshot.OperatorState == RoleConnectionState.Error)
+            return false;
+
+        if (snapshot.NodeState == RoleConnectionState.RateLimited)
+        {
+            title = LocalizationHelper.GetString("AppNotification_WindowsNodeRateLimited_Title");
+            message = snapshot.NodeError ?? LocalizationHelper.GetString("AppNotification_WindowsNodeRateLimited_DefaultMessage");
+            key = $"node-rate-limited:{message}";
+            return true;
+        }
+
+        if (snapshot.NodeState is RoleConnectionState.Error or RoleConnectionState.PairingRejected ||
+            !string.IsNullOrWhiteSpace(snapshot.NodeError))
+        {
+            title = LocalizationHelper.GetString("AppNotification_WindowsNodeConnectionFailed_Title");
+            message = snapshot.NodeError ?? LocalizationHelper.GetString("AppNotification_WindowsNodeConnectionFailed_DefaultMessage");
+            severity = AppNotificationSeverity.Error;
+            key = $"node-error:{message}";
+            return true;
         }
 
         return false;
@@ -2546,25 +2612,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _appState.AuthFailureMessage = null;
         }
 
-        UpdateTrayIcon();
         OnUiThread(() =>
         {
             UpdateStatusDetailWindow();
-            SyncConnectionToggle(status);
-            if (status is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
-            {
-                // Dismiss the tray menu on state change — it will capture fresh data on next open
-                _trayMenuWindow?.HideCascade();
-            }
         });
-
-        if (status == ConnectionStatus.Connected)
-        {
-            _ = RunHealthCheckAsync();
-            // Gateway-node mode connects the NodeService after operator auth; MCP-only
-            // mode keeps serving local tools and must not escalate into node pairing.
-            _ = TryConnectLocalNodeServiceAsync();
-        }
     }
 
     /// <summary>
@@ -2977,7 +3028,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     }
 
 
-    private void SyncConnectionToggle(ConnectionStatus status)
+    private void SyncConnectionToggle(ConnectionStatus status, OverallConnectionState? overallState = null)
     {
         if (_connectionToggleRef == null)
             return;
@@ -2991,16 +3042,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return;
         }
 
-        var shouldBeOn = status == ConnectionStatus.Connected;
-        var canToggle = status is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error;
+        var shouldBeOn = ConnectionStatusPresenter.IsLiveOrPending(overallState, status);
+        var canToggle = overallState switch
+        {
+            OverallConnectionState.Connecting or OverallConnectionState.Disconnecting => false,
+            null => status is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error,
+            _ => true
+        };
+        var statusText = ConnectionStatusPresenter.PlainText(overallState, status);
         _suspendConnectionToggleEvent = true;
         try
         {
             TrayMenuWindow.SetMenuToggleSwitchState(toggle, shouldBeOn, canToggle);
             ToolTipService.SetToolTip(toggle,
-                shouldBeOn ? "Connected - toggle off to disconnect"
+                shouldBeOn ? $"{statusText} - toggle off to disconnect"
                     : status == ConnectionStatus.Connecting ? "Connecting..."
-                    : "Disconnected - toggle on to connect");
+                    : $"{statusText} - toggle on to connect");
         }
         finally
         {
@@ -3103,17 +3160,23 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private string BuildTrayTooltip() =>
         new TrayTooltipBuilder(CaptureTraySnapshot()).Build();
 
-    private TrayStateSnapshot CaptureTraySnapshot() => new TrayStateSnapshot
+    private TrayStateSnapshot CaptureTraySnapshot()
     {
-        Status = _appState!.Status,
-        CurrentActivity = _appState!.CurrentActivity,
-        Channels = _appState!.Channels,
-        Nodes = _appState!.Nodes,
-        LocalNodeFallback = _nodeService?.GetLocalNodeInfo(),
-        AuthFailureMessage = _appState!.AuthFailureMessage,
-        LastCheckTime = _appState!.LastCheckTime,
-        Settings = _settings
-    };
+        return new TrayStateSnapshot
+        {
+            Status = _appState!.Status,
+            OverallState = _connectionManager?.CurrentSnapshot.OverallState,
+            CurrentActivity = _appState!.CurrentActivity,
+            Channels = _appState!.Channels,
+            Nodes = _appState!.Nodes,
+            LocalNodeFallback = _nodeService?.GetLocalNodeInfo(),
+            AuthFailureMessage = _appState!.AuthFailureMessage,
+            LastCheckTime = _appState!.LastCheckTime,
+            Settings = _settings,
+            IsMcpRunning = _nodeService?.IsMcpRunning == true,
+            McpStartupError = _nodeService?.McpStartupError
+        };
+    }
 
     #endregion
 
@@ -3564,6 +3627,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return new AppStateSnapshot
         {
             Status = _appState!.Status,
+            OverallState = _connectionManager?.CurrentSnapshot.OverallState,
             LastCheckTime = _appState!.LastCheckTime,
             Channels = _appState!.Channels,
             Sessions = _appState!.Sessions,
@@ -3576,6 +3640,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             LastUpdateInfo = _appState!.UpdateInfo,
             Settings = _settings,
             NodeService = _nodeService,
+            IsMcpRunning = _nodeService?.IsMcpRunning == true,
+            McpStartupError = _nodeService?.McpStartupError,
             NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind
                 ?? PairingApprovalKind.Unknown,
             NodePairingRequestId = _connectionManager?.CurrentSnapshot.NodePairingRequestId,
@@ -3829,7 +3895,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private void OpenDashboard(string? path = null)
     {
         if (_settings == null) return;
-        if (!EnsureSshTunnelConfigured()) return;
+        if (!EnsureSshTunnelConfigured())
+        {
+            _toastService?.ShowToast(new ToastContentBuilder()
+                .AddText("SSH tunnel")
+                .AddText(_sshTunnelService?.LastError ?? "Check SSH tunnel settings and logs."));
+            return;
+        }
 
         if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
         {
@@ -4429,7 +4501,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _settings.SshTunnelLocalPort is < 1 or > 65535)
             {
                 Logger.Warn("SSH tunnel is enabled but settings are incomplete");
-                _appState!.Status = ConnectionStatus.Error;
                 UpdateTrayIcon();
                 return false;
             }
@@ -4459,7 +4530,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             catch (Exception ex)
             {
                 Logger.Error($"Failed to start SSH tunnel: {ex.Message}");
-                _appState!.Status = ConnectionStatus.Error;
                 UpdateTrayIcon();
                 return false;
             }

@@ -123,9 +123,16 @@ internal sealed class ConnectionStateMachine
     {
         _nodeEnabled = enabled;
         if (!enabled)
+        {
             _nodeState = RoleConnectionState.Disabled;
+            _nodeError = null;
+            _nodeCredentialSource = null;
+        }
         else if (_nodeState == RoleConnectionState.Disabled)
+        {
             _nodeState = RoleConnectionState.Idle;
+            _nodeError = null;
+        }
         RebuildSnapshot();
     }
 
@@ -196,6 +203,15 @@ internal sealed class ConnectionStateMachine
     internal void SetNodeCredentialSource(string? source)
     {
         _nodeCredentialSource = source;
+        RebuildSnapshot();
+    }
+
+    internal void BlockNodeStart(string detail)
+    {
+        _nodeEnabled = true;
+        _nodeState = RoleConnectionState.Error;
+        _nodeError = detail;
+        _nodeCredentialSource = null;
         RebuildSnapshot();
     }
 
@@ -304,6 +320,7 @@ internal sealed class ConnectionStateMachine
 
             case ConnectionTrigger.NodePairingRequired:
                 _nodeState = RoleConnectionState.PairingRequired;
+                _nodeError = null;
                 break;
 
             case ConnectionTrigger.NodePaired:
@@ -340,6 +357,7 @@ internal sealed class ConnectionStateMachine
             // Clear requestId when no longer in PairingRequired to prevent stale reads
             OperatorPairingRequestId = _operatorState == RoleConnectionState.PairingRequired
                 ? Current.OperatorPairingRequestId : null,
+            NodeConnectionIntended = _nodeEnabled,
             NodeState = _nodeState,
             NodeError = _nodeError,
             NodeCredentialSource = _nodeCredentialSource,

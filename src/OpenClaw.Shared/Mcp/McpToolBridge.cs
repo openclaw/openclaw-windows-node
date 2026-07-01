@@ -267,7 +267,7 @@ public class McpToolBridge
         ["app.settings.get"] =
             "Read a local app setting by name. Args: name (string, required). Returns the setting value.",
         ["app.settings.set"] =
-            "Set a local app setting (name and value). Args: name (string, required), value (string, required). Returns { name, value }.",
+            "Set a local app setting (name and value), persist it, and apply the same reconnect/reload behavior as saving settings in the app UI. Args: name (string, required), value (string, required). Returns { name, value }.",
         ["app.menu"] =
             "Get tray menu state (status, session count, node count). Returns array of menu items.",
         ["app.search"] =

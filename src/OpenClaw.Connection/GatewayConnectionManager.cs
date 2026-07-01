@@ -51,6 +51,17 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private bool _activeConnectUsedBootstrapToken;
     private bool _postBootstrapOperatorReconnectScheduled;
 
+    private const string MissingNodeCredentialMessage =
+        "No node credential available. Re-pair this PC or add a shared/bootstrap gateway token.";
+    private const string MissingNodeConnectorMessage =
+        "Node mode is enabled, but no node connector is configured.";
+    private const string MissingActiveGatewayForNodeMessage =
+        "Node mode is enabled, but there is no active gateway context for node startup.";
+    private const string MissingGatewayRecordForNodeMessage =
+        "Node mode is enabled, but the active gateway record could not be found.";
+    private const string NodeTunnelStartFailedMessage =
+        "Node mode is enabled, but the SSH tunnel for node startup could not be started.";
+
     public event EventHandler<GatewayConnectionSnapshot>? StateChanged;
     public event EventHandler<ConnectionDiagnosticEvent>? DiagnosticEvent;
     public event EventHandler<OperatorClientChangedEventArgs>? OperatorClientChanged;
@@ -119,7 +130,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     public async Task ConnectNodeOnlyAsync(string? gatewayId = null)
     {
         ThrowIfDisposed();
-        var prevState = _stateMachine.Current.OverallState;
         long? preparedGeneration = null;
 
         await _transitionSemaphore.WaitAsync();
@@ -137,7 +147,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         var startedGeneration = await StartNodeConnectionAsync(preparedGeneration.Value);
         if (startedGeneration.HasValue)
-            EmitStateChanged(prevState);
+            EmitStateChanged();
     }
 
     /// <summary>Core connect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
@@ -202,16 +212,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _activeGatewayRecordId = record.Id;
             _activeSshTunnel = record.SshTunnel;
             _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
+            SyncNodeIntentFromSettings();
 
             if (credential == null)
             {
                 _logger.Warn("[ConnMgr] No credential available for gateway");
-                var prev = _stateMachine.Current.OverallState;
                 // Must go through Connecting → Error since AuthenticationFailed requires Connecting state
                 _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
                 _stateMachine.SetOperatorCredentialSource(null);
                 _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, "No credential available");
-                EmitStateChanged(prev);
+                EmitStateChanged();
                 return;
             }
 
@@ -220,7 +230,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
             _stateMachine.SetOperatorCredentialSource(credential.Source);
             _diagnostics.RecordStateChange(prevState, _stateMachine.Current.OverallState);
-            EmitStateChanged(prevState);
+            EmitStateChanged();
 
             // Create client via factory — use a diagnostic-tee logger so client handshake
             // logs appear in the Connection Status window timeline.
@@ -235,9 +245,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 {
                     _logger.Warn("[ConnMgr] SSH tunnel config is incomplete");
                     _diagnostics.Record("tunnel", "SSH tunnel config is incomplete");
-                    var p = _stateMachine.Current.OverallState;
                     _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, "SSH tunnel config is incomplete");
-                    EmitStateChanged(p);
+                    EmitStateChanged();
                     return;
                 }
                 try
@@ -249,9 +258,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 {
                     _logger.Error($"[ConnMgr] SSH tunnel start failed: {ex.Message}");
                     _diagnostics.Record("tunnel", "SSH tunnel start failed", ex.Message);
-                    var p = _stateMachine.Current.OverallState;
                     _stateMachine.TryTransition(ConnectionTrigger.WebSocketError, $"SSH tunnel failed: {ex.Message}");
-                    EmitStateChanged(p);
+                    EmitStateChanged();
                     return;
                 }
             }
@@ -356,14 +364,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (!Directory.Exists(perGatewayIdentityDir))
             Directory.CreateDirectory(perGatewayIdentityDir);
 
-        var nodeCredential = _credentialResolver.ResolveNode(record, perGatewayIdentityDir);
-        if (nodeCredential == null)
-        {
-            _logger.Warn("[ConnMgr] No node credential available for node-only connect");
-            _diagnostics.Record("node", "No node credential available for node-only connect");
-            return null;
-        }
-
         // Same-gateway node reapproval reconnects keep the operator alive so it can
         // request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
         var preservesOperatorConnection =
@@ -396,15 +396,31 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             GatewayUrl = record.Url,
             GatewayName = record.FriendlyName
         };
+        _stateMachine.SetNodeEnabled(true);
+        _stateMachine.StartNodeConnecting();
+        _stateMachine.SetNodeCredentialSource(null);
+
+        var nodeCredential = _credentialResolver.ResolveNode(record, perGatewayIdentityDir);
+        if (nodeCredential == null)
+        {
+            _logger.Warn("[ConnMgr] No node credential available for node-only connect");
+            _diagnostics.Record("node", "No node credential available for node-only connect");
+            _stateMachine.BlockNodeStart(MissingNodeCredentialMessage);
+            EmitStateChanged();
+            return null;
+        }
 
         _diagnostics.RecordCredentialResolution(nodeCredential);
         _stateMachine.SetOperatorCredentialSource(operatorCredentialSource);
-        _stateMachine.SetNodeCredentialSource(nodeCredential.Source);
         _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
             $"Credential source: {nodeCredential.Source}");
 
         if (!preservesOperatorConnection && !await TryStartTunnelForNodeOnlyAsync(record))
+        {
+            _stateMachine.BlockNodeStart(NodeTunnelStartFailedMessage);
+            EmitStateChanged();
             return null;
+        }
 
         return Interlocked.Read(ref _generation) == gen ? gen : null;
     }
@@ -469,9 +485,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         var prev = _stateMachine.Current.OverallState;
         await DisposeActiveClientAsync();
+        SyncNodeIntentFromSettings();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
         _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
-        EmitStateChanged(prev);
+        EmitStateChanged();
     }
 
     public async Task ReconnectAsync()
@@ -703,7 +720,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (Interlocked.Read(ref _generation) != gen) return;
 
-            var prev = _stateMachine.Current.OverallState;
             switch (status)
             {
                 case ConnectionStatus.Connected:
@@ -725,7 +741,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _diagnostics.RecordWebSocketEvent("WebSocket connecting");
                     break;
             }
-            EmitStateChanged(prev);
+            EmitStateChanged();
         }
         finally
         {
@@ -743,10 +759,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (TryScheduleOperatorTokenRecovery(message, gen))
                 return;
 
-            var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("error", "Authentication failed", message);
             _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, message);
-            EmitStateChanged(prev);
+            EmitStateChanged();
         }
         finally
         {
@@ -785,6 +800,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private async Task HandleHandshakeSucceededAsync(long gen)
     {
+        bool shouldStartNodeConnection = false;
+        bool missingGatewayRecordForNode = false;
+        bool missingActiveGatewayForNode = false;
+        bool missingNodeConnector = false;
         await _transitionSemaphore.WaitAsync();
         try
         {
@@ -793,7 +812,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("state", "Handshake succeeded (hello-ok)");
             _stateMachine.TryTransition(ConnectionTrigger.HandshakeSucceeded);
-            _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
+            var nodeModeIntended = SyncNodeIntentFromSettings();
             if (_operatorTokenRecoveryAttemptedGatewayId == _activeGatewayRecordId)
                 _operatorTokenRecoveryAttemptedGatewayId = null;
 
@@ -803,7 +822,43 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _stateMachine.SetOperatorDeviceId(client.OperatorDeviceId);
             }
 
-            EmitStateChanged(prev);
+            missingActiveGatewayForNode =
+                nodeModeIntended &&
+                (_activeGatewayRecordId == null || _activeIdentityPath == null);
+            missingGatewayRecordForNode =
+                nodeModeIntended &&
+                !missingActiveGatewayForNode &&
+                _activeGatewayRecordId != null &&
+                _registry.GetById(_activeGatewayRecordId) == null;
+            shouldStartNodeConnection =
+                !missingActiveGatewayForNode &&
+                !missingGatewayRecordForNode &&
+                ShouldStartNodeConnection();
+            missingNodeConnector = shouldStartNodeConnection && _nodeConnector == null;
+            if (missingActiveGatewayForNode)
+            {
+                _stateMachine.BlockNodeStart(MissingActiveGatewayForNodeMessage);
+            }
+            else if (missingGatewayRecordForNode)
+            {
+                _stateMachine.BlockNodeStart(MissingGatewayRecordForNodeMessage);
+            }
+            else if (missingNodeConnector)
+            {
+                _stateMachine.BlockNodeStart(MissingNodeConnectorMessage);
+            }
+            else if (shouldStartNodeConnection)
+            {
+                _stateMachine.SetNodeEnabled(true);
+                if (_nodeConnector != null)
+                {
+                    _stateMachine.StartNodeConnecting();
+                    _stateMachine.SetNodeCredentialSource(null);
+                }
+            }
+
+            _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
+            EmitStateChanged();
 
             // Stamp LastConnected so auto-reconnect on next startup can use this gateway.
             // Uses the atomic Update helper to avoid overwriting concurrent registry changes.
@@ -826,10 +881,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
 
-        // Start node connection outside the semaphore to avoid deadlocks
-        if (_nodeConnector != null && ShouldStartNodeConnection())
+        // Start node connection outside the semaphore to avoid deadlocks.
+        // If Node mode is intended but no connector exists, publish the blocker
+        // through the same manager snapshot instead of leaving node Idle/healthy.
+        if (missingActiveGatewayForNode || missingGatewayRecordForNode || missingNodeConnector)
         {
-            await StartNodeConnectionAsync(gen);
+            return;
+        }
+
+        if (shouldStartNodeConnection)
+        {
+            if (_nodeConnector != null)
+                await StartNodeConnectionAsync(gen);
         }
     }
 
@@ -972,7 +1035,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Store requestId in snapshot so setup flows can use it for explicit approval
             _stateMachine.SetOperatorPairingRequestId(requestId);
             _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
-            EmitStateChanged(prev);
+            EmitStateChanged();
         }
         finally
         {
@@ -1095,6 +1158,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         return _isNodeEnabled?.Invoke() ?? false;
     }
 
+    private bool SyncNodeIntentFromSettings()
+    {
+        var enabled = _isNodeEnabled?.Invoke() ?? false;
+        if (_stateMachine.Current.NodeConnectionIntended != enabled ||
+            (!enabled && _stateMachine.Current.NodeState != RoleConnectionState.Disabled))
+        {
+            _stateMachine.SetNodeEnabled(enabled);
+        }
+
+        return enabled;
+    }
+
     private bool IsCurrentNodeAttempt(long lifecycleGeneration, long nodeGeneration) =>
         !_disposed &&
         Interlocked.Read(ref _generation) == lifecycleGeneration &&
@@ -1161,7 +1236,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         try
         {
-            return await StartNodeConnectionCoreAsync(nodeGeneration, nodeOperationToken)
+            return await StartNodeConnectionCoreAsync(expectedLifecycleGeneration, nodeGeneration, nodeOperationToken)
                 ? nodeGeneration
                 : null;
         }
@@ -1188,7 +1263,38 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         (!expectedNodeGeneration.HasValue ||
          Interlocked.Read(ref _nodeConnectionGeneration) == expectedNodeGeneration.Value);
 
+    private async Task BlockNodeStartAsync(
+        string detail,
+        CancellationToken cancellationToken,
+        long? expectedLifecycleGeneration = null,
+        long? expectedNodeGeneration = null)
+    {
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (expectedLifecycleGeneration.HasValue &&
+                Interlocked.Read(ref _generation) != expectedLifecycleGeneration.Value)
+            {
+                return;
+            }
+
+            if (expectedNodeGeneration.HasValue &&
+                Interlocked.Read(ref _nodeConnectionGeneration) != expectedNodeGeneration.Value)
+            {
+                return;
+            }
+
+            _stateMachine.BlockNodeStart(detail);
+            EmitStateChanged();
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
     private async Task<bool> StartNodeConnectionCoreAsync(
+        long expectedLifecycleGeneration,
         long nodeGeneration,
         CancellationToken cancellationToken)
     {
@@ -1198,13 +1304,45 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return false;
         }
 
-        if (_nodeConnector == null || _activeGatewayRecordId == null || _activeIdentityPath == null) return false;
+        if (_nodeConnector == null)
+        {
+            await BlockNodeStartAsync(MissingNodeConnectorMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
+            return false;
+        }
+
+        if (_activeGatewayRecordId == null || _activeIdentityPath == null)
+        {
+            await BlockNodeStartAsync(MissingActiveGatewayForNodeMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
+            return false;
+        }
 
         var record = _registry.GetById(_activeGatewayRecordId);
         if (record == null)
         {
             _logger.Warn("[ConnMgr] Cannot start node — gateway record not found");
+            await BlockNodeStartAsync(MissingGatewayRecordForNodeMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
             return false;
+        }
+
+        // Mark node as enabled in the state machine so UI reflects node state
+        // before credential resolution can fail. Otherwise node mode could look
+        // healthy even though the intended node never started.
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, nodeGeneration))
+                return false;
+
+            var before = _stateMachine.Current;
+            _stateMachine.SetNodeEnabled(true);
+            _stateMachine.StartNodeConnecting();
+            _stateMachine.SetNodeCredentialSource(null);
+            if (_stateMachine.Current != before)
+                EmitStateChanged();
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
         }
 
         // Use root identity path — clients always read/write from root, not per-gateway
@@ -1213,15 +1351,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _logger.Warn("[ConnMgr] No node credential available — skipping node connection");
             _diagnostics.Record("node", "No node credential available");
+            await BlockNodeStartAsync(MissingNodeCredentialMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
             return false;
         }
 
-        // Mark node as enabled in the state machine so UI reflects node state
-        // State machine is not thread-safe — acquire semaphore for mutation
         await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
-            _stateMachine.SetNodeEnabled(true);
             _stateMachine.SetNodeCredentialSource(nodeCredential.Source);
         }
         finally
@@ -1297,7 +1433,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            var prev = _stateMachine.Current.OverallState;
             switch (status)
             {
                 case ConnectionStatus.Connected:
@@ -1336,7 +1471,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
 
             TryClearBootstrapTokenAfterDurablePairing();
-            EmitStateChanged(prev);
+            EmitStateChanged();
         }
         finally
         {
@@ -1371,7 +1506,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
                 return;
 
-            var prev = _stateMachine.Current.OverallState;
             switch (e.Status)
             {
                 case PairingStatus.Paired:
@@ -1404,7 +1538,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
 
             TryClearBootstrapTokenAfterDurablePairing();
-            EmitStateChanged(prev);
+            EmitStateChanged();
         }
         finally
         {
@@ -1686,7 +1820,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     // ─── Helpers ───
 
-    private void EmitStateChanged(OverallConnectionState previousOverall)
+    private void EmitStateChanged()
     {
         var snapshot = _stateMachine.Current;
         // Always fire when any part of the snapshot changed — not just OverallState.
