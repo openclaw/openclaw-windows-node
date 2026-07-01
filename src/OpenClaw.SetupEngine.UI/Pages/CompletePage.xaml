@@ -11,18 +11,37 @@
             <StackPanel VerticalAlignment="Center" Spacing="12" HorizontalAlignment="Stretch"
                         MaxWidth="480" Margin="0,8">
 
-                <Image x:Name="SuccessIcon" Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/PartyPopper.png"
-                       Width="104" Height="104"
-                       HorizontalAlignment="Center" Margin="0,0,0,4" />
-                <Border x:Name="FailureIcon" Width="96" Height="96"
-                        CornerRadius="48" HorizontalAlignment="Center"
-                        Margin="0,0,0,16" Visibility="Collapsed"
-                        Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}">
-                    <FontIcon Glyph="&#xEA39;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              FontSize="42" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                              IsTextScaleFactorEnabled="False"
-                              HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
+                <Grid x:Name="SuccessIcon" Width="100" Height="100"
+                      HorizontalAlignment="Center" Margin="0,0,0,4">
+                    <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
+                           Width="100" Height="100"
+                           AutomationProperties.AccessibilityView="Raw" />
+                    <Border Width="36" Height="36" CornerRadius="18"
+                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            Background="{ThemeResource SystemFillColorSuccessBrush}"
+                            BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}" BorderThickness="3">
+                        <FontIcon Glyph="&#xE73E;" FontSize="16" IsTextScaleFactorEnabled="False"
+                                  Foreground="#FFFFFF"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  AutomationProperties.AccessibilityView="Raw" />
+                    </Border>
+                </Grid>
+                <Grid x:Name="FailureIcon" Width="100" Height="100"
+                      HorizontalAlignment="Center" Margin="0,0,0,16"
+                      Visibility="Collapsed">
+                    <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
+                           Width="100" Height="100"
+                           AutomationProperties.AccessibilityView="Raw" />
+                    <Border Width="36" Height="36" CornerRadius="18"
+                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            Background="{ThemeResource SystemFillColorCriticalBrush}"
+                            BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}" BorderThickness="3">
+                        <FontIcon Glyph="&#xEA39;" FontSize="16" IsTextScaleFactorEnabled="False"
+                                 Foreground="#FFFFFF"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 AutomationProperties.AccessibilityView="Raw" />
+                    </Border>
+                </Grid>
 
                 <TextBlock x:Name="TitleText" Text="All set!"
                            Style="{StaticResource TitleTextBlockStyle}"
