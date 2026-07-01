@@ -201,10 +201,6 @@ public sealed class TraySettingsConfig
         {
             ["EnableNodeMode"] = EnableNodeMode,
             ["AutoStart"] = AutoStart,
-        };
-
-        var initialDefaults = new Dictionary<string, object>
-        {
             ["NodeSystemRunEnabled"] = NodeSystemRunEnabled,
             ["NodeCanvasEnabled"] = NodeCanvasEnabled,
             ["NodeScreenEnabled"] = NodeScreenEnabled,
@@ -225,12 +221,21 @@ public sealed class TraySettingsConfig
         foreach (var kvp in setupOwnedSettings)
             settings[kvp.Key] = kvp.Value;
 
-        foreach (var kvp in initialDefaults)
-            settings.TryAdd(kvp.Key, kvp.Value);
-
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(settingsPath, json);
+    }
+
+    public void ApplyCapabilities(CapabilitiesConfig capabilities)
+    {
+        NodeSystemRunEnabled = capabilities.System;
+        NodeCanvasEnabled = capabilities.Canvas;
+        NodeScreenEnabled = capabilities.Screen;
+        NodeCameraEnabled = capabilities.Camera;
+        NodeLocationEnabled = capabilities.Location;
+        NodeBrowserProxyEnabled = capabilities.Browser;
+        NodeTtsEnabled = capabilities.Tts;
+        NodeSttEnabled = capabilities.Stt;
     }
 }
 

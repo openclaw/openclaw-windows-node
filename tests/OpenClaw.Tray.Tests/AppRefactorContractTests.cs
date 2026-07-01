@@ -254,6 +254,36 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SetupCompletion_PersistsStartupChoiceBeforeRestart()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var method = ExtractMethod(source, "RequestSetupCompleted");
+
+        Assert.Contains("_config.Settings.AutoStart = enableAutoStart", method);
+        Assert.Contains("_config.Settings.MergeIntoSettingsFile", method);
+        AssertInOrder(
+            method,
+            "_config.Settings.AutoStart = enableAutoStart",
+            "_config.Settings.MergeIntoSettingsFile",
+            "handler.Invoke");
+    }
+
+    [Fact]
+    public void CapabilitiesPage_PersistsSelectedProfileIntoRuntimeNodeSettings()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        var method = ExtractMethod(source, "WriteCapabilities");
+
+        Assert.Contains("config.Settings.ApplyCapabilities(caps)", method);
+        AssertInOrder(
+            method,
+            "prop?.SetValue(caps, toggle.IsOn)",
+            "config.Settings.ApplyCapabilities(caps)");
+    }
+
+    [Fact]
     public void Settings_OnboardCardRequiresActiveManagedWslGateway()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
