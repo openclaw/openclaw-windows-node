@@ -336,10 +336,16 @@ public sealed class AppRefactorContractTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
-        Assert.Contains("new SetupWindow()", source);
+        Assert.Contains("new SetupWindow(startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone)", source);
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
         Assert.Contains("ShowGatewayWizardAsync", source);
-        Assert.Contains("setupWindow.NavigateToGatewayInstalledMilestone()", source);
+        Assert.Contains("EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: true)", source);
+        Assert.Contains("startAtGatewayInstalledMilestone", setupWindow);
+        AssertInOrder(
+            setupWindow,
+            "SetupRunLock.TryAcquire",
+            "if (startAtGatewayInstalledMilestone)",
+            "NavigateToGatewayInstalledMilestone()");
         Assert.Contains("CanNavigateToWizard", setupWindow);
         // Direct onboarding must not hijack an already-open setup window: it
         // only navigates a freshly created window so it cannot cancel an
@@ -403,6 +409,21 @@ public sealed class AppRefactorContractTests
             method,
             "prop?.SetValue(caps, toggle.IsOn)",
             "config.Settings.ApplyCapabilities(caps)");
+    }
+
+    [Fact]
+    public void CapabilitiesPage_PermissionProbeFaultsShowInlineWarning()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        var click = ExtractMethod(source, "PrimaryClickAsync");
+        var build = ExtractMethod(source, "BuildPermissionRows");
+
+        Assert.Contains("!permissionsTask.IsCompletedSuccessfully", click);
+        Assert.Contains("catch (Exception ex)", build);
+        Assert.Contains("new InfoBar", build);
+        Assert.Contains("Couldn't read Windows permission status", build);
+        Assert.Contains("Review permissions later in Settings", build);
     }
 
     [Fact]

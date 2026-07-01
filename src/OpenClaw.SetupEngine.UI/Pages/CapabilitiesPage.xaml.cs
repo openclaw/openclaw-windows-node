@@ -111,10 +111,10 @@ public sealed partial class CapabilitiesPage : Page
         // local reads (registry / device enumeration), but make sure they have finished
         // before any step that reads their results — step 2's rows and step 3's summary —
         // so a fast click-through can't render empty rows or an undercounted summary.
-        if (_permissionsTask is { IsCompleted: false })
+        if (_permissionsTask is { } permissionsTask && !permissionsTask.IsCompletedSuccessfully)
         {
             PrimaryButton.IsEnabled = false;
-            try { await _permissionsTask; }
+            try { await permissionsTask; }
             finally { PrimaryButton.IsEnabled = true; }
         }
 
@@ -358,18 +358,35 @@ public sealed partial class CapabilitiesPage : Page
 
     private async Task BuildPermissionRows()
     {
-        PermRows.Children.Clear();
-        _permRows.Clear();
-        _permGranted.Clear();
-        foreach (var perm in SetupPermissionHelper.All)
+        try
         {
-            var (status, granted) = await perm.Check();
-            _permGranted[perm.Id] = granted;
-            var row = SetupPermissionHelper.BuildRow(perm, status, granted);
-            _permRows[perm.Id] = row;
-            PermRows.Children.Add(row);
+            PermRows.Children.Clear();
+            _permRows.Clear();
+            _permGranted.Clear();
+            foreach (var perm in SetupPermissionHelper.All)
+            {
+                var (status, granted) = await perm.Check();
+                _permGranted[perm.Id] = granted;
+                var row = SetupPermissionHelper.BuildRow(perm, status, granted);
+                _permRows[perm.Id] = row;
+                PermRows.Children.Add(row);
+            }
+            UpdatePermissionVisibility();
         }
-        UpdatePermissionVisibility();
+        catch (Exception ex)
+        {
+            PermRows.Children.Clear();
+            _permRows.Clear();
+            _permGranted.Clear();
+            PermRows.Children.Add(new InfoBar
+            {
+                Severity = InfoBarSeverity.Warning,
+                IsOpen = true,
+                IsClosable = false,
+                Title = "Couldn't read Windows permission status",
+                Message = $"You can continue setup. Review permissions later in Settings. Details: {ex.Message}",
+            });
+        }
     }
 
     private void UpdatePermissionVisibility()
