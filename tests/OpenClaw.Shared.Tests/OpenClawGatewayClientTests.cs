@@ -991,6 +991,37 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ProcessRawMessage_SessionMessageAssistantNotification_PreservesFullMessage()
+    {
+        var helper = new GatewayClientTestHelper();
+        OpenClawNotification? notification = null;
+        helper.Client.NotificationReceived += (_, value) => notification = value;
+
+        var fullMessage = new string('x', 240);
+
+        helper.ProcessRawMessage($$"""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "agent:main:whatsapp:direct:+15551234567",
+            "message": {
+              "role": "assistant",
+              "content": "{{fullMessage}}",
+              "timestamp": 1781631280633
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(notification);
+        Assert.True(notification!.IsChat);
+        Assert.Equal(fullMessage[..200] + "…", notification.Message);
+        Assert.Equal(fullMessage, notification.FullMessage);
+    }
+
+    [Fact]
     public void ProcessRawMessage_AgentEventLogsRawLengthWithoutPayloadContent()
     {
         var logger = new TestLogger();

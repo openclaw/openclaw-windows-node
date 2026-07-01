@@ -98,6 +98,7 @@ public class OpenClawNotification
 {
     public string Title { get; set; } = "";
     public string Message { get; set; } = "";
+    public string? FullMessage { get; set; }
     public string Type { get; set; } = "";
     public bool IsChat { get; set; } = false; // True if from chat response
 

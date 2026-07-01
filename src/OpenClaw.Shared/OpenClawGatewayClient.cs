@@ -3248,6 +3248,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var notification = new OpenClawNotification
         {
             Message = displayText,
+            FullMessage = text,
             IsChat = true,
             SessionKey = sessionKey
         };
