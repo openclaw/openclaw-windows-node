@@ -61,7 +61,7 @@ so a new or changed node capability is visible before the gateway can use it.
 ## Capability Allowlist
 
 Node Mode advertises available Windows commands, but the gateway decides which
-commands it may call through `gateway.nodes[].allowCommands` in
+commands it may call through `gateway.nodes.allowCommands` in
 `~/.openclaw/openclaw.json`. Add exact command names such as `screen.snapshot`,
 `canvas.present`, or `system.run`; wildcard entries are not expanded by the
 gateway.
