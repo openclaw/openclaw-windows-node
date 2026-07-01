@@ -3606,7 +3606,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         await EnsureSetupWindowAsync();
     }
 
-    private async Task<(SetupWindow? Window, bool CreatedNew)> EnsureSetupWindowAsync()
+    private async Task<(SetupWindow? Window, bool CreatedNew)> EnsureSetupWindowAsync(bool startAtGatewayInstalledMilestone = false)
     {
         if (_settings == null)
             return (null, false);
@@ -3622,7 +3622,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
-            var setupWindow = new SetupWindow();
+            var setupWindow = new SetupWindow(startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone);
             _setupWindow = setupWindow;
             setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
             setupWindow.SetupCompleted += OnSetupCompleted;
@@ -3648,7 +3648,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task ShowGatewayWizardAsync()
     {
-        var (setupWindow, createdNew) = await EnsureSetupWindowAsync();
+        var (setupWindow, createdNew) = await EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: true);
         if (setupWindow == null)
             return;
 
@@ -3664,10 +3664,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         await setupWindow.WaitForInitialContentReadyAsync();
-        if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
-        {
-            setupWindow.NavigateToGatewayInstalledMilestone();
-        }
     }
 
     private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)

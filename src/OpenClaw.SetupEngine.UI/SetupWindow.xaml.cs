@@ -27,7 +27,7 @@ public sealed partial class SetupWindow : Window
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
-    public SetupWindow(string? configPath = null)
+    public SetupWindow(string? configPath = null, bool startAtGatewayInstalledMilestone = false)
     {
         InitializeComponent();
         Active = this;
@@ -96,7 +96,10 @@ public sealed partial class SetupWindow : Window
             return;
         }
 
-        NavigateTo(typeof(SecurityNoticePage), _config);
+        if (startAtGatewayInstalledMilestone)
+            NavigateToGatewayInstalledMilestone();
+        else
+            NavigateTo(typeof(SecurityNoticePage), _config);
     }
 
     public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
