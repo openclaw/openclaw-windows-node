@@ -66,10 +66,11 @@ commands it may call through `gateway.nodes.allowCommands` in
 `canvas.present`, or `system.run`; wildcard entries are not expanded by the
 gateway.
 
-Privacy-sensitive commands, especially `screen.record`, `camera.*`,
-`stt.transcribe`, `tts.speak`, and `system.run`, should only be allowlisted when
-you want the gateway to be able to request that behavior. Windows permissions,
-Node Mode toggles, and the local exec policy can still add stricter checks.
+Privacy-sensitive commands, especially `screen.record`, `camera.snap`,
+`camera.clip`, `stt.transcribe`, `tts.speak`, and `system.run`, should only be
+allowlisted when you want the gateway to be able to request that behavior.
+Windows permissions, Node Mode toggles, and the local exec policy can still add
+stricter checks.
 
 ## Where to Go Next
 
