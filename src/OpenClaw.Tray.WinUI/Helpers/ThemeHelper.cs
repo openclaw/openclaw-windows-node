@@ -46,10 +46,9 @@ public static class ThemeHelper
 
     public static Color GetAccentColor()
     {
-        // Returns the user's Windows accent color (previously hard-coded to
-        // lobster red). Reads HKCU\Software\Microsoft\Windows\DWM\AccentColor
-        // which is stored as ABGR DWORD, falls back to the WinUI default
-        // blue if the registry key is missing.
+        // Returns the user's Windows accent color. Reads
+        // HKCU\Software\Microsoft\Windows\DWM\AccentColor, which is stored as
+        // ABGR DWORD, and falls back to the WinUI default blue if missing.
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM");

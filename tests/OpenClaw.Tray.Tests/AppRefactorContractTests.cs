@@ -218,7 +218,6 @@ public sealed class AppRefactorContractTests
         Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
         Assert.Contains("ShowGatewayWizardAsync", source);
         Assert.Contains("setupWindow.NavigateToGatewayInstalledMilestone()", source);
-        Assert.DoesNotContain("setupWindow.TryNavigateToWizard()", source);
         Assert.Contains("CanNavigateToWizard", setupWindow);
         // Direct onboarding must not hijack an already-open setup window: it
         // only navigates a freshly created window so it cannot cancel an
@@ -232,10 +231,26 @@ public sealed class AppRefactorContractTests
         Assert.Contains("? \"openclaw://chat\" : null", source);
         Assert.Contains("WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", source);
         AssertInOrder(source, "WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", "_mutex = new Mutex");
+        Assert.DoesNotContain("setupWindow.TryNavigateToWizard()", source);
         Assert.DoesNotContain("ResolveSetupEngineUiPath", source);
         Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);
         Assert.DoesNotContain("Process.GetProcessesByName(\"OpenClaw.SetupEngine.UI\")", source);
         Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "SetupWizardWindow.cs")));
+    }
+
+    [Fact]
+    public void GatewayInstalledMilestone_ShowsInlineStatusIfWizardCannotStart()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
+        var onBoard = ExtractMethod(code, "Onboard_Click");
+
+        Assert.Contains("x:Name=\"MilestoneStatusText\"", xaml);
+        Assert.Contains("SetupWindow.Active?.TryNavigateToWizard() == true", onBoard);
+        Assert.Contains("AutomationProperties.LiveSetting=\"Assertive\"", xaml);
+        Assert.Contains("MilestoneStatusText.Text", onBoard);
+        Assert.DoesNotContain("NavigateToWizard();", onBoard);
     }
 
     [Fact]

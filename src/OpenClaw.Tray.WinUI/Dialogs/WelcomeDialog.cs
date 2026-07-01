@@ -38,7 +38,7 @@ public sealed class WelcomeDialog : WindowEx
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // Lobster header
+        // OpenClaw header
         var headerPanel = new StackPanel
         {
             Orientation = Orientation.Horizontal,

@@ -42,7 +42,7 @@ The installer offers optional shortcuts and startup integration:
 
 ### 4. First Launch
 
-After the installer finishes, OpenClaw Companion starts automatically. Look for the 🦞 lobster icon in the system tray (bottom-right corner of the taskbar, near the clock).
+After the installer finishes, OpenClaw Companion starts automatically. Look for the OpenClaw icon in the system tray (bottom-right corner of the taskbar, near the clock).
 
 If you don't see it, check the **hidden icons** area (the `^` arrow next to the tray).
 

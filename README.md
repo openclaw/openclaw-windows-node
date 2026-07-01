@@ -143,7 +143,7 @@ dotnet run --project src/OpenClaw.Cli -- --url ws://127.0.0.1:18789 --token "<to
 Modern Windows 11-style system tray companion that connects to your local OpenClaw gateway.
 
 ### Features
-- 🦞 **Lobster branding** - Pixel-art lobster tray icon with status colors
+- 🎨 **OpenClaw branding** - OpenClaw tray icon with status colors
 - 🎨 **Modern UI** - Windows 11 flyout menu with dark/light mode support
 - 💬 **Quick Send** - Send messages via global hotkey (Ctrl+Alt+Shift+C)
 - 🔄 **Auto-updates** - Automatic updates from GitHub Releases

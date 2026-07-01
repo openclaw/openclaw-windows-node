@@ -263,7 +263,7 @@ The WinUI app is a **thin shell** — no business logic, just rendering pipeline
 ### Page Flow: Welcome → Capabilities → Progress → Permissions → Complete
 
 **WelcomePage**
-- Lobster icon + "OpenClaw Setup" title bar
+- OpenClaw icon + "OpenClaw Setup" title bar
 - Info card explaining what will be installed
 - "Install new WSL Gateway" button with ContentDialog confirmation
 - "Advanced setup" link → launches tray with `--page connection`
@@ -295,7 +295,7 @@ The WinUI app is a **thin shell** — no business logic, just rendering pipeline
 ### Window Properties
 - 720×820 logical pixels (DPI-scaled)
 - Mica backdrop
-- Custom title bar with lobster icon
+- Custom title bar with OpenClaw icon
 
 ---
 
