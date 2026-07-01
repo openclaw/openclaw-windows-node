@@ -97,7 +97,7 @@ public sealed partial class CompletePage : Page
     {
         if (LaunchButton.Content?.ToString() != "Close")
         {
-            var enableAutoStart = StartupToggle.Visibility == Visibility.Visible && StartupToggle.IsOn;
+            var enableAutoStart = StartupRow.Visibility == Visibility.Visible && StartupToggle.IsOn;
             if (SetupWindow.Active?.RequestSetupCompleted(enableAutoStart) == true)
                 return;
         }
