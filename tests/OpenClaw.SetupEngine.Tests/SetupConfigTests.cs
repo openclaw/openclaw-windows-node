@@ -272,6 +272,18 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void TraySettingsConfig_CorruptExistingFile_BackupNamesDoNotCollide()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, "{not json");
+
+        Assert.Throws<InvalidDataException>(() => new TraySettingsConfig().MergeIntoSettingsFile(settingsPath));
+        Assert.Throws<InvalidDataException>(() => TraySettingsConfig.UpdateAutoStartInSettingsFile(settingsPath, autoStart: true));
+
+        Assert.Equal(2, Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak").Count());
+    }
+
+    [Fact]
     public void TraySettingsConfig_CreatesNewFile_WhenMissing()
     {
         var settingsPath = Path.Combine(_tempDir, "newsettings", "settings.json");

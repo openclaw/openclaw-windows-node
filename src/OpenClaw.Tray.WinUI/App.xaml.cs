@@ -3745,14 +3745,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (setupWindow == null)
             return;
 
-        // Only steer a freshly created setup window to the onboard handoff. An
-        // already-open setup window may be mid-install on ProgressPage, whose
-        // Unloaded handler cancels the running setup pipeline — navigating it
-        // away would abort an in-progress install. In that case leave the
-        // existing window on its current page (already brought to the front).
         if (!createdNew)
         {
-            Logger.Info("Setup window already open; skipping direct gateway wizard navigation to avoid interrupting active setup");
+            if (setupWindow.TryNavigateToGatewayInstalledMilestone())
+                Logger.Info("Setup window already open; switched to direct OpenClaw onboard handoff");
+            else
+                Logger.Info("Setup window already open; leaving current setup page visible to avoid interrupting active setup");
             return;
         }
 

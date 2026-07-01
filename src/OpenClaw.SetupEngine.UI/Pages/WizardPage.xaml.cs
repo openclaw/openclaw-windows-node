@@ -528,12 +528,6 @@ public sealed partial class WizardPage : Page
 
     private async Task SecondaryClickAsync()
     {
-        if (_errorState)
-        {
-            await SkipWizardAsync();
-            return;
-        }
-
         await SendCurrentAnswerAsync(skip: true);
     }
 
