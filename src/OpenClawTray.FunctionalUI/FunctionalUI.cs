@@ -1620,20 +1620,37 @@ internal sealed class UiRenderer(Action requestRender)
         var m = element.Modifiers;
         control.Tag = element;
         if (m.Margin is { } margin) control.Margin = margin;
+        else control.ClearValue(FrameworkElement.MarginProperty);
         if (m.Width is { } width) control.Width = width;
+        else control.ClearValue(FrameworkElement.WidthProperty);
         if (m.Height is { } height) control.Height = height;
+        else control.ClearValue(FrameworkElement.HeightProperty);
         if (m.MinWidth is { } minWidth) control.MinWidth = minWidth;
+        else control.ClearValue(FrameworkElement.MinWidthProperty);
         if (m.MaxWidth is { } maxWidth) control.MaxWidth = maxWidth;
+        else control.ClearValue(FrameworkElement.MaxWidthProperty);
         if (m.MinHeight is { } minHeight) control.MinHeight = minHeight;
+        else control.ClearValue(FrameworkElement.MinHeightProperty);
         if (m.MaxHeight is { } maxHeight) control.MaxHeight = maxHeight;
+        else control.ClearValue(FrameworkElement.MaxHeightProperty);
         if (m.HorizontalAlignment is { } hAlign) control.HorizontalAlignment = hAlign;
+        else control.ClearValue(FrameworkElement.HorizontalAlignmentProperty);
         if (m.VerticalAlignment is { } vAlign) control.VerticalAlignment = vAlign;
+        else control.ClearValue(FrameworkElement.VerticalAlignmentProperty);
         if (m.Opacity is { } opacity) control.Opacity = opacity;
+        else control.ClearValue(UIElement.OpacityProperty);
         if (m.AutomationName is { } automationName) AutomationProperties.SetName(control, automationName);
+        else control.ClearValue(AutomationProperties.NameProperty);
         if (m.LiveRegion is { } liveRegion) AutomationProperties.SetLiveSetting(control, liveRegion);
+        else control.ClearValue(AutomationProperties.LiveSettingProperty);
         ApplyResourceOverrides(control, m.ResourceOverrides);
-        if (m.Disabled is { } disabled && control is Control disabledControl)
-            disabledControl.IsEnabled = !disabled;
+        if (control is Control disabledControl)
+        {
+            if (m.Disabled is { } disabled)
+                disabledControl.IsEnabled = !disabled;
+            else
+                disabledControl.ClearValue(Control.IsEnabledProperty);
+        }
 
         control.KeyDown -= ElementKeyDown;
         if (m.KeyDown is not null) control.KeyDown += ElementKeyDown;
@@ -1646,37 +1663,59 @@ internal sealed class UiRenderer(Action requestRender)
         {
             case TextBlock tb:
                 if (m.FontSize is { } textSize) tb.FontSize = textSize;
+                else tb.ClearValue(TextBlock.FontSizeProperty);
                 if (m.FontWeight is { } textWeight) tb.FontWeight = textWeight;
+                else tb.ClearValue(TextBlock.FontWeightProperty);
                 if (m.FontFamily is { } textFamily) tb.FontFamily = textFamily;
+                else tb.ClearValue(TextBlock.FontFamilyProperty);
                 if (m.TextWrapping is { } wrapping) tb.TextWrapping = wrapping;
+                else tb.ClearValue(TextBlock.TextWrappingProperty);
                 if (m.Padding is { } textPadding) tb.Padding = textPadding;
+                else tb.ClearValue(TextBlock.PaddingProperty);
                 if (m.ForegroundResourceKey is { } textFgResource) tb.Foreground = ThemeResources.ResolveBrush(textFgResource);
                 else if (m.Foreground is { } textFg) tb.Foreground = textFg;
+                else tb.ClearValue(TextBlock.ForegroundProperty);
+                tb.ClearValue(TextBlock.TextTrimmingProperty);
+                tb.ClearValue(TextBlock.MaxLinesProperty);
+                tb.ClearValue(TextBlock.LineHeightProperty);
+                tb.ClearValue(TextBlock.CharacterSpacingProperty);
                 break;
             case Control c:
                 if (m.Padding is { } controlPadding) c.Padding = controlPadding;
+                else c.ClearValue(Control.PaddingProperty);
                 if (m.FontSize is { } controlSize) c.FontSize = controlSize;
+                else c.ClearValue(Control.FontSizeProperty);
                 if (m.FontWeight is { } controlWeight) c.FontWeight = controlWeight;
+                else c.ClearValue(Control.FontWeightProperty);
                 if (m.FontFamily is { } controlFamily) c.FontFamily = controlFamily;
+                else c.ClearValue(Control.FontFamilyProperty);
                 if (m.ForegroundResourceKey is { } controlFgResource) c.Foreground = ThemeResources.ResolveBrush(controlFgResource);
                 else if (m.Foreground is { } controlFg) c.Foreground = controlFg;
+                else c.ClearValue(Control.ForegroundProperty);
                 if (m.BorderBrushResourceKey is { } controlBorderResource) c.BorderBrush = ThemeResources.ResolveBrush(controlBorderResource);
                 else if (m.BorderBrush is { } controlBorder) c.BorderBrush = controlBorder;
+                else c.ClearValue(Control.BorderBrushProperty);
                 if (m.BorderThickness is { } controlThickness) c.BorderThickness = controlThickness;
+                else c.ClearValue(Control.BorderThicknessProperty);
                 break;
             case Border b:
                 if (m.Padding is { } borderPadding) b.Padding = borderPadding;
+                else b.ClearValue(Border.PaddingProperty);
                 if (m.BackgroundResourceKey is { } backgroundResourceKey)
                     b.Background = ThemeResources.ResolveBrush(backgroundResourceKey);
                 else if (m.Background is { } bg)
                     b.Background = bg;
+                else b.ClearValue(Border.BackgroundProperty);
                 if (m.BorderBrushResourceKey is { } borderResourceKey)
                     b.BorderBrush = ThemeResources.ResolveBrush(borderResourceKey);
                 else if (m.BorderBrush is { } borderBrush)
                     b.BorderBrush = borderBrush;
+                else b.ClearValue(Border.BorderBrushProperty);
                 if (m.BorderThickness is { } borderThickness)
                     b.BorderThickness = borderThickness;
+                else b.ClearValue(Border.BorderThicknessProperty);
                 if (m.CornerRadius is { } radius) b.CornerRadius = radius;
+                else b.ClearValue(Border.CornerRadiusProperty);
                 break;
         }
     }
