@@ -158,6 +158,7 @@ public record ChatTimelineState(
 
 public enum ChatQueuedMessageSendState
 {
+    Queued,
     Sending,
     Failed
 }
@@ -167,7 +168,7 @@ public record ChatQueuedMessage(
     string Text,
     DateTimeOffset CreatedAt,
     string LocalNonce,
-    ChatQueuedMessageSendState SendState = ChatQueuedMessageSendState.Sending,
+    ChatQueuedMessageSendState SendState = ChatQueuedMessageSendState.Queued,
     string? ErrorText = null);
 
 public record ChatHistoryPage(ChatEvent[] Events, int NextSince, int PrevBefore, bool HasMore);

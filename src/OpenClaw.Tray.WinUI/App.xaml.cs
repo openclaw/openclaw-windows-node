@@ -4394,6 +4394,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _globalHotkey = null;
         });
 
+        // Stop chat first so provider event handlers cannot drain client-only
+        // queued prompts while the gateway connection is shutting down.
+        SafeShutdownStep("chat coordinator", () =>
+        {
+            _chatCoordinator?.Dispose();
+            _chatCoordinator = null;
+        });
+
         // Dispose runtime services
         var connectionManager = _connectionManager;
         if (connectionManager != null)
@@ -4404,12 +4412,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             });
             _connectionManager = null;
         }
-
-        SafeShutdownStep("chat coordinator", () =>
-        {
-            _chatCoordinator?.Dispose();
-            _chatCoordinator = null;
-        });
 
         var nodeService = _nodeService;
         if (nodeService != null)
