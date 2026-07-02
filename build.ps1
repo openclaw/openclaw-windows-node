@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Build script for OpenClaw Windows Hub
 
@@ -322,7 +322,10 @@ if ($issues.Count -gt 0) {
 Write-Header "Building Projects ($Configuration)"
 
 # Detect runtime identifier based on architecture
-$rid = if ($arch -eq "ARM64") { "win-arm64" } else { "win-x64" }
+$rid = switch ($arch) {
+    "ARM64" { "win-arm64" }
+    default { "win-x64" }
+}
 Write-Info "Runtime identifier: $rid"
 
 $buildResults = @{}
