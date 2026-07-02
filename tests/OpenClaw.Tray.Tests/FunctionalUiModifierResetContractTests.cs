@@ -32,6 +32,23 @@ public sealed class FunctionalUiModifierResetContractTests
         Assert.Contains("c.ClearValue(Control.BorderBrushProperty);", functionalUi);
     }
 
+    [Fact]
+    public void UiRenderer_PrunesUnvisitedCachesAfterRender()
+    {
+        var functionalUi = Read("src", "OpenClawTray.FunctionalUI", "FunctionalUI.cs");
+
+        Assert.Contains("private readonly HashSet<string> _visitedControlPaths = new();", functionalUi);
+        Assert.Contains("private readonly HashSet<string> _visitedComponentKeys = new();", functionalUi);
+        Assert.Contains("private readonly HashSet<string> _visitedContentFlyoutPaths = new();", functionalUi);
+        Assert.Contains("PruneUnvisitedPaths();", functionalUi);
+        Assert.Contains("component.Context.RunEffectCleanups();", functionalUi);
+        Assert.Contains("flyout.Hide();", functionalUi);
+        Assert.Contains("flyout.Content = null;", functionalUi);
+        Assert.Contains("_mountedPaths.Remove(path);", functionalUi);
+        Assert.Contains("DetachChildren(control);", functionalUi);
+        Assert.Contains("_controls.Remove(path);", functionalUi);
+    }
+
     private static string Read(params string[] parts)
         => File.ReadAllText(Path.Combine(new[] { TestRepositoryPaths.GetRepositoryRoot() }.Concat(parts).ToArray()));
 }

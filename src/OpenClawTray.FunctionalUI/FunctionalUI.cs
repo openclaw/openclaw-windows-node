@@ -913,10 +913,19 @@ internal sealed class UiRenderer(Action requestRender)
     private readonly Dictionary<string, Component> _components = new();
     private readonly Dictionary<string, Flyout> _contentFlyouts = new();
     private readonly HashSet<string> _mountedPaths = new();
+    private readonly HashSet<string> _visitedControlPaths = new();
+    private readonly HashSet<string> _visitedComponentKeys = new();
+    private readonly HashSet<string> _visitedContentFlyoutPaths = new();
 
     public UIElement Render(Element element, string path, List<Action> effects)
     {
-        return RenderElement(element, path, effects);
+        _visitedControlPaths.Clear();
+        _visitedComponentKeys.Clear();
+        _visitedContentFlyoutPaths.Clear();
+
+        var rendered = RenderElement(element, path, effects);
+        PruneUnvisitedPaths();
+        return rendered;
     }
 
     public void Dispose()
@@ -993,6 +1002,8 @@ internal sealed class UiRenderer(Action requestRender)
 
     private T GetOrCreate<T>(string path) where T : UIElement, new()
     {
+        _visitedControlPaths.Add(path);
+
         if (_controls.TryGetValue(path, out var existing) && existing is T typed)
             return typed;
 
@@ -1020,6 +1031,8 @@ internal sealed class UiRenderer(Action requestRender)
     {
         var componentKey = GetComponentKey(element.ComponentType);
         var key = path + ":" + componentKey;
+        _visitedComponentKeys.Add(key);
+
         if (!_components.TryGetValue(key, out var component))
         {
             component = (Component)Activator.CreateInstance(element.ComponentType)!;
@@ -1378,6 +1391,8 @@ internal sealed class UiRenderer(Action requestRender)
 
     private Flyout CreateContentFlyout(ContentFlyoutElement element, string path, List<Action> effects)
     {
+        _visitedContentFlyoutPaths.Add(path);
+
         // Cache the Flyout instance per path so its identity is STABLE across
         // re-renders. ConfigureButton reassigns control.Flyout on every render,
         // and a full-root re-render fires on every state change (including the
@@ -1401,6 +1416,39 @@ internal sealed class UiRenderer(Action requestRender)
             flyout.Content = content;
         }
         return flyout;
+    }
+
+    private void PruneUnvisitedPaths()
+    {
+        foreach (var (key, component) in _components.ToArray())
+        {
+            if (_visitedComponentKeys.Contains(key))
+                continue;
+
+            component.Context.RunEffectCleanups();
+            _components.Remove(key);
+        }
+
+        foreach (var (path, flyout) in _contentFlyouts.ToArray())
+        {
+            if (_visitedContentFlyoutPaths.Contains(path))
+                continue;
+
+            flyout.Hide();
+            flyout.Content = null;
+            _contentFlyouts.Remove(path);
+        }
+
+        foreach (var (path, control) in _controls.ToArray())
+        {
+            if (_visitedControlPaths.Contains(path))
+                continue;
+
+            _mountedPaths.Remove(path);
+            DetachChildren(control);
+            RemoveFromParent(control);
+            _controls.Remove(path);
+        }
     }
 
     private static MenuFlyout CreateMenuFlyout(MenuFlyoutContentElement element)
