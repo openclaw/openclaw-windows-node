@@ -1179,9 +1179,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         long expectedLifecycleGeneration,
         long? expectedNodeGeneration = null)
     {
-        CancellationTokenSource nodeOperationCts;
-        CancellationToken nodeOperationToken;
-        long nodeGeneration;
+        CancellationTokenSource? nodeOperationCts = null;
+        CancellationToken nodeOperationToken = CancellationToken.None;
+        long nodeGeneration = 0;
+        string? preStartBlocker = null;
+        CancellationToken preStartBlockerToken = CancellationToken.None;
 
         await _nodeStartSemaphore.WaitAsync();
         try
@@ -1207,31 +1209,46 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                             "Previous node disconnect"))
                     {
                         _diagnostics.Record("node", "Previous node disconnect timed out");
-                        return null;
+                        preStartBlocker = "Previous node disconnect timed out";
+                        preStartBlockerToken = _operationCts?.Token ?? CancellationToken.None;
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.Error($"[ConnMgr] Previous node disconnect failed: {ex.Message}");
                     _diagnostics.Record("node", "Previous node disconnect failed", ex.Message);
-                    return null;
+                    preStartBlocker = $"Previous node disconnect failed: {ex.Message}";
+                    preStartBlockerToken = _operationCts?.Token ?? CancellationToken.None;
                 }
             }
 
-            lock (_nodeOperationLock)
+            if (preStartBlocker == null)
             {
-                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, expectedNodeGeneration))
-                    return null;
+                lock (_nodeOperationLock)
+                {
+                    if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, expectedNodeGeneration))
+                        return null;
 
-                nodeOperationCts = new CancellationTokenSource();
-                nodeOperationToken = nodeOperationCts.Token;
-                nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
-                _nodeOperationCts = nodeOperationCts;
+                    nodeOperationCts = new CancellationTokenSource();
+                    nodeOperationToken = nodeOperationCts.Token;
+                    nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
+                    _nodeOperationCts = nodeOperationCts;
+                }
             }
         }
         finally
         {
             _nodeStartSemaphore.Release();
+        }
+
+        if (preStartBlocker != null)
+        {
+            await BlockNodeStartAsync(
+                preStartBlocker,
+                preStartBlockerToken,
+                expectedLifecycleGeneration,
+                expectedNodeGeneration);
+            return null;
         }
 
         try
@@ -1251,7 +1268,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (ReferenceEquals(_nodeOperationCts, nodeOperationCts))
                     _nodeOperationCts = null;
             }
-            nodeOperationCts.Dispose();
+            nodeOperationCts!.Dispose();
         }
     }
 
@@ -1269,6 +1286,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         long? expectedLifecycleGeneration = null,
         long? expectedNodeGeneration = null)
     {
+        if (expectedLifecycleGeneration.HasValue &&
+            Interlocked.Read(ref _generation) != expectedLifecycleGeneration.Value)
+        {
+            return;
+        }
+
+        if (expectedNodeGeneration.HasValue &&
+            Interlocked.Read(ref _nodeConnectionGeneration) != expectedNodeGeneration.Value)
+        {
+            return;
+        }
+
         await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {

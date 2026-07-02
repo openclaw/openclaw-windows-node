@@ -52,9 +52,13 @@ public partial class App
             return new
             {
                 connectionStatus = _appState!.Status.ToString(),
+                overallState = snapshot?.OverallState.ToString(),
+                operatorState = snapshot?.OperatorState.ToString(),
+                nodeState = snapshot?.NodeState.ToString(),
                 nodeConnected = snapshot?.NodeState == RoleConnectionState.Connected,
                 nodePaired = snapshot?.NodePairingStatus == PairingStatus.Paired,
                 nodePendingApproval = snapshot?.NodeState == RoleConnectionState.PairingRequired,
+                nodeError = snapshot?.NodeError,
                 gatewayVersion = _appState!.GatewaySelf?.ServerVersion,
                 sessionCount = _appState!.Sessions?.Length ?? 0,
                 nodeCount = _appState!.Nodes?.Length ?? 0,
@@ -164,9 +168,17 @@ public partial class App
 
         app.MenuHandler = () =>
         {
+            var snapshot = _connectionManager?.CurrentSnapshot;
             var items = new List<object>
             {
-                new { type = "status", status = _appState!.Status.ToString() },
+                new
+                {
+                    type = "status",
+                    status = _appState!.Status.ToString(),
+                    overallState = snapshot?.OverallState.ToString(),
+                    nodeState = snapshot?.NodeState.ToString(),
+                    nodeError = snapshot?.NodeError
+                },
                 new { type = "sessions", count = _appState!.Sessions?.Length ?? 0 },
                 new { type = "nodes", count = _appState!.Nodes?.Length ?? 0 },
             };

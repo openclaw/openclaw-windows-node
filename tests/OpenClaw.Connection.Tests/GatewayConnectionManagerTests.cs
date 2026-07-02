@@ -508,6 +508,35 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task HandshakeSucceeded_PreviousNodeDisconnectThrows_ReportsBlockedNode()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new ThrowingNodeDisconnectConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
+        Assert.Contains("disconnect failed", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(snapshots, snapshot =>
+            snapshot.NodeState == RoleConnectionState.Error &&
+            snapshot.NodeError?.Contains("disconnect failed", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.NotEqual(RoleConnectionState.Connecting, snapshots.Last().NodeState);
+    }
+
+    [Fact]
     public async Task BlockNodeStartAsync_StaleLifecycleGeneration_DoesNotOverwriteCurrentSnapshot()
     {
         SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
@@ -1704,6 +1733,39 @@ public class GatewayConnectionManagerTests : IDisposable
             DisconnectStarted.TrySetResult(true);
             await AllowDisconnect.Task;
         }
+
+        public void Dispose() { }
+    }
+
+    private sealed class ThrowingNodeDisconnectConnector : INodeConnector
+    {
+        public bool IsConnected => true;
+        public PairingStatus PairingStatus => PairingStatus.Paired;
+        public string? NodeDeviceId => "throwing-disconnect-node";
+        public NodeConnectionMode Mode => NodeConnectionMode.Gateway;
+
+#pragma warning disable CS0067 // Events required by interface but not fired in tests
+        public event EventHandler<ConnectionStatus>? StatusChanged;
+        public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
+        public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
+#pragma warning restore CS0067
+
+        public Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)
+            => Task.CompletedTask;
+
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
+        }
+
+        public Task DisconnectAsync() => throw new InvalidOperationException("disconnect failed");
 
         public void Dispose() { }
     }

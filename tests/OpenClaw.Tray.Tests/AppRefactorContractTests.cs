@@ -190,10 +190,26 @@ public sealed class AppRefactorContractTests
         var method = ExtractMethod(source, "WireAppCapabilityHandlers");
 
         Assert.Contains("var snapshot = _connectionManager?.CurrentSnapshot;", method);
+        Assert.Contains("overallState = snapshot?.OverallState.ToString()", method);
+        Assert.Contains("operatorState = snapshot?.OperatorState.ToString()", method);
+        Assert.Contains("nodeState = snapshot?.NodeState.ToString()", method);
         Assert.Contains("nodeConnected = snapshot?.NodeState == RoleConnectionState.Connected", method);
         Assert.Contains("nodePaired = snapshot?.NodePairingStatus == PairingStatus.Paired", method);
         Assert.Contains("nodePendingApproval = snapshot?.NodeState == RoleConnectionState.PairingRequired", method);
+        Assert.Contains("nodeError = snapshot?.NodeError", method);
         Assert.Contains("operatorDeviceId = snapshot?.OperatorDeviceId", method);
+    }
+
+    [Fact]
+    public void AppMenu_StatusItemIncludesManagerSnapshotState()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "WireAppCapabilityHandlers");
+
+        Assert.Contains("app.MenuHandler = () =>", method);
+        Assert.Contains("overallState = snapshot?.OverallState.ToString()", method);
+        Assert.Contains("nodeState = snapshot?.NodeState.ToString()", method);
+        Assert.Contains("nodeError = snapshot?.NodeError", method);
     }
 
     [Fact]
