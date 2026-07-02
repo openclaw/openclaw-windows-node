@@ -58,6 +58,12 @@ public static class ChatTimelineReducer
         };
     }
 
+    public static ChatTimelineState BeginLocalUserTurn(ChatTimelineState state)
+    {
+        state = ClearStreamingAtTurnBoundary(state);
+        return state with { TurnActive = true };
+    }
+
     // Hard turn boundary cleanup shared by both user-message entry points
     // (AddLocalUser for typed input, ApplyUserMessage for gateway-injected
     // events). Clears ActiveAssistantId/ActiveReasoningId and demotes any

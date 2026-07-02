@@ -3003,6 +3003,18 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_AssistantWorking" xml:space="preserve">
     <value>L'assistant travaille…</value>
   </data>
+  <data name="Chat_Composer_QueuedCountFormat" xml:space="preserve">
+    <value>En file d’attente ({0})</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageAutomationFormat" xml:space="preserve">
+    <value>Message en file d’attente : {0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailedAutomationFormat" xml:space="preserve">
+    <value>Échec du message en file d’attente : {0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
+    <value>Échec</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>Copier le message</value>
   </data>
@@ -3264,6 +3276,12 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="Chat_Notification_SendFailed" xml:space="preserve">
     <value>Échec de l'envoi</value>
+  </data>
+  <data name="Chat_Error_SendReturnedStatusFormat" xml:space="preserve">
+    <value>La passerelle a renvoyé l’état d’envoi « {0} ».</value>
+  </data>
+  <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
+    <value>Échec de l’envoi : {0}</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Échec de l'abandon</value>

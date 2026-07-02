@@ -3050,6 +3050,18 @@ Use one of these options:
   <data name="Chat_Composer_AssistantWorking" xml:space="preserve">
     <value>Assistant is working…</value>
   </data>
+  <data name="Chat_Composer_QueuedCountFormat" xml:space="preserve">
+    <value>Queued ({0})</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageAutomationFormat" xml:space="preserve">
+    <value>Queued message: {0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailedAutomationFormat" xml:space="preserve">
+    <value>Queued message failed: {0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>Copy message</value>
   </data>
@@ -3311,6 +3323,12 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="Chat_Notification_SendFailed" xml:space="preserve">
     <value>Send failed</value>
+  </data>
+  <data name="Chat_Error_SendReturnedStatusFormat" xml:space="preserve">
+    <value>Gateway returned send status '{0}'.</value>
+  </data>
+  <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
+    <value>Send failed: {0}</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Abort failed</value>

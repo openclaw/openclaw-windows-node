@@ -10,6 +10,7 @@ using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.UI;
@@ -58,6 +59,7 @@ public record OpenClawComposerProps(
     Func<CancellationToken, Action?, Task<string?>>? OnVoiceRequest = null,
     Action? OnAttachClick = null,
     IReadOnlyList<ChatAttachment>? PendingAttachments = null,
+    IReadOnlyList<ChatQueuedMessage>? QueuedMessages = null,
     Action<ChatAttachment>? OnAttachmentRemoved = null,
     bool IsSpeakerMuted = false,
     Action? OnSpeakerToggle = null,
@@ -73,10 +75,17 @@ public record OpenClawComposerProps(
     Action? OnModelCleared = null,
     IReadOnlyList<GatewayCommand>? AvailableCommands = null,
     bool CommandsSupported = true,
-    Action? OnCommandsRequested = null);
+    Action? OnCommandsRequested = null,
+    double? AvailableHeight = null);
 
 public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 {
+    private const double CompactQueuedMessagesMaxHeight = 144;
+    private const double ExpandedQueuedMessagesFallbackMaxHeight = 220;
+    private const double ExpandedQueuedMessagesMinHeight = 144;
+    private const double ExpandedQueuedMessagesMaxHeight = 280;
+    private const double ExpandedQueuedMessagesHeightRatio = 0.28;
+
     // Distinct reference-equality sentinel used as the ComboBoxItem.Tag for the
     // "Default" (clear model override) row, so it can never collide with a real
     // model id string. Selecting it routes to OnModelCleared (tri-state clear)
@@ -142,6 +151,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // only when an attachment is added or removed (not on every render).
         var attachmentImagesRef = UseRef<Dictionary<ChatAttachment, Microsoft.UI.Xaml.Media.Imaging.BitmapImage?>>(new());
         var pendingAttachments = Props.PendingAttachments ?? Array.Empty<ChatAttachment>();
+        var queuedMessages = Props.QueuedMessages ?? Array.Empty<ChatQueuedMessage>();
         var imageCache = attachmentImagesRef.Current;
         foreach (var cachedAttachment in imageCache.Keys.ToArray())
         {
@@ -902,6 +912,111 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // Composer "card" — wraps the attachment preview (if any) and the
         // textbox in a single bordered container so the preview reads as
         // content inside the chat input rather than a separate row.
+        Element RenderQueuedMessages()
+        {
+            if (queuedMessages.Count == 0)
+                return Empty();
+
+            var cardBg = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+            var cardBorder = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["ControlStrokeColorDefaultBrush"];
+            var labelFg = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
+            var textFg = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
+            var failureFg = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SystemFillColorCriticalBrush"];
+            var queuedCountText = string.Format(
+                CultureInfo.CurrentCulture,
+                LocalizationHelper.GetString("Chat_Composer_QueuedCountFormat"),
+                queuedMessages.Count);
+
+            Element RenderQueuedCard(ChatQueuedMessage message)
+            {
+                var failed = message.SendState == ChatQueuedMessageSendState.Failed;
+                var automationName = string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationHelper.GetString(failed
+                        ? "Chat_Composer_QueuedMessageFailedAutomationFormat"
+                        : "Chat_Composer_QueuedMessageAutomationFormat"),
+                    message.Text);
+
+                Element stateLabel = Empty();
+                Element details = Empty();
+                if (failed)
+                {
+                    stateLabel = TextBlock(LocalizationHelper.GetString("Chat_Composer_QueuedMessageFailed"))
+                        .Set(t =>
+                            {
+                                t.FontSize = 12;
+                                t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+                                t.Foreground = failureFg;
+                            });
+
+                    if (!string.IsNullOrWhiteSpace(message.ErrorText))
+                    {
+                        details = TextBlock(message.ErrorText!)
+                            .Set(t =>
+                            {
+                                t.TextWrapping = TextWrapping.Wrap;
+                                t.FontSize = 12;
+                                t.Foreground = failureFg;
+                            });
+                    }
+                }
+
+                return Border(
+                    VStack(6,
+                        stateLabel,
+                        TextBlock(message.Text)
+                            .Set(t =>
+                            {
+                                t.TextWrapping = TextWrapping.Wrap;
+                                t.IsTextSelectionEnabled = true;
+                                t.Foreground = textFg;
+                            }),
+                        details
+                    )
+                )
+                .Background(cardBg)
+                .CornerRadius(8)
+                .Padding(10, 8, 10, 8)
+                .HAlign(HorizontalAlignment.Stretch)
+                .AutomationName(automationName)
+                .WithKey($"composer-queued:{Props.ChannelId ?? "none"}:{message.Id}")
+                .Set(b =>
+                {
+                    b.BorderBrush = cardBorder;
+                    b.BorderThickness = new Thickness(1);
+                });
+            }
+
+            var queuedList = ScrollView(VStack(8, queuedMessages.Select(RenderQueuedCard).ToArray()))
+                .Set(sv =>
+                {
+                    sv.MaxHeight = ComputeQueuedMessagesMaxHeight(Props.IsCompact, Props.AvailableHeight);
+                    sv.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                    sv.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                    sv.HorizontalScrollMode = ScrollMode.Disabled;
+                    sv.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                });
+
+            return Border(
+                    VStack(8,
+                        TextBlock(queuedCountText)
+                            .Set(t =>
+                            {
+                                t.FontSize = 13;
+                                t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+                                t.Foreground = labelFg;
+                            }),
+                        queuedList
+                    )
+                )
+                .Padding(0, 0, 0, 0)
+                .AutomationName(queuedCountText)
+                .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite)
+                .WithKey($"composer-queued-section:{Props.ChannelId ?? "none"}");
+        }
+
+        var queuedPanel = RenderQueuedMessages();
+
         var composerInput = Border(
             VStack(0, attachmentPreview, textbox)
         ).Set(b =>
@@ -1215,8 +1330,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // history records every approval (and its decided/expired badge)
         // in chronological order. See OpenClawChatTimeline.RenderPermissionEntry.
 
-        var actionsRow = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            Empty().Grid(row: 0, column: 0),
+        var bottomToolbar = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            dropdownsRow
+                .Margin(0, 0, 12, 0)
+                .HAlign(HorizontalAlignment.Stretch)
+                .Grid(row: 0, column: 0),
             (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)
@@ -1226,7 +1344,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // ── Optional working banner above the composer ──
         Element workingBanner2 = workingBanner;
 
-        var composerCore = VStack(8, dropdownsRow, composerInput, voiceIndicator, actionsRow.Margin(0, -8, 0, -4));
+        var composerCore = VStack(8, queuedPanel, composerInput, voiceIndicator, bottomToolbar.Margin(0, -8, 0, -4));
 
         // Drive the floating slash-menu popup after the tree builds so it anchors
         // above the (already mounted) textbox without shifting any controls.
@@ -1244,6 +1362,20 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                  b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SurfaceStrokeColorDefaultBrush"];
              })
         );
+    }
+
+    private static double ComputeQueuedMessagesMaxHeight(bool isCompact, double? availableHeight)
+    {
+        if (isCompact)
+            return CompactQueuedMessagesMaxHeight;
+
+        if (availableHeight is not { } height || double.IsNaN(height) || double.IsInfinity(height) || height <= 0)
+            return ExpandedQueuedMessagesFallbackMaxHeight;
+
+        return Math.Clamp(
+            Math.Round(height * ExpandedQueuedMessagesHeightRatio),
+            ExpandedQueuedMessagesMinHeight,
+            ExpandedQueuedMessagesMaxHeight);
     }
 
     private const int SlashMenuMaxItems = 8;

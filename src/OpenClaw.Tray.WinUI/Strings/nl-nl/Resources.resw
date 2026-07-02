@@ -3004,6 +3004,18 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_AssistantWorking" xml:space="preserve">
     <value>Assistent is bezig…</value>
   </data>
+  <data name="Chat_Composer_QueuedCountFormat" xml:space="preserve">
+    <value>In wachtrij ({0})</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageAutomationFormat" xml:space="preserve">
+    <value>Bericht in wachtrij: {0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailedAutomationFormat" xml:space="preserve">
+    <value>Bericht in wachtrij mislukt: {0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
+    <value>Mislukt</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>Bericht kopiëren</value>
   </data>
@@ -3265,6 +3277,12 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="Chat_Notification_SendFailed" xml:space="preserve">
     <value>Verzenden mislukt</value>
+  </data>
+  <data name="Chat_Error_SendReturnedStatusFormat" xml:space="preserve">
+    <value>Gateway heeft verzendstatus '{0}' geretourneerd.</value>
+  </data>
+  <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
+    <value>Verzenden mislukt: {0}</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Afbreken mislukt</value>

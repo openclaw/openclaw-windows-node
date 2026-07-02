@@ -44,6 +44,52 @@ public sealed class ChatTimelineRenderIdentityContractTests
     }
 
     [Fact]
+    public void QueuedMessages_RenderInComposerAboveInput()
+    {
+        var models = Read("src", "OpenClaw.Chat", "ChatModels.cs");
+        var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
+
+        Assert.Contains("public record ChatQueuedMessage", models);
+        Assert.Contains("QueuedMessagesByThread", models);
+        Assert.Contains("Dictionary<string, List<ChatQueuedMessage>> _queuedMessages", provider);
+        Assert.Contains("QueuedMessagesByThread: queuedMessagesCopy", provider);
+        Assert.Contains("snapshot.QueuedMessagesByThread", root);
+        Assert.Contains("QueuedMessages: queuedMessages", root);
+        Assert.Contains("IReadOnlyList<ChatQueuedMessage>? QueuedMessages = null", composer);
+        Assert.Contains("AvailableHeight: chatSurfaceHeight.Value", root);
+        Assert.Contains("queuedPanel", composer);
+        Assert.Contains("composerInput", composer);
+        Assert.Contains("RenderQueuedMessages", composer);
+        Assert.Contains("Chat_Composer_QueuedCountFormat", composer);
+        Assert.Contains("Chat_Composer_QueuedMessageAutomationFormat", composer);
+        Assert.Contains("Chat_Composer_QueuedMessageFailedAutomationFormat", composer);
+        Assert.Contains("Chat_Composer_QueuedMessageFailed", composer);
+        Assert.Contains("composer-queued-section:", composer);
+        Assert.Contains("ComputeQueuedMessagesMaxHeight(Props.IsCompact, Props.AvailableHeight)", composer);
+        Assert.Contains("chatSurfaceHeight.Set(Math.Round(height))", root);
+        Assert.DoesNotContain("FormatQueuedTime", composer);
+        Assert.DoesNotContain("\"Sending\"", composer);
+        Assert.DoesNotContain("QueuedMessages", timeline);
+        Assert.DoesNotContain("queued-section:", timeline);
+        Assert.DoesNotContain("Steer", composer);
+    }
+
+    [Fact]
+    public void Timeline_DoesNotRenderTemporaryDebugMetadata()
+    {
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+
+        Assert.DoesNotContain("BuildDebugMetadata", timeline);
+        Assert.DoesNotContain("DEBUG kind=", timeline);
+        Assert.DoesNotContain("rowGen=", timeline);
+        Assert.DoesNotContain("localQueued=", timeline);
+        Assert.DoesNotContain("textHash=", timeline);
+    }
+
+    [Fact]
     public void ResetClearPath_BumpsTimelineGenerationBeforeReusingEntryIds()
     {
         var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");

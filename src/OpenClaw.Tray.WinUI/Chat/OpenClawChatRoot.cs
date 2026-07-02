@@ -118,6 +118,7 @@ public sealed class OpenClawChatRoot : Component
         var scrollToBottomToken = UseState(0, threadSafe: true);
         var showToolCalls = UseState(s_showToolCalls, threadSafe: true);
         var toolCallsCollapseVersion = UseState(s_toolCallsCollapseVersion, threadSafe: true);
+        var chatSurfaceHeight = UseState<double?>(null, threadSafe: true);
         // Guards a duplicate suggestion-button click before the snapshot
         // reflects the optimistic local user entry (which then ordinarily
         // hides the zero-state buttons via the isEmptyConversation check).
@@ -292,6 +293,13 @@ public sealed class OpenClawChatRoot : Component
             && generations.TryGetValue(effectiveThread.Id, out var generation))
         {
             timelineGeneration = generation;
+        }
+        var queuedMessages = Array.Empty<ChatQueuedMessage>();
+        if (effectiveThread is not null
+            && snapshot.QueuedMessagesByThread is { } queuedByThread
+            && queuedByThread.TryGetValue(effectiveThread.Id, out var queuedForThread))
+        {
+            queuedMessages = queuedForThread.ToArray();
         }
 
         var entries = (IReadOnlyList<ChatTimelineItem>)timeline.Entries;
@@ -578,6 +586,7 @@ public sealed class OpenClawChatRoot : Component
                 OnVoiceRequest: _onVoiceRequest,
                 OnAttachClick: _onAttachClick,
                 PendingAttachments: pendingAttachments.Value,
+                QueuedMessages: queuedMessages,
                 OnAttachmentRemoved: attachment => SetPendingAttachments(RemoveAttachment(pendingAttachmentsRef.Current, attachment)),
                 IsSpeakerMuted: speakerMuted.Value,
                 OnSpeakerToggle: () =>
@@ -602,17 +611,30 @@ public sealed class OpenClawChatRoot : Component
                 IsCompact: _isCompact,
                 AvailableCommands: snapshot.AvailableCommands,
                 CommandsSupported: snapshot.CommandsSupported,
-                OnCommandsRequested: () => RunFireAndForget(ct => _provider.EnsureCommandCatalogAsync(ct))))
+                OnCommandsRequested: () => RunFireAndForget(ct => _provider.EnsureCommandCatalogAsync(ct)),
+                AvailableHeight: chatSurfaceHeight.Value))
             : (bodyIsSkeleton ? RenderSkeletonComposer() : Empty());
 
         var divider = Empty();
         // Composer absorbs the old StatusBar.
+        void SetChatSurfaceHeight(double height)
+        {
+            if (double.IsNaN(height) || double.IsInfinity(height) || height <= 0)
+                return;
+
+            chatSurfaceHeight.Set(Math.Round(height));
+        }
+
         return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto],
             header.Grid(row: 0, column: 0),
             divider.Grid(row: 1, column: 0),
             body.Grid(row: 2, column: 0),
             composer.Grid(row: 3, column: 0)
-        );
+        ).OnMount(root =>
+        {
+            SetChatSurfaceHeight(root.ActualHeight);
+            root.SizeChanged += (_, e) => SetChatSurfaceHeight(e.NewSize.Height);
+        });
     }
 
     // Cheap allocation-free probe for "does any group contain a session with

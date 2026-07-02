@@ -527,16 +527,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             else if (m.TryGetProperty("ts", out var tsProp2) && tsProp2.ValueKind == JsonValueKind.Number)
                 ts = tsProp2.GetInt64();
 
-            // __openclaw metadata: unique message ID + sequence number
-            string? openClawId = null;
-            int? openClawSeq = null;
-            if (m.TryGetProperty("__openclaw", out var oc) && oc.ValueKind == JsonValueKind.Object)
-            {
-                if (oc.TryGetProperty("id", out var ocId))
-                    openClawId = ocId.GetString();
-                if (oc.TryGetProperty("seq", out var ocSeq) && ocSeq.ValueKind == JsonValueKind.Number)
-                    openClawSeq = ocSeq.GetInt32();
-            }
+            var (openClawId, openClawSeq) = ExtractOpenClawMetadata(m);
 
             // stopReason on assistant messages (e.g. "stop", "toolUse", possibly "abort")
             string? stopReason = null;
@@ -1980,6 +1971,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         string? runId = null;
         string? sessionKey = null;
+        string? status = null;
+        string? error = null;
         var cached = false;
 
         if (root.TryGetProperty("payload", out var payload) && payload.ValueKind == JsonValueKind.Object)
@@ -1988,7 +1981,18 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 runId = runIdProp.GetString();
             if (payload.TryGetProperty("sessionKey", out var sessionKeyProp))
                 sessionKey = sessionKeyProp.GetString();
+            if (payload.TryGetProperty("status", out var statusProp))
+                status = statusProp.GetString();
+            if (payload.TryGetProperty("error", out var payloadErrorProp))
+                error = TryReadJsonValueAsString(payloadErrorProp);
+            else if (payload.TryGetProperty("message", out var payloadMessageProp) && ChatSendResult.IsFailureStatus(status))
+                error = TryReadJsonValueAsString(payloadMessageProp);
         }
+
+        if (root.TryGetProperty("status", out var rootStatusProp))
+            status ??= rootStatusProp.GetString();
+        if (root.TryGetProperty("error", out var rootErrorProp))
+            error ??= TryReadJsonValueAsString(rootErrorProp);
 
         if (root.TryGetProperty("meta", out var meta) &&
             meta.ValueKind == JsonValueKind.Object &&
@@ -2002,9 +2006,20 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             RunId = runId,
             SessionKey = sessionKey,
+            Status = status,
+            Error = error,
             Cached = cached
         };
     }
+
+    private static string? TryReadJsonValueAsString(JsonElement value) =>
+        value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => value.ToString(),
+            JsonValueKind.Object when value.TryGetProperty("message", out var message) => TryReadJsonValueAsString(message),
+            _ => null
+        };
 
     private void HandleRequestError(string? method, JsonElement root)
     {
@@ -3071,7 +3086,20 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (string.IsNullOrEmpty(text)) return;
             if (ChatMessageInfo.IsSilentAssistantDirective(role, text)) return;
 
-            EmitChatMessageReceived(sessionKey, role, text, state, tsMs, inTok, outTok, respTok, ctxPct);
+            var (messageOpenClawId, messageOpenClawSeq) = ExtractOpenClawMetadata(message);
+            var (payloadOpenClawId, payloadOpenClawSeq) = ExtractOpenClawMetadata(payload);
+            EmitChatMessageReceived(
+                sessionKey,
+                role,
+                text,
+                state,
+                tsMs,
+                inTok,
+                outTok,
+                respTok,
+                ctxPct,
+                messageOpenClawId ?? payloadOpenClawId,
+                messageOpenClawSeq ?? payloadOpenClawSeq);
 
             if (role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
@@ -3093,7 +3121,19 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             {
                 if (ChatMessageInfo.IsSilentAssistantDirective(role, text)) return;
 
-                EmitChatMessageReceived(sessionKey, role, text, state, tsMs, inTok, outTok, respTok, ctxPct);
+                var (openClawId, openClawSeq) = ExtractOpenClawMetadata(payload);
+                EmitChatMessageReceived(
+                    sessionKey,
+                    role,
+                    text,
+                    state,
+                    tsMs,
+                    inTok,
+                    outTok,
+                    respTok,
+                    ctxPct,
+                    openClawId,
+                    openClawSeq);
 
                 if (role == "assistant")
                 {
@@ -3155,8 +3195,18 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return (input, output, response, ctx);
     }
 
-    private void EmitChatMessageReceived(string sessionKey, string role, string text, string? state, long tsMs,
-        int? inputTokens = null, int? outputTokens = null, int? responseTokens = null, int? contextPct = null)
+    private void EmitChatMessageReceived(
+        string sessionKey,
+        string role,
+        string text,
+        string? state,
+        long tsMs,
+        int? inputTokens = null,
+        int? outputTokens = null,
+        int? responseTokens = null,
+        int? contextPct = null,
+        string? openClawId = null,
+        int? openClawSeq = null)
     {
         if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
             return;
@@ -3173,13 +3223,35 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
                 ResponseTokens = responseTokens,
-                ContextPercent = contextPct
+                ContextPercent = contextPct,
+                OpenClawId = openClawId,
+                OpenClawSeq = openClawSeq
             });
         }
         catch (Exception ex)
         {
             _logger.Warn($"ChatMessageReceived handler threw: {ex.Message}");
         }
+    }
+
+    private static (string? Id, int? Seq) ExtractOpenClawMetadata(JsonElement node)
+    {
+        if (node.ValueKind != JsonValueKind.Object ||
+            !node.TryGetProperty("__openclaw", out var openClaw) ||
+            openClaw.ValueKind != JsonValueKind.Object)
+        {
+            return (null, null);
+        }
+
+        var id = openClaw.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String
+            ? idProp.GetString()
+            : null;
+        var seq = openClaw.TryGetProperty("seq", out var seqProp) &&
+                  seqProp.ValueKind == JsonValueKind.Number &&
+                  seqProp.TryGetInt32(out var parsedSeq)
+            ? parsedSeq
+            : (int?)null;
+        return (id, seq);
     }
 
     private static long ExtractChatTimestampMs(JsonElement node)

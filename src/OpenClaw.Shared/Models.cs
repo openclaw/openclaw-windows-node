@@ -1998,7 +1998,26 @@ public sealed class ChatSendResult
 {
     public string? RunId { get; init; }
     public string? SessionKey { get; init; }
+    public string? Status { get; init; }
+    public string? Error { get; init; }
     public bool Cached { get; init; }
+
+    public bool IsTerminalFailure => IsFailureStatus(Status) || !string.IsNullOrWhiteSpace(Error);
+
+    public static bool IsFailureStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+
+        return status.Equals("failed", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("failure", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("error", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("rejected", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("denied", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("aborted", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("cancelled", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("canceled", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 // ── Node/Device Pairing ──

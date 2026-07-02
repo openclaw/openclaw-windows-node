@@ -3003,6 +3003,18 @@
   <data name="Chat_Composer_AssistantWorking" xml:space="preserve">
     <value>助理處理中…</value>
   </data>
+  <data name="Chat_Composer_QueuedCountFormat" xml:space="preserve">
+    <value>已排入佇列 ({0})</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageAutomationFormat" xml:space="preserve">
+    <value>已排入佇列的訊息：{0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailedAutomationFormat" xml:space="preserve">
+    <value>已排入佇列的訊息失敗：{0}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
+    <value>失敗</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>複製訊息</value>
   </data>
@@ -3264,6 +3276,12 @@
   </data>
   <data name="Chat_Notification_SendFailed" xml:space="preserve">
     <value>傳送失敗</value>
+  </data>
+  <data name="Chat_Error_SendReturnedStatusFormat" xml:space="preserve">
+    <value>閘道傳回傳送狀態「{0}」。</value>
+  </data>
+  <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
+    <value>傳送失敗：{0}</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失敗</value>
