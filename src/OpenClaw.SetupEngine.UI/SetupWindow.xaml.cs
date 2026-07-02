@@ -151,7 +151,8 @@ public sealed partial class SetupWindow : Window
                 logPath,
                 errorMessage,
                 DefaultAutoStart: true,
-                ShowStartupPreference: _showStartupPreferenceOnComplete));
+                ShowStartupPreference: _showStartupPreferenceOnComplete,
+                ReviewSummary: SetupReviewSummaryBuilder.Build(_config)));
 
     // Directional page transition: forward steps slide in from the right, Back from the left.
     private void NavigateTo(Type page, object? parameter, bool back = false) =>
@@ -301,5 +302,6 @@ public sealed record CompletePageArgs(
     string? LogPath,
     string? ErrorMessage = null,
     bool DefaultAutoStart = true,
-    bool ShowStartupPreference = true);
+    bool ShowStartupPreference = true,
+    SetupReviewSummary? ReviewSummary = null);
 public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

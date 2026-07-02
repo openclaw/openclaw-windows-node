@@ -2,6 +2,7 @@ using OpenClaw.Connection;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -43,6 +44,39 @@ public class SetupStepsTests : IDisposable
         var logger = new SetupLogger(filePath: null, LogLevel.Trace);
         var journal = new TransactionJournal(filePath: null);
         return new SetupContext(cfg, logger, journal, commands ?? new CommandRunner(logger), CancellationToken.None);
+    }
+
+    [Fact]
+    public void WriteSettingsJson_AppliesConfiguredCapabilitiesBeforePersisting()
+    {
+        var config = new SetupConfig
+        {
+            Capabilities = new CapabilitiesConfig
+            {
+                System = false,
+                Canvas = true,
+                Screen = true,
+                Camera = false,
+                Location = false,
+                Browser = false,
+                Device = true,
+                Tts = true,
+                Stt = false,
+            },
+        };
+        var ctx = CreateContext(config);
+
+        VerifyEndToEndStep.WriteSettingsJson(ctx);
+
+        using var result = JsonDocument.Parse(File.ReadAllText(Path.Combine(_tempDir, "settings.json")));
+        Assert.False(result.RootElement.GetProperty("NodeSystemRunEnabled").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("NodeCanvasEnabled").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("NodeScreenEnabled").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeLocationEnabled").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeBrowserProxyEnabled").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("NodeTtsEnabled").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeSttEnabled").GetBoolean());
     }
 
     // ─── CleanupStaleGatewayStep: Preserve non-local records ───

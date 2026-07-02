@@ -2672,9 +2672,10 @@ public sealed class VerifyEndToEndStep : SetupStep
         return StepResult.Ok("Pending approvals drained");
     }
 
-    private static void WriteSettingsJson(SetupContext ctx)
+    internal static void WriteSettingsJson(SetupContext ctx)
     {
         var settingsPath = Path.Combine(ctx.DataDir, "settings.json");
+        ctx.Config.Settings.ApplyCapabilities(ctx.Config.Capabilities);
         ctx.Config.Settings.MergeIntoSettingsFile(settingsPath);
         ctx.Logger.Info($"Wrote settings.json: EnableNodeMode={ctx.Config.Settings.EnableNodeMode}");
     }

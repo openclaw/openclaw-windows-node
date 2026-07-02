@@ -31,6 +31,7 @@ public sealed partial class CompletePage : Page
                 FailureIcon.Visibility = Visibility.Collapsed;
                 StartupToggle.IsOn = args.DefaultAutoStart;
                 StartupRow.Visibility = args.ShowStartupPreference ? Visibility.Visible : Visibility.Collapsed;
+                GatewaySummaryText.Text = (args.ReviewSummary ?? SetupReviewSummaryBuilder.Build(new SetupConfig())).CompletionGatewaySummary;
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
                 ErrorCard.Visibility = Visibility.Collapsed;

@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 
 namespace OpenClaw.SetupEngine.Tests;
 
+[Collection(EnvironmentVariableCollection.Name)]
 public class SetupConfigTests : IDisposable
 {
     private readonly string _tempDir;
@@ -205,13 +206,13 @@ public class SetupConfigTests : IDisposable
         var settingsPath = Path.Combine(_tempDir, "settings.json");
         File.WriteAllText(settingsPath, """{"CustomKey": "custom_value", "EnableNodeMode": false, "AutoStart": true, "NodeCameraEnabled": false}""");
 
-        var traySettings = new TraySettingsConfig { EnableNodeMode = true, AutoStart = false };
+        var traySettings = new TraySettingsConfig { EnableNodeMode = true, AutoStart = false, NodeCameraEnabled = false };
         traySettings.MergeIntoSettingsFile(settingsPath);
 
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
         Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
         Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
-        Assert.True(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
         Assert.Equal("custom_value", result.RootElement.GetProperty("CustomKey").GetString());
     }
 
@@ -242,6 +243,41 @@ public class SetupConfigTests : IDisposable
         Assert.False(traySettings.NodeBrowserProxyEnabled);
         Assert.True(traySettings.NodeTtsEnabled);
         Assert.False(traySettings.NodeSttEnabled);
+    }
+
+    [Fact]
+    public void SetupReviewSummary_UsesActiveSetupConfig()
+    {
+        var oldData = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR");
+        var oldLocalData = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", Path.Combine(_tempDir, "roaming"));
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", Path.Combine(_tempDir, "local"));
+            var config = new SetupConfig
+            {
+                DistroName = "CustomClaw",
+                BaseDistro = "Debian",
+                GatewayPort = 19999,
+                Gateway = { Bind = "lan", InstallUrl = "https://example.test/install.sh" }
+            };
+
+            var summary = SetupReviewSummaryBuilder.Build(config);
+
+            Assert.Contains("Debian", summary.DistroTitle);
+            Assert.Contains("CustomClaw", summary.DistroDescription);
+            Assert.Contains("19999", summary.GatewayEndpoint);
+            Assert.Contains("LAN bind enabled", summary.GatewayDescription);
+            Assert.Contains("example.test", summary.InstallerDescription);
+            Assert.Contains("CustomClaw", summary.ExactCommands);
+            Assert.Contains("19999", summary.ExactCommands);
+            Assert.Equal("CustomClaw · LAN:19999", summary.CompletionGatewaySummary);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", oldData);
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", oldLocalData);
+        }
     }
 
     [Fact]

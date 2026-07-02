@@ -70,6 +70,7 @@ public sealed partial class CapabilitiesPage : Page
         // Only probe OS permissions when the permissions step will actually be shown.
         if (!_skipPermissions)
             _permissionsTask = BuildPermissionRows();
+        ApplySetupReviewSummary(_config);
         GoToStep(1);
     }
 
@@ -163,6 +164,18 @@ public sealed partial class CapabilitiesPage : Page
             }
         }
         config.Settings.ApplyCapabilities(caps);
+    }
+
+    private void ApplySetupReviewSummary(SetupConfig config)
+    {
+        var summary = SetupReviewSummaryBuilder.Build(config);
+        InstallDistroTitleText.Text = summary.DistroTitle;
+        InstallDistroDetailText.Text = summary.DistroDescription;
+        InstallCliDetailText.Text = summary.InstallerDescription;
+        InstallCliBadgeText.Text = summary.InstallerBadge;
+        GatewayServiceDetailText.Text = summary.GatewayDescription;
+        GatewayEndpointText.Text = summary.GatewayEndpoint;
+        ExactCommandsText.Text = summary.ExactCommands;
     }
 
     private string ProfileSummary()

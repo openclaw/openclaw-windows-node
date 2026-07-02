@@ -58,7 +58,7 @@
                             <FontIcon Grid.Column="0" Glyph="&#xE756;" FontSize="18" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" Spacing="2">
                                 <TextBlock Text="Local gateway running" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock Text="OpenClawGateway · 127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock x:Name="GatewaySummaryText" Text="OpenClawGateway · 127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                             <FontIcon Grid.Column="2" Glyph="&#xE73E;" FontSize="16" Foreground="{ThemeResource SystemFillColorSuccessBrush}" VerticalAlignment="Center" />
                         </Grid>

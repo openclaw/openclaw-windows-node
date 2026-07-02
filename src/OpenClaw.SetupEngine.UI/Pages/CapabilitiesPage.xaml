@@ -99,8 +99,8 @@
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                                         <FontIcon Grid.Column="0" Glyph="&#xE756;" FontSize="18" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Spacing="2">
-                                            <TextBlock Text="Install an isolated Ubuntu 24.04 instance" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL distro &quot;OpenClawGateway&quot; in your AppData. Separate from any Ubuntu you already have." />
+                                            <TextBlock x:Name="InstallDistroTitleText" Text="Install an isolated Ubuntu 24.04 instance" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock x:Name="InstallDistroDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL distro &quot;OpenClawGateway&quot; in your AppData. Separate from any Ubuntu you already have." />
                                         </StackPanel>
                                         <TextBlock Grid.Column="2" Text="~200 MB" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
                                     </Grid>
@@ -110,9 +110,9 @@
                                         <FontIcon Grid.Column="0" Glyph="&#xE896;" FontSize="18" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Spacing="2">
                                             <TextBlock Text="Download &amp; install the OpenClaw CLI" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Fetched over HTTPS; runs as a non-root openclaw user inside the instance." />
+                                            <TextBlock x:Name="InstallCliDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Fetched over HTTPS; runs as a non-root openclaw user inside the instance." />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="HTTPS" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="InstallCliBadgeText" Grid.Column="2" Text="HTTPS" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
                                     </Grid>
                                 </Border>
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
@@ -120,9 +120,9 @@
                                         <FontIcon Grid.Column="0" Glyph="&#xE968;" FontSize="18" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Spacing="2">
                                             <TextBlock Text="Run a local gateway service" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Loopback only — not reachable from your network or the internet." />
+                                            <TextBlock x:Name="GatewayServiceDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Loopback only — not reachable from your network or the internet." />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="GatewayEndpointText" Grid.Column="2" Text="127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
                                     </Grid>
                                 </Border>
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
@@ -138,7 +138,7 @@
 
                                 <Expander Margin="0,8,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                           Header="Show the exact commands &amp; files">
-                                    <TextBlock FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap"
+                                    <TextBlock x:Name="ExactCommandsText" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,4,0,4"
                                                Text="wsl --install -d Ubuntu-24.04 --name OpenClawGateway --no-launch&#x0a;curl -fsSL --proto '=https' --tlsv1.2 &lt;install-url&gt; | bash&#x0a;openclaw config set gateway.bind loopback · port 18789&#x0a;openclaw gateway install --force   (systemd --user service)&#x0a;writes -&gt; %LOCALAPPDATA%\OpenClawTray\wsl\OpenClawGateway\&#x0a;writes -&gt; %APPDATA%\OpenClawTray\gateways.json + identity" />
                                 </Expander>
