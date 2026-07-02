@@ -11,6 +11,8 @@ Before installing, make sure you have:
 
 You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway.
 
+New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local WSL gateway, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
+
 ## Step-by-Step Installation
 
 ### 1. Download the Installer
@@ -53,6 +55,8 @@ On first launch, Molty opens the onboarding wizard when there is no usable saved
 1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Install new WSL Gateway** to install a new local WSL gateway.
 
    If you already have a local or remote gateway, choose **Advanced setup** instead. This opens the tray app's Connections tab, where you can connect with an existing gateway URL, token, or setup code without installing a new local WSL gateway.
+
+   For the role split behind these choices, see [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md).
 
 2. **Capabilities** — Reviews the Windows node capabilities that can be enabled, such as system commands, canvas, screen capture, camera, location, browser automation, device controls, text-to-speech, and speech-to-text.
 
