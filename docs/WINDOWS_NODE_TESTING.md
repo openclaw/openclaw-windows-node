@@ -69,7 +69,9 @@ These features need the gateway to send `node.invoke` commands:
 | `screen.snapshot` | Take screenshot | Captures screen, shows notification, returns base64 |
 | `screen.record` | Record short screen clip | Returns MP4/base64 metadata; requires explicit gateway allowlist |
 | `system.notify` | Show notification | Displays toast notification |
-| `system.run` / `system.which` | Controlled command execution | Uses local exec approval policy; `prompt` decisions show a Windows Allow once / Always allow / Deny dialog |
+| `system.run` | Controlled command execution | Uses local exec approval policy; `prompt` decisions show a Windows Allow once / Always allow / Deny dialog |
+| `system.run.prepare` | Pre-flight command execution | Parses and validates a `system.run` invocation without executing it |
+| `system.which` | Resolve executables | Returns absolute paths for requested binaries |
 | `camera.list` | Enumerate cameras | Returns device IDs and names |
 | `camera.snap` | Capture photo | Returns base64 image (NV12 fallback) |
 | `camera.clip` | Capture video clip | Returns MP4/base64 metadata |
@@ -77,6 +79,9 @@ These features need the gateway to send `node.invoke` commands:
 | `device.info` / `device.status` | Device metadata/status | Returns host/app/locale plus battery/storage/network/uptime payloads |
 | `browser.proxy` | Proxy browser-control host requests | Requires Browser proxy bridge enabled, a compatible browser-control host listening on gateway port + 2, and matching browser-control auth |
 | `tts.speak` | Speak text aloud | Requires Text-to-speech playback enabled in Settings; gateway mode also requires `tts.speak` in `gateway.nodes.allowCommands` |
+| `stt.transcribe` | Bounded microphone transcription | Requires Speech-to-text enabled in Settings; uses local Whisper.net |
+| `stt.listen` | Voice-activity microphone transcription | Returns when the user stops speaking or timeout expires |
+| `stt.status` | Speech-to-text readiness | Returns Whisper.net model download/readiness state |
 
 ## Capabilities Advertised
 
@@ -89,6 +94,9 @@ When the node connects, it advertises these capabilities:
 - `device` - Host/app metadata and lightweight status
 - `browser` - Local `browser.proxy` bridge to a browser-control host on gateway port + 2, when enabled in Settings
 - `tts` - Windows speech synthesis or ElevenLabs playback, when enabled in Settings
+- `stt` - Local speech-to-text via Whisper.net, when enabled in Settings
+
+Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `app.status`, and `app.chat.snapshot`/`app.chat.send`/`app.chat.reset`. These are local testing and automation hooks registered with the tray's MCP server and are not advertised to the gateway WebSocket.
 
 ## Security Features
 

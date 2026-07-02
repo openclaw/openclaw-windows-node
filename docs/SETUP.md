@@ -11,6 +11,8 @@ Before installing, make sure you have:
 
 You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway.
 
+New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local WSL gateway, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
+
 ## Step-by-Step Installation
 
 ### 1. Download the Installer
@@ -19,9 +21,9 @@ Download the latest stable installer from the canonical OpenClaw release assets:
 
 | File | Architecture |
 |------|-------------|
-| [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-x64.exe) | Intel / AMD (most PCs) |
-| [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-Setup-arm64.exe) | ARM64 (Surface Pro X, Snapdragon laptops) |
-| [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt) | SHA-256 checksums |
+| [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-x64.exe) | Intel / AMD (most PCs) |
+| [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-arm64.exe) | ARM64 (Surface Pro X, Snapdragon laptops) |
+| [OpenClawCompanion-SHA256SUMS.txt](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt) | SHA-256 checksums |
 
 If you're unsure, use the **x64** installer.
 
@@ -53,6 +55,8 @@ On first launch, Molty opens the onboarding wizard when there is no usable saved
 1. **Welcome** — A friendly greeting introducing OpenClaw and Molty. Click **Install new WSL Gateway** to install a new local WSL gateway.
 
    If you already have a local or remote gateway, choose **Advanced setup** instead. This opens the tray app's Connections tab, where you can connect with an existing gateway URL, token, or setup code without installing a new local WSL gateway.
+
+   For the role split behind these choices, see [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md).
 
 2. **Capabilities** — Reviews the Windows node capabilities that can be enabled, such as system commands, canvas, screen capture, camera, location, browser automation, device controls, text-to-speech, and speech-to-text.
 
@@ -188,7 +192,7 @@ Settings are stored at `%APPDATA%\OpenClawTray\settings.json`. If this file is c
 
 ## Updating
 
-OpenClaw Companion checks for updates automatically and shows a notification when a new version is available. Click **Update** to download and apply the update. You can also manually check by re-downloading from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows) or the [latest OpenClaw release](https://github.com/openclaw/openclaw/releases/latest).
+OpenClaw Companion checks for updates automatically and shows a notification when a new version is available. Click **Update** to download and apply the update. You can also manually check by re-downloading from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows) or the [latest OpenClaw Windows release](https://github.com/openclaw/openclaw-windows-node/releases/latest).
 
 ## Uninstalling
 

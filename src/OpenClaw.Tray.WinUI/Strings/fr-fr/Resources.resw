@@ -4768,6 +4768,9 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
     <value>Réinitialiser</value>
   </data>
+  <data name="SessionActionPrompt_CancelLabel" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
   <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
     <value>Compacter le journal de session ?</value>
   </data>

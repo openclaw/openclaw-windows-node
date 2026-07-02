@@ -24,6 +24,11 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("RunSessionActionAsync(sender, SessionActionKind.Reset)", source);
         Assert.Contains("RunSessionActionAsync(sender, SessionActionKind.Compact)", source);
         Assert.Contains("RunSessionActionAsync(sender, SessionActionKind.Delete)", source);
+        // Runtime dialogs must not use XAML property resource keys; those can
+        // fall back to raw key text such as "CancelButton.Content".
+        Assert.Contains("SessionActionPrompt_CancelLabel", source);
+        Assert.DoesNotContain("LocalizationHelper.GetString(\"CancelButton.Content\")", source);
+        Assert.Contains("DefaultButton = ContentDialogButton.None", source);
     }
 
     [Fact]
@@ -78,6 +83,9 @@ public sealed class SessionActionsWiringTests
 
         Assert.Contains("SessionActionPlanner.BuildPrompt", source);
         Assert.Contains("SessionActionPlanner.IsAllowed", source);
+        Assert.Contains("SessionActionPrompt_CancelLabel", source);
+        Assert.DoesNotContain("LocalizationHelper.GetString(\"CancelButton.Content\")", source);
+        Assert.Contains("DefaultButton = ContentDialogButton.None", source);
         // The confirmation copy comes from the shared planner, not inline strings.
         Assert.DoesNotContain("Start a fresh session for '", source);
         Assert.DoesNotContain("Keep the latest log lines for '", source);
@@ -89,6 +97,7 @@ public sealed class SessionActionsWiringTests
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Helpers", "SessionActionPromptLocalizer.cs");
         var requiredKeys = new[]
         {
+            "SessionActionPrompt_CancelLabel",
             "SessionActionPrompt_Reset_Title",
             "SessionActionPrompt_Reset_BodyFormat",
             "SessionActionPrompt_Reset_ConfirmLabel",

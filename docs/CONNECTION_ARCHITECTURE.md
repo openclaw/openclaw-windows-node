@@ -69,17 +69,21 @@ Inbound chat and agent timeline events must include the gateway's canonical `ses
 ## Startup wiring (App.xaml.cs)
 
 ```
-1. Create GatewayRegistry(dataDir)
-2. Create CredentialResolver(identityReader)
-3. Create GatewayClientFactory()
-4. Create NodeConnector(logger)
-5. Create SshTunnelManager(tunnelService, logger)
-6. Create GatewayConnectionManager(resolver, factory, registry, ...,
-                                    nodeConnector, tunnelManager)
-7. Subscribe to StateChanged → update tray icon + hub window
-8. Subscribe to OperatorClientChanged → wire/unwire 25+ data event handlers
-9. Subscribe to NodeConnector.ClientCreated → NodeService.AttachClient
-10. Call ConnectAsync() → connects to active gateway
+1. Create GatewayRegistry(SettingsManager.SettingsDirectoryPath)
+2. Load gateway registry from gateways.json
+3. Create CredentialResolver(DeviceIdentityFileReader.Instance)
+4. Create GatewayClientFactory()
+5. Create ConnectionDiagnostics()
+6. Create NodeConnector(logger, diagnostics)
+7. Wire NodeConnector.ClientCreated → NodeService.AttachClient
+8. Create SshTunnelService(logger)
+9. Create GatewayConnectionManager(resolver, factory, registry, logger,
+                                    identityStore, nodeConnector, node mode flag,
+                                    diagnostics, tunnelService)
+10. Subscribe to OperatorClientChanged → wire/unwire 25+ data event handlers
+11. Subscribe to StateChanged → update tray icon + hub window
+12. Ensure NodeService exists before gateway initialization
+13. Call InitializeGatewayClient() → connects to active gateway
 ```
 
 Settings changes are classified by `SettingsChangeClassifier.Classify()` which compares `ConnectionSettingsSnapshot` before/after to determine the minimum reconnect action:
@@ -129,7 +133,7 @@ Idle → Connecting → Connected
 %APPDATA%\OpenClawTray\gateways\<id>\device-key-ed25519.json  — keypair + tokens
 ```
 
-Each `GatewayRecord` contains: `Id`, `Url`, `FriendlyName`, `SharedGatewayToken`, `BootstrapToken`, `LastConnected`, `SshTunnel` config, and an `IdentityDirName`.
+Each `GatewayRecord` contains: `Id`, `Url`, `FriendlyName`, `SharedGatewayToken`, `BootstrapToken`, `LastConnected`, `SshTunnel` config, `IsLocal`, `RequiresV2Signature`, `SetupManagedDistroName`, and `BrowserControlPort`. The `IdentityDirName` property is computed from `Id`.
 
 `SettingsManager` still owns general tray settings (node mode, MCP mode, SSH tunnel toggles, notifications, UI preferences). It may read legacy `Token` / `BootstrapToken` JSON fields into memory for migration, but save must not write those legacy credential fields back.
 
@@ -145,6 +149,13 @@ Credential resolution order is intentionally strict:
 The invariant is that a paired device token always wins. Do not downgrade a paired operator or node to a shared/bootstrap token, because that can reduce scopes or trigger unnecessary re-pairing.
 
 **`CredentialResolver`** implements the precedence for WebSocket connections (operator and node roles).
+
+Node credential precedence follows the same invariant with a distinct stored token:
+
+1. **Stored node device token** in the per-gateway identity directory.
+2. **`GatewayRecord.SharedGatewayToken`** — shared token fallback when no paired node token exists.
+3. **`GatewayRecord.BootstrapToken`** — one-time setup, limited scopes.
+4. **No credential** — caller logs and skips node client init.
 
 **`InteractiveGatewayCredentialResolver`** resolves credentials for HTTP surfaces (chat URL `?token=` auth). It **prefers SharedGatewayToken** over DeviceToken because HTTP endpoints expect the shared token, not the per-device WebSocket token.
 
@@ -179,7 +190,7 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 
 ## SSH tunnel integration
 
-`SshTunnelService` manages an SSH local port-forward process. `SshTunnelManager` wraps it behind `ISshTunnelManager` for the connection manager.
+`SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
 
 When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`. The config stores the SSH daemon port (`sshPort`, default `22`) separately from the remote gateway port forwarded by `-L`.
 
@@ -203,8 +214,9 @@ The `EnableMcpServer=true`, `EnableNodeMode=false` path creates a local-only `No
 Tray actions should never silently no-op on common pairing/configuration issues:
 
 - Chat resolves credentials from the active registry record and per-gateway identity. If no usable credential exists, it opens Connection settings instead.
-- Canvas opens only when the Windows node is initialized and paired; otherwise it opens Connection settings.
+- Canvas opens only when the Windows node is initialized, paired, and the Canvas capability is enabled in settings; otherwise it opens Connection settings.
 - Quick Send uses the live operator client and surfaces scope/pairing errors from gateway calls.
+- `system.run` and `system.run.prepare` are gated by `NodeSystemRunEnabled` (default `true` for backward compatibility). When disabled, those commands are dropped from advertised capabilities and invocations are rejected.
 
 ## Legacy migration
 

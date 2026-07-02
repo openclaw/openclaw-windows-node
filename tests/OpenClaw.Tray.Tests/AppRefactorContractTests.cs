@@ -86,8 +86,8 @@ public sealed class AppRefactorContractTests
         Assert.Contains("!_settings.EnableMcpServer || _settings.EnableNodeMode", method);
         Assert.Contains("EnsureNodeService(_settings)", method);
         Assert.Contains("StartLocalOnlyAsync()", method);
-        Assert.Contains("!nodeService.IsMcpRunning || !string.IsNullOrWhiteSpace(nodeService.McpStartupError)", method);
-        Assert.Contains("ShowMcpStartupFailureNotification", method);
+        Assert.Contains("McpRuntimeStatePolicy.PlanStartupNotification", method);
+        Assert.Contains("ApplyMcpStartupNotificationPlan", method);
         Assert.Contains("WireAppCapabilityHandlers()", method);
         AssertInOrder(method, "nodeService.StartLocalOnlyAsync()", "WireAppCapabilityHandlers()");
         AssertInOrder(method, "WireAppCapabilityHandlers()", "Started MCP-only node service without gateway connection");
@@ -180,7 +180,25 @@ public sealed class AppRefactorContractTests
             "app.SettingsSetHandler = (name, value) =>",
             "_settings.Save();",
             "OnSettingsSaved(this, EventArgs.Empty);",
+            "McpRuntimeStatePolicy.GetSettingsSetError",
+            "return new { error = runtimeError };",
             "return new { name, value = prop.GetValue(_settings) };");
+    }
+
+    [Fact]
+    public void OnSettingsSaved_AppliesMcpStartupNotificationPlan()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "OnSettingsSaved");
+
+        Assert.Contains("nodeService?.SetMcpEnabled(_settings.EnableMcpServer)", method);
+        Assert.Contains("McpRuntimeStatePolicy.PlanStartupNotification", method);
+        Assert.Contains("ApplyMcpStartupNotificationPlan", method);
+        AssertInOrder(
+            method,
+            "nodeService?.SetMcpEnabled(_settings.EnableMcpServer)",
+            "ApplyMcpStartupNotificationPlan",
+            "McpRuntimeStatePolicy.PlanStartupNotification");
     }
 
     [Fact]

@@ -44,6 +44,7 @@ public record OpenClawChatTimelineProps(
     bool HasMoreHistory,
     Action? OnLoadMoreHistory,
     IReadOnlyDictionary<string, ChatEntryMetadata>? EntryMetadata = null,
+    long TimelineGeneration = 0,
     string UserSenderLabel = "OpenClaw Windows Tray",
     string AssistantSenderLabel = "Field",
     string? DefaultModel = null,
@@ -787,6 +788,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         ChatEntryMetadata? MetaFor(string id) =>
             meta is not null && meta.TryGetValue(id, out var m) ? m : null;
+
+        string RowKey(ChatTimelineItem entry) =>
+            $"thread:{Props.SessionId ?? "none"}|generation:{Props.TimelineGeneration}|kind:{entry.Kind}|id:{entry.Id}";
+
+        string SyntheticRowKey(string id, ChatTimelineItemKind kind) =>
+            $"thread:{Props.SessionId ?? "none"}|generation:{Props.TimelineGeneration}|kind:{kind}|synthetic:{id}";
 
         // Hover-revealed action icon (copy / read aloud / trash). Opacity 0
         // and not hit-testable until the entry is hovered, then fades in
@@ -2307,19 +2314,19 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             {
                 if (!showToolCalls)
                 {
-                    renderedEntries[k] = Empty().WithKey(entry.Id);
+                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
                     continue;
                 }
                 if (!startsBurst)
                 {
-                    renderedEntries[k] = Empty().WithKey(entry.Id);
+                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
                     continue;
                 }
                 if (nestedConsumed.Contains(k))
                 {
                     // The assistant bubble above already rendered this burst
                     // inline as a child element — emit nothing here.
-                    renderedEntries[k] = Empty().WithKey(entry.Id);
+                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
                     continue;
                 }
                 var burst = new System.Collections.Generic.List<ChatTimelineItem> { entry };
@@ -2329,7 +2336,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     burst.Add(Props.Entries[orderedIdx[kj]]);
                     kj++;
                 }
-                renderedEntries[k] = RenderToolBurst(burst, showAvatar, currentBubbleSlot).WithKey(entry.Id);
+                renderedEntries[k] = RenderToolBurst(burst, showAvatar, currentBubbleSlot).WithKey(RowKey(entry));
                 continue;
             }
 
@@ -2365,11 +2372,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     }
                 }
 
-                renderedEntries[k] = RenderAssistantEntry(entry, startsBurst, endsBurst, showAvatar, currentBubbleSlot, nestedTool).WithKey(entry.Id);
+                renderedEntries[k] = RenderAssistantEntry(entry, startsBurst, endsBurst, showAvatar, currentBubbleSlot, nestedTool).WithKey(RowKey(entry));
                 continue;
             }
 
-            renderedEntries[k] = RenderEntry(entry, startsBurst, endsBurst, showAvatar).WithKey(entry.Id);
+            renderedEntries[k] = RenderEntry(entry, startsBurst, endsBurst, showAvatar).WithKey(RowKey(entry));
         }
 
         var thinkingNestedConsumed = new System.Collections.Generic.HashSet<int>();
@@ -2436,7 +2443,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 nestedTool: thinkingNestedTool,
                 suppressFooter: true,
                 forceVisible: true)
-                .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+                .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite)
+                .WithKey(SyntheticRowKey("__thinking__", ChatTimelineItemKind.Assistant));
         }
 
         // Build the final element list, splicing the thinking indicator

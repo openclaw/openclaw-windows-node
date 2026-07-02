@@ -4136,6 +4136,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         // Snapshot a defensive copy of the timeline dict.
         var timelinesCopy = new Dictionary<string, ChatTimelineState>(_timelines);
+        var timelineGenerationsCopy = new Dictionary<string, long>(_resetVersions);
 
         var defaultThreadId = ResolveDefaultThreadIdLocked();
 
@@ -4171,7 +4172,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // distinguish "loading" from "loaded but empty". IsSupported=false
             // surfaces the unsupported state.
             AvailableCommands: _commandCatalog?.Commands,
-            CommandsSupported: _commandCatalog?.IsSupported ?? true);
+            CommandsSupported: _commandCatalog?.IsSupported ?? true,
+            TimelineGenerations: timelineGenerationsCopy);
     }
 
     private string? ResolveDefaultThreadIdLocked()

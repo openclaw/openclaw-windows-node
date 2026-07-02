@@ -286,6 +286,13 @@ public sealed class OpenClawChatRoot : Component
         var timeline = effectiveThread is not null && snapshot.Timelines.TryGetValue(effectiveThread.Id, out var tl)
             ? tl
             : ChatTimelineState.Initial();
+        var timelineGeneration = 0L;
+        if (effectiveThread is not null
+            && snapshot.TimelineGenerations is { } generations
+            && generations.TryGetValue(effectiveThread.Id, out var generation))
+        {
+            timelineGeneration = generation;
+        }
 
         var entries = (IReadOnlyList<ChatTimelineItem>)timeline.Entries;
         var connectedRaw = snapshot.ConnectionStatus;
@@ -479,6 +486,7 @@ public sealed class OpenClawChatRoot : Component
                 HasMoreHistory: false,
                 OnLoadMoreHistory: null,
                 EntryMetadata: entryMeta,
+                TimelineGeneration: timelineGeneration,
                 UserSenderLabel: "OpenClaw Windows Tray",
                 AssistantSenderLabel: assistantSenderLabel,
                 DefaultModel: effectiveThread.Model,

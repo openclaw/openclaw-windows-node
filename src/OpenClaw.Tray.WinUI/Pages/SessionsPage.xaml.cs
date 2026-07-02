@@ -735,8 +735,8 @@ public sealed partial class SessionsPage : Page
             Title = localizedPrompt.Title,
             Content = localizedPrompt.Body,
             PrimaryButtonText = localizedPrompt.ConfirmLabel,
-            CloseButtonText = LocalizationHelper.GetString("CancelButton.Content"),
-            DefaultButton = ContentDialogButton.Close,
+            CloseButtonText = LocalizationHelper.GetString("SessionActionPrompt_CancelLabel"),
+            DefaultButton = ContentDialogButton.None,
             XamlRoot = XamlRoot,
         };
         if (localizedPrompt.IsDestructive)

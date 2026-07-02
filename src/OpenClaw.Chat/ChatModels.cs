@@ -194,7 +194,8 @@ public record ChatDataSnapshot(
     ChatComposeTarget ComposeTarget,
     IReadOnlyList<ChatModelChoice>? ModelChoices = null,
     IReadOnlyList<OpenClaw.Shared.GatewayCommand>? AvailableCommands = null,
-    bool CommandsSupported = true);
+    bool CommandsSupported = true,
+    IReadOnlyDictionary<string, long>? TimelineGenerations = null);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from

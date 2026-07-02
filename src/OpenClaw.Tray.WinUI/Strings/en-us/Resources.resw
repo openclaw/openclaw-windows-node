@@ -4816,6 +4816,9 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SessionActionPrompt_Reset_ConfirmLabel" xml:space="preserve">
     <value>Reset</value>
   </data>
+  <data name="SessionActionPrompt_CancelLabel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="SessionActionPrompt_Compact_Title" xml:space="preserve">
     <value>Compact session log?</value>
   </data>

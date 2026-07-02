@@ -1,6 +1,6 @@
 # Test Coverage Summary
 
-**Last audited**: 2026-05-22<br>
+**Last audited**: 2026-07-01<br>
 **Framework**: xUnit / .NET 10.0<br>
 **Required validation status**: passing (`.\build.ps1`, Shared tests, Tray tests)
 
@@ -11,23 +11,24 @@ These are the suites every agent must run after code changes, as documented in
 
 | Suite | Latest runtime result |
 |---|---:|
-| `OpenClaw.Shared.Tests` | 1,920 total: 1,891 passed, 29 skipped |
-| `OpenClaw.Tray.Tests` | 1,178 total: 1,178 passed, 0 skipped |
+| `OpenClaw.Shared.Tests` | 2,720 total: 2,689 passed, 31 skipped |
+| `OpenClaw.Tray.Tests` | 1,452 total: 1,452 passed, 0 skipped |
 
-Runtime totals come from `dotnet test` on 2026-05-22. They are higher than
+Runtime totals come from `dotnet test` on 2026-07-01. They are higher than
 method counts because some `[Theory]` tests expand into multiple cases.
 
 ## Test project inventory
 
 | Project | Primary scope | Test methods |
 |---|---|---:|
-| `OpenClaw.Connection.Tests` | Gateway registry, credential resolution, connection manager/state machine, setup codes, pairing, diagnostics | 189 |
-| `OpenClaw.Shared.Tests` | Shared models, gateway client, capabilities, MCP, exec approval, A2UI security, URL handling, notification categorization | 1,347 |
-| `OpenClaw.Tray.Tests` | Tray state/UI helpers, settings isolation, onboarding, connection page behavior, localization, local gateway setup/uninstall | 786 |
-| `OpenClaw.Tray.UITests` | Native WinUI/A2UI control and rendering coverage | 50 |
-| `OpenClaw.WinNode.Cli.Tests` | Windows node CLI argument parsing, command behavior, JSON output, uninstall flow | 79 |
-| `OpenClawTray.FunctionalUI.Tests` | Functional UI smoke coverage | 8 |
-| `OpenClawTray.OnboardingV2.Tests` | Onboarding V2 page flow and state coverage | 9 |
+| `OpenClaw.Connection.Tests` | Gateway registry, credential resolution, connection manager/state machine, setup codes, pairing, diagnostics | 307 |
+| `OpenClaw.Shared.Tests` | Shared models, gateway client, capabilities, MCP, exec approval, A2UI security, URL handling, notification categorization | 1,932 |
+| `OpenClaw.Tray.Tests` | Tray state/UI helpers, settings isolation, onboarding, connection page behavior, localization, local gateway setup/uninstall | 1,131 |
+| `OpenClaw.Tray.UITests` | Native WinUI/A2UI control and rendering coverage | 61 |
+| `OpenClaw.WinNode.Cli.Tests` | Windows node CLI argument parsing, command behavior, JSON output, uninstall flow | 83 |
+| `OpenClaw.SetupEngine.Tests` | Setup engine, WSL gateway installation, setup-code, and local setup policy coverage | 244 |
+| `OpenClawTray.FunctionalUI.Tests` | Functional UI smoke coverage | 10 |
+| `OpenClaw.E2ETests` | Gateway-mediated setup/connect, revocation recovery, and network recovery suites | 0 |
 | `OpenClaw.Tray.IntegrationTests` | Integration-test project scaffold; no `[Fact]`/`[Theory]` methods currently | 0 |
 
 The method inventory is a source scan of `[Fact]` and `[Theory]` attributes. Use
@@ -57,7 +58,9 @@ The method inventory is a source scan of `[Fact]` and `[Theory]` attributes. Use
 - **OpenClaw.Connection.Tests** keeps connection architecture tests separate from tray UI concerns.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
-- **OpenClawTray.OnboardingV2.Tests** and **OpenClawTray.FunctionalUI.Tests** cover newer UI surfaces outside the main tray test project.
+- **OpenClaw.SetupEngine.Tests** covers gateway setup and local WSL installation policy.
+- **OpenClawTray.FunctionalUI.Tests** covers newer UI surfaces outside the main tray test project.
+- **OpenClaw.E2ETests** is exercised by CI with trait filters even though the project currently has no direct `[Fact]`/`[Theory]` method inventory.
 
 ## Formal validation paths
 

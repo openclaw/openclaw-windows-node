@@ -1249,8 +1249,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             Title = title,
             Content = body,
             PrimaryButtonText = actionLabel,
-            CloseButtonText = LocalizationHelper.GetString("CancelButton.Content"),
-            DefaultButton = ContentDialogButton.Close,
+            CloseButtonText = LocalizationHelper.GetString("SessionActionPrompt_CancelLabel"),
+            DefaultButton = ContentDialogButton.None,
             XamlRoot = root.XamlRoot
         };
         var result = await dialog.ShowAsync();
@@ -1798,17 +1798,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         try
         {
             nodeService.StartLocalOnlyAsync().GetAwaiter().GetResult();
-            if (!nodeService.IsMcpRunning || !string.IsNullOrWhiteSpace(nodeService.McpStartupError))
+            var notificationPlan = McpRuntimeStatePolicy.PlanStartupNotification(
+                _settings.EnableMcpServer,
+                nodeService.IsMcpRunning,
+                nodeService.McpStartupError);
+            if (notificationPlan.ShouldShow)
             {
-                var error = nodeService.McpStartupError ?? "Local MCP server did not start.";
-                Logger.Error($"Failed to start MCP-only node service: {error}");
-                ShowMcpStartupFailureNotification(error);
-                UpdateTrayIcon();
+                Logger.Error($"Failed to start MCP-only node service: {notificationPlan.Message}");
+                ApplyMcpStartupNotificationPlan(notificationPlan);
                 return false;
             }
 
             WireAppCapabilityHandlers();
-            _appNotificationService?.Dismiss(McpStartupNotificationId);
+            ApplyMcpStartupNotificationPlan(notificationPlan);
             Logger.Info("Started MCP-only node service without gateway connection");
             return true;
         }
@@ -1816,8 +1818,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Error($"Failed to start MCP-only node service: {ex}");
             nodeService.SetMcpStartupError($"MCP server startup failed: {ex.Message}");
-            ShowMcpStartupFailureNotification(nodeService.McpStartupError!);
-            UpdateTrayIcon();
+            ApplyMcpStartupNotificationPlan(
+                McpRuntimeStatePolicy.PlanStartupNotification(
+                    _settings.EnableMcpServer,
+                    nodeService.IsMcpRunning,
+                    nodeService.McpStartupError));
             return false;
         }
     }
@@ -2257,6 +2262,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "connection",
             LocalizationHelper.GetString("AppNotification_ActionOpenConnection"),
             id: McpStartupNotificationId);
+    }
+
+    private void ApplyMcpStartupNotificationPlan(McpStartupNotificationPlan plan)
+    {
+        if (plan.ShouldShow && !string.IsNullOrWhiteSpace(plan.Message))
+        {
+            ShowMcpStartupFailureNotification(plan.Message);
+        }
+        else if (plan.ShouldDismiss)
+        {
+            _appNotificationService?.Dismiss(McpStartupNotificationId);
+        }
+
+        UpdateTrayIcon();
     }
 
     private static bool TryBuildConnectionIssueNotification(
@@ -3340,6 +3359,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             var nodeService = EnsureNodeService(_settings);
             nodeService?.SetMcpEnabled(_settings.EnableMcpServer);
+            if (nodeService != null)
+            {
+                ApplyMcpStartupNotificationPlan(
+                    McpRuntimeStatePolicy.PlanStartupNotification(
+                        _settings.EnableMcpServer,
+                        nodeService.IsMcpRunning,
+                        nodeService.McpStartupError));
+            }
             WireAppCapabilityHandlers();
         }
 

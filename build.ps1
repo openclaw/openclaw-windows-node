@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Build script for OpenClaw Windows Hub
 
@@ -6,7 +6,7 @@
     Builds all projects, checks prerequisites, and provides clear guidance.
 
 .PARAMETER Project
-    Which project to build: All, Tray, WinUI, Shared, Cli
+    Which project to build: All, Tray, WinUI, Shared, Cli, WinNodeCli, SetupEngine
     Default: All
 
 .PARAMETER Configuration
@@ -322,7 +322,10 @@ if ($issues.Count -gt 0) {
 Write-Header "Building Projects ($Configuration)"
 
 # Detect runtime identifier based on architecture
-$rid = if ($arch -eq "ARM64") { "win-arm64" } else { "win-x64" }
+$rid = switch ($arch) {
+    "ARM64" { "win-arm64" }
+    default { "win-x64" }
+}
 Write-Info "Runtime identifier: $rid"
 
 $buildResults = @{}

@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
@@ -157,6 +158,14 @@ public partial class App
                 prop.SetValue(_settings, converted);
                 _settings.Save();
                 OnSettingsSaved(this, EventArgs.Empty);
+                var runtimeError = McpRuntimeStatePolicy.GetSettingsSetError(
+                    name,
+                    converted,
+                    _nodeService?.IsMcpRunning == true,
+                    _nodeService?.McpStartupError);
+                if (!string.IsNullOrWhiteSpace(runtimeError))
+                    return new { error = runtimeError };
+
                 return new { name, value = prop.GetValue(_settings) };
             }
             catch (Exception ex)
@@ -217,6 +226,10 @@ public partial class App
                 hasTokenQuery = url.Contains("?token=", StringComparison.Ordinal) || url.Contains("&token=", StringComparison.Ordinal)
             };
         };
+
+        app.ChatSnapshotHandler = BuildChatSnapshotForMcpAsync;
+        app.ChatSendHandler = SendChatMessageForMcpAsync;
+        app.ChatResetHandler = ResetChatSessionForMcpAsync;
 
         connection.ApplySetupCodeHandler = async setupCode =>
         {
@@ -418,6 +431,153 @@ public partial class App
         }
 
         return payload;
+    }
+
+    private async Task<object?> BuildChatSnapshotForMcpAsync(string? threadId)
+    {
+        var provider = _chatCoordinator?.Provider;
+        if (provider == null)
+            return new { error = "Chat provider is not initialized" };
+
+        var snapshot = await provider.LoadAsync();
+        var resolvedThreadId = ResolveChatThreadId(snapshot, threadId);
+        return BuildChatSnapshotPayload(snapshot, resolvedThreadId);
+    }
+
+    private async Task<object?> SendChatMessageForMcpAsync(string? threadId, string message)
+    {
+        var provider = _chatCoordinator?.Provider;
+        if (provider == null)
+            return new { sent = false, error = "Chat provider is not initialized" };
+
+        var snapshot = await provider.LoadAsync();
+        var resolvedThreadId = ResolveChatThreadId(snapshot, threadId);
+        if (string.IsNullOrWhiteSpace(resolvedThreadId))
+            return new { sent = false, error = "Chat compose target is not ready" };
+
+        try
+        {
+            await provider.SendMessageAsync(resolvedThreadId, message);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"App: Chat send for '{resolvedThreadId}' failed: {ex.Message}");
+            return new { sent = false, threadId = resolvedThreadId, error = ex.Message };
+        }
+
+        var updated = await provider.LoadAsync();
+        var timeline = updated.Timelines.TryGetValue(resolvedThreadId, out var tl)
+            ? tl
+            : ChatTimelineState.Initial();
+
+        return new
+        {
+            sent = true,
+            threadId = resolvedThreadId,
+            entryCount = timeline.Entries.Count,
+            turnActive = timeline.TurnActive
+        };
+    }
+
+    private async Task<object?> ResetChatSessionForMcpAsync(string? threadId)
+    {
+        var client = GatewayClient;
+        if (client == null || !client.IsConnectedToGateway)
+            return new { reset = false, error = "Gateway client is not connected" };
+
+        var provider = _chatCoordinator?.Provider;
+        if (provider == null)
+            return new { reset = false, error = "Chat provider is not initialized" };
+
+        var snapshot = await provider.LoadAsync();
+        var resolvedThreadId = ResolveChatThreadId(snapshot, threadId);
+        if (string.IsNullOrWhiteSpace(resolvedThreadId))
+            return new { reset = false, error = "Chat compose target is not ready" };
+
+        var reset = await client.ResetSessionAsync(resolvedThreadId);
+        if (reset)
+            await WaitForAppStateUpdateAsync(nameof(AppState.Sessions), () => client.RequestSessionsAsync());
+
+        return new
+        {
+            reset,
+            threadId = resolvedThreadId,
+            error = reset ? null : "sessions.reset was rejected or unavailable"
+        };
+    }
+
+    private static string? ResolveChatThreadId(ChatDataSnapshot snapshot, string? requestedThreadId)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedThreadId))
+            return requestedThreadId;
+
+        if (snapshot.ComposeTarget.IsReady && !string.IsNullOrWhiteSpace(snapshot.ComposeTarget.SessionKey))
+            return snapshot.ComposeTarget.SessionKey;
+
+        return snapshot.DefaultThreadId;
+    }
+
+    private static object BuildChatSnapshotPayload(ChatDataSnapshot snapshot, string? resolvedThreadId)
+    {
+        var selectedTimeline = resolvedThreadId is not null
+            && snapshot.Timelines.TryGetValue(resolvedThreadId, out var timeline)
+                ? timeline
+                : null;
+
+        return new
+        {
+            connectionStatus = snapshot.ConnectionStatus,
+            defaultThreadId = snapshot.DefaultThreadId,
+            requestedThreadId = resolvedThreadId,
+            composeTarget = new
+            {
+                sessionKey = snapshot.ComposeTarget.SessionKey,
+                isReady = snapshot.ComposeTarget.IsReady
+            },
+            threads = snapshot.Threads.Select(t => new
+            {
+                t.Id,
+                t.Title,
+                status = t.Status.ToString(),
+                activity = t.Activity.ToString(),
+                t.Model,
+                t.ModelProvider,
+                t.ThinkingLevel,
+                t.InputTokens,
+                t.OutputTokens,
+                t.TotalTokens,
+                t.ContextTokens
+            }).ToArray(),
+            selectedTimeline = selectedTimeline is null ? null : new
+            {
+                turnActive = selectedTimeline.TurnActive,
+                historyLoaded = selectedTimeline.HistoryLoaded,
+                pendingPermission = selectedTimeline.PendingPermission is null ? null : new
+                {
+                    selectedTimeline.PendingPermission.RequestId,
+                    selectedTimeline.PendingPermission.PermissionKind,
+                    selectedTimeline.PendingPermission.ToolName,
+                    selectedTimeline.PendingPermission.Detail,
+                    selectedTimeline.PendingPermission.Actions
+                },
+                entries = selectedTimeline.Entries
+                    .TakeLast(30)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        kind = e.Kind.ToString(),
+                        e.Text,
+                        e.IsStreaming,
+                        e.ToolName,
+                        toolResult = e.ToolResult?.ToString(),
+                        e.IntentSummary,
+                        e.ToolCallId,
+                        e.PermissionRequestId,
+                        permissionDecision = e.PermissionDecision.ToString()
+                    })
+                    .ToArray()
+            }
+        };
     }
 
     private async Task WaitForAppStateUpdateAsync(string propertyName, Func<Task> requestAsync)

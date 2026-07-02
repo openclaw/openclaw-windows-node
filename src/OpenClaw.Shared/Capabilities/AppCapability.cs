@@ -26,6 +26,9 @@ public class AppCapability : NodeCapabilityBase
         "app.menu",
         "app.search",
         "app.dashboard.url",
+        "app.chat.snapshot",
+        "app.chat.send",
+        "app.chat.reset",
     };
 
     public override IReadOnlyList<string> Commands => _commands;
@@ -42,6 +45,9 @@ public class AppCapability : NodeCapabilityBase
     public Func<object?>? MenuHandler;
     public Func<string, object?>? SearchHandler;
     public Func<string?, object?>? DashboardUrlHandler;
+    public Func<string?, Task<object?>>? ChatSnapshotHandler;
+    public Func<string?, string, Task<object?>>? ChatSendHandler;
+    public Func<string?, Task<object?>>? ChatResetHandler;
 
     public AppCapability(IOpenClawLogger logger) : base(logger) { }
 
@@ -60,6 +66,9 @@ public class AppCapability : NodeCapabilityBase
             "app.menu" => HandleMenu(),
             "app.search" => HandleSearch(request),
             "app.dashboard.url" => HandleDashboardUrl(request),
+            "app.chat.snapshot" => await HandleChatSnapshot(request),
+            "app.chat.send" => await HandleChatSend(request),
+            "app.chat.reset" => await HandleChatReset(request),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
@@ -135,7 +144,34 @@ public class AppCapability : NodeCapabilityBase
             return Error("Missing required arg: value");
         if (SettingsSetHandler == null)
             return Error("Settings handler not registered");
-        return Success(SettingsSetHandler(name, value));
+
+        var result = SettingsSetHandler(name, value);
+        if (TryGetErrorPayload(result, out var error))
+            return Error(error);
+
+        return Success(result);
+    }
+
+    private static bool TryGetErrorPayload(object? result, out string error)
+    {
+        error = "";
+        if (result == null)
+            return false;
+
+        var property = result.GetType().GetProperty(
+            "error",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.IgnoreCase);
+
+        if (property?.GetValue(result) is not string message ||
+            string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        error = message;
+        return true;
     }
 
     private NodeInvokeResponse HandleMenu()
@@ -161,4 +197,39 @@ public class AppCapability : NodeCapabilityBase
             return Error("Dashboard URL handler not registered");
         return Success(DashboardUrlHandler(GetStringArg(request.Args, "path")));
     }
+
+    private async Task<NodeInvokeResponse> HandleChatSnapshot(NodeInvokeRequest request)
+    {
+        if (ChatSnapshotHandler == null)
+            return Error("Chat snapshot handler not registered");
+
+        var result = await ChatSnapshotHandler(GetOptionalThreadId(request));
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleChatSend(NodeInvokeRequest request)
+    {
+        if (ChatSendHandler == null)
+            return Error("Chat send handler not registered");
+
+        var message = GetStringArg(request.Args, "message");
+        if (string.IsNullOrWhiteSpace(message))
+            return Error("Missing required arg: message");
+
+        var result = await ChatSendHandler(GetOptionalThreadId(request), message);
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleChatReset(NodeInvokeRequest request)
+    {
+        if (ChatResetHandler == null)
+            return Error("Chat reset handler not registered");
+
+        var result = await ChatResetHandler(GetOptionalThreadId(request));
+        return Success(result);
+    }
+
+    private string? GetOptionalThreadId(NodeInvokeRequest request) =>
+        GetStringArg(request.Args, "threadId")
+        ?? GetStringArg(request.Args, "sessionKey");
 }

@@ -119,6 +119,9 @@ public sealed class NodeInvokeActivityFormatterTests : IDisposable
     [InlineData("device.status", "metadata")]
     [InlineData("tts.speak", "privacy-sensitive")] // TTS errors can leak ElevenLabs key fragments / device names
     [InlineData("tts.future-command", "privacy-sensitive")] // any future tts.* defaults privacy-sensitive
+    [InlineData("app.chat.send", "privacy-sensitive")]
+    [InlineData("app.chat.snapshot", "privacy-sensitive")]
+    [InlineData("app.chat.future-command", "privacy-sensitive")] // chat text can appear in payloads or errors
     [InlineData("", "metadata")]
     public void GetPrivacyClass_KnownCommands(string command, string expected)
     {
