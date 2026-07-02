@@ -143,7 +143,7 @@ dotnet run --project src/OpenClaw.Cli -- --url ws://127.0.0.1:18789 --token "<to
 Modern Windows 11-style system tray companion that connects to your local OpenClaw gateway.
 
 ### Features
-- 🦞 **Lobster branding** - Pixel-art lobster tray icon with status colors
+- 🎨 **OpenClaw branding** - OpenClaw tray icon with status colors
 - 🎨 **Modern UI** - Windows 11 flyout menu with dark/light mode support
 - 💬 **Quick Send** - Send messages via global hotkey (Ctrl+Alt+Shift+C)
 - 🔄 **Auto-updates** - Automatic updates from GitHub Releases
@@ -157,7 +157,7 @@ Modern Windows 11-style system tray companion that connects to your local OpenCl
 - ⏱ **Cron Jobs** - Quick access to scheduled tasks
 - 🚀 **Auto-start** - Launch with Windows
 - ⚙️ **Settings** - Full configuration page
-- 🎯 **First-run onboarding** — 6-screen setup wizard (connection, permissions, chat, configuration)
+- 🎯 **First-run onboarding** — native WSL gateway setup with capability, permission, install, onboard, and completion screens
 
 #### Quick Send scope requirement
 
@@ -216,7 +216,7 @@ These features are available in Windows but not in the Mac app:
 | Channel control | Start/stop Telegram & WhatsApp |
 | Modern flyout menu | Windows 11-style with dark/light mode |
 | Deep links | `openclaw://` URL scheme with IPC |
-| First-run onboarding | 6-screen guided setup wizard (Welcome → Connection → Wizard → Permissions → Chat → Ready) |
+| First-run onboarding | Native setup flow: Security notice → Welcome/Advanced → Capabilities and permissions → Install progress → OpenClaw onboard → Complete |
 
 ### 🔌 Node Mode (Agent Control)
 
@@ -426,14 +426,15 @@ Default gateway: `ws://localhost:18789`
 
 ### First Run
 
-On first run, Molty launches a guided onboarding wizard that walks you through setup:
+On first run, Molty launches a guided setup flow:
 
-1. **Welcome** — introduces OpenClaw and starts the setup flow
-2. **Connection** — choose Local gateway, Remote gateway, or configure later. Paste a setup code or enter gateway URL and token manually. Tests the connection with Ed25519 device authentication.
-3. **Wizard** — gateway-driven configuration steps (AI provider selection, personality setup, communication channels). Steps are defined by your gateway.
-4. **Permissions** — reviews Windows system permissions (notifications, camera, microphone, screen capture, location) and links to system settings to grant them.
-5. **Chat** — meet your agent in a live chat powered by the gateway's web UI.
-6. **Ready** — summary of available features, option to launch at startup, and a Finish button.
+1. **Security notice** — confirms this is a trusted PC before local setup starts.
+2. **Welcome** — choose **Install a local gateway (WSL)** or connect to an existing gateway from Connections.
+3. **Capabilities** — choose a profile, review matching Windows permission status, and see exactly what setup will install.
+4. **Progress** — installs the app-owned `OpenClawGateway` WSL instance and keeps Live activity available but collapsed by default.
+5. **Gateway installed** — confirms the WSL gateway is running before moving into OpenClaw onboard.
+6. **OpenClaw onboard** — gateway-driven provider/model/key setup rendered as a transcript.
+7. **All set** — summary of available features, startup preference, and Finish.
 
 For detailed setup instructions, see [docs/SETUP.md](docs/SETUP.md). For the full onboarding architecture, see [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md).
 

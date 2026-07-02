@@ -5,46 +5,167 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Disabled">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="40,28,40,28">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="48,28,48,24">
 
-        <!-- Header with lobster icon -->
-        <StackPanel Grid.Row="0" Spacing="6" HorizontalAlignment="Center">
-            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png" Width="64" Height="64"
-                   HorizontalAlignment="Center" Margin="0,0,0,8" />
-            <TextBlock Text="Configure capabilities"
-                       FontSize="24" FontWeight="SemiBold"
-                       HorizontalAlignment="Center" />
-            <TextBlock TextWrapping="Wrap" TextAlignment="Center"
-                       FontSize="13" Opacity="0.6" MaxWidth="440"
-                       Text="Choose which capabilities this node will advertise. You can change these later." />
+        <StackPanel Grid.Row="0" Spacing="8" HorizontalAlignment="Center">
+            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
+                   Width="44" Height="44" HorizontalAlignment="Center"
+                   AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="Set up the WSL gateway"
+                       Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
         </StackPanel>
 
-        <!-- 2-column capability grid -->
-        <ScrollViewer Grid.Row="1" Margin="0,20,0,0"
-                      VerticalScrollBarVisibility="Auto">
-            <Grid x:Name="CapGrid" ColumnSpacing="16" RowSpacing="4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <!-- Rows added in code-behind -->
-            </Grid>
-        </ScrollViewer>
+        <!-- Fixed-width content column keeps transcript rows and the active card aligned across steps. -->
+        <Grid Grid.Row="1" Margin="0,24,0,16" ColumnDefinitions="*,Auto,*">
+            <ScrollViewer x:Name="Scroller" Grid.Column="1" Width="600"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="12" HorizontalAlignment="Stretch">
 
-        <!-- Continue button -->
-        <Button Grid.Row="2" Content="Continue"
-                HorizontalAlignment="Stretch" Margin="0,16,0,0"
-                Height="44" FontSize="15" FontWeight="SemiBold"
-                Click="Continue_Click">
-            <Button.Resources>
-                <SolidColorBrush x:Key="ButtonBackground" Color="#60C8F8" />
-                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#52B0DA" />
-                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#469BBC" />
-                <SolidColorBrush x:Key="ButtonForeground" Color="Black" />
-                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black" />
-                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="Black" />
-            </Button.Resources>
-        </Button>
+                    <StackPanel x:Name="Transcript" Spacing="6" />
 
+                    <Border x:Name="ActiveCard"
+                            CornerRadius="4"
+                            Padding="16"
+                            MinHeight="160"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="14">
+                            <TextBlock x:Name="StepTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+
+                            <StackPanel x:Name="Step1Content" Spacing="8">
+                                <TextBlock TextWrapping="Wrap"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="OpenClaw runs your agent in a private, self-hosted gateway on this PC. Pick what it's allowed to do — you can change this later in Companion Settings." />
+                                <RadioButtons x:Name="ProfileRadio" SelectionChanged="Profile_Changed" MaxColumns="1">
+                                    <RadioButton>
+                                        <StackPanel Spacing="1">
+                                            <TextBlock Text="Read-only" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="See your screen, render on canvas, read device info. No commands."
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton>
+                                        <StackPanel Spacing="1">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="Standard" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                                <Border CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
+                                                        BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
+                                                    <TextBlock Text="Recommended"
+                                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="Read-only plus run commands, edit files, and use text-to-speech and speech-to-text."
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton>
+                                        <StackPanel Spacing="1">
+                                            <TextBlock Text="Full access" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="Everything, plus camera, location, and browser control."
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                </RadioButtons>
+
+                                <Expander Margin="0,4,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                          Background="Transparent" BorderThickness="0"
+                                          Header="Fine-tune individual capabilities (optional)">
+                                    <Grid x:Name="CapGrid" ColumnSpacing="16" RowSpacing="4" Margin="0,4,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <!-- Rows added in code-behind -->
+                                    </Grid>
+                                </Expander>
+                            </StackPanel>
+
+                            <StackPanel x:Name="Step2Content" Spacing="8" Visibility="Collapsed">
+                                <TextBlock TextWrapping="Wrap"
+                                           Style="{StaticResource BodyTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Grant the Windows permissions your selected capabilities need — now, or later from Settings. The agent only uses what you allow." />
+                                <StackPanel x:Name="PermRows" Spacing="4" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="Step3Content" Spacing="4" Visibility="Collapsed">
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                        <FontIcon Grid.Column="0" Glyph="&#xE756;" FontSize="18" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="Install an isolated Ubuntu 24.04 instance" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL distro &quot;OpenClawGateway&quot; in your AppData. Separate from any Ubuntu you already have." />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="~200 MB" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                        <FontIcon Grid.Column="0" Glyph="&#xE896;" FontSize="18" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="Download &amp; install the OpenClaw CLI" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Fetched over HTTPS; runs as a non-root openclaw user inside the instance." />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="HTTPS" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                        <FontIcon Grid.Column="0" Glyph="&#xE968;" FontSize="18" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="Run a local gateway service" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Loopback only — not reachable from your network or the internet." />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                        <FontIcon Grid.Column="0" Glyph="&#xE7BA;" FontSize="18" VerticalAlignment="Center" IsTextScaleFactorEnabled="False" />
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="May ask for admin once" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Only if the Windows WSL platform isn't installed yet. One-time per machine." />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="UAC?" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+
+                                <Expander Margin="0,8,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                          Header="Show the exact commands &amp; files">
+                                    <TextBlock FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,4,0,4"
+                                               Text="wsl --install -d Ubuntu-24.04 --name OpenClawGateway --no-launch&#x0a;curl -fsSL --proto '=https' --tlsv1.2 &lt;install-url&gt; | bash&#x0a;openclaw config set gateway.bind loopback · port 18789&#x0a;openclaw gateway install --force   (systemd --user service)&#x0a;writes -&gt; %LOCALAPPDATA%\OpenClawTray\wsl\OpenClawGateway\&#x0a;writes -&gt; %APPDATA%\OpenClawTray\gateways.json + identity" />
+                                </Expander>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+            <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsTabStop="False" AutomationProperties.Name="Step 3 of 6">
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="20" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupIndicatorAccentBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+            </StackPanel>
+            <Button x:Name="BackButton" Grid.Column="0" Content="Back"
+                    Height="44" MinWidth="96" HorizontalAlignment="Left"
+                    Visibility="Collapsed" Click="Back_Click" />
+            <Button x:Name="PrimaryButton" Grid.Column="1" Content="Next"
+                    Height="44" MinWidth="140" HorizontalAlignment="Right"
+                    Style="{StaticResource AccentButtonStyle}" Click="Primary_Click" />
+        </Grid>
     </Grid>
 </Page>

@@ -2,19 +2,17 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
 using OpenClaw.Shared;
 using System.Numerics;
-using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class WelcomePage : Page
 {
-    private const string InstallButtonText = "Install new WSL Gateway";
+    private const string InstallButtonText = "Install a local gateway (WSL)";
     private const string CheckingButtonText = "Checking existing setup...";
     private SetupConfig? _config;
 
@@ -31,23 +29,15 @@ public sealed partial class WelcomePage : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        var isDark = ActualTheme == ElementTheme.Dark;
-        InfoCard.Background = new SolidColorBrush(isDark
-            ? Color.FromArgb(255, 0x2C, 0x2C, 0x2C)
-            : Color.FromArgb(255, 0xF0, 0xF0, 0xF0));
-
-        InfoText.Text = "This local setup installs a small WSL Linux instance dedicated to OpenClaw. "
-                      + "If you'd rather connect to an existing or remote gateway, choose Advanced setup.";
-
-        StartLobsterBreatheAnimation();
+        StartMascotBreatheAnimation();
     }
 
-    private void StartLobsterBreatheAnimation()
+    private void StartMascotBreatheAnimation()
     {
-        var visual = ElementCompositionPreview.GetElementVisual(LobsterHero);
+        var visual = ElementCompositionPreview.GetElementVisual(MascotHero);
         var compositor = visual.Compositor;
-        var centerX = LobsterHero.ActualWidth > 0 ? LobsterHero.ActualWidth / 2 : LobsterHero.Width / 2;
-        var centerY = LobsterHero.ActualHeight > 0 ? LobsterHero.ActualHeight / 2 : LobsterHero.Height / 2;
+        var centerX = MascotHero.ActualWidth > 0 ? MascotHero.ActualWidth / 2 : MascotHero.Width / 2;
+        var centerY = MascotHero.ActualHeight > 0 ? MascotHero.ActualHeight / 2 : MascotHero.Height / 2;
         visual.CenterPoint = new Vector3((float)centerX, (float)centerY, 0f);
 
         var pulse = compositor.CreateVector3KeyFrameAnimation();
@@ -73,8 +63,8 @@ public sealed partial class WelcomePage : Page
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
         var setupWindow = SetupWindow.Active;
 
-        StartButton.IsEnabled = false;
-        StartButton.Content = CheckingButtonText;
+        InstallButton.IsEnabled = false;
+        InstallTitle.Text = CheckingButtonText;
         var navigating = false;
         try
         {
@@ -108,14 +98,15 @@ public sealed partial class WelcomePage : Page
         {
             if (!navigating && setupWindow is { IsClosed: false })
             {
-                StartButton.Content = InstallButtonText;
-                StartButton.IsEnabled = true;
+                InstallTitle.Text = InstallButtonText;
+                InstallButton.IsEnabled = true;
             }
         }
     }
 
     private void AdvancedSetup_Click(object sender, RoutedEventArgs e)
     {
-        SetupWindow.Active?.RequestAdvancedSetup();
+        // Show quick connect instructions before handing off to the companion app.
+        SetupWindow.Active?.NavigateToAdvancedSetup();
     }
 }

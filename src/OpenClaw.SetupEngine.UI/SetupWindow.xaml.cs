@@ -3,6 +3,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using OpenClaw.SetupEngine.UI.Pages;
 using System.Runtime.InteropServices;
 
@@ -15,6 +16,8 @@ public sealed partial class SetupWindow : Window
     private readonly TaskCompletionSource<bool> _initialContentReady =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _isClosed;
+    private bool _persistStartupPreferenceOnComplete = true;
+    private bool _showStartupPreferenceOnComplete = true;
 
     public static SetupWindow? Active { get; private set; }
 
@@ -22,11 +25,15 @@ public sealed partial class SetupWindow : Window
     public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
     public bool IsClosed => _isClosed;
     public bool CanNavigateToWizard => !_isClosed && _setupLock is not null;
+    public bool CanNavigateToGatewayInstalledMilestone =>
+        !_isClosed &&
+        _setupLock is not null &&
+        RootFrame.Content is not ProgressPage { IsPipelineRunning: true };
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
-    public SetupWindow(string? configPath = null)
+    public SetupWindow(string? configPath = null, bool startAtGatewayInstalledMilestone = false)
     {
         InitializeComponent();
         Active = this;
@@ -41,12 +48,13 @@ public sealed partial class SetupWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarDrag);
 
-        // Mica backdrop
+        // Mica backdrop — the signature Windows 11 material (native).
         SystemBackdrop = new MicaBackdrop();
 
         // Load config: explicit --config arg, or bundled default-config.json (required)
         var args = Environment.GetCommandLineArgs();
-        configPath ??= GetArg(args, "--config");
+        var explicitConfigPath = configPath ?? GetArg(args, "--config");
+        configPath = explicitConfigPath;
         if (configPath == null)
         {
             var defaultPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
@@ -68,9 +76,15 @@ public sealed partial class SetupWindow : Window
         }
 
         _config = SetupConfig.LoadFromFile(configPath);
+        _config.UsesBundledDefaultConfig = explicitConfigPath == null;
         _config = SetupConfig.FromEnvironment(_config);
         GatewayLkgVersion.ApplyToConfig(_config);
         _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
+        if (startAtGatewayInstalledMilestone)
+        {
+            _persistStartupPreferenceOnComplete = false;
+            _showStartupPreferenceOnComplete = false;
+        }
 
         Closed += (_, _) =>
         {
@@ -82,34 +96,91 @@ public sealed partial class SetupWindow : Window
                 Active = null;
         };
 
-        if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out _setupLock, out var lockMessage))
+        var previewPage = SetupPreview.RequestedPage;
+        if (previewPage != null)
         {
-            RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
+            NavigatePreview(previewPage);
             return;
         }
 
-        RootFrame.Navigate(typeof(WelcomePage), _config);
+        if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out _setupLock, out var lockMessage))
+        {
+            NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
+            return;
+        }
+
+        if (startAtGatewayInstalledMilestone)
+            NavigateToGatewayInstalledMilestone();
+        else
+            NavigateTo(typeof(SecurityNoticePage), _config);
     }
 
-    public void NavigateToCapabilities() => RootFrame.Navigate(typeof(CapabilitiesPage), _config);
-    public void NavigateToProgress() => RootFrame.Navigate(typeof(ProgressPage), _config);
-    public bool TryNavigateToWizard()
+    public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
+    public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
+    public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
+    public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), _config);
+    public void NavigateToGatewayInstalledMilestone() =>
+        NavigateTo(typeof(ProgressPage), new ProgressPageArgs(_config, ShowMilestoneOnly: true));
+
+    public bool TryNavigateToGatewayInstalledMilestone()
+    {
+        if (!CanNavigateToGatewayInstalledMilestone)
+            return false;
+
+        _persistStartupPreferenceOnComplete = false;
+        _showStartupPreferenceOnComplete = false;
+        NavigateToGatewayInstalledMilestone();
+        return true;
+    }
+
+    public bool TryNavigateToWizard(bool back = false)
     {
         if (!CanNavigateToWizard)
             return false;
 
-        RootFrame.Navigate(typeof(WizardPage), _config);
+        NavigateTo(typeof(WizardPage), _config, back);
         return true;
     }
 
-    public void NavigateToWizard()
-    {
-        if (!TryNavigateToWizard())
-            throw new InvalidOperationException("Setup window is not ready to navigate to the gateway wizard.");
-    }
-    public void NavigateToPermissions() => RootFrame.Navigate(typeof(PermissionsPage), _config);
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
-        => RootFrame.Navigate(typeof(CompletePage), new CompletePageArgs(success, elapsed, logPath, errorMessage));
+        => NavigateTo(
+            typeof(CompletePage),
+            new CompletePageArgs(
+                success,
+                elapsed,
+                logPath,
+                errorMessage,
+                DefaultAutoStart: true,
+                ShowStartupPreference: _showStartupPreferenceOnComplete));
+
+    // Directional page transition: forward steps slide in from the right, Back from the left.
+    private void NavigateTo(Type page, object? parameter, bool back = false) =>
+        RootFrame.Navigate(page, parameter, new SlideNavigationTransitionInfo
+        {
+            Effect = back ? SlideNavigationTransitionEffect.FromLeft : SlideNavigationTransitionEffect.FromRight,
+        });
+
+    private void NavigatePreview(string page) => RootFrame.Navigate(
+        page switch
+        {
+            "welcome" => typeof(WelcomePage),
+            "advanced" => typeof(AdvancedSetupPage),
+            "capabilities" => typeof(CapabilitiesPage),
+            "progress" => typeof(ProgressPage),
+            "milestone" => typeof(ProgressPage),
+            "wizard" => typeof(WizardPage),
+            "wizard-error" => typeof(WizardPage),
+            "complete" => typeof(CompletePage),
+            "complete-error" => typeof(CompletePage),
+            _ => typeof(SecurityNoticePage),
+        },
+        page switch
+        {
+            "complete" => new CompletePageArgs(true, TimeSpan.FromMinutes(3), null),
+            "complete-error" => new CompletePageArgs(false, TimeSpan.FromMinutes(3), null, "Setup could not finish. Review the details, then retry setup when you are ready."),
+            "milestone" => new ProgressPageArgs(_config, ShowMilestoneOnly: true),
+            _ => _config,
+        });
 
     public void RequestAdvancedSetup()
     {
@@ -121,6 +192,22 @@ public sealed partial class SetupWindow : Window
         var handler = SetupCompleted;
         if (handler == null)
             return false;
+
+        try
+        {
+            if (_persistStartupPreferenceOnComplete)
+            {
+                _config.Settings.AutoStart = enableAutoStart;
+                TraySettingsConfig.UpdateAutoStartInSettingsFile(
+                    Path.Combine(SetupContext.ResolveDataDir(), "settings.json"),
+                    enableAutoStart);
+            }
+        }
+        catch (Exception ex)
+        {
+            NavigateToComplete(false, TimeSpan.Zero, null, $"Setup completed, but saving your startup preference failed: {ex.Message}");
+            return true;
+        }
 
         handler.Invoke(this, new SetupCompletedEventArgs(enableAutoStart));
         return true;
@@ -208,5 +295,11 @@ public sealed partial class SetupWindow : Window
         => args.Any(a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
 }
 
-public sealed record CompletePageArgs(bool Success, TimeSpan Elapsed, string? LogPath, string? ErrorMessage = null);
+public sealed record CompletePageArgs(
+    bool Success,
+    TimeSpan Elapsed,
+    string? LogPath,
+    string? ErrorMessage = null,
+    bool DefaultAutoStart = true,
+    bool ShowStartupPreference = true);
 public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.SetupEngine.UI.Pages.SecurityNoticePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Disabled">
+
+    <Grid Padding="48,28,48,24" RowDefinitions="Auto,*,Auto">
+
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="12">
+            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
+                   Width="96" Height="96" HorizontalAlignment="Center"
+                   AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Text="Welcome to OpenClaw"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       HorizontalAlignment="Center" />
+            <TextBlock TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center"
+                       Text="OpenClaw runs your personal AI agent through a private gateway on this PC — reachable from chat apps like WhatsApp or Telegram." />
+        </StackPanel>
+
+        <InfoBar Grid.Row="1" VerticalAlignment="Top" Margin="0,24,0,0" MaxWidth="560"
+                 IsOpen="True" IsClosable="False" Severity="Warning"
+                 Title="Security notice"
+                 Message="The AI agent you connect (for example, Claude) can take powerful actions on this PC — running commands, reading and writing files, and capturing your screen — depending on what you allow.&#x0a;&#x0a;Only set this up on a computer you trust, and only continue if you understand the risks and trust the prompts and integrations you use. You choose exactly what to allow in the next steps." />
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+            <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsTabStop="False" AutomationProperties.Name="Step 1 of 6">
+                <Border Width="20" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupIndicatorAccentBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+                <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" x:Name="ContinueButton" Content="Continue"
+                    Height="44" MinWidth="140" HorizontalAlignment="Right"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="Continue_Click" />
+        </Grid>
+    </Grid>
+</Page>

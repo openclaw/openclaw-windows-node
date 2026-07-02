@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,6 +11,8 @@ using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
+internal sealed record ProgressPageArgs(SetupConfig Config, bool ShowMilestoneOnly);
+
 public sealed partial class ProgressPage : Page
 {
     private SetupConfig? _config;
@@ -17,10 +20,11 @@ public sealed partial class ProgressPage : Page
     private SetupLogger? _logger;
     private CancellationTokenSource? _runCts;
     private readonly Dictionary<string, StepRow> _rows = new();
-    private bool _logExpanded;
     private int _logLineCount;
     private bool _pipelineFinished;
     private const int MaxLogLines = 200;
+
+    internal bool IsPipelineRunning => _runCts != null && !_pipelineFinished;
 
     // Map pipeline step IDs to display groups (N:1)
     private static readonly (string GroupId, string DisplayName, string[] StepIds)[] StepGroups =
@@ -45,11 +49,53 @@ public sealed partial class ProgressPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        var args = e.Parameter as ProgressPageArgs;
+        _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
         SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
 
         BuildStepRows();
+        if (args?.ShowMilestoneOnly == true)
+        {
+            foreach (var (groupId, _, _) in StepGroups)
+                if (_rows.TryGetValue(groupId, out var row))
+                    row.SetStatus(StepStatus.Done);
+            ShowGatewayInstalledMilestone();
+            return;
+        }
+
+        if (SetupPreview.IsActive)
+        {
+            if (SetupPreview.RequestedPage == "milestone")
+            {
+                foreach (var (groupId, _, _) in StepGroups)
+                    if (_rows.TryGetValue(groupId, out var row))
+                        row.SetStatus(StepStatus.Done);
+                ShowGatewayInstalledMilestone();
+                return;
+            }
+            RenderProgressPreview();
+            return;
+        }
         StartPipeline();
+    }
+
+    private void RenderProgressPreview()
+    {
+        SubtitleText.Text = "Creating OpenClawGateway WSL instance — about 4 minutes left";
+        var ids = StepGroups.Select(g => g.GroupId).ToArray();
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var status = i < 3 ? StepStatus.Done : i == 3 ? StepStatus.Running : StepStatus.Idle;
+            if (_rows.TryGetValue(ids[i], out var row))
+                row.SetStatus(status);
+        }
+        LogText.Text =
+            "[12:04:01] [info] Windows 11 26100 · WSL 2 present\n" +
+            "[12:04:03] [info] port 127.0.0.1:18789 available\n" +
+            "[12:04:05] [info] wsl --install -d Ubuntu-24.04 --name OpenClawGateway --no-launch\n" +
+            "[12:04:38] [info] downloading distro … 142/200 MB\n" +
+            "[12:04:38] [changed] created %LOCALAPPDATA%\\OpenClawTray\\wsl\\OpenClawGateway\\\n" +
+            "[12:04:38] [info] next: install CLI via HTTPS, configure loopback gateway\n";
     }
 
     private void BuildStepRows()
@@ -108,16 +154,16 @@ public sealed partial class ProgressPage : Page
                 if (!config.SkipWizard)
                 {
                     if (_rows.TryGetValue("finish", out var finishRow))
-                        finishRow.SetStatus(StepStatus.Running);
-                    SubtitleText.Text = "Opening gateway setup...";
-                    await Task.Delay(900);
-                    finishRow?.SetStatus(StepStatus.Done);
-                    SetupWindow.Active?.NavigateToWizard();
+                        finishRow.SetStatus(StepStatus.Done);
+                    // Pause on a "Gateway installed" milestone so the user knowingly steps
+                    // from install (gateway provisioning) into onboarding (the OpenClaw wizard),
+                    // instead of being thrown straight into the questions.
+                    ShowGatewayInstalledMilestone();
                 }
-                else if (config.SkipPermissions)
-                    SetupWindow.Active?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
                 else
-                    SetupWindow.Active?.NavigateToPermissions();
+                    // Permissions are now surfaced inline on the capabilities screen, so
+                    // the standalone permissions step is skipped — go straight to done.
+                    SetupWindow.Active?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
             }
             else
             {
@@ -229,22 +275,28 @@ public sealed partial class ProgressPage : Page
         });
     }
 
-    private void LogToggle_Click(object sender, RoutedEventArgs e)
-    {
-        _logExpanded = !_logExpanded;
-        LogPanel.Visibility = _logExpanded ? Visibility.Visible : Visibility.Collapsed;
-        OpenLogButton.Visibility = _logExpanded ? Visibility.Visible : Visibility.Collapsed;
-        LogToggleButton.Content = _logExpanded ? "Hide logs ▼" : "Show logs ▲";
-
-        var isDark = ActualTheme == ElementTheme.Dark;
-        LogPanel.Background = new SolidColorBrush(isDark
-            ? Color.FromArgb(255, 0x1A, 0x1A, 0x1A)
-            : Color.FromArgb(255, 0xF8, 0xF8, 0xF8));
-    }
-
     private void OpenLog_Click(object sender, RoutedEventArgs e)
     {
         LogFileLauncher.RevealInExplorer(_config?.LogPath);
+    }
+
+    // Swap the install UI for a "Gateway installed" milestone with an explicit
+    // onboard CTA. The gateway keeps running (WSL keepalive), so the wizard
+    // connects when the user chooses to continue.
+    private void ShowGatewayInstalledMilestone()
+    {
+        InstallHeader.Visibility = Visibility.Collapsed;
+        InstallContent.Visibility = Visibility.Collapsed;
+        MilestonePanel.Visibility = Visibility.Visible;
+        OnboardButton.Visibility = Visibility.Visible;
+    }
+
+    private void Onboard_Click(object sender, RoutedEventArgs e)
+    {
+        if (SetupWindow.Active?.TryNavigateToWizard() == true)
+            return;
+
+        MilestoneStatusText.Text = "Another setup task is still active. Wait for it to finish, then start OpenClaw onboard.";
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)
@@ -267,36 +319,41 @@ internal sealed class StepRow
     private readonly Border _idleBadge;
     private readonly Border _checkBadge;
     private readonly Border _errorBadge;
+    private readonly Border _rowBorder;
 
     public StepRow(string displayName)
     {
         _label = new TextBlock
         {
             Text = displayName,
-            FontSize = 16,
+            FontSize = 14,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        // Bare Windows spinner (no filled disc) — theme-neutral so it reads white
+        // on the dark active row and dark on light, like a standard ProgressRing.
         _spinner = new ProgressRing
         {
-            Width = 28, Height = 28,
-            MinWidth = 28, MinHeight = 28,
+            Width = 20, Height = 20,
+            MinWidth = 20, MinHeight = 20,
             IsActive = false,
             Visibility = Visibility.Collapsed,
         };
+        if (Application.Current.Resources.TryGetValue("TextFillColorPrimaryBrush", out var spinnerFg) && spinnerFg is Brush spinnerBrush)
+            _spinner.Foreground = spinnerBrush;
 
         _idleBadge = CreateEmptyBadge();
 
-        _checkBadge = CreateIconBadge("\uE73E", Color.FromArgb(255, 0x2B, 0xC3, 0x6F), Color.FromArgb(255, 255, 255, 255));
+        _checkBadge = CreateIconBadge("\uE73E", ResolveColor("SystemFillColorSuccess", Color.FromArgb(255, 0x2B, 0xC3, 0x6F)), Colors.White);
         _checkBadge.Visibility = Visibility.Collapsed;
 
-        _errorBadge = CreateIconBadge("\uE711", Color.FromArgb(255, 0xE8, 0x11, 0x23), Color.FromArgb(255, 255, 255, 255));
+        _errorBadge = CreateIconBadge("\uE711", ResolveColor("SystemFillColorCritical", Color.FromArgb(255, 0xE8, 0x11, 0x23)), Colors.White);
         _errorBadge.Visibility = Visibility.Collapsed;
 
         var badgeContainer = new Grid
         {
-            Width = 32,
-            Height = 32,
+            Width = 24,
+            Height = 24,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -314,7 +371,17 @@ internal sealed class StepRow
         grid.Children.Add(_label);
         grid.Children.Add(badgeContainer);
 
-        Element = grid;
+        _rowBorder = new Border
+        {
+            Child = grid,
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(12, 5, 12, 5),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Colors.Transparent),
+            Background = new SolidColorBrush(Colors.Transparent),
+        };
+
+        Element = _rowBorder;
     }
 
     public void SetStatus(StepStatus status)
@@ -329,18 +396,31 @@ internal sealed class StepRow
         _label.FontWeight = status == StepStatus.Running
             ? Microsoft.UI.Text.FontWeights.SemiBold
             : Microsoft.UI.Text.FontWeights.Normal;
+
+        // Highlight the active step with the setup accent while it is running.
+        if (status == StepStatus.Running
+            && Application.Current.Resources.TryGetValue("SetupIndicatorAccentBrush", out var accent)
+            && accent is SolidColorBrush accentBrush)
+        {
+            var c = accentBrush.Color;
+            _rowBorder.Background = new SolidColorBrush(Color.FromArgb(28, c.R, c.G, c.B));
+            _rowBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(110, c.R, c.G, c.B));
+        }
+        else
+        {
+            _rowBorder.Background = new SolidColorBrush(Colors.Transparent);
+            _rowBorder.BorderBrush = new SolidColorBrush(Colors.Transparent);
+        }
     }
 
     private static Border CreateEmptyBadge()
     {
-        // Use a theme-aware stroke brush so the pending-step ring is visible
-        // in both light and dark mode. The previous hard-coded translucent
-        // white was invisible against light backgrounds.
+        // Use a theme-aware stroke so the pending-step ring stays visible in every theme.
         var border = new Border
         {
-            Width = 22,
-            Height = 22,
-            CornerRadius = new CornerRadius(11),
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(10),
             BorderThickness = new Thickness(1),
         };
 
@@ -361,14 +441,14 @@ internal sealed class StepRow
     {
         return new Border
         {
-            Width = 22,
-            Height = 22,
-            CornerRadius = new CornerRadius(11),
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(10),
             Background = new SolidColorBrush(background),
             Child = new FontIcon
             {
                 Glyph = glyph,
-                FontSize = 12,
+                FontSize = 11,
                 FontFamily = IconFonts.SymbolThemeFontFamily,
                 Foreground = new SolidColorBrush(foreground),
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -376,4 +456,8 @@ internal sealed class StepRow
             }
         };
     }
+
+    // Resolve a native Color theme resource (e.g. SystemFillColorSuccess) with a fallback.
+    private static Color ResolveColor(string key, Color fallback) =>
+        Application.Current.Resources.TryGetValue(key, out var v) && v is Color c ? c : fallback;
 }

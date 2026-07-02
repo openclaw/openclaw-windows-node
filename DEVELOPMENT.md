@@ -74,9 +74,6 @@ openclaw-windows-hub/
 │   ├── OpenClaw.SetupEngine.Tests/   # Setup engine tests
 │   └── OpenClaw.Tray.UITests/        # Native WinUI/A2UI UI tests
 │
-├── tools/
-│   └── icongen/                      # Icon generation tool
-│
 ├── .github/workflows/
 │   └── ci.yml                        # GitHub Actions CI/CD workflow
 │

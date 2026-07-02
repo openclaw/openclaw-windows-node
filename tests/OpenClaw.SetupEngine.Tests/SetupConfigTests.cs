@@ -211,8 +211,63 @@ public class SetupConfigTests : IDisposable
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
         Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
         Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
-        Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
         Assert.Equal("custom_value", result.RootElement.GetProperty("CustomKey").GetString());
+    }
+
+    [Fact]
+    public void TraySettingsConfig_ApplyCapabilities_MapsSetupCapabilitiesToRuntimeNodeSettings()
+    {
+        var caps = new CapabilitiesConfig
+        {
+            System = false,
+            Canvas = true,
+            Screen = true,
+            Camera = false,
+            Location = false,
+            Browser = false,
+            Device = true,
+            Tts = true,
+            Stt = false,
+        };
+
+        var traySettings = new TraySettingsConfig();
+        traySettings.ApplyCapabilities(caps);
+
+        Assert.False(traySettings.NodeSystemRunEnabled);
+        Assert.True(traySettings.NodeCanvasEnabled);
+        Assert.True(traySettings.NodeScreenEnabled);
+        Assert.False(traySettings.NodeCameraEnabled);
+        Assert.False(traySettings.NodeLocationEnabled);
+        Assert.False(traySettings.NodeBrowserProxyEnabled);
+        Assert.True(traySettings.NodeTtsEnabled);
+        Assert.False(traySettings.NodeSttEnabled);
+    }
+
+    [Fact]
+    public void SetupConfig_UsesBundledDefaultConfig_IsRuntimeOnly()
+    {
+        var config = new SetupConfig { UsesBundledDefaultConfig = true };
+        var path = Path.Combine(_tempDir, "config.json");
+
+        File.WriteAllText(path, JsonSerializer.Serialize(config, SetupConfig.JsonWriteOptions));
+        var roundTripped = SetupConfig.LoadFromFile(path);
+
+        Assert.False(roundTripped.UsesBundledDefaultConfig);
+    }
+
+    [Fact]
+    public void TraySettingsConfig_UpdateAutoStartInSettingsFile_PreservesCapabilitySettings()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, """{"AutoStart": false, "NodeCameraEnabled": false, "NodeSystemRunEnabled": false}""");
+
+        TraySettingsConfig.UpdateAutoStartInSettingsFile(settingsPath, autoStart: true);
+
+        var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.True(result.RootElement.GetProperty("AutoStart").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NodeSystemRunEnabled").GetBoolean());
     }
 
     [Fact]
@@ -226,6 +281,18 @@ public class SetupConfigTests : IDisposable
         Assert.Contains("settings.json is corrupt", ex.Message);
         Assert.Equal("{not json", File.ReadAllText(settingsPath));
         Assert.Single(Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak"));
+    }
+
+    [Fact]
+    public void TraySettingsConfig_CorruptExistingFile_BackupNamesDoNotCollide()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, "{not json");
+
+        Assert.Throws<InvalidDataException>(() => new TraySettingsConfig().MergeIntoSettingsFile(settingsPath));
+        Assert.Throws<InvalidDataException>(() => TraySettingsConfig.UpdateAutoStartInSettingsFile(settingsPath, autoStart: true));
+
+        Assert.Equal(2, Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak").Count());
     }
 
     [Fact]

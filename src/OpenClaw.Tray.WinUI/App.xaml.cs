@@ -3606,7 +3606,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         await EnsureSetupWindowAsync();
     }
 
-    private async Task<(SetupWindow? Window, bool CreatedNew)> EnsureSetupWindowAsync()
+    private async Task<(SetupWindow? Window, bool CreatedNew)> EnsureSetupWindowAsync(bool startAtGatewayInstalledMilestone = false)
     {
         if (_settings == null)
             return (null, false);
@@ -3622,7 +3622,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
-            var setupWindow = new SetupWindow();
+            var setupWindow = new SetupWindow(startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone);
             _setupWindow = setupWindow;
             setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
             setupWindow.SetupCompleted += OnSetupCompleted;
@@ -3648,27 +3648,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task ShowGatewayWizardAsync()
     {
-        var (setupWindow, createdNew) = await EnsureSetupWindowAsync();
+        var (setupWindow, createdNew) = await EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: true);
         if (setupWindow == null)
             return;
 
-        // Only steer a freshly created setup window to the gateway wizard. An
-        // already-open setup window may be mid-install on ProgressPage, whose
-        // Unloaded handler cancels the running setup pipeline — navigating it
-        // away would abort an in-progress install. In that case leave the
-        // existing window on its current page (already brought to the front).
         if (!createdNew)
         {
-            Logger.Info("Setup window already open; skipping direct gateway wizard navigation to avoid interrupting active setup");
+            if (setupWindow.TryNavigateToGatewayInstalledMilestone())
+                Logger.Info("Setup window already open; switched to direct OpenClaw onboard handoff");
+            else
+                Logger.Info("Setup window already open; leaving current setup page visible to avoid interrupting active setup");
             return;
         }
 
         await setupWindow.WaitForInitialContentReadyAsync();
-        if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
-        {
-            if (!setupWindow.TryNavigateToWizard())
-                Logger.Warn("Setup window is not ready for direct gateway wizard navigation; leaving current setup page visible");
-        }
     }
 
     private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)

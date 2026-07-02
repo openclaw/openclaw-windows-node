@@ -21,10 +21,9 @@ namespace OpenClaw.Tray.UITests;
 internal sealed class TestApp : Application
 {
     /// <summary>
-    /// Merge XamlControlsResources + the production App.xaml's custom keys
-    /// (LobsterAccentBrush, AccentButtonStyle) so renderers that look them up
-    /// resolve a real value. Call this ON THE UI THREAD after Application.Current
-    /// is set.
+    /// Merge XamlControlsResources + production App.xaml's custom keys so
+    /// renderers that look them up resolve a real value. Call this ON THE UI
+    /// THREAD after Application.Current is set.
     /// </summary>
     public void MergeStandardResources()
     {
@@ -38,9 +37,6 @@ internal sealed class TestApp : Application
             // If XamlControlsResources can't load (rare; missing assembly), keep
             // going — the renderers degrade gracefully without theme styles.
         }
-
-        TryAddResource("LobsterAccentBrush",
-            "<SolidColorBrush xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Color='#E74C3C' />");
 
         TryAddResource("AccentButtonStyle",
             "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' " +

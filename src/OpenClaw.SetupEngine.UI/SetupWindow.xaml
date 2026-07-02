@@ -14,7 +14,8 @@
         <!-- Title bar drag region with icon + text -->
         <Grid x:Name="TitleBarDrag" Grid.Row="0" Padding="12,0,0,0">
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/Lobster.png" Width="20" Height="20" />
+                <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png" Width="20" Height="20"
+                       AutomationProperties.AccessibilityView="Raw" />
                 <TextBlock Text="OpenClaw Setup" FontSize="13" Opacity="0.85"
                            VerticalAlignment="Center" />
             </StackPanel>

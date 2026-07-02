@@ -31,7 +31,7 @@ The bundled `default-config.json` ships with the tray executable and provides se
 ┌─────────────────────────────────────────────────────────────┐
 │  OpenClaw.SetupEngine.UI (net10.0-windows10.0.22621, WinUI3)│
 │  SetupWindow + pages, direct code-behind, no MVVM           │
-│  Welcome → Capabilities → Progress → Permissions → Complete │
+│  Security → Welcome → Capabilities → Progress → Onboard → Complete │
 └─────────────────────────────────────────────────────────────┘
          ▲ hosted by project reference
          │
@@ -63,11 +63,12 @@ src/OpenClaw.SetupEngine.UI/
 ├── OpenClaw.SetupEngine.UI.csproj # WinAppSDK library referenced by tray
 ├── SetupWindow.xaml / .xaml.cs    # 720×820 window, Mica, title bar, navigation, setup events
 └── Pages/
-    ├── WelcomePage.xaml / .cs     # Logo, info card, Install button + ContentDialog
-    ├── CapabilitiesPage.xaml / .cs # 2-column grid with icons + descriptions
-    ├── ProgressPage.xaml / .cs    # Live step rows + streaming log viewer
-    ├── PermissionsPage.xaml / .cs # 5 permission checks + Open Settings buttons
-    └── CompletePage.xaml / .cs    # Party popper, amber banner, startup toggle
+    ├── SecurityNoticePage.xaml / .cs # Device-trust warning
+    ├── WelcomePage.xaml / .cs        # Install WSL gateway vs connect existing
+    ├── CapabilitiesPage.xaml / .cs   # Profile, inline permissions, install review
+    ├── ProgressPage.xaml / .cs       # Live step rows + gateway-installed handoff
+    ├── WizardPage.xaml / .cs         # OpenClaw onboard transcript
+    └── CompletePage.xaml / .cs       # Mascot status badge, summary, startup toggle
 ```
 
 **Total engine code: ~1,882 lines across 8 files.** UI adds ~10 more files.
@@ -260,42 +261,42 @@ Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-<timestamp>.log`
 
 The WinUI app is a **thin shell** — no business logic, just rendering pipeline state. End-user UI runs default to `RollbackOnFailure=true`; `--no-rollback-on-failure` preserves an explicit debugging opt-out.
 
-### Page Flow: Welcome → Capabilities → Progress → Permissions → Complete
+### Page Flow: Security → Welcome → Capabilities → Progress → OpenClaw onboard → Complete
+
+**SecurityNoticePage**
+- Native warning InfoBar for device-trust and setup transparency
 
 **WelcomePage**
-- Lobster icon + "OpenClaw Setup" title bar
-- Info card explaining what will be installed
-- "Install new WSL Gateway" button with ContentDialog confirmation
-- "Advanced setup" link → launches tray with `--page connection`
+- OpenClaw icon + "OpenClaw Setup" title bar
+- Install app-owned WSL gateway (recommended) or connect to existing gateway
+- Replacement prompt when an app-owned WSL gateway already exists
 
 **CapabilitiesPage**
-- 2-column grid showing capabilities from config
-- Icons + descriptions for each (System, Canvas, Screen, Camera, etc.)
-- "Continue" proceeds to Progress
+- Capability profile defaults to Standard
+- Inline Windows permission status for selected capabilities
+- Install review showing WSL distro, OpenClaw CLI, local gateway service, and possible UAC
 
 **ProgressPage**
 - Step rows with spinning ProgressRing → ✓/✗ badges
-- Live streaming log viewer (monospace, auto-scroll)
-- On success → navigates to Permissions
+- Live activity ledger collapsed by default
+- On success → gateway-installed milestone with explicit OpenClaw onboard CTA
 - On failure → navigates to Complete(success=false)
 
-**PermissionsPage**
-- 5 permission rows: Notifications, Camera, Microphone, Location, Screen Capture
-- Live status checks (registry, DeviceAccessInformation, GraphicsCaptureSession)
-- "Open Settings" buttons launch `ms-settings://` URIs
-- "Refresh status" button, "Continue" proceeds to Complete
+**WizardPage**
+- Transcript-style gateway `wizard.*` flow for provider/model/key setup
+- Error state uses More options plus gateway recovery actions when available
 
 **CompletePage**
-- Party popper image
+- OpenClaw mascot with corner status badge
 - "All set!" / error heading
-- Amber "Node Mode Active" warning banner
-- "Launch OpenClaw at startup?" toggle (reported to tray host)
-- "Finish" button asks the tray host to self-restart and open chat
+- Native InfoBar for node mode
+- "Launch OpenClaw at startup" toggle defaults on and is persisted before restart
+- "Finish" asks the tray host to self-restart and open chat
 
 ### Window Properties
 - 720×820 logical pixels (DPI-scaled)
 - Mica backdrop
-- Custom title bar with lobster icon
+- Custom title bar with OpenClaw icon
 
 ---
 

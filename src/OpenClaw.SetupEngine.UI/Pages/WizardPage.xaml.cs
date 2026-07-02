@@ -16,8 +16,6 @@ public sealed partial class WizardPage : Page
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
 
-    // Bound progress polling separately from interactive wizard steps.
-
     private SetupConfig? _config;
     private OpenClawGatewayClient? _client;
     private string _sessionId = "";
@@ -35,13 +33,9 @@ public sealed partial class WizardPage : Page
     private int _totalProgressPolls;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
-    // Tails the WSL gateway log and surfaces openclaw plugin console.log output
-    // (OAuth URLs, install fallback messages, etc) inline on the active step.
-    // wizard.payload frames don't carry this content.
+    // wizard.payload frames do not include plugin console output, so tail the gateway log inline.
     private WizardConsoleTail? _consoleTail;
-    // Host access for the active gateway, captured on connect. Drives the
-    // "Open terminal" / "Restart gateway" recovery affordances shown when the
-    // wizard fails because a tool is missing from an app-managed WSL gateway.
+    // Captured on connect for "Open terminal" / "Restart gateway" recovery actions.
     private GatewayHostAccessPlan _hostAccessPlan = GatewayHostAccessPlan.None();
 
     public WizardPage()
@@ -54,7 +48,49 @@ public sealed partial class WizardPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        if (SetupPreview.IsActive)
+        {
+            RenderWizardPreview();
+            return;
+        }
         _ = StartWizardAsync();
+    }
+
+    private void RenderWizardPreview()
+    {
+        BusyRing.Visibility = Visibility.Collapsed;
+        BusyRing.IsActive = false;
+        ShowRecoveryActions();
+        AppendTranscriptTurn("Welcome — let's connect your agent", null);
+        AppendTranscriptTurn("Choose your AI provider", "Anthropic — Claude");
+        AppendTranscriptTurn("Paste your API key", "••••••");
+
+        if (SetupPreview.RequestedPage == "wizard-error")
+        {
+            TitleText.Text = "OpenClaw onboard hit a problem";
+            ShowError("The gateway restarted before the current wizard step finished. Your setup is still installed; choose Start wizard again, or use More options to restart onboard or skip and exit.");
+            return;
+        }
+
+        StatusText.Text = "A few quick questions to connect your agent";
+        _stepType = "select";
+        _stepId = "model";
+        TitleText.Text = "Default AI model";
+        SelectOptions.Visibility = Visibility.Visible;
+        foreach (var (val, lbl) in new[] { ("opus", "claude-opus-4.8"), ("sonnet", "claude-sonnet-4.6"), ("haiku", "claude-haiku-4.5") })
+        {
+            SelectOptions.Children.Add(new RadioButton
+            {
+                Content = lbl,
+                Tag = val,
+                GroupName = "preview",
+                Padding = new Thickness(8, 6, 8, 6),
+            });
+        }
+        ((RadioButton)SelectOptions.Children[0]).IsChecked = true;
+        PrimaryButton.Content = "Continue";
+        PrimaryButton.IsEnabled = true;
+        SecondaryButton.Visibility = Visibility.Collapsed;
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -62,7 +98,7 @@ public sealed partial class WizardPage : Page
         _ = DisconnectAsync();
     }
 
-    private async Task StartWizardAsync()
+    private async Task StartWizardAsync(bool clearTranscript = true)
     {
         var generation = AdvanceOperationGeneration();
         try
@@ -89,6 +125,8 @@ public sealed partial class WizardPage : Page
             if (generation != _operationGeneration)
                 return;
 
+            if (clearTranscript)
+                TranscriptPanel.Children.Clear();
             await ApplyPayloadAsync(payload);
         }
         catch (Exception ex)
@@ -197,10 +235,8 @@ public sealed partial class WizardPage : Page
                 if (generation != _operationGeneration || _errorState)
                     return;
 
-                if (_config!.SkipPermissions)
-                    SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
-                else
-                    SetupWindow.Active?.NavigateToPermissions();
+                // Permissions are collected before install, so the wizard completes straight to summary.
+                SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
                 return;
             }
 
@@ -300,7 +336,7 @@ public sealed partial class WizardPage : Page
             BusyRing.Visibility = Visibility.Collapsed;
             BusyRing.IsActive = false;
             ShowRecoveryActions();
-            StatusText.Text = "Answer the gateway setup question";
+            StatusText.Text = "A few quick questions to connect your agent";
             PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
             SecondaryButton.IsEnabled = true;
             PrimaryButton.Content = _stepType == "confirm" ? "Yes" : "Continue";
@@ -492,12 +528,6 @@ public sealed partial class WizardPage : Page
 
     private async Task SecondaryClickAsync()
     {
-        if (_errorState)
-        {
-            await SkipWizardAsync();
-            return;
-        }
-
         await SendCurrentAnswerAsync(skip: true);
     }
 
@@ -547,6 +577,8 @@ public sealed partial class WizardPage : Page
             // render and the user's current click. Once they answer, those messages
             // are "consumed" — wipe so the next step starts with a clean slate.
             ClearConsoleBanner();
+            var answeredQuestion = TitleText.Text;
+            var answeredLabel = CurrentAnswerLabel(skip);
             object parameters;
             if (skip)
             {
@@ -567,7 +599,9 @@ public sealed partial class WizardPage : Page
             if (generation != _operationGeneration)
                 return;
 
+            AppendTranscriptTurn(answeredQuestion, answeredLabel);
             await ApplyPayloadAsync(payload);
+            ScrollActiveIntoView();
         }
         catch (Exception ex)
         {
@@ -576,6 +610,107 @@ public sealed partial class WizardPage : Page
 
             await EnterWizardErrorAsync(ex.Message);
         }
+    }
+
+    private string? CurrentAnswerLabel(bool skip)
+    {
+        if (skip)
+            return _stepType == "confirm" ? "No" : "Skipped";
+
+        return _stepType switch
+        {
+            "confirm" => "Yes",
+            "text" => _sensitive ? "••••••" : (string.IsNullOrEmpty(TextInput.Text) ? null : TextInput.Text),
+            "select" or "multiselect" => LabelForValues(GetSelectedOptionValues()),
+            _ => null,
+        };
+    }
+
+    private string? LabelForValues(string[] values)
+    {
+        if (values.Length == 0)
+            return null;
+        var labels = values.Select(v => _options.FirstOrDefault(o => o.Value == v)?.Label ?? v);
+        return string.Join(", ", labels);
+    }
+
+    // Presentation-only transcript; protocol frames are unchanged.
+    private void AppendTranscriptTurn(string question, string? answer)
+    {
+        if (string.IsNullOrWhiteSpace(question))
+            return;
+
+        var grid = new Grid { Padding = new Thickness(2, 4, 2, 4) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var dot = new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(9),
+            Background = ResourceBrush("SystemFillColorSuccessBrush"),
+            Margin = new Thickness(0, 1, 10, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = new FontIcon
+            {
+                Glyph = "\uE73E",
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+                IsTextScaleFactorEnabled = false,
+            },
+        };
+
+        var stack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(new TextBlock
+        {
+            Text = question,
+            FontSize = 13,
+            Foreground = ResourceBrush("TextFillColorTertiaryBrush"),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        if (!string.IsNullOrWhiteSpace(answer))
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = answer,
+                FontSize = 13,
+                Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
+
+        Grid.SetColumn(dot, 0);
+        Grid.SetColumn(stack, 1);
+        grid.Children.Add(dot);
+        grid.Children.Add(stack);
+        TranscriptPanel.Children.Add(grid);
+    }
+
+    private void ScrollActiveIntoView()
+    {
+        MainScroller.UpdateLayout();
+        // Bring the active step card's TITLE into view (just below the last answered
+        // step) rather than jumping to the very bottom — scrolling to the bottom hid
+        // the step's introduction/question when it had many options (e.g. web search).
+        if (MainScroller.Content is FrameworkElement content)
+        {
+            try
+            {
+                var cardTop = StepCard.TransformToVisual(content)
+                    .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                // Leave a little room above so the most recent answered step stays
+                // visible for continuity, but keep the active title at the top.
+                var target = Math.Max(0, cardTop - 44);
+                MainScroller.ChangeView(null, target, null);
+                return;
+            }
+            catch
+            {
+                // Fall back to the previous behaviour if the transform fails.
+            }
+        }
+        MainScroller.ChangeView(null, MainScroller.ScrollableHeight, null);
     }
 
     private bool TryBuildAnswerValue(out object value)
@@ -877,10 +1012,9 @@ public sealed partial class WizardPage : Page
         ErrorText.Visibility = Visibility.Visible;
         PrimaryButton.Content = "Start wizard again";
         PrimaryButton.IsEnabled = true;
-        SecondaryButton.Content = "Skip wizard";
-        SecondaryButton.IsEnabled = true;
-        SecondaryButton.Visibility = Visibility.Visible;
-        HideRecoveryActions();
+        SecondaryButton.IsEnabled = false;
+        SecondaryButton.Visibility = Visibility.Collapsed;
+        ShowRecoveryActions();
         MaybeShowGatewayRecovery();
     }
 
@@ -892,9 +1026,8 @@ public sealed partial class WizardPage : Page
         // Invalidate in-flight wizard.next calls before tearing down the connection.
         AdvanceOperationGeneration();
         _errorState = true;
-        // Cancel the server-side wizard session before disconnecting so that
-        // subsequent retries (Start wizard again / Skip wizard) don't hit a
-        // "wizard already running" error from a lingering gateway session.
+        // Cancel the server-side wizard session before disconnecting so retries
+        // don't hit a "wizard already running" error from a lingering session.
         await CancelCurrentSessionAsync();
         ShowError(detail);
     }
@@ -991,7 +1124,7 @@ public sealed partial class WizardPage : Page
             // onboarding) — we do NOT return to Welcome or re-install WSL. The
             // gateway restart wiped its wizard session, so this resumes at the
             // first config question rather than the exact step that failed.
-            await StartWizardAsync();
+            await StartWizardAsync(clearTranscript: false);
         }
         catch (Exception ex)
         {
@@ -1008,10 +1141,9 @@ public sealed partial class WizardPage : Page
         HideRecoveryActions();
         SetBusy("Skipping wizard...");
         await CancelCurrentSessionAsync();
-        if (_config!.SkipPermissions)
-            SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config.LogPath);
-        else
-            SetupWindow.Active?.NavigateToPermissions();
+        // Permissions were already collected before install, so skipping OpenClaw
+        // onboard completes straight to the summary.
+        SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
     }
 
     private async Task CancelCurrentSessionAsync()
@@ -1029,19 +1161,14 @@ public sealed partial class WizardPage : Page
 
     private void ShowRecoveryActions()
     {
-        if (_errorState)
-            return;
-
-        RecoveryActions.Visibility = Visibility.Visible;
-        StartOverButton.IsEnabled = true;
-        SkipWizardButton.IsEnabled = true;
+        MoreOptionsButton.Visibility = Visibility.Visible;
+        MoreOptionsButton.IsEnabled = true;
     }
 
     private void HideRecoveryActions()
     {
-        RecoveryActions.Visibility = Visibility.Collapsed;
-        StartOverButton.IsEnabled = false;
-        SkipWizardButton.IsEnabled = false;
+        MoreOptionsButton.Visibility = Visibility.Collapsed;
+        MoreOptionsButton.IsEnabled = false;
     }
 
     private async Task DisconnectAsync()
