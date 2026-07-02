@@ -163,6 +163,18 @@ public sealed class NodeModeUiStateTests
     }
 
     [Fact]
+    public void NodeService_ExposesMcpStartupFailures()
+    {
+        var service = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
+
+        Assert.Contains("public string? McpStartupError", service);
+        Assert.Contains("public void SetMcpStartupError", service);
+        Assert.Contains("SetMcpStartupFailure(ex, \"capability registration\")", service);
+        Assert.Contains("return false;", ExtractMethodBody(service, "bool StartMcpServer"));
+        Assert.Contains("MCP server startup failed: listener did not start.", service);
+    }
+
+    [Fact]
     public void NewNodeStateStrings_ExistInEnUsResources()
     {
         var resw = ReadSource(

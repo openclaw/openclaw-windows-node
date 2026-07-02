@@ -309,6 +309,256 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task HandshakeSucceeded_NodeModeEnabledMarksNodeConnectingBeforeEmitting()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Contains(snapshots, snapshot =>
+            snapshot.OperatorState == RoleConnectionState.Connected &&
+            snapshot.NodeState == RoleConnectionState.Connecting &&
+            snapshot.OverallState == OverallConnectionState.Connecting);
+        Assert.DoesNotContain(snapshots, snapshot =>
+            snapshot.OperatorState == RoleConnectionState.Connected &&
+            snapshot.NodeState == RoleConnectionState.Idle &&
+            snapshot.OverallState == OverallConnectionState.Degraded);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_NodeModeEnabledMissingGatewayRecord_ReportsBlockedNode()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        _registry.Remove("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Equal(0, nodeConnector.ConnectCount);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
+        Assert.Contains("gateway record", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_NodeModeEnabledMissingGatewayRecord_EmitsNoReadySnapshot()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectAsync("gw-remote");
+        _registry.Remove("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.DoesNotContain(snapshots, snapshot =>
+            snapshot.OperatorState == RoleConnectionState.Connected &&
+            snapshot.OverallState == OverallConnectionState.Ready);
+        Assert.Contains(snapshots, snapshot =>
+            snapshot.NodeState == RoleConnectionState.Error &&
+            snapshot.NodeError?.Contains("gateway record", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_NodeModeEnabledMissingConnector_EmitsNoReadySnapshot()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            isNodeEnabled: () => true);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.DoesNotContain(snapshots, snapshot =>
+            snapshot.OperatorState == RoleConnectionState.Connected &&
+            snapshot.OverallState == OverallConnectionState.Ready);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.Contains("no node connector", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReconnectAfterNodeModeDisabled_ClearsNodeIntentAndDoesNotDeriveDegraded()
+    {
+        var nodeEnabled = true;
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => nodeEnabled);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+
+        nodeEnabled = false;
+        await manager.ReconnectAsync();
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.False(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Equal(RoleConnectionState.Disabled, manager.CurrentSnapshot.NodeState);
+        Assert.Equal(OverallConnectionState.Ready, manager.CurrentSnapshot.OverallState);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_NodeModeEnabledWithoutNodeCredential_DerivesDegradedBlockedNode()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = null;
+        var nodeConnector = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Equal(0, nodeConnector.ConnectCount);
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.OperatorState);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
+        Assert.Contains("No node credential", manager.CurrentSnapshot.NodeError);
+        Assert.Null(manager.CurrentSnapshot.NodeCredentialSource);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_NodeConnectorThrows_ReportsBlockedNode()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            ConnectAction = (_, _) => throw new InvalidOperationException("connector boom")
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Equal(1, nodeConnector.ConnectCount);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Contains("connector boom", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(snapshots, snapshot =>
+            snapshot.NodeState == RoleConnectionState.Error &&
+            snapshot.NodeError?.Contains("connector boom", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.NotEqual(RoleConnectionState.Connecting, snapshots.Last().NodeState);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_PreviousNodeDisconnectThrows_ReportsBlockedNode()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        var nodeConnector = new ThrowingNodeDisconnectConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
+        Assert.Contains("disconnect failed", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(snapshots, snapshot =>
+            snapshot.NodeState == RoleConnectionState.Error &&
+            snapshot.NodeError?.Contains("disconnect failed", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.NotEqual(RoleConnectionState.Connecting, snapshots.Last().NodeState);
+    }
+
+    [Fact]
+    public async Task BlockNodeStartAsync_StaleLifecycleGeneration_DoesNotOverwriteCurrentSnapshot()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance);
+
+        await manager.ConnectAsync("gw-remote");
+        var before = manager.CurrentSnapshot;
+
+        await InvokeBlockNodeStartAsync(
+            manager,
+            "stale blocker",
+            expectedLifecycleGeneration: GetPrivateLong(manager, "_generation") + 1);
+
+        Assert.Equal(before, manager.CurrentSnapshot);
+    }
+
+    [Fact]
     public async Task ConnectAsync_WithPersistedV2Requirement_SetsClientUseV2Signature()
     {
         _registry.AddOrUpdate(new GatewayRecord
@@ -481,8 +731,54 @@ public class GatewayConnectionManagerTests : IDisposable
             "HandleHandshakeSucceededAsync",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(method);
-        var task = (Task)method!.Invoke(manager, [1L])!;
+        var task = (Task)method!.Invoke(manager, [GetPrivateLong(manager, "_generation")])!;
         await task;
+    }
+
+    private static async Task<bool> InvokeStartNodeConnectionCoreAsync(
+        GatewayConnectionManager manager,
+        long nodeGeneration)
+    {
+        var method = typeof(GatewayConnectionManager).GetMethod(
+            "StartNodeConnectionCoreAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        var task = (Task<bool>)method!.Invoke(manager, [GetPrivateLong(manager, "_generation"), nodeGeneration, CancellationToken.None])!;
+        return await task;
+    }
+
+    private static async Task InvokeBlockNodeStartAsync(
+        GatewayConnectionManager manager,
+        string detail,
+        long? expectedLifecycleGeneration = null,
+        long? expectedNodeGeneration = null)
+    {
+        var method = typeof(GatewayConnectionManager).GetMethod(
+            "BlockNodeStartAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        var task = (Task)method!.Invoke(
+            manager,
+            [detail, CancellationToken.None, expectedLifecycleGeneration, expectedNodeGeneration])!;
+        await task;
+    }
+
+    private static void SetPrivateField(GatewayConnectionManager manager, string fieldName, object? value)
+    {
+        var field = typeof(GatewayConnectionManager).GetField(
+            fieldName,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field!.SetValue(manager, value);
+    }
+
+    private static long GetPrivateLong(GatewayConnectionManager manager, string fieldName)
+    {
+        var field = typeof(GatewayConnectionManager).GetField(
+            fieldName,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return (long)field!.GetValue(manager)!;
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
@@ -585,6 +881,62 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal("wss://test", node.LastGatewayUrl);
         Assert.Null(manager.CurrentSnapshot.OperatorCredentialSource);
         Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
+    }
+
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_MissingNodeCredential_ReportsBlockedNode()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = null;
+        _resolver.NodeCredential = null;
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectNodeOnlyAsync("gw-1");
+
+        Assert.Equal(0, node.ConnectCount);
+        Assert.Empty(_factory.CreatedCredentials);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Equal(OverallConnectionState.Error, manager.CurrentSnapshot.OverallState);
+        Assert.Contains("No node credential", manager.CurrentSnapshot.NodeError);
+        Assert.Null(manager.CurrentSnapshot.NodeCredentialSource);
+    }
+
+    [Fact]
+    public async Task StartNodeConnectionCoreAsync_MissingActiveGatewayContext_ReportsBlockedNode()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node,
+            shouldStartNodeConnection: (_, _) => false);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        SetPrivateField(manager, "_activeGatewayRecordId", null);
+
+        var started = await InvokeStartNodeConnectionCoreAsync(
+            manager,
+            GetPrivateLong(manager, "_nodeConnectionGeneration"));
+
+        Assert.False(started);
+        Assert.Equal(0, node.ConnectCount);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
+        Assert.Contains("no active gateway context", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -726,6 +1078,44 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(2222, tunnel.LastConfig?.SshPort);
         Assert.Equal("ws://localhost:45678", node.LastGatewayUrl);
         Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
+    }
+
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_TunnelStartFailure_ReportsBlockedNode()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-ssh",
+            Url = "wss://remote.example",
+            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678)
+        });
+        _registry.SetActive("gw-ssh");
+        _resolver.OperatorCredential = null;
+        _resolver.NodeCredential = new GatewayCredential(
+            "node-token",
+            IsBootstrapToken: false,
+            Source: CredentialResolver.SourceNodeDeviceToken);
+        var node = new CountingNodeConnector();
+        var tunnel = new FailingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node,
+            tunnelManager: tunnel);
+        var snapshots = new List<GatewayConnectionSnapshot>();
+        manager.StateChanged += (_, snapshot) => snapshots.Add(snapshot);
+
+        await manager.ConnectNodeOnlyAsync("gw-ssh");
+
+        Assert.Equal(0, node.ConnectCount);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
+        Assert.Equal(OverallConnectionState.Error, manager.CurrentSnapshot.OverallState);
+        Assert.Contains("SSH tunnel", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(snapshots, snapshot => snapshot.NodeState == RoleConnectionState.Error);
+        Assert.NotEqual(RoleConnectionState.Connecting, snapshots.Last().NodeState);
     }
 
     [Fact]
@@ -1347,6 +1737,39 @@ public class GatewayConnectionManagerTests : IDisposable
         public void Dispose() { }
     }
 
+    private sealed class ThrowingNodeDisconnectConnector : INodeConnector
+    {
+        public bool IsConnected => true;
+        public PairingStatus PairingStatus => PairingStatus.Paired;
+        public string? NodeDeviceId => "throwing-disconnect-node";
+        public NodeConnectionMode Mode => NodeConnectionMode.Gateway;
+
+#pragma warning disable CS0067 // Events required by interface but not fired in tests
+        public event EventHandler<ConnectionStatus>? StatusChanged;
+        public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
+        public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
+        public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
+#pragma warning restore CS0067
+
+        public Task ConnectAsync(string gatewayUrl, GatewayCredential credential, string identityPath, bool useV2Signature = false)
+            => Task.CompletedTask;
+
+        public Task ConnectAsync(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            bool useV2Signature,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ConnectAsync(gatewayUrl, credential, identityPath, useV2Signature);
+        }
+
+        public Task DisconnectAsync() => throw new InvalidOperationException("disconnect failed");
+
+        public void Dispose() { }
+    }
+
     private sealed class CountingTunnelManager : ISshTunnelManager
     {
         public int StartCount { get; private set; }
@@ -1368,6 +1791,19 @@ public class GatewayConnectionManagerTests : IDisposable
             LocalTunnelUrl = null;
             return Task.CompletedTask;
         }
+
+        public void Dispose() { }
+    }
+
+    private sealed class FailingTunnelManager : ISshTunnelManager
+    {
+        public bool IsActive => false;
+        public string? LocalTunnelUrl => null;
+
+        public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct) =>
+            throw new InvalidOperationException("tunnel failed");
+
+        public Task StopAsync() => Task.CompletedTask;
 
         public void Dispose() { }
     }

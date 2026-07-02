@@ -44,8 +44,10 @@ internal sealed class TrayMenuStateBuilder
         // ToggleAction delegates; recreate the lookup each rebuild.
         _permToggleActions.Clear();
 
-        var isConnected = _snapshot.CurrentStatus == ConnectionStatus.Connected;
-        var statusText = LocalizationHelper.GetConnectionStatusText(_snapshot.CurrentStatus);
+        var overallState = _snapshot.OverallState;
+        var isConnected = ConnectionStatusPresenter.IsHealthy(overallState, _snapshot.CurrentStatus);
+        var isLiveOrPending = ConnectionStatusPresenter.IsLiveOrPending(overallState, _snapshot.CurrentStatus);
+        var statusText = ConnectionStatusPresenter.PlainText(overallState, _snapshot.CurrentStatus);
 
         // Cache theme brushes once per build so cells don't each do a
         // resource lookup. The previous implementation looked up
@@ -97,13 +99,19 @@ internal sealed class TrayMenuStateBuilder
         Grid.SetColumn(brandRow, 0);
         brandGrid.Children.Add(brandRow);
 
-        var canToggleConnection = _snapshot.CurrentStatus == ConnectionStatus.Connected
-            || _snapshot.CurrentStatus == ConnectionStatus.Disconnected
-            || _snapshot.CurrentStatus == ConnectionStatus.Error;
-        var connectionToggle = menu.CreateMenuToggleSwitch(isConnected, "Gateway connection", canToggleConnection);
+        var canToggleConnection = overallState switch
+        {
+            null => _snapshot.CurrentStatus == ConnectionStatus.Connected
+                || _snapshot.CurrentStatus == ConnectionStatus.Disconnected
+                || _snapshot.CurrentStatus == ConnectionStatus.Error,
+            OpenClaw.Connection.OverallConnectionState.Connecting or
+            OpenClaw.Connection.OverallConnectionState.Disconnecting => false,
+            _ => true
+        };
+        var connectionToggle = menu.CreateMenuToggleSwitch(isLiveOrPending, "Gateway connection", canToggleConnection);
         connectionToggle.Margin = new Thickness(0);
         ToolTipService.SetToolTip(connectionToggle,
-            isConnected ? "Connected - toggle off to disconnect" : "Disconnected - toggle on to connect");
+            isLiveOrPending ? $"{statusText} - toggle off to disconnect" : $"{statusText} - toggle on to connect");
         connectionToggle.Toggled += (s, ev) =>
         {
             if (_callbacks.IsConnectionToggleSuspended())
@@ -162,7 +170,12 @@ internal sealed class TrayMenuStateBuilder
             Width = 8, Height = 8,
             VerticalAlignment = VerticalAlignment.Center,
             Fill = isConnected ? successBrush
-                : _snapshot.CurrentStatus == ConnectionStatus.Connecting ? cautionBrush
+                : (overallState is OpenClaw.Connection.OverallConnectionState.Error ||
+                   (overallState is null && _snapshot.CurrentStatus == ConnectionStatus.Error)) ? criticalBrush
+                : ((overallState is OpenClaw.Connection.OverallConnectionState.Connecting
+                    or OpenClaw.Connection.OverallConnectionState.Degraded
+                    or OpenClaw.Connection.OverallConnectionState.PairingRequired) ||
+                   (overallState is null && _snapshot.CurrentStatus == ConnectionStatus.Connecting)) ? cautionBrush
                 : neutralBrush
         });
         gwNameRow.Children.Add(new TextBlock

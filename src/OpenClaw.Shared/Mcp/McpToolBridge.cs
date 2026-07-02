@@ -255,7 +255,7 @@ public class McpToolBridge
         ["app.navigate"] =
             "Navigate the companion app to a specific page (e.g., 'home', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }.",
         ["app.status"] =
-            "Get current connection status, node state, and gateway info. Returns { connectionStatus, nodeConnected, nodePaired, nodePendingApproval, gatewayVersion, sessionCount, nodeCount }.",
+            "Get current connection status, manager-owned overall/operator/node state, and gateway info. Returns { connectionStatus, overallState, operatorState, nodeState, nodeConnected, nodePaired, nodePendingApproval, nodeError, gatewayVersion, sessionCount, nodeCount }.",
         ["app.sessions"] =
             "List active sessions with optional agent filter. Args: agentId (string, optional). Returns array of { Key, Status, Model, AgeText, tokens }.",
         ["app.agents"] =
@@ -267,9 +267,9 @@ public class McpToolBridge
         ["app.settings.get"] =
             "Read a local app setting by name. Args: name (string, required). Returns the setting value.",
         ["app.settings.set"] =
-            "Set a local app setting (name and value). Args: name (string, required), value (string, required). Returns { name, value }.",
+            "Set a local app setting (name and value), persist it, and apply the same reconnect/reload behavior as saving settings in the app UI. Args: name (string, required), value (string, required). Returns { name, value }.",
         ["app.menu"] =
-            "Get tray menu state (status, session count, node count). Returns array of menu items.",
+            "Get tray menu state (status including overallState/nodeState/nodeError, session count, node count). Returns array of menu items.",
         ["app.search"] =
             "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
         ["app.dashboard.url"] =

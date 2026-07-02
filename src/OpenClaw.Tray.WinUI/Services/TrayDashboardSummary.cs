@@ -51,7 +51,8 @@ internal sealed class TrayDashboardSummaryBuilder
 
     internal TrayDashboardSummary Build()
     {
-        var isConnected = _snapshot.CurrentStatus == ConnectionStatus.Connected;
+        var overallState = _snapshot.OverallState;
+        var isConnected = ConnectionStatusPresenter.IsHealthy(overallState, _snapshot.CurrentStatus);
 
         var (severity, headline) = ClassifyHealth();
 
@@ -78,10 +79,32 @@ internal sealed class TrayDashboardSummaryBuilder
         if (!string.IsNullOrEmpty(_snapshot.AuthFailureMessage))
             return (TrayHealthSeverity.Critical, "Authentication failed");
 
+        if (HasRelevantMcpStartupError())
+            return (TrayHealthSeverity.Critical, "Local MCP failed");
+
+        if (IsStandaloneMcpOnly())
+        {
+            return (TrayHealthSeverity.Ok, "Local MCP only");
+        }
+
         var pending = (_snapshot.NodePairList?.Pending.Count ?? 0)
             + (_snapshot.DevicePairList?.Pending.Count ?? 0);
         if (pending > 0)
             return (TrayHealthSeverity.Caution, $"Pairing approval pending ({pending})");
+
+        if (_snapshot.OverallState is { } overall)
+        {
+            return overall switch
+            {
+                OpenClaw.Connection.OverallConnectionState.Connected or
+                OpenClaw.Connection.OverallConnectionState.Ready => (TrayHealthSeverity.Ok, "Connected"),
+                OpenClaw.Connection.OverallConnectionState.Connecting => (TrayHealthSeverity.Caution, "Connecting…"),
+                OpenClaw.Connection.OverallConnectionState.Degraded => (TrayHealthSeverity.Caution, "Connection degraded"),
+                OpenClaw.Connection.OverallConnectionState.PairingRequired => (TrayHealthSeverity.Caution, "Pairing required"),
+                OpenClaw.Connection.OverallConnectionState.Error => (TrayHealthSeverity.Critical, "Connection error"),
+                _ => (TrayHealthSeverity.Neutral, "Disconnected"),
+            };
+        }
 
         return _snapshot.CurrentStatus switch
         {
@@ -91,6 +114,17 @@ internal sealed class TrayDashboardSummaryBuilder
             _ => (TrayHealthSeverity.Neutral, "Disconnected"),
         };
     }
+
+    private bool IsStandaloneMcpOnly() =>
+        _snapshot.Settings?.EnableMcpServer == true &&
+        (_snapshot.Settings?.EnableNodeMode ?? false) == false &&
+        _snapshot.IsMcpRunning &&
+        (_snapshot.OverallState is null or OpenClaw.Connection.OverallConnectionState.Idle) &&
+        _snapshot.CurrentStatus != ConnectionStatus.Connected;
+
+    private bool HasRelevantMcpStartupError() =>
+        _snapshot.Settings?.EnableMcpServer == true &&
+        !string.IsNullOrWhiteSpace(_snapshot.McpStartupError);
 
     private string? BuildHeartbeat()
     {

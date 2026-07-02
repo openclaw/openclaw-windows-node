@@ -118,7 +118,10 @@ Idle → Connecting → Connected
 | Connected | Error/Rejected | Degraded |
 | Connected | PairingRequired | PairingRequired |
 | Connected | Connecting | Connecting |
-| Connected | Disabled/Off | Connected |
+| Connected | Idle while Node mode is intended | Degraded |
+| Connected | Disabled/Off | Ready |
+
+`GatewayConnectionSnapshot.NodeConnectionIntended` records the Node mode intent used by the manager's state machine. If Node mode is enabled but node startup is skipped, blocked, or missing a node credential, the manager publishes a blocked node snapshot (`NodeState=Error`, `NodeError=...`) instead of leaving the node idle and letting tray surfaces report a healthy connection.
 
 ## Gateway registry and persistence
 

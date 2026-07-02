@@ -22,6 +22,7 @@ public sealed record GatewayConnectionSnapshot
     public string? OperatorPairingRequestId { get; init; }
 
     // ─── Node ───
+    public bool NodeConnectionIntended { get; init; }
     public RoleConnectionState NodeState { get; init; }
     public string? NodeError { get; init; }
     public OpenClaw.Shared.PairingStatus NodePairingStatus { get; init; }
@@ -67,10 +68,26 @@ public sealed record GatewayConnectionSnapshot
         if (op == RoleConnectionState.Connecting)
             return OverallConnectionState.Connecting;
 
+        if (op != RoleConnectionState.Connected && nodeEnabled)
+        {
+            if (node == RoleConnectionState.PairingRequired)
+                return OverallConnectionState.PairingRequired;
+
+            if (node == RoleConnectionState.Connecting)
+                return OverallConnectionState.Connecting;
+
+            if (node == RoleConnectionState.Connected)
+                return OverallConnectionState.Connected;
+
+            if (node is RoleConnectionState.Error or RoleConnectionState.PairingRejected or RoleConnectionState.RateLimited)
+                return OverallConnectionState.Error;
+        }
+
         // From here, operator is Connected.
 
         if (op == RoleConnectionState.Connected && nodeEnabled &&
             (node == RoleConnectionState.Error ||
+             node == RoleConnectionState.Idle ||
              node == RoleConnectionState.PairingRejected ||
              node == RoleConnectionState.RateLimited))
             return OverallConnectionState.Degraded;

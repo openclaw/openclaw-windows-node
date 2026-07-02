@@ -47,17 +47,25 @@ public partial class App
             return await tcs.Task;
         };
 
-        app.StatusHandler = () => new
+        app.StatusHandler = () =>
         {
-            connectionStatus = _appState!.Status.ToString(),
-            nodeConnected = _nodeService?.IsConnected ?? false,
-            nodePaired = _nodeService?.IsPaired ?? false,
-            nodePendingApproval = _nodeService?.IsPendingApproval ?? false,
-            gatewayVersion = _appState!.GatewaySelf?.ServerVersion,
-            sessionCount = _appState!.Sessions?.Length ?? 0,
-            nodeCount = _appState!.Nodes?.Length ?? 0,
-            operatorScopes = _connectionManager?.OperatorClient?.GrantedOperatorScopes.ToArray() ?? Array.Empty<string>(),
-            operatorDeviceId = _connectionManager?.CurrentSnapshot.OperatorDeviceId,
+            var snapshot = _connectionManager?.CurrentSnapshot;
+            return new
+            {
+                connectionStatus = _appState!.Status.ToString(),
+                overallState = snapshot?.OverallState.ToString(),
+                operatorState = snapshot?.OperatorState.ToString(),
+                nodeState = snapshot?.NodeState.ToString(),
+                nodeConnected = snapshot?.NodeState == RoleConnectionState.Connected,
+                nodePaired = snapshot?.NodePairingStatus == PairingStatus.Paired,
+                nodePendingApproval = snapshot?.NodeState == RoleConnectionState.PairingRequired,
+                nodeError = snapshot?.NodeError,
+                gatewayVersion = _appState!.GatewaySelf?.ServerVersion,
+                sessionCount = _appState!.Sessions?.Length ?? 0,
+                nodeCount = _appState!.Nodes?.Length ?? 0,
+                operatorScopes = _connectionManager?.OperatorClient?.GrantedOperatorScopes.ToArray() ?? Array.Empty<string>(),
+                operatorDeviceId = snapshot?.OperatorDeviceId,
+            };
         };
 
         app.SessionsHandler = async (agentId) =>
@@ -149,6 +157,7 @@ public partial class App
                 var converted = Convert.ChangeType(value, prop.PropertyType);
                 prop.SetValue(_settings, converted);
                 _settings.Save();
+                OnSettingsSaved(this, EventArgs.Empty);
                 return new { name, value = prop.GetValue(_settings) };
             }
             catch (Exception ex)
@@ -160,9 +169,17 @@ public partial class App
 
         app.MenuHandler = () =>
         {
+            var snapshot = _connectionManager?.CurrentSnapshot;
             var items = new List<object>
             {
-                new { type = "status", status = _appState!.Status.ToString() },
+                new
+                {
+                    type = "status",
+                    status = _appState!.Status.ToString(),
+                    overallState = snapshot?.OverallState.ToString(),
+                    nodeState = snapshot?.NodeState.ToString(),
+                    nodeError = snapshot?.NodeError
+                },
                 new { type = "sessions", count = _appState!.Sessions?.Length ?? 0 },
                 new { type = "nodes", count = _appState!.Nodes?.Length ?? 0 },
             };

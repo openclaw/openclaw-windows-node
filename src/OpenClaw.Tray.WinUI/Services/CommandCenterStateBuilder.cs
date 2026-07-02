@@ -81,6 +81,34 @@ internal sealed class CommandCenterStateBuilder
             });
         }
 
+        var overallState = _snapshot.OverallState;
+        var mcpStartupError = _snapshot.McpStartupError;
+
+        if (_snapshot.Settings?.EnableMcpServer == true &&
+            !string.IsNullOrWhiteSpace(mcpStartupError))
+        {
+            warnings.Insert(0, new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Critical,
+                Category = "mcp",
+                Title = "Local MCP failed",
+                Detail = mcpStartupError
+            });
+        }
+
+        if (_snapshot.Settings?.EnableMcpServer == true &&
+            (_snapshot.Settings?.EnableNodeMode ?? false) == false &&
+            _snapshot.IsMcpRunning)
+        {
+            warnings.Add(new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Info,
+                Category = "mcp",
+                Title = "Local MCP only",
+                Detail = "Local MCP tools are listening on this PC without a gateway node connection."
+            });
+        }
+
         if (shouldShowPendingLocalNodeApproval &&
             _snapshot.NodeService?.IsPendingApproval == true &&
             !string.IsNullOrWhiteSpace(_snapshot.NodeService.FullDeviceId))
@@ -103,7 +131,27 @@ internal sealed class CommandCenterStateBuilder
             });
         }
 
-        if (_snapshot.Status == ConnectionStatus.Error)
+        if (overallState == OpenClaw.Connection.OverallConnectionState.Degraded)
+        {
+            warnings.Insert(0, new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Warning,
+                Category = "gateway",
+                Title = "Connection degraded",
+                Detail = "The operator connection is available, but one required role is blocked."
+            });
+        }
+        else if (overallState == OpenClaw.Connection.OverallConnectionState.PairingRequired)
+        {
+            warnings.Insert(0, new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Warning,
+                Category = "pairing",
+                Title = "Pairing required",
+                Detail = "Approve the pending operator or node pairing request to finish connecting."
+            });
+        }
+        else if (_snapshot.Status == ConnectionStatus.Error)
         {
             warnings.Insert(0, new GatewayDiagnosticWarning
             {

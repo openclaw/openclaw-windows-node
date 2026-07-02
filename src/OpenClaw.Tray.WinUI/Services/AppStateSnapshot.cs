@@ -9,6 +9,7 @@ namespace OpenClawTray.Services;
 internal sealed record AppStateSnapshot
 {
     public ConnectionStatus Status              { get; init; }
+    public OverallConnectionState? OverallState { get; init; }
     public DateTime LastCheckTime               { get; init; }
     public ChannelHealth[] Channels             { get; init; } = [];
     public SessionInfo[] Sessions               { get; init; } = [];
@@ -21,6 +22,8 @@ internal sealed record AppStateSnapshot
     public UpdateCommandCenterInfo LastUpdateInfo { get; init; } = new();
     public SettingsManager? Settings            { get; init; }
     public NodeService? NodeService             { get; init; }
+    public bool IsMcpRunning                    { get; init; }
+    public string? McpStartupError              { get; init; }
     public PairingApprovalKind NodePairingApprovalKind { get; init; }
     public string? NodePairingRequestId         { get; init; }
     public SshTunnelSnapshot? SshTunnelSnapshot   { get; init; }

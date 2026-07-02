@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using OpenClaw.Connection;
 using OpenClawTray.Services;
 using System;
 using Xunit;
@@ -18,9 +19,14 @@ public sealed class TrayDashboardSummaryBuilderTests
         GatewayUsageInfo? usage = null,
         DateTime? lastUpdated = null,
         PairingListInfo? nodePairList = null,
-        DevicePairingListInfo? devicePairList = null) => new()
+        DevicePairingListInfo? devicePairList = null,
+        OverallConnectionState? overallState = null,
+        bool isMcpRunning = false,
+        string? mcpStartupError = null,
+        SettingsManager? settings = null) => new()
     {
         CurrentStatus = status,
+        OverallState = overallState,
         AuthFailureMessage = authFailure,
         GatewayUrl = gatewayUrl,
         GatewaySelf = null,
@@ -36,10 +42,12 @@ public sealed class TrayDashboardSummaryBuilderTests
         Usage = usage,
         UsageStatus = null,
         UsageCost = null,
-        Settings = null,
+        Settings = settings,
         SetupMenuLabel = "Reconfigure...",
         ShowSetupMenuEntry = true,
         LastUpdated = lastUpdated,
+        IsMcpRunning = isMcpRunning,
+        McpStartupError = mcpStartupError,
     };
 
     private static TrayDashboardSummary Build(TrayMenuSnapshot snapshot) =>
@@ -82,6 +90,136 @@ public sealed class TrayDashboardSummaryBuilderTests
 
         Assert.Equal(TrayHealthSeverity.Critical, summary.Severity);
         Assert.Equal("Connection error", summary.Headline);
+    }
+
+    [Fact]
+    public void DegradedOverall_IsCautionAndNotConnected()
+    {
+        var summary = Build(Base(
+            ConnectionStatus.Error,
+            overallState: OverallConnectionState.Degraded));
+
+        Assert.Equal(TrayHealthSeverity.Caution, summary.Severity);
+        Assert.Equal("Connection degraded", summary.Headline);
+    }
+
+    [Fact]
+    public void PairingRequiredOverall_IsDistinctFromConnecting()
+    {
+        var summary = Build(Base(
+            ConnectionStatus.Error,
+            overallState: OverallConnectionState.PairingRequired));
+
+        Assert.Equal(TrayHealthSeverity.Caution, summary.Severity);
+        Assert.Equal("Pairing required", summary.Headline);
+    }
+
+    [Fact]
+    public void LocalMcpOnly_IsExplicitNotGatewayConnected()
+    {
+        var settingsDirectory = Path.Combine(Path.GetTempPath(), "openclaw-dashboard-mcp-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsManager(settingsDirectory)
+            {
+                EnableMcpServer = true,
+                EnableNodeMode = false
+            };
+
+            var summary = Build(Base(
+                ConnectionStatus.Disconnected,
+                isMcpRunning: true,
+                settings: settings));
+
+            Assert.Equal(TrayHealthSeverity.Ok, summary.Severity);
+            Assert.Equal("Local MCP only", summary.Headline);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(settingsDirectory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void LocalMcpOnly_DoesNotMaskDegradedGatewayLifecycle()
+    {
+        var settingsDirectory = Path.Combine(Path.GetTempPath(), "openclaw-dashboard-mcp-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsManager(settingsDirectory)
+            {
+                EnableMcpServer = true,
+                EnableNodeMode = false
+            };
+
+            var summary = Build(Base(
+                ConnectionStatus.Error,
+                overallState: OverallConnectionState.Degraded,
+                isMcpRunning: true,
+                settings: settings));
+
+            Assert.Equal(TrayHealthSeverity.Caution, summary.Severity);
+            Assert.Equal("Connection degraded", summary.Headline);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(settingsDirectory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void McpStartupError_OutranksDisconnected()
+    {
+        var settingsDirectory = Path.Combine(Path.GetTempPath(), "openclaw-dashboard-mcp-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsManager(settingsDirectory)
+            {
+                EnableMcpServer = true
+            };
+
+            var summary = Build(Base(
+                ConnectionStatus.Disconnected,
+                mcpStartupError: "Port 8765 is already in use.",
+                settings: settings));
+
+            Assert.Equal(TrayHealthSeverity.Critical, summary.Severity);
+            Assert.Equal("Local MCP failed", summary.Headline);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(settingsDirectory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void StaleMcpStartupError_IsIgnoredWhenMcpDisabled()
+    {
+        var settingsDirectory = Path.Combine(Path.GetTempPath(), "openclaw-dashboard-mcp-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsManager(settingsDirectory)
+            {
+                EnableMcpServer = false
+            };
+
+            var summary = Build(Base(
+                ConnectionStatus.Connected,
+                overallState: OverallConnectionState.Ready,
+                mcpStartupError: "stale failure",
+                settings: settings));
+
+            Assert.Equal(TrayHealthSeverity.Ok, summary.Severity);
+            Assert.Equal("Connected", summary.Headline);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(settingsDirectory, recursive: true); } catch { }
+        }
     }
 
     [Fact]

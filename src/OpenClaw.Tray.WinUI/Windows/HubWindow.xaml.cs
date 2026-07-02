@@ -772,6 +772,13 @@ public sealed partial class HubWindow : WindowEx
         StatusPillDot.Fill = AccentBrush(accent);
     }
 
+    internal void UpdateTitleBarStatus(GatewayConnectionSnapshot snapshot, ConnectionStatus status)
+    {
+        var (text, accent) = ComputePillState(status, snapshot);
+        StatusPillText.Text = text;
+        StatusPillDot.Fill = AccentBrush(accent);
+    }
+
     private static (string Text, ConnectionStatusAccent Accent) ComputePillState(
         ConnectionStatus status, GatewayConnectionSnapshot? snapshot)
     {

@@ -31,12 +31,16 @@ internal sealed class TrayTooltipBuilder
             nodeOnline = localNode.IsOnline ? 1 : 0;
         }
 
+        var statusText = BuildStatusText();
+        var overallState = _snapshot.OverallState;
+        var isHealthy = ConnectionStatusPresenter.IsHealthy(overallState, _snapshot.Status);
         var warningCount = 0;
-        if (_snapshot.Status != ConnectionStatus.Connected) warningCount++;
+        if (!isHealthy) warningCount++;
         if (_snapshot.AuthFailureMessage != null) warningCount++;
-        if (_snapshot.Channels.Length == 0 && _snapshot.Status == ConnectionStatus.Connected) warningCount++;
+        if (HasRelevantMcpStartupError()) warningCount++;
+        if (_snapshot.Channels.Length == 0 && isHealthy) warningCount++;
 
-        var tooltip = $"OpenClaw Tray - {_snapshot.Status}; " +
+        var tooltip = $"OpenClaw Tray - {statusText}; " +
             $"{topology.DisplayName}; " +
             $"Channels {channelReady}/{_snapshot.Channels.Length}; " +
             $"Nodes {nodeOnline}/{nodeTotal}; " +
@@ -45,9 +49,33 @@ internal sealed class TrayTooltipBuilder
 
         if (_snapshot.CurrentActivity != null && !string.IsNullOrEmpty(_snapshot.CurrentActivity.DisplayText))
         {
-            tooltip = $"OpenClaw Tray - {_snapshot.CurrentActivity.DisplayText}; {_snapshot.Status}";
+            tooltip = $"OpenClaw Tray - {_snapshot.CurrentActivity.DisplayText}; {statusText}";
         }
 
         return TrayTooltipFormatter.FitShellTooltip(tooltip);
     }
+
+    private string BuildStatusText()
+    {
+        if (HasRelevantMcpStartupError())
+            return "Local MCP failed";
+
+        if (IsStandaloneMcpOnly())
+        {
+            return "Local MCP only";
+        }
+
+        return ConnectionStatusPresenter.PlainText(_snapshot.OverallState, _snapshot.Status);
+    }
+
+    private bool IsStandaloneMcpOnly() =>
+        _snapshot.Settings?.EnableMcpServer == true &&
+        _snapshot.Settings?.EnableNodeMode == false &&
+        _snapshot.IsMcpRunning &&
+        (_snapshot.OverallState is null or OpenClaw.Connection.OverallConnectionState.Idle) &&
+        _snapshot.Status != ConnectionStatus.Connected;
+
+    private bool HasRelevantMcpStartupError() =>
+        _snapshot.Settings?.EnableMcpServer == true &&
+        !string.IsNullOrWhiteSpace(_snapshot.McpStartupError);
 }

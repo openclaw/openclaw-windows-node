@@ -86,7 +86,11 @@ public sealed class AppRefactorContractTests
         Assert.Contains("!_settings.EnableMcpServer || _settings.EnableNodeMode", method);
         Assert.Contains("EnsureNodeService(_settings)", method);
         Assert.Contains("StartLocalOnlyAsync()", method);
+        Assert.Contains("!nodeService.IsMcpRunning || !string.IsNullOrWhiteSpace(nodeService.McpStartupError)", method);
+        Assert.Contains("ShowMcpStartupFailureNotification", method);
         Assert.Contains("WireAppCapabilityHandlers()", method);
+        AssertInOrder(method, "nodeService.StartLocalOnlyAsync()", "WireAppCapabilityHandlers()");
+        AssertInOrder(method, "WireAppCapabilityHandlers()", "Started MCP-only node service without gateway connection");
 
         var init = ExtractMethod(source, "InitializeGatewayClient");
         AssertInOrder(init, "TryStartLocalMcpOnlyNode();", "Gateway URL not configured");
@@ -106,6 +110,106 @@ public sealed class AppRefactorContractTests
         Assert.Contains("SettingsManager.SettingsDirectoryPath", method);
         Assert.DoesNotContain("SharedGatewayToken =", method);
         Assert.DoesNotContain("BootstrapToken =", method);
+    }
+
+    [Fact]
+    public void LifecycleStatus_IsWrittenFromManagerSnapshotOnly()
+    {
+        var source = ReadAppSources();
+        var managerHandler = ExtractMethod(source, "OnManagerStateChanged");
+        var rawHandler = ExtractMethod(source, "OnGatewayConnectionStatusChanged");
+
+        Assert.Contains("ConnectionStatusPresenter.ToLegacyStatus(snap)", managerHandler);
+        Assert.Contains("SyncConnectionToggle(mapped, snap.OverallState)", managerHandler);
+        Assert.Contains("_hubWindow?.UpdateTitleBarStatus(snap, mapped)", managerHandler);
+        Assert.Contains("_appState.Status = mapped", managerHandler);
+        Assert.DoesNotContain("_appState.Status =", rawHandler);
+        Assert.DoesNotContain("SyncConnectionToggle(status)", rawHandler);
+        Assert.DoesNotContain("RunHealthCheckAsync()", rawHandler);
+        Assert.DoesNotContain("TryConnectLocalNodeServiceAsync()", rawHandler);
+    }
+
+    [Fact]
+    public void Dashboard_SurfacesSshTunnelConfigurationFailure()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "OpenDashboard");
+
+        Assert.Contains("if (!EnsureSshTunnelConfigured())", method);
+        Assert.Contains("_toastService?.ShowToast", method);
+        Assert.Contains("Check SSH tunnel settings and logs.", method);
+    }
+
+    [Fact]
+    public void ConnectionIssueNotification_PrefersNodeOwnedFailuresBeforeGenericGatewayError()
+    {
+        var source = ReadAppSources();
+
+        AssertInOrder(
+            source,
+            "snapshot.NodeState == RoleConnectionState.PairingRequired",
+            "TryBuildNodeConnectionIssueNotification(snapshot",
+            "if (snapshot.OverallState == OverallConnectionState.Error)");
+        Assert.Contains("TryBuildNodeConnectionIssueNotification", source);
+        Assert.Contains("snapshot.OperatorState == RoleConnectionState.Error", source);
+    }
+
+    [Fact]
+    public void CommandCenter_UsesOverallStateBeforeLegacyStatus()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "CommandCenterStateBuilder.cs"));
+
+        AssertInOrder(
+            source,
+            "if (overallState == OpenClaw.Connection.OverallConnectionState.Degraded)",
+            "else if (_snapshot.Status == ConnectionStatus.Error)");
+        Assert.Contains("_snapshot.Settings?.EnableMcpServer == true", source);
+        Assert.Contains("!string.IsNullOrWhiteSpace(mcpStartupError)", source);
+    }
+
+    [Fact]
+    public void AppSettingsSet_AppliesSettingsSavedLifecycle()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "WireAppCapabilityHandlers");
+
+        AssertInOrder(
+            method,
+            "app.SettingsSetHandler = (name, value) =>",
+            "_settings.Save();",
+            "OnSettingsSaved(this, EventArgs.Empty);",
+            "return new { name, value = prop.GetValue(_settings) };");
+    }
+
+    [Fact]
+    public void AppStatus_ReportsNodeStateFromManagerSnapshot()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "WireAppCapabilityHandlers");
+
+        Assert.Contains("var snapshot = _connectionManager?.CurrentSnapshot;", method);
+        Assert.Contains("overallState = snapshot?.OverallState.ToString()", method);
+        Assert.Contains("operatorState = snapshot?.OperatorState.ToString()", method);
+        Assert.Contains("nodeState = snapshot?.NodeState.ToString()", method);
+        Assert.Contains("nodeConnected = snapshot?.NodeState == RoleConnectionState.Connected", method);
+        Assert.Contains("nodePaired = snapshot?.NodePairingStatus == PairingStatus.Paired", method);
+        Assert.Contains("nodePendingApproval = snapshot?.NodeState == RoleConnectionState.PairingRequired", method);
+        Assert.Contains("nodeError = snapshot?.NodeError", method);
+        Assert.Contains("operatorDeviceId = snapshot?.OperatorDeviceId", method);
+    }
+
+    [Fact]
+    public void AppMenu_StatusItemIncludesManagerSnapshotState()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "WireAppCapabilityHandlers");
+
+        Assert.Contains("app.MenuHandler = () =>", method);
+        Assert.Contains("overallState = snapshot?.OverallState.ToString()", method);
+        Assert.Contains("nodeState = snapshot?.NodeState.ToString()", method);
+        Assert.Contains("nodeError = snapshot?.NodeError", method);
     }
 
     [Fact]

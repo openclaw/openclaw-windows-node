@@ -230,6 +230,46 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
         AssertTrustDoesNotOverride(plan, NodeCardState.OnNodeError);
     }
 
+    [Fact]
+    public void IntendedNodeIdle_ProjectsAsDegradedNodeError_NotHealthy()
+    {
+        var plan = Build(
+            new GatewayConnectionSnapshot
+            {
+                OverallState = OverallConnectionState.Degraded,
+                OperatorState = RoleConnectionState.Connected,
+                NodeConnectionIntended = true,
+                NodeState = RoleConnectionState.Idle
+            },
+            localNode: null);
+
+        Assert.Equal(ConnectionPageMode.Cockpit, plan.Mode);
+        Assert.Equal(ConnectionAccent.Caution, plan.StripAccent);
+        Assert.Equal("Connection degraded", plan.StripHeadline);
+        Assert.Contains("node has not connected", plan.StripSub, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(NodeCardState.OnNodeError, plan.NodeCard);
+    }
+
+    [Fact]
+    public void MissingNodeCredential_ProjectsAsBlockedNode_NotHealthy()
+    {
+        var plan = Build(
+            new GatewayConnectionSnapshot
+            {
+                OverallState = OverallConnectionState.Degraded,
+                OperatorState = RoleConnectionState.Connected,
+                NodeConnectionIntended = true,
+                NodeState = RoleConnectionState.Error,
+                NodeError = "No node credential available. Re-pair this PC."
+            },
+            localNode: null);
+
+        Assert.Equal(ConnectionPageMode.Cockpit, plan.Mode);
+        Assert.Equal(ConnectionAccent.Caution, plan.StripAccent);
+        Assert.Equal(NodeCardState.OnNodeError, plan.NodeCard);
+        Assert.Equal("No node credential available. Re-pair this PC.", plan.NodeErrorDetail);
+    }
+
     private ConnectionPagePlan Build(
         PairingApprovalKind pairingApprovalKind,
         GatewayNodeInfo? localNode,

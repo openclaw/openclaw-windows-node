@@ -308,7 +308,7 @@ Returns `{ navigated, page }`.
 
 ### app.status
 Current connection / node state.
-No params. Returns `{ connectionStatus, nodeConnected, nodePaired, nodePendingApproval, gatewayVersion, sessionCount, nodeCount }`.
+No params. Returns `{ connectionStatus, overallState, operatorState, nodeState, nodeConnected, nodePaired, nodePendingApproval, nodeError, gatewayVersion, sessionCount, nodeCount }`.
 
 ### app.sessions
 Active sessions, optionally filtered by agent.
@@ -340,7 +340,7 @@ Read a local app setting by name.
 Returns the setting value (type depends on the setting).
 
 ### app.settings.set
-Set a local app setting.
+Set a local app setting, persist it, and apply the same reconnect/reload behavior as saving settings in the app UI.
 ```
 {"name": "string", "value": "string"}  // both required
 ```
@@ -348,7 +348,7 @@ Returns `{ name, value }`.
 
 ### app.menu
 Get tray menu state (status, session count, node count). No params.
-Returns array of menu items.
+Returns array of menu items; the status item includes `status`, `overallState`, `nodeState`, and `nodeError`.
 
 ### app.search
 Search the command palette and return matching commands.
