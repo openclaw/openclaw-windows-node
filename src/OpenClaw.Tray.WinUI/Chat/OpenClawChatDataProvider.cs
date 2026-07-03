@@ -338,38 +338,46 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 : $"{safeUserText}\n{chips}";
         }
 
-        // 1. Queue the user message locally. If an agent turn is already
-        // active, this remains client-only until the turn ends; otherwise the
-        // oldest queued item is submitted immediately.
+        // 1. Render immediately when this thread is idle. Follow-up messages
+        // enter the visible queue and stay client-only until the turn ends.
         ChatDataSnapshot snapshot;
-        string queuedMessageId;
+        string messageId;
         QueuedSendDispatch? dispatch;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            queuedMessageId = $"q{++_queuedMessageSequence}";
-            if (!HasSendingQueuedMessagesLocked(threadId))
+            messageId = $"q{++_queuedMessageSequence}";
+            if (CanClearAssistantFallbackPromotionLocked(threadId))
                 _assistantFallbackPromotedThreads.Remove(threadId);
-
-            AddQueuedMessageLocked(threadId, new ChatQueuedMessage(
-                queuedMessageId,
-                displayText,
-                DateTimeOffset.UtcNow,
-                nonce));
-            AddQueuedSendRequestLocked(new QueuedSendRequest(
-                queuedMessageId,
-                threadId,
-                trimmed,
-                displayText,
-                nonce,
-                attachments?.ToArray()));
 
             // Clear abort suppression — the user is starting a new interaction.
             // Also clear pending abort counts: if the user sends a new message,
             // any queued aborts from before should not fire against the new turn.
             _abortedThreads.Remove(threadId);
             _pendingAbortCounts.Remove(threadId);
-            dispatch = TryStartNextQueuedSendLocked(threadId, requireConnected: false);
+
+            var request = new QueuedSendRequest(
+                messageId,
+                threadId,
+                trimmed,
+                displayText,
+                nonce,
+                attachments?.ToArray());
+
+            if (CanSendDirectlyLocked(threadId))
+            {
+                dispatch = StartDirectSendLocked(request);
+            }
+            else
+            {
+                AddQueuedMessageLocked(threadId, new ChatQueuedMessage(
+                    messageId,
+                    displayText,
+                    DateTimeOffset.UtcNow,
+                    nonce));
+                AddQueuedSendRequestLocked(request);
+                dispatch = TryStartNextQueuedSendLocked(threadId, requireConnected: false);
+            }
 
             snapshot = BuildSnapshotLocked();
         }
@@ -422,13 +430,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 {
                     TrackQueuedMessageRunLocked(threadId, sendResult.RunId!, request.Id);
                     AddResetAcceptedRunIdLocked(threadId, sendResult.RunId!);
-                    if (_activeRunIds.TryGetValue(threadId, out var activeRunId)
+                    var runAlreadyStarted = _activeRunIds.TryGetValue(threadId, out var activeRunId)
                         && _activeRunStartSequences.TryGetValue(threadId, out var activeStartSequence)
                         && string.Equals(activeRunId, sendResult.RunId, StringComparison.Ordinal)
-                        && activeStartSequence > dispatch.StartedRunStartSequence
-                        && PromoteQueuedMessageLocked(threadId, request.Id))
+                        && activeStartSequence > dispatch.StartedRunStartSequence;
+                    if (runAlreadyStarted && PromoteQueuedMessageLocked(threadId, request.Id))
                     {
                         acceptedRunAlreadyStartedSnapshot = BuildSnapshotLocked();
+                    }
+                    else if (runAlreadyStarted)
+                    {
+                        RemoveQueuedRunMappingByMessageIdLocked(threadId, request.Id);
                     }
                 }
                 else if (_resetAwaitingUserMessage.Contains(threadId))
@@ -2621,6 +2633,47 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return list.FirstOrDefault(request => string.Equals(request.Id, messageId, StringComparison.Ordinal));
     }
 
+    private bool CanSendDirectlyLocked(string threadId)
+    {
+        if (_activeRunIds.ContainsKey(threadId))
+            return false;
+        if (_timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive)
+            return false;
+        return !_queuedMessages.TryGetValue(threadId, out var queuedMessages) || queuedMessages.Count == 0;
+    }
+
+    private bool CanClearAssistantFallbackPromotionLocked(string threadId)
+    {
+        if (HasSendingQueuedMessagesLocked(threadId))
+            return false;
+        if (_activeRunIds.ContainsKey(threadId))
+            return false;
+        return !_timelines.TryGetValue(threadId, out var timeline) || !timeline.TurnActive;
+    }
+
+    private QueuedSendDispatch StartDirectSendLocked(QueuedSendRequest request)
+    {
+        var threadId = request.ThreadId;
+        var resetVersion = GetResetVersionLocked(threadId);
+        var startedLifecycleSequence = _resetLifecycleStartSequence;
+        var startedRunStartSequence = _lifecycleStartSequence;
+        var current = GetOrCreateTimelineLocked(threadId);
+        var entryId = $"e{current.NextId}";
+        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(current, request.DisplayText, request.LocalNonce);
+        GetOrCreateThreadMetaLocked(threadId)[entryId] = BuildLiveMetaLocked(threadId, isLocalQueuedSend: true);
+        _sessionIds.TryGetValue(threadId, out var sessionId);
+
+        EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
+        _locallyInitiatedThreads.Add(threadId);
+        _assistantFallbackPromotedThreads.Add(threadId);
+        return new QueuedSendDispatch(
+            request,
+            sessionId,
+            resetVersion,
+            startedLifecycleSequence,
+            startedRunStartSequence);
+    }
+
     private QueuedSendDispatch? TryStartNextQueuedSendLocked(string threadId, bool requireConnected)
     {
         if (requireConnected && _status != ConnectionStatus.Connected)
@@ -2648,15 +2701,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _timelines[threadId] = ChatTimelineReducer.BeginLocalUserTurn(GetOrCreateTimelineLocked(threadId));
             _sessionIds.TryGetValue(threadId, out var sessionId);
 
-            if (!_localSentTexts.TryGetValue(threadId, out var localEchoQueue))
-            {
-                localEchoQueue = new Queue<LocalSentText>();
-                _localSentTexts[threadId] = localEchoQueue;
-            }
-            localEchoQueue.Enqueue(new LocalSentText(request.Text, DateTimeOffset.UtcNow, request.Id));
-            while (localEchoQueue.Count > 20)
-                localEchoQueue.Dequeue();
-
+            EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
             _locallyInitiatedThreads.Add(threadId);
             return new QueuedSendDispatch(
                 request,
@@ -2667,6 +2712,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
 
         return null;
+    }
+
+    private void EnqueueLocalEchoLocked(string threadId, string text, string messageId)
+    {
+        if (!_localSentTexts.TryGetValue(threadId, out var localEchoQueue))
+        {
+            localEchoQueue = new Queue<LocalSentText>();
+            _localSentTexts[threadId] = localEchoQueue;
+        }
+
+        localEchoQueue.Enqueue(new LocalSentText(text, DateTimeOffset.UtcNow, messageId));
+        while (localEchoQueue.Count > 20)
+            localEchoQueue.Dequeue();
     }
 
     private void TryDispatchNextQueuedSend(string threadId)

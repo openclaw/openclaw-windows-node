@@ -175,7 +175,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task SendMessageAsync_QueuesWithoutTranscriptEntryBeforeAwaitingGateway()
+    public async Task SendMessageAsync_WhenIdle_RendersTranscriptEntryBeforeAwaitingGateway()
     {
         var tcs = new TaskCompletionSource();
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -189,11 +189,10 @@ public class OpenClawChatDataProviderTests
         Assert.Single(snapshots);
         var timeline = snapshots[0].Timelines["main"];
         Assert.True(timeline.TurnActive);
-        Assert.Empty(timeline.Entries);
-        var queued = GetQueuedMessages(snapshots[0], "main");
-        var queuedMessage = Assert.Single(queued);
-        Assert.Equal("Hello", queuedMessage.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queuedMessage.SendState);
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatTimelineItemKind.User, entry.Kind);
+        Assert.Equal("Hello", entry.Text);
+        Assert.Empty(GetQueuedMessages(snapshots[0], "main"));
         Assert.Single(bridge.SentMessages);
         Assert.Equal("Hello", bridge.SentMessages[0]);
         Assert.Equal("main", bridge.SentSessionKeys[0]);
@@ -203,7 +202,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task SendMessageAsync_KeepsQueuedMessageAfterAckUntilLifecycleStart()
+    public async Task SendMessageAsync_WhenIdle_DoesNotRenderQueueCardBeforeLifecycleStart()
     {
         var tcs = new TaskCompletionSource();
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -214,16 +213,17 @@ public class OpenClawChatDataProviderTests
 
         var sendTask = provider.SendMessageAsync("main", "Hello queue");
 
-        var pending = Assert.Single(GetQueuedMessages(snapshots[0], "main"));
+        Assert.Empty(GetQueuedMessages(snapshots[0], "main"));
+        var pending = Assert.Single(snapshots[0].Timelines["main"].Entries);
+        Assert.Equal(ChatTimelineItemKind.User, pending.Kind);
         Assert.Equal("Hello queue", pending.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, pending.SendState);
 
         tcs.SetResult();
         await sendTask;
 
-        var acked = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("Hello queue", acked.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, acked.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello queue");
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
 
@@ -357,18 +357,11 @@ public class OpenClawChatDataProviderTests
         await provider.SendMessageAsync("main", "second queued");
         Assert.Equal(new[] { "first queued" }, bridge.SentMessages);
 
-        Assert.Collection(
-            GetQueuedMessages(snapshots[^1], "main"),
-            first =>
-            {
-                Assert.Equal("first queued", first.Text);
-                Assert.Equal(ChatQueuedMessageSendState.Sending, first.SendState);
-            },
-            second =>
-            {
-                Assert.Equal("second queued", second.Text);
-                Assert.Equal(ChatQueuedMessageSendState.Queued, second.SendState);
-            });
+        var queuedBeforeEcho = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal("second queued", queuedBeforeEcho.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Queued, queuedBeforeEcho.SendState);
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "first queued");
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -538,11 +531,10 @@ public class OpenClawChatDataProviderTests
             provider.SendMessageAsync("main", "Hi"));
 
         var timeline = snapshots[^1].Timelines["main"];
+        Assert.Contains(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User && e.Text == "Hi");
         Assert.Contains(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Status && e.Text.Contains("boom"));
         Assert.False(timeline.TurnActive);
-        var failedQueued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal(ChatQueuedMessageSendState.Failed, failedQueued.SendState);
-        Assert.Contains("boom", failedQueued.ErrorText);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Contains(notifications, n => n.Kind == ChatProviderNotificationKind.Error);
     }
 
@@ -559,11 +551,9 @@ public class OpenClawChatDataProviderTests
             provider.SendMessageAsync("main", "Hi"));
 
         var timeline = snapshots[^1].Timelines["main"];
+        Assert.Contains(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User && e.Text == "Hi");
         Assert.Contains(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Status && e.Text.Contains("model unavailable"));
-        var failedQueued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("Hi", failedQueued.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Failed, failedQueued.SendState);
-        Assert.Equal("model unavailable", failedQueued.ErrorText);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Contains(notifications, n => n.Kind == ChatProviderNotificationKind.Error);
     }
 
@@ -599,11 +589,10 @@ public class OpenClawChatDataProviderTests
 
         var latest = snapshots[^1];
         Assert.Contains(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "a");
+        Assert.Contains(latest.Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "b");
-        var queued = GetQueuedMessages(latest, "main");
-        var failed = Assert.Single(queued);
-        Assert.Equal("a", failed.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
+        Assert.Empty(GetQueuedMessages(latest, "main"));
     }
 
     [Fact]
@@ -611,18 +600,28 @@ public class OpenClawChatDataProviderTests
     {
         var historyCalls = 0;
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
-        bridge.SendResults.Enqueue(new ChatSendResult { Status = "failed", Error = "first failed" });
-        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-b", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-a", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "failed", Error = "second failed" });
         await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            provider.SendMessageAsync("main", "a"));
+        await provider.SendMessageAsync("main", "a");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-a"));
         await provider.SendMessageAsync("main", "b");
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-b"));
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-b"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-a"));
 
+        for (var i = 0; i < 20; i++)
+        {
+            if (GetQueuedMessages(snapshots[^1], "main").Any(q =>
+                q.Text == "b" &&
+                q.SendState == ChatQueuedMessageSendState.Failed))
+            {
+                break;
+            }
+            await Task.Delay(10);
+        }
         var failed = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("a", failed.Text);
+        Assert.Equal("b", failed.Text);
         Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
 
         bridge.HistoryBehavior = _ =>
@@ -662,7 +661,8 @@ public class OpenClawChatDataProviderTests
         bridge.SendBehavior = (_, _, _) => sendGate.Task;
         await provider.LoadAsync();
 
-        var sendTask = provider.SendMessageAsync("main", "pending across reconnect");
+        var sendTask = provider.SendMessageAsync("main", "active across reconnect");
+        await provider.SendMessageAsync("main", "pending across reconnect");
         Assert.Equal("pending across reconnect", Assert.Single(GetQueuedMessages(snapshots[^1], "main")).Text);
 
         bridge.RaiseStatus(ConnectionStatus.Connected);
@@ -693,9 +693,9 @@ public class OpenClawChatDataProviderTests
         await provider.SendMessageAsync("main", "b");
 
         Assert.Equal(new[] { "a", "b" }, bridge.SentMessages);
-        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("b", queued.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "b");
     }
 
     [Fact]
@@ -888,6 +888,7 @@ public class OpenClawChatDataProviderTests
         await provider.LoadAsync();
 
         _ = provider.SendMessageAsync("main", "hi");
+        var beforeEcho = snapshots[^1];
         snapshots.Clear(); // clear the snapshot from SendMessageAsync
 
         bridge.RaiseChat(new ChatMessageInfo
@@ -898,9 +899,10 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
 
-        var timeline = snapshots[^1].Timelines["main"];
+        Assert.Empty(snapshots);
+        var timeline = beforeEcho.Timelines["main"];
         Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User && e.Text == "hi");
-        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Empty(GetQueuedMessages(beforeEcho, "main"));
 
         tcs.SetResult();
     }
@@ -1020,7 +1022,7 @@ public class OpenClawChatDataProviderTests
         });
 
         var timeline = snapshots[^1].Timelines["main"];
-        Assert.Equal(1, timeline.Entries.Count(e =>
+        Assert.Equal(2, timeline.Entries.Count(e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "same text"));
     }
 
@@ -1345,8 +1347,9 @@ public class OpenClawChatDataProviderTests
         await provider.SendMessageAsync("main", "after reset");
 
         latest = snapshots[^1];
-        Assert.Empty(latest.Timelines["main"].Entries);
-        Assert.Equal("after reset", Assert.Single(GetQueuedMessages(latest, "main")).Text);
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset");
+        Assert.Empty(GetQueuedMessages(latest, "main"));
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -1701,7 +1704,9 @@ public class OpenClawChatDataProviderTests
         });
 
         var latest = await provider.LoadAsync();
-        Assert.Equal("after reset local", Assert.Single(GetQueuedMessages(latest, "main")).Text);
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.Empty(GetQueuedMessages(latest, "main"));
         Assert.DoesNotContain(latest.Timelines["main"].Entries, e =>
             e.Text.Contains("stale", StringComparison.Ordinal));
 
@@ -1715,10 +1720,9 @@ public class OpenClawChatDataProviderTests
         });
 
         latest = await provider.LoadAsync();
-        Assert.Collection(
-            GetQueuedMessages(latest, "main"),
-            first => Assert.Equal("after reset local", first.Text),
-            second => Assert.Equal("second after reset", second.Text));
+        Assert.Single(latest.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
+        Assert.Equal("second after reset", Assert.Single(GetQueuedMessages(latest, "main")).Text);
 
         var freshStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
         freshStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
@@ -1913,7 +1917,9 @@ public class OpenClawChatDataProviderTests
 
         var firstSend = provider.SendMessageAsync("main", "before reset");
         await firstStarted.Task;
-        Assert.Equal("before reset", Assert.Single(GetQueuedMessages(snapshots[^1], "main")).Text);
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "before reset");
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
 
         bridge.RaiseSessionCommandCompleted(new SessionCommandResult
         {
@@ -1924,14 +1930,16 @@ public class OpenClawChatDataProviderTests
         Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
 
         var secondSend = provider.SendMessageAsync("main", "after reset");
-        Assert.Equal("after reset", Assert.Single(GetQueuedMessages(snapshots[^1], "main")).Text);
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset");
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
 
         firstGate.SetResult();
         await firstSend;
 
-        var queuedAfterStaleAck = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("after reset", queuedAfterStaleAck.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queuedAfterStaleAck.SendState);
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "after reset");
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
 
         secondGate.SetResult();
         await secondSend;
@@ -4603,7 +4611,7 @@ public class OpenClawChatDataProviderTests
         var sentAttachment = Assert.Single(bridge.SentAttachments);
         Assert.NotNull(sentAttachment);
         Assert.Same(attachment, sentAttachment![0]);
-        Assert.Contains("test.txt", Assert.Single(GetQueuedMessages(snapshots[^1], "main")).Text);
+        Assert.Contains("test.txt", snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User).Text);
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -4652,7 +4660,7 @@ public class OpenClawChatDataProviderTests
             a => Assert.Same(imageAttachment, a));
         Assert.Equal(
             "See both\n\u200B📎 notes.txt\n\u200B🖼️ diagram.png",
-            Assert.Single(GetQueuedMessages(snapshots[^1], "main")).Text);
+            snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User).Text);
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -4824,7 +4832,7 @@ public class OpenClawChatDataProviderTests
 
         await provider.SendMessageAsync("main", "\u200B📎 spoof.txt");
 
-        Assert.Equal("📎 spoof.txt", Assert.Single(GetQueuedMessages(snapshots[^1], "main")).Text);
+        Assert.Equal("📎 spoof.txt", snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User).Text);
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -5027,8 +5035,9 @@ public class OpenClawChatDataProviderTests
         Assert.True(latest.Timelines.ContainsKey("agent:main:main"));
         Assert.False(latest.Timelines.ContainsKey("main"),
             "The provider must never key timelines by the literal 'main' alias.");
-        Assert.Empty(latest.Timelines["agent:main:main"].Entries);
-        Assert.Equal("hi", Assert.Single(GetQueuedMessages(latest, "agent:main:main")).Text);
+        Assert.Single(latest.Timelines["agent:main:main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "hi");
+        Assert.Empty(GetQueuedMessages(latest, "agent:main:main"));
     }
 
     [Fact]
@@ -5056,7 +5065,7 @@ public class OpenClawChatDataProviderTests
     public async Task SessionsUpdated_AfterFirstSend_PreservesQueuedLocalState()
     {
         // The critical assertion: when the gateway materializes the session
-        // and emits SessionsUpdated with the canonical key, the queued local
+        // and emits SessionsUpdated with the canonical key, the direct local
         // state that was written under that exact key SURVIVES (no second
         // empty timeline gets created on top of it).
         var (bridge, provider, snapshots) = CreateConnectedProvider("agent:main:main");
@@ -5072,8 +5081,8 @@ public class OpenClawChatDataProviderTests
         Assert.Single(latest.Threads);
         Assert.Equal("agent:main:main", latest.Threads[0].Id);
         var timeline = latest.Timelines["agent:main:main"];
-        Assert.Empty(timeline.Entries);
-        Assert.Equal("hi", Assert.Single(GetQueuedMessages(latest, "agent:main:main")).Text);
+        Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User && e.Text == "hi");
+        Assert.Empty(GetQueuedMessages(latest, "agent:main:main"));
     }
 
     [Fact]
