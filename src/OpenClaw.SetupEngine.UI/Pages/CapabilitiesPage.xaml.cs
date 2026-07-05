@@ -21,10 +21,10 @@ public sealed partial class CapabilitiesPage : Page
     private bool _treatBundledAllOnAsPlaceholder;
     private int _step = 1;
 
-    // Capability profiles just preset the granular toggles below. Keys map 1:1 to
-    // CapabilitiesConfig — Full = every key on.
-    private static readonly string[] ProfileReadOnly = ["Canvas", "Screen", "Device"];
-    private static readonly string[] ProfileStandard = ["System", "Canvas", "Screen", "Device", "Tts", "Stt"];
+    // Capability profiles preset only runtime-gated settings. Device info/status
+    // stays available whenever Node Mode is enabled, so it is disclosed but not selectable.
+    private static readonly string[] ProfileReadOnly = ["Canvas", "Screen"];
+    private static readonly string[] ProfileStandard = ["System", "Canvas", "Screen", "Tts", "Stt"];
 
     // (config property, display name, description, fluent icon glyph)
     private static readonly (string Key, string Name, string Desc, string Glyph)[] Capabilities =
@@ -35,7 +35,6 @@ public sealed partial class CapabilitiesPage : Page
         ("Camera", "Camera", "Webcam photos and video", "\uE722"),
         ("Location", "Location", "Share device location", "\uE81D"),
         ("Browser", "Browser", "Web navigation and automation", "\uE774"),
-        ("Device", "Device", "Volume, brightness, system info", "\uE772"),
         ("Tts", "Text-to-speech", "Speak text aloud", "\uE767"),
         ("Stt", "Speech-to-text", "Transcribe spoken audio", "\uE720"),
     ];
@@ -57,6 +56,9 @@ public sealed partial class CapabilitiesPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        // The tray always registers device.info/status with Node Mode. Keep the
+        // setup declaration and gateway allowlist aligned with that runtime contract.
+        _config.Capabilities.Device = true;
         _skipPermissions = _config.SkipPermissions;
         _treatBundledAllOnAsPlaceholder = _config.UsesBundledDefaultConfig;
         BuildToggles();

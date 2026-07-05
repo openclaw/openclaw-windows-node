@@ -497,6 +497,19 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void CapabilitiesPage_DisclosesAlwaysOnDeviceStatusWithoutOfferingFalseToggle()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml"));
+
+        Assert.DoesNotContain("(\"Device\", \"Device\"", source);
+        Assert.DoesNotContain("[\"Canvas\", \"Screen\", \"Device\"]", source);
+        Assert.Contains("_config.Capabilities.Device = true", source);
+        Assert.Contains("Basic device info and status stay available while Node Mode is on.", xaml);
+    }
+
+    [Fact]
     public void WizardSecondaryButton_DoesNotSkipEntireWizardInErrorState()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

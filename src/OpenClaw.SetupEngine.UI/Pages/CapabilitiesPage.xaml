@@ -84,6 +84,10 @@
                                         <!-- Rows added in code-behind -->
                                     </Grid>
                                 </Expander>
+                                <TextBlock Text="Basic device info and status stay available while Node Mode is on."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
 
                             <StackPanel x:Name="Step2Content" Spacing="8" Visibility="Collapsed">
