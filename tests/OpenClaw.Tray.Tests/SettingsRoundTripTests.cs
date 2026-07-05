@@ -58,6 +58,7 @@ public class SettingsRoundTripTests
             PreferStructuredCategories = true,
             AppTheme = "Dark",
             ShowDiagnostics = true,
+            ShowCompletedSessions = true,
             SystemRunSandboxEnabled = true,
             SystemRunBlockHostFallbackWhenMxcUnavailable = true,
             SystemRunAllowOutbound = true,
@@ -119,6 +120,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
         Assert.Equal(original.AppTheme, restored.AppTheme);
         Assert.Equal(original.ShowDiagnostics, restored.ShowDiagnostics);
+        Assert.Equal(original.ShowCompletedSessions, restored.ShowCompletedSessions);
         Assert.Equal(original.SystemRunSandboxEnabled, restored.SystemRunSandboxEnabled);
         Assert.Equal(original.SystemRunBlockHostFallbackWhenMxcUnavailable, restored.SystemRunBlockHostFallbackWhenMxcUnavailable);
         Assert.Equal(original.SystemRunAllowOutbound, restored.SystemRunAllowOutbound);
@@ -189,6 +191,7 @@ public class SettingsRoundTripTests
         Assert.True(settings.PreferStructuredCategories);
         Assert.Equal("System", settings.AppTheme);
         Assert.Null(settings.ShowDiagnostics);
+        Assert.False(settings.ShowCompletedSessions);
         Assert.True(settings.SystemRunSandboxEnabled);
         Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
         Assert.False(settings.SystemRunAllowOutbound);

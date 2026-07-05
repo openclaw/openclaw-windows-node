@@ -89,6 +89,7 @@ public class SettingsManager
     /// Default false (native).
     /// </summary>
     public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }
+    public bool ShowCompletedSessions { get => _data.ShowCompletedSessions; set => _data = _data with { ShowCompletedSessions = value }; }
     public string AppTheme { get => NormalizeAppTheme(_data.AppTheme); set => _data = _data with { AppTheme = NormalizeAppTheme(value) }; }
     public bool? ShowDiagnosticsOverride { get => _data.ShowDiagnostics; set => _data = _data with { ShowDiagnostics = value }; }
     public bool ShowDiagnosticsEffective => _data.ShowDiagnostics ?? OpenClawTray.Helpers.DiagnosticsGate.BuildDefault;
@@ -247,6 +248,7 @@ public class SettingsManager
         PreferStructuredCategories = true,
         UserRules = new(),
         UseLegacyWebChat = false,
+        ShowCompletedSessions = false,
         AppTheme = AppThemeSystem,
         EnableNodeMode = false,
         NodeCanvasEnabled = true,

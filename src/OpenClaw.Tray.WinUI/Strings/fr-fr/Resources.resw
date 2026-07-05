@@ -4573,6 +4573,9 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SessionsPage_All.Text" xml:space="preserve">
     <value>Tous</value>
   </data>
+  <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
+    <value>Afficher les sessions terminées</value>
+  </data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Passerelle déconnectée</value>
   </data>

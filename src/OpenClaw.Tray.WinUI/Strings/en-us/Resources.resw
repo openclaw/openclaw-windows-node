@@ -4620,6 +4620,9 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SessionsPage_All.Text" xml:space="preserve">
     <value>All</value>
   </data>
+  <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
+    <value>Show completed</value>
+  </data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway disconnected</value>
   </data>

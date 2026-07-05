@@ -4574,6 +4574,9 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SessionsPage_All.Text" xml:space="preserve">
     <value>Alle</value>
   </data>
+  <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
+    <value>Voltooide sessies tonen</value>
+  </data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway losgekoppeld</value>
   </data>
