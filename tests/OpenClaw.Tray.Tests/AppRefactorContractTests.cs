@@ -522,6 +522,18 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void WizardConnect_UsesActiveGatewayRecordUrl()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var method = ExtractMethod(source, "ConnectClientAsync");
+
+        Assert.Contains("GatewayClientEndpointResolver.Resolve(record)", method);
+        Assert.Contains("new OpenClawGatewayClient(gatewayUrl, token", method);
+        Assert.DoesNotContain("config.EffectiveGatewayUrl", method);
+    }
+
+    [Fact]
     public void Settings_OnboardCardRequiresActiveManagedWslGateway()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

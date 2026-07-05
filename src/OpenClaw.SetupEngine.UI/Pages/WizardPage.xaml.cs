@@ -140,7 +140,6 @@ public sealed partial class WizardPage : Page
 
     private async Task<OpenClawGatewayClient> ConnectClientAsync()
     {
-        var config = _config!;
         var dataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
         var registry = new GatewayRegistry(dataDir);
@@ -153,7 +152,10 @@ public sealed partial class WizardPage : Page
             ?? record.BootstrapToken
             ?? throw new InvalidOperationException("No gateway credential found.");
 
-        var client = new OpenClawGatewayClient(config.EffectiveGatewayUrl, token, logger: NullLogger.Instance, identityPath: identityPath)
+        // The active record owns the endpoint as well as the credential identity. Resolve
+        // tunnel-backed records to their Windows-side local forward instead of bypassing SSH.
+        var gatewayUrl = GatewayClientEndpointResolver.Resolve(record);
+        var client = new OpenClawGatewayClient(gatewayUrl, token, logger: NullLogger.Instance, identityPath: identityPath)
         {
             UseV2Signature = true
         };
