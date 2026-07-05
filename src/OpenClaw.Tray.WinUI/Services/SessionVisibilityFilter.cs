@@ -19,4 +19,15 @@ public static class SessionVisibilityFilter
         return string.Equals(status, "done", StringComparison.OrdinalIgnoreCase)
             || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
     }
+
+    public static string ResolveActiveChannel(string activeChannel, IEnumerable<string> visibleChannels)
+    {
+        if (!string.Equals(activeChannel, "all", StringComparison.OrdinalIgnoreCase)
+            && visibleChannels.Any(channel => string.Equals(channel, activeChannel, StringComparison.OrdinalIgnoreCase)))
+        {
+            return activeChannel;
+        }
+
+        return "all";
+    }
 }

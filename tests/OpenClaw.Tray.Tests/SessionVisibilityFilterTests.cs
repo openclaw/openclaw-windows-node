@@ -79,4 +79,16 @@ public class SessionVisibilityFilterTests
 
         Assert.Equal(new[] { "done", "failed" }, visible);
     }
+
+    [Theory]
+    [InlineData("all", "all")]
+    [InlineData("Slack", "Slack")]
+    [InlineData("slack", "slack")]
+    [InlineData("missing", "all")]
+    public void ResolveActiveChannel_PreservesOnlyVisibleChannels(string activeChannel, string expected)
+    {
+        var visibleChannels = new[] { "Slack", "WhatsApp" };
+
+        Assert.Equal(expected, SessionVisibilityFilter.ResolveActiveChannel(activeChannel, visibleChannels));
+    }
 }

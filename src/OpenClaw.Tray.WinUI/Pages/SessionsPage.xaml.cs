@@ -121,6 +121,7 @@ public sealed partial class SessionsPage : Page
     {
         if (_allSessions == null) return;
 
+        var requestedChannel = _activeChannel;
         var visibleSessions = SessionVisibilityFilter.VisibleSessions(_allSessions, ShowCompletedSessions);
         var channels = visibleSessions
             .Where(s => !string.IsNullOrWhiteSpace(s.Channel))
@@ -128,15 +129,23 @@ public sealed partial class SessionsPage : Page
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(c => c)
             .ToList();
+        var activeChannel = SessionVisibilityFilter.ResolveActiveChannel(requestedChannel, channels);
 
         // Keep "All" tab, clear dynamic tabs
         while (ChannelSelector.Items.Count > 1)
             ChannelSelector.Items.RemoveAt(ChannelSelector.Items.Count - 1);
 
+        SelectorBarItem selectedItem = AllTab;
         foreach (var ch in channels)
         {
-            ChannelSelector.Items.Add(new SelectorBarItem { Text = ch });
+            var item = new SelectorBarItem { Text = ch };
+            ChannelSelector.Items.Add(item);
+            if (string.Equals(ch, activeChannel, StringComparison.OrdinalIgnoreCase))
+                selectedItem = item;
         }
+
+        _activeChannel = activeChannel;
+        selectedItem.IsSelected = true;
     }
 
     private void ApplyFilter()
