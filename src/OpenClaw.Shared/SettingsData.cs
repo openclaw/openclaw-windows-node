@@ -127,6 +127,13 @@ public record class SettingsData
     /// "User interface" section.
     /// </summary>
     public bool UseLegacyWebChat { get; set; } = false;
+    /// <summary>
+    /// When false, the tray Sessions page hides clean completed sessions
+    /// (currently status <c>done</c> / <c>completed</c>) while keeping failed,
+    /// killed, timeout, and aborted runs visible. Default false reduces
+    /// completed ACP/subagent clutter for upgraded installs.
+    /// </summary>
+    public bool ShowCompletedSessions { get; set; } = false;
     public string AppTheme { get; set; } = "System";
     public bool? ShowDiagnostics { get; set; }
     public List<UserNotificationRule>? UserRules { get; set; }

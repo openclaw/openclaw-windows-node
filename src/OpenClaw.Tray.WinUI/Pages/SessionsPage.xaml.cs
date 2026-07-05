@@ -26,6 +26,7 @@ public sealed partial class SessionsPage : Page
     private readonly AsyncListLoadingState _sessionLoading = new();
     private IOperatorGatewayClient? _subscribedClient;
     private bool _unloaded;
+    private bool _syncingShowCompletedToggle;
 
     public SessionsPage()
     {
@@ -50,6 +51,7 @@ public sealed partial class SessionsPage : Page
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
+        SyncShowCompletedToggle();
 
         var client = CurrentApp.GatewayClient;
 
@@ -119,7 +121,8 @@ public sealed partial class SessionsPage : Page
     {
         if (_allSessions == null) return;
 
-        var channels = _allSessions
+        var visibleSessions = SessionVisibilityFilter.VisibleSessions(_allSessions, ShowCompletedSessions);
+        var channels = visibleSessions
             .Where(s => !string.IsNullOrWhiteSpace(s.Channel))
             .Select(s => s.Channel!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -150,6 +153,7 @@ public sealed partial class SessionsPage : Page
         }
 
         IEnumerable<SessionInfo> filtered = _allSessions ?? Array.Empty<SessionInfo>();
+        filtered = SessionVisibilityFilter.VisibleSessions(filtered, ShowCompletedSessions);
 
         if (_activeChannel != "all")
         {
@@ -178,6 +182,35 @@ public sealed partial class SessionsPage : Page
         LoadingState.Visibility = _sessionLoading.ShouldShowLoading ? Visibility.Visible : Visibility.Collapsed;
         RefreshButton.IsEnabled = CurrentApp.GatewayClient != null && _sessionLoading.CanEdit;
         ChannelSelector.IsEnabled = _sessionLoading.HasLoaded && _sessionLoading.CanEdit;
+    }
+
+    private bool ShowCompletedSessions => CurrentApp.Settings?.ShowCompletedSessions ?? false;
+
+    private void SyncShowCompletedToggle()
+    {
+        _syncingShowCompletedToggle = true;
+        try
+        {
+            ShowCompletedToggle.IsOn = ShowCompletedSessions;
+        }
+        finally
+        {
+            _syncingShowCompletedToggle = false;
+        }
+    }
+
+    private void OnShowCompletedToggled(object sender, RoutedEventArgs e)
+    {
+        if (_syncingShowCompletedToggle)
+            return;
+
+        if (CurrentApp.Settings is { } settings)
+        {
+            settings.ShowCompletedSessions = ShowCompletedToggle.IsOn;
+            settings.Save();
+        }
+        RebuildChannelTabs();
+        ApplyFilter();
     }
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
