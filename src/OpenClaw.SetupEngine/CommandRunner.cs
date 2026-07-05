@@ -93,17 +93,25 @@ public sealed class CommandRunner : ICommandRunner
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        if (stdinInput != null)
-        {
-            await process.StandardInput.WriteAsync(stdinInput);
-            process.StandardInput.Close();
-        }
-
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
 
         try
         {
+            if (stdinInput != null)
+            {
+                try
+                {
+                    await process.StandardInput.WriteAsync(stdinInput.AsMemory(), timeoutCts.Token);
+                    await process.StandardInput.FlushAsync(timeoutCts.Token);
+                    process.StandardInput.Close();
+                }
+                catch (IOException) when (process.HasExited)
+                {
+                    // The child exited before consuming all input. Preserve its exit status/output.
+                }
+            }
+
             await process.WaitForExitAsync(timeoutCts.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

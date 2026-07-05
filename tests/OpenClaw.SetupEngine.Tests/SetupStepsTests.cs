@@ -1517,6 +1517,109 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    // ─── SyncWindowsCaCertsStep ───
+
+    [Fact]
+    public void SyncWindowsCaCerts_BuildCertificateManifest_DeduplicatesAndSortsCertificates()
+    {
+        byte[] first = [1, 2, 3];
+        byte[] second = [4, 5, 6];
+
+        var export = SyncWindowsCaCertsStep.BuildCertificateManifest([second, first, second]);
+        var lines = export.Manifest.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal(2, export.CertificateCount);
+        Assert.Equal(2, lines.Length);
+        Assert.Equal(lines.Order(StringComparer.Ordinal), lines);
+        Assert.All(lines, line => Assert.Equal(2, line.Split('\t').Length));
+    }
+
+    [Fact]
+    public async Task SyncWindowsCaCerts_InstallsIndividualCertificatesAsWslRoot()
+    {
+        var export = SyncWindowsCaCertsStep.BuildCertificateManifest([[1, 2, 3]]);
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SyncWindowsCaCertsStep(() => export)
+            .ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var call = Assert.Single(commands.DetailedCalls);
+        Assert.Equal(WslConstants.WslExePath, call.Executable);
+        Assert.Equal(["-d", "test-distro", "-u", "root", "--", "bash", "-c"], call.Arguments[..7]);
+        Assert.Contains("openssl x509", call.Arguments[7], StringComparison.Ordinal);
+        Assert.Contains("backup_parent=/var/lib/openclaw-setup", call.Arguments[7], StringComparison.Ordinal);
+        Assert.Contains("chmod 0755 \"$staging\"", call.Arguments[7], StringComparison.Ordinal);
+        Assert.Contains("chmod 0644 \"$cert_path\"", call.Arguments[7], StringComparison.Ordinal);
+        Assert.Contains("update-ca-certificates --fresh", call.Arguments[7], StringComparison.Ordinal);
+        Assert.Contains("$fingerprint.crt", call.Arguments[7], StringComparison.Ordinal);
+        Assert.DoesNotContain('\r', call.Arguments[7]);
+        Assert.Equal(export.Manifest, call.StdinInput);
+    }
+
+    [Fact]
+    public async Task SyncWindowsCaCerts_FailureIsNonFatal()
+    {
+        var export = SyncWindowsCaCertsStep.BuildCertificateManifest([[1, 2, 3]]);
+        var commands = new FakeCommandRunner(_ => Fail("update failed"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SyncWindowsCaCertsStep(() => export)
+            .ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("Skipped", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SyncWindowsCaCerts_EmptyStoreSkipsWslCall()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var empty = new WindowsCaCertificateExport("", 0, []);
+
+        var result = await new SyncWindowsCaCertsStep(() => empty)
+            .ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(commands.DetailedCalls);
+    }
+
+    [Fact]
+    public async Task SyncWindowsCaCerts_RollbackRemovesManagedDirectoryAndRebuildsTrust()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        await new SyncWindowsCaCertsStep(() => new WindowsCaCertificateExport("", 0, []))
+            .RollbackAsync(ctx, CancellationToken.None);
+
+        var call = Assert.Single(commands.DetailedCalls);
+        Assert.Equal(["-d", "test-distro", "-u", "root", "--", "bash", "-c"], call.Arguments[..7]);
+        Assert.Contains("rm -rf -- \"$target\"", call.Arguments[7], StringComparison.Ordinal);
+        Assert.Contains("update-ca-certificates --fresh", call.Arguments[7], StringComparison.Ordinal);
+        Assert.DoesNotContain('\r', call.Arguments[7]);
+    }
+
+    [Fact]
+    public async Task SyncWindowsCaCerts_RollbackFailureIsPropagated()
+    {
+        var commands = new FakeCommandRunner(_ => Fail("remove failed"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new SyncWindowsCaCertsStep(() => new WindowsCaCertificateExport("", 0, []))
+                .RollbackAsync(ctx, CancellationToken.None));
+
+        Assert.Contains("remove failed", error.Message, StringComparison.Ordinal);
+    }
+
     private static CommandResult Ok(string stdout = "", string stderr = "")
         => new(0, stdout, stderr, TimeSpan.Zero, TimedOut: false);
 
@@ -1548,6 +1651,7 @@ public class SetupStepsTests : IDisposable
         Func<string, string, TimeSpan, CommandResult>? runInWsl = null) : ICommandRunner
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
+        public List<(string Executable, string[] Arguments, string? StdinInput)> DetailedCalls { get; } = [];
         public List<(string DistroName, string Command, TimeSpan Timeout)> WslCalls { get; } = [];
 
         public Task<CommandResult> RunAsync(
@@ -1560,6 +1664,7 @@ public class SetupStepsTests : IDisposable
             CancellationToken ct = default)
         {
             Calls.Add((executable, arguments));
+            DetailedCalls.Add((executable, arguments, stdinInput));
             return Task.FromResult(run(arguments));
         }
 

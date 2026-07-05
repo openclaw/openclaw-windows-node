@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
@@ -1179,16 +1180,124 @@ public sealed class ValidateWslLockdownStep : SetupStep
 // ═══════════════════════════════════════════════════════════════════
 
 /// <summary>
-/// Exports Windows trusted root/intermediate CA certificates into the WSL
+/// Exports Windows trusted root CA certificates into the WSL
 /// distro's system trust store.  This resolves curl exit-60 failures that
 /// occur on corporate networks where a TLS-intercepting proxy injects a
 /// self-signed certificate that the WSL Ubuntu instance does not trust.
 /// The step is non-fatal: if the Windows store cannot be read or the WSL
-/// filesystem cannot be reached, it logs a warning and continues so that
+/// trust store cannot be updated, it logs a warning and continues so that
 /// setups on non-proxied networks are not blocked.
 /// </summary>
 public sealed class SyncWindowsCaCertsStep : SetupStep
 {
+    private const string ManagedCertDirectory = "/usr/local/share/ca-certificates/openclaw-windows";
+    private const string InstallScript = """
+        set -euo pipefail
+
+        target=/usr/local/share/ca-certificates/openclaw-windows
+        parent=/usr/local/share/ca-certificates
+        backup_parent=/var/lib/openclaw-setup
+        backup="$backup_parent/windows-ca-certificates.backup"
+        install -d -m 0700 -o root -g root "$backup_parent"
+        staging="$(mktemp -d "$parent/.openclaw-windows.XXXXXX")"
+        chmod 0755 "$staging"
+        old_moved=0
+        new_installed=0
+
+        cleanup() {
+          rm -rf -- "$staging"
+          if [ "$new_installed" -eq 1 ]; then
+            rm -rf -- "$target"
+          fi
+          if [ "$old_moved" -eq 1 ] && [ -d "$backup" ]; then
+            mv -- "$backup" "$target"
+          fi
+          rm -rf -- "$backup"
+          if [ "$old_moved" -eq 1 ] || [ "$new_installed" -eq 1 ]; then
+            update-ca-certificates --fresh >/dev/null 2>&1 || true
+          fi
+        }
+        trap cleanup EXIT
+
+        if [ -d "$backup" ]; then
+          rm -rf -- "$target"
+          mv -- "$backup" "$target"
+          update-ca-certificates --fresh
+        fi
+
+        count=0
+        while IFS=$'\t' read -r fingerprint payload; do
+          if [ -z "$fingerprint" ] && [ -z "$payload" ]; then
+            continue
+          fi
+          case "$fingerprint" in
+            ''|*[!0-9A-Fa-f]*) echo "Invalid certificate fingerprint" >&2; exit 64 ;;
+          esac
+          if [ "${#fingerprint}" -ne 64 ]; then
+            echo "Invalid certificate fingerprint length" >&2
+            exit 64
+          fi
+          case "$payload" in
+            ''|*[!A-Za-z0-9+/=]*) echo "Invalid certificate payload" >&2; exit 64 ;;
+          esac
+
+          fingerprint="${fingerprint,,}"
+          cert_path="$staging/$fingerprint.crt"
+          {
+            printf '%s\n' '-----BEGIN CERTIFICATE-----'
+            printf '%s\n' "$payload" | fold -w 64
+            printf '%s\n' '-----END CERTIFICATE-----'
+          } > "$cert_path"
+          chmod 0644 "$cert_path"
+
+          if ! openssl x509 -in "$cert_path" -noout >/dev/null 2>&1; then
+            echo "Invalid X.509 certificate for $fingerprint" >&2
+            exit 65
+          fi
+          actual="$(openssl x509 -in "$cert_path" -outform DER | sha256sum | cut -d ' ' -f1)"
+          if [ "$actual" != "$fingerprint" ]; then
+            echo "Certificate fingerprint mismatch for $fingerprint" >&2
+            exit 65
+          fi
+          count=$((count + 1))
+        done
+
+        if [ "$count" -eq 0 ]; then
+          echo "No certificates received" >&2
+          exit 64
+        fi
+
+        if [ -d "$target" ]; then
+          mv -- "$target" "$backup"
+          old_moved=1
+        fi
+        mv -- "$staging" "$target"
+        new_installed=1
+        update-ca-certificates --fresh
+
+        rm -rf -- "$backup"
+        old_moved=0
+        new_installed=0
+        trap - EXIT
+        """;
+    private const string RollbackScript = """
+        set -e
+        target=/usr/local/share/ca-certificates/openclaw-windows
+        backup=/var/lib/openclaw-setup/windows-ca-certificates.backup
+        if [ -d "$target" ]; then
+          rm -rf -- "$target"
+          update-ca-certificates --fresh
+        fi
+        rm -rf -- "$backup"
+        """;
+
+    private readonly Func<WindowsCaCertificateExport> _exportCertificates;
+
+    public SyncWindowsCaCertsStep() : this(ExportWindowsTrustedRoots) { }
+
+    internal SyncWindowsCaCertsStep(Func<WindowsCaCertificateExport> exportCertificates)
+        => _exportCertificates = exportCertificates;
+
     public override string Id => "sync-ca-certs";
     public override string DisplayName => "Sync Windows CA certificates to WSL";
     public override bool CanRetry => false;
@@ -1197,10 +1306,10 @@ public sealed class SyncWindowsCaCertsStep : SetupStep
     {
         var distro = ctx.DistroName!;
 
-        string pemBundle;
+        WindowsCaCertificateExport export;
         try
         {
-            pemBundle = ExportWindowsCaCerts();
+            export = _exportCertificates();
         }
         catch (Exception ex)
         {
@@ -1208,77 +1317,100 @@ public sealed class SyncWindowsCaCertsStep : SetupStep
             return StepResult.Ok("Skipped: could not read Windows CA store");
         }
 
-        if (string.IsNullOrWhiteSpace(pemBundle))
+        foreach (var warning in export.Warnings)
+            ctx.Logger.Warn(warning);
+
+        if (export.CertificateCount == 0)
         {
             ctx.Logger.Warn("Windows CA store returned no certificates — skipping CA sync");
             return StepResult.Ok("Skipped: Windows CA store is empty");
         }
 
-        // Write directly to the WSL filesystem via the UNC share WSL exposes on Windows.
-        // This avoids needing stdin piping through RunInWslAsync.
-        var wslCertDir = $@"\\wsl$\{distro}\usr\local\share\ca-certificates";
-        try
-        {
-            Directory.CreateDirectory(wslCertDir);
-            File.WriteAllText(Path.Combine(wslCertDir, "windows-ca-bundle.crt"), pemBundle);
-        }
-        catch (Exception ex)
-        {
-            ctx.Logger.Warn($"Could not write CA bundle to WSL filesystem: {ex.Message} — skipping CA sync");
-            return StepResult.Ok("Skipped: could not write to WSL filesystem");
-        }
-
-        var result = await ctx.Commands.RunInWslAsync(
-            distro,
-            "update-ca-certificates",
-            TimeSpan.FromSeconds(30),
-            ct: ct,
-            user: "root");
+        var result = await ctx.Commands.RunAsync(
+            WslConstants.WslExePath,
+            ["-d", distro, "-u", "root", "--", "bash", "-c", NormalizeShellScript(InstallScript)],
+            TimeSpan.FromSeconds(60),
+            workingDirectory: WslConstants.SafeWindowsWorkingDirectory,
+            stdinInput: export.Manifest,
+            ct: ct);
 
         if (result.ExitCode != 0)
         {
             ctx.Logger.Warn($"update-ca-certificates exited {result.ExitCode}: {result.Stderr.Trim()}");
-            // Non-fatal: the bundle is written; curl may still work depending on the error.
-            return StepResult.Ok($"CA bundle written but update-ca-certificates warned (exit {result.ExitCode})");
+            return StepResult.Ok($"Skipped: could not update WSL CA certificates (exit {result.ExitCode})");
         }
 
-        ctx.Logger.Info("Windows CA certificates synced to WSL trust store");
-        return StepResult.Ok("Windows CA certificates synced to WSL");
+        ctx.Logger.Info($"Synced {export.CertificateCount} Windows CA certificates to WSL trust store");
+        return StepResult.Ok($"Synced {export.CertificateCount} Windows CA certificates to WSL");
     }
 
-    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var wslCertPath = $@"\\wsl$\{distro}\usr\local\share\ca-certificates\windows-ca-bundle.crt";
-        if (File.Exists(wslCertPath))
+        var result = await ctx.Commands.RunAsync(
+            WslConstants.WslExePath,
+            ["-d", distro, "-u", "root", "--", "bash", "-c", NormalizeShellScript(RollbackScript)],
+            TimeSpan.FromSeconds(30),
+            workingDirectory: WslConstants.SafeWindowsWorkingDirectory,
+            ct: ct);
+        if (result.ExitCode == 0)
         {
-            File.Delete(wslCertPath);
-            ctx.Logger.Info("[Rollback] Removed windows-ca-bundle.crt from WSL");
+            ctx.Logger.Info($"[Rollback] Removed {ManagedCertDirectory} from WSL trust store");
+            return;
         }
-        return Task.CompletedTask;
+
+        throw new InvalidOperationException(
+            $"Could not remove synced CA certificates (exit {result.ExitCode}): {result.Stderr.Trim()}");
     }
 
-    private static string ExportWindowsCaCerts()
+    internal static WindowsCaCertificateExport BuildCertificateManifest(
+        IEnumerable<byte[]> rawCertificates,
+        IReadOnlyList<string>? warnings = null)
     {
-        var sb = new StringBuilder();
-        var storeNames = new[] { StoreName.Root, StoreName.CertificateAuthority };
-
-        foreach (var storeName in storeNames)
+        var certificates = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var rawCertificate in rawCertificates)
         {
-            using var store = new X509Store(storeName, StoreLocation.LocalMachine);
-            store.Open(OpenFlags.ReadOnly);
+            var fingerprint = Convert.ToHexString(SHA256.HashData(rawCertificate)).ToLowerInvariant();
+            certificates.TryAdd(fingerprint, Convert.ToBase64String(rawCertificate));
+        }
 
-            foreach (var cert in store.Certificates)
+        var manifest = new StringBuilder();
+        foreach (var (fingerprint, payload) in certificates)
+            manifest.Append(fingerprint).Append('\t').Append(payload).Append('\n');
+
+        return new WindowsCaCertificateExport(manifest.ToString(), certificates.Count, warnings ?? []);
+    }
+
+    private static string NormalizeShellScript(string script)
+        => script.Replace("\r", "", StringComparison.Ordinal);
+
+    private static WindowsCaCertificateExport ExportWindowsTrustedRoots()
+    {
+        var rawCertificates = new List<byte[]>();
+        var warnings = new List<string>();
+        foreach (var location in new[] { StoreLocation.LocalMachine, StoreLocation.CurrentUser })
+        {
+            try
             {
-                sb.AppendLine("-----BEGIN CERTIFICATE-----");
-                sb.AppendLine(Convert.ToBase64String(cert.RawData, Base64FormattingOptions.InsertLineBreaks));
-                sb.AppendLine("-----END CERTIFICATE-----");
+                using var store = new X509Store(StoreName.Root, location);
+                store.Open(OpenFlags.ReadOnly);
+                foreach (var certificate in store.Certificates)
+                    rawCertificates.Add(certificate.RawData);
+            }
+            catch (Exception ex) when (ex is CryptographicException or UnauthorizedAccessException)
+            {
+                warnings.Add($"Could not read Windows {location} Root store: {ex.Message}");
             }
         }
 
-        return sb.ToString();
+        return BuildCertificateManifest(rawCertificates, warnings);
     }
 }
+
+internal sealed record WindowsCaCertificateExport(
+    string Manifest,
+    int CertificateCount,
+    IReadOnlyList<string> Warnings);
 
 public sealed class InstallCliStep : SetupStep
 {
