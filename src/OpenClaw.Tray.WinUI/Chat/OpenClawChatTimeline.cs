@@ -75,6 +75,8 @@ public record OpenClawChatTimelineProps(
 public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 {
     const double FollowThreshold = 60;
+    const int FollowToBottomMaxStabilizationPasses = 4;
+    const double FollowToBottomExtentEpsilon = 0.5;
 
     /// <summary>
     /// Static scroll-offset store shared across all timeline instances so that
@@ -639,15 +641,27 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         void QueueScrollToBottom(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, bool disableAnimation)
         {
             isFollowingRef.Current = true;
-            sv.DispatcherQueue.TryEnqueue(() =>
+
+            void QueuePass(int pass, double previousScrollableHeight, bool passDisableAnimation)
             {
-                var bottom = sv.ScrollableHeight;
-                sv.ChangeView(null, bottom, null, disableAnimation);
-                lastVerticalOffsetRef.Current = bottom;
-                lastScrollableHeightRef.Current = sv.ScrollableHeight;
-                isFollowingRef.Current = true;
-                StoreSessionOffset(sessionId, bottom);
-            });
+                sv.DispatcherQueue.TryEnqueue(() =>
+                {
+                    sv.UpdateLayout();
+                    var bottom = sv.ScrollableHeight;
+                    sv.ChangeView(null, bottom, null, passDisableAnimation);
+                    lastVerticalOffsetRef.Current = bottom;
+                    lastScrollableHeightRef.Current = sv.ScrollableHeight;
+                    isFollowingRef.Current = true;
+                    StoreSessionOffset(sessionId, bottom);
+
+                    var extentStable = Math.Abs(bottom - previousScrollableHeight) <= FollowToBottomExtentEpsilon;
+                    var atBottom = sv.ScrollableHeight - sv.VerticalOffset <= FollowThreshold;
+                    if (pass < FollowToBottomMaxStabilizationPasses && (!extentStable || !atBottom))
+                        QueuePass(pass + 1, sv.ScrollableHeight, passDisableAnimation: true);
+                });
+            }
+
+            QueuePass(0, double.NaN, disableAnimation);
         }
 
         void QueuePreservePrependOffset(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, double oldOffset, double oldScrollableHeight)

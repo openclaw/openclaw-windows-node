@@ -19,6 +19,32 @@ public sealed class ChatTimelineVirtualizationContractTests
         Assert.Contains("IElementFactory", functionalUi);
     }
 
+    [Fact]
+    public void ProductionTimeline_StabilizesFollowToBottomForVirtualizedRows()
+    {
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+
+        Assert.Contains("FollowToBottomMaxStabilizationPasses", timeline);
+        Assert.Contains("FollowToBottomExtentEpsilon", timeline);
+        Assert.Contains("void QueuePass(", timeline);
+        Assert.Contains("sv.UpdateLayout();", timeline);
+        Assert.Contains("QueuePass(pass + 1", timeline);
+    }
+
+    [Fact]
+    public void FunctionalUiVirtualStack_IsPruneAwareAndStableAcrossRenderChurn()
+    {
+        var functionalUi = Read("src", "OpenClawTray.FunctionalUI", "FunctionalUI.cs");
+
+        Assert.Contains("_virtualStackOwnedPathPrefixes", functionalUi);
+        Assert.Contains("_visitedVirtualStackPaths", functionalUi);
+        Assert.Contains("IsOwnedByVirtualStack", functionalUi);
+        Assert.Contains("VirtualStackItemsMatch", functionalUi);
+        Assert.Contains("UpdateRealizedVirtualStackItems", functionalUi);
+        Assert.Contains("repeater.ItemTemplate is not VirtualStackItemTemplate", functionalUi);
+        Assert.Contains("PruneUnvisitedPaths();", functionalUi);
+    }
+
     private static string Read(params string[] parts)
         => File.ReadAllText(Path.Combine(new[] { TestRepositoryPaths.GetRepositoryRoot() }.Concat(parts).ToArray()));
 }

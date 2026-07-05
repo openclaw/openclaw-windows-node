@@ -919,12 +919,15 @@ internal sealed class UiRenderer(Action requestRender)
     private readonly HashSet<string> _visitedControlPaths = new();
     private readonly HashSet<string> _visitedComponentKeys = new();
     private readonly HashSet<string> _visitedContentFlyoutPaths = new();
+    private readonly HashSet<string> _visitedVirtualStackPaths = new();
+    private readonly Dictionary<string, string[]> _virtualStackOwnedPathPrefixes = new();
 
     public UIElement Render(Element element, string path, List<Action> effects)
     {
         _visitedControlPaths.Clear();
         _visitedComponentKeys.Clear();
         _visitedContentFlyoutPaths.Clear();
+        _visitedVirtualStackPaths.Clear();
 
         var rendered = RenderElement(element, path, effects);
         PruneUnvisitedPaths();
@@ -943,13 +946,17 @@ internal sealed class UiRenderer(Action requestRender)
         _controls.Clear();
         _contentFlyouts.Clear();
         _mountedPaths.Clear();
+        _visitedVirtualStackPaths.Clear();
+        _virtualStackOwnedPathPrefixes.Clear();
     }
 
     private UIElement RenderElement(Element element, string path, List<Action> effects)
     {
-        if (!string.IsNullOrEmpty(element.Key))
-            path += "#" + element.Key;
+        return RenderElementCore(element, ResolveElementPath(path, element), effects);
+    }
 
+    private UIElement RenderElementCore(Element element, string path, List<Action> effects)
+    {
         var control = element switch
         {
             TextBlockElement e => ConfigureTextBlock(GetOrCreate<TextBlock>(path), e),
@@ -967,7 +974,7 @@ internal sealed class UiRenderer(Action requestRender)
             ImageElement e => ConfigureImage(GetOrCreate<Image>(path), e),
             BorderElement e => ConfigureBorder(GetOrCreate<Border>(path), e, path, effects),
             StackElement e => ConfigureStack(GetOrCreate<Border>(path), e, path, effects),
-            VirtualStackElement e => ConfigureVirtualStack(GetOrCreate<Border>(path), e, path),
+            VirtualStackElement e => ConfigureVirtualStack(GetOrCreate<Border>(path), e, path, effects),
             FlexRowElement e => ConfigureFlexRow(GetOrCreate<Border>(path), e, path, effects),
             GridElement e => ConfigureGrid(GetOrCreate<Border>(path), e, path, effects),
             ScrollViewElement e => ConfigureScrollView(GetOrCreate<ScrollViewer>(path), e, path, effects),
@@ -980,6 +987,9 @@ internal sealed class UiRenderer(Action requestRender)
         QueueMount(control, element, path, effects);
         return control;
     }
+
+    private static string ResolveElementPath(string path, Element element) =>
+        string.IsNullOrEmpty(element.Key) ? path : path + "#" + element.Key;
 
     /// <summary>
     /// Renders a navigation host into a STABLE Border wrapper at <paramref name="path"/>
@@ -1283,9 +1293,10 @@ internal sealed class UiRenderer(Action requestRender)
         return wrapper;
     }
 
-    private Border ConfigureVirtualStack(Border wrapper, VirtualStackElement element, string path)
+    private Border ConfigureVirtualStack(Border wrapper, VirtualStackElement element, string path, List<Action> effects)
     {
         var repeater = GetOrCreate<ItemsRepeater>(path + ".repeater");
+        _visitedVirtualStackPaths.Add(path);
         if (repeater.Layout is not StackLayout layout)
         {
             layout = new StackLayout();
@@ -1294,12 +1305,33 @@ internal sealed class UiRenderer(Action requestRender)
         layout.Orientation = element.Orientation;
         layout.Spacing = element.Spacing;
 
-        repeater.ItemsSource = element.Children
-            .Select((child, index) => child is null ? null : new VirtualStackItem(index, child))
+        var items = element.Children
+            .Select((child, index) => child is null ? null : new VirtualStackItem(
+                index,
+                ResolveElementPath(ChildPath(path, index, child), child),
+                child))
             .Where(item => item is not null)
             .Cast<VirtualStackItem>()
             .ToArray();
-        repeater.ItemTemplate = new VirtualStackItemTemplate(this, path);
+        _virtualStackOwnedPathPrefixes[path] = items.Select(item => item.Path).ToArray();
+
+        if (repeater.ItemsSource is VirtualStackItem[] currentItems && VirtualStackItemsMatch(currentItems, items))
+        {
+            for (var i = 0; i < currentItems.Length; i++)
+            {
+                currentItems[i].Index = items[i].Index;
+                currentItems[i].Element = items[i].Element;
+            }
+            UpdateRealizedVirtualStackItems(currentItems, effects);
+        }
+        else
+        {
+            repeater.ItemsSource = items;
+        }
+
+        if (repeater.ItemTemplate is not VirtualStackItemTemplate template || !template.Matches(this, path))
+            repeater.ItemTemplate = new VirtualStackItemTemplate(this, path);
+
         repeater.HorizontalAlignment = HorizontalAlignment.Stretch;
         repeater.VerticalAlignment = VerticalAlignment.Stretch;
 
@@ -1309,17 +1341,52 @@ internal sealed class UiRenderer(Action requestRender)
         return wrapper;
     }
 
-    private sealed record VirtualStackItem(int Index, Element Element);
+    private void UpdateRealizedVirtualStackItems(IEnumerable<VirtualStackItem> items, List<Action> effects)
+    {
+        foreach (var item in items)
+        {
+            if (item.RealizedControl is null)
+                continue;
+
+            item.RealizedControl = RenderElementCore(item.Element, item.Path, effects);
+        }
+    }
+
+    private static bool VirtualStackItemsMatch(VirtualStackItem[] currentItems, VirtualStackItem[] nextItems)
+    {
+        if (currentItems.Length != nextItems.Length)
+            return false;
+
+        for (var i = 0; i < currentItems.Length; i++)
+        {
+            if (!string.Equals(currentItems[i].Path, nextItems[i].Path, StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
+
+    private sealed class VirtualStackItem(int index, string path, Element element)
+    {
+        public int Index { get; set; } = index;
+        public string Path { get; } = path;
+        public Element Element { get; set; } = element;
+        public UIElement? RealizedControl { get; set; }
+    }
 
     private sealed class VirtualStackItemTemplate(UiRenderer renderer, string path) : IElementFactory
     {
+        public bool Matches(UiRenderer otherRenderer, string otherPath) =>
+            ReferenceEquals(renderer, otherRenderer) && string.Equals(path, otherPath, StringComparison.Ordinal);
+
         public UIElement GetElement(ElementFactoryGetArgs args)
         {
             if (args.Data is not VirtualStackItem item)
                 return new Border();
 
             var effects = new List<Action>();
-            var control = renderer.RenderElement(item.Element, ChildPath(path, item.Index, item.Element), effects);
+            var control = renderer.RenderElementCore(item.Element, item.Path, effects);
+            item.RealizedControl = control;
             foreach (var effect in effects)
                 effect();
             return control;
@@ -1474,9 +1541,15 @@ internal sealed class UiRenderer(Action requestRender)
 
     private void PruneUnvisitedPaths()
     {
+        foreach (var path in _virtualStackOwnedPathPrefixes.Keys.ToArray())
+        {
+            if (!_visitedVirtualStackPaths.Contains(path))
+                _virtualStackOwnedPathPrefixes.Remove(path);
+        }
+
         foreach (var (key, component) in _components.ToArray())
         {
-            if (_visitedComponentKeys.Contains(key))
+            if (_visitedComponentKeys.Contains(key) || IsOwnedByVirtualStack(key))
                 continue;
 
             component.Context.RunEffectCleanups();
@@ -1485,7 +1558,7 @@ internal sealed class UiRenderer(Action requestRender)
 
         foreach (var (path, flyout) in _contentFlyouts.ToArray())
         {
-            if (_visitedContentFlyoutPaths.Contains(path))
+            if (_visitedContentFlyoutPaths.Contains(path) || IsOwnedByVirtualStack(path))
                 continue;
 
             flyout.Hide();
@@ -1495,7 +1568,7 @@ internal sealed class UiRenderer(Action requestRender)
 
         foreach (var (path, control) in _controls.ToArray())
         {
-            if (_visitedControlPaths.Contains(path))
+            if (_visitedControlPaths.Contains(path) || IsOwnedByVirtualStack(path))
                 continue;
 
             _mountedPaths.Remove(path);
@@ -1504,6 +1577,25 @@ internal sealed class UiRenderer(Action requestRender)
             _controls.Remove(path);
         }
     }
+
+    private bool IsOwnedByVirtualStack(string path)
+    {
+        foreach (var prefixes in _virtualStackOwnedPathPrefixes.Values)
+        {
+            foreach (var prefix in prefixes)
+            {
+                if (IsPathAtOrBelow(path, prefix))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsPathAtOrBelow(string path, string prefix) =>
+        string.Equals(path, prefix, StringComparison.Ordinal)
+        || path.StartsWith(prefix + ".", StringComparison.Ordinal)
+        || path.StartsWith(prefix + ":", StringComparison.Ordinal);
 
     private static MenuFlyout CreateMenuFlyout(MenuFlyoutContentElement element)
     {

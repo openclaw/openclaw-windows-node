@@ -69,13 +69,43 @@ public sealed class ChatTimelineVirtualizationProofTests
 
         await DrainRenderQueueAsync();
 
+        object? stableItemsSource = null;
+        object? stableItemTemplate = null;
+        props = BuildProps(InitialRows, scrollToBottomToken: 0, textRevision: 1);
+        await _ui.RunOnUIAsync(() =>
+        {
+            var repeater = FindLogical<ItemsRepeater>(host!).Single();
+            stableItemsSource = repeater.ItemsSource;
+            stableItemTemplate = repeater.ItemTemplate;
+
+            host!.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
+        });
+
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            var repeater = FindLogical<ItemsRepeater>(host!).Single();
+            Assert.NotNull(stableItemsSource);
+            Assert.NotNull(stableItemTemplate);
+            Assert.Same(stableItemsSource, repeater.ItemsSource);
+            Assert.Same(stableItemTemplate, repeater.ItemTemplate);
+
+            var visibleText = FindDescendants<TextBlock>(host!)
+                .Select(t => t.Text)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .ToArray();
+            Assert.Contains(visibleText, text => text.Contains("revision 1", StringComparison.Ordinal));
+        });
+
         var appendedRows = InitialRows + 1;
-        props = BuildProps(appendedRows, scrollToBottomToken: 1);
+        props = BuildProps(appendedRows, scrollToBottomToken: 1, textRevision: 1);
         await _ui.RunOnUIAsync(() =>
         {
             host!.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
         });
 
+        await DrainRenderQueueAsync();
         await DrainRenderQueueAsync();
 
         await _ui.RunOnUIAsync(() =>
@@ -93,7 +123,7 @@ public sealed class ChatTimelineVirtualizationProofTests
                 .Select(t => t.Text)
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .ToArray();
-            Assert.Contains("User proof row 241", visibleText);
+            Assert.Contains(visibleText, text => text.Contains("User proof row 241", StringComparison.Ordinal));
 
             Console.WriteLine(
                 "CHAT_TIMELINE_VIRTUALIZATION_PROOF " +
@@ -102,6 +132,8 @@ public sealed class ChatTimelineVirtualizationProofTests
                 $"layout={((StackLayout)repeater.Layout).Orientation} " +
                 $"scrollableHeight={scrollViewer.ScrollableHeight:0.0} " +
                 $"verticalOffset={scrollViewer.VerticalOffset:0.0} " +
+                "variableHeight=true " +
+                "renderChurnStable=true " +
                 "newestRowVisible=true");
         });
 
@@ -116,10 +148,10 @@ public sealed class ChatTimelineVirtualizationProofTests
         await _ui.RunOnUIAsync(() => { });
     }
 
-    private static OpenClawChatTimelineProps BuildProps(int rows, int scrollToBottomToken) =>
+    private static OpenClawChatTimelineProps BuildProps(int rows, int scrollToBottomToken, int textRevision = 0) =>
         new(
             SessionId: "ui-proof-large-chat",
-            Entries: BuildEntries(rows),
+            Entries: BuildEntries(rows, textRevision),
             HasMoreHistory: false,
             OnLoadMoreHistory: null,
             UserSenderLabel: "UI proof user",
@@ -128,7 +160,7 @@ public sealed class ChatTimelineVirtualizationProofTests
             ShowToolCalls: true,
             ScrollToBottomToken: scrollToBottomToken);
 
-    private static IReadOnlyList<ChatTimelineItem> BuildEntries(int rows)
+    private static IReadOnlyList<ChatTimelineItem> BuildEntries(int rows, int textRevision)
     {
         var entries = new List<ChatTimelineItem>(rows);
         for (var i = 1; i <= rows; i++)
@@ -137,12 +169,22 @@ public sealed class ChatTimelineVirtualizationProofTests
             entries.Add(new ChatTimelineItem(
                 Id: $"proof-{i:000}",
                 Kind: isUser ? ChatTimelineItemKind.User : ChatTimelineItemKind.Assistant,
-                Text: isUser
-                    ? $"User proof row {i}"
-                    : $"Assistant proof row {i}"));
+                Text: FormatVariableHeightText(isUser ? "User" : "Assistant", i, textRevision)));
         }
 
         return entries;
+    }
+
+    private static string FormatVariableHeightText(string role, int row, int textRevision)
+    {
+        var detailLines = row % 4;
+        var details = string.Join(
+            Environment.NewLine,
+            Enumerable.Range(0, detailLines).Select(i => $"detail {row}-{i} revision {textRevision}"));
+        var heading = $"{role} proof row {row}";
+        return string.IsNullOrEmpty(details)
+            ? heading
+            : heading + Environment.NewLine + details;
     }
 
     private static int CountItems(object? itemsSource) =>
