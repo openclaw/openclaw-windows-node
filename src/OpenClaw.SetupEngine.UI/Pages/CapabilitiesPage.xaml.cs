@@ -14,9 +14,11 @@ public sealed partial class CapabilitiesPage : Page
     private readonly Dictionary<string, ToggleSwitch> _toggles = new();
     private readonly Dictionary<string, FrameworkElement> _permRows = new();
     private readonly Dictionary<string, bool> _permGranted = new();
+    private SetupWindow? _setupWindow;
     private Task? _permissionsTask;
     private bool _suppressProfile;
     private bool _skipPermissions;
+    private bool _treatBundledAllOnAsPlaceholder;
     private int _step = 1;
 
     // Capability profiles just preset the granular toggles below. Keys map 1:1 to
@@ -56,22 +58,55 @@ public sealed partial class CapabilitiesPage : Page
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
         _skipPermissions = _config.SkipPermissions;
+        _treatBundledAllOnAsPlaceholder = _config.UsesBundledDefaultConfig;
         BuildToggles();
         _suppressProfile = true;
         var profileIndex = DetectProfileIndex();
         ProfileRadio.SelectedIndex = profileIndex;
-        _suppressProfile = false;
+        UpdateCapabilityProfilePresentation(profileIndex);
         // BuildToggles() seeded the toggles from the config. The bundled
         // default-config.json still ships with every capability on as a
         // placeholder, so default that implicit case to Standard. Explicit
         // custom configs are preserved even when they do not match a preset.
         if (_config.UsesBundledDefaultConfig && profileIndex == 1 && !MatchesProfile(ProfileStandard))
             ApplyProfile(1);
+        _suppressProfile = false;
+        _treatBundledAllOnAsPlaceholder = false;
         // Only probe OS permissions when the permissions step will actually be shown.
         if (!_skipPermissions)
             _permissionsTask = BuildPermissionRows();
+        _setupWindow = SetupWindow.Active;
+        if (_setupWindow is not null)
+            _setupWindow.Activated += SetupWindow_Activated;
         ApplySetupReviewSummary(_config);
         GoToStep(1);
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        if (_setupWindow is not null)
+        {
+            _setupWindow.Activated -= SetupWindow_Activated;
+            _setupWindow = null;
+        }
+        base.OnNavigatedFrom(e);
+    }
+
+    private void SetupWindow_Activated(object sender, WindowActivatedEventArgs e)
+    {
+        if (_skipPermissions || e.WindowActivationState == WindowActivationState.Deactivated)
+            return;
+
+        // Settings opens outside the setup window. Refresh when focus returns so the
+        // status rows and completion summary immediately reflect the user's changes.
+        _permissionsTask = RefreshPermissionRowsAsync(_permissionsTask);
+    }
+
+    private async Task RefreshPermissionRowsAsync(Task? previousRefresh)
+    {
+        if (previousRefresh is not null)
+            await previousRefresh;
+        await BuildPermissionRows();
     }
 
     // ── Stepped flow (mirrors the gateway onboard transcript) ──
@@ -280,7 +315,7 @@ public sealed partial class CapabilitiesPage : Page
                 MinWidth = 0,
             };
             _toggles[key] = toggle;
-            toggle.Toggled += (_, _) => UpdatePermissionVisibility();
+            toggle.Toggled += Capability_Toggled;
 
             var item = new Grid
             {
@@ -327,7 +362,44 @@ public sealed partial class CapabilitiesPage : Page
         if (_suppressProfile || _toggles.Count == 0)
             return;
 
-        ApplyProfile(ProfileRadio.SelectedIndex);
+        _suppressProfile = true;
+        try
+        {
+            ApplyProfile(ProfileRadio.SelectedIndex);
+            UpdateCapabilityProfilePresentation(ProfileRadio.SelectedIndex);
+        }
+        finally
+        {
+            _suppressProfile = false;
+        }
+    }
+
+    private void Capability_Toggled(object sender, RoutedEventArgs e)
+    {
+        UpdatePermissionVisibility();
+        if (_suppressProfile)
+            return;
+
+        var profileIndex = DetectProfileIndex();
+        _suppressProfile = true;
+        try
+        {
+            ProfileRadio.SelectedIndex = profileIndex;
+            UpdateCapabilityProfilePresentation(profileIndex);
+        }
+        finally
+        {
+            _suppressProfile = false;
+        }
+    }
+
+    private void UpdateCapabilityProfilePresentation(int profileIndex)
+    {
+        CapabilityExpander.Header = profileIndex < 0
+            ? "Custom capabilities (review)"
+            : "Fine-tune individual capabilities (optional)";
+        if (profileIndex < 0)
+            CapabilityExpander.IsExpanded = true;
     }
 
     // Turns the capability toggles on/off to match a profile index (0=Read-only,
@@ -350,13 +422,14 @@ public sealed partial class CapabilitiesPage : Page
     {
         if (MatchesProfile(ProfileReadOnly)) return 0;
         if (MatchesProfile(ProfileStandard)) return 1;
-        if (MatchesProfile(Capabilities.Select(c => c.Key).ToArray()) && !(_config?.UsesBundledDefaultConfig ?? false))
-            return 2;
+        if (MatchesProfile(Capabilities.Select(c => c.Key).ToArray()))
+            return _treatBundledAllOnAsPlaceholder ? 1 : 2;
 
         // An "all capabilities on" bundled config is the shipped placeholder
         // default, not a deliberate Full-access choice, so new users default to
-        // Standard (recommended) — the least-surprising, safer starting point.
-        return 1;
+        // Standard (recommended). Every other non-preset set is explicit and must
+        // remain visibly custom, including edits made during bundled setup.
+        return -1;
     }
 
     private bool MatchesProfile(string[] onKeys)

@@ -345,6 +345,7 @@ public sealed class AppRefactorContractTests
         Assert.Contains("_showStartupPreferenceOnComplete = false", setupWindow);
         Assert.Contains("CanNavigateToGatewayInstalledMilestone", setupWindow);
         Assert.Contains("RootFrame.Content is not ProgressPage { IsPipelineRunning: true }", setupWindow);
+        Assert.Contains("RootFrame.Content is not WizardPage", setupWindow);
         Assert.Contains("TryNavigateToGatewayInstalledMilestone", setupWindow);
         Assert.Contains("setupWindow.TryNavigateToGatewayInstalledMilestone()", source);
         AssertInOrder(
@@ -433,7 +434,8 @@ public sealed class AppRefactorContractTests
             "prop?.SetValue(caps, toggle.IsOn)",
             "config.Settings.ApplyCapabilities(caps)");
         Assert.Contains("_config.UsesBundledDefaultConfig", source);
-        Assert.Contains("!(_config?.UsesBundledDefaultConfig ?? false)", source);
+        Assert.Contains("_treatBundledAllOnAsPlaceholder ? 1 : 2", source);
+        Assert.Contains("return -1", source);
     }
 
     [Fact]
@@ -449,6 +451,49 @@ public sealed class AppRefactorContractTests
         Assert.Contains("new InfoBar", build);
         Assert.Contains("Couldn't read Windows permission status", build);
         Assert.Contains("Review permissions later in Settings", build);
+    }
+
+    [Fact]
+    public void CapabilitiesPage_RefreshesPermissionStateWhenSetupIsReactivated()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        var activated = ExtractMethod(source, "SetupWindow_Activated");
+        var refresh = ExtractMethod(source, "RefreshPermissionRowsAsync");
+
+        Assert.Contains("_setupWindow.Activated += SetupWindow_Activated", source);
+        Assert.Contains("_setupWindow.Activated -= SetupWindow_Activated", source);
+        Assert.Contains("WindowActivationState.Deactivated", activated);
+        Assert.Contains("RefreshPermissionRowsAsync(_permissionsTask)", activated);
+        AssertInOrder(refresh, "await previousRefresh", "await BuildPermissionRows()");
+    }
+
+    [Fact]
+    public void CapabilitiesPage_ExposesExplicitCustomCapabilitySetsForReview()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml"));
+        var detectProfile = ExtractMethod(source, "DetectProfileIndex");
+
+        Assert.Contains("x:Name=\"CapabilityExpander\"", xaml);
+        Assert.Contains("\"Custom capabilities (review)\"", source);
+        Assert.Contains("CapabilityExpander.IsExpanded = true", source);
+        Assert.Contains("_treatBundledAllOnAsPlaceholder ? 1 : 2", detectProfile);
+        Assert.Contains("return -1", detectProfile);
+        Assert.Contains("toggle.Toggled += Capability_Toggled", source);
+        AssertInOrder(
+            source,
+            "_treatBundledAllOnAsPlaceholder = _config.UsesBundledDefaultConfig",
+            "_suppressProfile = true",
+            "ApplyProfile(1)",
+            "_suppressProfile = false",
+            "_treatBundledAllOnAsPlaceholder = false");
+        AssertInOrder(
+            ExtractMethod(source, "Capability_Toggled"),
+            "DetectProfileIndex()",
+            "ProfileRadio.SelectedIndex = profileIndex",
+            "UpdateCapabilityProfilePresentation(profileIndex)");
     }
 
     [Fact]
@@ -768,7 +813,7 @@ public sealed class AppRefactorContractTests
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);

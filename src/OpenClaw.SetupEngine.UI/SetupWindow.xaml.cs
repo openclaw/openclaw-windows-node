@@ -24,11 +24,15 @@ public sealed partial class SetupWindow : Window
     public event EventHandler? AdvancedSetupRequested;
     public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
     public bool IsClosed => _isClosed;
-    public bool CanNavigateToWizard => !_isClosed && _setupLock is not null;
+    public bool CanNavigateToWizard =>
+        !_isClosed &&
+        _setupLock is not null &&
+        RootFrame.Content is not WizardPage;
     public bool CanNavigateToGatewayInstalledMilestone =>
         !_isClosed &&
         _setupLock is not null &&
-        RootFrame.Content is not ProgressPage { IsPipelineRunning: true };
+        RootFrame.Content is not ProgressPage { IsPipelineRunning: true } &&
+        RootFrame.Content is not WizardPage;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);

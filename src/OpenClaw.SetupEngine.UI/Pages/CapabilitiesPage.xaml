@@ -73,7 +73,7 @@
                                     </RadioButton>
                                 </RadioButtons>
 
-                                <Expander Margin="0,4,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                <Expander x:Name="CapabilityExpander" Margin="0,4,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                           Background="Transparent" BorderThickness="0"
                                           Header="Fine-tune individual capabilities (optional)">
                                     <Grid x:Name="CapGrid" ColumnSpacing="16" RowSpacing="4" Margin="0,4,0,4">
