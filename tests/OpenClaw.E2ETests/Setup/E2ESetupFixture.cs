@@ -478,7 +478,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     public async Task<OpenClaw.SetupEngine.CommandResult> RunInWslAsync(
         string command,
         TimeSpan? timeout = null,
-        IReadOnlyDictionary<string, string>? environment = null)
+        IReadOnlyDictionary<string, string>? environment = null,
+        bool inputViaStdin = false)
     {
         command = command.Replace("\r", "");
         Log($"WSL command: {SanitizeForLog(command)}");
@@ -489,6 +490,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = inputViaStdin,
             CreateNoWindow = true,
         };
 
@@ -496,8 +498,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         psi.ArgumentList.Add(_distroName);
         psi.ArgumentList.Add("--");
         psi.ArgumentList.Add("bash");
-        psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add(command);
+        psi.ArgumentList.Add(inputViaStdin ? "-s" : "-c");
+        if (!inputViaStdin)
+            psi.ArgumentList.Add(command);
 
         if (environment is { Count: > 0 })
         {
@@ -514,6 +517,13 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var sw = Stopwatch.StartNew();
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start wsl.exe");
+
+        if (inputViaStdin)
+        {
+            await process.StandardInput.WriteAsync(command);
+            await process.StandardInput.WriteAsync("\n");
+            process.StandardInput.Close();
+        }
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();

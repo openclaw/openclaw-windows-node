@@ -171,7 +171,8 @@ public class SetupAndConnectTests
         const string endMarker = "<!-- END OPENCLAW WINDOWS NODE CONTEXT -->";
         var convert = await _fixture.RunInWslAsync(
             $"tmp=$(mktemp); {{ printf 'CRLF_SENTINEL\\r\\n'; awk '{{ printf \"%s\\r\\n\", $0 }}' {agents}; }} > \"$tmp\"; mv \"$tmp\" {agents}",
-            TimeSpan.FromSeconds(15));
+            TimeSpan.FromSeconds(15),
+            inputViaStdin: true);
         AssertCommandSucceeded(convert, "convert AGENTS.md to CRLF");
 
         var config = SetupConfig.LoadFromFile(_fixture.ConfigPath);
@@ -191,7 +192,8 @@ public class SetupAndConnectTests
 
         var probe = await _fixture.RunInWslAsync(
             $"awk 'BEGIN {{ b=0; e=0 }} {{ line=$0; sub(/\\r$/, \"\", line); if (line == \"{beginMarker}\") b++; if (line == \"{endMarker}\") e++ }} END {{ print b, e }}' {agents}; grep -q $'CRLF_SENTINEL\\r$' {agents}",
-            TimeSpan.FromSeconds(15));
+            TimeSpan.FromSeconds(15),
+            inputViaStdin: true);
         AssertCommandSucceeded(probe, "verify CRLF context replacement");
         Assert.Contains("1 1", probe.Stdout);
     }
