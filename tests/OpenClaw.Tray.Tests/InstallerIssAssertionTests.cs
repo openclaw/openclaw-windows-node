@@ -166,6 +166,8 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("$args += \"/DDevBuild=1\"", script);
         Assert.Contains("app-identity.txt", script);
         Assert.Contains("Payload identity", script);
+        Assert.Contains("2>&1 | Out-Host", script);
+        Assert.Contains("$wingetExitCode = $LASTEXITCODE", script);
         Assert.Contains("WritePublishedAppIdentityMarker", project);
         Assert.Contains("<AppIdentityMarker>dev</AppIdentityMarker>", project);
         Assert.Contains("<AppIdentityMarker>release</AppIdentityMarker>", project);

@@ -66,8 +66,9 @@ function Resolve-InnoCompiler {
 
     if ($InstallInno) {
         Write-Step "Installing Inno Setup with winget"
-        winget install --id JRSoftware.InnoSetup -e --accept-source-agreements --accept-package-agreements --disable-interactivity
-        if ($LASTEXITCODE -ne 0) {
+        winget install --id JRSoftware.InnoSetup -e --accept-source-agreements --accept-package-agreements --disable-interactivity 2>&1 | Out-Host
+        $wingetExitCode = $LASTEXITCODE
+        if ($wingetExitCode -ne 0) {
             throw "winget failed to install Inno Setup."
         }
         return Resolve-InnoCompiler
