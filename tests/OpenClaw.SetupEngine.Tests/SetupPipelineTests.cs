@@ -78,6 +78,17 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public void BuildWizardOnlySteps_FinalizesWindowsNodeContextAfterWizard()
+    {
+        var steps = SetupStepFactory.BuildWizardOnlySteps();
+
+        Assert.Collection(
+            steps,
+            step => Assert.IsType<RunGatewayWizardStep>(step),
+            step => Assert.IsType<WindowsNodeBootstrapContextStep>(step));
+    }
+
+    [Fact]
     public async Task RunAsync_StepFails_ReturnsFailed()
     {
         var ctx = CreateContext();

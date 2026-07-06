@@ -164,6 +164,39 @@ public class SetupAndConnectTests
     }
 
     [E2EFact]
+    public async Task FullSetup_WindowsNodeContext_RemainsIdempotentAfterCrlfEdit()
+    {
+        const string agents = "/home/openclaw/.openclaw/workspace/AGENTS.md";
+        const string beginMarker = "<!-- BEGIN OPENCLAW WINDOWS NODE CONTEXT: managed by OpenClaw Windows setup -->";
+        const string endMarker = "<!-- END OPENCLAW WINDOWS NODE CONTEXT -->";
+        var convert = await _fixture.RunInWslAsync(
+            $"tmp=$(mktemp); {{ printf 'CRLF_SENTINEL\\r\\n'; awk '{{ printf \"%s\\r\\n\", $0 }}' {agents}; }} > \"$tmp\"; mv \"$tmp\" {agents}",
+            TimeSpan.FromSeconds(15));
+        AssertCommandSucceeded(convert, "convert AGENTS.md to CRLF");
+
+        var config = SetupConfig.LoadFromFile(_fixture.ConfigPath);
+        using var logger = new SetupLogger(filePath: null);
+        using var journal = new TransactionJournal(filePath: null, logger);
+        var context = new SetupContext(
+            config,
+            logger,
+            journal,
+            new CommandRunner(logger),
+            CancellationToken.None,
+            _fixture.DataDir,
+            _fixture.LocalAppDataRoot);
+
+        var result = await new WindowsNodeBootstrapContextStep().ExecuteAsync(context, CancellationToken.None);
+        Assert.True(result.IsSuccess, result.Message);
+
+        var probe = await _fixture.RunInWslAsync(
+            $"awk 'BEGIN {{ b=0; e=0 }} {{ line=$0; sub(/\\r$/, \"\", line); if (line == \"{beginMarker}\") b++; if (line == \"{endMarker}\") e++ }} END {{ print b, e }}' {agents}; grep -q $'CRLF_SENTINEL\\r$' {agents}",
+            TimeSpan.FromSeconds(15));
+        AssertCommandSucceeded(probe, "verify CRLF context replacement");
+        Assert.Contains("1 1", probe.Stdout);
+    }
+
+    [E2EFact]
     public async Task FullSetup_TrayStartsWslKeepAlive()
     {
         var logLine = await _fixture.WaitForTrayKeepAliveStartedAsync();

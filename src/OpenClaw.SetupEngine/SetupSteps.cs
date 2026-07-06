@@ -2972,15 +2972,15 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
                 : > "$agents"
                 echo "WINDOWS_NODE_CONTEXT_BOOTSTRAP_FALLBACK:$agents"
             fi
-            begin_count=$(grep -cFx -- "$begin_marker" "$agents" || true)
-            end_count=$(grep -cFx -- "$end_marker" "$agents" || true)
+            begin_count=$(awk -v M="$begin_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) count++ } END { print count + 0 }' "$agents")
+            end_count=$(awk -v M="$end_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) count++ } END { print count + 0 }' "$agents")
             if [ "$begin_count" -gt 1 ] || [ "$end_count" -gt 1 ] || [ "$begin_count" != "$end_count" ]; then
                 echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
                 exit 4
             fi
             if [ "$begin_count" = 1 ]; then
-                begin_line=$(grep -nFx -- "$begin_marker" "$agents" | head -1 | cut -d: -f1)
-                end_line=$(grep -nFx -- "$end_marker" "$agents" | head -1 | cut -d: -f1)
+                begin_line=$(awk -v M="$begin_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) { print NR; exit } }' "$agents")
+                end_line=$(awk -v M="$end_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) { print NR; exit } }' "$agents")
                 if [ "$end_line" -lt "$begin_line" ]; then
                     echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
                     exit 4
@@ -2990,11 +2990,12 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             trap 'rm -f -- "$tmp"' EXIT
             awk -v BEGIN_M="$begin_marker" -v END_M="$end_marker" '
               BEGIN { in_block = 0 }
-              $0 == BEGIN_M { in_block = 1; next }
-              in_block && $0 == END_M { in_block = 0; next }
+              { marker_line = $0; sub(/\r$/, "", marker_line) }
+              marker_line == BEGIN_M { in_block = 1; next }
+              in_block && marker_line == END_M { in_block = 0; next }
               in_block { next }
-              /^[[:space:]]*$/ { blank = blank "\n"; next }
-              { printf "%s%s\n", blank, $0; blank = "" }
+              /^[[:space:]]*$/ { blank = blank $0 ORS; next }
+              { printf "%s%s%s", blank, $0, ORS; blank = "" }
             ' "$agents" > "$tmp"
             if [ -s "$tmp" ]; then
                 printf '\n' >> "$tmp"
@@ -3024,8 +3025,8 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
                 echo "AGENTS_SYMLINK_ROLLBACK_SKIPPED:$agents"
                 exit 0
             fi
-            begin_count=$(grep -cFx -- "$begin_marker" "$agents" || true)
-            end_count=$(grep -cFx -- "$end_marker" "$agents" || true)
+            begin_count=$(awk -v M="$begin_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) count++ } END { print count + 0 }' "$agents")
+            end_count=$(awk -v M="$end_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) count++ } END { print count + 0 }' "$agents")
             if [ "$begin_count" = 0 ] && [ "$end_count" = 0 ]; then
                 echo "WINDOWS_NODE_CONTEXT_REMOVED"
                 exit 0
@@ -3034,8 +3035,8 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
                 echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
                 exit 4
             fi
-            begin_line=$(grep -nFx -- "$begin_marker" "$agents" | head -1 | cut -d: -f1)
-            end_line=$(grep -nFx -- "$end_marker" "$agents" | head -1 | cut -d: -f1)
+            begin_line=$(awk -v M="$begin_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) { print NR; exit } }' "$agents")
+            end_line=$(awk -v M="$end_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) { print NR; exit } }' "$agents")
             if [ "$end_line" -lt "$begin_line" ]; then
                 echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
                 exit 4
@@ -3044,8 +3045,9 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             trap 'rm -f -- "$tmp"' EXIT
             awk -v BEGIN_M="$begin_marker" -v END_M="$end_marker" '
               BEGIN { in_block = 0 }
-              $0 == BEGIN_M { in_block = 1; next }
-              in_block && $0 == END_M { in_block = 0; next }
+              { marker_line = $0; sub(/\r$/, "", marker_line) }
+              marker_line == BEGIN_M { in_block = 1; next }
+              in_block && marker_line == END_M { in_block = 0; next }
               in_block { next }
               { print }
             ' "$agents" > "$tmp"

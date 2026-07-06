@@ -1650,6 +1650,7 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("printf '%s' \"$block_b64\" | base64 -d >> \"$tmp\"", script);
         Assert.Contains("mktemp \"$workspace/.AGENTS.md.openclaw.XXXXXX\"", script);
         Assert.Contains("chmod --reference=\"$agents\" \"$tmp\"", script);
+        Assert.Contains("sub(/\\r$/, \"\", marker_line)", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_READY", script);
         // Must not depend on node or carry an embedded JS payload.
@@ -1675,6 +1676,7 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("awk -v BEGIN_M=\"$begin_marker\" -v END_M=\"$end_marker\"", script);
         Assert.Contains("mktemp \"$workspace/.AGENTS.md.openclaw.XXXXXX\"", script);
         Assert.Contains("chmod --reference=\"$agents\" \"$tmp\"", script);
+        Assert.Contains("sub(/\\r$/, \"\", marker_line)", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_ABSENT", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_REMOVED", script);
         // Must not depend on node or carry an embedded JS payload.

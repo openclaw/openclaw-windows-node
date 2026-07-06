@@ -147,7 +147,7 @@ public static class Program
         }
         else if (wizardOnly)
         {
-            steps = [new RunGatewayWizardStep()];
+            steps = SetupStepFactory.BuildWizardOnlySteps();
         }
         else
         {

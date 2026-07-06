@@ -38,6 +38,12 @@ public sealed record StepProgressEvent(string StepId, string DisplayName, StepOu
 
 public static class SetupStepFactory
 {
+    public static List<SetupStep> BuildWizardOnlySteps() =>
+    [
+        new RunGatewayWizardStep(),
+        new WindowsNodeBootstrapContextStep(),
+    ];
+
     public static List<SetupStep> BuildDefaultSteps()
     {
         return
