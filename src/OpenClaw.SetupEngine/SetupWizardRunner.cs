@@ -231,7 +231,7 @@ public sealed class SetupWizardRunner
                     }
                     : WizardNextPayload.Acknowledge(sessionId, parsed.StepId);
 
-                payload = await SendWizardNextAsync(parameters, TimeoutFor(parsed));
+                payload = await SendWizardNextAsync(parameters, TimeoutFor(parsed, answerResult.Answer));
             }
         }
         catch (OperationCanceledException)
@@ -478,7 +478,14 @@ public sealed class SetupWizardRunner
         return false;
     }
 
-    private static int TimeoutFor(WizardPayload step) => WizardTimeouts.ForStep(step.Title, step.Message);
+    private static int TimeoutFor(WizardPayload step, string? answer = null)
+        => WizardTimeouts.ForGatewayStep(
+            step.Title,
+            step.Message,
+            step.StepId,
+            step.StepType,
+            step.Options,
+            answer);
 
     private static bool IsRestartLikeWizardDisconnect(Exception ex)
     {

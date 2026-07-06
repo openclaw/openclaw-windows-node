@@ -306,7 +306,7 @@ public sealed partial class WizardPage : Page
                 payload = await _client.SendWizardRequestAsync(
                     "wizard.next",
                     WizardNextPayload.Acknowledge(_sessionId, _stepId),
-                    timeoutMs: WizardTimeouts.ForStep(title, message));
+                    timeoutMs: WizardTimeouts.ForStep(title, message, _stepId));
 
                 if (generation != _operationGeneration || _errorState || _client == null)
                     return;
@@ -786,7 +786,19 @@ public sealed partial class WizardPage : Page
             ErrorText.Visibility = Visibility.Collapsed;
     }
 
-    private int TimeoutForCurrentStep() => WizardTimeouts.ForStep(_currentTitle, _currentMessage);
+    private int TimeoutForCurrentStep()
+    {
+        IReadOnlyCollection<WizardOptionValue>? selectedOptions = null;
+        if (WizardSelection.RequiresSelection(_stepType))
+        {
+            var selectedValues = GetSelectedOptionValues().ToHashSet(StringComparer.Ordinal);
+            selectedOptions = _options
+                .Where(option => selectedValues.Contains(option.Value))
+                .ToArray();
+        }
+
+        return WizardTimeouts.ForStep(_currentTitle, _currentMessage, _stepId, selectedOptions);
+    }
 
     private void ResetInputs()
     {

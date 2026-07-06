@@ -598,6 +598,15 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void WizardProgressPolling_UsesStepIdForTimeoutClassification()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+
+        Assert.Contains("WizardTimeouts.ForStep(title, message, _stepId)", source);
+    }
+
+    [Fact]
     public void WizardCompletion_AppliesWindowsNodeContextBeforeSummary()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

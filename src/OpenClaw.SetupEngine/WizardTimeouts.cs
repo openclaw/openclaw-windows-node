@@ -6,8 +6,8 @@ public static class WizardTimeouts
     /// <summary>Default per-step wizard request timeout.</summary>
     public const int DefaultTimeoutMs = 30_000;
 
-    /// <summary>Extended timeout for steps that wait on external auth.</summary>
-    public const int AuthTimeoutMs = 300_000;
+    /// <summary>Extended timeout for steps that wait on auth or external setup work.</summary>
+    public const int SlowStepTimeoutMs = 300_000;
 
     /// <summary>Polling delay for gateway progress/status wizard steps.</summary>
     public static readonly TimeSpan ProgressPollDelay = TimeSpan.FromSeconds(1);
@@ -24,16 +24,82 @@ public static class WizardTimeouts
         "browser", "authenticate", "verification",
     };
 
-    /// <summary>Auth-style steps get <see cref="AuthTimeoutMs"/>; others get <see cref="DefaultTimeoutMs"/>.</summary>
-    public static int ForStep(string? title, string? message)
+    private static readonly string[] s_slowSetupHints =
     {
-        var text = $"{title} {message}";
-        foreach (var hint in s_authHints)
-        {
-            if (text.Contains(hint, StringComparison.OrdinalIgnoreCase))
-                return AuthTimeoutMs;
-        }
+        "plugin", "install", "download", "teams",
+    };
+
+    /// <summary>
+    /// Auth and external setup steps get <see cref="SlowStepTimeoutMs"/>; ordinary
+    /// questions get <see cref="DefaultTimeoutMs"/>. Only selected option metadata
+    /// is considered so an unselected slow integration does not extend every choice.
+    /// </summary>
+    public static int ForStep(
+        string? title,
+        string? message,
+        string? stepId = null,
+        IReadOnlyCollection<WizardOptionValue>? selectedOptions = null)
+    {
+        var promptText = JoinText(title, message);
+        if (HasAnyHint(promptText, s_authHints))
+            return SlowStepTimeoutMs;
+
+        // With a choice step, only the submitted option proves which operation
+        // will run. This keeps "skip" and unrelated options on the short path.
+        var slowText = selectedOptions is null
+            ? JoinText(title, message, stepId)
+            : JoinOptionText(selectedOptions);
+        if (HasAnyHint(slowText, s_slowSetupHints))
+            return SlowStepTimeoutMs;
 
         return DefaultTimeoutMs;
     }
+
+    internal static int ForGatewayStep(
+        string? title,
+        string? message,
+        string? stepId,
+        string? stepType,
+        IReadOnlyList<WizardOptionValue> options,
+        string? answer = null)
+    {
+        var category = WizardStepClassifier.Categorize(stepType, options.Count > 0);
+        IReadOnlyCollection<WizardOptionValue>? selectedOptions =
+            category == WizardStepCategory.RequiresAnswer && options.Count > 0 ? [] : null;
+
+        if (selectedOptions is not null && !string.IsNullOrWhiteSpace(answer))
+        {
+            if (string.Equals(stepType, "multiselect", StringComparison.OrdinalIgnoreCase)
+                && WizardAnswerBuilder.TryResolveOptions(options, answer, out var multiselectOptions))
+            {
+                selectedOptions = multiselectOptions;
+            }
+            else if (!string.Equals(stepType, "multiselect", StringComparison.OrdinalIgnoreCase)
+                && WizardAnswerBuilder.TryFindOption(options, answer, out var selectedOption))
+            {
+                selectedOptions = [selectedOption];
+            }
+        }
+
+        return ForStep(title, message, stepId, selectedOptions);
+    }
+
+    private static string JoinOptionText(IEnumerable<WizardOptionValue> options)
+    {
+        var parts = new List<string?>();
+        foreach (var option in options)
+        {
+            parts.Add(option.Value);
+            parts.Add(option.Label);
+            parts.Add(option.Hint);
+        }
+
+        return JoinText(parts.ToArray());
+    }
+
+    private static string JoinText(params string?[] parts) =>
+        string.Join(' ', parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    private static bool HasAnyHint(string text, IEnumerable<string> hints) =>
+        hints.Any(hint => text.Contains(hint, StringComparison.OrdinalIgnoreCase));
 }
