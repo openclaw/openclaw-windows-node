@@ -2629,6 +2629,16 @@ public class OpenClawChatDataProviderTests
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
         Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "second");
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+        bridge.RaiseChat(firstFinal);
+
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
     }
 
     [Fact]

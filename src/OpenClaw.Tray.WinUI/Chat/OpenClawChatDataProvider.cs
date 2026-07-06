@@ -4596,6 +4596,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string? gatewayMessageId,
         int? openClawSeq)
     {
+        if ((!string.IsNullOrEmpty(gatewayMessageId) || openClawSeq is not null) &&
+            IsIdentifiedCompletedAssistantDuplicateLocked(
+                threadId,
+                assistantText,
+                gatewayMessageId,
+                openClawSeq))
+        {
+            return AssistantQueueFrameDisposition.Drop;
+        }
+
         if (!_locallyInitiatedThreads.Contains(threadId) ||
             !TryGetSingleSendingQueuedMessageLocked(threadId, out _) ||
             _activeRunIds.ContainsKey(threadId) ||
@@ -4630,6 +4640,37 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
 
         return AssistantQueueFrameDisposition.Render;
+    }
+
+    private bool IsIdentifiedCompletedAssistantDuplicateLocked(
+        string threadId,
+        string assistantText,
+        string? gatewayMessageId,
+        int? openClawSeq)
+    {
+        if (!_timelines.TryGetValue(threadId, out var timeline) ||
+            !_entryMeta.TryGetValue(threadId, out var threadMeta))
+        {
+            return false;
+        }
+
+        for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+        {
+            var entry = timeline.Entries[i];
+            if (entry.Kind != ChatTimelineItemKind.Assistant ||
+                entry.IsStreaming ||
+                !string.Equals(entry.Text, assistantText, StringComparison.Ordinal) ||
+                !threadMeta.TryGetValue(entry.Id, out var existing))
+            {
+                continue;
+            }
+
+            return (!string.IsNullOrEmpty(gatewayMessageId) &&
+                    string.Equals(existing.GatewayMessageId, gatewayMessageId, StringComparison.Ordinal)) ||
+                   (openClawSeq is not null && existing.OpenClawSeq == openClawSeq);
+        }
+
+        return false;
     }
 
     private void ReplayDeferredAssistantMessage(string threadId)
