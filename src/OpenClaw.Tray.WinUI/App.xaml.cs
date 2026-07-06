@@ -2747,7 +2747,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // if the user enabled "Read responses aloud".
         if (notification.IsChat && !string.IsNullOrEmpty(notification.Message))
         {
-            var speechText = notification.FullMessage ?? notification.Message;
+            var speechText = ChatNotificationSpeechText.Resolve(notification);
 
             // Suppress TTS/voice overlay when the user has aborted the response.
             if (ChatProvider?.IsResponseSuppressed == true)
