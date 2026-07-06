@@ -168,9 +168,9 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
-                        <ComboBox Grid.Column="1" x:Name="NotificationSoundComboBox" MinWidth="140"
-                                  AutomationProperties.AutomationId="SettingsPageSound"
-                                  AutomationProperties.Name="Notification sound">
+                        <ComboBox Grid.Column="1" x:Uid="SettingsPage_NotificationSoundComboBox"
+                                  x:Name="NotificationSoundComboBox" MinWidth="140"
+                                  AutomationProperties.AutomationId="SettingsPageSound">
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_48" Content="Default" Tag="Default"/>
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_49" Content="None" Tag="None"/>
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_50" Content="Subtle" Tag="Subtle"/>

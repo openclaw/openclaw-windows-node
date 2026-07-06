@@ -367,8 +367,8 @@
             </Grid.Clip>
 
             <NavigationView
+                x:Uid="HubWindow_MainNavigation"
                 x:Name="NavView"
-                AutomationProperties.Name="Main navigation"
                 IsBackButtonVisible="Collapsed"
                 IsSettingsVisible="False"
                 IsPaneToggleButtonVisible="False"

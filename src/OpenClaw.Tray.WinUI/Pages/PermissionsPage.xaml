@@ -349,8 +349,8 @@
                         <TextBox Grid.Column="0" x:Uid="NewRulePattern" x:Name="NewRulePattern"
                                  PlaceholderText="Command pattern (e.g. echo *)"
                                  FontFamily="Consolas"/>
-                        <ComboBox Grid.Column="1" x:Name="NewRuleAction" MinWidth="100" SelectedIndex="0"
-                                  AutomationProperties.Name="Rule action">
+                        <ComboBox Grid.Column="1" x:Uid="PermissionsPage_NewRuleAction" x:Name="NewRuleAction"
+                                  MinWidth="100" SelectedIndex="0">
                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="Deny" Tag="deny"/>
                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="Allow" Tag="allow"/>
                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_56" Content="Ask" Tag="prompt"/>

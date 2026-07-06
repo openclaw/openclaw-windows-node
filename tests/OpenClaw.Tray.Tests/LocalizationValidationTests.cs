@@ -358,6 +358,24 @@ public class LocalizationValidationTests
         "Onboarding_Ready_Node_Notify_Sub",
     ];
 
+    private static readonly string[] RequiredLocalizedAccessibilityKeys =
+    [
+        "PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SandboxPage_DownloadsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SandboxPage_DesktopAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "SettingsPage_NotificationSoundComboBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "VoiceSettingsPage_AssistantRefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "VoiceSettingsPage_AssistantStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "VoiceSettingsPage_AssistantStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "VoiceSettingsPage_LanguageCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+    ];
+
     private static readonly IReadOnlyDictionary<char, byte> Windows1252Bytes = BuildWindows1252ByteMap();
 
     private static readonly IReadOnlyDictionary<char, byte> CodePage437Bytes = BuildCodePage437ByteMap();
@@ -647,6 +665,22 @@ public class LocalizationValidationTests
                 $"Locale '{locale}' is missing {missing.Count} key(s): {string.Join(", ", missing.Take(10))}");
             Assert.True(extra.Count == 0,
                 $"Locale '{locale}' has {extra.Count} unexpected key(s): {string.Join(", ", extra.Take(10))}");
+        }
+    }
+
+    [Fact]
+    public void AccessibilityNames_ExistInEveryLocale()
+    {
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()).OrderBy(p => p, StringComparer.Ordinal))
+        {
+            var locale = Path.GetFileName(localeDir);
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+            var missing = RequiredLocalizedAccessibilityKeys
+                .Where(key => !resources.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                .ToList();
+
+            Assert.True(missing.Count == 0,
+                $"Locale '{locale}' is missing localized accessibility names: {string.Join(", ", missing)}");
         }
     }
 
