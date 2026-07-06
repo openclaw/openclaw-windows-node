@@ -130,7 +130,7 @@
   },
 
   // ─── Windows Node Context Injection ───
-  // Inject setup-owned guidance into the OpenClaw runtime workspace AGENTS.md.
+  // Inject setup-owned guidance into the final OpenClaw runtime workspace AGENTS.md.
   "WindowsNodeContext": {
     "Enabled": true,
     // Optional WSL workspace path override; null = let the pinned gateway CLI's baseline setup use its configured/default workspace.

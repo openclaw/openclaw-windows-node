@@ -58,9 +58,9 @@ public static class SetupStepFactory
             new MintBootstrapTokenStep(),
             new PairOperatorStep(),
             new PairNodeStep(),
-            new WindowsNodeBootstrapContextStep(),
             new VerifyEndToEndStep(),
             new RunGatewayWizardStep(),
+            new WindowsNodeBootstrapContextStep(),
             new StartKeepaliveStep(),
         ];
     }
@@ -72,12 +72,14 @@ public sealed class SetupPipeline
 {
     private readonly List<SetupStep> _steps;
     private readonly List<SetupStep> _completedSteps = new();
+    private readonly bool? _rollbackOnFailureOverride;
 
     public event EventHandler<StepProgressEvent>? StepProgress;
 
-    public SetupPipeline(IEnumerable<SetupStep> steps)
+    public SetupPipeline(IEnumerable<SetupStep> steps, bool? rollbackOnFailureOverride = null)
     {
         _steps = steps.ToList();
+        _rollbackOnFailureOverride = rollbackOnFailureOverride;
     }
 
     public async Task<PipelineResult> RunAsync(SetupContext ctx)
@@ -170,7 +172,7 @@ public sealed class SetupPipeline
             else
                 ctx.Logger.Warn($"SetupPipeline: Step '{step.Id}' failed: {result.Message}");
 
-            if (ctx.Config.RollbackOnFailure)
+            if (_rollbackOnFailureOverride ?? ctx.Config.RollbackOnFailure)
             {
                 await RollbackFailedStep(step, ctx);
                 await RollbackCompletedSteps(ctx);

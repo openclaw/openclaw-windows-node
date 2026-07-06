@@ -3711,13 +3711,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_settings == null)
             return (null, false);
 
-        if (_setupWindow != null)
+        while (_setupWindow != null)
         {
             var existingSetupWindow = _setupWindow;
             await existingSetupWindow.WaitForInitialContentReadyAsync();
-            if (ReferenceEquals(_setupWindow, existingSetupWindow) && !existingSetupWindow.IsClosed)
-                existingSetupWindow.BringToFrontForSetupLaunch();
-            return (existingSetupWindow, false);
+            if (!existingSetupWindow.IsClosed)
+            {
+                if (ReferenceEquals(_setupWindow, existingSetupWindow))
+                    existingSetupWindow.BringToFrontForSetupLaunch();
+                return (existingSetupWindow, false);
+            }
+
+            await existingSetupWindow.CleanupCompleted;
+            if (ReferenceEquals(_setupWindow, existingSetupWindow))
+                _setupWindow = null;
         }
 
         try
@@ -3732,8 +3739,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _setupWindow = setupWindow;
             setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
             setupWindow.SetupCompleted += OnSetupCompleted;
-            setupWindow.Closed += (_, _) =>
+            setupWindow.Closed += async (_, _) =>
             {
+                await setupWindow.CleanupCompleted;
                 if (ReferenceEquals(_setupWindow, setupWindow))
                     _setupWindow = null;
             };

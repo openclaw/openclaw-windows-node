@@ -13,7 +13,11 @@ public sealed partial class SetupWindow : Window
 {
     private SetupConfig _config = null!;
     private SetupRunLock? _setupLock;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private Task<StepResult>? _contextApplyTask;
     private readonly TaskCompletionSource<bool> _initialContentReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _cleanupCompleted =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _isClosed;
     private bool _persistStartupPreferenceOnComplete = true;
@@ -26,6 +30,7 @@ public sealed partial class SetupWindow : Window
     public event EventHandler? AdvancedSetupRequested;
     public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
     public bool IsClosed => _isClosed;
+    public Task CleanupCompleted => _cleanupCompleted.Task;
     internal string DataDir => _dataDir;
     internal string LocalDataDir => _localDataDir;
     public bool CanNavigateToWizard =>
@@ -109,14 +114,32 @@ public sealed partial class SetupWindow : Window
             _showStartupPreferenceOnComplete = false;
         }
 
-        Closed += (_, _) =>
+        Closed += async (_, _) =>
         {
             _isClosed = true;
             _initialContentReady.TrySetResult(true);
-            _setupLock?.Dispose();
-            _setupLock = null;
-            if (ReferenceEquals(Active, this))
-                Active = null;
+            try
+            {
+                _lifetimeCts.Cancel();
+                if (_contextApplyTask is { } contextApplyTask)
+                    await contextApplyTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Window teardown owns this cancellation; cleanup still must finish.
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Setup cleanup failed: {ex}");
+            }
+            finally
+            {
+                _setupLock?.Dispose();
+                _setupLock = null;
+                if (ReferenceEquals(Active, this))
+                    Active = null;
+                _cleanupCompleted.TrySetResult(true);
+            }
         };
 
         var previewPage = SetupPreview.RequestedPage;
@@ -166,6 +189,52 @@ public sealed partial class SetupWindow : Window
 
         NavigateTo(typeof(WizardPage), _config, back);
         return true;
+    }
+
+    internal async Task<StepResult> ApplyWindowsNodeContextAsync()
+    {
+        if (_contextApplyTask is { } existingTask)
+            return await existingTask;
+
+        _contextApplyTask = ApplyWindowsNodeContextCoreAsync();
+        try
+        {
+            return await _contextApplyTask;
+        }
+        finally
+        {
+            _contextApplyTask = null;
+        }
+    }
+
+    private async Task<StepResult> ApplyWindowsNodeContextCoreAsync()
+    {
+        if (!_config.WindowsNodeContext.Enabled)
+            return StepResult.Skip("Windows node context injection disabled");
+
+        var ct = _lifetimeCts.Token;
+        using var logger = new SetupLogger(filePath: null);
+        using var journal = new TransactionJournal(filePath: null, logger);
+        var context = new SetupContext(
+            _config,
+            logger,
+            journal,
+            new CommandRunner(logger),
+            ct,
+            _dataDir,
+            _localDataDir);
+        // This is an idempotent refresh after onboarding, not a transactional
+        // install. A failed refresh must not remove a valid block from an earlier run.
+        var pipeline = new SetupPipeline(
+            [new WindowsNodeBootstrapContextStep()],
+            rollbackOnFailureOverride: false);
+        var result = await pipeline.RunAsync(context);
+        return result.Outcome switch
+        {
+            PipelineOutcome.Success => StepResult.Ok("Windows node context injected"),
+            PipelineOutcome.Cancelled => StepResult.Fail("Windows node context injection was cancelled"),
+            _ => StepResult.Fail(result.Message ?? "Windows node context injection failed")
+        };
     }
 
     public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)

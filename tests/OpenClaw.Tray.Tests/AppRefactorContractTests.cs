@@ -353,10 +353,22 @@ public sealed class AppRefactorContractTests
         Assert.Contains("gatewayPortOverride: AppIdentity.SetupGatewayPort", source);
         Assert.Contains("SetupRunLock.TryAcquire(_dataDir", setupWindow);
         Assert.Contains("new SetupContext(", progressPage);
+        Assert.Contains("step is not RunGatewayWizardStep", progressPage);
+        Assert.Contains("config.SkipWizard || step is not WindowsNodeBootstrapContextStep", progressPage);
         Assert.Contains("_dataDir,", progressPage);
         Assert.Contains("_localDataDir);", progressPage);
         Assert.Contains("setupWindow?.DataDir ?? SetupContext.ResolveDataDir()", welcomePage);
         Assert.Contains("SetupWindow.Active?.DataDir ?? SetupContext.ResolveDataDir()", wizardPage);
+        Assert.Contains("await CompleteSetupAsync(generation)", wizardPage);
+        Assert.Contains("ApplyWindowsNodeContextAsync", wizardPage);
+        Assert.Contains("var pipeline = new SetupPipeline(", setupWindow);
+        Assert.Contains("[new WindowsNodeBootstrapContextStep()]", setupWindow);
+        Assert.Contains("rollbackOnFailureOverride: false", setupWindow);
+        AssertInOrder(
+            setupWindow,
+            "_lifetimeCts.Cancel()",
+            "await contextApplyTask",
+            "_setupLock?.Dispose()");
         Assert.Contains("distroNameOverride: _config.DistroName", wizardPage);
         Assert.Contains("if (AppIdentity.IsDev)", updateCoordinator);
         Assert.Contains("Skipping release-channel update check in development build", updateCoordinator);
@@ -436,6 +448,37 @@ public sealed class AppRefactorContractTests
             "_config.Settings.AutoStart = enableAutoStart",
             "TraySettingsConfig.UpdateAutoStartInSettingsFile",
             "handler.Invoke");
+    }
+
+    [Fact]
+    public void SetupWindowOwnership_WaitsForCleanupBeforeAllowingAnotherRun()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+
+        Assert.Contains("public Task CleanupCompleted => _cleanupCompleted.Task", setupWindow);
+        AssertInOrder(
+            setupWindow,
+            "_lifetimeCts.Cancel()",
+            "await contextApplyTask",
+            "catch (OperationCanceledException)",
+            "_setupLock?.Dispose()",
+            "_cleanupCompleted.TrySetResult(true)");
+        Assert.Contains("rollbackOnFailureOverride: false", setupWindow);
+        AssertInOrder(
+            app,
+            "while (_setupWindow != null)",
+            "await existingSetupWindow.WaitForInitialContentReadyAsync()",
+            "if (!existingSetupWindow.IsClosed)",
+            "await existingSetupWindow.CleanupCompleted",
+            "_setupWindow = null",
+            "new SetupWindow(");
+        AssertInOrder(
+            app,
+            "setupWindow.Closed += async",
+            "await setupWindow.CleanupCompleted",
+            "_setupWindow = null");
     }
 
     [Fact]
@@ -552,6 +595,23 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("_errorState", method);
         Assert.DoesNotContain("SkipWizardAsync", method);
         Assert.Contains("SendCurrentAnswerAsync(skip: true)", method);
+    }
+
+    [Fact]
+    public void WizardCompletion_AppliesWindowsNodeContextBeforeSummary()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var complete = ExtractMethod(source, "CompleteSetupAsync");
+        var skip = ExtractMethod(source, "SkipWizardAsync");
+
+        AssertInOrder(
+            complete,
+            "ApplyWindowsNodeContextAsync",
+            "if (!contextResult.IsSuccess)",
+            "NavigateToComplete(true");
+        Assert.Contains("await CompleteSetupAsync(generation)", skip);
+        Assert.Contains("_errorState = false", skip);
     }
 
     [Fact]

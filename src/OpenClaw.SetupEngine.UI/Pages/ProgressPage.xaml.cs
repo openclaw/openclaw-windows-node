@@ -316,6 +316,7 @@ public sealed partial class ProgressPage : Page
     private static List<SetupStep> BuildSteps(SetupConfig config)
         => SetupStepFactory.BuildDefaultSteps()
             .Where(step => step is not RunGatewayWizardStep)
+            .Where(step => config.SkipWizard || step is not WindowsNodeBootstrapContextStep)
             .ToList();
 }
 

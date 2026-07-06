@@ -236,8 +236,7 @@ public sealed partial class WizardPage : Page
                 if (generation != _operationGeneration || _errorState)
                     return;
 
-                // Permissions are collected before install, so the wizard completes straight to summary.
-                SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
+                await CompleteSetupAsync(generation);
                 return;
             }
 
@@ -1140,13 +1139,36 @@ public sealed partial class WizardPage : Page
 
     private async Task SkipWizardAsync()
     {
-        AdvanceOperationGeneration();
+        var generation = AdvanceOperationGeneration();
+        _errorState = false;
         HideRecoveryActions();
         SetBusy("Skipping wizard...");
         await CancelCurrentSessionAsync();
-        // Permissions were already collected before install, so skipping OpenClaw
-        // onboard completes straight to the summary.
-        SetupWindow.Active?.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
+        await CompleteSetupAsync(generation);
+    }
+
+    private async Task CompleteSetupAsync(int generation)
+    {
+        if (generation != _operationGeneration || _errorState)
+            return;
+
+        var setupWindow = SetupWindow.Active;
+        if (setupWindow is null or { IsClosed: true })
+            return;
+
+        SetBusy("Finishing Windows integration...");
+        var contextResult = await setupWindow.ApplyWindowsNodeContextAsync();
+        if (generation != _operationGeneration || setupWindow.IsClosed)
+            return;
+
+        if (!contextResult.IsSuccess)
+        {
+            ShowError($"OpenClaw onboard finished, but Windows node guidance could not be installed: {contextResult.Message}");
+            return;
+        }
+
+        // Permissions were collected before install, so completion goes straight to summary.
+        setupWindow.NavigateToComplete(true, TimeSpan.Zero, _config!.LogPath);
     }
 
     private async Task CancelCurrentSessionAsync()

@@ -2751,30 +2751,16 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         if (home is null)
             return StepResult.Fail("Could not resolve Linux home directory for openclaw user");
 
-        // Compute the absolute workspace path BEFORE running `openclaw setup`
-        // so the same path goes to both setup and the apply script. Otherwise
-        // an override like `~/foo` or `relative/foo` could land setup in one
-        // directory and the apply step in another.
-        var workspaceOverride = ctx.Config.WindowsNodeContext.WorkspacePath?.Trim();
-        string workspace;
-        if (!string.IsNullOrWhiteSpace(workspaceOverride))
-        {
-            workspace = ExpandLinuxPath(workspaceOverride, home);
-            var setupResult = await RunOpenclawSetupAsync(ctx, distro, user, workspace, ct);
-            if (!setupResult.IsSuccess)
-                return setupResult;
-        }
-        else
-        {
-            var setupResult = await RunOpenclawSetupAsync(ctx, distro, user, workspaceAbsolute: null, ct);
-            if (!setupResult.IsSuccess)
-                return setupResult;
+        // Resolve before baseline setup and pass the same absolute path to both
+        // setup and injection. The managed gateway starts from this user's home,
+        // so relative configured paths are home-relative rather than caller-cwd-relative.
+        var workspace = await ResolveWorkspacePathAsync(ctx, distro, user, home, ct);
+        if (string.IsNullOrWhiteSpace(workspace))
+            return StepResult.Fail("Could not resolve OpenClaw agent workspace path");
 
-            var resolved = await ResolveWorkspacePathAsync(ctx, distro, user, home, ct);
-            if (string.IsNullOrWhiteSpace(resolved))
-                return StepResult.Fail("Could not resolve OpenClaw agent workspace path");
-            workspace = resolved;
-        }
+        var setupResult = await RunOpenclawSetupAsync(ctx, distro, user, workspace, ct);
+        if (!setupResult.IsSuccess)
+            return setupResult;
 
         var script = BuildApplyScript(workspace);
         // Uses stdin to bypass wsl.exe argv variable-expansion (see docs/WSL_EXE_ARGV_PITFALL.md).
@@ -2840,11 +2826,9 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         return string.IsNullOrWhiteSpace(home) ? null : home;
     }
 
-    internal static async Task<StepResult> RunOpenclawSetupAsync(SetupContext ctx, string distro, string user, string? workspaceAbsolute, CancellationToken ct)
+    internal static async Task<StepResult> RunOpenclawSetupAsync(SetupContext ctx, string distro, string user, string workspaceAbsolute, CancellationToken ct)
     {
-        var setupCommand = string.IsNullOrWhiteSpace(workspaceAbsolute)
-            ? "openclaw setup"
-            : $"openclaw setup --workspace {ShellEscape(workspaceAbsolute)}";
+        var setupCommand = $"openclaw setup --workspace {ShellEscape(workspaceAbsolute)}";
 
         // The pinned 2026.6.11 CLI's setup command is baseline-only. Reverify this
         // invocation whenever GatewayLkgVersion moves to a release that changes it.
@@ -2872,7 +2856,7 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         if (!string.IsNullOrWhiteSpace(workspaceOverride))
             return ExpandLinuxPath(workspaceOverride, home);
 
-        var script = $"{ctx.WslPathPrefix}\nopenclaw config get agents.defaults.workspace --json 2>/dev/null";
+        var script = $"{ctx.WslPathPrefix}\nopenclaw config get agents.defaults.workspace --json";
         // Uses stdin to bypass wsl.exe argv variable-expansion (the script's
         // PATH prefix references $PATH). See docs/WSL_EXE_ARGV_PITFALL.md.
         var result = await ctx.Commands.RunInWslAsync(
@@ -2883,9 +2867,34 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             user: user,
             inputViaStdin: true);
 
+        if (result.TimedOut)
+            return null;
+
         var raw = ExtractWorkspaceFromConfigOutput(result.Stdout);
-        if (string.IsNullOrWhiteSpace(raw))
+        if (result.ExitCode != 0)
+        {
+            // Pinned 2026.6.11 reports an absent key with exit 1. Only that
+            // known case may select the default; other read failures must not
+            // be persisted by the subsequent `setup --workspace` call.
+            if (!result.Stderr.Contains(
+                    "Config path not found: agents.defaults.workspace",
+                    StringComparison.Ordinal))
+                return null;
+
             raw = $"{home.TrimEnd('/')}/.openclaw/workspace";
+        }
+        else if (string.IsNullOrWhiteSpace(raw))
+        {
+            // A present JSON null uses OpenClaw's default. Empty or malformed
+            // successful output is an operational failure, not evidence that
+            // the key is absent.
+            if (!result.Stdout
+                    .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                    .Any(line => string.Equals(line.Trim(), "null", StringComparison.Ordinal)))
+                return null;
+
+            raw = $"{home.TrimEnd('/')}/.openclaw/workspace";
+        }
 
         return ExpandLinuxPath(raw, home);
     }
