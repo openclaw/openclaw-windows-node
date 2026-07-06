@@ -1,6 +1,27 @@
 ; OpenClaw Companion Inno Setup Script (WinUI version)
-#define MyAppName "OpenClaw Companion"
-#define MyAppPublisher "Scott Hanselman"
+; Pass /DDevBuild=1 to produce a side-by-side dev installer.
+#ifdef DevBuild
+  #define MyAppName "OpenClaw Companion (Dev)"
+  #define MyAppId "{{M0LTB0T-TRAY-4PP1-DEV}"
+  #define MyInstallDir "OpenClawTray-Dev"
+  #define MyMutex "OpenClawTray-Dev"
+  #define MyAutoStartName "OpenClawTray-Dev"
+  #define MyStartupTaskName "OpenClaw Companion (Dev)"
+  #define MyDistroName "OpenClawGateway-Dev"
+  #define MyProtocol "openclaw-dev"
+  #define MyOutputSuffix "-Dev"
+#else
+  #define MyAppName "OpenClaw Companion"
+  #define MyAppId "{{M0LTB0T-TRAY-4PP1-D3N7}"
+  #define MyInstallDir "OpenClawTray"
+  #define MyMutex "OpenClawTray"
+  #define MyAutoStartName "OpenClawTray"
+  #define MyStartupTaskName "OpenClaw Companion"
+  #define MyDistroName "OpenClawGateway"
+  #define MyProtocol "openclaw"
+  #define MyOutputSuffix ""
+#endif
+#define MyAppPublisher "OpenClaw Foundation"
 #define MyAppURL "https://github.com/openclaw/openclaw-windows-node"
 #define MyAppExeName "OpenClaw.Tray.WinUI.exe"
 
@@ -20,17 +41,17 @@
 [Setup]
 ; Inno requires "{{" to emit a literal opening brace in AppId.
 ; Do not add a second closing brace here; that creates a malformed uninstall registry key.
-AppId={{M0LTB0T-TRAY-4PP1-D3N7}
+AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL=https://github.com/openclaw/openclaw-windows-node/issues
 AppUpdatesURL=https://github.com/openclaw/openclaw-windows-node/releases
-DefaultDirName={localappdata}\OpenClawTray
+DefaultDirName={localappdata}\{#MyInstallDir}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-OutputBaseFilename=OpenClawCompanion-Setup-{#MyAppArch}
+OutputBaseFilename=OpenClawCompanion{#MyOutputSuffix}-Setup-{#MyAppArch}
 Compression={#MyCompression}
 SolidCompression={#MySolidCompression}
 WizardStyle=modern
@@ -38,10 +59,9 @@ PrivilegesRequired=lowest
 SetupIconFile=src\OpenClaw.Tray.WinUI\Assets\openclaw.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Round 2 (Scott #5): block install/uninstall while the tray is running.
-; Mutex name matches App.xaml.cs (`new Mutex(true, "OpenClawTray", …)`).
-; Tray and Inno run in the same user session, so the bare name resolves
-; against Local\OpenClawTray — no Global\ prefix needed.
-AppMutex=OpenClawTray
+; Mutex name matches AppIdentity.MutexBaseName for this build variant.
+; Tray and Inno run in the same user session, so no Global\ prefix is needed.
+AppMutex={#MyMutex}
 #if MyAppArch == "arm64"
 ArchitecturesInstallIn64BitMode=arm64
 ArchitecturesAllowed=arm64
@@ -74,7 +94,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "startupicon"; Description: "Start OpenClaw Companion when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked
+Name: "startupicon"; Description: "Start {#MyAppName} when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked
 
 [Files]
 ; WinUI Tray app - include all files (WinUI needs DLLs, not single-file)
@@ -86,17 +106,17 @@ Source: "{#vcRedist}"; DestDir: "{tmp}"; DestName: "vc_redist.exe"; Flags: delet
 #endif
 
 [Registry]
-Root: HKCU; Subkey: "Software\Classes\openclaw"; ValueType: string; ValueName: ""; ValueData: "URL:OpenClaw Protocol"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\openclaw"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\openclaw\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"",0"
-Root: HKCU; Subkey: "Software\Classes\openclaw\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueName: ""; ValueData: "URL:OpenClaw Protocol"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"",0"
+Root: HKCU; Subkey: "Software\Classes\{#MyProtocol}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\OpenClaw Gateway Setup"; Filename: "{app}\{#MyAppExeName}"; Parameters: "openclaw://setup"; IconFilename: "{app}\{#MyAppExeName}"
-Name: "{group}\OpenClaw Companion Settings"; Filename: "{app}\{#MyAppExeName}"; Parameters: "openclaw://commandcenter"; IconFilename: "{app}\{#MyAppExeName}"
-Name: "{group}\OpenClaw Chat"; Filename: "{app}\{#MyAppExeName}"; Parameters: "openclaw://chat"; IconFilename: "{app}\{#MyAppExeName}"
-Name: "{group}\Check for Updates"; Filename: "{app}\{#MyAppExeName}"; Parameters: "openclaw://check-updates"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\OpenClaw Gateway Setup"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyProtocol}://setup"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\OpenClaw Companion Settings"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyProtocol}://commandcenter"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\OpenClaw Chat"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyProtocol}://chat"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\Check for Updates"; Filename: "{app}\{#MyAppExeName}"; Parameters: "{#MyProtocol}://check-updates"; IconFilename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
@@ -170,7 +190,7 @@ begin
     LocalGatewayCleanupRequested :=
       MsgBox(
         'Do you also want to remove the OpenClaw local WSL gateway?' + #13#10#13#10 +
-        'Choose Yes to unregister the OpenClawGateway WSL distro and remove generated local gateway state.' + #13#10 +
+        'Choose Yes to unregister the {#MyDistroName} WSL distro and remove generated local gateway state.' + #13#10 +
         'Choose No to leave the local gateway and generated local state on this computer.',
         mbConfirmation,
         MB_YESNO) = IDYES;
@@ -212,7 +232,11 @@ begin
 
   Params :=
     '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(TempScriptPath) +
-    ' -AppRoot ' + AddQuotes(ExpandConstant('{app}'));
+    ' -AppRoot ' + AddQuotes(ExpandConstant('{app}')) +
+    ' -DataDirectoryName ' + AddQuotes('{#MyInstallDir}') +
+    ' -AutoStartName ' + AddQuotes('{#MyAutoStartName}') +
+    ' -StartupTaskName ' + AddQuotes('{#MyStartupTaskName}') +
+    ' -DistroName ' + AddQuotes('{#MyDistroName}');
 
   Log('Running local gateway cleanup script from {tmp}.');
   Result :=
@@ -282,10 +306,38 @@ begin
     Log('Generated app state in {app} could not be fully deleted; continuing uninstall.');
 end;
 
+procedure RemoveAppAutoStart;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  if RegDeleteValue(
+      HKCU,
+      'SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+      '{#MyAutoStartName}') then
+    Log('Removed {#MyAutoStartName} autostart registry value.')
+  else
+    Log('{#MyAutoStartName} autostart registry value already absent.');
+
+  Started :=
+    Exec(
+      ExpandConstant('{sys}\schtasks.exe'),
+      '/Delete /TN ' + AddQuotes('{#MyStartupTaskName}') + ' /F',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+  if Started and (ResultCode = 0) then
+    Log('Removed {#MyStartupTaskName} startup task.')
+  else
+    Log('{#MyStartupTaskName} startup task already absent or unavailable.');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    RemoveAppAutoStart;
     EnsureLocalGatewayCleanupChoice;
     RunLocalGatewayCleanup;
   end

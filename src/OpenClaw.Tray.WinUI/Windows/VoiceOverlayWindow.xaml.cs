@@ -51,6 +51,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
             Title = "Test Voice Input";
             IsAlwaysOnTop = false;
         }
+        Title = AppIdentity.DecorateWindowTitle(Title);
 
         _voiceService.TranscriptionReceived += OnTranscriptionReceived;
         _voiceService.UtteranceCompleted += OnUtteranceCompleted;

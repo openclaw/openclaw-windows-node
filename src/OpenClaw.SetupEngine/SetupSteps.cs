@@ -259,10 +259,6 @@ public sealed class CleanupStaleDistroStep : SetupStep
             if (Directory.Exists(wslDir))
             {
                 ctx.Logger.Info($"Removing orphaned WSL directory: {wslDir}");
-                // Shut down WSL VM to release VHD locks
-                await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
-                await Task.Delay(2000, ct);
-
                 var delete = await DeleteDistroDirectoryWithRetries(ctx, wslDir, ct);
                 if (!delete.IsSuccess)
                     return delete;
@@ -273,16 +269,15 @@ public sealed class CleanupStaleDistroStep : SetupStep
 
         ctx.Logger.Decision($"Found existing distro '{distro}'", "terminating and unregistering");
 
-        // Terminate first (stops gateway service), then shut WSL down to release VHD/port locks.
+        // Stop only the app-owned distro. Global WSL shutdown would disrupt unrelated distros.
         await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let port release
 
         var unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
         if (unregister.ExitCode != 0)
         {
-            ctx.Logger.Warn($"First unregister attempt failed (exit {unregister.ExitCode}); forcing WSL shutdown and retrying");
-            await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
+            ctx.Logger.Warn($"First unregister attempt failed (exit {unregister.ExitCode}); retrying targeted termination");
+            await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
             await Task.Delay(3000, ct);
             unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
         }
@@ -624,7 +619,7 @@ public sealed class PreflightPortStep : SetupStep
             : [IPAddress.Loopback];
 
         // Poll briefly in case WSL port forwarding proxy hasn't fully released the
-        // port yet (e.g. after wsl --shutdown in a prior cleanup step).
+        // port yet after targeted distro termination in a prior cleanup step.
         await WaitForPortFreeAsync(port, ctx.Config.Gateway.Bind, ctx.Logger, ct, maxWaitSeconds: 10);
 
         foreach (var address in addresses)
@@ -870,10 +865,10 @@ public sealed class CreateWslInstanceStep : SetupStep
         if (unregister.ExitCode == 0 || IsMissingDistroResult(unregister))
             return true;
 
-        ctx.Logger.Warn($"Partial install unregister failed (exit {unregister.ExitCode}); forcing WSL shutdown and retrying");
-        var shutdown = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
-        if (shutdown.ExitCode != 0)
-            cleanupErrors.Add($"shutdown exit {shutdown.ExitCode}: {FirstNonEmpty(shutdown.Stderr, shutdown.Stdout)}");
+        ctx.Logger.Warn($"Partial install unregister failed (exit {unregister.ExitCode}); retrying targeted termination");
+        terminate = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
+        if (terminate.ExitCode != 0 && !IsMissingDistroResult(terminate))
+            cleanupErrors.Add($"retry terminate exit {terminate.ExitCode}: {FirstNonEmpty(terminate.Stderr, terminate.Stdout)}");
 
         unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
         if (unregister.ExitCode == 0 || IsMissingDistroResult(unregister))
@@ -900,7 +895,6 @@ public sealed class CreateWslInstanceStep : SetupStep
     {
         var distro = ctx.DistroName!;
         await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--shutdown"], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let port/VHD locks release
         await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
 
@@ -3221,9 +3215,7 @@ public sealed class StartKeepaliveStep : SetupStep
         if (string.IsNullOrWhiteSpace(commandLine) || string.IsNullOrWhiteSpace(distro))
             return false;
 
-        return commandLine.Contains(distro, StringComparison.OrdinalIgnoreCase)
-            && commandLine.Contains("sleep", StringComparison.OrdinalIgnoreCase)
-            && commandLine.Contains("infinity", StringComparison.OrdinalIgnoreCase);
+        return WslCommandLineMatcher.IsKeepaliveForDistro(commandLine, distro);
     }
 
     private static string? GetProcessCommandLine(int pid, IOpenClawLogger? logger = null)

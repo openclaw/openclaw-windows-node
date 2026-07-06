@@ -35,7 +35,7 @@ public class SettingsManager
     private SettingsData _data = CreateDefaultData();
 
     // Connection
-    public string GatewayUrl { get => _data.GatewayUrl ?? "ws://localhost:18789"; set => _data = _data with { GatewayUrl = value }; }
+    public string GatewayUrl { get => _data.GatewayUrl ?? AppIdentity.SetupGatewayUrl; set => _data = _data with { GatewayUrl = value }; }
     public bool UseSshTunnel { get => _data.UseSshTunnel; set => _data = _data with { UseSshTunnel = value }; }
     public string SshTunnelUser { get => _data.SshTunnelUser ?? ""; set => _data = _data with { SshTunnelUser = value }; }
     public string SshTunnelHost { get => _data.SshTunnelHost ?? ""; set => _data = _data with { SshTunnelHost = value }; }
@@ -187,11 +187,7 @@ public class SettingsManager
 
     private static string GetDefaultSettingsDirectory()
     {
-        return Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
-            ? overrideDir
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "OpenClawTray");
+        return AppIdentity.ResolveRoamingDataDirectory();
     }
 
     public void Load()
@@ -224,7 +220,7 @@ public class SettingsManager
     private static SettingsData CreateDefaultData() => new()
     {
         SettingsSchemaVersion = CurrentSettingsSchemaVersion,
-        GatewayUrl = "ws://localhost:18789",
+        GatewayUrl = AppIdentity.SetupGatewayUrl,
         UseSshTunnel = false,
         SshTunnelUser = "",
         SshTunnelHost = "",

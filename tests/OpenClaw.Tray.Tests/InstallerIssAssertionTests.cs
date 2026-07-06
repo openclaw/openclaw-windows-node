@@ -16,15 +16,17 @@ public sealed class InstallerIssAssertionTests
     public void Installer_HasAppMutexMatchingTraySingleInstance()
     {
         var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
-        Assert.Contains("AppMutex=OpenClawTray", iss);
+        // Release build uses "OpenClawTray" mutex; dev build uses "OpenClawTray-Dev".
+        // The installer default (non-DevBuild) must match the release mutex.
+        Assert.Contains("AppMutex={#MyMutex}", iss);
+        Assert.Contains(@"#define MyMutex ""OpenClawTray""", iss);
         Assert.Contains("Inno requires \"{{\" to emit a literal opening brace in AppId.", iss);
-        Assert.Contains("AppId={{M0LTB0T-TRAY-4PP1-D3N7}", iss);
-        Assert.DoesNotContain("AppId={{M0LTB0T-TRAY-4PP1-D3N7}}", iss);
+        Assert.Contains(@"#define MyAppId ""{{M0LTB0T-TRAY-4PP1-D3N7}""", iss);
 
-        // The matching tray-side mutex name must be present in App.xaml.cs.
+        // The matching tray-side mutex name must be present in App.xaml.cs via AppIdentity.
         var appXamlCs = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
-        Assert.Contains("var mutexName = \"OpenClawTray\";", appXamlCs);
+        Assert.Contains("var mutexName = AppIdentity.MutexBaseName;", appXamlCs);
     }
 
     [Fact]
@@ -46,12 +48,12 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"#define MyAppName ""OpenClaw Companion""", iss);
         Assert.Contains(@"#define MyCompression ""lzma""", iss);
         Assert.Contains(@"#define MySolidCompression ""yes""", iss);
-        Assert.Contains("OutputBaseFilename=OpenClawCompanion-Setup-{#MyAppArch}", iss);
+        Assert.Contains("OutputBaseFilename=OpenClawCompanion{#MyOutputSuffix}-Setup-{#MyAppArch}", iss);
         Assert.Contains(@"Name: ""{group}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""", iss);
-        Assert.Contains(@"Name: ""{group}\OpenClaw Gateway Setup""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://setup""", iss);
-        Assert.Contains(@"Name: ""{group}\OpenClaw Companion Settings""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://commandcenter""", iss);
-        Assert.Contains(@"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://chat""", iss);
-        Assert.Contains(@"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""openclaw://check-updates""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Gateway Setup""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://setup""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Companion Settings""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://commandcenter""", iss);
+        Assert.Contains(@"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://chat""", iss);
+        Assert.Contains(@"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://check-updates""", iss);
     }
 
     [Fact]
@@ -64,12 +66,14 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("Uninstall-LocalGateway.ps1", iss);
         Assert.Contains("UninstallSilent()", iss);
         Assert.Contains("LocalGatewayCleanupRequested := True", iss);
-        Assert.Contains("OpenClawGateway WSL distro", iss);
+        Assert.Contains("{#MyDistroName} WSL distro", iss);
         Assert.Contains("MB_YESNO", iss);
         Assert.Contains("ExpandConstant('{sys}\\WindowsPowerShell\\v1.0\\powershell.exe')", iss);
         Assert.Contains("ewWaitUntilTerminated", iss);
         Assert.Contains("MB_RETRYCANCEL", iss);
         Assert.Contains("DeleteGeneratedAppState", iss);
+        Assert.Contains("procedure RemoveAppAutoStart;", iss);
+        Assert.Matches(@"    RemoveAppAutoStart;\r?\n    EnsureLocalGatewayCleanupChoice;", iss);
         Assert.Contains("CurUninstallStep = usPostUninstall", iss);
         Assert.Contains("DelTree(ExpandConstant('{app}'), True, True, True)", iss);
         Assert.DoesNotContain("Start-Sleep -Seconds 3", iss);
@@ -85,7 +89,7 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("$DistroName = 'OpenClawGateway'", script);
         Assert.Contains("'--list', '--quiet'", script);
         Assert.Contains("'--terminate', $DistroName", script);
-        Assert.Contains("'--shutdown'", script);
+        Assert.DoesNotContain("'--shutdown'", script);
         Assert.Contains("'--unregister', $DistroName", script);
         Assert.Contains("Start-Sleep -Seconds 2", script);
         Assert.Contains("Remove-GatewayDirectory", script);
@@ -112,11 +116,78 @@ public sealed class InstallerIssAssertionTests
     {
         var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
 
-        Assert.Contains(@"Subkey: ""Software\Classes\openclaw""", iss);
+        // Protocol registration uses preprocessor variable {#MyProtocol}
+        Assert.Contains(@"Subkey: ""Software\Classes\{#MyProtocol}""", iss);
         Assert.Contains(@"ValueName: ""URL Protocol""", iss);
-        Assert.Contains(@"Subkey: ""Software\Classes\openclaw\shell\open\command""", iss);
+        Assert.Contains(@"Subkey: ""Software\Classes\{#MyProtocol}\shell\open\command""", iss);
         Assert.Contains(@"{app}\{#MyAppExeName}", iss);
         Assert.Contains(@"""%1""", iss);
+        // Ensure release default protocol is "openclaw"
+        Assert.Contains(@"#define MyProtocol ""openclaw""", iss);
+    }
+
+    [Fact]
+    public void DevInstaller_UsesIndependentIdentityAndProtocol()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+
+        Assert.Contains(@"#define MyAppName ""OpenClaw Companion (Dev)""", iss);
+        Assert.Contains(@"#define MyInstallDir ""OpenClawTray-Dev""", iss);
+        Assert.Contains(@"#define MyMutex ""OpenClawTray-Dev""", iss);
+        Assert.Contains(@"#define MyProtocol ""openclaw-dev""", iss);
+        Assert.Contains(@"#define MyDistroName ""OpenClawGateway-Dev""", iss);
+        Assert.Contains(@"#define MyAppPublisher ""OpenClaw Foundation""", iss);
+        Assert.Contains("-DataDirectoryName ' + AddQuotes('{#MyInstallDir}')", iss);
+        Assert.Contains("-AutoStartName ' + AddQuotes('{#MyAutoStartName}')", iss);
+        Assert.Contains("-StartupTaskName ' + AddQuotes('{#MyStartupTaskName}')", iss);
+        Assert.Contains("-DistroName ' + AddQuotes('{#MyDistroName}')", iss);
+
+        var uninstallScript = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "scripts", "Uninstall-LocalGateway.ps1"));
+        Assert.Contains("[string]$DataDirectoryName = 'OpenClawTray'", uninstallScript);
+        Assert.Contains("-Name $AutoStartName", uninstallScript);
+        Assert.Contains("/TN $StartupTaskName", uninstallScript);
+
+        var autoStartManager = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Services", "AutoStartManager.cs"));
+        Assert.Contains("AppIdentity.StartupTaskName", autoStartManager);
+    }
+
+    [Fact]
+    public void LocalInstallerBuild_UsesOneIdentitySwitchAndValidatesPayloadMarker()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var script = File.ReadAllText(Path.Combine(root, "scripts", "build-inno-local.ps1"));
+        var project = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+
+        Assert.Contains("[switch]$Dev", script);
+        Assert.Contains("-p:DevBuild=$($Dev.IsPresent.ToString().ToLowerInvariant())", script);
+        Assert.Contains("$args += \"/DDevBuild=1\"", script);
+        Assert.Contains("app-identity.txt", script);
+        Assert.Contains("Payload identity", script);
+        Assert.Contains("WritePublishedAppIdentityMarker", project);
+        Assert.Contains("<AppIdentityMarker>dev</AppIdentityMarker>", project);
+        Assert.Contains("<AppIdentityMarker>release</AppIdentityMarker>", project);
+    }
+
+    [Fact]
+    public void MsixManifest_IsGeneratedUnderObjWithoutMutatingTrackedSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var project = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var manifest = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Package.appxmanifest"));
+
+        Assert.Contains("GenerateOpenClawAppxManifest", project);
+        Assert.Contains("$(IntermediateOutputPath)openclaw.Package.appxmanifest", project);
+        Assert.Contains(@"<AppxManifest Remove=""@(AppxManifest)"" />", project);
+        Assert.DoesNotContain("PatchDevAppxManifestIdentity", project);
+        Assert.Contains("Version=\"0.0.0.0\"", manifest);
+        Assert.Contains("Name=\"OpenClaw.Companion\"", manifest);
+        Assert.Contains("<uap:Protocol Name=\"openclaw\">", manifest);
+        Assert.DoesNotContain("OpenClaw.Companion.Dev", manifest);
     }
 
     [Fact]

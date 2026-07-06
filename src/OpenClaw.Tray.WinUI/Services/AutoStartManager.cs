@@ -11,7 +11,7 @@ namespace OpenClawTray.Services;
 public static class AutoStartManager
 {
     private const string RegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "OpenClawTray";
+    private static readonly string AppName = AppIdentity.AutoStartRegistryName;
 
     public static bool IsAutoStartEnabled()
     {
@@ -25,7 +25,7 @@ public static class AutoStartManager
         {
         }
 
-        return WindowsStartupTaskRegistration.Exists();
+        return WindowsStartupTaskRegistration.Exists(AppIdentity.StartupTaskName);
     }
 
     public static void SetAutoStart(bool enable)
@@ -35,7 +35,7 @@ public static class AutoStartManager
             if (enable)
             {
                 var exePath = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
-                if (WindowsStartupTaskRegistration.Register(exePath))
+                if (WindowsStartupTaskRegistration.Register(exePath, AppIdentity.StartupTaskName))
                 {
                     DeleteRunKey();
                     Logger.Info("Auto-start enabled via scheduled task");
@@ -55,7 +55,7 @@ public static class AutoStartManager
             else
             {
                 DeleteRunKey();
-                WindowsStartupTaskRegistration.Unregister();
+                WindowsStartupTaskRegistration.Unregister(AppIdentity.StartupTaskName);
                 Logger.Info("Auto-start disabled");
             }
         }

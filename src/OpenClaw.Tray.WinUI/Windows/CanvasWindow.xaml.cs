@@ -49,8 +49,7 @@ public sealed partial class CanvasWindow : WindowEx
     private TaskCompletionSource<bool>? _navigationTcs;
 
     private readonly string _canvasDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenClawTray", "canvas");
+        AppIdentity.ResolveLocalDataDirectory(), "canvas");
     private FileSystemWatcher? _canvasWatcher;
     private long _lastReloadTicks = 0;
 
@@ -222,6 +221,7 @@ public sealed partial class CanvasWindow : WindowEx
     public CanvasWindow()
     {
         this.InitializeComponent();
+        Title = AppIdentity.DecorateWindowTitle("OpenClaw Canvas");
         AutomationProperties.SetName(
             CanvasTitlebarReloadButton,
             LocalizationHelper.GetString("CanvasReloadButton_AutomationName"));

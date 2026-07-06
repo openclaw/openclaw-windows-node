@@ -244,6 +244,12 @@ public class WslKeepAlivePolicyTests
         Assert.False(WslKeepAlivePolicy.IsKeepaliveCommandLine(
             @"C:\Windows\System32\wsl.exe -d OtherGateway -- sleep infinity",
             "OpenClawGateway"));
+        Assert.False(WslKeepAlivePolicy.IsKeepaliveCommandLine(
+            @"C:\Windows\System32\wsl.exe -d OpenClawGateway-Dev -- sleep infinity",
+            "OpenClawGateway"));
+        Assert.True(WslKeepAlivePolicy.IsKeepaliveCommandLine(
+            "wsl.exe --distribution \"OpenClawGateway-Dev\" -- sleep infinity",
+            "OpenClawGateway-Dev"));
     }
 
     [Fact]

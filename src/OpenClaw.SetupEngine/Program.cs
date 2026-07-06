@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
 
@@ -22,6 +23,12 @@ public static class Program
         var confirmDestructive = HasFlag(args, "--confirm-destructive");
         var jsonOutput = GetArg(args, "--json-output");
         var preserveLogs = HasFlag(args, "--preserve-logs");
+        var dataDir = GetArg(args, "--data-dir");
+        var localDataDir = GetArg(args, "--local-data-dir");
+        var distroName = GetArg(args, "--distro-name");
+        var gatewayPortText = GetArg(args, "--gateway-port");
+        var autoStartName = GetArg(args, "--autostart-name") ?? "OpenClawTray";
+        var startupTaskName = GetArg(args, "--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
 
         // Load config
         SetupConfig config;
@@ -48,6 +55,18 @@ public static class Program
 
         // Apply CLI overrides
         config = SetupConfig.FromEnvironment(config);
+        if (!string.IsNullOrWhiteSpace(distroName))
+            config.DistroName = distroName;
+        if (!string.IsNullOrWhiteSpace(gatewayPortText))
+        {
+            if (!int.TryParse(gatewayPortText, out var gatewayPort) || gatewayPort is <= 0 or > 65535)
+            {
+                Console.Error.WriteLine($"ERROR: Invalid --gateway-port value '{gatewayPortText}'.");
+                return 2;
+            }
+            config.GatewayPort = gatewayPort;
+            config.GatewayUrl = null;
+        }
         GatewayLkgVersion.ApplyToConfig(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
@@ -60,8 +79,8 @@ public static class Program
         // Default log path if not specified
         var logLabel = uninstall ? "uninstall" : "setup";
         config.LogPath ??= Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "OpenClawTray", "Logs", "Setup", $"{logLabel}-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
+            dataDir ?? SetupContext.ResolveDataDir(),
+            "Logs", "Setup", $"{logLabel}-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
 
         Console.WriteLine($"Log file: {config.LogPath}");
         Console.WriteLine($"Distro: {config.DistroName}");
@@ -87,7 +106,7 @@ public static class Program
             return 2;
         }
 
-        if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out var setupLock, out var lockMessage))
+        if (!SetupRunLock.TryAcquire(dataDir ?? SetupContext.ResolveDataDir(), out var setupLock, out var lockMessage))
         {
             Console.Error.WriteLine($"ERROR: {lockMessage}");
             return 2;
@@ -111,7 +130,14 @@ public static class Program
             cts.Cancel();
         };
 
-        var ctx = new SetupContext(config, logger, journal, commands, cts.Token);
+        var ctx = new SetupContext(
+            config,
+            logger,
+            journal,
+            commands,
+            cts.Token,
+            dataDir,
+            localDataDir);
 
         // Build step pipeline
         List<SetupStep> steps;
@@ -158,7 +184,7 @@ public static class Program
                 if (!config.DryRun)
                 {
                     logger.Info("Running tray-artifact cleanup...");
-                    TrayArtifactCleanup.Run(ctx, preserveLogs);
+                    TrayArtifactCleanup.Run(ctx, preserveLogs, autoStartName, startupTaskName);
                 }
             }
         }

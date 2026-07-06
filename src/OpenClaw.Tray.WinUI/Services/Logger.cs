@@ -40,11 +40,7 @@ public static class Logger
     static Logger()
     {
         // OPENCLAW_TRAY_DATA_DIR keeps test instances out of the user's log file.
-        _logDirectory = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
-            ? overrideDir
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenClawTray");
+        _logDirectory = AppIdentity.ResolveLocalDataDirectory();
 
         try { Directory.CreateDirectory(_logDirectory); }
         catch (Exception ex) { ReportWriteFailure($"create log dir: {ex.Message}"); }

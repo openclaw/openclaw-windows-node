@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using OpenClaw.Connection;
+using OpenClawTray;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -49,7 +50,7 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         var result = new TrayTooltipBuilder(snapshot).Build();
 
-        Assert.Contains("OpenClaw Tray - Connected", result);
+        Assert.Contains($"{AppIdentity.TrayName} - Connected", result);
         Assert.Contains("Channels 1/2", result);
         Assert.Contains("Nodes 1/1", result);
         Assert.Contains("Warnings 0", result);
@@ -108,7 +109,7 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         var result = new TrayTooltipBuilder(snapshot).Build();
 
-        Assert.Contains("OpenClaw Tray - Degraded", result);
+        Assert.Contains($"{AppIdentity.TrayName} - Degraded", result);
         Assert.Contains("Warnings 1", result);
     }
 
@@ -130,7 +131,7 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         var result = new TrayTooltipBuilder(snapshot).Build();
 
-        Assert.Contains("OpenClaw Tray - Local MCP only", result);
+        Assert.Contains($"{AppIdentity.TrayName} - Local MCP only", result);
         Assert.Contains("Warnings 1", result);
     }
 
@@ -153,7 +154,7 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         var result = new TrayTooltipBuilder(snapshot).Build();
 
-        Assert.Contains("OpenClaw Tray - Degraded", result);
+        Assert.Contains($"{AppIdentity.TrayName} - Degraded", result);
         Assert.DoesNotContain("Local MCP only", result);
     }
 
@@ -174,7 +175,7 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         var result = new TrayTooltipBuilder(snapshot).Build();
 
-        Assert.Contains("OpenClaw Tray - Local MCP failed", result);
+        Assert.Contains($"{AppIdentity.TrayName} - Local MCP failed", result);
         Assert.Contains("Warnings 2", result);
     }
 
@@ -194,7 +195,7 @@ public sealed class TrayTooltipBuilderTests : IDisposable
 
         var result = new TrayTooltipBuilder(snapshot).Build();
 
-        Assert.Contains("OpenClaw Tray - Connected", result);
+        Assert.Contains($"{AppIdentity.TrayName} - Connected", result);
         Assert.Contains("Warnings 1", result);
         Assert.DoesNotContain("Local MCP failed", result);
     }

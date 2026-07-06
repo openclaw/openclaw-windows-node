@@ -59,9 +59,8 @@ public sealed partial class WelcomePage : Page
     private async Task StartButtonClickAsync()
     {
         var config = _config ?? throw new InvalidOperationException("Setup configuration has not been loaded.");
-        var dataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
         var setupWindow = SetupWindow.Active;
+        var dataDir = setupWindow?.DataDir ?? SetupContext.ResolveDataDir();
 
         InstallButton.IsEnabled = false;
         InstallTitle.Text = CheckingButtonText;

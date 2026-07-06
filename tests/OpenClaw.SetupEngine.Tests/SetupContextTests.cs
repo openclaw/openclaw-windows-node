@@ -71,6 +71,25 @@ public class SetupContextTests
     }
 
     [Fact]
+    public void Constructor_ExplicitDirectoriesOverrideReleaseDefaults()
+    {
+        using var logger = new SetupLogger(filePath: null);
+        var journal = new TransactionJournal(filePath: null);
+        var commands = new CommandRunner(logger);
+        var ctx = new SetupContext(
+            new SetupConfig(),
+            logger,
+            journal,
+            commands,
+            CancellationToken.None,
+            dataDir: @"C:\custom\roaming-dev",
+            localDataDir: @"C:\custom\local-dev");
+
+        Assert.Equal(@"C:\custom\roaming-dev", ctx.DataDir);
+        Assert.Equal(@"C:\custom\local-dev", ctx.LocalDataDir);
+    }
+
+    [Fact]
     public void WslPathPrefix_UsesConfiguredUser()
     {
         var config = new SetupConfig();

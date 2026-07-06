@@ -40,7 +40,7 @@ internal sealed class TrayTooltipBuilder
         if (HasRelevantMcpStartupError()) warningCount++;
         if (_snapshot.Channels.Length == 0 && isHealthy) warningCount++;
 
-        var tooltip = $"OpenClaw Tray - {statusText}; " +
+        var tooltip = $"{AppIdentity.TrayName} - {statusText}; " +
             $"{topology.DisplayName}; " +
             $"Channels {channelReady}/{_snapshot.Channels.Length}; " +
             $"Nodes {nodeOnline}/{nodeTotal}; " +
@@ -49,7 +49,7 @@ internal sealed class TrayTooltipBuilder
 
         if (_snapshot.CurrentActivity != null && !string.IsNullOrEmpty(_snapshot.CurrentActivity.DisplayText))
         {
-            tooltip = $"OpenClaw Tray - {_snapshot.CurrentActivity.DisplayText}; {statusText}";
+            tooltip = $"{AppIdentity.TrayName} - {_snapshot.CurrentActivity.DisplayText}; {statusText}";
         }
 
         return TrayTooltipFormatter.FitShellTooltip(tooltip);

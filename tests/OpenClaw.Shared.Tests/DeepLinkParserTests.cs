@@ -112,6 +112,17 @@ public class DeepLinkParserTests
         Assert.Equal("hello", result.Parameters["text"]);
     }
 
+    [Fact]
+    public void ParseDeepLink_CustomScheme_IsStrictlyIsolated()
+    {
+        var result = DeepLinkParser.ParseDeepLink("openclaw-dev://settings", "openclaw-dev");
+
+        Assert.NotNull(result);
+        Assert.Equal("settings", result.Path);
+        Assert.Null(DeepLinkParser.ParseDeepLink("openclaw://settings", "openclaw-dev"));
+        Assert.Null(DeepLinkParser.ParseDeepLink("openclaw-dev://settings"));
+    }
+
     // ─── GetQueryParam ────────────────────────────────────────────────────────
 
     [Theory]

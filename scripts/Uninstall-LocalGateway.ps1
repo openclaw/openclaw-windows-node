@@ -11,16 +11,26 @@
 
 [CmdletBinding()]
 param(
-    [string]$AppRoot = $PSScriptRoot
+    [string]$AppRoot = $PSScriptRoot,
+    [string]$DataDirectoryName = 'OpenClawTray',
+    [string]$AutoStartName = 'OpenClawTray',
+    [string]$StartupTaskName = 'OpenClaw Companion',
+    [string]$DistroName = 'OpenClawGateway'
 )
 
 $ErrorActionPreference = 'Stop'
 
-$DistroName = 'OpenClawGateway'
 $resultPath = Join-Path $AppRoot 'uninstall-gateway-result.json'
 $errorPath = Join-Path $AppRoot 'uninstall-gateway-error.log'
 $wslLogPath = Join-Path $AppRoot 'uninstall-gateway-wsl.log'
 $cleanupWarnings = New-Object 'System.Collections.Generic.List[string]'
+
+if ($DataDirectoryName -notmatch '^[A-Za-z0-9._-]+$') {
+    throw "Invalid data directory name '$DataDirectoryName'."
+}
+if ($DistroName -notmatch '^[A-Za-z0-9._-]+$') {
+    throw "Invalid WSL distro name '$DistroName'."
+}
 
 function Ensure-AppRoot {
     if (-not [string]::IsNullOrWhiteSpace($AppRoot) -and -not (Test-Path -LiteralPath $AppRoot)) {
@@ -74,19 +84,19 @@ function Resolve-AppDataDir {
             return $env:OPENCLAW_TRAY_DATA_DIR
         }
 
-        return Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)) 'OpenClawTray'
+        return Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)) $DataDirectoryName
     }
 
     function Resolve-LocalDataDir {
         if ($env:OPENCLAW_TRAY_LOCALAPPDATA_DIR) {
-            return Join-Path $env:OPENCLAW_TRAY_LOCALAPPDATA_DIR 'OpenClawTray'
+            return Join-Path $env:OPENCLAW_TRAY_LOCALAPPDATA_DIR $DataDirectoryName
         }
 
         if ($env:OPENCLAW_TRAY_LOCAL_DATA_DIR) {
             return $env:OPENCLAW_TRAY_LOCAL_DATA_DIR
         }
 
-        return Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'OpenClawTray'
+        return Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) $DataDirectoryName
     }
 
     function Get-JsonPropertyValue {
@@ -228,15 +238,34 @@ function Resolve-AppDataDir {
     function Remove-AutostartRegistryValue {
         $runKey = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
         try {
-            $value = Get-ItemProperty -LiteralPath $runKey -Name 'OpenClawTray' -ErrorAction SilentlyContinue
+            $value = Get-ItemProperty -LiteralPath $runKey -Name $AutoStartName -ErrorAction SilentlyContinue
             if ($null -ne $value) {
-                Remove-ItemProperty -LiteralPath $runKey -Name 'OpenClawTray' -ErrorAction Stop
-                Write-GatewayLog 'Removed OpenClawTray autostart registry value.'
+                Remove-ItemProperty -LiteralPath $runKey -Name $AutoStartName -ErrorAction Stop
+                Write-GatewayLog "Removed $AutoStartName autostart registry value."
             } else {
-                Write-GatewayLog 'OpenClawTray autostart registry value already absent.'
+                Write-GatewayLog "$AutoStartName autostart registry value already absent."
             }
         } catch {
-            Add-CleanupWarning "Failed to remove OpenClawTray autostart registry value: $($_.Exception.Message)"
+            Add-CleanupWarning "Failed to remove $AutoStartName autostart registry value: $($_.Exception.Message)"
+        }
+    }
+
+    function Remove-ScheduledStartupTask {
+        $schtasks = Join-Path $env:WINDIR 'System32\schtasks.exe'
+        if (-not (Test-Path -LiteralPath $schtasks)) {
+            Add-CleanupWarning "schtasks.exe was not found; could not remove startup task '$StartupTaskName'."
+            return
+        }
+
+        try {
+            $output = & $schtasks /Delete /TN $StartupTaskName /F 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-GatewayLog "Removed startup task '$StartupTaskName'."
+            } else {
+                Write-GatewayLog "Startup task '$StartupTaskName' was absent or could not be removed: $output"
+            }
+        } catch {
+            Add-CleanupWarning "Failed to remove startup task '$StartupTaskName': $($_.Exception.Message)"
         }
     }
 
@@ -418,6 +447,7 @@ function Resolve-AppDataDir {
         Write-GatewayLog "Cleaning Windows-side local gateway artifacts. AppData='$dataDir'; LocalData='$localDataDir'."
 
         Remove-AutostartRegistryValue
+        Remove-ScheduledStartupTask
         Remove-FileIfExists -Path (Join-Path $dataDir 'setup-state.json') -Label 'legacy setup-state.json'
         Remove-FileIfExists -Path (Join-Path $localDataDir 'setup-state.json') -Label 'setup-state.json'
         Remove-FileIfExists -Path (Join-Path $localDataDir 'run.marker') -Label 'run.marker'
@@ -538,7 +568,7 @@ function Test-DistroListed {
 }
 
 function Remove-GatewayDirectory {
-    $gatewayDirectory = Join-Path $AppRoot 'wsl\OpenClawGateway'
+    $gatewayDirectory = Join-Path $AppRoot "wsl\$DistroName"
 
     if (-not (Test-Path -LiteralPath $gatewayDirectory)) {
         Write-GatewayLog "Gateway directory does not exist: $gatewayDirectory"
@@ -592,10 +622,6 @@ try {
         Write-GatewayLog "Ignoring terminate exit code $($terminateResult.ExitCode); unregister handles stopped or missing distros."
     }
 
-    $shutdownResult = Invoke-Wsl -Arguments @('--shutdown')
-    if ($shutdownResult.ExitCode -ne 0) {
-        Write-GatewayLog "Ignoring shutdown exit code $($shutdownResult.ExitCode); unregister will still be attempted."
-    }
     Start-Sleep -Seconds 2
 
     $unregisterResult = Invoke-Wsl -Arguments @('--unregister', $DistroName)

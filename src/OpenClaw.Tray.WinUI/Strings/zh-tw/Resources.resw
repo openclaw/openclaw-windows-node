@@ -367,6 +367,9 @@
   <data name="Update_Message_Skipped_Debug" xml:space="preserve">
     <value>偵錯版本已停用更新檢查。</value>
   </data>
+  <data name="Update_Message_Skipped_Dev" xml:space="preserve">
+    <value>開發版本已停用更新檢查。</value>
+  </data>
   <data name="Update_OK" xml:space="preserve">
     <value>確定</value>
   </data>

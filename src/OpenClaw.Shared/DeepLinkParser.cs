@@ -10,17 +10,20 @@ public record DeepLinkResult(string Path, string Query, Dictionary<string, strin
 /// </summary>
 public static class DeepLinkParser
 {
-    private const string Scheme = "openclaw://";
-
     public static DeepLinkResult? ParseDeepLink(string? uri)
+        => ParseDeepLink(uri, "openclaw");
+
+    public static DeepLinkResult? ParseDeepLink(string? uri, string scheme)
     {
         if (string.IsNullOrWhiteSpace(uri))
             return null;
 
-        if (!uri.StartsWith(Scheme, StringComparison.OrdinalIgnoreCase))
+        ArgumentException.ThrowIfNullOrWhiteSpace(scheme);
+        var prefix = $"{scheme}://";
+        if (!uri.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var remainder = uri[Scheme.Length..];
+        var remainder = uri[prefix.Length..];
         var queryIndex = remainder.IndexOf('?');
         var query = queryIndex >= 0 ? remainder[(queryIndex + 1)..] : "";
         // Trim trailing slash AFTER splitting off the query so the

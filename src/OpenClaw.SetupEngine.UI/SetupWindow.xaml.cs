@@ -18,12 +18,16 @@ public sealed partial class SetupWindow : Window
     private bool _isClosed;
     private bool _persistStartupPreferenceOnComplete = true;
     private bool _showStartupPreferenceOnComplete = true;
+    private readonly string _dataDir;
+    private readonly string _localDataDir;
 
     public static SetupWindow? Active { get; private set; }
 
     public event EventHandler? AdvancedSetupRequested;
     public event EventHandler<SetupCompletedEventArgs>? SetupCompleted;
     public bool IsClosed => _isClosed;
+    internal string DataDir => _dataDir;
+    internal string LocalDataDir => _localDataDir;
     public bool CanNavigateToWizard =>
         !_isClosed &&
         _setupLock is not null &&
@@ -37,8 +41,16 @@ public sealed partial class SetupWindow : Window
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
-    public SetupWindow(string? configPath = null, bool startAtGatewayInstalledMilestone = false)
+    public SetupWindow(
+        string? configPath = null,
+        bool startAtGatewayInstalledMilestone = false,
+        string? dataDir = null,
+        string? localDataDir = null,
+        string? distroNameOverride = null,
+        int? gatewayPortOverride = null)
     {
+        _dataDir = dataDir ?? SetupContext.ResolveDataDir();
+        _localDataDir = localDataDir ?? SetupContext.ResolveLocalDataDir();
         InitializeComponent();
         Active = this;
 
@@ -82,6 +94,13 @@ public sealed partial class SetupWindow : Window
         _config = SetupConfig.LoadFromFile(configPath);
         _config.UsesBundledDefaultConfig = explicitConfigPath == null;
         _config = SetupConfig.FromEnvironment(_config);
+        if (!string.IsNullOrWhiteSpace(distroNameOverride))
+            _config.DistroName = distroNameOverride;
+        if (gatewayPortOverride is > 0 and <= 65535)
+        {
+            _config.GatewayPort = gatewayPortOverride.Value;
+            _config.GatewayUrl = null;
+        }
         GatewayLkgVersion.ApplyToConfig(_config);
         _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
         if (startAtGatewayInstalledMilestone)
@@ -107,7 +126,7 @@ public sealed partial class SetupWindow : Window
             return;
         }
 
-        if (!SetupRunLock.TryAcquire(SetupContext.ResolveDataDir(), out _setupLock, out var lockMessage))
+        if (!SetupRunLock.TryAcquire(_dataDir, out _setupLock, out var lockMessage))
         {
             NavigateTo(typeof(CompletePage), new CompletePageArgs(false, TimeSpan.Zero, null, lockMessage ?? "Another setup run is active."));
             return;
@@ -122,9 +141,12 @@ public sealed partial class SetupWindow : Window
     public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
     public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
     public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
-    public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), _config);
+    public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: false));
     public void NavigateToGatewayInstalledMilestone() =>
-        NavigateTo(typeof(ProgressPage), new ProgressPageArgs(_config, ShowMilestoneOnly: true));
+        NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: true));
+
+    private ProgressPageArgs CreateProgressPageArgs(bool showMilestoneOnly) =>
+        new(_config, showMilestoneOnly, _dataDir, _localDataDir);
 
     public bool TryNavigateToGatewayInstalledMilestone()
     {
@@ -156,7 +178,7 @@ public sealed partial class SetupWindow : Window
                 errorMessage,
                 DefaultAutoStart: true,
                 ShowStartupPreference: _showStartupPreferenceOnComplete,
-                ReviewSummary: SetupReviewSummaryBuilder.Build(_config)));
+                ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir)));
 
     // Directional page transition: forward steps slide in from the right, Back from the left.
     private void NavigateTo(Type page, object? parameter, bool back = false) =>
@@ -183,7 +205,8 @@ public sealed partial class SetupWindow : Window
         {
             "complete" => new CompletePageArgs(true, TimeSpan.FromMinutes(3), null),
             "complete-error" => new CompletePageArgs(false, TimeSpan.FromMinutes(3), null, "Setup could not finish. Review the details, then retry setup when you are ready."),
-            "milestone" => new ProgressPageArgs(_config, ShowMilestoneOnly: true),
+            "progress" => CreateProgressPageArgs(showMilestoneOnly: false),
+            "milestone" => CreateProgressPageArgs(showMilestoneOnly: true),
             _ => _config,
         });
 
@@ -204,7 +227,7 @@ public sealed partial class SetupWindow : Window
             {
                 _config.Settings.AutoStart = enableAutoStart;
                 TraySettingsConfig.UpdateAutoStartInSettingsFile(
-                    Path.Combine(SetupContext.ResolveDataDir(), "settings.json"),
+                    Path.Combine(_dataDir, "settings.json"),
                     enableAutoStart);
             }
         }

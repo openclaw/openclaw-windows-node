@@ -96,6 +96,7 @@ public sealed partial class HubWindow : WindowEx
     public HubWindow()
     {
         InitializeComponent();
+        Title = AppIdentity.DisplayName;
         RefreshDiagnosticsNavVisibility();
         ApplyHighContrastFallbackIfNeeded();
         ExtendsContentIntoTitleBar = true;

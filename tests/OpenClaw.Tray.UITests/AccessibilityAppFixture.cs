@@ -51,7 +51,7 @@ public sealed class AccessibilityAppFixture : IDisposable
             }
             """);
 
-        _process = StartProcess("openclaw://hub/connection");
+        _process = StartProcess($"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/connection");
         HubWindowHandle = WaitForHubWindow();
         AxeHelper.Initialize(_process.Id);
     }
@@ -60,7 +60,7 @@ public sealed class AccessibilityAppFixture : IDisposable
     {
         EnsureTargetIsAlive();
 
-        using var sender = StartProcess($"openclaw://hub/{pageTag}");
+        using var sender = StartProcess($"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/{pageTag}");
         using var timeout = new CancellationTokenSource(DeepLinkTimeout);
         try
         {

@@ -300,8 +300,8 @@
                            <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Header"
                                       Text="Set up or reconfigure Local Gateway"
                                       Style="{StaticResource BodyTextBlockStyle}"/>
-                           <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Description"
-                                      Text="Launches setup to install an app-owned OpenClawGateway WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation."
+                           <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Description" x:Name="LocalGatewaySetupDescriptionText"
+                                      Text="Launches setup to install an app-owned WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation."
                                       Style="{StaticResource CaptionTextBlockStyle}"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       TextWrapping="Wrap"/>
@@ -360,7 +360,7 @@
                                  Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
 
                         <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
-                                   Text="Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
+                                   Text="Removes the app-owned WSL distro, its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"/>
 

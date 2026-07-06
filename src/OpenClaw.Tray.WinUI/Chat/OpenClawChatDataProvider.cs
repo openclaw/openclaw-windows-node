@@ -4308,8 +4308,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // the UI can show them while reconnecting instead of generic placeholders.
 
     private static readonly string LastChatStateFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenClawTray", "last-chat-state.json");
+        AppIdentity.ResolveLocalDataDirectory(), "last-chat-state.json");
 
     private System.Threading.Timer? _lastChatStateSaveTimer;
 
@@ -4395,8 +4394,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // ── Abort persistence ──────────────────────────────────────────────
 
     private static readonly string AbortedIdsFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenClawTray", "aborted-messages.json");
+        AppIdentity.ResolveLocalDataDirectory(), "aborted-messages.json");
 
     private static Dictionary<string, HashSet<string>> LoadAbortedIds()
     {
@@ -4469,12 +4467,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         get
         {
-            var root = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
-                ? overrideDir
-                : Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "OpenClawTray");
-            return Path.Combine(root, "tool-metadata.json");
+            return Path.Combine(AppIdentity.ResolveLocalDataDirectory(), "tool-metadata.json");
         }
     }
 

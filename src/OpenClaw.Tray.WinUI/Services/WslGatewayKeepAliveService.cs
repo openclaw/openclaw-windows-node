@@ -215,9 +215,8 @@ internal sealed class WslGatewayKeepAliveService(
     /// Resolves the WSL distro name to keep alive. Prefers the value persisted by
     /// onboarding in <c>setup-state.json</c> so the keepalive always targets the distro
     /// the user actually installed. In DEBUG / test builds, an
-    /// <c>OPENCLAW_WSL_DISTRO_NAME</c> environment override is honored to match
-    /// Resolves the local gateway distro name by reading setup-state.json.
-    /// Falls back to "OpenClawGateway" if not found.
+    /// <c>OPENCLAW_WSL_DISTRO_NAME</c> environment override is honored. Falls
+    /// back to the current dev or release app identity if no state exists.
     /// </summary>
     private async Task<string?> ResolveLocalGatewayDistroNameAsync(GatewayRecord? activeRecord)
     {

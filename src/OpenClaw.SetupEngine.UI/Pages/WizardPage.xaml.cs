@@ -16,7 +16,7 @@ public sealed partial class WizardPage : Page
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
 
-    private SetupConfig? _config;
+    private SetupConfig _config = new();
     private OpenClawGatewayClient? _client;
     private string _sessionId = "";
     private string _stepId = "";
@@ -140,8 +140,7 @@ public sealed partial class WizardPage : Page
 
     private async Task<OpenClawGatewayClient> ConnectClientAsync()
     {
-        var dataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenClawTray");
+        var dataDir = SetupWindow.Active?.DataDir ?? SetupContext.ResolveDataDir();
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var record = registry.GetActive() ?? throw new InvalidOperationException("No active gateway record found.");
@@ -834,7 +833,9 @@ public sealed partial class WizardPage : Page
     private void StartConsoleTail()
     {
         StopConsoleTail();
-        var tail = new WizardConsoleTail(logger: NullLogger.Instance);
+        var tail = new WizardConsoleTail(
+            logger: NullLogger.Instance,
+            distroNameOverride: _config.DistroName);
         _consoleTail = tail;
         var dispatcher = DispatcherQueue;
         tail.Start(message =>
