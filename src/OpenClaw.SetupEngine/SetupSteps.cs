@@ -2846,6 +2846,8 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             ? "openclaw setup"
             : $"openclaw setup --workspace {ShellEscape(workspaceAbsolute)}";
 
+        // The pinned 2026.6.11 CLI's setup command is baseline-only. Reverify this
+        // invocation whenever GatewayLkgVersion moves to a release that changes it.
         var script = $"set -e\n{ctx.WslPathPrefix}\n{setupCommand} >/dev/null";
         // Uses stdin to bypass wsl.exe argv variable-expansion (the script's
         // PATH prefix references $PATH, which would be expanded to the
@@ -2975,7 +2977,8 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
                     exit 4
                 fi
             fi
-            tmp="$agents.new.$$"
+            tmp=$(mktemp "$workspace/.AGENTS.md.openclaw.XXXXXX")
+            trap 'rm -f -- "$tmp"' EXIT
             awk -v BEGIN_M="$begin_marker" -v END_M="$end_marker" '
               BEGIN { in_block = 0 }
               $0 == BEGIN_M { in_block = 1; next }
@@ -2989,7 +2992,9 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             fi
             printf '%s' "$block_b64" | base64 -d >> "$tmp"
             printf '\n' >> "$tmp"
-            mv "$tmp" "$agents"
+            chmod --reference="$agents" "$tmp"
+            mv -- "$tmp" "$agents"
+            trap - EXIT
             echo "WINDOWS_NODE_CONTEXT_WORKSPACE:$workspace"
             echo "WINDOWS_NODE_CONTEXT_READY"
             """;
@@ -3026,7 +3031,8 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
                 echo "WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED:$agents" >&2
                 exit 4
             fi
-            tmp="$agents.new.$$"
+            tmp=$(mktemp "$workspace/.AGENTS.md.openclaw.XXXXXX")
+            trap 'rm -f -- "$tmp"' EXIT
             awk -v BEGIN_M="$begin_marker" -v END_M="$end_marker" '
               BEGIN { in_block = 0 }
               $0 == BEGIN_M { in_block = 1; next }
@@ -3034,7 +3040,9 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
               in_block { next }
               { print }
             ' "$agents" > "$tmp"
-            mv "$tmp" "$agents"
+            chmod --reference="$agents" "$tmp"
+            mv -- "$tmp" "$agents"
+            trap - EXIT
             echo "WINDOWS_NODE_CONTEXT_REMOVED"
             """;
 

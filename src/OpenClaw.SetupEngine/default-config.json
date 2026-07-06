@@ -133,7 +133,7 @@
   // Inject setup-owned guidance into the OpenClaw runtime workspace AGENTS.md.
   "WindowsNodeContext": {
     "Enabled": true,
-    // Optional WSL workspace path override; null = let `openclaw setup` use configured/default workspace.
+    // Optional WSL workspace path override; null = let the pinned gateway CLI's baseline setup use its configured/default workspace.
     "WorkspacePath": null,
     // Seconds allowed for OpenClaw workspace seeding and AGENTS.md context injection.
     "TimeoutSeconds": 180

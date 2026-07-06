@@ -1648,6 +1648,8 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("WINDOWS_NODE_CONTEXT_BOOTSTRAP_FALLBACK", script);
         Assert.Contains("awk -v BEGIN_M=\"$begin_marker\" -v END_M=\"$end_marker\"", script);
         Assert.Contains("printf '%s' \"$block_b64\" | base64 -d >> \"$tmp\"", script);
+        Assert.Contains("mktemp \"$workspace/.AGENTS.md.openclaw.XXXXXX\"", script);
+        Assert.Contains("chmod --reference=\"$agents\" \"$tmp\"", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_MARKERS_MALFORMED", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_READY", script);
         // Must not depend on node or carry an embedded JS payload.
@@ -1671,6 +1673,8 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("set -o pipefail", script);
         Assert.Contains("workspace='/home/openclaw/.openclaw/workspace'", script);
         Assert.Contains("awk -v BEGIN_M=\"$begin_marker\" -v END_M=\"$end_marker\"", script);
+        Assert.Contains("mktemp \"$workspace/.AGENTS.md.openclaw.XXXXXX\"", script);
+        Assert.Contains("chmod --reference=\"$agents\" \"$tmp\"", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_ABSENT", script);
         Assert.Contains("WINDOWS_NODE_CONTEXT_REMOVED", script);
         // Must not depend on node or carry an embedded JS payload.
@@ -1746,6 +1750,7 @@ public class SetupStepsTests : IDisposable
         });
         Assert.Contains("getent passwd", commands.WslCalls[0].Command);
         Assert.Contains("openclaw setup", commands.WslCalls[1].Command);
+        Assert.DoesNotContain("--baseline", commands.WslCalls[1].Command);
         Assert.Contains("openclaw config get agents.defaults.workspace", commands.WslCalls[2].Command);
         Assert.Contains("workspace='/home/openclaw/.openclaw/workspace'", commands.WslCalls[3].Command);
         // getent uses $(id -un) command-substitution and no $vars, so argv path is safe.

@@ -99,6 +99,15 @@ public class SetupAndConnectTests
         Assert.Contains("default=openclaw", wslConf.Stdout);
         Assert.Contains("useWindowsTimezone=true", wslConf.Stdout);
 
+        var agentsContext = await _fixture.RunInWslAsync(
+            "cat /home/openclaw/.openclaw/workspace/AGENTS.md",
+            TimeSpan.FromSeconds(15));
+        AssertCommandSucceeded(agentsContext, "read managed Windows node context");
+        Assert.Contains("<!-- BEGIN OPENCLAW WINDOWS NODE CONTEXT: managed by OpenClaw Windows setup -->", agentsContext.Stdout);
+        Assert.Contains("exec host=node", agentsContext.Stdout);
+        Assert.Contains("<!-- END OPENCLAW WINDOWS NODE CONTEXT -->", agentsContext.Stdout);
+        Assert.DoesNotContain("tools.exec.security full", agentsContext.Stdout);
+
         var openClawJsonProbe = await _fixture.RunInWslAsync(
             "paths=$(find /home/openclaw/.openclaw /opt/openclaw /etc/openclaw -type f -name openclaw.json 2>/dev/null | sort); if [ -z \"$paths\" ]; then echo 'OPENCLAW_JSON_PATH:<not-found>'; else for path in $paths; do echo OPENCLAW_JSON_PATH:$path; cat \"$path\"; done; fi",
             TimeSpan.FromSeconds(15));

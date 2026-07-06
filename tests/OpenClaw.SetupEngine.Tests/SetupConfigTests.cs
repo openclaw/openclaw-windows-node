@@ -401,7 +401,9 @@ public class SetupConfigTests : IDisposable
 
         Assert.StartsWith(WindowsNodeContextSection.BeginMarker + "\n", block);
         Assert.Contains("This WSL gateway may be paired", block);
-        Assert.Contains("openclaw config set tools.exec.host auto", block);
+        Assert.Contains("exec host=node", block);
+        Assert.DoesNotContain("tools.exec.security full", block);
+        Assert.DoesNotContain("tools.exec.ask off", block);
         Assert.EndsWith("\n" + WindowsNodeContextSection.EndMarker, block);
     }
 
