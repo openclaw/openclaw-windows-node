@@ -2734,8 +2734,20 @@ public sealed class PairNodeStep : SetupStep
     }
 }
 
+internal sealed record WindowsNodeContextTarget(string DistroName, string User, string WorkspacePath);
+
+internal sealed class WindowsNodeContextInstallState
+{
+    public List<WindowsNodeContextTarget> Targets { get; set; } = [];
+}
+
 public sealed class WindowsNodeBootstrapContextStep : SetupStep
 {
+    private const string InstallStateFileName = "windows-node-context.json";
+    private WindowsNodeContextTarget? _currentTarget;
+    private bool _currentTargetWasNew;
+    private bool _executeAttempted;
+
     public override string Id => "windows-node-context";
     public override string DisplayName => "Inject Windows node context";
 
@@ -2743,6 +2755,7 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
+        _executeAttempted = true;
         var distro = ctx.DistroName!;
         var user = ctx.Config.Wsl.User;
         var timeout = TimeSpan.FromSeconds(Math.Max(1, ctx.Config.WindowsNodeContext.TimeoutSeconds));
@@ -2781,12 +2794,41 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
                 return setupResult;
         }
 
+        var target = new WindowsNodeContextTarget(distro, user, workspace);
+        try
+        {
+            _currentTargetWasNew = await RecordAppliedTargetAsync(ctx, target, ct);
+            _currentTarget = target;
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Could not persist Windows node context install state: {ex.Message}", ex);
+        }
+
         var script = BuildApplyScript(workspace);
         // Uses stdin to bypass wsl.exe argv variable-expansion (see docs/WSL_EXE_ARGV_PITFALL.md).
         var result = await ctx.Commands.RunInWslAsync(distro, script, timeout, ct: ct, user: user, inputViaStdin: true);
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("WINDOWS_NODE_CONTEXT_READY", StringComparison.Ordinal))
+        {
+            if (_currentTargetWasNew && result.ExitCode is 2 or 4)
+            {
+                try
+                {
+                    await RemoveRecordedTargetAsync(ctx, target, ct);
+                    _currentTarget = null;
+                    _currentTargetWasNew = false;
+                }
+                catch (Exception ex)
+                {
+                    return StepResult.Fail(
+                        $"Windows node context injection failed and install-state cleanup also failed: {ex.Message}",
+                        ex);
+                }
+            }
+
             return StepResult.Fail($"Windows node context injection failed (exit {result.ExitCode}): {FirstNonEmpty(result.Stderr, result.Stdout)}");
+        }
 
         ctx.Logger.Info($"Windows node context injected into workspace: {workspace}");
         return StepResult.Ok("Windows node context injected");
@@ -2794,38 +2836,171 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        if (!ctx.Config.WindowsNodeContext.Enabled)
+        var timeout = TimeSpan.FromSeconds(Math.Max(1, ctx.Config.WindowsNodeContext.TimeoutSeconds));
+        var hasInstallState = File.Exists(InstallStatePath(ctx));
+        WindowsNodeContextTarget[] targets;
+        if (_currentTarget is { } current)
+        {
+            targets = [current];
+        }
+        else if (_executeAttempted)
+        {
+            // Failed-step rollback for an attempt that never modified a target.
+            // Do not reinterpret this as a fresh uninstall of earlier installs.
+            return;
+        }
+        else if (hasInstallState)
+        {
+            var state = await ReadInstallStateAsync(ctx, ct);
+            targets = state.Targets.ToArray();
+        }
+        else
+        {
+            var legacyTarget = await ResolveLegacyUninstallTargetAsync(ctx, ct);
+            targets = legacyTarget is null ? [] : [legacyTarget];
+        }
+        if (targets.Length == 0)
             return;
 
+        var failures = new List<string>();
+        foreach (var target in targets)
+        {
+            // Uses stdin to bypass wsl.exe argv variable-expansion (see docs/WSL_EXE_ARGV_PITFALL.md).
+            var result = await ctx.Commands.RunInWslAsync(
+                target.DistroName,
+                BuildRollbackScript(target.WorkspacePath),
+                timeout,
+                ct: ct,
+                user: target.User,
+                inputViaStdin: true);
+
+            if (result.ExitCode != 0 && !IsMissingDistroResult(result))
+            {
+                failures.Add(
+                    $"{target.DistroName}:{target.WorkspacePath} (exit {result.ExitCode}): " +
+                    FirstNonEmpty(result.Stderr, result.Stdout));
+            }
+        }
+
+        if (failures.Count > 0)
+            throw new InvalidOperationException("Windows node context cleanup failed: " + string.Join("; ", failures));
+
+        if (_currentTarget is { } appliedTarget)
+        {
+            await RemoveRecordedTargetAsync(ctx, appliedTarget, ct);
+        }
+        else
+        {
+            File.Delete(InstallStatePath(ctx));
+        }
+    }
+
+    private static async Task<WindowsNodeContextTarget?> ResolveLegacyUninstallTargetAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
         var distro = ctx.DistroName;
         if (string.IsNullOrWhiteSpace(distro))
-            return;
+            return null;
 
         var user = ctx.Config.Wsl.User;
-        var timeout = TimeSpan.FromSeconds(Math.Max(1, ctx.Config.WindowsNodeContext.TimeoutSeconds));
-
-        var home = await ResolveLinuxHomeAsync(ctx, distro, user, ct);
+        var (home, result) = await QueryLinuxHomeAsync(ctx, distro, user, ct);
         if (home is null)
         {
-            ctx.Logger.Warn("Windows node context rollback skipped: could not resolve Linux home directory");
-            return;
+            if (IsMissingDistroResult(result))
+                return null;
+            throw new InvalidOperationException(
+                "Could not resolve Linux home directory while cleaning legacy Windows node context: " +
+                FirstNonEmpty(result.Stderr, result.Stdout));
         }
 
         var workspace = await ResolveWorkspacePathAsync(ctx, distro, user, home, ct);
         if (string.IsNullOrWhiteSpace(workspace))
+            throw new InvalidOperationException("Could not resolve workspace while cleaning legacy Windows node context");
+
+        return new WindowsNodeContextTarget(distro, user, workspace);
+    }
+
+    internal static string InstallStatePath(SetupContext ctx) =>
+        Path.Combine(ctx.LocalDataDir, InstallStateFileName);
+
+    internal static async Task<bool> RecordAppliedTargetAsync(
+        SetupContext ctx,
+        WindowsNodeContextTarget target,
+        CancellationToken ct)
+    {
+        var state = await ReadInstallStateAsync(ctx, ct);
+        var exists = state.Targets.Contains(target);
+        if (exists)
+            return false;
+
+        state.Targets.Add(target);
+        var json = JsonSerializer.Serialize(state, SetupConfig.JsonWriteOptions);
+        await AtomicFile.WriteAllTextAsync(InstallStatePath(ctx), json, ct);
+        return true;
+    }
+
+    internal static async Task<WindowsNodeContextInstallState> ReadInstallStateAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
+        var path = InstallStatePath(ctx);
+        if (!File.Exists(path))
+            return new WindowsNodeContextInstallState();
+
+        var json = await File.ReadAllTextAsync(path, ct);
+        var state = JsonSerializer.Deserialize<WindowsNodeContextInstallState>(json, SetupConfig.JsonOptions)
+            ?? throw new InvalidDataException("Windows node context install state is empty");
+        if (state.Targets.Any(target =>
+                string.IsNullOrWhiteSpace(target.DistroName) ||
+                string.IsNullOrWhiteSpace(target.User) ||
+                string.IsNullOrWhiteSpace(target.WorkspacePath) ||
+                !target.WorkspacePath.StartsWith('/')))
         {
-            ctx.Logger.Warn("Windows node context rollback skipped: could not resolve workspace path");
+            throw new InvalidDataException("Windows node context install state contains an invalid target");
+        }
+
+        return state;
+    }
+
+    private static async Task RemoveRecordedTargetAsync(
+        SetupContext ctx,
+        WindowsNodeContextTarget target,
+        CancellationToken ct)
+    {
+        var state = await ReadInstallStateAsync(ctx, ct);
+        state.Targets.RemoveAll(candidate => candidate == target);
+        if (state.Targets.Count == 0)
+        {
+            File.Delete(InstallStatePath(ctx));
             return;
         }
 
-        // Uses stdin to bypass wsl.exe argv variable-expansion (see docs/WSL_EXE_ARGV_PITFALL.md).
-        var result = await ctx.Commands.RunInWslAsync(distro, BuildRollbackScript(workspace), timeout, ct: ct, user: user, inputViaStdin: true);
+        var json = JsonSerializer.Serialize(state, SetupConfig.JsonWriteOptions);
+        await AtomicFile.WriteAllTextAsync(InstallStatePath(ctx), json, ct);
+    }
 
-        if (result.ExitCode != 0)
-            ctx.Logger.Warn($"Windows node context rollback failed (exit {result.ExitCode}): {FirstNonEmpty(result.Stderr, result.Stdout)}");
+    internal static bool IsMissingDistroResult(CommandResult result)
+    {
+        if (result.ExitCode == 0)
+            return false;
+
+        var output = FirstNonEmpty(result.Stderr, result.Stdout);
+        return output.Contains("There is no distribution with the supplied name", StringComparison.OrdinalIgnoreCase) ||
+               output.Contains("WSL_E_DISTRO_NOT_FOUND", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static async Task<string?> ResolveLinuxHomeAsync(SetupContext ctx, string distro, string user, CancellationToken ct)
+    {
+        var (home, _) = await QueryLinuxHomeAsync(ctx, distro, user, ct);
+        return home;
+    }
+
+    internal static async Task<(string? Home, CommandResult Result)> QueryLinuxHomeAsync(
+        SetupContext ctx,
+        string distro,
+        string user,
+        CancellationToken ct)
     {
         var result = await ctx.Commands.RunInWslAsync(
             distro,
@@ -2835,14 +3010,14 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             user: user);
 
         if (result.ExitCode != 0)
-            return null;
+            return (null, result);
 
         var home = result.Stdout
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Trim())
             .FirstOrDefault(line => line.Length > 0 && line.StartsWith('/'));
 
-        return string.IsNullOrWhiteSpace(home) ? null : home;
+        return (string.IsNullOrWhiteSpace(home) ? null : home, result);
     }
 
     internal static async Task<StepResult> RunOpenclawSetupAsync(SetupContext ctx, string distro, string user, string workspaceAbsolute, CancellationToken ct)
@@ -3131,7 +3306,7 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             fi
             if [ -L "$agents" ]; then
                 echo "AGENTS_SYMLINK_ROLLBACK_SKIPPED:$agents"
-                exit 0
+                exit 5
             fi
             begin_count=$(awk -v M="$begin_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) count++ } END { print count + 0 }' "$agents")
             end_count=$(awk -v M="$end_marker" '{ marker_line=$0; sub(/\r$/, "", marker_line); if (marker_line == M) count++ } END { print count + 0 }' "$agents")
