@@ -15,10 +15,7 @@
   </PropertyGroup>
 
   <!-- Dev build identity: allows side-by-side installation with Release.
-       Set DevBuild=true explicitly, or it defaults to true for Debug configuration. -->
-  <PropertyGroup Condition="'$(DevBuild)' == '' And '$(Configuration)' == 'Debug'">
-    <DevBuild>true</DevBuild>
-  </PropertyGroup>
+       Set DevBuild=true explicitly; release identity remains the default for every configuration. -->
   <PropertyGroup Condition="'$(DevBuild)' == 'true'">
     <DefineConstants>$(DefineConstants);DEV_BUILD</DefineConstants>
     <AppIdentityMarker>dev</AppIdentityMarker>
@@ -218,6 +215,14 @@
   <Target Name="WritePublishedAppIdentityMarker" AfterTargets="Publish">
     <WriteLinesToFile
       File="$(PublishDir)app-identity.txt"
+      Lines="$(AppIdentityMarker)"
+      Overwrite="true"
+      Encoding="UTF-8" />
+  </Target>
+
+  <Target Name="WriteBuildAppIdentityMarker" AfterTargets="Build">
+    <WriteLinesToFile
+      File="$(TargetDir)app-identity.txt"
       Lines="$(AppIdentityMarker)"
       Overwrite="true"
       Encoding="UTF-8" />

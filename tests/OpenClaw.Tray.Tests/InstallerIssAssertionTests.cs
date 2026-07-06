@@ -158,6 +158,8 @@ public sealed class InstallerIssAssertionTests
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var script = File.ReadAllText(Path.Combine(root, "scripts", "build-inno-local.ps1"));
+        var runScript = File.ReadAllText(Path.Combine(root, "run-app-local.ps1"));
+        var buildScript = File.ReadAllText(Path.Combine(root, "build.ps1"));
         var project = File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
 
@@ -168,9 +170,19 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("Payload identity", script);
         Assert.Contains("2>&1 | Out-Host", script);
         Assert.Contains("$wingetExitCode = $LASTEXITCODE", script);
+        Assert.Contains("[switch]$Dev,", runScript);
+        Assert.Contains("$buildArgs += \"-DevBuild\"", runScript);
+        Assert.Contains("app-identity.txt", runScript);
+        Assert.Contains("does not match requested", runScript);
+        Assert.Contains("[switch]$DevBuild,", buildScript);
+        Assert.Contains("$dotnetArgs += \"-p:DevBuild=true\"", buildScript);
+        Assert.Contains("-UseWinApp$runIdentitySwitch", buildScript);
         Assert.Contains("WritePublishedAppIdentityMarker", project);
+        Assert.Contains("WriteBuildAppIdentityMarker", project);
         Assert.Contains("<AppIdentityMarker>dev</AppIdentityMarker>", project);
         Assert.Contains("<AppIdentityMarker>release</AppIdentityMarker>", project);
+        Assert.DoesNotContain("'$(Configuration)' == 'Debug'", project);
+        Assert.DoesNotContain("<DevBuild>true</DevBuild>", project);
     }
 
     [Fact]

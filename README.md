@@ -109,6 +109,9 @@ dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true    # x64 MSI
 # Run isolated from your normal tray settings so multiple worktrees can run together
 .\run-app-local.ps1 -Isolated
 
+# Opt into side-by-side dev identity (separate mutex, protocol, gateway distro, and port)
+.\run-app-local.ps1 -Dev -Isolated
+
 # Alpha update testing from a Release build
 .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
 

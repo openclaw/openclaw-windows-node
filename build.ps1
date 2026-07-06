@@ -16,6 +16,10 @@
 .PARAMETER CheckOnly
     Only check prerequisites, don't build
 
+.PARAMETER DevBuild
+    Build the WinUI app with the side-by-side dev identity. Defaults off so
+    release identity remains the default for every configuration.
+
 .PARAMETER NoTrustRepository
     Do not automatically add this checkout to git safe.directory when GitVersion
     cannot read a repo owned by a different Windows account/group. The script
@@ -35,6 +39,8 @@ param(
     [string]$Configuration = "Debug",
     
     [switch]$CheckOnly,
+
+    [switch]$DevBuild,
 
     [switch]$NoTrustRepository
 )
@@ -353,6 +359,9 @@ function Build-Project($name, $path, $useRid = $false) {
     if ($useRid) {
         $dotnetArgs += @("-r", $rid)
     }
+    if ($DevBuild -and ($name -eq "WinUI" -or $name -eq "Tray")) {
+        $dotnetArgs += "-p:DevBuild=true"
+    }
     $result = Invoke-DotNetCaptured $dotnetArgs
     $exitCode = $LASTEXITCODE
     
@@ -450,9 +459,11 @@ if ($failCount -eq 0) {
         if ($winUITargetFramework) {
             $winUIOutputDirectory = ".\$winUIProjectDirectory\bin\$Configuration\$winUITargetFramework\$rid"
             $winUIManifestPath = ".\$winUIProjectDirectory\Package.appxmanifest"
-            Write-Host "  WinUI:    .\run-app-local.ps1 -NoBuild" -ForegroundColor White
-            Write-Host "  Isolated: .\run-app-local.ps1 -NoBuild -Isolated" -ForegroundColor White
-            Write-Host "  WinApp:   .\run-app-local.ps1 -NoBuild -UseWinApp" -ForegroundColor White
+            $runIdentitySwitch = if ($DevBuild) { " -Dev" } else { "" }
+            Write-Host "  WinUI:    .\run-app-local.ps1 -NoBuild$runIdentitySwitch" -ForegroundColor White
+            Write-Host "  Isolated: .\run-app-local.ps1 -NoBuild -Isolated$runIdentitySwitch" -ForegroundColor White
+            Write-Host "  Dev:      .\run-app-local.ps1 -Dev" -ForegroundColor White
+            Write-Host "  WinApp:   .\run-app-local.ps1 -NoBuild -UseWinApp$runIdentitySwitch" -ForegroundColor White
             Write-Host "            Direct launch is default. -UseWinApp runs: winapp run `"$winUIOutputDirectory`" --manifest `"$winUIManifestPath`" --executable `"OpenClaw.Tray.WinUI.exe`" --debug-output" -ForegroundColor DarkGray
         } else {
             Write-Warning "Unable to determine WinUI target framework from $winUIProjectPath"
