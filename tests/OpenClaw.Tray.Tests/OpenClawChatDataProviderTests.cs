@@ -2631,12 +2631,22 @@ public class OpenClawChatDataProviderTests
             e.Kind == ChatTimelineItemKind.User && e.Text == "second");
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
-        bridge.RaiseChat(firstFinal);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "cumulative prefix\nOK",
+            State = "final",
+            OpenClawId = "assistant-1",
+            OpenClawSeq = 10,
+        });
 
         Assert.True(snapshots[^1].Timelines["main"].TurnActive);
         Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
+        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text.Contains("cumulative prefix"));
         Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "second");
     }

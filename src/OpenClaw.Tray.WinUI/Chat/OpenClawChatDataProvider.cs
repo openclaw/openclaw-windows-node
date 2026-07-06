@@ -4599,7 +4599,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if ((!string.IsNullOrEmpty(gatewayMessageId) || openClawSeq is not null) &&
             IsIdentifiedCompletedAssistantDuplicateLocked(
                 threadId,
-                assistantText,
                 gatewayMessageId,
                 openClawSeq))
         {
@@ -4644,7 +4643,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private bool IsIdentifiedCompletedAssistantDuplicateLocked(
         string threadId,
-        string assistantText,
         string? gatewayMessageId,
         int? openClawSeq)
     {
@@ -4659,15 +4657,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var entry = timeline.Entries[i];
             if (entry.Kind != ChatTimelineItemKind.Assistant ||
                 entry.IsStreaming ||
-                !string.Equals(entry.Text, assistantText, StringComparison.Ordinal) ||
                 !threadMeta.TryGetValue(entry.Id, out var existing))
             {
                 continue;
             }
 
-            return (!string.IsNullOrEmpty(gatewayMessageId) &&
-                    string.Equals(existing.GatewayMessageId, gatewayMessageId, StringComparison.Ordinal)) ||
-                   (openClawSeq is not null && existing.OpenClawSeq == openClawSeq);
+            if ((!string.IsNullOrEmpty(gatewayMessageId) &&
+                 string.Equals(existing.GatewayMessageId, gatewayMessageId, StringComparison.Ordinal)) ||
+                (openClawSeq is not null && existing.OpenClawSeq == openClawSeq))
+            {
+                return true;
+            }
         }
 
         return false;
