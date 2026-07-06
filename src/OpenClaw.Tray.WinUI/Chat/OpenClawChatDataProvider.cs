@@ -4677,6 +4677,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 existing.OpenClawSeq == openClawSeq &&
                 string.Equals(entry.Text, assistantText, StringComparison.Ordinal))
             {
+                if (!string.IsNullOrEmpty(gatewayMessageId) &&
+                    string.IsNullOrEmpty(existing.GatewayMessageId))
+                {
+                    threadMeta[entry.Id] = existing with { GatewayMessageId = gatewayMessageId };
+                }
                 return true;
             }
         }

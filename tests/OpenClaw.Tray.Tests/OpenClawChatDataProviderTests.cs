@@ -2714,6 +2714,17 @@ public class OpenClawChatDataProviderTests
         });
 
         Assert.Empty(snapshots);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "cumulative prefix\nstable response",
+            State = "final",
+            OpenClawId = "message-10",
+            OpenClawSeq = 10,
+        });
+
+        Assert.Empty(snapshots);
         var current = await provider.LoadAsync();
         Assert.Single(current.Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "stable response");
