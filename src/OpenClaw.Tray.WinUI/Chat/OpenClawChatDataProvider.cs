@@ -142,6 +142,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly Dictionary<string, Dictionary<string, string>> _queuedMessageIdsByRunId = new();
     private readonly Dictionary<string, List<string>> _terminalRunIdsByThread = new();
     private readonly HashSet<string> _assistantFallbackPromotedThreads = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ChatMessageInfo> _deferredAssistantMessages = new(StringComparer.Ordinal);
     private long _queuedMessageSequence;
     private int _keylessEventDiagnosticRaised;
     // Threads where we locally initiated the current turn (via SendMessageAsync).
@@ -456,7 +457,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
 
             if (acceptedRunAlreadyStartedSnapshot is not null)
+            {
                 Publish(acceptedRunAlreadyStartedSnapshot);
+                ReplayDeferredAssistantMessage(threadId);
+            }
 
             if (staleRunIdToAbort is not null)
             {
@@ -1548,6 +1552,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _queuedSendRequests.Clear();
             _queuedMessageIdsByRunId.Clear();
             _terminalRunIdsByThread.Clear();
+            _deferredAssistantMessages.Clear();
             _localSentTexts.Clear();
             _locallyInitiatedThreads.Clear();
             _resetSubmittedLocalEchoTexts.Clear();
@@ -1648,6 +1653,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 _queuedMessages.Clear();
                 _queuedSendRequests.Clear();
                 _assistantFallbackPromotedThreads.Clear();
+                _deferredAssistantMessages.Clear();
                 _queuedMessageIdsByRunId.Clear();
                 _terminalRunIdsByThread.Clear();
                 _resetSubmittedLocalEchoTexts.Clear();
@@ -1924,7 +1930,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (dropAfterReset)
         {
             if (resetLocalEchoSnapshot is not null)
+            {
                 Publish(resetLocalEchoSnapshot);
+                ReplayDeferredAssistantMessage(msgThreadId);
+            }
             if (requestRemoteBackfillAfterReset)
                 _ = FetchRemoteUserMessageAsync(msgThreadId, openResetGateOnSuccess: true);
 
@@ -2008,7 +2017,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (isLocalEcho)
             {
                 if (echoSnapshot is not null)
+                {
                     Publish(echoSnapshot);
+                    ReplayDeferredAssistantMessage(msgThreadId);
+                }
                 return;
             }
 
@@ -2074,11 +2086,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         var threadId = message.SessionKey;
         var cappedAssistantText = RepairContentBlockSeams(TruncateForChatEntry(message.Text));
-        PromoteOldestQueuedMessageBeforeAssistantIfNeeded(
-            threadId,
-            cappedAssistantText,
-            message.OpenClawId,
-            message.OpenClawSeq);
+        bool deferAssistantMessage;
+        lock (_gate)
+        {
+            deferAssistantMessage = ShouldDeferAmbiguousAssistantMessageLocked(
+                threadId,
+                cappedAssistantText,
+                message.OpenClawId,
+                message.OpenClawSeq);
+            if (deferAssistantMessage)
+                _deferredAssistantMessages[threadId] = message;
+            else
+                _deferredAssistantMessages.Remove(threadId);
+        }
+        if (deferAssistantMessage)
+        {
+            Logger.Debug($"[Queue] Deferring identity-less assistant frame until the queued user boundary is confirmed threadId='{threadId}'");
+            return;
+        }
+
+        PromoteOldestQueuedMessageBeforeAssistantIfNeeded(threadId);
         ChatEntryMetadata? meta;
         var hasUsage = message.InputTokens is not null || message.OutputTokens is not null
             || message.ResponseTokens is not null || message.ContextPercent is not null;
@@ -2135,10 +2162,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         if (message.IsFinal)
         {
+            lock (_gate)
+            {
+                if (_activeRunIds.Remove(threadId, out var completedRunId))
+                    RememberTerminalRunIdLocked(threadId, completedRunId);
+                _activeRunStartSequences.Remove(threadId);
+            }
             SnapshotLatestAssistantUsage(threadId);
             ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
             RaiseNotification(new ChatProviderNotification(
                 ChatProviderNotificationKind.TurnComplete, threadId, LocalizationHelper.GetString("Chat_Notification_AssistantReplied")));
+            TryDispatchNextQueuedSend(threadId);
         }
     }
 
@@ -2926,7 +2960,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
 
         if (snapshot is not null)
+        {
             Publish(snapshot);
+            ReplayDeferredAssistantMessage(threadId);
+        }
     }
 
     private bool TryPromoteQueuedMessageOnLocalTurnStartLocked(AgentEventInfo evt, string threadId)
@@ -4345,6 +4382,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _queuedMessageIdsByRunId.Remove(threadId);
         _terminalRunIdsByThread.Remove(threadId);
         _assistantFallbackPromotedThreads.Remove(threadId);
+        _deferredAssistantMessages.Remove(threadId);
         _resetAcceptedRunIds.Remove(threadId);
         _resetLocalSendWithoutRunVersions.Remove(threadId);
         _resetLocalSendWithoutRunStartSequences.Remove(threadId);
@@ -4513,11 +4551,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return true;
     }
 
-    private void PromoteOldestQueuedMessageBeforeAssistantIfNeeded(
-        string threadId,
-        string assistantText,
-        string? gatewayMessageId,
-        int? openClawSeq)
+    private void PromoteOldestQueuedMessageBeforeAssistantIfNeeded(string threadId)
     {
         ChatDataSnapshot? snapshot = null;
         lock (_gate)
@@ -4532,11 +4566,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 && TryGetSingleSendingQueuedMessageLocked(threadId, out var queued)
                 && !_activeRunIds.ContainsKey(threadId)
                 && !_assistantFallbackPromotedThreads.Contains(threadId)
-                && !IsDuplicateCompletedAssistantLocked(
-                    threadId,
-                    assistantText,
-                    gatewayMessageId,
-                    openClawSeq)
                 && PromoteQueuedMessageLocked(threadId, queued.Id))
             {
                 snapshot = BuildSnapshotLocked();
@@ -4547,37 +4576,43 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Publish(snapshot);
     }
 
-    private bool IsDuplicateCompletedAssistantLocked(
+    private bool ShouldDeferAmbiguousAssistantMessageLocked(
         string threadId,
         string assistantText,
         string? gatewayMessageId,
         int? openClawSeq)
     {
-        if (!_timelines.TryGetValue(threadId, out var timeline))
+        if (!string.IsNullOrEmpty(gatewayMessageId) || openClawSeq is not null ||
+            !_locallyInitiatedThreads.Contains(threadId) ||
+            !TryGetSingleSendingQueuedMessageLocked(threadId, out _) ||
+            _activeRunIds.ContainsKey(threadId) ||
+            _assistantFallbackPromotedThreads.Contains(threadId) ||
+            !_timelines.TryGetValue(threadId, out var timeline))
+        {
             return false;
+        }
 
         for (var i = timeline.Entries.Count - 1; i >= 0; i--)
         {
             var entry = timeline.Entries[i];
             if (entry.Kind != ChatTimelineItemKind.Assistant)
                 continue;
-            if (entry.IsStreaming || !string.Equals(entry.Text, assistantText, StringComparison.Ordinal))
-                return false;
-
-            if (string.IsNullOrEmpty(gatewayMessageId) && openClawSeq is null)
-                return true;
-            if (!_entryMeta.TryGetValue(threadId, out var threadMeta) ||
-                !threadMeta.TryGetValue(entry.Id, out var existing))
-            {
-                return false;
-            }
-
-            return (!string.IsNullOrEmpty(gatewayMessageId) &&
-                    string.Equals(existing.GatewayMessageId, gatewayMessageId, StringComparison.Ordinal)) ||
-                   (openClawSeq is not null && existing.OpenClawSeq == openClawSeq);
+            return !entry.IsStreaming && string.Equals(entry.Text, assistantText, StringComparison.Ordinal);
         }
 
         return false;
+    }
+
+    private void ReplayDeferredAssistantMessage(string threadId)
+    {
+        ChatMessageInfo? deferred;
+        lock (_gate)
+        {
+            if (!_deferredAssistantMessages.Remove(threadId, out deferred))
+                return;
+        }
+
+        OnChatMessageReceived(this, deferred);
     }
 
     private bool HasSendingQueuedMessagesLocked(string threadId)
