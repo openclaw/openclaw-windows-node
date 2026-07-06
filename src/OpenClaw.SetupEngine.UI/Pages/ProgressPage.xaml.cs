@@ -11,7 +11,11 @@ using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
-internal sealed record ProgressPageArgs(SetupConfig Config, bool ShowMilestoneOnly);
+internal sealed record ProgressPageArgs(
+    SetupConfig Config,
+    bool ShowMilestoneOnly,
+    string DataDir,
+    string LocalDataDir);
 
 public sealed partial class ProgressPage : Page
 {
@@ -22,6 +26,8 @@ public sealed partial class ProgressPage : Page
     private readonly Dictionary<string, StepRow> _rows = new();
     private int _logLineCount;
     private bool _pipelineFinished;
+    private string _dataDir = null!;
+    private string _localDataDir = null!;
     private const int MaxLogLines = 200;
 
     internal bool IsPipelineRunning => _runCts != null && !_pipelineFinished;
@@ -51,6 +57,8 @@ public sealed partial class ProgressPage : Page
     {
         var args = e.Parameter as ProgressPageArgs;
         _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
+        _dataDir = args?.DataDir ?? SetupContext.ResolveDataDir();
+        _localDataDir = args?.LocalDataDir ?? SetupContext.ResolveLocalDataDir();
         SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
 
         BuildStepRows();
@@ -121,8 +129,7 @@ public sealed partial class ProgressPage : Page
             return;
 
         config.LogPath ??= Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "OpenClawTray", "Logs", "Setup", $"setup-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
+            _dataDir, "Logs", "Setup", $"setup-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
 
         var sw = Stopwatch.StartNew();
         using var cts = new CancellationTokenSource();
@@ -138,7 +145,14 @@ public sealed partial class ProgressPage : Page
             var journalPath = Path.ChangeExtension(config.LogPath, ".journal.jsonl");
             using var journal = new TransactionJournal(journalPath);
             var commands = new CommandRunner(_logger);
-            var ctx = new SetupContext(config, _logger, journal, commands, cts.Token);
+            var ctx = new SetupContext(
+                config,
+                _logger,
+                journal,
+                commands,
+                cts.Token,
+                _dataDir,
+                _localDataDir);
 
             var steps = BuildSteps(config);
             _pipeline = new SetupPipeline(steps);

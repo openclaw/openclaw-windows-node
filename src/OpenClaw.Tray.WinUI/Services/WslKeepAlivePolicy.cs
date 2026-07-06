@@ -5,8 +5,8 @@ namespace OpenClawTray.Services;
 
 internal static class WslKeepAlivePolicy
 {
-    private const string DefaultSetupManagedDistroName = "OpenClawGateway";
-    private const string DefaultSetupManagedFriendlyName = "Local (OpenClawGateway)";
+    private static string DefaultSetupManagedDistroName => AppIdentity.SetupDistroName;
+    private static string DefaultSetupManagedFriendlyName => $"Local ({AppIdentity.SetupDistroName})";
 
     public static bool ShouldStart(GatewayRecord? activeRecord, string? legacyGatewayUrl)
     {
@@ -72,9 +72,7 @@ internal static class WslKeepAlivePolicy
         if (string.IsNullOrWhiteSpace(commandLine) || string.IsNullOrWhiteSpace(distroName))
             return false;
 
-        return commandLine.Contains(distroName, StringComparison.OrdinalIgnoreCase)
-            && commandLine.Contains("sleep", StringComparison.OrdinalIgnoreCase)
-            && commandLine.Contains("infinity", StringComparison.OrdinalIgnoreCase);
+        return WslCommandLineMatcher.IsKeepaliveForDistro(commandLine, distroName);
     }
 
     public static bool TryGetMarkerDistroName(string markerJson, out string distroName)

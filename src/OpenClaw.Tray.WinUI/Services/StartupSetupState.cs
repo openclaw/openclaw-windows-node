@@ -5,8 +5,6 @@ namespace OpenClawTray.Services;
 
 internal static class StartupSetupState
 {
-    private const string DefaultGatewayUrl = "ws://localhost:18789";
-
     public static bool HasStoredNodeDeviceToken(string dataPath) =>
         HasAnyDeviceTokenForRole(dataPath, "node");
 
@@ -66,7 +64,7 @@ internal static class StartupSetupState
         !string.IsNullOrWhiteSpace(settings.GatewayUrl)
         && !string.Equals(
             settings.GatewayUrl,
-            DefaultGatewayUrl,
+            AppIdentity.SetupGatewayUrl,
             StringComparison.OrdinalIgnoreCase);
 
     public static bool CanStartNodeGateway(SettingsManager settings, string dataPath)

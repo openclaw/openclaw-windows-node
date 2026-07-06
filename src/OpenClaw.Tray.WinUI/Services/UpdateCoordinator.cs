@@ -60,6 +60,20 @@ internal sealed class UpdateCoordinator(
             return true; // Don't block launch
         }
 
+        if (AppIdentity.IsDev)
+        {
+            Logger.Info("Skipping release-channel update check in development build");
+            appState.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Skipped",
+                CurrentVersion = AppVersionInfo.Version,
+                CheckedAt = DateTime.UtcNow,
+                Detail = "development build"
+            };
+            _updateCheckGate.Release();
+            return true;
+        }
+
 #if DEBUG
         try
         {
@@ -348,19 +362,18 @@ internal sealed class UpdateCoordinator(
                             LocalizationHelper.GetString("Update_Title_Failed"),
                             failedMessage);
                         break;
-#if DEBUG
-                    // Status="Skipped" is only produced by the DEBUG short-circuit
-                    // in CheckForUpdatesAsync. User-skipped versions keep
-                    // Status="Available", so this case must not exist in RELEASE
-                    // or it would surface a confusing "disabled in debug builds"
-                    // dialog to end users.
+                    // User-skipped versions keep Status="Available". This state
+                    // only represents an app build whose update channel is
+                    // intentionally disabled.
                     case "Skipped":
                         await ShowUpdateInfoDialogAsync(
                             "Skipped",
                             LocalizationHelper.GetString("Update_Title_Skipped"),
-                            LocalizationHelper.GetString("Update_Message_Skipped_Debug"));
+                            LocalizationHelper.GetString(
+                                AppIdentity.IsDev
+                                    ? "Update_Message_Skipped_Dev"
+                                    : "Update_Message_Skipped_Debug"));
                         break;
-#endif
                 }
             }
 

@@ -13,8 +13,7 @@ namespace OpenClawTray.Helpers;
 public static class GatewayChatHelper
 {
     private static readonly string s_userDataFolder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenClawTray", "WebView2");
+        AppIdentity.ResolveLocalDataDirectory(), "WebView2");
 
     /// <summary>
     /// Build the HTTP(S) chat URL from a WebSocket gateway URL.

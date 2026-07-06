@@ -62,14 +62,14 @@ internal static class DeepLinkSecurityPolicy
         if (string.IsNullOrWhiteSpace(uri))
             return "<empty-deep-link>";
 
-        var result = DeepLinkParser.ParseDeepLink(uri);
+        var result = DeepLinkParser.ParseDeepLink(uri, AppIdentity.ProtocolScheme);
         if (result == null)
             return "<invalid-deep-link>";
 
         var redactedPath = RedactPathForLog(result.Path);
         return string.IsNullOrEmpty(result.Query)
-            ? $"openclaw://{redactedPath}"
-            : $"openclaw://{redactedPath}?<redacted>";
+            ? $"{AppIdentity.ProtocolScheme}://{redactedPath}"
+            : $"{AppIdentity.ProtocolScheme}://{redactedPath}?<redacted>";
     }
 
     internal static string GetActionDisplayName(DeepLinkResult result)

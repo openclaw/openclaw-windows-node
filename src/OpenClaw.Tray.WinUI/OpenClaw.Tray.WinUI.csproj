@@ -21,6 +21,10 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(DevBuild)' == 'true'">
     <DefineConstants>$(DefineConstants);DEV_BUILD</DefineConstants>
+    <AppIdentityMarker>dev</AppIdentityMarker>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DevBuild)' != 'true'">
+    <AppIdentityMarker>release</AppIdentityMarker>
   </PropertyGroup>
 
   <!-- Map $(Platform) to $(RuntimeIdentifier) so self-contained WinUI F5/debug produces a launchable EXE. -->
@@ -46,9 +50,8 @@
     <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
     <AppxBundle>Never</AppxBundle>
     <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
-    <!-- MSIX package version (Identity/Version in Package.appxmanifest) is auto-synced from
-         $(Version) by the SyncAppxManifestVersion target below; this is the only place the
-         Version is written. -->
+    <!-- MSIX package version is generated from $(Version) into the obj/ manifest by
+         PrepareOpenClawAppxManifest below; this is the only place the package version is sourced. -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -103,112 +106,15 @@
     <MxcSdkRestoreStamp>$(OpenClawRepoRoot)node_modules\.openclaw-mxc-sdk-$(MxcSdkExpectedVersion).stamp</MxcSdkRestoreStamp>
   </PropertyGroup>
 
-  <!--
-    Single source of truth for the app version is GitVersion/tag history (see docs/VERSIONING.md).
-    Package.appxmanifest carries a sentinel Version="0.0.0.0" in source; the real version is patched
-    in only when actually packaging MSIX (WindowsPackageType=MSIX), so unpackaged dev builds leave
-    the file untouched and git stays clean. CI's manifest patch step (.github/workflows/ci.yml)
-    only writes Identity/Name and DisplayName; Version is written by this target from the
-    GitVersion-derived $(Version).
-
-    Uses a regex string-replace (not XmlPoke) to preserve the manifest's hand-formatted layout.
-    The MSIX Identity/Version must be a 4-part version (X.Y.Z.W) with no pre-release suffix;
-    $(Version) may be 2-, 3- or 4-part and may include a -alpha/+meta suffix from GitVersion.
-  -->
-  <UsingTask TaskName="SyncAppxManifestVersion" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+  <!-- Generate the versioned/channel-specific manifest under obj/. Never rewrite the
+       tracked source manifest: a dev package build followed by a release build must not
+       inherit the dev identity, and parallel builds must not race on one source file. -->
+  <UsingTask TaskName="GenerateOpenClawAppxManifest" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
-      <ManifestPath ParameterType="System.String" Required="true" />
+      <SourceManifestPath ParameterType="System.String" Required="true" />
+      <OutputManifestPath ParameterType="System.String" Required="true" />
       <FourPartVersion ParameterType="System.String" Required="true" />
-    </ParameterGroup>
-    <Task>
-      <Code Type="Fragment" Language="cs">
-        <![CDATA[
-        // Validate the version is a proper 4-part numeric (X.Y.Z.W) before touching the manifest.
-        if (!System.Text.RegularExpressions.Regex.IsMatch(FourPartVersion, @"^\d+\.\d+\.\d+\.\d+$")) {
-            Log.LogError("SyncAppxManifestVersion: '" + FourPartVersion + "' is not a valid 4-part numeric MSIX version.");
-            return false;
-        }
-
-        var text = System.IO.File.ReadAllText(ManifestPath);
-        // Tolerate attribute-order, whitespace around '=', single or double quotes, and case
-        // variations on the Version attribute name. Capture the opening and closing quote
-        // characters so we re-emit them unchanged.
-        var regex = new System.Text.RegularExpressions.Regex(
-            "(<Identity\\b[^>]*?\\bVersion\\s*=\\s*[\"'])[^\"']+([\"'])",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (!regex.IsMatch(text)) {
-            Log.LogError("SyncAppxManifestVersion: could not find Identity/@Version in " + ManifestPath);
-            return false;
-        }
-        var updated = regex.Replace(text, "${1}" + FourPartVersion + "$2", 1);
-        if (updated == text) {
-            return true;
-        }
-
-        // Clear any read-only attribute (some non-Git SCMs mark files read-only) so the
-        // write doesn't fail with an opaque UnauthorizedAccessException.
-        try {
-            var attrs = System.IO.File.GetAttributes(ManifestPath);
-            if ((attrs & System.IO.FileAttributes.ReadOnly) != 0) {
-                System.IO.File.SetAttributes(ManifestPath, attrs & ~System.IO.FileAttributes.ReadOnly);
-            }
-        } catch (System.Exception ex) {
-            Log.LogWarning("SyncAppxManifestVersion: could not clear read-only on " + ManifestPath + ": " + ex.Message);
-        }
-
-        // Atomic write: stage to a sibling temp file then replace, so parallel readers never
-        // see a truncated manifest. File.Replace is atomic on NTFS. The finally block makes
-        // sure the temp file never lingers (it isn't in .gitignore and would otherwise show
-        // up in `git status` if Replace throws something other than FileNotFoundException).
-        var tempPath = ManifestPath + ".sync-tmp";
-        System.IO.File.WriteAllText(tempPath, updated);
-        try {
-            try {
-                System.IO.File.Replace(tempPath, ManifestPath, destinationBackupFileName: null);
-            } catch (System.IO.FileNotFoundException) {
-                // Replace requires destination to exist; if a concurrent build deleted it, fall
-                // back to a plain move (no 3-arg overload on .NET Framework, which is what the
-                // inline task compiler targets).
-                System.IO.File.Move(tempPath, ManifestPath);
-            }
-        } finally {
-            try {
-                if (System.IO.File.Exists(tempPath)) {
-                    System.IO.File.Delete(tempPath);
-                }
-            } catch { /* best-effort cleanup */ }
-        }
-        Log.LogMessage(MessageImportance.High, "Synced Package.appxmanifest Identity/@Version to " + FourPartVersion);
-        ]]>
-      </Code>
-    </Task>
-  </UsingTask>
-
-  <Target Name="SyncAppxManifestVersionTarget" BeforeTargets="BeforeBuild;_GenerateCurrentProjectAppxManifest" Condition="'$(WindowsPackageType)' == 'MSIX'">
-    <!-- Fail loudly if MSIX packaging was requested but no version was supplied; without
-         this, the target would silently skip and the sentinel 0.0.0.0 in the source manifest
-         would ship in the MSIX package. -->
-    <Error Text="MSIX packaging requested (WindowsPackageType=MSIX) but Version is empty. Ensure GitVersion can read this repository's tag history or pass /p:Version=X.Y[.Z]." Condition="'$(Version)' == ''" />
-    <PropertyGroup>
-      <_AppxManifestPath>$(MSBuildThisFileDirectory)Package.appxmanifest</_AppxManifestPath>
-      <_StrippedVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '[-+].*$', ''))</_StrippedVersion>
-      <_VersionDotCount>$([System.Text.RegularExpressions.Regex]::Matches('$(_StrippedVersion)', '\.').Count)</_VersionDotCount>
-      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '3'">$(_StrippedVersion)</_AppxManifestVersion>
-      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '2'">$(_StrippedVersion).0</_AppxManifestVersion>
-      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '1'">$(_StrippedVersion).0.0</_AppxManifestVersion>
-    </PropertyGroup>
-    <Error Text="Cannot derive 4-part MSIX version from &lt;Version&gt;$(Version)&lt;/Version&gt;. Use the form X.Y or X.Y.Z (optionally with -prerelease or +meta suffix)." Condition="'$(_AppxManifestVersion)' == ''" />
-    <SyncAppxManifestVersion ManifestPath="$(_AppxManifestPath)" FourPartVersion="$(_AppxManifestVersion)" />
-  </Target>
-
-  <!--
-    Dev-build MSIX identity patching: changes Identity/Name and DisplayName so the dev
-    variant installs side-by-side with release (like WinUI Gallery Dev/Release channels).
-    Runs only for MSIX dev builds; CI's manifest patch step handles Alpha/Release channels.
-  -->
-  <UsingTask TaskName="PatchAppxManifestIdentity" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
-    <ParameterGroup>
-      <ManifestPath ParameterType="System.String" Required="true" />
+      <DevBuild ParameterType="System.String" />
       <IdentityName ParameterType="System.String" Required="true" />
       <DisplayName ParameterType="System.String" Required="true" />
       <ProtocolName ParameterType="System.String" Required="true" />
@@ -216,47 +122,105 @@
     <Task>
       <Code Type="Fragment" Language="cs">
         <![CDATA[
-        var text = System.IO.File.ReadAllText(ManifestPath);
+        if (!System.Text.RegularExpressions.Regex.IsMatch(FourPartVersion, @"^\d+\.\d+\.\d+\.\d+$")) {
+            Log.LogError("GenerateOpenClawAppxManifest: '" + FourPartVersion + "' is not a valid four-part MSIX version.");
+            return false;
+        }
 
-        // Patch Identity Name attribute
-        var nameRegex = new System.Text.RegularExpressions.Regex(
+        var text = System.IO.File.ReadAllText(SourceManifestPath);
+        var versionRegex = new System.Text.RegularExpressions.Regex(
+            "(<Identity\\b[^>]*?\\bVersion\\s*=\\s*[\"'])[^\"']+([\"'])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!versionRegex.IsMatch(text)) {
+            Log.LogError("GenerateOpenClawAppxManifest: Identity/@Version missing from " + SourceManifestPath);
+            return false;
+        }
+        text = versionRegex.Replace(text, "${1}" + FourPartVersion + "$2", 1);
+
+        if (System.String.Equals(DevBuild, "true", System.StringComparison.OrdinalIgnoreCase)) {
+            var nameRegex = new System.Text.RegularExpressions.Regex(
             "(<Identity\\b[^>]*?\\bName\\s*=\\s*[\"'])[^\"']+([\"'])",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        text = nameRegex.Replace(text, "${1}" + IdentityName + "$2", 1);
+            if (!nameRegex.IsMatch(text)) {
+                Log.LogError("GenerateOpenClawAppxManifest: Identity/@Name missing from " + SourceManifestPath);
+                return false;
+            }
+            text = nameRegex.Replace(text, "${1}" + IdentityName + "$2", 1);
 
-        // Patch Properties/DisplayName element
-        var propsDisplayRegex = new System.Text.RegularExpressions.Regex(
-            "(<DisplayName>)[^<]+(</DisplayName>)");
-        text = propsDisplayRegex.Replace(text, "${1}" + DisplayName + "$2", 2);
+            var propsDisplayRegex = new System.Text.RegularExpressions.Regex(
+            "(<Properties>[\\s\\S]*?<DisplayName>)[^<]+(</DisplayName>)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!propsDisplayRegex.IsMatch(text)) {
+                Log.LogError("GenerateOpenClawAppxManifest: Properties/DisplayName missing from " + SourceManifestPath);
+                return false;
+            }
+            text = propsDisplayRegex.Replace(text, "${1}" + DisplayName + "$2", 1);
 
-        // Patch VisualElements DisplayName attribute
-        var visualRegex = new System.Text.RegularExpressions.Regex(
-            "(DisplayName\\s*=\\s*\")[^\"]+(\")");
-        text = visualRegex.Replace(text, "${1}" + DisplayName + "$2");
+            var visualRegex = new System.Text.RegularExpressions.Regex(
+            "(<uap:VisualElements\\b[\\s\\S]*?\\bDisplayName\\s*=\\s*[\"'])[^\"']+([\"'])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!visualRegex.IsMatch(text)) {
+                Log.LogError("GenerateOpenClawAppxManifest: VisualElements/@DisplayName missing from " + SourceManifestPath);
+                return false;
+            }
+            text = visualRegex.Replace(text, "${1}" + DisplayName + "$2", 1);
 
-        // Patch Protocol Name attribute (openclaw -> openclaw-dev)
-        var protocolRegex = new System.Text.RegularExpressions.Regex(
-            "(<uap:Protocol\\s+Name\\s*=\\s*\")[^\"]+(\")");
-        text = protocolRegex.Replace(text, "${1}" + ProtocolName + "$2", 1);
+            var protocolRegex = new System.Text.RegularExpressions.Regex(
+            "(<uap:Protocol\\b[^>]*?\\bName\\s*=\\s*[\"'])[^\"']+([\"'])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!protocolRegex.IsMatch(text)) {
+                Log.LogError("GenerateOpenClawAppxManifest: Protocol/@Name missing from " + SourceManifestPath);
+                return false;
+            }
+            text = protocolRegex.Replace(text, "${1}" + ProtocolName + "$2", 1);
+        }
 
-        System.IO.File.WriteAllText(ManifestPath, text);
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(OutputManifestPath));
+        System.IO.File.WriteAllText(OutputManifestPath, text);
         Log.LogMessage(MessageImportance.High,
-            "Patched Package.appxmanifest: Identity=" + IdentityName +
-            ", DisplayName='" + DisplayName + "', Protocol=" + ProtocolName);
+            "Generated " + OutputManifestPath + " (Version=" + FourPartVersion + ", DevBuild=" + DevBuild + ")");
         ]]>
       </Code>
     </Task>
   </UsingTask>
 
-  <Target Name="PatchDevAppxManifestIdentity"
-          AfterTargets="SyncAppxManifestVersionTarget"
-          BeforeTargets="_GenerateCurrentProjectAppxManifest"
-          Condition="'$(WindowsPackageType)' == 'MSIX' And '$(DevBuild)' == 'true'">
-    <PatchAppxManifestIdentity
-      ManifestPath="$(MSBuildThisFileDirectory)Package.appxmanifest"
+  <Target Name="PrepareOpenClawAppxManifest"
+          BeforeTargets="_ValidatePresenceOfAppxManifestItems;_CalculateInputsForGenerateCurrentProjectAppxManifest"
+          Condition="'$(WindowsPackageType)' == 'MSIX'">
+    <Error Text="MSIX packaging requested but Version is empty. Pass /p:Version=X.Y[.Z]." Condition="'$(Version)' == ''" />
+    <PropertyGroup>
+      <_StrippedVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '[-+].*$', ''))</_StrippedVersion>
+      <_VersionDotCount>$([System.Text.RegularExpressions.Regex]::Matches('$(_StrippedVersion)', '\.').Count)</_VersionDotCount>
+      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '3'">$(_StrippedVersion)</_AppxManifestVersion>
+      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '2'">$(_StrippedVersion).0</_AppxManifestVersion>
+      <_AppxManifestVersion Condition="'$(_VersionDotCount)' == '1'">$(_StrippedVersion).0.0</_AppxManifestVersion>
+      <_GeneratedAppxManifestPath>$(IntermediateOutputPath)openclaw.Package.appxmanifest</_GeneratedAppxManifestPath>
+    </PropertyGroup>
+    <Error Text="Cannot derive four-part MSIX version from $(Version). Use X.Y or X.Y.Z with an optional suffix." Condition="'$(_AppxManifestVersion)' == ''" />
+    <GenerateOpenClawAppxManifest
+      SourceManifestPath="$(MSBuildThisFileDirectory)Package.appxmanifest"
+      OutputManifestPath="$(_GeneratedAppxManifestPath)"
+      FourPartVersion="$(_AppxManifestVersion)"
+      DevBuild="$(DevBuild)"
       IdentityName="OpenClaw.Companion.Dev"
       DisplayName="OpenClaw Companion (Dev)"
       ProtocolName="openclaw-dev" />
+    <ItemGroup>
+      <AppxManifest Remove="@(AppxManifest)" />
+      <AppxManifest Include="$(_GeneratedAppxManifestPath)">
+        <SubType>Designer</SubType>
+      </AppxManifest>
+      <FileWrites Include="$(_GeneratedAppxManifestPath)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Local installer tooling validates this marker before wrapping a published payload. -->
+  <Target Name="WritePublishedAppIdentityMarker" AfterTargets="Publish">
+    <WriteLinesToFile
+      File="$(PublishDir)app-identity.txt"
+      Lines="$(AppIdentityMarker)"
+      Overwrite="true"
+      Encoding="UTF-8" />
   </Target>
 
   <!-- Fail fast on RIDs we have no wxc-exec binary for, so x86/non-Windows

@@ -205,7 +205,10 @@ public sealed partial class CapabilitiesPage : Page
 
     private void ApplySetupReviewSummary(SetupConfig config)
     {
-        var summary = SetupReviewSummaryBuilder.Build(config);
+        var summary = SetupReviewSummaryBuilder.Build(
+            config,
+            SetupWindow.Active?.DataDir,
+            SetupWindow.Active?.LocalDataDir);
         InstallDistroTitleText.Text = summary.DistroTitle;
         InstallDistroDetailText.Text = summary.DistroDescription;
         InstallCliDetailText.Text = summary.InstallerDescription;

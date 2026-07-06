@@ -328,7 +328,14 @@ public sealed class SetupContext
     // WSL PATH prefix using configured user
     public string WslPathPrefix => WslConstants.GetPathPrefix(Config.Wsl.User);
 
-    public SetupContext(SetupConfig config, SetupLogger logger, TransactionJournal journal, ICommandRunner commands, CancellationToken ct)
+    public SetupContext(
+        SetupConfig config,
+        SetupLogger logger,
+        TransactionJournal journal,
+        ICommandRunner commands,
+        CancellationToken ct,
+        string? dataDir = null,
+        string? localDataDir = null)
     {
         Config = config;
         Logger = logger;
@@ -336,8 +343,8 @@ public sealed class SetupContext
         Commands = commands;
         CancellationToken = ct;
 
-        DataDir = ResolveDataDir();
-        LocalDataDir = ResolveLocalDataDir();
+        DataDir = dataDir ?? ResolveDataDir();
+        LocalDataDir = localDataDir ?? ResolveLocalDataDir();
 
         DistroName = config.DistroName;
         GatewayUrl = config.EffectiveGatewayUrl;

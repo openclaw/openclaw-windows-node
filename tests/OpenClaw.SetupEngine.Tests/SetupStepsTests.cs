@@ -463,9 +463,6 @@ public class SetupStepsTests : IDisposable
                 return Fail("terminate unavailable");
             if (args.SequenceEqual(["--unregister", "OpenClawGateway"]))
                 return Fail("unregister unavailable");
-            if (args.SequenceEqual(["--shutdown"]))
-                return Ok();
-
             return Fail($"unexpected args: {string.Join(' ', args)}");
         });
         var ctx = CreateContext(commands: commands);
@@ -478,6 +475,7 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("could not confirm whether distro 'OpenClawGateway' is still registered", result.Message);
         Assert.Contains("skipped deleting app-owned install path", result.Message);
         Assert.True(File.Exists(Path.Combine(installPath, "ext4.vhdx")));
+        Assert.DoesNotContain(commands.Calls, c => c.Arguments.SequenceEqual(["--shutdown"]));
     }
 
     [Fact]
@@ -1334,6 +1332,12 @@ public class SetupStepsTests : IDisposable
         Assert.False(StartKeepaliveStep.IsKeepaliveCommandLine(
             @"C:\Windows\System32\wsl.exe -d OtherGateway -- sleep infinity",
             "OpenClawGateway"));
+        Assert.False(StartKeepaliveStep.IsKeepaliveCommandLine(
+            @"C:\Windows\System32\wsl.exe -d OpenClawGateway-Dev -- sleep infinity",
+            "OpenClawGateway"));
+        Assert.True(StartKeepaliveStep.IsKeepaliveCommandLine(
+            "wsl.exe --distribution \"OpenClawGateway-Dev\" -- sleep infinity",
+            "OpenClawGateway-Dev"));
     }
 
     [Fact]

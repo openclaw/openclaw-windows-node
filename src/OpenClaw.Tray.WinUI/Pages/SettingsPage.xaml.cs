@@ -37,13 +37,16 @@ public sealed partial class SettingsPage : Page
 
     private enum UninstallUiState { Idle, InProgress, Success, Failure }
 
-    private const string GatewayIdleBodyText =
-        "Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.";
+    private static string GatewayIdleBodyText =>
+        $"Removes the WSL distro ({AppIdentity.SetupDistroName}), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.";
 
 
     public SettingsPage()
     {
         InitializeComponent();
+        LocalGatewaySetupDescriptionText.Text =
+            $"Launches setup to install the app-owned {AppIdentity.SetupDistroName} WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation.";
+        GatewayBodyText.Text = GatewayIdleBodyText;
         _gatewayUptimeRefreshTimer.Tick += OnGatewayUptimeRefreshTimerTick;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -579,7 +582,7 @@ public sealed partial class SettingsPage : Page
         });
         dialogContent.Children.Add(new TextBlock
         {
-            Text = "• WSL distro: OpenClawGateway (and its disk image)\n" +
+            Text = $"• WSL distro: {AppIdentity.SetupDistroName} (and its disk image)\n" +
                    "• Autostart registry entry\n" +
                    "• Gateway credentials (token and bootstrap token cleared)\n" +
                    "• Setup state (onboarding will reset)",
@@ -734,9 +737,7 @@ public sealed partial class SettingsPage : Page
 
     private void ShowUninstallError(string message)
     {
-        var logsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenClawTray", "Logs");
+        var logsPath = Path.Combine(AppIdentity.ResolveLocalDataDirectory(), "Logs");
 
         var viewLogsButton = new Button { Content = LocalizationHelper.GetString("SettingsPage_ViewLogs") };
         viewLogsButton.Click += (_, _) =>

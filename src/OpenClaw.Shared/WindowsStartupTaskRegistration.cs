@@ -6,39 +6,46 @@ public static class WindowsStartupTaskRegistration
 {
     public const string TaskName = "OpenClaw Companion";
 
-    public static bool Register(string trayExecutablePath)
+    public static bool Register(string trayExecutablePath, string taskName = TaskName)
     {
         if (string.IsNullOrWhiteSpace(trayExecutablePath) || !File.Exists(trayExecutablePath))
             return false;
 
-        return Run(CreateRegisterProcessStartInfo(trayExecutablePath));
+        return Run(CreateRegisterProcessStartInfo(trayExecutablePath, taskName));
     }
 
-    public static bool Unregister() => Run(CreateUnregisterProcessStartInfo());
+    public static bool Unregister(string taskName = TaskName) => Run(CreateUnregisterProcessStartInfo(taskName));
 
-    public static bool Exists() => Run(CreateQueryProcessStartInfo());
+    public static bool Exists(string taskName = TaskName) => Run(CreateQueryProcessStartInfo(taskName));
 
-    internal static ProcessStartInfo CreateRegisterProcessStartInfo(string trayExecutablePath)
+    internal static ProcessStartInfo CreateRegisterProcessStartInfo(string trayExecutablePath, string taskName = TaskName)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
         var fullPath = Path.GetFullPath(trayExecutablePath);
         return CreateStartInfo(
             "/Create",
-            "/TN", TaskName,
+            "/TN", taskName,
             "/TR", Quote(fullPath),
             "/SC", "ONLOGON",
             "/F");
     }
 
-    internal static ProcessStartInfo CreateUnregisterProcessStartInfo() =>
-        CreateStartInfo(
+    internal static ProcessStartInfo CreateUnregisterProcessStartInfo(string taskName = TaskName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
+        return CreateStartInfo(
             "/Delete",
-            "/TN", TaskName,
+            "/TN", taskName,
             "/F");
+    }
 
-    internal static ProcessStartInfo CreateQueryProcessStartInfo() =>
-        CreateStartInfo(
+    internal static ProcessStartInfo CreateQueryProcessStartInfo(string taskName = TaskName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
+        return CreateStartInfo(
             "/Query",
-            "/TN", TaskName);
+            "/TN", taskName);
+    }
 
     private static bool Run(ProcessStartInfo startInfo)
     {

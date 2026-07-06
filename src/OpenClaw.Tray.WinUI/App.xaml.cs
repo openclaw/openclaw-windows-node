@@ -232,20 +232,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     // crash log, exec approvals, and the single-instance mutex name all derive from it.
     private static readonly string? DataDirOverride =
         Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } v ? v : null;
-    private static readonly string DataPath = DataDirOverride
-        ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            AppIdentity.IsDev ? "OpenClawTray-Dev" : "OpenClawTray");
+    private static readonly string DataPath = AppIdentity.ResolveLocalDataDirectory();
     private static readonly string DeepLinkPipeName =
         DeepLinkSecurityPolicy.BuildCurrentUserScopedPipeName(DataPath);
-    // Operator/node identity store. In normal installs this is %APPDATA%\OpenClawTray.
+    // Operator/node identity store. Normal installs use the build variant's roaming data folder.
     // Isolated test/dev runs set OPENCLAW_TRAY_DATA_DIR to the direct OpenClaw data
     // folder, and SetupEngine/GatewayRegistry write per-gateway identities there.
     private static readonly string IdentityDataPath = DataDirOverride
         ?? Path.Combine(
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            AppIdentity.IsDev ? "OpenClawTray-Dev" : "OpenClawTray");
+            AppIdentity.DataDirectoryName);
     private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
 
@@ -333,12 +330,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     }
 
     /// <summary>
-    /// Returns true if <paramref name="arg"/> looks like a deep link URI for this build variant.
-    /// Dev builds accept both <c>openclaw-dev://</c> and <c>openclaw://</c> for compatibility.
+    /// Returns true if <paramref name="arg"/> is a deep link for this build variant.
+    /// Release and dev schemes stay disjoint so one install cannot steal the other's activation.
     /// </summary>
     private static bool IsDeepLinkArg(string arg) =>
-        arg.StartsWith($"{AppIdentity.ProtocolScheme}://", StringComparison.OrdinalIgnoreCase)
-        || (AppIdentity.IsDev && arg.StartsWith("openclaw://", StringComparison.OrdinalIgnoreCase));
+        DeepLinkParser.ParseDeepLink(arg, AppIdentity.ProtocolScheme) != null;
 
     private void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
@@ -432,9 +428,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // two test runs against the same data dir would otherwise pick different
         // mutex names — and `Math.Abs(int.MinValue)` overflows. Use a stable
         // SHA-256 prefix instead.
-        // NOTE: The bare "OpenClawTray" mutex name is also referenced by
-        // installer.iss `AppMutex=` for install/uninstall race coordination
-        // (round 2, Scott #5). The suffixed test-isolation variant is
+        // NOTE: The build variant's bare mutex name is also referenced by
+        // installer.iss `AppMutex=` for install/uninstall race coordination.
+        // The suffixed test-isolation variant is
         // intentionally not covered by AppMutex — production installs only
         // ever use the unsuffixed name.
         var mutexName = AppIdentity.MutexBaseName;
@@ -442,7 +438,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             var hash = System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(DataDirOverride));
-            mutexName = $"OpenClawTray-{Convert.ToHexString(hash, 0, 4)}";
+            mutexName = $"{AppIdentity.MutexBaseName}-{Convert.ToHexString(hash, 0, 4)}";
         }
         _mutex = new Mutex(true, mutexName, out bool createdNew);
         var ownsMutex = createdNew;
@@ -1271,7 +1267,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var root = _keepAliveWindow?.Content as FrameworkElement;
         if (root?.XamlRoot == null)
         {
-            Logger.Warn($"Cannot confirm deep link action without XAML root: {DeepLinkSecurityPolicy.RedactForLog($"openclaw://{result.Path}")}");
+            Logger.Warn($"Cannot confirm deep link action without XAML root: {DeepLinkSecurityPolicy.RedactForLog($"{AppIdentity.ProtocolScheme}://{result.Path}")}");
             return false;
         }
 
@@ -3724,7 +3720,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
-            var setupWindow = new SetupWindow(startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone);
+            var setupWindow = new SetupWindow(
+                startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone,
+                dataDir: AppIdentity.ResolveRoamingDataDirectory(),
+                localDataDir: AppIdentity.ResolveSetupLocalDataDirectory(),
+                distroNameOverride: AppIdentity.SetupDistroName,
+                gatewayPortOverride: AppIdentity.SetupGatewayPort);
+            setupWindow.Title = AppIdentity.DecorateWindowTitle("OpenClaw Setup");
             _setupWindow = setupWindow;
             setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
             setupWindow.SetupCompleted += OnSetupCompleted;
@@ -4231,7 +4233,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private async Task HandleDeepLinkAsync(string uri)
     {
-        var result = DeepLinkParser.ParseDeepLink(uri);
+        var result = DeepLinkParser.ParseDeepLink(uri, AppIdentity.ProtocolScheme);
         if (result == null)
         {
             Logger.Warn($"Rejected invalid deep link: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
@@ -4332,7 +4334,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return;
             }
 
-            if (DeepLinkParser.ParseDeepLink(uri) == null)
+            if (DeepLinkParser.ParseDeepLink(uri, AppIdentity.ProtocolScheme) == null)
             {
                 Logger.Warn($"Rejected invalid deep link before IPC forwarding: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
                 return;

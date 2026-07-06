@@ -94,7 +94,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // Identity store location for the role-aware DeviceIdentity. Defaults to
     // _dataPath when no separate path is supplied (preserves existing test
     // behavior that hands a single temp directory to NodeService). The Tray
-    // app supplies %APPDATA%\OpenClawTray here so node device tokens land in
+    // app supplies its build-specific roaming data folder so node device tokens land in
     // the same DeviceIdentity store as operator tokens (Phase 1 model:
     // single shared location, role distinction inside).
     private readonly string _identityDataPath;
@@ -799,7 +799,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 serverName: "openclaw-tray-mcp",
                 serverVersion: AppVersionInfo.Version);
             // Bearer-token auth. Token is created on first start and persists
-            // alongside other OpenClawTray data (so OPENCLAW_TRAY_DATA_DIR
+            // alongside other build-specific app data (so OPENCLAW_TRAY_DATA_DIR
             // isolation in tests scopes the token too); CLI/agent registration
             // reads from the same path. Loopback bind + Origin/Host checks
             // remain in front; this layer rejects untrusted local processes

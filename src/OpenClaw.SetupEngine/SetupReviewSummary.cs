@@ -12,14 +12,14 @@ public sealed record SetupReviewSummary(
 
 public static class SetupReviewSummaryBuilder
 {
-    public static SetupReviewSummary Build(SetupConfig config)
+    public static SetupReviewSummary Build(SetupConfig config, string? dataDir = null, string? localDataDir = null)
     {
         var distroName = Display(config.DistroName, "OpenClawGateway");
         var baseDistro = Display(config.BaseDistro, "Ubuntu-24.04");
         var gatewayBind = Display(config.Gateway.Bind, "loopback");
         var gatewayPort = config.GatewayPort;
-        var installPath = Path.Combine(SetupContext.ResolveLocalDataDir(), "wsl", distroName);
-        var gatewayDataPath = Path.Combine(SetupContext.ResolveDataDir(), "gateways.json");
+        var installPath = Path.Combine(localDataDir ?? SetupContext.ResolveLocalDataDir(), "wsl", distroName);
+        var gatewayDataPath = Path.Combine(dataDir ?? SetupContext.ResolveDataDir(), "gateways.json");
         var installUrl = config.Gateway.InstallUrl ?? GatewayLkgVersion.DefaultInstallUrl;
         var installerHost = TryGetHttpsHost(installUrl);
         var installerDescription = installerHost is null

@@ -13,7 +13,7 @@ public enum SetupExistingGatewayKind
 
 public static class SetupExistingGatewayClassifier
 {
-    private const string AppOwnedDistroName = "OpenClawGateway";
+    private static string AppOwnedDistroName => AppIdentity.SetupDistroName;
 
     public static SetupExistingGatewayKind ClassifyWithoutWslProbe(
         GatewayRegistry? registry,
@@ -154,12 +154,12 @@ public static class SetupExistingGatewayClassifier
     public static string ResolveLocalDataPath()
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR") is { Length: > 0 } localAppDataRoot)
-            return Path.Combine(localAppDataRoot, "OpenClawTray");
+            return Path.Combine(localAppDataRoot, AppIdentity.DataDirectoryName);
 
         if (Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR") is { Length: > 0 } localDataDir)
             return localDataDir;
 
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
+        return AppIdentity.ResolveSetupLocalDataDirectory();
     }
 
     private static bool PhaseLooksActiveOrComplete(JsonElement phaseEl)

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Globalization;
 
 namespace OpenClawTray;
 
@@ -40,6 +41,14 @@ internal static class CliUninstallHandler
 
         // Build CLI arguments for SetupEngine
         var setupArgs = new List<string> { "--headless", "--uninstall" };
+        setupArgs.AddRange([
+            "--data-dir", AppIdentity.ResolveRoamingDataDirectory(),
+            "--local-data-dir", AppIdentity.ResolveSetupLocalDataDirectory(),
+            "--distro-name", AppIdentity.SetupDistroName,
+            "--gateway-port", AppIdentity.SetupGatewayPort.ToString(CultureInfo.InvariantCulture),
+            "--autostart-name", AppIdentity.AutoStartRegistryName,
+            "--startup-task-name", AppIdentity.StartupTaskName,
+        ]);
         if (confirmDestructive) setupArgs.Add("--confirm-destructive");
         if (dryRun) setupArgs.Add("--dry-run");
         if (jsonOutputPath != null)
