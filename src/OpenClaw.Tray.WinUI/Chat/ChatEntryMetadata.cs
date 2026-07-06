@@ -56,6 +56,10 @@ namespace OpenClawTray.Chat;
 /// True for a locally queued user prompt promoted into the transcript before
 /// gateway history has provided its stable id/sequence.
 /// </param>
+/// <param name="LocalQueuedMessageId">
+/// Stable client-side id for a local send. Used to attach a later gateway
+/// identity to the exact optimistic transcript row without text matching.
+/// </param>
 public sealed record ChatEntryMetadata(
     DateTimeOffset? Timestamp,
     string? Model,
@@ -67,4 +71,5 @@ public sealed record ChatEntryMetadata(
     int? UsageContributionTokens = null,
     string? GatewayMessageId = null,
     int? OpenClawSeq = null,
-    bool IsLocalQueuedSend = false);
+    bool IsLocalQueuedSend = false,
+    string? LocalQueuedMessageId = null);

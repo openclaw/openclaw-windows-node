@@ -877,7 +877,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task ChatMessageReceived_UserEcho_Ignored()
+    public async Task ChatMessageReceived_UserEcho_AttachesGatewayIdentityToExactLocalRow()
     {
         // After sending a message locally, the SSE echo of that same text
         // should be suppressed as a gateway echo while atomically moving the
@@ -888,7 +888,6 @@ public class OpenClawChatDataProviderTests
         await provider.LoadAsync();
 
         _ = provider.SendMessageAsync("main", "hi");
-        var beforeEcho = snapshots[^1];
         snapshots.Clear(); // clear the snapshot from SendMessageAsync
 
         bridge.RaiseChat(new ChatMessageInfo
@@ -896,13 +895,20 @@ public class OpenClawChatDataProviderTests
             SessionKey = "main",
             Role = "user",
             Text = "hi",
-            State = "final"
+            State = "final",
+            OpenClawId = "gateway-hi",
+            OpenClawSeq = 7,
         });
 
-        Assert.Empty(snapshots);
-        var timeline = beforeEcho.Timelines["main"];
+        var timeline = Assert.Single(snapshots).Timelines["main"];
         Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User && e.Text == "hi");
-        Assert.Empty(GetQueuedMessages(beforeEcho, "main"));
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        var user = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.User);
+        var meta = provider.GetEntryMetadata("main")[user.Id];
+        Assert.Equal("gateway-hi", meta.GatewayMessageId);
+        Assert.Equal(7, meta.OpenClawSeq);
+        Assert.False(meta.IsLocalQueuedSend);
+        Assert.NotNull(meta.LocalQueuedMessageId);
 
         tcs.SetResult();
     }
@@ -1203,6 +1209,15 @@ public class OpenClawChatDataProviderTests
         bridge.RaiseChat(new ChatMessageInfo
         {
             SessionKey = "main",
+            Role = "user",
+            Text = "a",
+            State = "final",
+            OpenClawId = "gateway-a",
+            OpenClawSeq = 1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
             Role = "assistant",
             Text = "a response",
             State = "final"
@@ -1212,6 +1227,15 @@ public class OpenClawChatDataProviderTests
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-b", Status = "started" });
         await provider.SendMessageAsync("main", "b");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-b"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "b",
+            State = "final",
+            OpenClawId = "gateway-b",
+            OpenClawSeq = 2,
+        });
 
         Assert.Equal(
             new[] { "a", "b" },
@@ -1300,6 +1324,37 @@ public class OpenClawChatDataProviderTests
             .Select(e => e.Text)
             .ToArray();
         Assert.Equal(new[] { "same", "same" }, userTexts);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_DoesNotDropFreshIdenticalLocalPromptForStaleHistoryRow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-same", Status = "started" });
+        await provider.LoadAsync();
+
+        await provider.SendMessageAsync("main", "same");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-same"));
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "same",
+                    Ts = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds(),
+                },
+            }
+        });
+        snapshots.Clear();
+
+        await provider.LoadHistoryAsync("main");
+
+        Assert.Equal(2, snapshots[^1].Timelines["main"].Entries.Count(e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "same"));
     }
 
     [Fact]
@@ -1882,6 +1937,8 @@ public class OpenClawChatDataProviderTests
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "old-run" });
         sendGate.SetResult();
         await staleSendTask;
+
+        Assert.Contains("old-run", bridge.AbortedRunIds);
 
         var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run");
         staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
@@ -2564,7 +2621,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task StopResponseAsync_WithQueuedFollowUp_DispatchesNextMessage()
+    public async Task StopResponseAsync_WithQueuedFollowUp_WaitsForConfirmedTerminalEvent()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
@@ -2579,6 +2636,11 @@ public class OpenClawChatDataProviderTests
 
         await provider.StopResponseAsync("main");
 
+        Assert.Equal(new[] { "first" }, bridge.SentMessages);
+        var waiting = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(ChatQueuedMessageSendState.Queued, waiting.SendState);
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
         for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
             await Task.Delay(10);
 
@@ -2587,6 +2649,40 @@ public class OpenClawChatDataProviderTests
         var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Equal("second", queued.Text);
         Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+    }
+
+    [Fact]
+    public async Task QueuedDispatch_AssistantBeforeLifecycle_PromotesEachPromptOnce()
+    {
+        var secondSendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        bridge.SendBehavior = (_, _, _) => ++sendCount == 2 ? secondSendGate.Task : Task.CompletedTask;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "second");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
+            await Task.Delay(10);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "second response",
+            State = "delta",
+        });
+
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
+
+        secondSendGate.SetResult();
     }
 
     [Fact]
