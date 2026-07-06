@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Chat;
 using OpenClawTray.Chat;
 using OpenClawTray.FunctionalUI;
+using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.FunctionalUI.Hosting;
 using Windows.Graphics;
 using static OpenClawTray.FunctionalUI.Factories;
@@ -30,6 +31,7 @@ public sealed class ChatTimelineVirtualizationProofTests
 
         var props = BuildProps(InitialRows, scrollToBottomToken: 0);
         FunctionalHostControl? host = null;
+        var initialCachedVirtualControls = 0;
 
         await _ui.RunOnUIAsync(() =>
         {
@@ -57,17 +59,31 @@ public sealed class ChatTimelineVirtualizationProofTests
             Assert.Equal(Orientation.Vertical, layout.Orientation);
             Assert.Equal(2, layout.Spacing);
             Assert.Equal(InitialRows, CountItems(repeater.ItemsSource));
+            var realizedRows = Enumerable.Range(0, InitialRows)
+                .Count(index => repeater.TryGetElement(index) is not null);
+            Assert.InRange(realizedRows, 1, InitialRows - 1);
+            initialCachedVirtualControls = host!.CachedVirtualStackControlCount;
+            Assert.True(initialCachedVirtualControls > 0);
 
             var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
             _ui.Container.UpdateLayout();
             Assert.True(scrollViewer.ScrollableHeight > 0, "large chat timeline should overflow and become scrollable");
-
-            scrollViewer.ChangeView(null, scrollViewer.ScrollableHeight, null, disableAnimation: true);
-            _ui.Container.UpdateLayout();
-            Assert.True(scrollViewer.VerticalOffset > 0, "large chat timeline should scroll away from the top");
         });
 
-        await DrainRenderQueueAsync();
+        foreach (var fraction in new[] { 0.25, 0.5, 0.75, 1.0 })
+        {
+            await _ui.RunOnUIAsync(() =>
+            {
+                var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+                scrollViewer.ChangeView(
+                    null,
+                    scrollViewer.ScrollableHeight * fraction,
+                    null,
+                    disableAnimation: true);
+                _ui.Container.UpdateLayout();
+            });
+            await DrainRenderQueueAsync();
+        }
 
         object? stableItemsSource = null;
         object? stableItemTemplate = null;
@@ -75,6 +91,12 @@ public sealed class ChatTimelineVirtualizationProofTests
         await _ui.RunOnUIAsync(() =>
         {
             var repeater = FindLogical<ItemsRepeater>(host!).Single();
+            Assert.Null(repeater.TryGetElement(0));
+            Assert.NotNull(repeater.TryGetElement(InitialRows - 1));
+            Assert.InRange(
+                host!.CachedVirtualStackControlCount,
+                1,
+                initialCachedVirtualControls * 2);
             stableItemsSource = repeater.ItemsSource;
             stableItemTemplate = repeater.ItemTemplate;
 
@@ -140,6 +162,57 @@ public sealed class ChatTimelineVirtualizationProofTests
         await _ui.RunOnUIAsync(() => host!.Dispose());
     }
 
+    [Fact]
+    public async Task RealizedComponentRow_ReplacesRootAndPrunesRemovedEffects()
+    {
+        await _ui.ResetContainerAsync();
+        DisposableVirtualRow.CleanupCount = 0;
+
+        FunctionalHostControl? host = null;
+        ItemsRepeater? repeater = null;
+        UIElement? stableContainer = null;
+        var expandedCacheCount = 0;
+        var cleanupCountBeforeCollapse = 0;
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            host = new FunctionalHostControl { Width = 600, Height = 400, SuppressAutoDispose = true };
+            _ui.Container.Children.Add(host);
+            host.Mount(_ => VirtualVStack(
+                0,
+                Component<SwappingVirtualRow, SwappingVirtualRowProps>(new SwappingVirtualRowProps(true))));
+        });
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            repeater = FindLogical<ItemsRepeater>(host!).Single();
+            stableContainer = repeater.TryGetElement(0);
+            Assert.IsType<Border>(stableContainer);
+            Assert.Contains(FindDescendants<TextBlock>(host!), text => text.Text == "expanded row");
+            Assert.Contains(FindDescendants<TextBlock>(host!), text => text.Text == "disposable child");
+            expandedCacheCount = host!.CachedVirtualStackControlCount;
+            Assert.True(expandedCacheCount > 1);
+            cleanupCountBeforeCollapse = DisposableVirtualRow.CleanupCount;
+
+            host.Mount(_ => VirtualVStack(
+                0,
+                Component<SwappingVirtualRow, SwappingVirtualRowProps>(new SwappingVirtualRowProps(false))));
+        });
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            Assert.Same(stableContainer, repeater!.TryGetElement(0));
+            Assert.Contains(FindDescendants<TextBlock>(host!), text => text.Text == "collapsed row");
+            Assert.DoesNotContain(FindDescendants<TextBlock>(host!), text => text.Text == "disposable child");
+            Assert.Equal(cleanupCountBeforeCollapse + 1, DisposableVirtualRow.CleanupCount);
+            Assert.InRange(host!.CachedVirtualStackControlCount, 1, expandedCacheCount - 1);
+        });
+
+        await _ui.RunOnUIAsync(() => host!.Dispose());
+    }
+
     private async Task DrainRenderQueueAsync()
     {
         await _ui.RunOnUIAsync(() => { });
@@ -191,4 +264,27 @@ public sealed class ChatTimelineVirtualizationProofTests
         itemsSource is System.Collections.IEnumerable enumerable
             ? enumerable.Cast<object>().Count()
             : 0;
+
+    private sealed record SwappingVirtualRowProps(bool Expanded);
+
+    private sealed class SwappingVirtualRow : Component<SwappingVirtualRowProps>
+    {
+        public override Element Render() => Props.Expanded
+            ? VStack(
+                0,
+                TextBlock("expanded row"),
+                Component<DisposableVirtualRow>())
+            : TextBlock("collapsed row");
+    }
+
+    private sealed class DisposableVirtualRow : Component
+    {
+        internal static int CleanupCount { get; set; }
+
+        public override Element Render()
+        {
+            UseEffect((Func<Action>)(() => () => CleanupCount++), Array.Empty<object>());
+            return TextBlock("disposable child");
+        }
+    }
 }

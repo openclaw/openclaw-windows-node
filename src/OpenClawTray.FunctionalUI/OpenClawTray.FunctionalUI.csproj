@@ -23,6 +23,9 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>OpenClawTray.FunctionalUI.Tests</_Parameter1>
     </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>OpenClaw.Tray.UITests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

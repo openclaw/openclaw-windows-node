@@ -816,6 +816,7 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
     /// survives page navigation.
     /// </summary>
     public bool SuppressAutoDispose { get; set; }
+    internal int CachedVirtualStackControlCount => _renderer.CachedVirtualStackControlCount;
 
     public FunctionalHostControl()
     {
@@ -921,6 +922,9 @@ internal sealed class UiRenderer(Action requestRender)
     private readonly HashSet<string> _visitedContentFlyoutPaths = new();
     private readonly HashSet<string> _visitedVirtualStackPaths = new();
     private readonly Dictionary<string, string[]> _virtualStackOwnedPathPrefixes = new();
+
+    internal int CachedVirtualStackControlCount =>
+        _controls.Keys.Count(IsOwnedByVirtualStack);
 
     public UIElement Render(Element element, string path, List<Action> effects)
     {
@@ -1345,10 +1349,12 @@ internal sealed class UiRenderer(Action requestRender)
     {
         foreach (var item in items)
         {
-            if (item.RealizedControl is null)
+            if (item.RealizedContainer is null)
                 continue;
 
-            item.RealizedControl = RenderElementCore(item.Element, item.Path, effects);
+            var child = RenderElementCore(item.Element, item.Path, effects);
+            SetChild(item.RealizedContainer, child);
+            PruneUnvisitedCachedSubtree(item.Path);
         }
     }
 
@@ -1361,6 +1367,14 @@ internal sealed class UiRenderer(Action requestRender)
         {
             if (!string.Equals(currentItems[i].Path, nextItems[i].Path, StringComparison.Ordinal))
                 return false;
+            if (currentItems[i].Element.GetType() != nextItems[i].Element.GetType())
+                return false;
+            if (currentItems[i].Element is ComponentElement currentComponent
+                && nextItems[i].Element is ComponentElement nextComponent
+                && currentComponent.ComponentType != nextComponent.ComponentType)
+            {
+                return false;
+            }
         }
 
         return true;
@@ -1371,11 +1385,13 @@ internal sealed class UiRenderer(Action requestRender)
         public int Index { get; set; } = index;
         public string Path { get; } = path;
         public Element Element { get; set; } = element;
-        public UIElement? RealizedControl { get; set; }
+        public Border? RealizedContainer { get; set; }
     }
 
     private sealed class VirtualStackItemTemplate(UiRenderer renderer, string path) : IElementFactory
     {
+        private readonly Dictionary<UIElement, VirtualStackItem> _realizedItems = new();
+
         public bool Matches(UiRenderer otherRenderer, string otherPath) =>
             ReferenceEquals(renderer, otherRenderer) && string.Equals(path, otherPath, StringComparison.Ordinal);
 
@@ -1384,19 +1400,86 @@ internal sealed class UiRenderer(Action requestRender)
             if (args.Data is not VirtualStackItem item)
                 return new Border();
 
+            var container = new Border { HorizontalAlignment = HorizontalAlignment.Stretch };
             var effects = new List<Action>();
-            var control = renderer.RenderElementCore(item.Element, item.Path, effects);
-            item.RealizedControl = control;
+            var child = renderer.RenderElementCore(item.Element, item.Path, effects);
+            renderer.SetChild(container, child);
+            item.RealizedContainer = container;
+            _realizedItems[container] = item;
             foreach (var effect in effects)
                 effect();
-            return control;
+            return container;
         }
 
         public void RecycleElement(ElementFactoryRecycleArgs args)
         {
-            // The renderer cache owns element identity by path. ItemsRepeater
-            // detaches recycled rows; re-realization asks for the same path and
-            // gets a refreshed control without rebuilding the whole list.
+            if (args.Element is not { } control || !_realizedItems.Remove(control, out var item))
+                return;
+
+            if (ReferenceEquals(item.RealizedContainer, control))
+                item.RealizedContainer = null;
+            renderer.RemoveCachedSubtree(item.Path);
+        }
+    }
+
+    private void PruneUnvisitedCachedSubtree(string prefix)
+    {
+        foreach (var (key, component) in _components
+                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix) && !_visitedComponentKeys.Contains(pair.Key))
+                     .ToArray())
+        {
+            component.Context.RunEffectCleanups();
+            _components.Remove(key);
+        }
+
+        foreach (var (path, flyout) in _contentFlyouts
+                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix) && !_visitedContentFlyoutPaths.Contains(pair.Key))
+                     .ToArray())
+        {
+            flyout.Hide();
+            flyout.Content = null;
+            _contentFlyouts.Remove(path);
+        }
+
+        foreach (var (path, cachedControl) in _controls
+                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix) && !_visitedControlPaths.Contains(pair.Key))
+                     .OrderByDescending(pair => pair.Key.Length)
+                     .ToArray())
+        {
+            _mountedPaths.Remove(path);
+            DetachChildren(cachedControl);
+            RemoveFromParent(cachedControl);
+            _controls.Remove(path);
+        }
+    }
+
+    private void RemoveCachedSubtree(string prefix)
+    {
+        foreach (var (key, component) in _components
+                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix))
+                     .ToArray())
+        {
+            component.Context.RunEffectCleanups();
+            _components.Remove(key);
+        }
+
+        foreach (var (path, flyout) in _contentFlyouts
+                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix))
+                     .ToArray())
+        {
+            flyout.Hide();
+            _contentFlyouts.Remove(path);
+        }
+
+        foreach (var (path, cachedControl) in _controls
+                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix))
+                     .OrderByDescending(pair => pair.Key.Length)
+                     .ToArray())
+        {
+            _mountedPaths.Remove(path);
+            DetachChildren(cachedControl);
+            RemoveFromParent(cachedControl);
+            _controls.Remove(path);
         }
     }
 

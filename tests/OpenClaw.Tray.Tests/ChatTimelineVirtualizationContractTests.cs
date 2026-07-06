@@ -42,6 +42,9 @@ public sealed class ChatTimelineVirtualizationContractTests
         Assert.Contains("VirtualStackItemsMatch", functionalUi);
         Assert.Contains("UpdateRealizedVirtualStackItems", functionalUi);
         Assert.Contains("repeater.ItemTemplate is not VirtualStackItemTemplate", functionalUi);
+        Assert.Contains("RemoveCachedSubtree(item.Path)", functionalUi);
+        Assert.Contains("item.RealizedContainer = null", functionalUi);
+        Assert.Contains("PruneUnvisitedCachedSubtree(item.Path)", functionalUi);
         Assert.Contains("PruneUnvisitedPaths();", functionalUi);
     }
 
