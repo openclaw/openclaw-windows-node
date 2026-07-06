@@ -27,6 +27,7 @@ public sealed partial class WizardPage : Page
     private WizardStepCategory _stepCategory = WizardStepCategory.Acknowledge;
     private bool _sensitive;
     private bool _errorState;
+    private bool _finalizationErrorState;
     private int _operationGeneration;
     private int _wizardStepCount;
     private int _progressPolls;
@@ -104,6 +105,7 @@ public sealed partial class WizardPage : Page
         try
         {
             _errorState = false;
+            _finalizationErrorState = false;
             HideRecoveryActions();
             // Cancel any in-progress server-side wizard session before starting a
             // fresh one, so the gateway doesn't reject wizard.start with "wizard
@@ -513,6 +515,14 @@ public sealed partial class WizardPage : Page
     {
         if (_errorState)
         {
+            if (_finalizationErrorState)
+            {
+                _errorState = false;
+                _finalizationErrorState = false;
+                await CompleteSetupAsync(_operationGeneration);
+                return;
+            }
+
             await StartWizardAsync();
             return;
         }
@@ -1007,6 +1017,7 @@ public sealed partial class WizardPage : Page
     private void ShowError(string message)
     {
         _errorState = true;
+        _finalizationErrorState = false;
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
         StatusText.Text = "Wizard needs attention";
@@ -1018,6 +1029,14 @@ public sealed partial class WizardPage : Page
         SecondaryButton.Visibility = Visibility.Collapsed;
         ShowRecoveryActions();
         MaybeShowGatewayRecovery();
+    }
+
+    private void ShowFinalizationError(string message)
+    {
+        ShowError(message);
+        _finalizationErrorState = true;
+        StatusText.Text = "Windows integration needs attention";
+        PrimaryButton.Content = "Retry Windows integration";
     }
 
     private async Task EnterWizardErrorAsync(string detail)
@@ -1163,7 +1182,7 @@ public sealed partial class WizardPage : Page
 
         if (!contextResult.IsSuccess)
         {
-            ShowError($"OpenClaw onboard finished, but Windows node guidance could not be installed: {contextResult.Message}");
+            ShowFinalizationError($"OpenClaw onboard finished, but Windows node guidance could not be installed: {contextResult.Message}");
             return;
         }
 

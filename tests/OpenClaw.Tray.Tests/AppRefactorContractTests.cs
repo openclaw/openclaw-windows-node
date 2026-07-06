@@ -604,6 +604,8 @@ public sealed class AppRefactorContractTests
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
         var complete = ExtractMethod(source, "CompleteSetupAsync");
         var skip = ExtractMethod(source, "SkipWizardAsync");
+        var primary = ExtractMethod(source, "PrimaryClickAsync");
+        var finalizationError = ExtractMethod(source, "ShowFinalizationError");
 
         AssertInOrder(
             complete,
@@ -612,6 +614,14 @@ public sealed class AppRefactorContractTests
             "NavigateToComplete(true");
         Assert.Contains("await CompleteSetupAsync(generation)", skip);
         Assert.Contains("_errorState = false", skip);
+        AssertInOrder(
+            primary,
+            "if (_finalizationErrorState)",
+            "_errorState = false",
+            "await CompleteSetupAsync(_operationGeneration)",
+            "await StartWizardAsync()");
+        Assert.Contains("ShowFinalizationError", complete);
+        Assert.Contains("Retry Windows integration", finalizationError);
     }
 
     [Fact]
