@@ -2596,6 +2596,78 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task IdentifiedDuplicateAssistant_DoesNotPromoteNextQueuedMessage()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "second");
+        var firstFinal = new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "OK",
+            State = "final",
+            OpenClawId = "assistant-1",
+            OpenClawSeq = 10,
+        };
+        bridge.RaiseChat(firstFinal);
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
+            await Task.Delay(10);
+
+        bridge.RaiseChat(firstFinal);
+
+        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal("second", queued.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
+        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
+    }
+
+    [Fact]
+    public async Task AssistantFinal_ClearsLocalTurnStateForNextRemoteLifecycleStart()
+    {
+        var historyCalls = 0;
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ =>
+        {
+            historyCalls++;
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages = new[]
+                {
+                    new ChatMessageInfo { SessionKey = "main", Role = "user", Text = "remote prompt" },
+                },
+            });
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-local", Status = "started" });
+        await provider.LoadAsync();
+
+        await provider.SendMessageAsync("main", "local prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-local"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "local response",
+            State = "final",
+        });
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-remote"));
+        for (var i = 0; i < 20 && historyCalls == 0; i++)
+            await Task.Delay(10);
+
+        Assert.True(historyCalls > 0);
+    }
+
+    [Fact]
     public async Task AgentEvent_ReasoningDelta_AccumulatesReasoningEntry()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });

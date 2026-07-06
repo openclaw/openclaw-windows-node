@@ -167,6 +167,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         long ResetVersion,
         long StartedLifecycleSequence,
         long StartedRunStartSequence);
+    private enum AssistantQueueFrameDisposition
+    {
+        Render,
+        Defer,
+        Drop,
+    }
     private sealed record LocalInlineApproval(
         string ThreadId,
         string RequestId,
@@ -2086,22 +2092,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         var threadId = message.SessionKey;
         var cappedAssistantText = RepairContentBlockSeams(TruncateForChatEntry(message.Text));
-        bool deferAssistantMessage;
+        AssistantQueueFrameDisposition assistantDisposition;
         lock (_gate)
         {
-            deferAssistantMessage = ShouldDeferAmbiguousAssistantMessageLocked(
+            assistantDisposition = ClassifyAssistantQueueFrameLocked(
                 threadId,
                 cappedAssistantText,
                 message.OpenClawId,
                 message.OpenClawSeq);
-            if (deferAssistantMessage)
+            if (assistantDisposition == AssistantQueueFrameDisposition.Defer)
                 _deferredAssistantMessages[threadId] = message;
             else
                 _deferredAssistantMessages.Remove(threadId);
         }
-        if (deferAssistantMessage)
+        if (assistantDisposition != AssistantQueueFrameDisposition.Render)
         {
-            Logger.Debug($"[Queue] Deferring identity-less assistant frame until the queued user boundary is confirmed threadId='{threadId}'");
+            Logger.Debug(assistantDisposition == AssistantQueueFrameDisposition.Defer
+                ? $"[Queue] Deferring identity-less assistant frame until the queued user boundary is confirmed threadId='{threadId}'"
+                : $"[Queue] Dropping retransmitted assistant frame before queued user boundary threadId='{threadId}'");
             return;
         }
 
@@ -2165,8 +2173,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             lock (_gate)
             {
                 if (_activeRunIds.Remove(threadId, out var completedRunId))
+                {
                     RememberTerminalRunIdLocked(threadId, completedRunId);
+                    _abortedRunIds.Remove(completedRunId);
+                }
                 _activeRunStartSequences.Remove(threadId);
+                _abortedThreads.Remove(threadId);
+                if (!HasSendingQueuedMessagesLocked(threadId))
+                    _locallyInitiatedThreads.Remove(threadId);
             }
             SnapshotLatestAssistantUsage(threadId);
             ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
@@ -4576,20 +4590,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Publish(snapshot);
     }
 
-    private bool ShouldDeferAmbiguousAssistantMessageLocked(
+    private AssistantQueueFrameDisposition ClassifyAssistantQueueFrameLocked(
         string threadId,
         string assistantText,
         string? gatewayMessageId,
         int? openClawSeq)
     {
-        if (!string.IsNullOrEmpty(gatewayMessageId) || openClawSeq is not null ||
-            !_locallyInitiatedThreads.Contains(threadId) ||
+        if (!_locallyInitiatedThreads.Contains(threadId) ||
             !TryGetSingleSendingQueuedMessageLocked(threadId, out _) ||
             _activeRunIds.ContainsKey(threadId) ||
             _assistantFallbackPromotedThreads.Contains(threadId) ||
             !_timelines.TryGetValue(threadId, out var timeline))
         {
-            return false;
+            return AssistantQueueFrameDisposition.Render;
         }
 
         for (var i = timeline.Entries.Count - 1; i >= 0; i--)
@@ -4597,10 +4610,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var entry = timeline.Entries[i];
             if (entry.Kind != ChatTimelineItemKind.Assistant)
                 continue;
-            return !entry.IsStreaming && string.Equals(entry.Text, assistantText, StringComparison.Ordinal);
+            if (entry.IsStreaming || !string.Equals(entry.Text, assistantText, StringComparison.Ordinal))
+                return AssistantQueueFrameDisposition.Render;
+            if (string.IsNullOrEmpty(gatewayMessageId) && openClawSeq is null)
+                return AssistantQueueFrameDisposition.Defer;
+            if (!_entryMeta.TryGetValue(threadId, out var threadMeta) ||
+                !threadMeta.TryGetValue(entry.Id, out var existing))
+            {
+                return AssistantQueueFrameDisposition.Render;
+            }
+
+            var sameGatewayIdentity =
+                (!string.IsNullOrEmpty(gatewayMessageId) &&
+                 string.Equals(existing.GatewayMessageId, gatewayMessageId, StringComparison.Ordinal)) ||
+                (openClawSeq is not null && existing.OpenClawSeq == openClawSeq);
+            return sameGatewayIdentity
+                ? AssistantQueueFrameDisposition.Drop
+                : AssistantQueueFrameDisposition.Render;
         }
 
-        return false;
+        return AssistantQueueFrameDisposition.Render;
     }
 
     private void ReplayDeferredAssistantMessage(string threadId)
