@@ -2758,9 +2758,28 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         if (string.IsNullOrWhiteSpace(workspace))
             return StepResult.Fail("Could not resolve OpenClaw agent workspace path");
 
-        var setupResult = await RunOpenclawSetupAsync(ctx, distro, user, workspace, ct);
-        if (!setupResult.IsSuccess)
-            return setupResult;
+        var workspaceOverride = ctx.Config.WindowsNodeContext.WorkspacePath?.Trim();
+        var runBaselineSetup = !string.IsNullOrWhiteSpace(workspaceOverride);
+        if (!runBaselineSetup)
+        {
+            var defaultWorkspace = await ResolveConfiguredDefaultWorkspacePathAsync(ctx, distro, user, home, ct);
+            if (string.IsNullOrWhiteSpace(defaultWorkspace))
+                return StepResult.Fail("Could not resolve OpenClaw default workspace path");
+
+            runBaselineSetup = string.Equals(
+                workspace.TrimEnd('/'),
+                defaultWorkspace.TrimEnd('/'),
+                StringComparison.Ordinal);
+        }
+
+        // Per-agent workspaces are already initialized by onboarding/agents add.
+        // Running global setup for one would rewrite agents.defaults.workspace.
+        if (runBaselineSetup)
+        {
+            var setupResult = await RunOpenclawSetupAsync(ctx, distro, user, workspace, ct);
+            if (!setupResult.IsSuccess)
+                return setupResult;
+        }
 
         var script = BuildApplyScript(workspace);
         // Uses stdin to bypass wsl.exe argv variable-expansion (see docs/WSL_EXE_ARGV_PITFALL.md).
@@ -2828,11 +2847,19 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
 
     internal static async Task<StepResult> RunOpenclawSetupAsync(SetupContext ctx, string distro, string user, string workspaceAbsolute, CancellationToken ct)
     {
-        var setupCommand = $"openclaw setup --workspace {ShellEscape(workspaceAbsolute)}";
+        var workspaceArg = ShellEscape(workspaceAbsolute);
 
-        // The pinned 2026.6.11 CLI's setup command is baseline-only. Reverify this
-        // invocation whenever GatewayLkgVersion moves to a release that changes it.
-        var script = $"set -e\n{ctx.WslPathPrefix}\n{setupCommand} >/dev/null";
+        // The pinned 2026.6.11 CLI uses plain `setup` for baseline initialization;
+        // newer/custom CLIs require `--baseline`. Detect the installed contract.
+        var script = $"""
+            set -e
+            {ctx.WslPathPrefix}
+            if openclaw setup --help 2>&1 | grep -q -- '--baseline'; then
+                openclaw setup --baseline --workspace {workspaceArg} >/dev/null
+            else
+                openclaw setup --workspace {workspaceArg} >/dev/null
+            fi
+            """;
         // Uses stdin to bypass wsl.exe argv variable-expansion (the script's
         // PATH prefix references $PATH, which would be expanded to the
         // Windows PATH on the argv path). See docs/WSL_EXE_ARGV_PITFALL.md.
@@ -2856,9 +2883,34 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         if (!string.IsNullOrWhiteSpace(workspaceOverride))
             return ExpandLinuxPath(workspaceOverride, home);
 
-        var script = $"{ctx.WslPathPrefix}\nopenclaw config get agents.defaults.workspace --json";
+        // `agents list` resolves per-agent overrides and returns the effective
+        // workspace used by the default/main chat agent.
+        var script = $"{ctx.WslPathPrefix}\nopenclaw agents list --json";
         // Uses stdin to bypass wsl.exe argv variable-expansion (the script's
         // PATH prefix references $PATH). See docs/WSL_EXE_ARGV_PITFALL.md.
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            script,
+            TimeSpan.FromSeconds(15),
+            ct: ct,
+            user: user,
+            inputViaStdin: true);
+
+        if (result.TimedOut || result.ExitCode != 0)
+            return null;
+
+        var raw = ExtractDefaultAgentWorkspaceFromAgentsOutput(result.Stdout);
+        return string.IsNullOrWhiteSpace(raw) ? null : ExpandLinuxPath(raw, home);
+    }
+
+    internal static async Task<string?> ResolveConfiguredDefaultWorkspacePathAsync(
+        SetupContext ctx,
+        string distro,
+        string user,
+        string home,
+        CancellationToken ct)
+    {
+        var script = $"{ctx.WslPathPrefix}\nopenclaw config get agents.defaults.workspace --json";
         var result = await ctx.Commands.RunInWslAsync(
             distro,
             script,
@@ -2897,6 +2949,62 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         }
 
         return ExpandLinuxPath(raw, home);
+    }
+
+    internal static string? ExtractDefaultAgentWorkspaceFromAgentsOutput(string stdout)
+    {
+        if (string.IsNullOrWhiteSpace(stdout))
+            return null;
+
+        var lines = stdout.Split(['\r', '\n'], StringSplitOptions.None);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].TrimStart();
+            if (!trimmed.StartsWith('['))
+                continue;
+
+            var candidate = string.Join('\n', lines.Skip(i));
+            var end = candidate.LastIndexOf(']');
+            if (end < 0)
+                continue;
+
+            try
+            {
+                using var document = JsonDocument.Parse(candidate[..(end + 1)]);
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                JsonElement? main = null;
+                foreach (var agent in document.RootElement.EnumerateArray())
+                {
+                    if (agent.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    if (agent.TryGetProperty("isDefault", out var isDefault) &&
+                        isDefault.ValueKind == JsonValueKind.True)
+                    {
+                        main = agent;
+                        break;
+                    }
+
+                    if (main is null &&
+                        agent.TryGetProperty("id", out var id) &&
+                        string.Equals(id.GetString(), "main", StringComparison.OrdinalIgnoreCase))
+                        main = agent;
+                }
+
+                if (main is { } selected &&
+                    selected.TryGetProperty("workspace", out var workspace) &&
+                    workspace.ValueKind == JsonValueKind.String)
+                    return workspace.GetString();
+            }
+            catch (JsonException)
+            {
+                // Keep scanning in case a warning line started with '['.
+            }
+        }
+
+        return null;
     }
 
     internal static string? ExtractWorkspaceFromConfigOutput(string stdout)

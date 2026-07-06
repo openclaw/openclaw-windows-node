@@ -1718,6 +1718,16 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(expected, WindowsNodeBootstrapContextStep.ExtractWorkspaceFromConfigOutput(stdout));
     }
 
+    [Theory]
+    [InlineData("[{\"id\":\"main\",\"workspace\":\"/home/openclaw/main\",\"isDefault\":true}]", "/home/openclaw/main")]
+    [InlineData("Warning\n[\n  {\"id\":\"other\",\"workspace\":\"/home/openclaw/other\",\"isDefault\":false},\n  {\"id\":\"primary\",\"workspace\":\"/home/openclaw/primary\",\"isDefault\":true}\n]\n", "/home/openclaw/primary")]
+    [InlineData("[{\"id\":\"main\",\"workspace\":\"~/main\"}]", "~/main")]
+    [InlineData("not json", null)]
+    public void WindowsNodeContext_ExtractDefaultAgentWorkspace_ParsesCanonicalAgentsList(string stdout, string? expected)
+    {
+        Assert.Equal(expected, WindowsNodeBootstrapContextStep.ExtractDefaultAgentWorkspaceFromAgentsOutput(stdout));
+    }
+
     [Fact]
     public async Task WindowsNodeContext_Execute_RunsInWslAsConfiguredUserAndResolvesWorkspace()
     {
@@ -1727,6 +1737,8 @@ public class SetupStepsTests : IDisposable
             {
                 if (command.Contains("getent passwd"))
                     return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/.openclaw/workspace"));
                 if (command.Contains("openclaw setup"))
                     return Ok("");
                 if (command.Contains("openclaw config get agents.defaults.workspace"))
@@ -1744,25 +1756,28 @@ public class SetupStepsTests : IDisposable
         var result = await new WindowsNodeBootstrapContextStep().ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Message);
-        Assert.Equal(4, commands.WslCalls.Count);
+        Assert.Equal(5, commands.WslCalls.Count);
         Assert.All(commands.WslCalls, c =>
         {
             Assert.Equal("OpenClawGateway", c.DistroName);
             Assert.Equal("openclaw", c.User);
         });
         Assert.Contains("getent passwd", commands.WslCalls[0].Command);
-        Assert.Contains("openclaw config get agents.defaults.workspace", commands.WslCalls[1].Command);
-        Assert.Contains("openclaw setup --workspace '/home/openclaw/.openclaw/workspace'", commands.WslCalls[2].Command);
-        Assert.DoesNotContain("--baseline", commands.WslCalls[2].Command);
-        Assert.Contains("workspace='/home/openclaw/.openclaw/workspace'", commands.WslCalls[3].Command);
+        Assert.Contains("openclaw agents list --json", commands.WslCalls[1].Command);
+        Assert.Contains("openclaw config get agents.defaults.workspace", commands.WslCalls[2].Command);
+        Assert.Contains("openclaw setup --help", commands.WslCalls[3].Command);
+        Assert.Contains("openclaw setup --baseline --workspace '/home/openclaw/.openclaw/workspace'", commands.WslCalls[3].Command);
+        Assert.Contains("openclaw setup --workspace '/home/openclaw/.openclaw/workspace'", commands.WslCalls[3].Command);
+        Assert.Contains("workspace='/home/openclaw/.openclaw/workspace'", commands.WslCalls[4].Command);
         // getent uses $(id -un) command-substitution and no $vars, so argv path is safe.
         Assert.False(commands.WslCalls[0].InputViaStdin);
-        // config get + openclaw setup scripts both reference $PATH via WslPathPrefix,
+        // agents list + config get + openclaw setup scripts reference $PATH via WslPathPrefix,
         // which wsl.exe would rewrite on the argv path — see docs/WSL_EXE_ARGV_PITFALL.md.
         Assert.True(commands.WslCalls[1].InputViaStdin);
         Assert.True(commands.WslCalls[2].InputViaStdin);
-        // Apply script uses $workspace etc., must use stdin.
         Assert.True(commands.WslCalls[3].InputViaStdin);
+        // Apply script uses $workspace etc., must use stdin.
+        Assert.True(commands.WslCalls[4].InputViaStdin);
     }
 
     [Fact]
@@ -1774,6 +1789,8 @@ public class SetupStepsTests : IDisposable
             {
                 if (command.Contains("getent passwd"))
                     return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/relative/workspace"));
                 if (command.Contains("openclaw setup"))
                     return Ok("");
                 if (command.Contains("openclaw config get agents.defaults.workspace"))
@@ -1803,6 +1820,8 @@ public class SetupStepsTests : IDisposable
             {
                 if (command.Contains("getent passwd"))
                     return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/.openclaw/workspace"));
                 if (command.Contains("openclaw config get agents.defaults.workspace"))
                     return new CommandResult(
                         1,
@@ -1834,6 +1853,8 @@ public class SetupStepsTests : IDisposable
             {
                 if (command.Contains("getent passwd"))
                     return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/.openclaw/workspace"));
                 if (command.Contains("openclaw config get agents.defaults.workspace"))
                     return Fail("gateway config is temporarily unavailable");
                 return Fail($"unexpected wsl command: {command}");
@@ -1843,7 +1864,7 @@ public class SetupStepsTests : IDisposable
         var result = await new WindowsNodeBootstrapContextStep().ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
-        Assert.Contains("Could not resolve OpenClaw agent workspace path", result.Message);
+        Assert.Contains("Could not resolve OpenClaw default workspace path", result.Message);
         Assert.DoesNotContain(commands.WslCalls, c => c.Command.Contains("openclaw setup"));
     }
 
@@ -1856,6 +1877,8 @@ public class SetupStepsTests : IDisposable
             {
                 if (command.Contains("getent passwd"))
                     return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/.openclaw/workspace"));
                 if (command.Contains("openclaw config get agents.defaults.workspace"))
                     return Ok("Config warning without a value\n");
                 return Fail($"unexpected wsl command: {command}");
@@ -1865,6 +1888,55 @@ public class SetupStepsTests : IDisposable
         var result = await new WindowsNodeBootstrapContextStep().ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.DoesNotContain(commands.WslCalls, c => c.Command.Contains("openclaw setup"));
+    }
+
+    [Fact]
+    public async Task WindowsNodeContext_Execute_UsesEffectiveDefaultAgentWorkspaceWithoutRewritingDefaults()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("unexpected RunAsync"),
+            (_, command, _) =>
+            {
+                if (command.Contains("getent passwd"))
+                    return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/main-agent"));
+                if (command.Contains("openclaw config get agents.defaults.workspace"))
+                    return Ok("\"~/.openclaw/workspace\"\n");
+                if (command.Contains("workspace='/home/openclaw/main-agent'"))
+                    return Ok("WINDOWS_NODE_CONTEXT_READY\n");
+                return Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new WindowsNodeBootstrapContextStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.DoesNotContain(commands.WslCalls, c => c.Command.Contains("openclaw setup"));
+        Assert.Contains(commands.WslCalls, c => c.Command.Contains("workspace='/home/openclaw/main-agent'"));
+    }
+
+    [Fact]
+    public async Task WindowsNodeContext_Execute_FailsWhenEffectiveAgentWorkspaceLookupFails()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("unexpected RunAsync"),
+            (_, command, _) =>
+            {
+                if (command.Contains("getent passwd"))
+                    return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Fail("agents unavailable");
+                return Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new WindowsNodeBootstrapContextStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not resolve OpenClaw agent workspace path", result.Message);
+        Assert.DoesNotContain(commands.WslCalls, c => c.Command.Contains("openclaw config get"));
         Assert.DoesNotContain(commands.WslCalls, c => c.Command.Contains("openclaw setup"));
     }
 
@@ -1938,10 +2010,8 @@ public class SetupStepsTests : IDisposable
             {
                 if (command.Contains("getent passwd"))
                     return Ok("/home/openclaw\n");
-                if (command.Contains("openclaw setup"))
-                    return Ok("");
-                if (command.Contains("openclaw config get agents.defaults.workspace"))
-                    return Ok("\"~/.openclaw/workspace\"\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/.openclaw/workspace"));
                 if (command.Contains("WINDOWS_NODE_CONTEXT_REMOVED"))
                     return Ok("WINDOWS_NODE_CONTEXT_REMOVED\n");
                 return Fail($"unexpected wsl command: {command}");
@@ -1954,11 +2024,11 @@ public class SetupStepsTests : IDisposable
         // Last call is the rollback script and must use stdin.
         Assert.Contains("WINDOWS_NODE_CONTEXT_REMOVED", commands.WslCalls[^1].Command);
         Assert.True(commands.WslCalls[^1].InputViaStdin);
-        // The getent helper still uses argv (no $vars); config-get helper now uses stdin.
+        // The getent helper still uses argv (no $vars); agents-list uses stdin.
         Assert.False(commands.WslCalls[0].InputViaStdin);
         Assert.Contains("getent passwd", commands.WslCalls[0].Command);
         Assert.Contains(commands.WslCalls, c =>
-            c.Command.Contains("openclaw config get agents.defaults.workspace") && c.InputViaStdin);
+            c.Command.Contains("openclaw agents list --json") && c.InputViaStdin);
     }
 
     [Fact]
@@ -1989,6 +2059,8 @@ public class SetupStepsTests : IDisposable
             {
                 if (command.Contains("getent passwd"))
                     return Ok("/home/openclaw\n");
+                if (command.Contains("openclaw agents list --json"))
+                    return Ok(AgentsListJson("/home/openclaw/.openclaw/workspace"));
                 if (command.Contains("openclaw setup"))
                     return Ok("");
                 if (command.Contains("openclaw config get agents.defaults.workspace"))
@@ -2014,6 +2086,9 @@ public class SetupStepsTests : IDisposable
 
     private static CommandResult TimedOut()
         => new(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
+
+    private static string AgentsListJson(string workspace, string id = "main", bool isDefault = true)
+        => JsonSerializer.Serialize(new[] { new { id, workspace, isDefault } });
 
     private static string NulSeparated(string value)
         => string.Join("\0", value.ToCharArray()) + "\0";
