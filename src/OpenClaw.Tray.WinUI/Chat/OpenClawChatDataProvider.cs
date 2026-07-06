@@ -4664,12 +4664,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(gatewayMessageId) &&
+            var bothHaveGatewayIds =
+                !string.IsNullOrEmpty(gatewayMessageId) &&
+                !string.IsNullOrEmpty(existing.GatewayMessageId);
+            if (bothHaveGatewayIds &&
                 string.Equals(existing.GatewayMessageId, gatewayMessageId, StringComparison.Ordinal))
             {
                 return true;
             }
-            if (string.IsNullOrEmpty(gatewayMessageId) &&
+            if (!bothHaveGatewayIds &&
                 openClawSeq is not null &&
                 existing.OpenClawSeq == openClawSeq &&
                 string.Equals(entry.Text, assistantText, StringComparison.Ordinal))

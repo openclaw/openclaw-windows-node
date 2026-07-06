@@ -2688,6 +2688,38 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task AssistantRetransmit_WithNewGatewayIdStillMatchesPriorSequenceOnlyFrame()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "stable response",
+            State = "final",
+            OpenClawSeq = 10,
+        });
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "stable response",
+            State = "final",
+            OpenClawId = "message-10",
+            OpenClawSeq = 10,
+        });
+
+        Assert.Empty(snapshots);
+        var current = await provider.LoadAsync();
+        Assert.Single(current.Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "stable response");
+    }
+
+    [Fact]
     public async Task AgentEvent_ReasoningDelta_AccumulatesReasoningEntry()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
