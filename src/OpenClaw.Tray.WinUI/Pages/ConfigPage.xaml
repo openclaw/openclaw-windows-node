@@ -27,6 +27,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Spacing="4">
                     <TextBlock x:Uid="ConfigPage_TextBlock_17" Text="Config"
+                               AutomationProperties.AutomationId="ConfigPageMarker"
                                Style="{StaticResource TitleTextBlockStyle}"/>
                     <TextBlock x:Uid="ConfigSubtitle" x:Name="ConfigSubtitle"
                                Text="Edit gateway configuration (openclaw.json) with a schema-guided form."
@@ -40,10 +41,11 @@
                 </StackPanel>
                 <Button Grid.Column="1"
                         x:Name="RefreshButton" Click="OnRefresh"
+                        AutomationProperties.LabeledBy="{Binding ElementName=RefreshButtonLabel}"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                        <TextBlock x:Uid="ConfigPage_TextBlock_21" Text="Refresh"/>
+                        <TextBlock x:Uid="ConfigPage_TextBlock_21" x:Name="RefreshButtonLabel" Text="Refresh"/>
                     </StackPanel>
                 </Button>
             </Grid>
@@ -226,8 +228,11 @@
 
                     <toolkit:GridSplitter Grid.Column="3"
                                           x:Name="JsonPreviewSplitter"
+                                          x:Uid="JsonPreviewSplitter"
                                           ResizeDirection="Columns"
                                           ResizeBehavior="PreviousAndNext"
+                                          AutomationProperties.Name="Resize JSON preview"
+                                          AutomationProperties.LocalizedControlType="splitter"
                                           HorizontalAlignment="Stretch"
                                           VerticalAlignment="Stretch"
                                           Background="{ThemeResource CardStrokeColorDefaultBrush}"/>

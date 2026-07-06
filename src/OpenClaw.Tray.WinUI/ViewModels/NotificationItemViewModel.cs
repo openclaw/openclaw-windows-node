@@ -24,6 +24,9 @@ internal sealed record NotificationItemViewModel(
     Visibility OccurrenceVisibility,
     string DismissAutomationName)
 {
+    // ListViewItem derives its default accessible name from the item string.
+    public override string ToString() => Title;
+
     public static NotificationItemViewModel From(AppNotification notification)
     {
         var metadata = new[]

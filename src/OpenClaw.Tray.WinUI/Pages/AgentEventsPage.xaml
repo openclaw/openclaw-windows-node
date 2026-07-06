@@ -16,7 +16,9 @@
 
         <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock x:Uid="AgentEventsPage_TextBlock_18" Text="Event Stream" Style="{StaticResource TitleTextBlockStyle}"/>
+                <TextBlock x:Uid="AgentEventsPage_TextBlock_18" Text="Event Stream"
+                           AutomationProperties.AutomationId="AgentEventsPageMarker"
+                           Style="{StaticResource TitleTextBlockStyle}"/>
                 <Border x:Name="LiveBadge" CornerRadius="4" Padding="6,2,8,3" VerticalAlignment="Center"
                         Background="#20FF4444">
                     <StackPanel Orientation="Horizontal" Spacing="4">
@@ -48,11 +50,12 @@
                       SelectionChanged="OnAgentFilterComboChanged">
                 <ComboBoxItem x:Uid="AgentEventsPage_ComboBoxItem_26" Content="All Agents" Tag="" IsSelected="True"/>
             </ComboBox>
-            <Button x:Name="ClearButton" Grid.Column="2" Click="OnClear">
+            <Button x:Name="ClearButton" Grid.Column="2" Click="OnClear"
+                    AutomationProperties.LabeledBy="{Binding ElementName=ClearButtonLabel}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Clear, Mode=OneTime}"
                               FontSize="14" IsTextScaleFactorEnabled="False"/>
-                    <TextBlock x:Uid="AgentEventsPage_ClearButton" Text="Clear"/>
+                    <TextBlock x:Uid="AgentEventsPage_ClearButton" x:Name="ClearButtonLabel" Text="Clear"/>
                 </StackPanel>
             </Button>
         </Grid>

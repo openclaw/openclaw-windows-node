@@ -12,6 +12,7 @@
 
             <TextBlock x:Uid="SessionsPage_Sessions"
                            Text="Sessions"
+                           AutomationProperties.AutomationId="SessionsPageMarker"
                            Style="{StaticResource TitleTextBlockStyle}"
                            Margin="0,0,0,2"/>
                 <TextBlock x:Uid="SessionsPage_Subtitle" Text="Conversations this gateway is currently handling, grouped by channel."

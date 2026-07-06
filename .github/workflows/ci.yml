@@ -278,13 +278,9 @@ jobs:
         --logger trx;LogFileName=OpenClaw.Tray.UITests.trx
         --filter Category!=Accessibility"
 
-    # Accessibility Insights CI pass: runs Axe.Windows scans against each app page.
-    # Uses continue-on-error so violations surface as a visible warning without
-    # blocking the build while the team remediates. Remove continue-on-error once
-    # all violations are resolved (see PR #921 for the initial fixes).
+    # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
       id: a11y
-      continue-on-error: true
       run: >
         dotnet test tests/OpenClaw.Tray.UITests
         --no-build
@@ -300,12 +296,10 @@ jobs:
       shell: pwsh
       run: |
         if ("${{ steps.a11y.outcome }}" -eq "failure") {
-          "### :warning: Accessibility violations detected" >> $env:GITHUB_STEP_SUMMARY
+          "### :x: Accessibility violations detected" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY
           "Axe.Windows scans found WCAG violations in one or more pages." >> $env:GITHUB_STEP_SUMMARY
           "See the `Accessibility.trx` artifact for details." >> $env:GITHUB_STEP_SUMMARY
-          "" >> $env:GITHUB_STEP_SUMMARY
-          "Fixes for known violations: [PR #921](https://github.com/${{ github.repository }}/pull/921)" >> $env:GITHUB_STEP_SUMMARY
         } else {
           "### :white_check_mark: Accessibility scans passed" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY

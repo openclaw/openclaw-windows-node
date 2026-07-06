@@ -53,6 +53,7 @@
                     <!-- Title block (in-stack, same column as cards). -->
                     <TextBlock x:Uid="DiagnosticsPage_Title"
                                Text="Diagnostics"
+                               AutomationProperties.AutomationId="DebugPageMarker"
                                Style="{StaticResource TitleTextBlockStyle}"
                                Margin="0,0,0,2"/>
                     <TextBlock x:Uid="DiagnosticsPage_Subtitle"

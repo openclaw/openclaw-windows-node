@@ -8,7 +8,9 @@
     <Grid HorizontalAlignment="Stretch">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <TextBlock x:Uid="UsagePage_TextBlock_10" Text="Usage &amp; Cost" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="UsagePage_TextBlock_10" Text="Usage &amp; Cost"
+                       AutomationProperties.AutomationId="UsagePageMarker"
+                       Style="{StaticResource TitleTextBlockStyle}"/>
 
             <InfoBar x:Uid="UsagePage_GatewayDisconnected" x:Name="ConnectionInfoBar"
                      IsOpen="False" IsClosable="False" Severity="Warning"

@@ -27,6 +27,7 @@
                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Uid="SandboxPage_NodeSandboxIsOn" x:Name="SandboxStatusTitle"
                                Text="Node sandbox is on"
+                               AutomationProperties.AutomationId="SandboxPageMarker"
                                Style="{StaticResource TitleTextBlockStyle}"
                                TextWrapping="Wrap" />
                     <TextBlock x:Uid="SandboxPage_ProgramsTheAgentRuns" x:Name="SandboxStatusSubtext"
@@ -54,7 +55,9 @@
                  scope-clarity InfoBar and the separate "How sandboxing works"
                  ContentDialog — the architectural breakdown of which execution
                  paths are contained vs not is inline, on-demand. -->
-            <Expander HorizontalAlignment="Stretch"
+            <Expander x:Name="ScopeExpander"
+                      AutomationProperties.LabeledBy="{Binding ElementName=ScopeExpanderLabel}"
+                      HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch"
                       IsExpanded="False">
                 <Expander.Header>
@@ -68,7 +71,7 @@
                                   Glyph="&#xE946;"
                                   VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                            <TextBlock x:Uid="SandboxPage_WhatGetsContained" Text="What gets contained"
+                            <TextBlock x:Uid="SandboxPage_WhatGetsContained" x:Name="ScopeExpanderLabel" Text="What gets contained"
                                        Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock x:Uid="SandboxPage_SeeWhichCommandsThis" Text="See which commands this page covers — and which need different controls."
                                        Style="{StaticResource CaptionTextBlockStyle}"

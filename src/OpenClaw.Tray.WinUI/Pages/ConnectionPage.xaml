@@ -133,6 +133,7 @@
                         <!-- Headline + sub + glance chips -->
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <TextBlock x:Uid="ConnectionPage_NotConnected" x:Name="StripHeadline" Text="Not connected"
+                                       AutomationProperties.AutomationId="ConnectionPageMarker"
                                        Style="{StaticResource SubtitleTextBlockStyle}"
                                        AutomationProperties.HeadingLevel="Level1"
                                        AutomationProperties.LiveSetting="Polite"

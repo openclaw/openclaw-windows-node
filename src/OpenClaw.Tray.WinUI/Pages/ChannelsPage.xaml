@@ -37,6 +37,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="ChannelsPage_Title" Text="Channels"
+                                   AutomationProperties.AutomationId="ChannelsPageMarker"
                                    Style="{StaticResource TitleTextBlockStyle}"/>
                         <TextBlock x:Name="MetaText"
                                    Style="{StaticResource CaptionTextBlockStyle}"

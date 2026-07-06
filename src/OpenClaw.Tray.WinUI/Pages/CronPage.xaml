@@ -26,7 +26,9 @@
                      <ColumnDefinition Width="Auto"/>
                      <ColumnDefinition Width="Auto"/>
                  </Grid.ColumnDefinitions>
-                 <TextBlock x:Uid="CronPage_CronJobs" Text="Cron Jobs" Style="{StaticResource TitleTextBlockStyle}" Grid.Column="0" VerticalAlignment="Center"/>
+                 <TextBlock x:Uid="CronPage_CronJobs" Text="Cron Jobs"
+                            AutomationProperties.AutomationId="CronPageMarker"
+                            Style="{StaticResource TitleTextBlockStyle}" Grid.Column="0" VerticalAlignment="Center"/>
                  <TextBlock x:Name="JobCountText" Text="(0)" VerticalAlignment="Center" Grid.Column="1" Margin="8,0,0,0"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

@@ -14,6 +14,7 @@
                 <StackPanel Grid.Column="0" Spacing="4">
                     <TextBlock x:Uid="InstancesPage_Title"
                                Text="Instances"
+                               AutomationProperties.AutomationId="InstancesPageMarker"
                                Style="{StaticResource TitleTextBlockStyle}"/>
                     <TextBlock x:Uid="InstancesPage_Subtitle"
                                Text="Latest presence beacons from OpenClaw nodes."
@@ -24,6 +25,7 @@
                 <Button x:Name="RefreshButton"
                         Grid.Column="1"
                         Click="OnRefreshClicked"
+                        AutomationProperties.LabeledBy="{Binding ElementName=RefreshButtonLabel}"
                         VerticalAlignment="Top">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Grid Width="14" Height="14">
@@ -36,7 +38,7 @@
                                           Height="14"
                                           Visibility="Collapsed"/>
                         </Grid>
-                        <TextBlock x:Uid="InstancesPage_RefreshLabel" Text="Refresh"/>
+                        <TextBlock x:Uid="InstancesPage_RefreshLabel" x:Name="RefreshButtonLabel" Text="Refresh"/>
                     </StackPanel>
                 </Button>
             </Grid>

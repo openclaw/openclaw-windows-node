@@ -2955,6 +2955,15 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Maximal</value>
   </data>
+  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
+    <value>Conversation</value>
+  </data>
+  <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
+    <value>Modèle</value>
+  </data>
+  <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
+    <value>Raisonnement</value>
+  </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>Envoyer un message à l'assistant (Entrée pour envoyer)</value>
   </data>
@@ -6766,5 +6775,11 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Navigation principale</value>
+  </data>
+  <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Redimensionner l’aperçu JSON</value>
+  </data>
+  <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>séparateur</value>
   </data>
 </root>

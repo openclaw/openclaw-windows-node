@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Axe.Windows.Automation;
+using Axe.Windows.Automation.Data;
 using Axe.Windows.Core.Enums;
 using Xunit;
 
@@ -11,8 +12,8 @@ namespace OpenClaw.Tray.UITests;
 /// Wraps Axe.Windows scanner to validate the live UI Automation tree for
 /// accessibility violations. Modeled after the WinUI-Gallery AxeHelper pattern.
 ///
-/// The scanner attaches to the current process (which hosts the WinUI3 test window
-/// via <see cref="UIThreadFixture"/>) and inspects the UIA tree for WCAG violations.
+/// The scanner attaches to the separately launched OpenClaw process and inspects
+/// only its visible Hub window's UIA subtree.
 /// </summary>
 public static class AxeHelper
 {
@@ -36,10 +37,10 @@ public static class AxeHelper
     ];
 
     /// <summary>
-    /// Initialize the Axe.Windows scanner for the current process.
+    /// Initialize the Axe.Windows scanner for the target app process.
     /// Thread-safe; subsequent calls are no-ops.
     /// </summary>
-    public static void Initialize()
+    public static void Initialize(int processId)
     {
         if (_scanner != null) return;
 
@@ -47,14 +48,16 @@ public static class AxeHelper
         {
             if (_scanner != null) return;
 
-            var processId = Environment.ProcessId;
-            var config = Config.Builder.ForProcessId(processId).Build();
+            var config = Config.Builder
+                .ForProcessId(processId)
+                .WithOutputFileFormat(OutputFileFormat.None)
+                .Build();
             _scanner = ScannerFactory.CreateScanner(config);
         }
     }
 
     /// <summary>
-    /// Scan the current window's UIA tree and assert no accessibility violations exist.
+    /// Scan the Hub window's UIA tree and assert no accessibility violations exist.
     /// </summary>
     /// <param name="pageRuleExclusions">
     /// Optional per-page rule exclusions for known issues specific to a page.
@@ -63,6 +66,7 @@ public static class AxeHelper
     /// Optional context string (e.g. page name) included in failure messages.
     /// </param>
     public static void AssertNoAccessibilityErrors(
+        IntPtr hubWindowHandle,
         IEnumerable<RuleId>? pageRuleExclusions = null,
         string? context = null)
     {
@@ -74,7 +78,7 @@ public static class AxeHelper
         if (pageRuleExclusions != null)
             excludedRules.UnionWith(pageRuleExclusions);
 
-        var scanOutput = _scanner.Scan(null);
+        var scanOutput = _scanner.Scan(new ScanOptions(context, hubWindowHandle));
 
         var errors = scanOutput.WindowScanOutputs
             .SelectMany(output => output.Errors)

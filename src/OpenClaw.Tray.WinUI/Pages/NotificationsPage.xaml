@@ -19,6 +19,7 @@
                 <StackPanel Spacing="2">
                     <TextBlock x:Uid="NotificationsPage_Title"
                                Text="Notifications"
+                               AutomationProperties.AutomationId="NotificationsPageMarker"
                                Style="{StaticResource TitleTextBlockStyle}"/>
                     <TextBlock x:Uid="NotificationsPage_Subtitle"
                                Text="Review and clear active OpenClaw notifications."

@@ -251,6 +251,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     VerticalAlignment = VerticalAlignment.Center,
                 };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                    cb,
+                    LocalizationHelper.GetString("Chat_Composer_Accessibility_Session"));
 
                 ComboBoxItem? selectedItem = null;
                 foreach (var group in groups)
@@ -359,6 +362,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     VerticalAlignment = VerticalAlignment.Center,
                 };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                    cb,
+                    LocalizationHelper.GetString("Chat_Composer_Accessibility_Model"));
 
                 ComboBoxItem? selectedItem = null;
                 for (int i = 0; i < modelEntries.Count; i++)
@@ -404,6 +410,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         })
             .Set(cb =>
             {
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                    cb,
+                    LocalizationHelper.GetString("Chat_Composer_Accessibility_Reasoning"));
                 cb.MinWidth = 0;
                 cb.Width = double.NaN;
                 cb.Height = 28;
@@ -552,6 +561,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             .Set(tb =>
             {
                 textBoxRef.Current = tb;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                    tb,
+                    "ChatComposerInput");
                 tb.PlaceholderText = recording
                     ? LocalizationHelper.GetString("Chat_Voice_ListeningPrompt")
                     : placeholder;

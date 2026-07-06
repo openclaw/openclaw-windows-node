@@ -30,17 +30,18 @@
     <!-- System.Drawing.Common 4.7.0 advisory comes in transitively via the
          Tray.WinUI ProjectReference. The main project warns; we don't want it
          to escalate to an error here just because tests/Directory.Build.props
-         sets TreatWarningsAsErrors=true.
-         NU1903 also fires for System.IO.Packaging 8.0.0 from Axe.Windows
-         (GHSA-f32c-w444-8ppv, GHSA-qj66-m88j-hmgj); the scanner runs in-process
-         during tests only — not shipped — so the advisory is not actionable. -->
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1904;NU1903</WarningsNotAsErrors>
+         sets TreatWarningsAsErrors=true. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1904</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Axe.Windows" Version="2.4.1" />
+    <PackageReference Include="Axe.Windows" Version="2.4.2" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(MicrosoftWindowsSdkBuildToolsVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
   </ItemGroup>
 
   <ItemGroup>

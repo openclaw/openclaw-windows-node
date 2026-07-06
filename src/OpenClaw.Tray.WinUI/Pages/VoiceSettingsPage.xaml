@@ -9,7 +9,9 @@
     <Grid HorizontalAlignment="Stretch">
         <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <TextBlock x:Uid="VoiceSettingsPage_PageTitle" x:Name="PageTitleText" Text="Voice &amp; Audio" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock x:Uid="VoiceSettingsPage_PageTitle" x:Name="PageTitleText" Text="Voice &amp; Audio"
+                       AutomationProperties.AutomationId="VoiceSettingsPageMarker"
+                       Style="{StaticResource TitleTextBlockStyle}"/>
             <TextBlock x:Uid="VoiceSettingsPage_PageDescription" x:Name="PageDescriptionText"
                        Text="Configure speech-to-text and voice interaction settings. All speech processing runs locally on your device."
                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -124,6 +126,7 @@
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button x:Name="DownloadButton" Click="OnDownloadClick"
+                                AutomationProperties.LabeledBy="{Binding ElementName=DownloadButtonText}"
                                 Style="{StaticResource AccentButtonStyle}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE896;" FontSize="14"/>
@@ -139,6 +142,7 @@
                                  Minimum="0" Maximum="100"/>
 
                     <Button x:Name="TestVoiceButton" Click="OnTestVoiceClick"
+                            AutomationProperties.LabeledBy="{Binding ElementName=TestVoiceButtonText}"
                             Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon x:Name="TestVoiceBtnIcon" Glyph="&#xE720;" FontSize="14"/>
@@ -171,6 +175,7 @@
                             <!-- Centered buttons -->
                             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                                 <Button x:Name="InlineTestStartBtn" Click="OnInlineTestStartClick"
+                                        AutomationProperties.LabeledBy="{Binding ElementName=InlineTestBtnLabel}"
                                         Style="{StaticResource AccentButtonStyle}" Padding="12,8">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon x:Name="InlineTestBtnIcon" Glyph="&#xE720;" FontSize="14"/>
@@ -253,6 +258,7 @@
                                   SelectionChanged="OnPiperVoiceChanged" Width="400"/>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="PiperDownloadButton" Click="OnPiperDownloadClick"
+                                    AutomationProperties.LabeledBy="{Binding ElementName=PiperDownloadButtonText}"
                                     Width="180" MinHeight="32">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon x:Name="PiperDownloadIcon" Glyph="&#xE896;" FontSize="14"/>
@@ -262,6 +268,7 @@
                             <Button x:Uid="VoiceSettingsPage_PiperDeleteButton" x:Name="PiperDeleteButton" Click="OnPiperDeleteClick"
                                     Content="Delete" Width="80" Visibility="Collapsed"/>
                             <Button x:Name="PiperPreviewButton" Click="OnPiperPreviewClick"
+                                    AutomationProperties.LabeledBy="{Binding ElementName=PiperPreviewLabel}"
                                     Width="100" Visibility="Collapsed">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon x:Name="PiperPreviewIcon" Glyph="&#xE768;" FontSize="14"/>
@@ -285,6 +292,7 @@
                         <ComboBox x:Uid="VoiceSettingsPage_WindowsVoiceCombo" x:Name="WindowsVoiceCombo" Header="Voice"
                                   SelectionChanged="OnWindowsVoiceChanged" Width="300"/>
                         <Button x:Name="PreviewVoiceButton" Click="OnPreviewVoiceClick"
+                                AutomationProperties.LabeledBy="{Binding ElementName=PreviewVoiceLabel}"
                                 Width="140">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon x:Name="PreviewVoiceIcon" Glyph="&#xE768;" FontSize="14"/>

@@ -81,15 +81,17 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Uid="WorkspacePage_TextBlock_22" Grid.Column="0"
                            Text="Workspace"
+                           AutomationProperties.AutomationId="WorkspacePageMarker"
                            Style="{StaticResource TitleTextBlockStyle}"
                            VerticalAlignment="Center"/>
                 <Button x:Name="RefreshButton" Grid.Column="1" Click="RefreshButton_Click"
+                        AutomationProperties.LabeledBy="{Binding ElementName=RefreshButtonLabel}"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Refresh, Mode=OneTime}"
                                   FontSize="16"
                                   IsTextScaleFactorEnabled="False"/>
-                        <TextBlock x:Uid="WorkspacePage_TextBlock_34" Text="Refresh"/>
+                        <TextBlock x:Uid="WorkspacePage_TextBlock_34" x:Name="RefreshButtonLabel" Text="Refresh"/>
                     </StackPanel>
                 </Button>
             </Grid>

@@ -15,6 +15,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Spacing="2">
                     <TextBlock x:Uid="BindingsPage_TextBlock_16" Text="Bindings"
+                               AutomationProperties.AutomationId="BindingsPageMarker"
                                Style="{StaticResource TitleTextBlockStyle}"/>
                     <TextBlock x:Uid="BindingsPage_TextBlock_17" Text="Message routing rules"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"

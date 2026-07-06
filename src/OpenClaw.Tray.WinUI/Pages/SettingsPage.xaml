@@ -27,6 +27,7 @@
 
                 <!-- Page header -->
                 <TextBlock x:Uid="SettingsPage_Settings" Text="Settings"
+                           AutomationProperties.AutomationId="SettingsPageMarker"
                            Style="{StaticResource TitleTextBlockStyle}"
                            Margin="0,0,0,8"/>
 

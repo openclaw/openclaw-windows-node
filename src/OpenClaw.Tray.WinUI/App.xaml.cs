@@ -539,8 +539,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             useSshTunnel = _settings.UseSshTunnel
         });
 
-        // Register URI scheme on first run
-        DeepLinkHandler.RegisterUriScheme();
+        // Isolated test instances must not replace the user's installed protocol handler.
+        if (DataDirOverride is null)
+            DeepLinkHandler.RegisterUriScheme();
 
         // Anchor the WinUI runtime so transient windows (UpdateDialog,
         // setup wizard, etc.) don't terminate the process when closed.

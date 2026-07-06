@@ -2956,6 +2956,15 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Maximaal</value>
   </data>
+  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
+    <value>Sessie</value>
+  </data>
+  <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
+    <value>Taalmodel</value>
+  </data>
+  <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
+    <value>Redenering</value>
+  </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>Bericht aan assistent (Enter om te verzenden)</value>
   </data>
@@ -6767,5 +6776,11 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Hoofdnavigatie</value>
+  </data>
+  <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Formaat van JSON-voorbeeld wijzigen</value>
+  </data>
+  <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>scheidingslijn</value>
   </data>
 </root>

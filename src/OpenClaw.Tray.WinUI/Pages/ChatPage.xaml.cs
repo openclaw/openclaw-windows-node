@@ -27,6 +27,7 @@ public sealed partial class ChatPage : Page
     private HubWindow? _hub;
     private MountedFunctionalChat? _functionalHost;
     private IChatDataProvider? _mountedProvider;
+    private IChatDataProvider? _accessibilityTestProvider;
     private string? _mountedThreadId;
     private string? _chatUrl;
     private bool _webViewInitialized;
@@ -230,7 +231,7 @@ public sealed partial class ChatPage : Page
         DevToolsButton.Visibility = Visibility.Collapsed;
 
         var app = App.Current as App;
-        var provider = app?.ChatProvider;
+        var provider = ResolveChatProvider(app);
         Func<string, Task>? readAloud = app is null ? null : app.SpeakChatTextAsync;
 
         // Consume a pending session-key hand-off from SessionsPage or a
@@ -308,6 +309,116 @@ public sealed partial class ChatPage : Page
             {
                 _functionalHost?.TriggerVoiceRecording();
             });
+        }
+    }
+
+    private IChatDataProvider? ResolveChatProvider(App? app)
+    {
+        if (app?.ChatProvider is { } liveProvider)
+            return liveProvider;
+
+        // The accessibility suite launches an isolated app process without a
+        // gateway. Mount a deterministic provider only under its explicit
+        // test flag so Axe scans the real FunctionalUI timeline and composer,
+        // not merely the disconnected page shell.
+        if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_CHAT") == "1"
+            && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 })
+        {
+            return _accessibilityTestProvider ??= new AccessibilityChatDataProvider();
+        }
+
+        return null;
+    }
+
+    private sealed class AccessibilityChatDataProvider : IChatDataProvider
+    {
+        private const string ThreadId = "accessibility-main";
+        private static readonly ChatDataSnapshot Snapshot = CreateSnapshot();
+
+        public string DisplayName => "Accessibility test chat";
+
+        public event EventHandler<ChatDataChangedEventArgs>? Changed
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested
+        {
+            add { }
+            remove { }
+        }
+
+        public Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Snapshot);
+
+        public Task SendMessageAsync(
+            string threadId,
+            string message,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task StopResponseAsync(string threadId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task DeleteThreadAsync(string threadId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task RespondToPermissionAsync(
+            string threadId,
+            string requestId,
+            string action,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private static ChatDataSnapshot CreateSnapshot()
+        {
+            var timeline = ChatTimelineState.Initial() with
+            {
+                Entries = ChatTimelineState.Initial().Entries
+                    .Add(new ChatTimelineItem(
+                        "accessibility-user",
+                        ChatTimelineItemKind.User,
+                        "Verify the native chat surface."))
+                    .Add(new ChatTimelineItem(
+                        "accessibility-assistant",
+                        ChatTimelineItemKind.Assistant,
+                        "The timeline and composer are ready.")),
+                NextId = 3,
+                HistoryLoaded = true,
+            };
+
+            return new ChatDataSnapshot(
+                [new ChatThread
+                {
+                    Id = ThreadId,
+                    Title = "Accessibility session",
+                    Status = ChatThreadStatus.Running,
+                    Activity = ChatActivity.Idle,
+                    Model = "test-model",
+                }],
+                new Dictionary<string, ChatTimelineState>
+                {
+                    [ThreadId] = timeline,
+                },
+                ThreadId,
+                "Connected (accessibility test)",
+                ["test-model"],
+                new ChatComposeTarget(ThreadId, IsReady: true));
         }
     }
 
