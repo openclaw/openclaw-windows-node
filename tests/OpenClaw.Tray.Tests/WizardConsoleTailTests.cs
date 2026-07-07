@@ -70,6 +70,13 @@ public class WizardConsoleTailTests
                 "managed-one",
                 await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5)));
 
+            await File.AppendAllTextAsync(managedLog, "managed-");
+            await Task.Delay(750);
+            await File.AppendAllTextAsync(managedLog, "partial\n");
+            Assert.Equal(
+                "managed-partial",
+                await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+
             File.Move(managedLog, managedLog + ".1");
             await File.WriteAllTextAsync(managedLog, "managed-two\n");
             Assert.Equal(

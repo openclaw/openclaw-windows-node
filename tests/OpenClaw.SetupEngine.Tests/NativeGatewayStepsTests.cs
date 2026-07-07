@@ -393,6 +393,28 @@ public class NativeGatewayStepsTests
         Assert.Contains("stopped but its files will be preserved", summary);
     }
 
+    [Fact]
+    public void WslReplacementSummary_DisclosesNativeGatewayRemoval()
+    {
+        var existing = new ExistingConfigDetector.ExistingConfig(
+            HasLocalGateway: true,
+            LocalGatewayId: "local",
+            LocalGatewayUrl: "ws://localhost:18789",
+            HasDistro: false,
+            DistroName: null,
+            HasIdentityFiles: true,
+            PreservedGatewayCount: 0,
+            PreservedGatewayNames: [],
+            LocalGatewayMode: GatewayInstallMode.NativeWindows);
+
+        var title = ExistingConfigDetector.BuildReplacementTitle(existing, GatewayInstallMode.Wsl);
+        var summary = ExistingConfigDetector.BuildReplacementSummary(existing, GatewayInstallMode.Wsl);
+
+        Assert.Equal("Replace existing native Windows gateway?", title);
+        Assert.Contains("native Windows gateway service", summary);
+        Assert.Contains("setup-managed configuration", summary);
+    }
+
     [Theory]
     [InlineData("{\"service\":{\"loaded\":true,\"command\":null}}", true)]
     [InlineData("{\"service\":{\"loaded\":false,\"command\":{\"programArguments\":[]}}}", true)]

@@ -2457,6 +2457,33 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void ExistingConfigDetector_FindsInterruptedNativeInstallWithoutRegistryRecord()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Missing-{Guid.NewGuid():N}",
+        };
+        File.WriteAllText(
+            GatewayInstallModeDetector.GetNativeOwnershipPath(_localTempDir),
+            $$"""{"InstallMode":"NativeWindows","ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(config)}}"}""");
+
+        var existing = ExistingConfigDetector.Detect(
+            _tempDir,
+            _localTempDir,
+            config);
+
+        Assert.False(existing.HasLocalGateway);
+        Assert.Equal(GatewayInstallMode.NativeWindows, existing.LocalGatewayMode);
+        Assert.Equal(
+            "Replace existing native Windows gateway?",
+            ExistingConfigDetector.BuildReplacementTitle(existing, GatewayInstallMode.Wsl));
+        Assert.Contains(
+            "native Windows gateway service",
+            ExistingConfigDetector.BuildReplacementSummary(existing, GatewayInstallMode.Wsl));
+    }
+
+    [Fact]
     public void BuildReplacementSummary_LocalGatewayAndDistro_MentionsReplacement()
     {
         var config = new ExistingConfigDetector.ExistingConfig(

@@ -178,6 +178,7 @@ internal sealed class WizardConsoleTail : IDisposable
         $startedUtc = [DateTime]::UtcNow
         $currentIdentity = $null
         [long]$position = 0
+        $pending = ''
         while ($true) {
             $latest = Get-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
             if ($null -ne $latest) {
@@ -185,8 +186,10 @@ internal sealed class WizardConsoleTail : IDisposable
                 if ($identity -ne $currentIdentity) {
                     $currentIdentity = $identity
                     $position = if ($latest.CreationTimeUtc -ge $startedUtc) { 0 } else { $latest.Length }
+                    $pending = ''
                 } elseif ($latest.Length -lt $position) {
                     $position = 0
+                    $pending = ''
                 }
 
                 $stream = $null
@@ -196,10 +199,16 @@ internal sealed class WizardConsoleTail : IDisposable
                     $stream = [IO.File]::Open($latest.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
                     [void]$stream.Seek($position, [IO.SeekOrigin]::Begin)
                     $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 4096, $true)
-                    while (($line = $reader.ReadLine()) -ne $null) {
-                        Write-Output $line
-                    }
+                    $chunk = $reader.ReadToEnd()
                     $position = $stream.Position
+                    if ($chunk.Length -gt 0) {
+                        $pending += $chunk
+                        $parts = $pending.Split([char]10)
+                        for ($i = 0; $i -lt ($parts.Count - 1); $i++) {
+                            Write-Output $parts[$i].TrimEnd([char[]]@([char]13))
+                        }
+                        $pending = $parts[$parts.Count - 1]
+                    }
                 } catch {
                     # The writer may rotate between discovery and open; retry on the next poll.
                 } finally {
