@@ -500,6 +500,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     }
                     else if (RequeueDeferredAdmissionLocked(threadId, request.Id, out deferredRetryDelay))
                     {
+                        if (!string.IsNullOrEmpty(acceptedRunId))
+                        {
+                            TrackQueuedMessageRunLocked(threadId, acceptedRunId, request.Id);
+                            AddResetAcceptedRunIdLocked(threadId, acceptedRunId);
+                        }
                         requeuedSnapshot = BuildSnapshotLocked();
                         retryDeferredSend = true;
                     }
@@ -3188,8 +3193,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             };
             retryDelay = DeferredAdmissionRetryDelay(retryCount);
             SetDeferredAdmissionRetryAfterLocked(threadId, messageId, DateTimeOffset.UtcNow + retryDelay);
-            RemovePendingLocalEchoLocked(threadId, messageId);
-            RemoveQueuedRunMappingByMessageIdLocked(threadId, messageId);
             _assistantFallbackPromotedThreads.Remove(threadId);
             if (!hasActiveRun)
             {

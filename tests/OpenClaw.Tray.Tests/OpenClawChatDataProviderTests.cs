@@ -2989,6 +2989,55 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task QueuedSend_InFlightAckThenLifecycleBeforeRetry_PromotesWithoutResend()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "Hello");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() =>
+        {
+            var queued = GetQueuedMessages(snapshots[^1], "main");
+            return bridge.SentMessages.Count == 2 &&
+                queued.Count == 1 &&
+                queued[0].Text == "Hello" &&
+                queued[0].SendState == ChatQueuedMessageSendState.Queued;
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+        await WaitForConditionAsync(() =>
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Count(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "Hello") == 1);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "Hello",
+        });
+        await Task.Delay(250);
+
+        Assert.Equal(2, bridge.SentMessages.Count);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello");
+    }
+
+    [Fact]
     public async Task QueuedSend_InFlightAckWhileDifferentRunActive_RequeuesWithoutPromoting()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
