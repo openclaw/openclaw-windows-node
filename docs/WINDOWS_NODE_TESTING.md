@@ -104,7 +104,7 @@ When the node connects, it advertises these capabilities:
 - `tts` - Windows speech synthesis or ElevenLabs playback, when enabled in Settings
 - `stt` - Local speech-to-text via Whisper.net, when enabled in Settings
 
-Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `app.status`, and `app.chat.snapshot`/`app.chat.send`/`app.chat.reset`. These are local testing and automation hooks registered with the tray's MCP server and are not advertised to the gateway WebSocket.
+Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `app.status`, `app.chat.snapshot`/`app.chat.send`/`app.chat.reset`, and `app.chat.queue.list`/`app.chat.queue.cancel`. These are local testing and automation hooks registered with the tray's MCP server and are not advertised to the gateway WebSocket.
 
 ## Security Features
 

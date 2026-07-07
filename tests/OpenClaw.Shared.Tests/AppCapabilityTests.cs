@@ -28,7 +28,8 @@ public class AppCapabilityTests
         var cap = new AppCapability(NullLogger.Instance);
         var expected = new[] { "app.navigate", "app.status", "app.sessions", "app.agents",
             "app.nodes", "app.config.get", "app.settings.get", "app.settings.set", "app.menu", "app.search",
-            "app.dashboard.url", "app.chat.snapshot", "app.chat.send", "app.chat.reset" };
+            "app.dashboard.url", "app.chat.snapshot", "app.chat.send", "app.chat.reset",
+            "app.chat.queue.list", "app.chat.queue.cancel" };
         foreach (var cmd in expected)
         {
             Assert.Contains(cmd, cap.Commands);
@@ -201,5 +202,75 @@ public class AppCapabilityTests
 
         Assert.False(res.Ok);
         Assert.Contains("message", res.Error);
+    }
+
+    [Fact]
+    public async Task ChatQueueList_WithSessionKeyAlias_ForwardsThreadId()
+    {
+        var cap = new AppCapability(NullLogger.Instance);
+        string? capturedThreadId = null;
+        cap.ChatQueueListHandler = threadId =>
+        {
+            capturedThreadId = threadId;
+            return Task.FromResult<object?>(new { totalCount = 1 });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.chat.queue.list",
+            Args = ParseArgs("{\"sessionKey\":\"agent:main:default\"}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        Assert.Equal("agent:main:default", capturedThreadId);
+    }
+
+    [Fact]
+    public async Task ChatQueueCancel_WithHandler_ForwardsThreadAndQueuedMessage()
+    {
+        var cap = new AppCapability(NullLogger.Instance);
+        string? capturedThreadId = null;
+        string? capturedQueuedMessageId = null;
+        cap.ChatQueueCancelHandler = (threadId, queuedMessageId) =>
+        {
+            capturedThreadId = threadId;
+            capturedQueuedMessageId = queuedMessageId;
+            return Task.FromResult<object?>(new { canceled = true });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.chat.queue.cancel",
+            Args = ParseArgs("{\"threadId\":\"main\",\"queuedMessageId\":\"q7\"}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+        Assert.Equal("main", capturedThreadId);
+        Assert.Equal("q7", capturedQueuedMessageId);
+    }
+
+    [Fact]
+    public async Task ChatQueueCancel_WithoutQueuedMessageId_ReturnsError()
+    {
+        var cap = new AppCapability(NullLogger.Instance);
+        cap.ChatQueueCancelHandler = (_, _) => Task.FromResult<object?>(new { canceled = true });
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.chat.queue.cancel",
+            Args = ParseArgs("{\"threadId\":\"main\"}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Contains("queuedMessageId", res.Error);
     }
 }

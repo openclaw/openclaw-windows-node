@@ -231,6 +231,34 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void AppChatQueueMcpHandlers_AreWiredToAppCapability()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "WireAppCapabilityHandlers");
+
+        Assert.Contains("app.ChatQueueListHandler = ListQueuedChatMessagesForMcpAsync;", method);
+        Assert.Contains("app.ChatQueueCancelHandler = CancelQueuedChatMessageForMcpAsync;", method);
+    }
+
+    [Fact]
+    public void AppChatSnapshot_IncludesQueuePayload()
+    {
+        var source = ReadAppSources();
+        var snapshotMethod = ExtractMethod(source, "BuildChatSnapshotPayload");
+        var queueMethod = ExtractMethod(source, "BuildChatQueuePayload");
+        var queueMessageMethod = ExtractMethod(source, "ToMcpQueuedMessage");
+        var cancelMethod = ExtractMethod(source, "CancelQueuedChatMessageForMcpAsync");
+
+        Assert.Contains("queue = BuildChatQueuePayload(snapshot, resolvedThreadId, filterToThread: false)", snapshotMethod);
+        Assert.Contains("snapshot.QueuedMessagesByThread", queueMethod);
+        Assert.Contains("sendState = message.SendState.ToString()", queueMessageMethod);
+        Assert.Contains("canCancel = CanCancelQueuedMessage(message)", queueMessageMethod);
+        Assert.Contains("canceled = await provider.CancelQueuedMessageAsync(resolvedThreadId, queuedMessageId)", cancelMethod);
+        Assert.Contains("Queued message is already sending and cannot be canceled", cancelMethod);
+        Assert.Contains("it may have started sending before cancellation was processed", cancelMethod);
+    }
+
+    [Fact]
     public void Startup_NodeOnlyReconnect_UsesNodeCredentialAndLegacyIdentityFallback()
     {
         var source = ReadAppSources();
@@ -950,7 +978,7 @@ public sealed class AppRefactorContractTests
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);

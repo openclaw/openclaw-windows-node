@@ -230,6 +230,8 @@ public partial class App
         app.ChatSnapshotHandler = BuildChatSnapshotForMcpAsync;
         app.ChatSendHandler = SendChatMessageForMcpAsync;
         app.ChatResetHandler = ResetChatSessionForMcpAsync;
+        app.ChatQueueListHandler = ListQueuedChatMessagesForMcpAsync;
+        app.ChatQueueCancelHandler = CancelQueuedChatMessageForMcpAsync;
 
         connection.ApplySetupCodeHandler = async setupCode =>
         {
@@ -506,6 +508,79 @@ public partial class App
         };
     }
 
+    private async Task<object?> ListQueuedChatMessagesForMcpAsync(string? threadId)
+    {
+        var provider = _chatCoordinator?.Provider;
+        if (provider == null)
+            return new { error = "Chat provider is not initialized" };
+
+        var snapshot = await provider.LoadAsync();
+        var resolvedThreadId = ResolveChatThreadId(snapshot, threadId);
+        return BuildChatQueuePayload(snapshot, resolvedThreadId, filterToThread: !string.IsNullOrWhiteSpace(threadId));
+    }
+
+    private async Task<object?> CancelQueuedChatMessageForMcpAsync(string? threadId, string queuedMessageId)
+    {
+        var provider = _chatCoordinator?.Provider;
+        if (provider == null)
+            return new { canceled = false, error = "Chat provider is not initialized" };
+
+        var snapshot = await provider.LoadAsync();
+        var resolvedThreadId = ResolveChatThreadId(snapshot, threadId);
+        if (string.IsNullOrWhiteSpace(resolvedThreadId))
+            return new { canceled = false, queuedMessageId, error = "Chat compose target is not ready" };
+
+        if (!TryGetQueuedMessage(snapshot, resolvedThreadId, queuedMessageId, out var queuedMessage))
+        {
+            return new
+            {
+                canceled = false,
+                threadId = resolvedThreadId,
+                queuedMessageId,
+                error = "Queued message was not found"
+            };
+        }
+
+        if (!CanCancelQueuedMessage(queuedMessage))
+        {
+            return new
+            {
+                canceled = false,
+                threadId = resolvedThreadId,
+                queuedMessageId,
+                sendState = queuedMessage.SendState.ToString(),
+                error = "Queued message is already sending and cannot be canceled"
+            };
+        }
+
+        bool canceled;
+        try
+        {
+            canceled = await provider.CancelQueuedMessageAsync(resolvedThreadId, queuedMessageId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"App: Chat queue cancel for '{resolvedThreadId}' message '{queuedMessageId}' failed: {ex.Message}");
+            return new { canceled = false, threadId = resolvedThreadId, queuedMessageId, error = ex.Message };
+        }
+
+        var updated = await provider.LoadAsync();
+        var stillQueued = TryGetQueuedMessage(updated, resolvedThreadId, queuedMessageId, out var remaining);
+        var remainingCount = GetQueuedMessagesForThread(updated, resolvedThreadId).Length;
+        return new
+        {
+            canceled,
+            threadId = resolvedThreadId,
+            queuedMessageId,
+            remainingCount,
+            error = canceled
+                ? null
+                : stillQueued
+                    ? $"Queued message is still present with state '{remaining!.SendState}'."
+                    : "Queued message was not canceled; it may have started sending before cancellation was processed."
+        };
+    }
+
     private static string? ResolveChatThreadId(ChatDataSnapshot snapshot, string? requestedThreadId)
     {
         if (!string.IsNullOrWhiteSpace(requestedThreadId))
@@ -548,6 +623,7 @@ public partial class App
                 t.TotalTokens,
                 t.ContextTokens
             }).ToArray(),
+            queue = BuildChatQueuePayload(snapshot, resolvedThreadId, filterToThread: false),
             selectedTimeline = selectedTimeline is null ? null : new
             {
                 turnActive = selectedTimeline.TurnActive,
@@ -579,6 +655,88 @@ public partial class App
             }
         };
     }
+
+    private static object BuildChatQueuePayload(
+        ChatDataSnapshot snapshot,
+        string? resolvedThreadId,
+        bool filterToThread)
+    {
+        var queued = snapshot.QueuedMessagesByThread ?? new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>();
+        var threadQueues = filterToThread && !string.IsNullOrWhiteSpace(resolvedThreadId)
+            ? new[]
+            {
+                new KeyValuePair<string, IReadOnlyList<ChatQueuedMessage>>(
+                    resolvedThreadId,
+                    GetQueuedMessagesForThread(snapshot, resolvedThreadId))
+            }
+            : queued
+                .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+                .ToArray();
+
+        var selectedMessages = !string.IsNullOrWhiteSpace(resolvedThreadId)
+            ? GetQueuedMessagesForThread(snapshot, resolvedThreadId)
+            : Array.Empty<ChatQueuedMessage>();
+
+        return new
+        {
+            defaultThreadId = snapshot.DefaultThreadId,
+            requestedThreadId = resolvedThreadId,
+            totalCount = threadQueues.Sum(kvp => kvp.Value.Count),
+            selectedThread = string.IsNullOrWhiteSpace(resolvedThreadId)
+                ? null
+                : new
+                {
+                    threadId = resolvedThreadId,
+                    count = selectedMessages.Length,
+                    messages = selectedMessages.Select(ToMcpQueuedMessage).ToArray()
+                },
+            threads = threadQueues.Select(kvp => new
+            {
+                threadId = kvp.Key,
+                count = kvp.Value.Count,
+                messages = kvp.Value.Select(ToMcpQueuedMessage).ToArray()
+            }).ToArray()
+        };
+    }
+
+    private static ChatQueuedMessage[] GetQueuedMessagesForThread(ChatDataSnapshot snapshot, string threadId)
+    {
+        if (snapshot.QueuedMessagesByThread?.TryGetValue(threadId, out var messages) == true)
+            return messages.ToArray();
+        return Array.Empty<ChatQueuedMessage>();
+    }
+
+    private static bool TryGetQueuedMessage(
+        ChatDataSnapshot snapshot,
+        string threadId,
+        string queuedMessageId,
+        out ChatQueuedMessage queuedMessage)
+    {
+        foreach (var message in GetQueuedMessagesForThread(snapshot, threadId))
+        {
+            if (string.Equals(message.Id, queuedMessageId, StringComparison.Ordinal))
+            {
+                queuedMessage = message;
+                return true;
+            }
+        }
+
+        queuedMessage = null!;
+        return false;
+    }
+
+    private static bool CanCancelQueuedMessage(ChatQueuedMessage message) =>
+        message.SendState != ChatQueuedMessageSendState.Sending;
+
+    private static object ToMcpQueuedMessage(ChatQueuedMessage message) => new
+    {
+        id = message.Id,
+        text = message.Text,
+        createdAt = message.CreatedAt,
+        sendState = message.SendState.ToString(),
+        errorText = message.ErrorText,
+        canCancel = CanCancelQueuedMessage(message)
+    };
 
     private async Task WaitForAppStateUpdateAsync(string propertyName, Func<Task> requestAsync)
     {

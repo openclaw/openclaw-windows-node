@@ -275,11 +275,15 @@ public class McpToolBridge
         ["app.dashboard.url"] =
             "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }.",
         ["app.chat.snapshot"] =
-            "READ-ALL: Return the current native chat snapshot for local automation. Args: threadId/sessionKey (string, optional). Returns connection state, compose target, thread summaries, and recent timeline entries including chat text.",
+            "READ-ALL: Return the current native chat snapshot for local automation. Args: threadId/sessionKey (string, optional). Returns connection state, compose target, thread summaries, queued outgoing messages, and recent timeline entries including chat text.",
         ["app.chat.send"] =
             "Send a message through the native chat provider. Args: message (string, required), threadId/sessionKey (string, optional; defaults to the current compose/default thread). Returns { sent, threadId, entryCount, turnActive, error? }.",
         ["app.chat.reset"] =
             "Reset a chat session through the gateway sessions.reset path. Args: threadId/sessionKey (string, optional; defaults to the current compose/default thread, so no-arg reset clears the active chat). Returns { reset, threadId, error? }.",
+        ["app.chat.queue.list"] =
+            "READ-ALL: List native chat outgoing queue entries. Args: threadId/sessionKey (string, optional; omit to return all queued threads). Returns { defaultThreadId, requestedThreadId, totalCount, selectedThread, threads: [{ threadId, count, messages: [{ id, text, createdAt, sendState, errorText, canCancel }] }] }.",
+        ["app.chat.queue.cancel"] =
+            "Cancel/remove one native chat outgoing queue entry before it is sent. Args: queuedMessageId (string, required), threadId/sessionKey (string, optional; defaults to current compose/default thread). Only Queued/Failed entries can be removed; Sending entries may already have reached the gateway. Returns { canceled, threadId, queuedMessageId, remainingCount, error? }.",
 
         // location.*
         ["location.get"] =

@@ -274,7 +274,7 @@ public interface IChatDataProvider : IAsyncDisposable
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default);
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken, IReadOnlyList<OpenClaw.Shared.ChatAttachment>? attachments) =>
         SendMessageAsync(threadId, message, cancellationToken);
-    Task CancelQueuedMessageAsync(string threadId, string queuedMessageId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    Task<bool> CancelQueuedMessageAsync(string threadId, string queuedMessageId, CancellationToken cancellationToken = default) => Task.FromResult(false);
     Task StopResponseAsync(string threadId, CancellationToken cancellationToken = default);
     Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default);
     Task DeleteThreadAsync(string threadId, CancellationToken cancellationToken = default);

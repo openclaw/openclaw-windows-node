@@ -401,7 +401,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             await DispatchQueuedSendAsync(dispatch, rethrow: true, cancellationToken);
     }
 
-    public Task CancelQueuedMessageAsync(string threadId, string queuedMessageId, CancellationToken cancellationToken = default)
+    public Task<bool> CancelQueuedMessageAsync(string threadId, string queuedMessageId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(threadId))
@@ -410,17 +410,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             throw new ArgumentException("Queued message id is required.", nameof(queuedMessageId));
 
         ChatDataSnapshot? snapshot = null;
+        var canceled = false;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (CancelQueuedMessageLocked(threadId, queuedMessageId))
+            canceled = CancelQueuedMessageLocked(threadId, queuedMessageId);
+            if (canceled)
                 snapshot = BuildSnapshotLocked();
         }
 
         if (snapshot is not null)
             Publish(snapshot);
 
-        return Task.CompletedTask;
+        return Task.FromResult(canceled);
     }
 
     private async Task DispatchQueuedSendAsync(
