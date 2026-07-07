@@ -306,6 +306,25 @@ jobs:
           "All pages passed Axe.Windows accessibility validation." >> $env:GITHUB_STEP_SUMMARY
         }
 
+    - name: Verify DevBuild identity marker
+      shell: pwsh
+      run: |
+        dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 -p:DevBuild=true --no-restore
+        $marker = Get-ChildItem -Path src\OpenClaw.Tray.WinUI\bin\Debug -Recurse -Filter app-identity.txt |
+          Where-Object { $_.FullName -like '*\win-x64\app-identity.txt' } |
+          Sort-Object LastWriteTimeUtc -Descending |
+          Select-Object -First 1
+        if ($null -eq $marker) {
+          throw "Dev identity marker was not produced by the DevBuild."
+        }
+
+        $identity = (Get-Content -LiteralPath $marker.FullName -Raw).Trim()
+        if ($identity -ne "dev") {
+          throw "Expected DevBuild identity marker 'dev' but found '$identity' at $($marker.FullName)."
+        }
+
+        Write-Host "DevBuild identity marker verified at $($marker.FullName): $identity"
+
     - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v7
