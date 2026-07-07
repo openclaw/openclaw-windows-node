@@ -112,13 +112,14 @@ public class SetupPipelineTests
     [Fact]
     public void BuildUninstallSteps_CoversWslAndNativeWindowsInstallations()
     {
+        var config = new SetupConfig();
         var dataDir = Path.Combine(Path.GetTempPath(), $"uninstall-data-{Guid.NewGuid():N}");
         var localDataDir = Path.Combine(Path.GetTempPath(), $"uninstall-local-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(localDataDir, "wsl", "OpenClawGateway"));
         File.WriteAllText(
             GatewayInstallModeDetector.GetNativeOwnershipPath(localDataDir),
-            "{}");
-        var ctx = CreateContext(dataDir: dataDir, localDataDir: localDataDir);
+            $$"""{"ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(config)}}"}""");
+        var ctx = CreateContext(config, dataDir: dataDir, localDataDir: localDataDir);
 
         var steps = SetupStepFactory.BuildUninstallSteps(ctx)
             .Cast<InstallModeUninstallStep>()
@@ -141,13 +142,14 @@ public class SetupPipelineTests
     [Fact]
     public void BuildUninstallSteps_NativeOnlyDoesNotScheduleWslRollback()
     {
+        var config = new SetupConfig();
         var dataDir = Path.Combine(Path.GetTempPath(), $"uninstall-data-{Guid.NewGuid():N}");
         var localDataDir = Path.Combine(Path.GetTempPath(), $"uninstall-local-{Guid.NewGuid():N}");
         Directory.CreateDirectory(localDataDir);
         File.WriteAllText(
             GatewayInstallModeDetector.GetNativeOwnershipPath(localDataDir),
-            "{}");
-        var ctx = CreateContext(dataDir: dataDir, localDataDir: localDataDir);
+            $$"""{"ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(config)}}"}""");
+        var ctx = CreateContext(config, dataDir: dataDir, localDataDir: localDataDir);
 
         var steps = SetupStepFactory.BuildUninstallSteps(ctx)
             .Cast<InstallModeUninstallStep>()
