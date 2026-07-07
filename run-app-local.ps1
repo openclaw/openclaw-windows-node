@@ -142,9 +142,11 @@ if ($branch -ne "main" -and -not $AllowNonMain) {
 }
 
 if (-not $NoBuild) {
-    $buildArgs = @("-Configuration", $Configuration)
+    $buildArgs = @{
+        Configuration = $Configuration
+    }
     if ($Dev) {
-        $buildArgs += "-DevBuild"
+        $buildArgs["DevBuild"] = $true
     }
 
     & "$repoRoot\build.ps1" @buildArgs

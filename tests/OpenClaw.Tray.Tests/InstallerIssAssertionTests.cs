@@ -171,7 +171,9 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("2>&1 | Out-Host", script);
         Assert.Contains("$wingetExitCode = $LASTEXITCODE", script);
         Assert.Contains("[switch]$Dev,", runScript);
-        Assert.Contains("$buildArgs += \"-DevBuild\"", runScript);
+        Assert.Contains("$buildArgs = @{", runScript);
+        Assert.Contains("Configuration = $Configuration", runScript);
+        Assert.Contains("$buildArgs[\"DevBuild\"] = $true", runScript);
         Assert.Contains("app-identity.txt", runScript);
         Assert.Contains("does not match requested", runScript);
         Assert.Contains("[switch]$DevBuild,", buildScript);
