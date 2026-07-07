@@ -3016,6 +3016,18 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Mislukt</value>
   </data>
+  <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
+    <value>Bericht in wachtrij annuleren</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageCancelAutomationFormat" xml:space="preserve">
+    <value>Bericht {0} in wachtrij annuleren: {1}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailed" xml:space="preserve">
+    <value>Mislukt bericht in wachtrij verwijderen</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailedAutomationFormat" xml:space="preserve">
+    <value>Mislukt bericht {0} in wachtrij verwijderen: {1}</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>Bericht kopiëren</value>
   </data>

@@ -2726,6 +2726,121 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task CancelQueuedMessageAsync_RemovesOneDuplicateQueuedItemAndPreventsDispatch()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-active", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-next-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-next-2", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.SendMessageAsync("main", "active");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-active"));
+        await provider.SendMessageAsync("main", "same");
+        await provider.SendMessageAsync("main", "same");
+        await provider.SendMessageAsync("main", "same");
+
+        var queuedBeforeCancel = GetQueuedMessages(snapshots[^1], "main");
+        Assert.Equal(3, queuedBeforeCancel.Count);
+        Assert.All(queuedBeforeCancel, message => Assert.Equal("same", message.Text));
+        var canceledId = queuedBeforeCancel[1].Id;
+
+        await provider.CancelQueuedMessageAsync("main", canceledId);
+
+        var queuedAfterCancel = GetQueuedMessages(snapshots[^1], "main");
+        Assert.Equal(2, queuedAfterCancel.Count);
+        Assert.DoesNotContain(queuedAfterCancel, message => message.Id == canceledId);
+        Assert.All(queuedAfterCancel, message => Assert.Equal("same", message.Text));
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "active response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() =>
+            bridge.SentMessages.Count >= 2 &&
+            GetQueuedMessages(snapshots[^1], "main").Count == 1);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "response 1",
+            State = "final",
+        });
+        await WaitForConditionAsync(() =>
+            bridge.SentMessages.Count >= 3 &&
+            GetQueuedMessages(snapshots[^1], "main").Count == 0);
+
+        Assert.Equal(new[] { "active", "same", "same" }, bridge.SentMessages);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(2, snapshots[^1].Timelines["main"].Entries.Count(e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "same"));
+    }
+
+    [Fact]
+    public async Task CancelQueuedMessageAsync_RemovesFailedQueuedCard()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-active", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "failed", Error = "gateway rejected queued send" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "active");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-active"));
+        await provider.SendMessageAsync("main", "failed queued");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "active response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() => HasFailedQueuedMessage(snapshots[^1], "main", "failed queued"));
+
+        var failed = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
+
+        await provider.CancelQueuedMessageAsync("main", failed.Id);
+
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.False(snapshots[^1].QueuedMessagesByThread?.ContainsKey("main") == true);
+    }
+
+    [Fact]
+    public async Task CancelQueuedMessageAsync_DoesNotTurnActiveLocalRunIntoRemoteRun()
+    {
+        var historyCalls = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-active", Status = "started" });
+        bridge.HistoryBehavior = _ =>
+        {
+            historyCalls++;
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" });
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "active");
+        await provider.SendMessageAsync("main", "queued");
+
+        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        await provider.CancelQueuedMessageAsync("main", queued.Id);
+
+        historyCalls = 0;
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-active"));
+        await Task.Delay(50);
+
+        Assert.Equal(0, historyCalls);
+    }
+
+    [Fact]
     public async Task QueuedSend_LifecycleStartBeforeAck_PromotesByIdempotencyKey()
     {
         var secondSendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

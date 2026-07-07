@@ -3062,6 +3062,18 @@ Use one of these options:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Failed</value>
   </data>
+  <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
+    <value>Cancel queued message</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageCancelAutomationFormat" xml:space="preserve">
+    <value>Cancel queued message {0}: {1}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailed" xml:space="preserve">
+    <value>Remove failed queued message</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailedAutomationFormat" xml:space="preserve">
+    <value>Remove failed queued message {0}: {1}</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>Copy message</value>
   </data>

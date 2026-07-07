@@ -3015,6 +3015,18 @@
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>失敗</value>
   </data>
+  <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
+    <value>取消已排入佇列的訊息</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageCancelAutomationFormat" xml:space="preserve">
+    <value>取消已排入佇列的訊息 {0}：{1}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailed" xml:space="preserve">
+    <value>移除失敗的已排入佇列訊息</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailedAutomationFormat" xml:space="preserve">
+    <value>移除失敗的已排入佇列訊息 {0}：{1}</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>複製訊息</value>
   </data>

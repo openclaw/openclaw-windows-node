@@ -3015,6 +3015,18 @@
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>失败</value>
   </data>
+  <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
+    <value>取消已排队消息</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageCancelAutomationFormat" xml:space="preserve">
+    <value>取消已排队消息 {0}：{1}</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailed" xml:space="preserve">
+    <value>移除失败的已排队消息</value>
+  </data>
+  <data name="Chat_Composer_QueuedMessageRemoveFailedAutomationFormat" xml:space="preserve">
+    <value>移除失败的已排队消息 {0}：{1}</value>
+  </data>
   <data name="Chat_Assistant_Action_Copy" xml:space="preserve">
     <value>复制消息</value>
   </data>

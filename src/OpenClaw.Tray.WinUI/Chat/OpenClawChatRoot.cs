@@ -587,6 +587,7 @@ public sealed class OpenClawChatRoot : Component
                 OnAttachClick: _onAttachClick,
                 PendingAttachments: pendingAttachments.Value,
                 QueuedMessages: queuedMessages,
+                OnQueuedMessageCancel: queuedMessageId => RunFireAndForget(ct => _provider.CancelQueuedMessageAsync(composerThread.Id!, queuedMessageId, ct)),
                 OnAttachmentRemoved: attachment => SetPendingAttachments(RemoveAttachment(pendingAttachmentsRef.Current, attachment)),
                 IsSpeakerMuted: speakerMuted.Value,
                 OnSpeakerToggle: () =>

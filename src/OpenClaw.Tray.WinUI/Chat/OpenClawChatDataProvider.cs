@@ -401,6 +401,28 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             await DispatchQueuedSendAsync(dispatch, rethrow: true, cancellationToken);
     }
 
+    public Task CancelQueuedMessageAsync(string threadId, string queuedMessageId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrEmpty(threadId))
+            throw new ArgumentException("Thread id is required.", nameof(threadId));
+        if (string.IsNullOrEmpty(queuedMessageId))
+            throw new ArgumentException("Queued message id is required.", nameof(queuedMessageId));
+
+        ChatDataSnapshot? snapshot = null;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (CancelQueuedMessageLocked(threadId, queuedMessageId))
+                snapshot = BuildSnapshotLocked();
+        }
+
+        if (snapshot is not null)
+            Publish(snapshot);
+
+        return Task.CompletedTask;
+    }
+
     private async Task DispatchQueuedSendAsync(
         QueuedSendDispatch dispatch,
         bool rethrow,
@@ -2994,6 +3016,27 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (list.Count == 0)
             _queuedMessages.Remove(threadId);
         return removed;
+    }
+
+    private bool CancelQueuedMessageLocked(string threadId, string messageId)
+    {
+        if (!_queuedMessages.TryGetValue(threadId, out var list))
+            return false;
+
+        var index = list.FindIndex(message => string.Equals(message.Id, messageId, StringComparison.Ordinal));
+        if (index < 0)
+            return false;
+
+        if (list[index].SendState == ChatQueuedMessageSendState.Sending)
+            return false;
+
+        list.RemoveAt(index);
+        RemovePendingLocalEchoLocked(threadId, messageId);
+        RemoveQueuedRunMappingByMessageIdLocked(threadId, messageId);
+        RemoveQueuedSendRequestLocked(threadId, messageId);
+        if (list.Count == 0)
+            _queuedMessages.Remove(threadId);
+        return true;
     }
 
     private bool PromoteQueuedMessageLocked(
