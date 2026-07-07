@@ -13,7 +13,7 @@ Required steps:
 3. Run tray tests:
    - `dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore`
 
-This is the required local closeout subset for agents. CI also builds and runs additional connection, setup, CLI, UI, integration, and E2E suites; see `docs/TEST_COVERAGE.md` for the broader inventory.
+This is the required local closeout subset for agents. CI also builds and runs additional connection, setup, CLI, UI, accessibility, integration, and E2E suites; see `docs/TEST_COVERAGE.md` for the broader test inventory and `.github/workflows/ci.yml` for the workflow source of truth.
 
 If a command fails:
 
@@ -77,6 +77,7 @@ Start with these docs before changing connection, pairing, node, MCP, or tray UX
 - `docs/MCP_MODE.md` - local MCP server mode and the `EnableNodeMode` / `EnableMcpServer` matrix.
 - `docs/WINDOWS_NODE_TESTING.md` - Windows node capabilities, manual smokes, and gateway-dependent behavior.
 - `docs/ONBOARDING_WIZARD.md` - first-run setup flow, setup-code/bootstrap pairing, and test isolation.
+- `docs/SETUP_ENGINE_REDESIGN.md` - setup pipeline, rollback/logging, Windows node context injection, and setup CLI contract.
 - `docs/WSL_EXE_ARGV_PITFALL.md` - wsl.exe argv variable-expansion pitfall; required reading before adding any multi-line WSL script through `RunInWslAsync`.
 
 ## Architecture Guardrails for Large Refactors

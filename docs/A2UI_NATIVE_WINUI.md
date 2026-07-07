@@ -1,22 +1,24 @@
 # Native WinUI A2UI Canvas — Design Spec
 
-> **Status:** Draft / proposal
-> **Audience:** Contributors implementing a native A2UI renderer for the Windows node
+> **Status:** Implemented; historical design rationale
+> **Audience:** Contributors maintaining the native A2UI renderer for the Windows node
 > **Target version:** A2UI v0.8 (parity with current openclaw clients), with a v0.9 migration path
+
+The native WinUI renderer is implemented under `src\OpenClaw.Tray.WinUI\A2UI\`. This file preserves the original design rationale; the current source of truth for protocol and component details lives in `docs\a2ui\` (`README.md`, `protocol.md`, `components.md`, and grading notes). Phase 4 / A2UI v0.9 migration has not started.
 
 ## 1. Motivation
 
-Today the Windows node renders A2UI by hosting a WebView2 control (`CanvasWindow`) that navigates to an HTTP page served by the openclaw gateway at `/__openclaw__/a2ui/`. That page bundles `@a2ui/lit` and openclaw's bridge JS. Pushed messages travel `agent → gateway → node (canvas.a2ui.push) → WebView2 → window.__a2ui.receive(msg)`.
+Before the native renderer landed, the Windows node rendered A2UI by hosting a WebView2 control (`CanvasWindow`) that navigated to an HTTP page served by the openclaw gateway at `/__openclaw__/a2ui/`. That page bundled `@a2ui/lit` and openclaw's bridge JS. Pushed messages traveled `agent → gateway → node (canvas.a2ui.push) → WebView2 → window.__a2ui.receive(msg)`.
 
-That works, but it has costs:
+That worked, but it had costs:
 
-- **Hard gateway dependency.** A node running in MCP-only mode (no gateway connection) silently drops A2UI pushes — `OnCanvasA2UIPush` bails when `_a2uiHostUrl` is null. The renderer code physically lives at the gateway.
+- **Hard gateway dependency.** A node running in MCP-only mode (no gateway connection) could silently drop A2UI pushes because the WebView2 renderer code lived at the gateway.
 - **WebView2 surface area.** Drag/drop, IME, accessibility, focus, DPI, and keyboard shortcuts inherit WebView2 quirks instead of XAML's native behavior. The canvas always feels like an embedded browser.
 - **Bootstrapping latency.** Each cold start has to ensure WebView2 is ready, navigate, and wait for `window.__a2ui` to register before any message can be delivered (`EnsureA2UIHostAsync` + `ensureA2uiReady` polling).
 - **Theming drift.** WinUI windows around the canvas use Mica/Fluent; the canvas uses Lit components styled with CSS. Achieving consistent visuals requires duplicate theme work.
 - **Hardening.** Surface area for arbitrary script execution remains larger than necessary for what is fundamentally a declarative UI tree.
 
-A native WinUI renderer renders A2UI surfaces directly into XAML — no WebView, no HTTP host, no JS bridge. The node becomes self-contained: it can render A2UI whether it's connected to a gateway, an MCP client, or both.
+The implemented native WinUI renderer renders A2UI surfaces directly into XAML — no WebView, no HTTP host, no JS bridge. The node is self-contained: it can render A2UI whether it's connected to a gateway, an MCP client, or both.
 
 ## 2. Goals & non-goals
 
@@ -267,12 +269,14 @@ Mirror what `CanvasCapability` already logs:
 
 ## 13. Phasing
 
+This table is historical. Phases 0-3 are now implemented by the native renderer path; no `--canvas=web` coexistence flag shipped. Phase 4 / v0.9 migration has not started.
+
 | Phase | Scope | Exit criteria |
 |---|---|---|
 | **0 — Spike** | `Text`, `Column`, `Button` only; one surface; no data model | Single button click round-trips to agent |
 | **1 — Catalog parity** | All v0.8 standard catalog types; data model + bindings; modal/tabs | Full conformance fixtures pass |
 | **2 — Polish** | Theming, transitions, focus management, accessibility (Narrator), keyboard nav | A11y audit clean; UX review against Lit version |
-| **3 — Coexistence** | Native window default; WebView2 path retained behind `--canvas=web` flag for parity testing | No regressions in WebView2 path |
+| **3 — Native default** | Native window default for A2UI rendering | Native path covers the v0.8 surface without the WebView2 host |
 | **4 — v0.9 migration** | Bidirectional messages, modular schemas, prompt-first | Tracks Google A2UI v0.9 release |
 
 ## 14. Open questions

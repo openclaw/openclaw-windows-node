@@ -9,7 +9,7 @@ Before installing, make sure you have:
 - **Windows 10 (20H2 or later)** or **Windows 11**
 - **WebView2 Runtime** — pre-installed on Windows 11 and most up-to-date Windows 10 systems. If missing, download from [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway.
+You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the install-new-WSL and connect-existing handoff flow.
 
 New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local WSL gateway, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
 

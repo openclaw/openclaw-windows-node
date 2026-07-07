@@ -4,11 +4,13 @@
 
 The Setup Engine is a **config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two setup projects plus the tray host:
 
-1. **`OpenClaw.SetupEngine`** — Headless pipeline library. Runs 18 steps sequentially with full JSONL logging, transaction journal, and rollback support.
+1. **`OpenClaw.SetupEngine`** — Headless pipeline library. Runs 19 steps sequentially with full JSONL logging, transaction journal, and rollback support.
 2. **`OpenClaw.SetupEngine.UI`** — WinUI3 setup window/pages that wrap the same pipeline with a fluent wizard UI.
 3. **`OpenClaw.Tray.WinUI`** — The only shipped WinUI executable. It hosts `SetupWindow` directly and self-restarts after successful setup.
 
 The bundled `default-config.json` ships with the tray executable and provides secure defaults (loopback bind, WSL isolation, systemd enabled). Defaults can be overridden via config file or environment variables.
+
+> **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
 
 ---
 
@@ -18,7 +20,7 @@ The bundled `default-config.json` ships with the tray executable and provides se
 ┌─────────────────────────────────────────────────────────────┐
 │  OpenClaw.SetupEngine (net10.0 library)                     │
 │                                                             │
-│  SetupPipeline ──→ 18 SetupStep classes ──→ StepResult      │
+│  SetupPipeline ──→ 19 SetupStep classes ──→ StepResult      │
 │       │                    │                                │
 │  SetupContext         CommandRunner (WSL + Process)          │
 │  SetupConfig          TransactionJournal (JSONL)            │
@@ -164,7 +166,7 @@ src/OpenClaw.SetupEngine.UI/
 
 ---
 
-## Pipeline Steps (18 total)
+## Pipeline Steps (19 total)
 
 Executed sequentially. Each step is a small class (30–120 lines) in `SetupSteps.cs`.
 
@@ -187,7 +189,8 @@ Executed sequentially. Each step is a small class (30–120 lines) in `SetupStep
 | 15 | `PairNodeStep` | WebSocket node connection + capability registration |
 | 16 | `VerifyEndToEndStep` | End-to-end health check (operator → node round trip) |
 | 17 | `RunGatewayWizardStep` | Run/configure the gateway wizard unless skipped |
-| 18 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
+| 18 | `WindowsNodeBootstrapContextStep` | Inject Windows-node context into the WSL workspace `AGENTS.md` |
+| 19 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
 
 ### Step Base Class
 
@@ -253,7 +256,7 @@ Structured JSONL logger. Records sanitized entries for:
 - State transitions
 - Errors with stack traces
 
-Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-<timestamp>.log`
+Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
 
 ---
 
@@ -314,7 +317,9 @@ OpenClaw.SetupEngine.Program.Main(["--no-rollback-on-failure"])
 OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 ```
 
-Exit codes: 0 = success, 1 = failure
+Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and uninstall safety flags such as `--uninstall` plus `--confirm-destructive`.
+
+Exit codes: 0 = success, 1 = pipeline failure, 2 = bad arguments or setup lock/safety failure, 3 = cancelled
 
 ### UI (hosted by tray)
 

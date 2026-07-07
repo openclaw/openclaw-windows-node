@@ -22,7 +22,7 @@ The main product decision is deliberate: **do not make a native Windows gateway 
 
 Windows now has a strong foundation:
 
-- Node Mode with canvas, camera, screen snapshot/record, location, device info/status, system commands, notifications, and exec approval policy.
+- Node Mode with canvas, camera, screen snapshot/record, location, device info/status, system commands, notifications, exec approval policy, and local MCP `app.chat.*` automation commands.
 - Command Center status detail window with channels, sessions, usage, local/operator node inventory, allowlist diagnostics, pairing warnings, and activity stream.
 - SSH tunnel settings and service.
 - Activity Stream and support-bundle copy path that avoid storing invoke payloads.
@@ -464,6 +464,15 @@ Deliverables:
 - Agent events ring expansion: **implemented first Command Center recent-activity panel with copy/open-stream actions**
 - Hover HUD / richer tray tooltip: **implemented with topology, channel, node, warning, and activity summary**
 - Update status: **implemented in Command Center support/debug section and copied support context, including current version, latest prompted version when known, and last check outcome**
+
+Recent native chat behavior implemented during this phase:
+
+- Queued-message UI tracks local send state (`Queued`, `Sending`, `Failed`) until the gateway confirms or rejects the turn.
+- Timeline virtualization keeps long chat histories responsive while preserving stable render identity for visible entries.
+- Completed sessions are hidden by default in the native chat session list, with active/in-progress sessions surfaced first.
+- TTS notification speech preserves full assistant text while UI preview truncation remains visual-only.
+- Slash-command suggestions use the gateway command catalog grouped into Mac-compatible command buckets.
+- Local MCP chat automation exposes `app.chat.snapshot`, `app.chat.send`, and `app.chat.reset` for current-thread inspection, send, and reset flows.
 
 Risk: medium; mostly UI and gateway method plumbing.
 

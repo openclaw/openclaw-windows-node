@@ -16,7 +16,7 @@ The setup flow walks users through:
 6. **OpenClaw onboard** — Gateway-driven provider/model/key configuration
 7. **All set** — Feature summary, startup preference, and completion
 
-The setup flow no longer configures remote/manual gateways inline. The Welcome page's **Connect to an existing gateway** option closes setup and opens the tray app's Connections tab.
+The setup flow no longer configures remote/manual gateways inline. The Welcome page's **Connect to an existing gateway** option routes through `AdvancedSetupPage`, closes setup, and opens the tray app's Connections tab.
 
 ## Screen Details
 

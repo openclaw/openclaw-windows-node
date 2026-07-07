@@ -4,7 +4,7 @@
 
 ## Summary
 
-The Windows tray app now ships a **local Model Context Protocol (MCP) server** alongside its existing OpenClaw gateway client. The same node capabilities the agent reaches over the OpenClaw gateway WebSocket — `system.run`, `screen.snapshot`, `canvas.*`, `camera.list`, `camera.snap`, `camera.clip`, `location.get`, `tts.speak`, `system.notify`, `system.execApprovals.*` — are advertised, on the same machine, as MCP tools over `http://127.0.0.1:8765/`.
+The Windows tray app now ships a **local Model Context Protocol (MCP) server** alongside its existing OpenClaw gateway client. The same node capabilities the agent reaches over the OpenClaw gateway WebSocket — `system.*`, `screen.*`, `canvas.*`, `camera.*`, `location.get`, `tts.*`, `stt.*`, `device.*`, and `browser.proxy` — are advertised, on the same machine, as MCP tools over `http://127.0.0.1:8765/`. Local-only `app.*` and `app.connection.*` tools are also exposed to MCP clients for tray automation and connection/pairing workflows; those are not registered with the remote gateway node transport.
 
 This means any local MCP client (Claude Desktop, Claude Code, Cursor, an MCP-aware CLI, a custom dev script) can reach into the running tray and drive Windows-native capabilities directly, without an OpenClaw gateway in the loop. The tray app can run in **MCP-only mode** with no gateway connection at all.
 
@@ -152,6 +152,34 @@ The exact same node tools the OpenClaw gateway uses are now invocable by any loc
 - **Custom dev scripts.** Anything that can speak HTTP + JSON-RPC. A 30-line Python or Node helper can drive the entire capability surface.
 
 In all cases the user gets a Windows-native agent experience without OpenClaw infrastructure. They can be entirely offline w.r.t. an OpenClaw gateway and still hand the LLM a working set of "do something on my Windows box" tools.
+
+### Current command surface
+
+The canonical command descriptions live in `OpenClaw.Shared\Mcp\McpToolBridge.CommandDescriptions`; `OpenClaw.WinNode.Cli.Tests\SkillMdDriftTests` keeps `src\OpenClaw.WinNode.Cli\skill.md` in sync with that documented capability surface. The live `tools/list` output may also include newly registered capabilities with fallback descriptions before prose is updated.
+
+Gateway/node command groups currently include:
+
+- `system.notify`, `system.run`, `system.run.prepare`, `system.which`, `system.execApprovals.get`, `system.execApprovals.set`
+- `canvas.present`, `canvas.hide`, `canvas.navigate`, `canvas.eval`, `canvas.snapshot`, `canvas.a2ui.push`, `canvas.a2ui.reset`, `canvas.a2ui.dump`, `canvas.caps`, `canvas.a2ui.pushJSONL`
+- `screen.snapshot`, `screen.record`
+- `camera.list`, `camera.snap`, `camera.clip`
+- `stt.transcribe`, `stt.listen`, `stt.status`
+- `tts.speak`, `tts.status`
+- `location.get`
+- `device.info`, `device.status`
+- `browser.proxy`
+
+Local MCP-only app control commands currently include:
+
+- `app.navigate`, `app.status`, `app.sessions`, `app.agents`, `app.nodes`, `app.config.get`, `app.settings.get`, `app.settings.set`, `app.menu`, `app.search`, `app.dashboard.url`
+- Chat automation: `app.chat.snapshot`, `app.chat.send`, `app.chat.reset`
+- Connection automation: `app.connection.applySetupCode`, `app.connection.connectSharedToken`, `app.connection.pendingApprovals`, `app.connection.approveDevicePairing`, `app.connection.rejectDevicePairing`, `app.connection.approveNodePairing`, `app.connection.rejectNodePairing`, `app.connection.reconnect`, `app.connection.reconnectNode`
+
+Example chat automation smoke:
+
+```powershell
+winnode --command app.chat.send --params '{"message":"hello from local MCP"}'
+```
 
 ### Dev acceleration when building new features
 

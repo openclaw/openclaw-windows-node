@@ -47,7 +47,7 @@ src/OpenClaw.Tray.WinUI/Services/AppState.cs
 
 ### GatewayService (`Services/GatewayService.cs`)
 
-Owns all 27 operator gateway client event subscriptions. Moved from App.xaml.cs to separate concerns.
+Owns the operator gateway client event subscriptions, including data events and connection lifecycle events. Moved from App.xaml.cs to separate concerns.
 
 ```
 src/OpenClaw.Tray.WinUI/Services/GatewayService.cs

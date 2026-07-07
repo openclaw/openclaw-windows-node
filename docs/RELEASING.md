@@ -161,12 +161,11 @@ For alpha tags, the **Build and Test** workflow should run:
 
 - `repo-hygiene`
 - `test`
-- `e2etests`
-- `build (win-x64)`
-- `build (win-arm64)`
+- `e2etests` shards: `setup-connect`, `revocation-recovery`, and `network-recovery`
+- `build` matrix entries shown by GitHub as `build (win-x64)` and `build (win-arm64)`
 - `release`
 
-MSIX jobs may appear as skipped while MSIX is paused.
+The `setup-connect` E2E shard contains the MXC proof tests for the gateway -> Windows node -> `system.run` path and validates that the expected proof test names appear in the TRX output. GitHub-hosted runners may report those MXC proofs as skipped when the host is not MXC-capable; use `.\scripts\validate-mxc-e2e.ps1` for required local/self-hosted MXC merge validation. The `build-msix` job is disabled with `if: false` while MSIX is paused for alpha releases, so it should not appear in the required run list.
 
 The release job should:
 
