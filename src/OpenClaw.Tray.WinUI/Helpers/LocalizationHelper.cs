@@ -41,28 +41,73 @@ public static class LocalizationHelper
 
     public static string GetString(string resourceKey)
     {
-        try
+        var found = TryGetValueAsString(resourceKey, out var value, out var lookupFailure);
+        if (found && !string.IsNullOrEmpty(value))
         {
-            var candidate = Manager.MainResourceMap.GetValue($"Resources/{resourceKey}", GetContext());
-            var value = candidate?.ValueAsString;
-            return string.IsNullOrEmpty(value) ? resourceKey : value;
+            return value;
         }
-        catch (Exception ex)
+
+        if (TryGetXamlPropertyResourcePath(resourceKey, out var propertyResourcePath))
         {
-            var logKey = $"{_languageOverride ?? "<default>"}:{resourceKey}:{ex.GetType().FullName}";
+            var propertyFound = TryGetValueAsString(propertyResourcePath, out value, out var propertyLookupFailure);
+            if (propertyFound && !string.IsNullOrEmpty(value))
+            {
+                return value;
+            }
+
+            if (!found)
+            {
+                lookupFailure ??= propertyLookupFailure;
+            }
+        }
+
+        if (lookupFailure is not null)
+        {
+            var logKey = $"{_languageOverride ?? "<default>"}:{resourceKey}:{lookupFailure.GetType().FullName}";
             if (s_loggedLookupFailures.ContainsKey(logKey))
                 return resourceKey;
 
             if (s_loggedLookupFailures.Count < MaxLoggedLookupFailures && s_loggedLookupFailures.TryAdd(logKey, 0))
             {
-                Logger.Warn($"LocalizationHelper: Resource lookup failed for '{resourceKey}' (language='{_languageOverride ?? "<default>"}'): {ex.Message}");
+                Logger.Warn($"LocalizationHelper: Resource lookup failed for '{resourceKey}' (language='{_languageOverride ?? "<default>"}'): {lookupFailure.Message}");
             }
             else if (System.Threading.Interlocked.Exchange(ref s_lookupFailureLimitLogged, 1) == 0)
             {
                 Logger.Warn("LocalizationHelper: Resource lookup failure log limit reached; suppressing additional unique resource lookup failures");
             }
-            return resourceKey;
         }
+
+        return resourceKey;
+    }
+
+    private static bool TryGetValueAsString(string resourceKey, out string? value, out Exception? lookupFailure)
+    {
+        try
+        {
+            var candidate = Manager.MainResourceMap.GetValue($"Resources/{resourceKey}", GetContext());
+            value = candidate?.ValueAsString;
+            lookupFailure = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            value = null;
+            lookupFailure = ex;
+            return false;
+        }
+    }
+
+    private static bool TryGetXamlPropertyResourcePath(string resourceKey, out string resourcePath)
+    {
+        var propertySeparator = resourceKey.LastIndexOf('.');
+        if (propertySeparator > 0 && propertySeparator < resourceKey.Length - 1)
+        {
+            resourcePath = $"{resourceKey[..propertySeparator]}/{resourceKey[(propertySeparator + 1)..]}";
+            return true;
+        }
+
+        resourcePath = string.Empty;
+        return false;
     }
 
     /// <summary>
