@@ -36,6 +36,8 @@ public sealed partial class WizardPage : Page
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
     private readonly Stack<JsonElement> _stepHistory = new();
+    // "More ▾" overflow toggle lives as a sibling of SelectOptions, so track it to remove between steps.
+    private Button? _moreOptionsButton;
     // wizard.payload frames do not include plugin console output, so tail the gateway log inline.
     private WizardConsoleTail? _consoleTail;
     // Captured on connect for "Open terminal" / "Restart gateway" recovery actions.
@@ -461,6 +463,8 @@ public sealed partial class WizardPage : Page
                     // Remove the More button
                     if (moreButton.Parent is Panel parent)
                         parent.Children.Remove(moreButton);
+                    if (ReferenceEquals(_moreOptionsButton, moreButton))
+                        _moreOptionsButton = null;
 
                     if (hasGatewayMore && !string.IsNullOrEmpty(gatewayMoreValue))
                     {
@@ -485,6 +489,7 @@ public sealed partial class WizardPage : Page
                 {
                     var idx = parentPanel.Children.IndexOf(SelectOptions);
                     parentPanel.Children.Insert(idx + 1, moreButton);
+                    _moreOptionsButton = moreButton;
                 }
             }
 
@@ -989,6 +994,9 @@ public sealed partial class WizardPage : Page
 
     private void ResetInputs()
     {
+        if (_moreOptionsButton?.Parent is Panel morePanel)
+            morePanel.Children.Remove(_moreOptionsButton);
+        _moreOptionsButton = null;
         SelectOptions.Items.Clear();
         SelectOptions.Visibility = Visibility.Collapsed;
         MultiOptions.Children.Clear();
