@@ -290,9 +290,9 @@ public sealed class SetupWizardRunner
     {
         try
         {
-            var result = await _ctx.Commands.RunInWslAsync(
-                _ctx.DistroName!,
-                $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode hybrid",
+            var result = await GatewayCliRunner.RunAsync(
+                _ctx,
+                ["config", "set", "gateway.reload.mode", "hybrid"],
                 TimeSpan.FromSeconds(15),
                 ct: CancellationToken.None);
 

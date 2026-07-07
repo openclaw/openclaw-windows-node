@@ -25,6 +25,7 @@ public class SetupConfigTests : IDisposable
     {
         var config = new SetupConfig();
         Assert.Equal("OpenClawGateway", config.DistroName);
+        Assert.Equal(GatewayInstallMode.Wsl, config.InstallMode);
         Assert.Equal(18789, config.GatewayPort);
         Assert.Equal("Ubuntu-24.04", config.BaseDistro);
         Assert.False(config.Headless);
@@ -80,6 +81,17 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void LoadFromFile_ParsesNativeWindowsInstallMode()
+    {
+        var path = Path.Combine(_tempDir, "native-config.json");
+        File.WriteAllText(path, """{"InstallMode":"NativeWindows"}""");
+
+        var config = SetupConfig.LoadFromFile(path);
+
+        Assert.Equal(GatewayInstallMode.NativeWindows, config.InstallMode);
+    }
+
+    [Fact]
     public void LoadFromFile_ParsesJson()
     {
         var path = Path.Combine(_tempDir, "config.json");
@@ -111,22 +123,26 @@ public class SetupConfigTests : IDisposable
         var prevDistro = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_DISTRO");
         var prevPort = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_PORT");
         var prevHeadless = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_HEADLESS");
+        var prevMode = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_MODE");
         try
         {
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_DISTRO", "EnvDistro");
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_PORT", "9876");
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_HEADLESS", "true");
+            Environment.SetEnvironmentVariable("OPENCLAW_SETUP_MODE", "native");
 
             var config = SetupConfig.FromEnvironment();
             Assert.Equal("EnvDistro", config.DistroName);
             Assert.Equal(9876, config.GatewayPort);
             Assert.True(config.Headless);
+            Assert.Equal(GatewayInstallMode.NativeWindows, config.InstallMode);
         }
         finally
         {
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_DISTRO", prevDistro);
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_PORT", prevPort);
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_HEADLESS", prevHeadless);
+            Environment.SetEnvironmentVariable("OPENCLAW_SETUP_MODE", prevMode);
         }
     }
 

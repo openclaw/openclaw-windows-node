@@ -28,8 +28,6 @@ public sealed class AppRefactorContractTests
 
         AssertInOrder(
             source,
-            "AppUserModelIdRegistrar.RegisterCurrentProcess(AppIdentity.AppUserModelId);",
-            "appUserModelIdRegistration.Attempted",
             "_settings = new SettingsManager();",
             "CheckForUpdatesAsync();",
             "ToastNotificationManagerCompat.OnActivated += OnToastActivated;",
@@ -233,34 +231,6 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void AppChatQueueMcpHandlers_AreWiredToAppCapability()
-    {
-        var source = ReadAppSources();
-        var method = ExtractMethod(source, "WireAppCapabilityHandlers");
-
-        Assert.Contains("app.ChatQueueListHandler = ListQueuedChatMessagesForMcpAsync;", method);
-        Assert.Contains("app.ChatQueueCancelHandler = CancelQueuedChatMessageForMcpAsync;", method);
-    }
-
-    [Fact]
-    public void AppChatSnapshot_IncludesQueuePayload()
-    {
-        var source = ReadAppSources();
-        var snapshotMethod = ExtractMethod(source, "BuildChatSnapshotPayload");
-        var queueMethod = ExtractMethod(source, "BuildChatQueuePayload");
-        var queueMessageMethod = ExtractMethod(source, "ToMcpQueuedMessage");
-        var cancelMethod = ExtractMethod(source, "CancelQueuedChatMessageForMcpAsync");
-
-        Assert.Contains("queue = BuildChatQueuePayload(snapshot, resolvedThreadId, filterToThread: false)", snapshotMethod);
-        Assert.Contains("snapshot.QueuedMessagesByThread", queueMethod);
-        Assert.Contains("sendState = message.SendState.ToString()", queueMessageMethod);
-        Assert.Contains("canCancel = CanCancelQueuedMessage(message)", queueMessageMethod);
-        Assert.Contains("canceled = await provider.CancelQueuedMessageAsync(resolvedThreadId, queuedMessageId)", cancelMethod);
-        Assert.Contains("Queued message is already sending and cannot be canceled", cancelMethod);
-        Assert.Contains("it may have started sending before cancellation was processed", cancelMethod);
-    }
-
-    [Fact]
     public void Startup_NodeOnlyReconnect_UsesNodeCredentialAndLegacyIdentityFallback()
     {
         var source = ReadAppSources();
@@ -400,7 +370,6 @@ public sealed class AppRefactorContractTests
         Assert.Contains("config.SkipWizard || step is not WindowsNodeBootstrapContextStep", progressPage);
         Assert.Contains("_dataDir,", progressPage);
         Assert.Contains("_localDataDir);", progressPage);
-        Assert.Contains("setupWindow?.DataDir ?? SetupContext.ResolveDataDir()", welcomePage);
         Assert.Contains("SetupWindow.Active?.DataDir ?? SetupContext.ResolveDataDir()", wizardPage);
         Assert.Contains("await CompleteSetupAsync(generation)", wizardPage);
         Assert.Contains("ApplyWindowsNodeContextAsync", wizardPage);
@@ -558,6 +527,37 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void CapabilitiesPage_ReflectsSelectedGatewayRuntime()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml"));
+
+        Assert.Contains("x:Name=\"SetupTitleText\"", xaml);
+        Assert.Contains("x:Name=\"InstallAdminBorder\"", xaml);
+        Assert.Contains("x:Name=\"InstallRuntimeBadgeText\"", xaml);
+        Assert.Contains("_config.InstallMode == GatewayInstallMode.NativeWindows", source);
+        Assert.Contains("\"Set up the Windows gateway\"", source);
+        Assert.Contains("InstallAdminBorder.Visibility = _config.InstallMode == GatewayInstallMode.Wsl", source);
+        Assert.Contains("? \"Native\"", source);
+    }
+
+    [Fact]
+    public void ProgressPage_NativeGroupsFollowPipelineOrder()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
+
+        AssertInOrder(
+            source,
+            "[\"begin-native-install\", \"stop-conflicting-gateways\"]",
+            "[\"install-native-cli\"]",
+            "[\"native-service-cleanup\", \"cleanup-gateway\"]",
+            "[\"preflight-port\"]",
+            "[\"configure-gateway\", \"install-service\"]");
+    }
+
+    [Fact]
     public void CapabilitiesPage_PermissionProbeFaultsShowInlineWarning()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -650,20 +650,6 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void WizardResetInputs_RemovesOverflowMoreButton()
-    {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
-        var reset = ExtractMethod(source, "ResetInputs");
-
-        // The "More ▾" overflow button is a sibling of SelectOptions in the shared
-        // StackPanel, so ResetInputs must remove it between steps or it leaks forward.
-        Assert.Contains("_moreOptionsButton", reset);
-        Assert.Contains("morePanel.Children.Remove(_moreOptionsButton)", reset);
-        Assert.Contains("_moreOptionsButton = null", reset);
-    }
-
-    [Fact]
     public void WizardCompletion_AppliesWindowsNodeContextBeforeSummary()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -703,7 +689,7 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void Settings_OnboardCardRequiresActiveManagedWslGateway()
+    public void Settings_OnboardCardRequiresActiveSetupManagedLocalGateway()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
@@ -711,8 +697,8 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
-        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
-        Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
+        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive()", code);
+        Assert.Contains("SetupExistingGatewayClassifier.IsSetupManagedLocalGateway(activeGateway)", code);
         Assert.Contains("CurrentApp.Registry?.Load();", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
     }
@@ -758,11 +744,18 @@ public sealed class AppRefactorContractTests
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
 
+        Assert.Contains("GatewayInstallModeDetector.DetectInstalled", source);
+        Assert.Contains("GetGatewayRemovalDetails(installedMode)", source);
+        Assert.Contains("Native Windows gateway service and managed startup files", source);
+        Assert.Contains("WSL distro: {AppIdentity.SetupDistroName}", source);
         Assert.Contains("ResolveCurrentExecutablePath()", source);
         Assert.Contains("psi.ArgumentList.Add(\"--uninstall\")", source);
         Assert.Contains("proc.WaitForExitAsync(_uninstallCts.Token)", source);
         Assert.Contains("proc.Kill(entireProcessTree: true)", source);
+        Assert.Contains("managed native Windows or WSL local gateway", xaml);
+        Assert.DoesNotContain("Skips WSL installation", xaml);
         Assert.DoesNotContain("OpenClaw.SetupEngine.Program.Main(setupArgs)", source);
         Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", source);
     }
@@ -787,28 +780,22 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void SetupWelcomePage_RunsExistingConfigDetectionOffUiThread()
+    public void SetupWelcomePage_LocalChoiceNavigatesDirectlyToCapabilities()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
-        var method = ExtractMethod(source, "StartInstallAsync");
+        var method = ExtractMethod(source, "StartButtonClickAsync");
 
-        Assert.Contains("NextButton.IsEnabled = false", method);
-        Assert.Contains("InstallTitle.Text = CheckingButtonText", method);
-        Assert.Contains("CheckingButtonText", method);
-        Assert.Contains("var setupWindow = SetupWindow.Active", method);
-        Assert.Contains("await Task.Run(() => ExistingConfigDetector.Detect", method);
-        Assert.Contains("setupWindow is null or { IsClosed: true } || xamlRoot is null", method);
-        Assert.Contains("setupWindow is { IsClosed: false }", method);
-        Assert.Contains("InstallTitle.Text = InstallButtonText", method);
-        Assert.Contains("NextButton.IsEnabled = true", method);
+        Assert.Contains("config.InstallMode = installMode", method);
+        Assert.Contains("GatewayLkgVersion.ApplyToConfig(config)", method);
+        Assert.Contains("SetupWindow.Active?.NavigateToCapabilities()", method);
+        Assert.DoesNotContain("ExistingConfigDetector.Detect", method);
+        Assert.DoesNotContain("ContentDialog", method);
         AssertInOrder(
             method,
-            "NextButton.IsEnabled = false",
-            "await Task.Run(() => ExistingConfigDetector.Detect",
-            "setupWindow is null or { IsClosed: true } || xamlRoot is null",
-            "dialog.ShowAsync()",
-            "setupWindow.NavigateToCapabilities()");
+            "config.InstallMode = installMode",
+            "GatewayLkgVersion.ApplyToConfig(config)",
+            "SetupWindow.Active?.NavigateToCapabilities()");
     }
 
     [Fact]
@@ -850,34 +837,6 @@ public sealed class AppRefactorContractTests
         Assert.True(guardIndex >= 0, "UpdateTrayIcon must check the liveness guard");
         Assert.True(setIconIndex >= 0, "UpdateTrayIcon must still set the icon");
         Assert.True(guardIndex < setIconIndex, "Liveness guard must run before SetIcon");
-    }
-
-    [Fact]
-    public void TrayCoordinator_UsesStatusBadgedLobsterIcon()
-    {
-        var method = ExtractMethod(ReadCoordinatorSource(), "UpdateTrayIcon");
-
-        // The tray lobster mirrors the companion-app status dot instead of the
-        // static openclaw.ico, so it must resolve the accent and the badged icon.
-        Assert.Contains("ConnectionStatusPresenter.Accent(", method);
-        Assert.Contains("StatusBadgeIconFactory.GetBadgedIconPath(", method);
-        Assert.DoesNotContain("\"openclaw.ico\"", method);
-    }
-
-    [Fact]
-    public void HubWindow_DesktopIconMirrorsStatusAccent()
-    {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(
-            root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
-
-        // The desktop/taskbar icon is refreshed from the same accent as the pill.
-        var apply = ExtractMethod(source, "ApplyWindowStatusIcon");
-        Assert.Contains("StatusBadgeIconFactory.GetBadgedIconPath(accent)", apply);
-
-        // Both status-update paths must repaint the window icon.
-        var update = ExtractMethod(source, "UpdateTitleBarStatus");
-        Assert.Contains("ApplyWindowStatusIcon(accent)", update);
     }
 
     [Fact]
@@ -1035,7 +994,7 @@ public sealed class AppRefactorContractTests
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);

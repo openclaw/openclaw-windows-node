@@ -1,10 +1,10 @@
 # 🏗️ Architecture: Windows Platform Strategy & Native Node Roadmap
 
-> **📝 Note**: This document was written during the initial planning phase (early 2026). Windows Node mode has since been implemented with canvas, screen, camera, system.run, and notification capabilities. The deployment scenarios, design rationale, and protocol details remain accurate reference material. The "Current State" table and roadmap checkboxes may not reflect the latest status — see README.md for current capabilities.
+> **📝 Note**: This document was written during the initial planning phase (early 2026). Windows Node mode is implemented, and onboarding now supports both a native Windows gateway (recommended) and an isolated WSL 2 gateway. The scenarios and design rationale remain historical reference material; see README.md for current capabilities.
 
 ## Summary
 
-OpenClaw has **excellent** macOS support — the native menubar app runs as a full node with camera, canvas, screen capture, notifications, location, system exec, and more. Windows users today rely on **WSL2** for the gateway and get a limited experience: no native UI integration, no camera, no canvas surface, and NAT networking quirks.
+OpenClaw has **excellent** macOS support — the native menubar app runs as a full node with camera, canvas, screen capture, notifications, location, system exec, and more. Windows now offers the same companion/node model with a native gateway path that avoids WSL networking, plus WSL 2 for users who prefer Linux compatibility.
 
 This issue proposes a comprehensive Windows platform strategy that evolves `OpenClaw.Tray.WinUI` from a gateway *client* into a **native Windows node** — giving the agent eyes, hands, and a voice on Windows, and eventually exploring a fully native Windows gateway.
 
@@ -38,7 +38,7 @@ Related issues: #5 (Canvas Panel), #6 (Skills Settings UI), #7 (DEVELOPMENT.md),
 | `OpenClaw.Shared` | ✅ Working | Gateway WebSocket client library (.NET) |
 | `OpenClaw.Tray.WinUI` | ✅ Working | System tray app — status, Quick Send, WebChat (WebView2), toast notifications, channel control |
 | Windows Node | ✅ Implemented | Canvas, screen, camera, location, device info/status, system.run, notifications — all working via Node Mode |
-| Windows Gateway | ❌ Unexplored | Gateway runs in WSL2 only |
+| Windows Gateway | ✅ Supported | First-run setup installs and manages the gateway natively with a per-user Scheduled Task; WSL 2 remains selectable |
 
 ### How Scott uses it today
 
@@ -173,9 +173,7 @@ The tray now also has a Command Center surface that combines gateway channel hea
 | **Setup complexity** | Low — `npm install -g openclaw && openclaw onboard` from PowerShell. Same as Mac. |
 | **UX Rating** | ⭐⭐⭐⭐⭐ True feature parity with Mac |
 
-**The dream.** No WSL2 dependency at all. The gateway runs natively on Windows (Node.js works fine on Windows), and the tray app provides all native capabilities. This is the Mac experience, on Windows.
-
-**Key question:** Does the OpenClaw gateway actually *work* on Windows? It's Node.js, so *in theory* yes. But there may be Unix-specific assumptions (signals, file paths, spawning, etc.) that need auditing. See [Architectural Questions](#architectural-questions).
+**Current recommended local mode.** No WSL2 dependency is required. The official PowerShell installer installs OpenClaw into a Companion-owned LocalAppData prefix without replacing the user's global CLI, the gateway uses its Windows service adapter, and the onboarding wizard configures, pairs, and verifies the tray app against it.
 
 ---
 
@@ -497,7 +495,7 @@ Option A is cleanest but requires protocol support. Option B works today with no
 
 ### 2. Can the OpenClaw gateway run natively on Windows?
 
-**Likely yes, with work.**
+**Yes.** OpenClaw includes a Windows service adapter and the companion setup engine drives the native CLI. The concerns below are retained as the original audit checklist.
 
 The gateway is Node.js. Node.js runs natively on Windows. But:
 
@@ -512,11 +510,11 @@ The gateway is Node.js. Node.js runs natively on Windows. But:
 | File watching (chokidar) | Low | Works on Windows. |
 | Browser automation (Playwright) | Low | Playwright supports Windows natively. |
 
-**Recommendation:** Audit the gateway codebase for Unix assumptions. This could be a relatively tractable porting effort — most of the gateway is pure Node.js WebSocket/HTTP work.
+The native onboarding path validates the supported gateway version and uses the official Windows installer rather than assuming every historical OpenClaw build is Windows-compatible.
 
 ### 3. What about the service lifecycle on Windows?
 
-On macOS: launchd plist. On Linux: systemd unit. On Windows, options include:
+On macOS: launchd plist. On Linux: systemd unit. On Windows, OpenClaw uses a per-user Scheduled Task with a Startup-folder fallback. Earlier options considered were:
 
 - **Windows Service** (via [node-windows](https://github.com/coreybutler/node-windows) or .NET service host)
 - **Task Scheduler** (run at logon)
@@ -594,16 +592,16 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 - [x] Permission prompts (camera: UnauthorizedAccessException → toast; future MSIX consent)
 - [x] Multi-monitor support for screen capture (`screenIndex` param)
 
-### Phase 3: Native Windows Gateway (Exploration)
-**Priority: MEDIUM | Effort: High | Impact: High**
+### Phase 3: Native Windows Gateway
+**Status: implemented for managed onboarding**
 
-- [ ] Audit OpenClaw gateway for Unix-specific code
-- [ ] Test `openclaw gateway` on Windows (Node.js native)
-- [ ] Fix platform-specific issues (signals, paths, child process spawning)
-- [ ] Windows Service integration for daemon mode
+- [x] Audit and support `openclaw gateway` on Windows
+- [x] Test `openclaw gateway` on Windows (Node.js native)
+- [x] Fix required platform-specific service lifecycle issues
+- [x] Per-user Scheduled Task integration for daemon mode
 - [ ] Tray app: "Start/Stop/Restart Gateway" menu items (parity with Mac menubar)
-- [ ] `openclaw onboard --install-daemon` for Windows (Task Scheduler or Windows Service)
-- [ ] Document Windows-native gateway setup
+- [x] Native Windows gateway install/configure/start through companion onboarding
+- [x] Document Windows-native gateway setup
 
 ### Phase 4: Feature Parity + Polish
 **Priority: LOW | Effort: Medium | Impact: Medium**

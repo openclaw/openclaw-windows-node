@@ -32,20 +32,7 @@ public sealed partial class ProgressPage : Page
 
     internal bool IsPipelineRunning => _runCts != null && !_pipelineFinished;
 
-    // Map pipeline step IDs to display groups (N:1)
-    private static readonly (string GroupId, string DisplayName, string[] StepIds)[] StepGroups =
-    [
-        ("preflight", "Check system", ["preflight-os", "preflight-wsl"]),
-        ("cleanup", "Removing existing gateway", ["cleanup-distro", "cleanup-gateway"]),
-        ("port", "Checking gateway port", ["preflight-port"]),
-        ("wsl-create", "Installing clean WSL gateway", ["wsl-create"]),
-        ("wsl-configure", "Configuring instance", ["wsl-configure", "validate-wsl-lockdown"]),
-        ("install-cli", "Installing OpenClaw", ["install-cli"]),
-        ("configure", "Preparing gateway", ["configure-gateway", "install-service"]),
-        ("start", "Starting gateway", ["start-gateway", "mint-token"]),
-        ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e"]),
-        ("finish", "Finishing setup", ["run-wizard", "start-keepalive"]),
-    ];
+    private (string GroupId, string DisplayName, string[] StepIds)[] _stepGroups = [];
 
     public ProgressPage()
     {
@@ -59,12 +46,22 @@ public sealed partial class ProgressPage : Page
         _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
         _dataDir = args?.DataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = args?.LocalDataDir ?? SetupContext.ResolveLocalDataDir();
-        SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
+        _stepGroups = BuildStepGroups(_config.InstallMode);
+        if (_config.InstallMode == GatewayInstallMode.NativeWindows)
+        {
+            HeaderTitleText.Text = "Setting up Windows gateway";
+            SubtitleText.Text = "Installing OpenClaw directly on Windows";
+        }
+        else
+        {
+            HeaderTitleText.Text = "Setting up WSL gateway";
+            SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
+        }
 
         BuildStepRows();
         if (args?.ShowMilestoneOnly == true)
         {
-            foreach (var (groupId, _, _) in StepGroups)
+            foreach (var (groupId, _, _) in _stepGroups)
                 if (_rows.TryGetValue(groupId, out var row))
                     row.SetStatus(StepStatus.Done);
             ShowGatewayInstalledMilestone();
@@ -75,7 +72,7 @@ public sealed partial class ProgressPage : Page
         {
             if (SetupPreview.RequestedPage == "milestone")
             {
-                foreach (var (groupId, _, _) in StepGroups)
+                foreach (var (groupId, _, _) in _stepGroups)
                     if (_rows.TryGetValue(groupId, out var row))
                         row.SetStatus(StepStatus.Done);
                 ShowGatewayInstalledMilestone();
@@ -89,8 +86,10 @@ public sealed partial class ProgressPage : Page
 
     private void RenderProgressPreview()
     {
-        SubtitleText.Text = "Creating OpenClawGateway WSL instance — about 4 minutes left";
-        var ids = StepGroups.Select(g => g.GroupId).ToArray();
+        SubtitleText.Text = _config?.InstallMode == GatewayInstallMode.NativeWindows
+            ? "Installing OpenClaw on Windows — about 2 minutes left"
+            : "Creating OpenClawGateway WSL instance — about 4 minutes left";
+        var ids = _stepGroups.Select(g => g.GroupId).ToArray();
         for (int i = 0; i < ids.Length; i++)
         {
             var status = i < 3 ? StepStatus.Done : i == 3 ? StepStatus.Running : StepStatus.Idle;
@@ -108,7 +107,7 @@ public sealed partial class ProgressPage : Page
 
     private void BuildStepRows()
     {
-        foreach (var (groupId, displayName, _) in StepGroups)
+        foreach (var (groupId, displayName, _) in _stepGroups)
         {
             var row = new StepRow(displayName);
             _rows[groupId] = row;
@@ -227,10 +226,10 @@ public sealed partial class ProgressPage : Page
         DispatcherQueue.TryEnqueue(() =>
         {
             // Find which group this step belongs to
-            var groupIndex = Array.FindIndex(StepGroups, g => g.StepIds.Contains(e.StepId));
+            var groupIndex = Array.FindIndex(_stepGroups, g => g.StepIds.Contains(e.StepId));
             if (groupIndex < 0) return;
 
-            var group = StepGroups[groupIndex];
+            var group = _stepGroups[groupIndex];
             var row = _rows[group.GroupId];
 
             if (e.Outcome == null)
@@ -238,7 +237,7 @@ public sealed partial class ProgressPage : Page
                 // Step started — mark all previous groups as done if still running
                 for (int i = 0; i < groupIndex; i++)
                 {
-                    var prevRow = _rows[StepGroups[i].GroupId];
+                    var prevRow = _rows[_stepGroups[i].GroupId];
                     if (prevRow.Status == StepStatus.Running)
                         prevRow.SetStatus(StepStatus.Done);
                 }
@@ -314,10 +313,38 @@ public sealed partial class ProgressPage : Page
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)
-        => SetupStepFactory.BuildDefaultSteps()
+        => SetupStepFactory.BuildDefaultSteps(config)
             .Where(step => step is not RunGatewayWizardStep)
             .Where(step => config.SkipWizard || step is not WindowsNodeBootstrapContextStep)
             .ToList();
+
+    private static (string GroupId, string DisplayName, string[] StepIds)[] BuildStepGroups(
+        GatewayInstallMode installMode) =>
+        installMode == GatewayInstallMode.NativeWindows
+            ?
+            [
+                ("preflight", "Check Windows", ["preflight-os"]),
+                ("prepare", "Prepare Windows gateway", ["begin-native-install", "stop-conflicting-gateways"]),
+                ("install-cli", "Install OpenClaw", ["install-native-cli"]),
+                ("cleanup", "Finish switching local gateway mode", ["native-service-cleanup", "cleanup-gateway"]),
+                ("port", "Check gateway port", ["preflight-port"]),
+                ("configure", "Prepare gateway", ["configure-gateway", "install-service"]),
+                ("start", "Start gateway", ["start-gateway", "mint-token"]),
+                ("pairing", "Pair this app", ["pair-operator", "pair-node", "verify-e2e"]),
+            ]
+            :
+            [
+                ("preflight", "Check system", ["preflight-os", "preflight-wsl"]),
+                ("cleanup", "Removing existing gateway", ["stop-conflicting-gateways", "native-service-cleanup", "cleanup-distro", "cleanup-gateway"]),
+                ("port", "Checking gateway port", ["preflight-port"]),
+                ("wsl-create", "Installing clean WSL gateway", ["wsl-create"]),
+                ("wsl-configure", "Configuring instance", ["wsl-configure", "validate-wsl-lockdown", "sync-ca-certs"]),
+                ("install-cli", "Installing OpenClaw", ["install-cli"]),
+                ("configure", "Preparing gateway", ["configure-gateway", "install-service"]),
+                ("start", "Starting gateway", ["start-gateway", "mint-token"]),
+                ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e"]),
+                ("finish", "Finishing setup", ["start-keepalive"]),
+            ];
 }
 
 // ─── Step Row UI Element ───

@@ -9,6 +9,7 @@ different approval paths.
 | Term | Meaning |
 | --- | --- |
 | Gateway | The OpenClaw service that coordinates agents, channels, sessions, devices, and nodes. The Windows app talks to it over WebSocket. |
+| Local native gateway | OpenClaw installed directly in the Windows user profile and started through a per-user Windows Scheduled Task. This is the recommended local mode and does not require WSL. |
 | Local WSL gateway | A dedicated `OpenClawGateway` WSL distro installed by the Windows onboarding flow. It is app-owned and locked down rather than a general-purpose Ubuntu profile. |
 | Operator | The user-facing control role. The tray app uses the operator connection for Quick Send, chat, diagnostics, channel controls, setup, and approving pairing requests. |
 | Node | The controllable Windows machine role. When Node Mode is enabled, the tray app advertises Windows capabilities such as screenshots, canvas, camera, notifications, and approved command execution. |
@@ -37,10 +38,11 @@ A typical local setup uses this sequence:
 5. After approval, the gateway can invoke only the node capabilities that are
    enabled locally and allowlisted by gateway policy.
 
-## Local WSL Gateway Versus Existing Gateway
+## Local Gateway Modes Versus Existing Gateway
 
-The default onboarding path installs a local WSL gateway for users who do not
-already have one. That gateway runs on the same Windows PC and is managed by the
+The recommended onboarding path installs a native Windows gateway for users who
+do not already have one. Users who prefer Linux compatibility can instead choose
+the isolated WSL 2 gateway. Both run on the same PC and are managed by the
 OpenClaw Companion setup flow.
 
 Advanced setup is for users who already have a local, remote, or manually

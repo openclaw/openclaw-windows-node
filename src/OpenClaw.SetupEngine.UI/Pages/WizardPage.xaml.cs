@@ -1075,7 +1075,11 @@ public sealed partial class WizardPage : Page
         StopConsoleTail();
         var tail = new WizardConsoleTail(
             logger: NullLogger.Instance,
-            distroNameOverride: _config.DistroName);
+            distroNameOverride: _config.DistroName,
+            nativeWindows: _config.InstallMode == GatewayInstallMode.NativeWindows,
+            nativeLogPath: _config.InstallMode == GatewayInstallMode.NativeWindows
+                ? GatewayInstallModeDetector.GetNativeWizardLogPath(_config)
+                : null);
         _consoleTail = tail;
         var dispatcher = DispatcherQueue;
         tail.Start(message =>

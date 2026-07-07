@@ -31,4 +31,32 @@ public sealed class GatewayLkgVersionTests
 
         Assert.Null(config.Gateway.Version);
     }
+
+    [Fact]
+    public void ApplyToConfig_DoesNotSetGatewayVersionForCustomWindowsInstallUrl()
+    {
+        var config = new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows };
+        config.Gateway.Version = null;
+        config.Gateway.WindowsInstallUrl = "https://contoso.example/install.ps1";
+
+        GatewayLkgVersion.ApplyToConfig(config);
+
+        Assert.Null(config.Gateway.Version);
+    }
+
+    [Fact]
+    public void ApplyToConfig_ReevaluatesDefaultedVersionAfterUiModeSelection()
+    {
+        var config = new SetupConfig();
+        config.Gateway.Version = null;
+        config.Gateway.WindowsInstallUrl = "https://contoso.example/install.ps1";
+
+        GatewayLkgVersion.ApplyToConfig(config);
+        Assert.Equal(GatewayLkgVersion.LkgVersion, config.Gateway.Version);
+
+        config.InstallMode = GatewayInstallMode.NativeWindows;
+        GatewayLkgVersion.ApplyToConfig(config);
+
+        Assert.Null(config.Gateway.Version);
+    }
 }

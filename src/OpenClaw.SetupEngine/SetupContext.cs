@@ -1,12 +1,21 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenClaw.Connection;
 
 namespace OpenClaw.SetupEngine;
 
 // ─── Configuration ───
 
+[JsonConverter(typeof(JsonStringEnumConverter<GatewayInstallMode>))]
+public enum GatewayInstallMode
+{
+    Wsl,
+    NativeWindows,
+}
+
 public sealed class SetupConfig
 {
+    public GatewayInstallMode InstallMode { get; set; } = GatewayInstallMode.Wsl;
     public string DistroName { get; set; } = "OpenClawGateway";
     public int GatewayPort { get; set; } = 18789;
     public string BaseDistro { get; set; } = "Ubuntu-24.04";
@@ -18,6 +27,8 @@ public sealed class SetupConfig
     public int RollbackTimeoutSeconds { get; set; } = 60;
     public bool CleanBeforeRun { get; set; }
     public bool DryRun { get; set; }
+    [JsonIgnore]
+    internal bool GatewayVersionWasDefaulted { get; set; }
     public bool ConfirmDestructive { get; set; }
     public string LogLevel { get; set; } = "trace";
     public string? LogPath { get; set; }
@@ -55,8 +66,28 @@ public sealed class SetupConfig
             config.Headless = true;
         if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_LOG_PATH") is { Length: > 0 } logPath)
             config.LogPath = logPath;
+        if (TryParseInstallMode(Environment.GetEnvironmentVariable("OPENCLAW_SETUP_MODE"), out var mode))
+            config.InstallMode = mode;
 
         return config;
+    }
+
+    internal static bool TryParseInstallMode(string? value, out GatewayInstallMode mode)
+    {
+        mode = GatewayInstallMode.Wsl;
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case "native":
+            case "windows":
+            case "nativewindows":
+            case "native-windows":
+                mode = GatewayInstallMode.NativeWindows;
+                return true;
+            case "wsl":
+                return true;
+            default:
+                return false;
+        }
     }
 
     public SetupConfig ApplyUiDefaults(bool rollbackOnFailure = true)
@@ -112,6 +143,7 @@ public sealed class GatewayConfig
 {
     public string Bind { get; set; } = "loopback";
     public string? InstallUrl { get; set; }
+    public string? WindowsInstallUrl { get; set; }
     public string? Version { get; set; }
     public int HealthTimeoutSeconds { get; set; } = 90;
     public string ReloadMode { get; set; } = "hot";
@@ -328,8 +360,16 @@ public sealed class SetupContext
     public string? SharedGatewayToken { get; set; }
     public string? BootstrapToken { get; set; }
     public string? GatewayRecordId { get; set; }
+    internal bool GatewayRecordCreatedThisRun { get; set; }
     public string? OperatorDeviceId { get; set; }
     public string? NodeDeviceId { get; set; }
+    public string? NativeCliPath { get; set; }
+    internal ReplacedGatewaysSnapshot? ReplacedGateways { get; set; }
+    internal NativeGatewayRollbackState? PreviousNativeGateway { get; set; }
+    internal NativeOwnershipMarkerRollbackState? PreviousNativeOwnershipMarker { get; set; }
+    internal WslGatewayRollbackState? PreviousWslGateway { get; set; }
+    internal ActiveGatewayRollbackState? ActiveGatewayBeforePairing { get; set; }
+    internal bool IsUninstalling { get; set; }
 
     // Data directory for gateway registry and identity files
     public string DataDir { get; }
@@ -377,3 +417,39 @@ public sealed class SetupContext
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenClawTray");
     }
 }
+
+internal sealed record GatewayIdentityFileSnapshot(string RelativePath, byte[] Contents);
+
+internal sealed record ReplacedGatewayRecordSnapshot(
+    GatewayRecord Record,
+    IReadOnlyList<GatewayIdentityFileSnapshot> IdentityFiles);
+
+internal sealed record ReplacedGatewaysSnapshot(
+    IReadOnlyList<ReplacedGatewayRecordSnapshot> Records,
+    string? PreviousActiveGatewayId);
+
+internal sealed record NativeGatewayRollbackState(
+    string ConfigPath,
+    bool ConfigExisted,
+    byte[]? ConfigContents,
+    bool ServiceInstalled,
+    bool WasRunning,
+    string? OwnershipMarkerPath = null,
+    bool OwnershipMarkerExisted = false,
+    byte[]? OwnershipMarkerContents = null);
+
+internal sealed record NativeOwnershipMarkerRollbackState(
+    NativeOwnershipMarkerFileRollbackState Active,
+    NativeOwnershipMarkerFileRollbackState Profile);
+
+internal sealed record NativeOwnershipMarkerFileRollbackState(
+    string Path,
+    bool Existed,
+    byte[]? Contents);
+
+internal sealed record WslGatewayRollbackState(
+    string DistroName,
+    bool WasRunning,
+    bool HadManagedKeepalive);
+
+internal sealed record ActiveGatewayRollbackState(string? GatewayId);

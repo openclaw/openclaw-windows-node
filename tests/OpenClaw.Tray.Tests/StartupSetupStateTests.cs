@@ -274,6 +274,7 @@ public class StartupSetupStateTests
             Id = "local-gateway",
             Url = "ws://localhost:18789",
             IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
             SharedGatewayToken = "shared-token"
         });
         var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
@@ -286,6 +287,32 @@ public class StartupSetupStateTests
             localDataPath: temp.Path);
 
         Assert.Equal(SetupExistingGatewayKind.AppOwnedLocalWsl, kind);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_NativeGatewayWithStaleWslDistro_RemainsExternalToWslSetup()
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "native-gateway",
+            Url = "ws://localhost:18789",
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+            SharedGatewayToken = "token"
+        });
+        var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
+
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry,
+            settings,
+            temp.Path,
+            wsl,
+            localDataPath: temp.Path);
+
+        Assert.Equal(SetupExistingGatewayKind.ExternalOnly, kind);
     }
 
     [Fact]
@@ -424,6 +451,42 @@ public class StartupSetupStateTests
         // This test guards against accidentally changing the constant.
         var settings = new SettingsManager(Path.GetTempPath()) { GatewayUrl = "ws://localhost:18789" };
         Assert.True(StartupSetupState.RequiresSetup(settings, Path.GetTempPath()));
+    }
+
+    [Theory]
+    [InlineData("Local (Windows)", null, true)]
+    [InlineData("Local (OpenClawGateway)", "OpenClawGateway", true)]
+    [InlineData("Manual local", null, false)]
+    public void IsSetupManagedLocalGateway_AcceptsNativeAndWslRecords(
+        string friendlyName,
+        string? managedDistro,
+        bool expected)
+    {
+        var record = new GatewayRecord
+        {
+            Id = "local",
+            Url = "ws://127.0.0.1:18789",
+            FriendlyName = friendlyName,
+            IsLocal = true,
+            SetupManagedDistroName = managedDistro,
+        };
+
+        Assert.Equal(expected, SetupExistingGatewayClassifier.IsSetupManagedLocalGateway(record));
+    }
+
+    [Fact]
+    public void IsSetupManagedLocalGateway_RejectsSshForwardNamedLikeNativeGateway()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "ssh",
+            Url = "ws://127.0.0.1:18789",
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+            SshTunnel = new SshTunnelConfig("user", "example.test", 18789, 18789),
+        };
+
+        Assert.False(SetupExistingGatewayClassifier.IsSetupManagedLocalGateway(record));
     }
 
     private static void StoreDeviceToken(string dataPath)

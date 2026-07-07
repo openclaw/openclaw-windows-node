@@ -56,6 +56,15 @@ public sealed partial class CapabilitiesPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        SetupTitleText.Text = _config.InstallMode == GatewayInstallMode.NativeWindows
+            ? "Set up the Windows gateway"
+            : "Set up the WSL gateway";
+        InstallAdminBorder.Visibility = _config.InstallMode == GatewayInstallMode.Wsl
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        InstallRuntimeBadgeText.Text = _config.InstallMode == GatewayInstallMode.NativeWindows
+            ? "No WSL"
+            : "~200 MB";
         // The tray always registers device.info/status with Node Mode. Keep the
         // setup declaration and gateway allowlist aligned with that runtime contract.
         _config.Capabilities.Device = true;

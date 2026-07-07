@@ -44,6 +44,27 @@ internal static class AtomicFile
         }
     }
 
+    public static async Task WriteAllBytesAsync(string path, byte[] contents, CancellationToken ct = default)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
+        var tempPath = Path.Combine(
+            directory ?? Directory.GetCurrentDirectory(),
+            $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, contents, ct);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        finally
+        {
+            TryDeleteTemp(tempPath);
+        }
+    }
+
     private static void TryDeleteTemp(string tempPath)
     {
         try

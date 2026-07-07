@@ -73,8 +73,13 @@ public sealed class ExistingConfigDetector
     /// <summary>
     /// Build a human-readable summary of what will happen during setup.
     /// </summary>
-    public static string BuildReplacementSummary(ExistingConfig config)
+    public static string BuildReplacementSummary(
+        ExistingConfig config,
+        GatewayInstallMode installMode = GatewayInstallMode.Wsl)
     {
+        if (installMode == GatewayInstallMode.NativeWindows)
+            return BuildNativeReplacementSummary(config);
+
         if (!config.HasLocalGateway && !config.HasDistro)
             return "A new local WSL gateway will be created. No existing configuration will be affected.";
 
@@ -86,6 +91,31 @@ public sealed class ExistingConfigDetector
             lines.Add("• Local gateway record will be replaced");
         if (config.HasIdentityFiles)
             lines.Add("• Device identity files for the local gateway will be regenerated");
+
+        if (config.PreservedGatewayCount > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"The following {config.PreservedGatewayCount} gateway(s) will NOT be affected:");
+            foreach (var name in config.PreservedGatewayNames)
+                lines.Add($"  • {name}");
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string BuildNativeReplacementSummary(ExistingConfig config)
+    {
+        var lines = new List<string>
+        {
+            "OpenClaw and a private gateway will be installed directly on Windows. WSL is not required."
+        };
+
+        if (config.HasLocalGateway)
+            lines.Add("• The current local gateway connection will be replaced");
+        if (config.HasIdentityFiles)
+            lines.Add("• Device identity files for the local gateway will be regenerated");
+        if (config.HasDistro)
+            lines.Add($"• Existing WSL gateway '{config.DistroName}' will be stopped but its files will be preserved");
 
         if (config.PreservedGatewayCount > 0)
         {
