@@ -365,7 +365,12 @@ public class ToolMetaCacheTests
         public void StartProactiveBootstrap() { }
         public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) => Task.FromResult(new CommandCatalog { IsSupported = true });
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.CompletedTask;
-        public Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) => Task.FromResult(new ChatSendResult());
+        public Task<ChatSendResult> SendChatMessageForRunAsync(
+            string message,
+            string? sessionKey,
+            string? sessionId,
+            IReadOnlyList<ChatAttachment>? attachments = null,
+            string? idempotencyKey = null) => Task.FromResult(new ChatSendResult());
         public Task PatchSessionModelAsync(string sessionKey, string model) => Task.CompletedTask;
         public Task ClearSessionModelAsync(string sessionKey) => Task.CompletedTask;
         public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;

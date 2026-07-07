@@ -309,7 +309,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _ = await SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments).ConfigureAwait(false);
     }
 
-    public async Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null, string? sessionId = null, IReadOnlyList<ChatAttachment>? attachments = null)
+    public async Task<ChatSendResult> SendChatMessageForRunAsync(
+        string message,
+        string? sessionKey = null,
+        string? sessionId = null,
+        IReadOnlyList<ChatAttachment>? attachments = null,
+        string? idempotencyKey = null)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
@@ -317,9 +322,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var hasAttachments = attachments is { Count: > 0 };
         if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
             throw new ArgumentException("Message or attachment is required", nameof(message));
+        if (idempotencyKey is not null && string.IsNullOrWhiteSpace(idempotencyKey))
+            throw new ArgumentException("Idempotency key cannot be whitespace", nameof(idempotencyKey));
 
         var effectiveSessionKey = ResolveEffectiveSessionKey(
             sessionKey, Volatile.Read(ref _mainSessionKey), "chat.send");
+        var effectiveIdempotencyKey = idempotencyKey?.Trim() ?? Guid.NewGuid().ToString();
 
         var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<ChatSendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -336,7 +344,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             ["sessionKey"] = effectiveSessionKey,
             ["message"] = message,
-            ["idempotencyKey"] = Guid.NewGuid().ToString()
+            ["idempotencyKey"] = effectiveIdempotencyKey
         };
 
         if (hasAttachments)

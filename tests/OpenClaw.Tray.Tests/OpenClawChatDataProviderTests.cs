@@ -17,6 +17,7 @@ public class OpenClawChatDataProviderTests
         public List<string?> SentSessionKeys { get; } = new();
         public List<string?> SentSessionIds { get; } = new();
         public List<IReadOnlyList<ChatAttachment>?> SentAttachments { get; } = new();
+        public List<string?> SentIdempotencyKeys { get; } = new();
         public Queue<ChatSendResult> SendResults { get; } = new();
         public List<string> AbortedRunIds { get; } = new();
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
@@ -47,12 +48,18 @@ public class OpenClawChatDataProviderTests
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
             => SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments);
 
-        public async Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
+        public async Task<ChatSendResult> SendChatMessageForRunAsync(
+            string message,
+            string? sessionKey,
+            string? sessionId,
+            IReadOnlyList<ChatAttachment>? attachments = null,
+            string? idempotencyKey = null)
         {
             SentMessages.Add(message);
             SentSessionKeys.Add(sessionKey);
             SentSessionIds.Add(sessionId);
             SentAttachments.Add(attachments?.ToArray());
+            SentIdempotencyKeys.Add(idempotencyKey);
             if (SendBehavior is not null)
                 await SendBehavior(message, sessionKey, sessionId);
 
@@ -293,10 +300,11 @@ public class OpenClawChatDataProviderTests
         });
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
 
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
-        var sending = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("second", sending.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, sending.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
 
@@ -324,23 +332,22 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(new[] { "a" }, bridge.SentMessages);
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
         Assert.Equal(new[] { "a", "b" }, bridge.SentMessages);
 
         bridge.RaiseAgent(MakeAgentEvent("job", """{"state":"done"}""", runId: "run-1"));
+        await Task.Delay(150);
 
         Assert.Equal(new[] { "a", "b" }, bridge.SentMessages);
         Assert.Collection(
             GetQueuedMessages(snapshots[^1], "main"),
-            sending =>
-            {
-                Assert.Equal("b", sending.Text);
-                Assert.Equal(ChatQueuedMessageSendState.Sending, sending.SendState);
-            },
             queued =>
             {
                 Assert.Equal("c", queued.Text);
                 Assert.Equal(ChatQueuedMessageSendState.Queued, queued.SendState);
             });
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "b");
     }
 
     [Fact]
@@ -389,6 +396,7 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
         Assert.Equal(new[] { "first queued", "second queued" }, bridge.SentMessages);
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
@@ -501,9 +509,10 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
 
-        Assert.Equal("second", Assert.Single(GetQueuedMessages(snapshots[^1], "main")).Text);
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
-        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, e =>
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "second");
         Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "first run response");
@@ -639,6 +648,66 @@ public class OpenClawChatDataProviderTests
                         Text = "remote after failed card",
                         Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                         OpenClawSeq = 30
+                    }
+                }
+            });
+        };
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "remote-run"));
+
+        for (var i = 0; i < 20 && historyCalls == 0; i++)
+            await Task.Delay(10);
+
+        Assert.True(historyCalls > 0);
+    }
+
+    [Fact]
+    public async Task LifecycleEnd_IgnoresFailedQueuedMessagesAfterLaterAcceptedSend()
+    {
+        var historyCalls = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-a", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "failed", Error = "second failed" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-next", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "a");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-a"));
+        await provider.SendMessageAsync("main", "failed card");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-a"));
+        for (var i = 0; i < 20; i++)
+        {
+            if (GetQueuedMessages(snapshots[^1], "main").Any(q => q.SendState == ChatQueuedMessageSendState.Failed))
+                break;
+            await Task.Delay(10);
+        }
+
+        await provider.SendMessageAsync("main", "next local");
+        Assert.Contains(GetQueuedMessages(snapshots[^1], "main"), q =>
+            q.Text == "failed card" &&
+            q.SendState == ChatQueuedMessageSendState.Failed);
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "next local");
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-next"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-next"));
+        bridge.HistoryBehavior = _ =>
+        {
+            historyCalls++;
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages = new[]
+                {
+                    new ChatMessageInfo
+                    {
+                        SessionKey = "main",
+                        Role = "user",
+                        Text = "remote after completed local",
+                        Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        OpenClawSeq = 31
                     }
                 }
             });
@@ -1102,11 +1171,15 @@ public class OpenClawChatDataProviderTests
 
         for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
             await Task.Delay(10);
+        await WaitForConditionAsync(() =>
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Count(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "second") == 1);
 
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
-        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("second", queued.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
     }
 
     [Fact]
@@ -1506,6 +1579,7 @@ public class OpenClawChatDataProviderTests
         await provider.SendMessageAsync("main", "c");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-a"));
 
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
         Assert.Equal(new[] { "a", "b" }, bridge.SentMessages);
 
         bridge.RaiseSessionCommandCompleted(new SessionCommandResult
@@ -1613,6 +1687,7 @@ public class OpenClawChatDataProviderTests
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-a"));
         await provider.SendMessageAsync("main", "b");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-a"));
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
         Assert.Equal(new[] { "a", "b" }, bridge.SentMessages);
 
         bridge.RaiseSessionCommandCompleted(new SessionCommandResult
@@ -2512,13 +2587,16 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"error","message":"model unreachable"}""", runId: "run-1"));
 
-        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
-            await Task.Delay(10);
+        await WaitForConditionAsync(() =>
+            bridge.SentMessages.Count >= 2 &&
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Any(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "second"));
 
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
-        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("second", queued.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
     }
 
     [Fact]
@@ -2541,16 +2619,376 @@ public class OpenClawChatDataProviderTests
             Text = "first response",
             State = "final",
         });
+        await WaitForConditionAsync(() =>
+            bridge.SentMessages.Count >= 2 &&
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Any(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "second"));
+
+        Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
+    }
+
+    [Fact]
+    public async Task QueuedDuplicateUserMessages_AcceptedAckPromotesEachPromptByIdentity()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-3", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-4", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.SendMessageAsync("main", "Hello");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "Hello");
+        await provider.SendMessageAsync("main", "Hello");
+        await provider.SendMessageAsync("main", "Hello");
+
+        Assert.Equal(new[] { "Hello" }, bridge.SentMessages);
+        Assert.Equal(3, GetQueuedMessages(snapshots[^1], "main").Count);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "reply 1",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
+            await Task.Delay(10);
+        await WaitForConditionAsync(() =>
+            GetQueuedMessages(snapshots[^1], "main").Count == 2 &&
+            snapshots[^1].Timelines["main"].Entries.Count(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "Hello") == 2);
+
+        Assert.Equal(2, bridge.SentMessages.Count);
+        Assert.Equal(2, GetQueuedMessages(snapshots[^1], "main").Count);
+        Assert.Equal(2, snapshots[^1].Timelines["main"].Entries.Count(e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello"));
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "reply 2",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 3; i++)
+            await Task.Delay(10);
+        await WaitForConditionAsync(() =>
+            GetQueuedMessages(snapshots[^1], "main").Count == 1 &&
+            snapshots[^1].Timelines["main"].Entries.Count(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "Hello") == 3);
+
+        Assert.Equal(3, bridge.SentMessages.Count);
+        Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(3, snapshots[^1].Timelines["main"].Entries.Count(e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello"));
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "reply 3",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 4; i++)
+            await Task.Delay(10);
+        await WaitForConditionAsync(() =>
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Count(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "Hello") == 4);
+
+        Assert.Equal(new[] { "Hello", "Hello", "Hello", "Hello" }, bridge.SentMessages);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.All(bridge.SentIdempotencyKeys, key => Assert.False(string.IsNullOrWhiteSpace(key)));
+        Assert.Equal(4, bridge.SentIdempotencyKeys.Distinct(StringComparer.Ordinal).Count());
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "reply 4",
+            State = "final",
+        });
+
+        Assert.Equal(
+            new[] { "Hello", "reply 1", "Hello", "reply 2", "Hello", "reply 3", "Hello", "reply 4" },
+            snapshots[^1].Timelines["main"].Entries
+                .Where(e => e.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant)
+                .Select(e => e.Text)
+                .ToArray());
+    }
+
+    [Fact]
+    public async Task QueuedSend_LifecycleStartBeforeAck_PromotesByIdempotencyKey()
+    {
+        var secondSendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "started" });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            sendCount++;
+            if (sendCount == 2)
+            {
+                var preAckRunId = Assert.Single(bridge.SentIdempotencyKeys.Skip(1));
+                Assert.False(string.IsNullOrWhiteSpace(preAckRunId));
+                bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: preAckRunId));
+                return secondSendGate.Task;
+            }
+
+            return Task.CompletedTask;
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "second");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
         for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
             await Task.Delay(10);
 
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
-        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
+
+        secondSendGate.SetResult();
     }
 
     [Fact]
-    public async Task IdentitylessIdenticalAssistant_DefersUntilQueuedUserBoundaryIsConfirmed()
+    public async Task QueuedSend_InFlightAckWithoutLifecycle_RequeuesAndRetriesSameIdempotencyKey()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "Hello");
+
+        var postFinalSnapshotStart = snapshots.Count;
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        for (var i = 0; i < 30 && bridge.SentMessages.Count < 2; i++)
+            await Task.Delay(10);
+
+        Assert.Equal(2, bridge.SentMessages.Count);
+        var firstAttemptKey = bridge.SentIdempotencyKeys[1];
+        ChatDataSnapshot? requeuedSnapshot = null;
+        for (var i = 0; i < 30 && requeuedSnapshot is null; i++)
+        {
+            requeuedSnapshot = snapshots
+                .Skip(postFinalSnapshotStart)
+                .LastOrDefault(snapshot =>
+                {
+                    var queued = GetQueuedMessages(snapshot, "main");
+                    return queued.Count == 1 &&
+                        queued[0].Text == "Hello" &&
+                        queued[0].SendState == ChatQueuedMessageSendState.Queued &&
+                        snapshot.Timelines["main"].Entries.Count(e =>
+                            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello") == 0;
+                });
+            if (requeuedSnapshot is null)
+                await Task.Delay(10);
+        }
+
+        Assert.NotNull(requeuedSnapshot);
+
+        bridge.RaiseSessions(new[] { MainSession() });
+        for (var i = 0; i < 30 && bridge.SentMessages.Count < 3; i++)
+            await Task.Delay(10);
+
+        Assert.Equal(3, bridge.SentMessages.Count);
+        Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello");
+    }
+
+    [Fact]
+    public async Task QueuedSend_InFlightAckWhileDifferentRunActive_RequeuesWithoutPromoting()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "in_flight" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        var releaseInFlightAck = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayFirstStuckAttempt = true;
+        bridge.SendBehavior = (message, _, _) =>
+        {
+            if (message == "stuck" && delayFirstStuckAttempt)
+            {
+                delayFirstStuckAttempt = false;
+                return releaseInFlightAck.Task;
+            }
+
+            return Task.CompletedTask;
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "stuck");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "remote-run"));
+        releaseInFlightAck.SetResult();
+        await WaitForConditionAsync(() =>
+        {
+            var queued = GetQueuedMessages(snapshots[^1], "main");
+            return queued.Count == 1 &&
+                queued[0].Text == "stuck" &&
+                queued[0].SendState == ChatQueuedMessageSendState.Queued &&
+                snapshots[^1].Timelines["main"].Entries.Count(e =>
+                    e.Kind == ChatTimelineItemKind.User && e.Text == "stuck") == 0;
+        });
+
+        Assert.Equal(2, bridge.SentMessages.Count);
+        var firstAttemptKey = bridge.SentIdempotencyKeys[1];
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "remote-run"));
+        await WaitForConditionAsync(() =>
+            bridge.SentMessages.Count >= 3 &&
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Count(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "stuck") == 1,
+            attempts: 200);
+
+        Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
+    }
+
+    [Fact]
+    public async Task DirectSend_InFlightAckWithoutLifecycle_FailsInsteadOfLeavingTurnActive()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "in_flight" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            provider.SendMessageAsync("main", "direct"));
+
+        Assert.Contains("in_flight", ex.Message, StringComparison.Ordinal);
+        var snapshot = snapshots[^1];
+        Assert.False(snapshot.Timelines["main"].TurnActive);
+        Assert.Contains(snapshot.Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.Status &&
+            entry.Text.Contains("in_flight", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task QueuedSend_RepeatedInFlightAckWithoutLifecycle_EventuallyFails()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        for (var i = 0; i < 13; i++)
+            bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-stuck", Status = "in_flight" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "stuck");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() => bridge.SentMessages.Count >= 2);
+
+        for (var i = 0; i < 20 && !HasFailedQueuedMessage(snapshots[^1], "main", "stuck"); i++)
+        {
+            bridge.RaiseSessions(new[] { MainSession() });
+            await Task.Delay(10);
+        }
+        await WaitForConditionAsync(() => HasFailedQueuedMessage(snapshots[^1], "main", "stuck"), attempts: 1000);
+
+        var failed = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal("stuck", failed.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
+        Assert.Contains("in_flight", failed.ErrorText, StringComparison.Ordinal);
+        Assert.Single(bridge.SentIdempotencyKeys.Skip(1).Distinct(StringComparer.Ordinal));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Status &&
+            e.Text.Contains("in_flight", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task QueuedSend_AckPromotionKeepsRunMappingUntilTerminalCleanup()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "second");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
+            await Task.Delay(10);
+        await WaitForConditionAsync(() => GetQueuedMessages(snapshots[^1], "main").Count == 0);
+
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-2"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "second response",
+            State = "final",
+        });
+
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "second response");
+    }
+
+    [Fact]
+    public async Task IdentitylessIdenticalAssistant_DropsBeforeQueuedUserBoundaryButAllowsCurrentRunResponse()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
@@ -2570,6 +3008,7 @@ public class OpenClawChatDataProviderTests
         });
         for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
             await Task.Delay(10);
+        await WaitForConditionAsync(() => GetQueuedMessages(snapshots[^1], "main").Count == 0);
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -2579,20 +3018,183 @@ public class OpenClawChatDataProviderTests
             State = "final",
         });
 
-        Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
-            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(
+            new[] { "first", "OK", "second" },
+            snapshots[^1].Timelines["main"].Entries
+                .Where(e => e.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant)
+                .Select(e => e.Text)
+                .ToArray());
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
 
         var entries = snapshots[^1].Timelines["main"].Entries;
         Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Equal(
-            new[] { "first", "OK", "second", "OK" },
+            new[] { "first", "OK", "second" },
             entries
                 .Where(e => e.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant)
                 .Select(e => e.Text)
                 .ToArray());
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "OK",
+            State = "final",
+        });
+
+        Assert.Equal(
+            new[] { "first", "OK", "second", "OK" },
+            snapshots[^1].Timelines["main"].Entries
+                .Where(e => e.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant)
+                .Select(e => e.Text)
+                .ToArray());
+    }
+
+    [Fact]
+    public async Task QueuedReplies_IgnoreIdentitylessRetransmitsAndStayMatchedToPrompts()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-a", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-b", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-c", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-d", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.SendMessageAsync("main", "a");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-a"));
+        await provider.SendMessageAsync("main", "b");
+        await provider.SendMessageAsync("main", "c");
+        await provider.SendMessageAsync("main", "d");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "ack - a",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
+            await Task.Delay(10);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "ack - a",
+            State = "final",
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-b"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "ack - b",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 3; i++)
+            await Task.Delay(10);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "ack - b",
+            State = "final",
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-c"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "ack - c",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 4; i++)
+            await Task.Delay(10);
+        await WaitForConditionAsync(() => GetQueuedMessages(snapshots[^1], "main").Count == 0);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "ack - c",
+            State = "final",
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-d"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "ack - d",
+            State = "final",
+        });
+
+        Assert.Equal(new[] { "a", "b", "c", "d" }, bridge.SentMessages);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(
+            new[] { "a", "ack - a", "b", "ack - b", "c", "ack - c", "d", "ack - d" },
+            snapshots[^1].Timelines["main"].Entries
+                .Where(e => e.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant)
+                .Select(e => e.Text)
+                .ToArray());
+    }
+
+    [Fact]
+    public async Task DroppedIdentitylessAssistant_IsNotReplayedAfterSendingPromptFails()
+    {
+        var secondSendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "failed", Error = "boom" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-3", Status = "started" });
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            sendCount++;
+            return sendCount == 2 ? secondSendGate.Task : Task.CompletedTask;
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "second");
+        await provider.SendMessageAsync("main", "third");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "OK",
+            State = "final",
+        });
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
+            await Task.Delay(10);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "OK",
+            State = "final",
+        });
+
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
+
+        secondSendGate.SetResult();
+        for (var i = 0; i < 20 && bridge.SentMessages.Count < 3; i++)
+            await Task.Delay(10);
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-3"));
+
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
     }
 
     [Fact]
@@ -2622,12 +3224,10 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseChat(firstFinal);
 
-        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("second", queued.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "OK");
-        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, e =>
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "second");
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
@@ -2855,9 +3455,9 @@ public class OpenClawChatDataProviderTests
 
         Assert.Contains("run-1", bridge.AbortedRunIds);
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
-        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("second", queued.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Sending, queued.SendState);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
+            e.Kind == ChatTimelineItemKind.User && e.Text == "second");
     }
 
     [Fact]
@@ -5933,6 +6533,12 @@ public class OpenClawChatDataProviderTests
         Assert.Null(timedOutTimeline.PendingPermission);
     }
 
+    private static async Task WaitForConditionAsync(Func<bool> condition, int attempts = 50)
+    {
+        for (var i = 0; i < attempts && !condition(); i++)
+            await Task.Delay(10);
+    }
+
     private static AgentEventInfo MakeApprovalResolvedEvent(
         string approvalId,
         string phase,
@@ -5973,6 +6579,11 @@ public class OpenClawChatDataProviderTests
            snapshot.QueuedMessagesByThread.TryGetValue(threadId, out var queued)
             ? queued
             : Array.Empty<ChatQueuedMessage>();
+
+    private static bool HasFailedQueuedMessage(ChatDataSnapshot snapshot, string threadId, string text) =>
+        GetQueuedMessages(snapshot, threadId).Any(message =>
+            message.Text == text &&
+            message.SendState == ChatQueuedMessageSendState.Failed);
 
     private static void AssertNoQueuedTranscriptDuplicate(
         IEnumerable<ChatDataSnapshot> snapshots,

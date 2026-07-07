@@ -35,7 +35,12 @@ public interface IChatGatewayBridge : IDisposable
     void StartProactiveBootstrap();
 
     Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null);
-    Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null);
+    Task<ChatSendResult> SendChatMessageForRunAsync(
+        string message,
+        string? sessionKey,
+        string? sessionId,
+        IReadOnlyList<ChatAttachment>? attachments = null,
+        string? idempotencyKey = null);
     /// <summary>
     /// Fetches the gateway command catalog (<c>commands.list</c>) via the typed
     /// protocol API. Returns a <see cref="CommandCatalog"/> whose
@@ -170,8 +175,13 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) =>
         _client.SendChatMessageAsync(message, sessionKey, sessionId, attachments);
 
-    public Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) =>
-        _client.SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments);
+    public Task<ChatSendResult> SendChatMessageForRunAsync(
+        string message,
+        string? sessionKey,
+        string? sessionId,
+        IReadOnlyList<ChatAttachment>? attachments = null,
+        string? idempotencyKey = null) =>
+        _client.SendChatMessageForRunAsync(message, sessionKey, sessionId, attachments, idempotencyKey);
 
     public Task PatchSessionModelAsync(string sessionKey, string model) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { Model = model });

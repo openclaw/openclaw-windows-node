@@ -176,6 +176,44 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task ChatSend_UsesCallerProvidedIdempotencyKeyOnWire()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("chat.send", parameters =>
+        {
+            Assert.Equal("agent:main:main", parameters.GetProperty("sessionKey").GetString());
+            Assert.Equal("Hello", parameters.GetProperty("message").GetString());
+            Assert.Equal("send-run-123", parameters.GetProperty("idempotencyKey").GetString());
+            return new { runId = "send-run-123", sessionKey = "agent:main:main", status = "started" };
+        });
+
+        var logger = new TestLogger();
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", logger,
+            tokenIsBootstrapToken: false, bootstrapPairAsNode: false,
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            var result = await client.SendChatMessageForRunAsync(
+                "Hello",
+                sessionKey: "agent:main:main",
+                idempotencyKey: "send-run-123");
+
+            Assert.Equal("send-run-123", result.RunId);
+            Assert.Equal("started", result.Status);
+            var frame = await server.WaitFrameAsync("chat.send", occurrence: 0, timeoutMs: 20000);
+            Assert.Contains("\"idempotencyKey\":\"send-run-123\"", frame);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
     private static void ConfigureResponders(LoopbackGatewayServer server)
     {
         // NOTE: intentionally NO hello-ok responder. The new methods only require
