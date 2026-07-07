@@ -32,7 +32,9 @@
     "default-model": "__keep__",
     "select-channel-quickstart": "__skip__",
     "search-provider": "__skip__",
-    "configure-skills-now-recommended": "false"
+    "configure-skills-now-recommended": "false",
+    "how-do-you-want-to-hatch-your-agent": "later",
+    "how-do-you-want-to-hatch-your-bot": "later"
   },
   // Log verbosity: "trace", "debug", "info", "warn", "error"
   "LogLevel": "trace",

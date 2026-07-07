@@ -32,9 +32,19 @@ public class WizardDefaultAnswerMatrixTests
         AssertConfiguredSelect(answers, "default-model", ["__keep__", "gpt-5.5", "gpt-5.4", "claude-sonnet-4.6"]);
         AssertConfiguredMultiselect(answers, "select-channel-quickstart", ChannelOptions);
         AssertConfiguredSelect(answers, "search-provider", ["__skip__", "tavily", "brave", "bing"]);
+        AssertConfiguredSelect(answers, "how-do-you-want-to-hatch-your-agent", ["tui", "web", "later"]);
+        AssertConfiguredSelect(answers, "how-do-you-want-to-hatch-your-bot", ["tui", "web", "later"]);
 
         Assert.True(answers.TryGetValue("configure-skills-now-recommended", out var configureSkills));
         Assert.False((bool)WizardAnswerBuilder.BuildWireValue("confirm", configureSkills, []));
+    }
+
+    [Fact]
+    public void DesktopWizard_HatchChoiceDefersInsteadOfLaunchingTerminalUi()
+    {
+        var options = Options(["tui", "web", "later"]);
+
+        Assert.Equal("later", SetupWizardRunner.InferOptionAnswer(options, "tui"));
     }
 
     [Theory]

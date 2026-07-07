@@ -1596,9 +1596,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             var stateDirectory = GatewayCliRunner.GetManagedNativeStateDir(ctx.Config);
             if (Directory.Exists(stateDirectory))
             {
-                if (new DirectoryInfo(stateDirectory).Attributes.HasFlag(FileAttributes.ReparsePoint))
-                    throw new InvalidOperationException($"Refusing to remove app-owned native profile reparse point '{stateDirectory}'.");
-                Directory.Delete(stateDirectory, recursive: true);
+                await DeleteManagedNativeProfileAsync(stateDirectory, ct);
                 ctx.Logger.Info("[Uninstall] Deleted app-owned native gateway profile");
             }
 
@@ -1636,6 +1634,40 @@ public sealed class ConfigureGatewayStep : SetupStep
         {
             File.Delete(ownershipPath);
             ctx.Logger.Info("[Uninstall] Deleted native gateway ownership marker");
+        }
+    }
+
+    internal static async Task DeleteManagedNativeProfileAsync(string stateDirectory, CancellationToken ct)
+    {
+        if (new DirectoryInfo(stateDirectory).Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new InvalidOperationException($"Refusing to remove app-owned native profile reparse point '{stateDirectory}'.");
+
+        // The gateway may have just stopped an app-owned browser process. Windows can
+        // retain its directory handles briefly, so retry only the known transient
+        // filesystem failures before reporting an incomplete uninstall.
+        var delays = new[]
+        {
+            TimeSpan.FromMilliseconds(200),
+            TimeSpan.FromMilliseconds(500),
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(2),
+        };
+        for (var attempt = 0; ; attempt++)
+        {
+            if (!Directory.Exists(stateDirectory))
+                return;
+
+            try
+            {
+                Directory.Delete(stateDirectory, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (
+                ex is IOException or UnauthorizedAccessException
+                && attempt < delays.Length)
+            {
+                await Task.Delay(delays[attempt], ct);
+            }
         }
     }
 

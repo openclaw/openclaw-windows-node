@@ -379,19 +379,33 @@ public sealed class SetupWizardRunner
         return ValidateAnswer(step, inferred, configuredAnswer: false);
     }
 
-    private static string? InferOptionAnswer(WizardPayload step)
+    private static string? InferOptionAnswer(WizardPayload step) =>
+        InferOptionAnswer(step.Options, step.InitialValue);
+
+    internal static string? InferOptionAnswer(
+        IReadOnlyList<WizardOptionValue> options,
+        string? initialValue)
     {
-        if (!string.IsNullOrWhiteSpace(step.InitialValue))
-            return step.InitialValue;
+        // An RPC-driven desktop wizard cannot host the terminal UI that the CLI
+        // recommends by default. Prefer the gateway's explicit deferred choice
+        // independent of localized or version-specific prompt wording.
+        if (options.Any(option => string.Equals(option.Value, "tui", StringComparison.Ordinal))
+            && options.Any(option => string.Equals(option.Value, "later", StringComparison.Ordinal)))
+        {
+            return "later";
+        }
+
+        if (!string.IsNullOrWhiteSpace(initialValue))
+            return initialValue;
 
         var preferred = new[] { "__skip__", "skip", "__keep__", "keep" };
         foreach (var value in preferred)
         {
-            if (step.Options.Any(o => string.Equals(o.Value, value, StringComparison.Ordinal)))
+            if (options.Any(o => string.Equals(o.Value, value, StringComparison.Ordinal)))
                 return value;
         }
 
-        return step.Options.FirstOrDefault()?.Value;
+        return options.FirstOrDefault()?.Value;
     }
 
     private static string InferConfirmAnswer(WizardPayload step)

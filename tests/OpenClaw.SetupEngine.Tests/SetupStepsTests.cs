@@ -1091,6 +1091,32 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task ConfigureGateway_NativeProfileCleanupRetriesTransientFileLocks()
+    {
+        var stateDirectory = Path.Combine(_tempDir, "native-profile-transient-lock");
+        Directory.CreateDirectory(stateDirectory);
+        var lockedPath = Path.Combine(stateDirectory, "browser-automation.lock");
+        await File.WriteAllTextAsync(lockedPath, "locked");
+        using var lockedFile = new FileStream(
+            lockedPath,
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.None);
+        var releaseLock = Task.Run(async () =>
+        {
+            await Task.Delay(150);
+            lockedFile.Dispose();
+        });
+
+        await ConfigureGatewayStep.DeleteManagedNativeProfileAsync(
+            stateDirectory,
+            CancellationToken.None);
+        await releaseLock;
+
+        Assert.False(Directory.Exists(stateDirectory));
+    }
+
+    [Fact]
     public async Task ConfigureGateway_FailedSetupRollbackPreservesOwnedNativeProfile()
     {
         var config = new SetupConfig
