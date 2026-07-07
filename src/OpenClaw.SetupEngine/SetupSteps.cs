@@ -3479,7 +3479,7 @@ public sealed class StartKeepaliveStep : SetupStep
         psi.ArgumentList.Add("sleep");
         psi.ArgumentList.Add("infinity");
 
-        var proc = System.Diagnostics.Process.Start(psi);
+        using var proc = System.Diagnostics.Process.Start(psi);
         if (proc == null)
         {
             ctx.Logger.Warn("Failed to start keepalive process — tray will start its own");

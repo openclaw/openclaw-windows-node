@@ -711,6 +711,8 @@ public sealed partial class PermissionsPage : Page
             r.Pattern,
             Action = DisplayExecPolicyAction(r.Action),
             r.Index,
+            RemoveRuleAutomationName = $"Remove rule {r.Pattern}",
+            RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{r.Index}",
             ActionBrush = r.Action == "allow"
                 ? allowBrush
                 : r.Action == "prompt" ? askBrush : denyBrush

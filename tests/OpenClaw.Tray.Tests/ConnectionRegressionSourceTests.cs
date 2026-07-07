@@ -79,9 +79,75 @@ public sealed class ConnectionRegressionSourceTests
         Assert.DoesNotContain("AutomationProperties.SetName(pill", pageSource);
     }
 
+    [Fact]
+    public void PairingRequiredDisconnectGuard_RunsInsideTransitionSemaphore()
+    {
+        var managerSource = ReadSource("src", "OpenClaw.Connection", "GatewayConnectionManager.cs");
+        var methodStart = managerSource.IndexOf("private async Task HandleOperatorStatusChangedAsync", StringComparison.Ordinal);
+        var waitIndex = managerSource.IndexOf("await _transitionSemaphore.WaitAsync();", methodStart, StringComparison.Ordinal);
+        var pairingIndex = managerSource.IndexOf("var isPairingPending", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(waitIndex > methodStart);
+        Assert.True(pairingIndex > waitIndex);
+    }
+
+    [Fact]
+    public void GatewayClient_PairingRequiredFlag_UsesVolatileAccess()
+    {
+        var source = ReadSource("src", "OpenClaw.Shared", "OpenClawGatewayClient.cs");
+
+        Assert.Contains("public bool IsPairingRequired => Volatile.Read(ref _pairingRequiredAwaitingApproval);", source);
+        Assert.Contains("public string? PairingRequiredRequestId => Volatile.Read(ref _pairingRequiredRequestId);", source);
+        AssertInOrder(
+            source,
+            "Volatile.Write(ref _pairingRequiredRequestId, pairingDetails.RequestId);",
+            "Volatile.Write(ref _pairingRequiredAwaitingApproval, true);");
+        Assert.Contains("Volatile.Write(ref _pairingRequiredAwaitingApproval, false);", source);
+        Assert.Contains("Volatile.Write(ref _pairingRequiredRequestId, null);", source);
+        Assert.Contains("Volatile.Write(ref _pairingRequiredAwaitingApproval, true);", source);
+    }
+
+    [Fact]
+    public void OperatorCli_DefersIdentityDefaultsUntilAfterArgumentParsing()
+    {
+        var source = ReadSource("src", "OpenClaw.Cli", "Program.cs");
+
+        Assert.Contains("public string SettingsPath { get; set; } = \"\";", source);
+        Assert.Contains("public string IdentityDataPath { get; set; } = \"\";", source);
+        AssertInOrder(
+            source,
+            "options = ParseArgs(args);",
+            "ApplyIdentityDefaults(options, Environment.GetEnvironmentVariable);");
+        AssertInOrder(
+            source,
+            "options.Identity = OpenClawAppIdentity.ResolveIdentity(envLookup, options.Identity);",
+            "options.IdentityDataPath = OpenClawAppIdentity.ResolveRoamingDataDirectory(envLookup, options.Identity);");
+    }
+
+    [Fact]
+    public void SetupKeepalive_DisposesProcessWrapperAfterWritingMarker()
+    {
+        var source = ReadSource("src", "OpenClaw.SetupEngine", "SetupSteps.cs");
+
+        Assert.Contains("using var proc = System.Diagnostics.Process.Start(psi);", source);
+        Assert.Contains("WriteKeepaliveMarker(ctx, markerPath, proc.Id);", source);
+    }
+
     private static string ReadSource(params string[] relativePathParts)
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(new[] { root }.Concat(relativePathParts).ToArray()));
+    }
+
+    private static void AssertInOrder(string source, params string[] snippets)
+    {
+        var previous = -1;
+        foreach (var snippet in snippets)
+        {
+            var current = source.IndexOf(snippet, previous + 1, StringComparison.Ordinal);
+            Assert.True(current > previous, $"Expected to find '{snippet}' after index {previous}.");
+            previous = current;
+        }
     }
 }

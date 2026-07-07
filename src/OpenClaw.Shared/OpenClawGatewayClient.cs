@@ -100,10 +100,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private readonly bool _ignoreStoredDeviceToken;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
-    public bool IsPairingRequired => _pairingRequiredAwaitingApproval;
+    public bool IsPairingRequired => Volatile.Read(ref _pairingRequiredAwaitingApproval);
 
     /// <summary>Safe requestId returned in structured pairing-required details, when present.</summary>
-    public string? PairingRequiredRequestId => _pairingRequiredRequestId;
+    public string? PairingRequiredRequestId => Volatile.Read(ref _pairingRequiredRequestId);
 
     /// <summary>True when the device signature was rejected in all supported modes.</summary>
     public bool IsAuthFailed => _authFailed;
@@ -248,10 +248,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _bootstrapPairAsNode = bootstrapPairAsNode;
         _ignoreStoredDeviceToken = ignoreStoredDeviceToken;
         _currentGatewayUrl = gatewayUrl;
-        var dataPath = identityPath ?? Path.Combine(
-            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR")
-                ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "OpenClawTray");
+        var dataPath = identityPath ?? OpenClawAppIdentity.ResolveRoamingDataDirectory(
+            Environment.GetEnvironmentVariable);
 
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
@@ -1759,8 +1757,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
             _logger.Info($"[HANDSHAKE] Received hello-ok!");
-            _pairingRequiredAwaitingApproval = false;
-            _pairingRequiredRequestId = null;
+            Volatile.Write(ref _pairingRequiredAwaitingApproval, false);
+            Volatile.Write(ref _pairingRequiredRequestId, null);
             _authFailed = false;
             ResetReconnectAttempts();
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
@@ -2067,8 +2065,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (method == "connect" &&
             (pairingDetails.IsPairingRequired || message.Contains("pairing required", StringComparison.OrdinalIgnoreCase)))
         {
-            _pairingRequiredAwaitingApproval = true;
-            _pairingRequiredRequestId = pairingDetails.RequestId;
+            Volatile.Write(ref _pairingRequiredRequestId, pairingDetails.RequestId);
+            Volatile.Write(ref _pairingRequiredAwaitingApproval, true);
             _logger.Warn($"[HANDSHAKE] Pairing required (requestId={pairingDetails.RequestId}). Waiting for approval.");
             PairingRequired?.Invoke(this, pairingDetails.RequestId);
             return;

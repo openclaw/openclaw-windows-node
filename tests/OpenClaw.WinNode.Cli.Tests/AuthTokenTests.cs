@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using OpenClaw.Shared;
 using OpenClaw.WinNode.Cli;
 
 namespace OpenClaw.WinNode.Cli.Tests;
@@ -196,6 +197,81 @@ public class AuthTokenTests : IDisposable
             "OpenClawTray",
             "mcp-token.txt");
         Assert.Equal(expected, path);
+    }
+
+    [Fact]
+    public void ResolveTokenPath_uses_OPENCLAW_APP_IDENTITY_dev_when_set()
+    {
+        Func<string, string?> env = key =>
+            key == OpenClawAppIdentity.IdentityEnvironmentVariable ? OpenClawAppIdentity.DevIdentity : null;
+        var path = CliRunner.ResolveTokenPath(env);
+        var expected = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "OpenClawTray-Dev",
+            "mcp-token.txt");
+        Assert.Equal(expected, path);
+    }
+
+    [Fact]
+    public void ResolveTokenPath_explicit_identity_overrides_environment()
+    {
+        Func<string, string?> env = key =>
+            key == OpenClawAppIdentity.IdentityEnvironmentVariable ? OpenClawAppIdentity.DevIdentity : null;
+        var path = CliRunner.ResolveTokenPath(env, OpenClawAppIdentity.ReleaseIdentity);
+        var expected = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "OpenClawTray",
+            "mcp-token.txt");
+        Assert.Equal(expected, path);
+    }
+
+    [Fact]
+    public void ResolveTokenPath_data_dir_override_wins_over_identity()
+    {
+        Func<string, string?> env = key => key switch
+        {
+            OpenClawAppIdentity.DataDirectoryOverrideEnvironmentVariable => @"C:\sandbox",
+            OpenClawAppIdentity.IdentityEnvironmentVariable => OpenClawAppIdentity.DevIdentity,
+            _ => null
+        };
+
+        var path = CliRunner.ResolveTokenPath(env);
+
+        Assert.Equal(Path.Combine(@"C:\sandbox", "mcp-token.txt"), path);
+    }
+
+    [Fact]
+    public void ParseArgs_accepts_identity_dev()
+    {
+        var options = CliRunner.ParseArgs(["--list-tools", "--identity", "dev"]);
+
+        Assert.Equal(OpenClawAppIdentity.DevIdentity, options.Identity);
+    }
+
+    [Fact]
+    public void ParseArgs_rejects_unknown_identity()
+    {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            CliRunner.ParseArgs(["--list-tools", "--identity", "staging"]));
+
+        Assert.Contains("release", ex.Message);
+        Assert.Contains("dev", ex.Message);
+    }
+
+    [Fact]
+    public async Task OPENCLAW_APP_IDENTITY_invalid_value_returns_argument_error()
+    {
+        using var server = new FakeMcpServer();
+        var (o, e) = Buffers();
+
+        var exit = await CliRunner.RunAsync(
+            ["--list-tools", "--mcp-url", server.Url],
+            o,
+            e,
+            key => key == OpenClawAppIdentity.IdentityEnvironmentVariable ? "staging" : null);
+
+        Assert.Equal(2, exit);
+        Assert.Contains("App identity must be", e.ToString());
     }
 
     [Theory]

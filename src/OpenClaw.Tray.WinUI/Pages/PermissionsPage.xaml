@@ -329,6 +329,8 @@
                                             Click="OnRemoveRule" Tag="{Binding Index}"
                                             Background="Transparent" BorderThickness="0"
                                             Padding="6" MinWidth="0"
+                                            AutomationProperties.Name="{Binding RemoveRuleAutomationName}"
+                                            AutomationProperties.AutomationId="{Binding RemoveRuleAutomationId}"
                                             ToolTipService.ToolTip="Remove rule">
                                         <FontIcon Glyph="&#xE74D;" FontSize="14"
                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

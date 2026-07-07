@@ -710,15 +710,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private async Task HandleOperatorStatusChangedAsync(ConnectionStatus status, long gen)
     {
-        // Check client's pairing status directly — set synchronously before this handler runs
-        var isPairingPending = _activeLifecycle?.DataClient?.IsPairingRequired == true;
-        if (isPairingPending && status is ConnectionStatus.Disconnected or ConnectionStatus.Error)
-            return;
-
         await _transitionSemaphore.WaitAsync();
         try
         {
             if (Interlocked.Read(ref _generation) != gen) return;
+
+            // Check client's pairing status while holding the transition lock so
+            // a completed pairing cannot race with a stale disconnect/error event.
+            var isPairingPending = _activeLifecycle?.DataClient?.IsPairingRequired == true;
+            if (isPairingPending && status is ConnectionStatus.Disconnected or ConnectionStatus.Error)
+                return;
 
             switch (status)
             {

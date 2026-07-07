@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using OpenClaw.Shared;
 using OpenClaw.Shared.Mcp;
 
 namespace OpenClaw.WinNode.Cli;
@@ -19,6 +20,7 @@ internal sealed class WinNodeOptions
     public string? McpUrlOverride { get; set; }
     public int? McpPortOverride { get; set; }
     public string? McpTokenOverride { get; set; }
+    public string? Identity { get; set; }
     public bool Verbose { get; set; }
 }
 
@@ -148,6 +150,16 @@ internal static class CliRunner
             || (endpointUri.Scheme != Uri.UriSchemeHttp && endpointUri.Scheme != Uri.UriSchemeHttps))
         {
             stderr.WriteLine($"--mcp-url must be an absolute http(s) URL: {endpoint}");
+            return 2;
+        }
+
+        try
+        {
+            options.Identity = OpenClawAppIdentity.ResolveIdentity(envLookup, options.Identity);
+        }
+        catch (ArgumentException ex)
+        {
+            stderr.WriteLine($"Argument error: {ex.Message}");
             return 2;
         }
 
@@ -533,7 +545,9 @@ internal static class CliRunner
     ///   per-tool secret env-var convention — same shape as <c>GITHUB_TOKEN</c>,
     ///   <c>ANTHROPIC_API_KEY</c>, <c>NUGET_API_KEY</c>.</item>
     ///   <item>The on-disk token file the tray writes when MCP is enabled —
-    ///   <c>%APPDATA%\OpenClawTray\mcp-token.txt</c> by default, or
+    ///   <c>%APPDATA%\OpenClawTray\mcp-token.txt</c> by default,
+    ///   <c>%APPDATA%\OpenClawTray-Dev\mcp-token.txt</c> when
+    ///   <c>--identity dev</c> or <c>OPENCLAW_APP_IDENTITY=dev</c> is set, or
     ///   <c>$OPENCLAW_TRAY_DATA_DIR\mcp-token.txt</c> when the tray was launched
     ///   with that sandbox override (the integration test fixture uses it).</item>
     /// </list>
@@ -559,7 +573,7 @@ internal static class CliRunner
             return new AuthTokenResult(envToken, "OPENCLAW_MCP_TOKEN");
         }
 
-        var path = ResolveTokenPath(envLookup);
+        var path = ResolveTokenPath(envLookup, options.Identity);
 
         // F-08: resolve to canonical form and require the result still live
         // under the requested directory tree. Defeats a same-user attacker
@@ -697,7 +711,7 @@ internal static class CliRunner
             || normCandidate.StartsWith(normPrefix + Path.DirectorySeparatorChar, cmp);
     }
 
-    internal static string ResolveTokenPath(Func<string, string?> envLookup)
+    internal static string ResolveTokenPath(Func<string, string?> envLookup, string? identity = null)
     {
         // Mirror SettingsManager.SettingsDirectoryPath: when the tray was
         // launched with OPENCLAW_TRAY_DATA_DIR, settings (including the token
@@ -705,13 +719,7 @@ internal static class CliRunner
         // so a CLI invoked in the same shell as a sandboxed tray Just Works,
         // and the integration test fixture can redirect both the producer
         // (tray) and the consumer (CLI) with one env var.
-        var dataDirOverride = envLookup("OPENCLAW_TRAY_DATA_DIR");
-        var dir = !string.IsNullOrWhiteSpace(dataDirOverride)
-            ? dataDirOverride!
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "OpenClawTray");
-        return Path.Combine(dir, "mcp-token.txt");
+        return OpenClawAppIdentity.ResolveMcpTokenPath(envLookup, identity);
     }
 
     /// <summary>
@@ -774,6 +782,9 @@ internal static class CliRunner
                 case "--mcp-token":
                     options.McpTokenOverride = RequireValue(args, ref i, arg);
                     break;
+                case "--identity":
+                    options.Identity = OpenClawAppIdentity.NormalizeIdentity(RequireValue(args, ref i, arg));
+                    break;
                 case "--verbose":
                     options.Verbose = true;
                     break;
@@ -830,6 +841,8 @@ internal static class CliRunner
         stdout.WriteLine("  --mcp-token <token>          Bearer token (testing/explicit overrides only - visible to");
         stdout.WriteLine("                               other processes via the OS process listing). Prefer");
         stdout.WriteLine("                               $OPENCLAW_MCP_TOKEN or %APPDATA%\\OpenClawTray\\mcp-token.txt");
+        stdout.WriteLine("  --identity <release|dev>     Select tray profile for default token lookup");
+        stdout.WriteLine("                               (default: $OPENCLAW_APP_IDENTITY or release)");
         stdout.WriteLine("  --verbose                    Print endpoint + ignored flags to stderr");
         stdout.WriteLine("  --help, -h                   Show this help");
         stdout.WriteLine();

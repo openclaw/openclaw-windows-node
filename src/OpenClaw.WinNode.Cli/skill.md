@@ -23,8 +23,8 @@ argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
 ## Invocation shape
 
 ```
-winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>]
-winnode --list-tools [--mcp-url <url>|--mcp-port <port>]
+winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>] [--identity release|dev]
+winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev]
 ```
 
 - `--command` (required) — node command (e.g. `system.which`, `canvas.a2ui.push`).
@@ -50,9 +50,14 @@ winnode --list-tools [--mcp-url <url>|--mcp-port <port>]
   listing** (`Get-CimInstance Win32_Process | Select CommandLine`,
   Process Explorer, etc.). The CLI emits a stderr warning when this flag is
   used. **Prefer `OPENCLAW_MCP_TOKEN` (env var) or the on-disk
-  `%APPDATA%\OpenClawTray\mcp-token.txt`** which the tray writes when MCP is
-  enabled. Both `OPENCLAW_MCP_TOKEN` and the on-disk file should themselves be
-  treated as sensitive operational secrets.
+  `%APPDATA%\OpenClawTray\mcp-token.txt`** which the release tray writes when
+  MCP is enabled. Both `OPENCLAW_MCP_TOKEN` and the on-disk file should
+  themselves be treated as sensitive operational secrets.
+- `--identity release|dev` — selects which tray profile supplies the default
+  on-disk MCP token. Defaults to `OPENCLAW_APP_IDENTITY`, then `release`.
+  Use `--identity dev` for a side-by-side dev tray; its default token path is
+  `%APPDATA%\OpenClawTray-Dev\mcp-token.txt`. `OPENCLAW_TRAY_DATA_DIR` still
+  wins for isolated runs and points directly at the data folder.
 - `--verbose` — log endpoint + ignored flags to stderr. Without `--verbose`,
   HTTP error bodies are emitted only as the first line; with `--verbose`, the
   full body is shown (after sanitization + token-shape redaction).
