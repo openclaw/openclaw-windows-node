@@ -234,8 +234,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         };
         var sendActionRef = UseRef<Action>(sendAction);
         sendActionRef.Current = sendAction;
-
         var isConnected = Props.ConnectionState == "connected";
+        var messageOptionControlsEnabled = !Props.TurnActive && queuedMessages.Count == 0;
         var placeholder = Props.ConnectionState switch
         {
             "connected" => LocalizationHelper.GetString("Chat_Composer_Placeholder_Connected"),
@@ -372,6 +372,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     CornerRadius = composerCornerRadius,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     VerticalAlignment = VerticalAlignment.Center,
+                    IsEnabled = messageOptionControlsEnabled,
                 };
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
                     cb,
@@ -431,6 +432,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 cb.Padding = new Thickness(8, 0, 4, 0);
                 cb.CornerRadius = composerCornerRadius;
                 cb.HorizontalAlignment = HorizontalAlignment.Stretch;
+                cb.IsEnabled = messageOptionControlsEnabled;
             }).VAlign(VerticalAlignment.Center);
 
         Element dropdownsRow = Grid([GridSize.Star(1.2), GridSize.Star(), GridSize.Star(0.62)], [GridSize.Auto],

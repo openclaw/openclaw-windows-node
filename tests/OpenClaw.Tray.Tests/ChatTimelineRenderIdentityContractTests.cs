@@ -89,6 +89,18 @@ public sealed class ChatTimelineRenderIdentityContractTests
     }
 
     [Fact]
+    public void Composer_DisablesMessageOptionDropdownsWhileTurnOrQueueIsActive()
+    {
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
+
+        Assert.Contains("var messageOptionControlsEnabled = !Props.TurnActive && queuedMessages.Count == 0;", composer);
+        Assert.Equal(2, Regex.Matches(composer, "IsEnabled = messageOptionControlsEnabled").Count);
+        Assert.DoesNotMatch(
+            new Regex(@"var\s+channelCombo[\s\S]*?IsEnabled\s*=\s*messageOptionControlsEnabled[\s\S]*?//\s+── Model picker", RegexOptions.Multiline),
+            composer);
+    }
+
+    [Fact]
     public void Timeline_DoesNotRenderTemporaryDebugMetadata()
     {
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
