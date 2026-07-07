@@ -2948,7 +2948,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 }
             }
 
-            TryDispatchNextQueuedSend(threadId);
+            try
+            {
+                TryDispatchNextQueuedSend(threadId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[Queue] Scheduled queued send drain failed for threadId='{threadId}': {ex.Message}");
+            }
         });
     }
 
