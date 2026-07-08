@@ -3038,6 +3038,65 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task QueuedSend_InFlightRetry_DoesNotSuppressLaterSameTextRemoteUserMessage()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "Hello");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() =>
+        {
+            var queued = GetQueuedMessages(snapshots[^1], "main");
+            return bridge.SentMessages.Count >= 2 &&
+                queued.Count == 1 &&
+                queued[0].Text == "Hello" &&
+                queued[0].SendState == ChatQueuedMessageSendState.Queued;
+        });
+
+        await WaitForConditionAsync(() =>
+            bridge.SentMessages.Count >= 3 &&
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Count(entry =>
+                entry.Kind == ChatTimelineItemKind.User && entry.Text == "Hello") == 1,
+            attempts: 200);
+
+        Assert.Equal(bridge.SentIdempotencyKeys[1], bridge.SentIdempotencyKeys[2]);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "Hello",
+        });
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.User && entry.Text == "Hello");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "Hello",
+        });
+        await WaitForConditionAsync(() =>
+            snapshots[^1].Timelines["main"].Entries.Count(entry =>
+                entry.Kind == ChatTimelineItemKind.User && entry.Text == "Hello") == 2);
+    }
+
+    [Fact]
     public async Task QueuedSend_InFlightAckWhileDifferentRunActive_RequeuesWithoutPromoting()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -3115,6 +3174,58 @@ public class OpenClawChatDataProviderTests
         Assert.Contains(snapshot.Timelines["main"].Entries, entry =>
             entry.Kind == ChatTimelineItemKind.Status &&
             entry.Text.Contains("in_flight", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DirectSend_TimeoutAckWithRunId_FailsInsteadOfPromoting()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-timeout", Status = "timeout" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            provider.SendMessageAsync("main", "direct timeout"));
+
+        Assert.Contains("timeout", ex.Message, StringComparison.Ordinal);
+        var snapshot = snapshots[^1];
+        Assert.False(snapshot.Timelines["main"].TurnActive);
+        Assert.Empty(GetQueuedMessages(snapshot, "main"));
+        Assert.Contains(snapshot.Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.Status &&
+            entry.Text.Contains("timeout", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task QueuedSend_TimeoutAckWithRunId_KeepsFailedQueuedMessage()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-timeout", Status = "timeout" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "queued timeout");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() => HasFailedQueuedMessage(snapshots[^1], "main", "queued timeout"));
+
+        var failed = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal("queued timeout", failed.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
+        Assert.Contains("timeout", failed.ErrorText, StringComparison.Ordinal);
+        Assert.Equal(new[] { "first", "queued timeout" }, bridge.SentMessages);
+        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.User &&
+            entry.Text == "queued timeout");
     }
 
     [Fact]

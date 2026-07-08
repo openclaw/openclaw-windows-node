@@ -2015,6 +2015,7 @@ public sealed class ChatSendResult
             || status.Equals("rejected", StringComparison.OrdinalIgnoreCase)
             || status.Equals("denied", StringComparison.OrdinalIgnoreCase)
             || status.Equals("aborted", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("timeout", StringComparison.OrdinalIgnoreCase)
             || status.Equals("cancelled", StringComparison.OrdinalIgnoreCase)
             || status.Equals("canceled", StringComparison.OrdinalIgnoreCase);
     }

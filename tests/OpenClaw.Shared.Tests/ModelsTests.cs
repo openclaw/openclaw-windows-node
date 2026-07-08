@@ -5,6 +5,41 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.Shared.Tests;
 
+public class ChatSendResultTests
+{
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("failure")]
+    [InlineData("error")]
+    [InlineData("rejected")]
+    [InlineData("denied")]
+    [InlineData("aborted")]
+    [InlineData("timeout")]
+    [InlineData("cancelled")]
+    [InlineData("canceled")]
+    public void IsTerminalFailure_ReturnsTrue_ForTerminalStatus(string status)
+    {
+        var result = new ChatSendResult { Status = status };
+
+        Assert.True(result.IsTerminalFailure);
+        Assert.True(ChatSendResult.IsFailureStatus(status));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("started")]
+    [InlineData("in_flight")]
+    [InlineData("ok")]
+    public void IsTerminalFailure_ReturnsFalse_ForNonTerminalStatus(string? status)
+    {
+        var result = new ChatSendResult { Status = status };
+
+        Assert.False(result.IsTerminalFailure);
+        Assert.False(ChatSendResult.IsFailureStatus(status));
+    }
+}
+
 public class AgentActivityTests
 {
     [Fact]

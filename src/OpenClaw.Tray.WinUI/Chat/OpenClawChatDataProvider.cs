@@ -2686,25 +2686,35 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return false;
         }
 
-        var kept = new Queue<LocalSentText>(queue.Count);
         var matched = false;
-        while (queue.Count > 0)
+        string matchedMessageId = string.Empty;
+        var pendingEchoes = queue.ToArray();
+        queue.Clear();
+        foreach (var pending in pendingEchoes)
         {
-            var pending = queue.Dequeue();
-            if (!matched && string.Equals(pending.Text, text, StringComparison.Ordinal))
-            {
-                queuedMessageId = pending.QueuedMessageId;
-                matched = true;
+            if (matched || !string.Equals(pending.Text, text, StringComparison.Ordinal))
                 continue;
-            }
 
-            kept.Enqueue(pending);
+            queuedMessageId = pending.QueuedMessageId;
+            matchedMessageId = pending.QueuedMessageId;
+            matched = true;
         }
 
+        var kept = new Queue<LocalSentText>(pendingEchoes.Length);
         if (!matched)
         {
+            foreach (var pending in pendingEchoes)
+                kept.Enqueue(pending);
             StoreLocalEchoQueueLocked(threadId, kept);
             return false;
+        }
+
+        foreach (var pending in pendingEchoes)
+        {
+            if (string.Equals(pending.QueuedMessageId, matchedMessageId, StringComparison.Ordinal))
+                continue;
+
+            kept.Enqueue(pending);
         }
 
         StoreLocalEchoQueueLocked(threadId, kept);
@@ -2917,6 +2927,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private void EnqueueLocalEchoLocked(string threadId, string text, string messageId)
     {
+        RemovePendingLocalEchoLocked(threadId, messageId);
         if (!_localSentTexts.TryGetValue(threadId, out var localEchoQueue))
         {
             localEchoQueue = new Queue<LocalSentText>();
@@ -3285,22 +3296,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
 
         var kept = new Queue<LocalSentText>(queue.Count);
-        var removed = false;
         while (queue.Count > 0)
         {
             var pending = queue.Dequeue();
-            if (!removed && string.Equals(pending.QueuedMessageId, messageId, StringComparison.Ordinal))
-            {
-                removed = true;
+            if (string.Equals(pending.QueuedMessageId, messageId, StringComparison.Ordinal))
                 continue;
-            }
+
             kept.Enqueue(pending);
         }
 
-        if (kept.Count == 0)
-            _localSentTexts.Remove(threadId);
-        else
-            _localSentTexts[threadId] = kept;
+        StoreLocalEchoQueueLocked(threadId, kept);
     }
 
     /// <summary>
