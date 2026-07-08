@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace OpenClawTray.Chat;
 
 /// <summary>
-/// Helper for hosting the <see cref="OpenClawChatRoot"/> FunctionalUI tree
+/// Helper for hosting the <see cref="ChatRoot"/> FunctionalUI tree
 /// inside an existing XAML window/page. The FunctionalUI host renders
 /// into a target <see cref="Border"/>
 /// rather than replacing <see cref="Window.Content"/>, so the surrounding
@@ -40,7 +40,7 @@ public static class FunctionalChatHostExtensions
         };
 
     /// <summary>
-    /// Mount <see cref="OpenClawChatRoot"/> into <paramref name="target"/>.
+    /// Mount <see cref="ChatRoot"/> into <paramref name="target"/>.
     /// Returns a <see cref="MountedFunctionalChat"/> that releases the FunctionalUI host
     /// when the page/window unloads and exposes the chat root for file attachment.
     /// </summary>
@@ -63,7 +63,7 @@ public static class FunctionalChatHostExtensions
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onStopSpeaking, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged, initialMuted, isCompact);
+        var root = new ChatRoot(provider, initialThreadId, onReadAloud, onStopSpeaking, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged, initialMuted, isCompact);
         var host = new FunctionalHostControl();
         host.SuppressAutoDispose = suppressAutoDispose;
         host.Mount(root);
@@ -77,9 +77,9 @@ public static class FunctionalChatHostExtensions
 /// Exposes the <see cref="ChatRoot"/> so the host window/page can push file
 /// attachments into the composer.
 /// </summary>
-public sealed class MountedFunctionalChat(Border target, FunctionalHostControl host, OpenClawChatRoot root) : IDisposable
+public sealed class MountedFunctionalChat(Border target, FunctionalHostControl host, ChatRoot root) : IDisposable
 {
-    public OpenClawChatRoot ChatRoot => root;
+    public ChatRoot ChatRoot => root;
 
     /// <summary>Push a picked file into the composer as a pending attachment.</summary>
     public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });

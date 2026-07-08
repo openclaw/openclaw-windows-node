@@ -7,7 +7,7 @@ namespace OpenClawTray.Helpers;
 /// Helper for WebView2-hosted gateway chat. Used today only by the
 /// Onboarding flow's WebView2 overlay (the Hub Chat tab and tray
 /// ChatWindow popup were migrated to native FunctionalUI controls — see
-/// <c>OpenClawTray.Chat.OpenClawChatRoot</c> + <c>OpenClawChatDataProvider</c>).
+/// <c>OpenClawTray.Chat.ChatRoot</c> + <c>OpenClawChatDataProvider</c>).
 /// Retire this helper when the onboarding chat surface is migrated too.
 /// </summary>
 public static class GatewayChatHelper

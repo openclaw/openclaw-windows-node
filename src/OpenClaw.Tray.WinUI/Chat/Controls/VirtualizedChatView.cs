@@ -13,7 +13,7 @@ namespace OpenClawTray.Chat.Controls;
 /// follow-scroll, load-earlier, per-session offset restore, and the floating
 /// scroll-to-latest affordance while row UI remains supplied by FunctionalUI.
 /// </summary>
-public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
+public sealed class VirtualizedChatView : ContentControl, IDisposable
 {
     private const double FollowThreshold = 60;
     private const int MaxSessionOffsets = 50;
@@ -25,10 +25,10 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
     private readonly ItemsRepeater _itemsRepeater;
     private readonly Button _scrollToLatestButton;
     private readonly ChatRowElementFactory _rowFactory;
-    private readonly ObservableCollection<OpenClawChatTimelineRow> _rows = new();
+    private readonly ObservableCollection<ChatTimelineRow> _rows = new();
     private readonly HashSet<string> _rowKeyScratch = new(StringComparer.Ordinal);
 
-    private OpenClawChatTimelineView _view = OpenClawChatTimelineView.Empty;
+    private ChatTimelineView _view = ChatTimelineView.Empty;
     private string? _previousSessionId;
     private int _previousEntryCount;
     private string? _previousFirstEntryId;
@@ -50,7 +50,7 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
     private int _loadMoreRequestedForCount = -1;
     private bool _disposed;
 
-    public OpenClawVirtualizedChatView()
+    public VirtualizedChatView()
     {
         HorizontalAlignment = HorizontalAlignment.Stretch;
         VerticalAlignment = VerticalAlignment.Stretch;
@@ -115,7 +115,7 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
         Content = root;
     }
 
-    public void Update(OpenClawChatTimelineView view)
+    public void Update(ChatTimelineView view)
     {
         ArgumentNullException.ThrowIfNull(view);
 
@@ -204,7 +204,7 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
         QueueScrollToBottom(_view.SessionId, disableAnimation: false);
     }
 
-    private void SyncRows(IReadOnlyList<OpenClawChatTimelineRow> desiredRows)
+    private void SyncRows(IReadOnlyList<ChatTimelineRow> desiredRows)
     {
         StableRowCollection.Sync(_rows, desiredRows, row => row.Key, _rowKeyScratch);
     }
@@ -444,11 +444,12 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
 
     private sealed class ChatRowElementFactory : IElementFactory, IDisposable
     {
-        private readonly Dictionary<string, OpenClawChatTimelineRow> _rows = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ChatTimelineRow> _rows = new(StringComparer.Ordinal);
         private readonly Dictionary<string, FunctionalHostControl> _hosts = new(StringComparer.Ordinal);
         private readonly Dictionary<string, double> _rowHeights = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _realizedKeys = new(StringComparer.Ordinal);
 
-        public void Update(IReadOnlyList<OpenClawChatTimelineRow> rows)
+        public void Update(IReadOnlyList<ChatTimelineRow> rows)
         {
             _rows.Clear();
             foreach (var row in rows)
@@ -462,16 +463,22 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
 
         private void RefreshRealizedRows()
         {
-            foreach (var (key, host) in _hosts)
+            foreach (var key in _realizedKeys.ToArray())
             {
-                if (host.Parent is not null && _rows.TryGetValue(key, out var row))
+                if (_rows.TryGetValue(key, out var row) && _hosts.TryGetValue(key, out var host))
+                {
                     Mount(host, row);
+                }
+                else
+                {
+                    _realizedKeys.Remove(key);
+                }
             }
         }
 
         public UIElement GetElement(ElementFactoryGetArgs args)
         {
-            if (args.Data is not OpenClawChatTimelineRow row)
+            if (args.Data is not ChatTimelineRow row)
                 return new ContentPresenter();
 
             if (_rows.TryGetValue(row.Key, out var latestRow))
@@ -510,6 +517,7 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
             }
 
             Mount(host, row);
+            _realizedKeys.Add(row.Key);
             return host;
         }
 
@@ -522,6 +530,7 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
             if (key is null)
                 return;
 
+            _realizedKeys.Remove(key);
             host.Dispose();
             _hosts.Remove(key);
         }
@@ -533,9 +542,10 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
 
             _hosts.Clear();
             _rows.Clear();
+            _realizedKeys.Clear();
         }
 
-        private static void Mount(FunctionalHostControl host, OpenClawChatTimelineRow row)
+        private static void Mount(FunctionalHostControl host, ChatTimelineRow row)
         {
             host.Mount(_ => row.Render(), preserveRootContext: true);
         }

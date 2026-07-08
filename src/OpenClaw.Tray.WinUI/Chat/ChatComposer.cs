@@ -40,7 +40,7 @@ namespace OpenClawTray.Chat;
 /// </summary>
 public record ChannelGroup(string AgentLabel, (string Id, string Title)[] Sessions);
 
-public record OpenClawComposerProps(
+public record ChatComposerProps(
     string ConnectionState,
     bool TurnActive,
     string ChannelLabel,
@@ -80,7 +80,7 @@ public record OpenClawComposerProps(
     Action? OnCommandsRequested = null,
     double? AvailableHeight = null);
 
-public sealed class OpenClawComposer : Component<OpenClawComposerProps>
+public sealed class ChatComposer : Component<ChatComposerProps>
 {
     private const double CompactQueuedMessagesMaxHeight = 144;
     private const double ExpandedQueuedMessagesFallbackMaxHeight = 220;
@@ -194,7 +194,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     // Voice recording cancelled mid-transcription or pipeline
                     // unavailable. The UI already reflects the cancel; surface
                     // the cause at Debug for diagnostics.
-                    OpenClawTray.Services.Logger.Debug($"OpenClawComposer: voice transcription failed/cancelled: {ex.Message}");
+                    OpenClawTray.Services.Logger.Debug($"ChatComposer: voice transcription failed/cancelled: {ex.Message}");
                 }
                 finally
                 {
@@ -634,7 +634,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         {
                             // If anything goes wrong reading the clipboard,
                             // fall through to the default text paste behavior.
-                            OpenClawTray.Services.Logger.Debug($"OpenClawComposer: clipboard image paste failed, falling back to text: {ex.Message}");
+                            OpenClawTray.Services.Logger.Debug($"ChatComposer: clipboard image paste failed, falling back to text: {ex.Message}");
                         }
                     };
                 }
@@ -1389,7 +1389,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // the composer. It now renders inline in the timeline as a
         // ChatTimelineItemKind.PermissionRequest entry so the conversation
         // history records every approval (and its decided/expired badge)
-        // in chronological order. See OpenClawChatTimeline.RenderPermissionEntry.
+        // in chronological order. See ChatTimeline.RenderPermissionEntry.
 
         var bottomToolbar = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
             dropdownsRow

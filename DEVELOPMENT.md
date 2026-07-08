@@ -241,9 +241,9 @@ settings-controlled fallback.
 **Layering:**
 
 ```
-src/OpenClaw.Tray.WinUI/Chat/    OpenClawChatTimeline · OpenClawComposer · OpenClawSessionHeader
+src/OpenClaw.Tray.WinUI/Chat/    ChatTimeline · ChatComposer · OpenClawSessionHeader
                                  OpenClawChatDataProvider (adapts OpenClawGatewayClient → IChatDataProvider)
-                                 OpenClawChatRoot         (FunctionalUI component composing the chat surface)
+                                 ChatRoot                 (FunctionalUI component composing the chat surface)
                                  FunctionalChatHostExtensions (mounts FunctionalUI into a XAML <Border>)
                                  IChatGatewayBridge       (testability seam over OpenClawGatewayClient)
         ▲ depends on

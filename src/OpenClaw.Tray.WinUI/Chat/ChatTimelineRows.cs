@@ -8,15 +8,15 @@ namespace OpenClawTray.Chat;
 /// Keyed, renderer-agnostic row descriptor consumed by the virtualized chat host.
 /// The row keeps identity separate from the bubble/tool/permission UI that renders it.
 /// </summary>
-public sealed record OpenClawChatTimelineRow(string Key, Func<Element> Render, double EstimatedHeight = 0);
+public sealed record ChatTimelineRow(string Key, Func<Element> Render, double EstimatedHeight = 0);
 
 /// <summary>
-/// Snapshot passed from <see cref="OpenClawChatTimeline"/> into the native
+/// Snapshot passed from <see cref="ChatTimeline"/> into the native
 /// virtualized host. It contains the rendered row descriptors plus the scroll
 /// anchors needed to preserve existing chat timeline behavior.
 /// </summary>
-public sealed record OpenClawChatTimelineView(
-    IReadOnlyList<OpenClawChatTimelineRow> Rows,
+public sealed record ChatTimelineView(
+    IReadOnlyList<ChatTimelineRow> Rows,
     string? SessionId,
     int EntryCount,
     string? FirstEntryId,
@@ -27,8 +27,8 @@ public sealed record OpenClawChatTimelineView(
     int ScrollToBottomToken,
     int SuppressAutoFollowToken)
 {
-    public static OpenClawChatTimelineView Empty { get; } = new(
-        Array.Empty<OpenClawChatTimelineRow>(),
+    public static ChatTimelineView Empty { get; } = new(
+        Array.Empty<ChatTimelineRow>(),
         null,
         0,
         null,
@@ -40,10 +40,10 @@ public sealed record OpenClawChatTimelineView(
         0);
 }
 
-public partial class OpenClawChatTimeline
+public partial class ChatTimeline
 {
-    private static OpenClawChatTimelineView BuildVirtualizedTimelineView(
-        OpenClawChatTimelineProps props,
+    private static ChatTimelineView BuildVirtualizedTimelineView(
+        ChatTimelineProps props,
         IReadOnlyList<Element> timelineRows,
         Element loadMoreButton,
         int entryCount,
@@ -51,16 +51,16 @@ public partial class OpenClawChatTimeline
         string? lastEntryId,
         int suppressAutoFollowToken)
     {
-        var virtualizedRows = new List<OpenClawChatTimelineRow>(timelineRows.Count + 3);
+        var virtualizedRows = new List<ChatTimelineRow>(timelineRows.Count + 3);
         if (props.HasMoreHistory)
         {
             var loadMoreRow = loadMoreButton;
-            virtualizedRows.Add(new OpenClawChatTimelineRow(
+            virtualizedRows.Add(new ChatTimelineRow(
                 "chrome:load-more",
                 () => loadMoreRow));
         }
 
-        virtualizedRows.Add(new OpenClawChatTimelineRow(
+        virtualizedRows.Add(new ChatTimelineRow(
             "chrome:top-spacer",
             () => Border(Empty()).Height(20)));
 
@@ -70,14 +70,14 @@ public partial class OpenClawChatTimeline
             var rowKey = string.IsNullOrEmpty(rowElement.Key)
                 ? $"row:index:{rowIndex}"
                 : $"row:{rowElement.Key}";
-            virtualizedRows.Add(new OpenClawChatTimelineRow(rowKey, () => rowElement, EstimatedHeight: 64));
+            virtualizedRows.Add(new ChatTimelineRow(rowKey, () => rowElement, EstimatedHeight: 64));
         }
 
-        virtualizedRows.Add(new OpenClawChatTimelineRow(
+        virtualizedRows.Add(new ChatTimelineRow(
             "chrome:bottom-spacer",
             () => Border(Empty()).Height(24)));
 
-        return new OpenClawChatTimelineView(
+        return new ChatTimelineView(
             virtualizedRows,
             props.SessionId,
             entryCount,

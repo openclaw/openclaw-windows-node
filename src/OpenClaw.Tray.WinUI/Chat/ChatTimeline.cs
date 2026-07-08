@@ -23,7 +23,7 @@ namespace OpenClawTray.Chat;
 /// Extension of <see cref="ChatTimelineProps"/> with OpenClaw-specific
 /// per-entry metadata (<see cref="ChatEntryMetadata"/>) and sender/model
 /// labels used in the per-message footer rendering. Created by
-/// <c>OpenClawChatRoot</c>.
+/// <c>ChatRoot</c>.
 /// </summary>
 /// <param name="EntryMetadata">
 /// Optional per-entry metadata snapshot keyed by <c>ChatTimelineItem.Id</c>.
@@ -39,7 +39,7 @@ namespace OpenClawTray.Chat;
 /// </param>
 /// <param name="ShowToolCalls">When true, renders tool-call progress and usage footer summaries.</param>
 /// <param name="ToolCallsCollapseVersion">Bumps when expanded tool details should be reset.</param>
-public record OpenClawChatTimelineProps(
+public record ChatTimelineProps(
     string? SessionId,
     IReadOnlyList<ChatTimelineItem> Entries,
     bool HasMoreHistory,
@@ -72,7 +72,7 @@ public record OpenClawChatTimelineProps(
 ///   <item>Reasoning / status entries: muted styling as in upstream.</item>
 /// </list>
 /// </summary>
-public partial class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
+public partial class ChatTimeline : Component<ChatTimelineProps>
 {
     public override Element Render()
     {
@@ -106,7 +106,7 @@ public partial class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         // Keep the last showToolCalls value so collapsing the tool-call surface
         // can reset row-local expanded state without forcing a full timeline
-        // StackPanel clear. Row realization now belongs to OpenClawVirtualizedChatView.
+        // StackPanel clear. Row realization now belongs to VirtualizedChatView.
         var prevShowToolCallsRef = UseRef(showToolCalls);
         if (prevShowToolCallsRef.Current != showToolCalls)
         {
@@ -1997,8 +1997,8 @@ public partial class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // Page background matches dash-light --bg so bubbles stand out.
             Border(
                 Native(
-                    () => new OpenClawVirtualizedChatView(),
-                    (OpenClawVirtualizedChatView element) => element.Update(timelineView))
+                    () => new VirtualizedChatView(),
+                    (VirtualizedChatView element) => element.Update(timelineView))
             ).Background(chatPageBg).Grid(row: 0, column: 0)
         );
     }

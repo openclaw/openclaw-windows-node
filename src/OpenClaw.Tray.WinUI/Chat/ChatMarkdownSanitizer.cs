@@ -36,7 +36,7 @@ internal static class ChatMarkdownSanitizer
     /// <summary>
     /// Flatten a parsed Markdown link's display text + destination URI
     /// into a single inert plain-text string. Used by the
-    /// <c>OpenClawChatTimeline</c> rendering path so
+    /// <c>ChatTimeline</c> rendering path so
     /// that links the parser DOES emit (bare URLs, autolinks
     /// <c>&lt;https://…&gt;</c>) collapse to non-clickable text instead
     /// of <see cref="System.Windows.Documents.Hyperlink"/>-style runs.

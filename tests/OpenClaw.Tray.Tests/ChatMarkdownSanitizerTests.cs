@@ -326,7 +326,7 @@ public class ChatMarkdownSanitizerTests
     // ── chat rubber-duck round 2 MEDIUM 3: LinkBuilder hook safety ──
     //
     // These exercise the pure plain-text helper that the WinUI
-    // OpenClawChatTimeline wires into MarkdownOptions.LinkBuilder. The
+    // ChatTimeline wires into MarkdownOptions.LinkBuilder. The
     // contract: no matter what shape the parser produces (autolink,
     // bare URL, full ``[text](url)`` after sanitization, nested image
     // inside a link), the LinkBuilder collapses it to inert text

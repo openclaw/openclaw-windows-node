@@ -7,9 +7,9 @@ public sealed class ChatToolCallsToggleContractTests
     [Fact]
     public void ProductionTimeline_HonorsComposerToolCallVisibilityToggle()
     {
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
-        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatRoot.cs");
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposer.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
 
         Assert.Contains("ShowToolCalls: showToolCalls.Value", root);
         Assert.Contains("ToolCallsCollapseVersion: toolCallsCollapseVersion.Value", root);
@@ -28,8 +28,8 @@ public sealed class ChatToolCallsToggleContractTests
     public void ChatExplorationDesignSurface_IsRemoved()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var chatRoot = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var chatRoot = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatRoot.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
 
         Assert.False(Directory.Exists(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Chat", "Explorations")));
         Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "ChatExplorationsWindow.cs")));

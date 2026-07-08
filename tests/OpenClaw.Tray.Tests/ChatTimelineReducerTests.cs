@@ -439,7 +439,7 @@ public class ChatTimelineReducerTests
     // When a tool call fails and the assistant then sends a final reply, both
     // entries should be present in state, the turn should end cleanly, and the
     // ToolCall entry should precede the Assistant entry in the insertion order
-    // (the rendering layer in OpenClawChatTimeline reorders them for display).
+    // (the rendering layer in ChatTimeline reorders them for display).
 
     [Fact]
     public void ToolError_ThenFinalAssistant_ProducesToolAndAssistantEntries()
@@ -487,7 +487,7 @@ public class ChatTimelineReducerTests
     public void ToolError_ThenFinalAssistant_ToolEntryPrecedesAssistantInState()
     {
         // Pins the state insertion order: ToolCall is added first, then Assistant.
-        // The rendering layer (OpenClawChatTimeline) reorders ToolCall entries to
+        // The rendering layer (ChatTimeline) reorders ToolCall entries to
         // appear AFTER non-ToolCall entries within a turn, so the failed tool event
         // ends up at the visual bottom instead of the assistant reply — see #672.
         var state = ChatTimelineState.Initial();

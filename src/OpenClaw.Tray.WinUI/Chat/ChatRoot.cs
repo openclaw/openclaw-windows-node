@@ -22,7 +22,7 @@ namespace OpenClawTray.Chat;
 /// session navigation (via the existing NavigationView/SessionsPage) so
 /// no Sidebar is rendered here.
 /// </summary>
-public sealed class OpenClawChatRoot : Component
+public sealed class ChatRoot : Component
 {
     private static bool s_showToolCalls = true;
     private static int s_toolCallsCollapseVersion;
@@ -83,7 +83,7 @@ public sealed class OpenClawChatRoot : Component
         set => _setVoiceAudioLevel = value;
     }
 
-    public OpenClawChatRoot(
+    public ChatRoot(
         IChatDataProvider provider,
         string? initialThreadId = null,
         Func<string, Task>? onReadAloud = null,
@@ -491,7 +491,7 @@ public sealed class OpenClawChatRoot : Component
         }
         else
         {
-            body = Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(new(
+            body = Component<ChatTimeline, ChatTimelineProps>(new(
                 SessionId: effectiveThread.Id,
                 Entries: entries,
                 HasMoreHistory: false,
@@ -560,7 +560,7 @@ public sealed class OpenClawChatRoot : Component
         }
 
         Element composer = effectiveThread is { } composerThread
-            ? Component<OpenClawComposer, OpenClawComposerProps>(new(
+            ? Component<ChatComposer, ChatComposerProps>(new(
                 ConnectionState: connState,
                 TurnActive: turnActiveOverride,
                 ChannelLabel: composerThread.Title ?? "OpenClaw Windows Tray",
