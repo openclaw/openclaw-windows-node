@@ -3229,6 +3229,42 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_FailedQueuedCardDoesNotForceNextSendToQueue()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "failed", Error = "queued failed" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-3", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "failed queued");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() => HasFailedQueuedMessage(snapshots[^1], "main", "failed queued"));
+
+        var beforeNextSendSnapshotCount = snapshots.Count;
+        await provider.SendMessageAsync("main", "after failure");
+
+        var queued = GetQueuedMessages(snapshots[^1], "main");
+        Assert.Single(queued, message =>
+            message.Text == "failed queued" &&
+            message.SendState == ChatQueuedMessageSendState.Failed);
+        Assert.DoesNotContain(snapshots.Skip(beforeNextSendSnapshotCount), snapshot =>
+            GetQueuedMessages(snapshot, "main").Any(message => message.Text == "after failure"));
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.User &&
+            entry.Text == "after failure");
+    }
+
+    [Fact]
     public async Task QueuedSend_RepeatedInFlightAckWithoutLifecycle_EventuallyFails()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });

@@ -283,7 +283,7 @@ public class McpToolBridge
         ["app.chat.queue.list"] =
             "READ-ALL: List native chat outgoing queue entries. Args: threadId/sessionKey (string, optional; omit to return all queued threads). Returns { defaultThreadId, requestedThreadId, totalCount, selectedThread, threads: [{ threadId, count, messages: [{ id, text, createdAt, sendState, errorText, canCancel }] }] }.",
         ["app.chat.queue.cancel"] =
-            "Cancel/remove one native chat outgoing queue entry before it is sent. Args: queuedMessageId (string, required), threadId/sessionKey (string, optional; defaults to current compose/default thread). Only Queued/Failed entries can be removed; Sending entries may already have reached the gateway. Returns { canceled, threadId, queuedMessageId, remainingCount, error? }.",
+            "Cancel/remove one native chat outgoing queue entry before it is sent. Args: queuedMessageId (string, required), threadId/sessionKey (string, required; use the threadId returned by app.chat.queue.list or app.chat.snapshot). Only Queued/Failed entries can be removed; Sending entries may already have reached the gateway. Returns { canceled, threadId, queuedMessageId, remainingCount, error? }.",
 
         // location.*
         ["location.get"] =

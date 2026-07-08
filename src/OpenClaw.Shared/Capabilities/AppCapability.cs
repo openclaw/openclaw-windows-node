@@ -209,7 +209,7 @@ public class AppCapability : NodeCapabilityBase
         if (ChatSnapshotHandler == null)
             return Error("Chat snapshot handler not registered");
 
-        var result = await ChatSnapshotHandler(GetOptionalThreadId(request));
+        var result = await ChatSnapshotHandler(GetThreadIdOrSessionKeyArg(request));
         return Success(result);
     }
 
@@ -222,7 +222,7 @@ public class AppCapability : NodeCapabilityBase
         if (string.IsNullOrWhiteSpace(message))
             return Error("Missing required arg: message");
 
-        var result = await ChatSendHandler(GetOptionalThreadId(request), message);
+        var result = await ChatSendHandler(GetThreadIdOrSessionKeyArg(request), message);
         return Success(result);
     }
 
@@ -231,7 +231,7 @@ public class AppCapability : NodeCapabilityBase
         if (ChatResetHandler == null)
             return Error("Chat reset handler not registered");
 
-        var result = await ChatResetHandler(GetOptionalThreadId(request));
+        var result = await ChatResetHandler(GetThreadIdOrSessionKeyArg(request));
         return Success(result);
     }
 
@@ -240,7 +240,7 @@ public class AppCapability : NodeCapabilityBase
         if (ChatQueueListHandler == null)
             return Error("Chat queue list handler not registered");
 
-        var result = await ChatQueueListHandler(GetOptionalThreadId(request));
+        var result = await ChatQueueListHandler(GetThreadIdOrSessionKeyArg(request));
         return Success(result);
     }
 
@@ -253,11 +253,15 @@ public class AppCapability : NodeCapabilityBase
         if (string.IsNullOrWhiteSpace(queuedMessageId))
             return Error("Missing required arg: queuedMessageId");
 
-        var result = await ChatQueueCancelHandler(GetOptionalThreadId(request), queuedMessageId);
+        var threadId = GetThreadIdOrSessionKeyArg(request);
+        if (string.IsNullOrWhiteSpace(threadId))
+            return Error("Missing required arg: threadId");
+
+        var result = await ChatQueueCancelHandler(threadId, queuedMessageId);
         return Success(result);
     }
 
-    private string? GetOptionalThreadId(NodeInvokeRequest request) =>
+    private string? GetThreadIdOrSessionKeyArg(NodeInvokeRequest request) =>
         GetStringArg(request.Args, "threadId")
         ?? GetStringArg(request.Args, "sessionKey");
 }

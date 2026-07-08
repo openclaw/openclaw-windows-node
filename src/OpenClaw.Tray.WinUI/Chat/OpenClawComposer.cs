@@ -50,6 +50,7 @@ public record OpenClawComposerProps(
     string? CurrentModel,
     string? CurrentModelProvider,
     string? CurrentThinkingLevel,
+    bool MessageOptionsDisabled,
     Action<string, IReadOnlyList<ChatAttachment>> OnSend,
     Action OnStop,
     Action<string> OnChannelChanged,
@@ -235,7 +236,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         var sendActionRef = UseRef<Action>(sendAction);
         sendActionRef.Current = sendAction;
         var isConnected = Props.ConnectionState == "connected";
-        var messageOptionControlsEnabled = !Props.TurnActive && queuedMessages.Count == 0;
+        var messageOptionControlsEnabled = !Props.MessageOptionsDisabled;
         var placeholder = Props.ConnectionState switch
         {
             "connected" => LocalizationHelper.GetString("Chat_Composer_Placeholder_Connected"),

@@ -408,7 +408,7 @@ Cancel/remove one native chat outgoing queue entry before it is sent.
 ```
 {
   "queuedMessageId": "string", // required; from app.chat.queue.list or app.chat.snapshot queue
-  "threadId": "string"         // optional; defaults to compose/default thread
+  "threadId": "string"         // required; "sessionKey" alias also accepted
 }
 ```
 Only `Queued` and `Failed` entries can be removed. `Sending` entries may already

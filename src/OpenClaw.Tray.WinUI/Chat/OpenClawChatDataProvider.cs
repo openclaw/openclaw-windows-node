@@ -2825,7 +2825,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return false;
         if (_timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive)
             return false;
-        return !_queuedMessages.TryGetValue(threadId, out var queuedMessages) || queuedMessages.Count == 0;
+        return !HasPendingQueuedMessagesLocked(threadId);
     }
 
     private bool CanClearAssistantFallbackPromotionLocked(string threadId)

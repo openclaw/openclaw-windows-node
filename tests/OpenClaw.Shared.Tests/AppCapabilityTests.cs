@@ -273,4 +273,29 @@ public class AppCapabilityTests
         Assert.False(res.Ok);
         Assert.Contains("queuedMessageId", res.Error);
     }
+
+    [Fact]
+    public async Task ChatQueueCancel_WithoutThreadId_ReturnsError()
+    {
+        var cap = new AppCapability(NullLogger.Instance);
+        var handlerCalled = false;
+        cap.ChatQueueCancelHandler = (_, _) =>
+        {
+            handlerCalled = true;
+            return Task.FromResult<object?>(new { canceled = true });
+        };
+
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.chat.queue.cancel",
+            Args = ParseArgs("{\"queuedMessageId\":\"q7\"}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Contains("threadId", res.Error);
+        Assert.False(handlerCalled);
+    }
 }

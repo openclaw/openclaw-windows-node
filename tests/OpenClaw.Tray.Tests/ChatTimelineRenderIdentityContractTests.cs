@@ -89,11 +89,14 @@ public sealed class ChatTimelineRenderIdentityContractTests
     }
 
     [Fact]
-    public void Composer_DisablesMessageOptionDropdownsWhileTurnOrQueueIsActive()
+    public void Composer_DisablesMessageOptionDropdownsWhileTurnOrPendingQueueSendIsActive()
     {
         var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
 
-        Assert.Contains("var messageOptionControlsEnabled = !Props.TurnActive && queuedMessages.Count == 0;", composer);
+        Assert.Contains("var messageOptionControlsEnabled = !Props.MessageOptionsDisabled;", composer);
+        Assert.Contains("MessageOptionsDisabled: turnActiveOverride || hasPendingQueuedSend", root);
+        Assert.Contains("message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending", root);
         Assert.Equal(2, Regex.Matches(composer, "IsEnabled = messageOptionControlsEnabled").Count);
         Assert.DoesNotMatch(
             new Regex(@"var\s+channelCombo[\s\S]*?IsEnabled\s*=\s*messageOptionControlsEnabled[\s\S]*?//\s+── Model picker", RegexOptions.Multiline),
