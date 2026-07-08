@@ -15,6 +15,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
     private readonly IOpenClawLogger _logger;
     private readonly Func<OpenClawChatDataProvider?>? _chatProviderProvider;
     private readonly Func<string, bool>? _inlineApprovalAvailable;
+    private static string NativePromptTitle => $"{AppIdentity.DisplayName} - Approve local command?";
 
     public ExecApprovalPromptService(
         DispatcherQueue dispatcherQueue,
@@ -161,7 +162,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
     private static ExecApprovalPromptDecision ShowNativePrompt(ExecApprovalPromptRequest request)
     {
         var text =
-            "A remote agent wants to run a local command on this Windows machine." +
+            $"{AppIdentity.DisplayName} needs approval before a remote agent can run a local command on this Windows machine." +
             "\r\n\r\n" +
             request.Command +
             "\r\n\r\n" +
@@ -190,7 +191,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         var result = MessageBoxW(
             IntPtr.Zero,
             fallbackText,
-            "Approve local command?",
+            NativePromptTitle,
             MessageBoxFlags.YesNoCancel |
             MessageBoxFlags.IconWarning |
             MessageBoxFlags.TopMost |
@@ -263,7 +264,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
             _hwnd = CreateWindowExW(
                 WindowExStyleTopMost | WindowExStyleDialogModalFrame,
                 WindowClassName,
-                "Approve local command?",
+                NativePromptTitle,
                 WindowStyleCaption | WindowStyleSystemMenu | WindowStyleVisible,
                 x,
                 y,
@@ -341,7 +342,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
         private void CreateControls(IntPtr hwnd)
         {
             var font = GetStockObject(DefaultGuiFont);
-            CreateChild(hwnd, "STATIC", "Approve local command?", 20, 18, 590, 24, StaticStyleLeft, 0, font);
+            CreateChild(hwnd, "STATIC", NativePromptTitle, 20, 18, 590, 24, StaticStyleLeft, 0, font);
             CreateChild(
                 hwnd,
                 "EDIT",

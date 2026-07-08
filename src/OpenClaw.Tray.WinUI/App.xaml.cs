@@ -475,6 +475,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Store protocol URI for processing after setup
         _pendingProtocolUri = protocolUri;
 
+        var appUserModelIdRegistration = AppUserModelIdRegistrar.RegisterCurrentProcess(AppIdentity.AppUserModelId);
+        if (appUserModelIdRegistration.Attempted && appUserModelIdRegistration.HResult < 0)
+        {
+            Logger.Warn($"Failed to set AppUserModelID '{AppIdentity.AppUserModelId}' (HRESULT=0x{appUserModelIdRegistration.HResult:X8}); toast sender name may fall back to the executable name.");
+        }
+
         // Initialize settings before update check so skip selections can be remembered.
         _settings = new SettingsManager();
         _previousSettingsSnapshot = _settings.ToSettingsData().ToConnectionSnapshot();

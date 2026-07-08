@@ -54,7 +54,8 @@ public sealed class PairingApprovalDialog : WindowEx
     {
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
 
-        Title = LocalizationHelper.GetString("PairingApproval_WindowTitle");
+        var windowTitle = $"{AppIdentity.DisplayName} - {LocalizationHelper.GetString("PairingApproval_WindowTitle")}";
+        Title = windowTitle;
         this.SetWindowSize(460, 460);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
@@ -70,7 +71,7 @@ public sealed class PairingApprovalDialog : WindowEx
         titleBar.Children.Add(titleIcon);
         var titleText = new TextBlock
         {
-            Text = LocalizationHelper.GetString("PairingApproval_WindowTitle"),
+            Text = windowTitle,
             FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],

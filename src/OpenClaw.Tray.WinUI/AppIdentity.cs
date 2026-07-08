@@ -16,6 +16,9 @@ internal static class AppIdentity
     /// <summary>MSIX package identity name (must differ from release for side-by-side).</summary>
     public const string PackageIdentityName = "OpenClaw.Companion.Dev";
 
+    /// <summary>Win32 AppUserModelID used for notifications and shell grouping.</summary>
+    public const string AppUserModelId = PackageIdentityName;
+
     /// <summary>Windows Registry auto-start value name (must differ so both can auto-start).</summary>
     public const string AutoStartRegistryName = "OpenClawTray-Dev";
 
@@ -51,6 +54,9 @@ internal static class AppIdentity
 
     /// <summary>MSIX package identity name.</summary>
     public const string PackageIdentityName = "OpenClaw.Companion";
+
+    /// <summary>Win32 AppUserModelID used for notifications and shell grouping.</summary>
+    public const string AppUserModelId = PackageIdentityName;
 
     /// <summary>Windows Registry auto-start value name.</summary>
     public const string AutoStartRegistryName = "OpenClawTray";

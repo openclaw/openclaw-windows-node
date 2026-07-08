@@ -789,7 +789,7 @@
   </data>
   <!-- ==================== Recording Consent Dialog ==================== -->
   <data name="RecordingConsent_WindowTitle" xml:space="preserve">
-    <value>OpenClaw · 权限请求</value>
+    <value>权限请求</value>
   </data>
   <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
     <value>允许屏幕录制？</value>

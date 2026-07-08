@@ -28,6 +28,8 @@ public sealed class AppRefactorContractTests
 
         AssertInOrder(
             source,
+            "AppUserModelIdRegistrar.RegisterCurrentProcess(AppIdentity.AppUserModelId);",
+            "appUserModelIdRegistration.Attempted",
             "_settings = new SettingsManager();",
             "CheckForUpdatesAsync();",
             "ToastNotificationManagerCompat.OnActivated += OnToastActivated;",

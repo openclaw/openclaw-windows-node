@@ -38,7 +38,8 @@ public sealed class RecordingConsentDialog : WindowEx
         var descriptionKey = isScreen ? "RecordingConsent_ScreenDescription" : "RecordingConsent_CameraDescription";
         var emoji = isScreen ? "🖥️" : "📷";
 
-        Title = LocalizationHelper.GetString("RecordingConsent_WindowTitle");
+        var windowTitle = $"{AppIdentity.DisplayName} - {LocalizationHelper.GetString("RecordingConsent_WindowTitle")}";
+        Title = windowTitle;
         this.SetWindowSize(460, 340);
         this.CenterOnScreen();
         this.SetIcon("Assets\\openclaw.ico");
@@ -67,7 +68,7 @@ public sealed class RecordingConsentDialog : WindowEx
 
         var titleText = new TextBlock
         {
-            Text = LocalizationHelper.GetString("RecordingConsent_WindowTitle"),
+            Text = windowTitle,
             FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"]

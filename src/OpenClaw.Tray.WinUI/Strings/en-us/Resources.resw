@@ -832,7 +832,7 @@ Use one of these options:
   </data>
   <!-- ==================== Recording Consent Dialog ==================== -->
   <data name="RecordingConsent_WindowTitle" xml:space="preserve">
-    <value>OpenClaw · Permission Request</value>
+    <value>Permission Request</value>
   </data>
   <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
     <value>Allow screen recording?</value>

@@ -789,7 +789,7 @@ Utilisez l'une de ces options :
   </data>
   <!-- ==================== Recording Consent Dialog ==================== -->
   <data name="RecordingConsent_WindowTitle" xml:space="preserve">
-    <value>OpenClaw · Demande d'autorisation</value>
+    <value>Demande d'autorisation</value>
   </data>
   <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
     <value>Autoriser l'enregistrement d'écran ?</value>
