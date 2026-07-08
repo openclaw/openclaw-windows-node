@@ -2816,6 +2816,29 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task CancelQueuedMessageAsync_RemovingLastQueuedMessageClearsStaleDrainGuard()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-active", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "active");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-active"));
+        await provider.SendMessageAsync("main", "queued");
+
+        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        var scheduled = GetQueuedDrainScheduledThreads(provider);
+        scheduled.Add("main");
+
+        var canceled = await provider.CancelQueuedMessageAsync("main", queued.Id);
+
+        Assert.True(canceled);
+        Assert.DoesNotContain("main", scheduled);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+    }
+
+    [Fact]
     public async Task CancelQueuedMessageAsync_ReturnsFalseForSendingQueuedCard()
     {
         var queuedSendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -2882,6 +2905,48 @@ public class OpenClawChatDataProviderTests
         await Task.Delay(50);
 
         Assert.Equal(0, historyCalls);
+    }
+
+    [Fact]
+    public async Task CancelQueuedMessageAsync_LastQueuedAfterLifecycleEndAllowsNextRemoteRunBackfill()
+    {
+        var historyCalls = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-active", Status = "started" });
+        bridge.HistoryBehavior = _ =>
+        {
+            historyCalls++;
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages = new[]
+                {
+                    new ChatMessageInfo { SessionKey = "main", Role = "user", Text = "remote prompt" },
+                },
+            });
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "active");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-active"));
+        await provider.SendMessageAsync("main", "queued");
+        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-active"));
+        var canceled = await provider.CancelQueuedMessageAsync("main", queued.Id);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-remote"));
+
+        Assert.True(canceled);
+        await WaitForConditionAsync(() =>
+            historyCalls > 0 &&
+            snapshots[^1].Timelines["main"].Entries.Any(entry =>
+                entry.Kind == ChatTimelineItemKind.User && entry.Text == "remote prompt"));
+        Assert.True(historyCalls > 0);
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.User && entry.Text == "remote prompt");
+        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.User && entry.Text == "queued");
     }
 
     [Fact]
@@ -2989,6 +3054,48 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task CancelQueuedMessageAsync_DeferredInFlightRetryRemovesQueuedCardWithoutAbortOrResend()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "deferred");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+        await WaitForConditionAsync(() =>
+        {
+            var queued = GetQueuedMessages(snapshots[^1], "main");
+            return bridge.SentMessages.Count == 2 &&
+                queued.Count == 1 &&
+                queued[0].Text == "deferred" &&
+                queued[0].SendState == ChatQueuedMessageSendState.Queued;
+        });
+
+        var deferred = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        var canceled = await provider.CancelQueuedMessageAsync("main", deferred.Id);
+        await Task.Delay(250);
+
+        Assert.True(canceled);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(new[] { "first", "deferred" }, bridge.SentMessages);
+        Assert.Empty(bridge.AbortedRunIds);
+        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.User && entry.Text == "deferred");
+    }
+
+    [Fact]
     public async Task QueuedSend_InFlightAckThenLifecycleBeforeRetry_PromotesWithoutResend()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -2996,6 +3103,23 @@ public class OpenClawChatDataProviderTests
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
         await provider.LoadAsync();
         bridge.RaiseStatus(ConnectionStatus.Connected);
+        var lifecycleRaisedBeforeRetry = false;
+        provider.Changed += (_, e) =>
+        {
+            if (lifecycleRaisedBeforeRetry || bridge.SentMessages.Count != 2)
+                return;
+
+            var queued = GetQueuedMessages(e.Snapshot, "main");
+            if (queued.Count != 1 ||
+                queued[0].Text != "Hello" ||
+                queued[0].SendState != ChatQueuedMessageSendState.Queued)
+            {
+                return;
+            }
+
+            lifecycleRaisedBeforeRetry = true;
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+        };
 
         await provider.SendMessageAsync("main", "first");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
@@ -3017,7 +3141,6 @@ public class OpenClawChatDataProviderTests
                 queued[0].SendState == ChatQueuedMessageSendState.Queued;
         });
 
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
         await WaitForConditionAsync(() =>
             GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
             snapshots[^1].Timelines["main"].Entries.Count(e =>
@@ -3031,6 +3154,7 @@ public class OpenClawChatDataProviderTests
         });
         await Task.Delay(250);
 
+        Assert.True(lifecycleRaisedBeforeRetry);
         Assert.Equal(2, bridge.SentMessages.Count);
         Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
@@ -6934,6 +7058,15 @@ public class OpenClawChatDataProviderTests
            snapshot.QueuedMessagesByThread.TryGetValue(threadId, out var queued)
             ? queued
             : Array.Empty<ChatQueuedMessage>();
+
+    private static ISet<string> GetQueuedDrainScheduledThreads(OpenClawChatDataProvider provider)
+    {
+        var field = typeof(OpenClawChatDataProvider).GetField(
+            "_queuedDrainScheduledThreads",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsAssignableFrom<ISet<string>>(field.GetValue(provider));
+    }
 
     private static bool HasFailedQueuedMessage(ChatDataSnapshot snapshot, string threadId, string text) =>
         GetQueuedMessages(snapshot, threadId).Any(message =>

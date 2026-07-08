@@ -401,13 +401,15 @@ List native chat outgoing queue entries.
 When `threadId`/`sessionKey` is omitted this returns all queued threads. Returns:
 `{ defaultThreadId, requestedThreadId, totalCount, selectedThread, threads }`
 where each thread has `{ threadId, count, messages }`, and each message has
-`{ id, text, createdAt, sendState, errorText, canCancel }`.
+`{ id, text, createdAt, sendState, errorText, canCancel }`. Queue message IDs
+are ephemeral UI/provider IDs; read them from the current `app.chat.queue.list`
+or `app.chat.snapshot` response and do not cache them across app lifetimes.
 
 ### app.chat.queue.cancel
 Cancel/remove one native chat outgoing queue entry before it is sent.
 ```
 {
-  "queuedMessageId": "string", // required; from app.chat.queue.list or app.chat.snapshot queue
+  "queuedMessageId": "string", // required; from the current app.chat.queue.list or app.chat.snapshot queue
   "threadId": "string"         // required; "sessionKey" alias also accepted
 }
 ```

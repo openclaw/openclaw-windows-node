@@ -607,6 +607,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (!sendStillCurrent)
                 return;
 
+            Logger.Warn($"[Queue] chat.send failed threadId='{threadId}' queuedMessageId='{request.Id}' sendRunId='{request.SendRunId}': {ex.Message}");
             // Surface as an error in the timeline + notification, while the
             // failed queue card keeps the attempted text visible for retry/edit.
             Publish(failureSnapshot!);
@@ -1651,6 +1652,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _localInlineApprovals.Clear();
             _queuedMessages.Clear();
             _queuedSendRequests.Clear();
+            _queuedDrainScheduledThreads.Clear();
             _queuedMessageIdsByRunId.Clear();
             _terminalRunIdsByThread.Clear();
             _localSentTexts.Clear();
@@ -1752,6 +1754,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 _localSentTexts.Clear();
                 _queuedMessages.Clear();
                 _queuedSendRequests.Clear();
+                _queuedDrainScheduledThreads.Clear();
                 _assistantFallbackPromotedThreads.Clear();
                 _queuedMessageIdsByRunId.Clear();
                 _terminalRunIdsByThread.Clear();
@@ -3032,7 +3035,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             RemoveQueuedSendRequestLocked(threadId, messageId);
         }
         if (list.Count == 0)
+        {
             _queuedMessages.Remove(threadId);
+            ClearQueuedDrainScheduleLocked(threadId);
+            ClearLocallyInitiatedIfIdleLocked(threadId);
+        }
         return removed;
     }
 
@@ -3053,9 +3060,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         RemoveQueuedRunMappingByMessageIdLocked(threadId, messageId);
         RemoveQueuedSendRequestLocked(threadId, messageId);
         if (list.Count == 0)
+        {
             _queuedMessages.Remove(threadId);
+            ClearQueuedDrainScheduleLocked(threadId);
+            ClearLocallyInitiatedIfIdleLocked(threadId);
+        }
         return true;
     }
+
+    private void ClearQueuedDrainScheduleLocked(string threadId)
+        => _queuedDrainScheduledThreads.Remove(threadId);
 
     private bool PromoteQueuedMessageLocked(
         string threadId,
@@ -3088,8 +3102,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _assistantFallbackPromotedThreads.Add(threadId);
         RemoveQueuedSendRequestLocked(threadId, messageId);
         if (list.Count == 0)
+        {
             _queuedMessages.Remove(threadId);
+            ClearQueuedDrainScheduleLocked(threadId);
+        }
         return true;
+    }
+
+    private void ClearLocallyInitiatedIfIdleLocked(string threadId)
+    {
+        if (_activeRunIds.ContainsKey(threadId))
+            return;
+        if (_timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive)
+            return;
+        if (HasPendingQueuedMessagesLocked(threadId))
+            return;
+
+        _locallyInitiatedThreads.Remove(threadId);
     }
 
     private bool ReconcileQueuedMessageEchoLocked(
@@ -4672,6 +4701,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _localSentTexts.Remove(threadId);
         _queuedMessages.Remove(threadId);
         _queuedSendRequests.Remove(threadId);
+        ClearQueuedDrainScheduleLocked(threadId);
         _queuedMessageIdsByRunId.Remove(threadId);
         _terminalRunIdsByThread.Remove(threadId);
         _assistantFallbackPromotedThreads.Remove(threadId);
