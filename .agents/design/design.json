@@ -1,0 +1,92 @@
+{
+  "$schema": "https://agents.design/schema/v1",
+  "meta": {
+    "version": 1,
+    "updatedBy": "scan+xaml",
+    "note": "Derived from the repo's WinUI 3 / XAML surfaces. This app themes off Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable), so tokens below map to Fluent theme resources rather than a bespoke hex palette. Edit in the Design System canvas or directly."
+  },
+  "brand": {
+    "name": "OpenClaw Windows Hub",
+    "tagline": "A calm native Windows companion for your AI assistant.",
+    "description": "OpenClaw Windows Hub is a native Windows companion suite for OpenClaw, the AI-powered personal assistant. Built on WinUI 3 as a system-tray app, it pairs your PC to an OpenClaw gateway, exposes allowlisted Windows node capabilities over MCP, and guides first-run pairing through a setup wizard. Its interface follows Windows Fluent design conventions — Mica surfaces, the user's system accent, and Segoe UI Variable type — so it feels like a quiet, native extension of the OS rather than a bolted-on dashboard.",
+    "surface": "product",
+    "voice": "Clear, respectful, and native to Windows. Explain pairing, permissions, and security plainly. State what will happen and why; never alarmist, never hype.",
+    "personality": ["native", "trustworthy", "calm", "precise"],
+    "antiReferences": [
+      "custom-skinned controls that fight the OS theme",
+      "neon gradients and glassmorphism overload",
+      "ignoring the user's system accent or light/dark preference",
+      "cramming a web dashboard into a desktop window",
+      "hard-coded hex that breaks in dark or high-contrast mode"
+    ]
+  },
+  "colors": [
+    { "name": "ink",       "value": "#1b1b1b", "usage": "Primary text, headings. Fluent TextFillColorPrimary on light." },
+    { "name": "paper",     "value": "#f3f3f3", "usage": "App / page background. Mica base / ApplicationPageBackground (light)." },
+    { "name": "surface",   "value": "#fbfbfb", "usage": "Cards, flyouts, inputs. Fluent CardBackgroundFillColorDefault." },
+    { "name": "muted",     "value": "#5d5d5d", "usage": "Secondary text, captions. Fluent TextFillColorSecondary/Tertiary." },
+    { "name": "line",      "value": "#e5e5e5", "usage": "Borders, dividers. Fluent CardStrokeColorDefault / DividerStroke." },
+    { "name": "accent",    "value": "#0067c0", "usage": "Primary actions, links, selection, focus. Follows SystemAccentColor (default AccentDark1 on light)." },
+    { "name": "accentInk", "value": "#ffffff", "usage": "Text/glyphs on accent fills." },
+    { "name": "positive",  "value": "#0f7b0f", "usage": "Success / connected states. Fluent SystemFillColorSuccess." },
+    { "name": "warning",   "value": "#9d5d00", "usage": "Warnings / attention. Fluent SystemFillColorCaution." },
+    { "name": "critical",  "value": "#c42b1c", "usage": "Errors, disconnected, destructive. Fluent SystemFillColorCritical." }
+  ],
+  "typography": {
+    "display": {
+      "family": "\"Segoe UI Variable Display\", \"Segoe UI Variable\", \"Segoe UI\", system-ui, sans-serif",
+      "weights": [400, 600],
+      "usage": "Page and section titles. Segoe UI Variable Display optical size."
+    },
+    "body": {
+      "family": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", system-ui, sans-serif",
+      "weights": [400, 600],
+      "usage": "Body copy, UI labels, buttons. Segoe UI Variable Text optical size."
+    },
+    "mono": {
+      "family": "\"Cascadia Mono\", \"Cascadia Code\", Consolas, \"SFMono-Regular\", monospace",
+      "weights": [400],
+      "usage": "Commands, endpoints, tokens, logs, timestamps. Used heavily across setup and diagnostics surfaces."
+    },
+    "scale": [
+      { "name": "display", "size": "40px", "lineHeight": "50px", "weight": 600, "role": "display", "tracking": "-0.01em" },
+      { "name": "title",   "size": "28px", "lineHeight": "36px", "weight": 600, "role": "display" },
+      { "name": "heading", "size": "20px", "lineHeight": "28px", "weight": 600, "role": "body" },
+      { "name": "body",    "size": "14px", "lineHeight": "20px", "weight": 400, "role": "body" },
+      { "name": "small",   "size": "13px", "lineHeight": "18px", "weight": 400, "role": "body" },
+      { "name": "caption", "size": "12px", "lineHeight": "16px", "weight": 400, "role": "body" }
+    ]
+  },
+  "spacing": {
+    "unit": 4,
+    "scale": [
+      { "name": "1", "value": "4px" },
+      { "name": "2", "value": "8px" },
+      { "name": "3", "value": "12px" },
+      { "name": "4", "value": "16px" },
+      { "name": "5", "value": "24px" },
+      { "name": "6", "value": "32px" },
+      { "name": "7", "value": "48px" },
+      { "name": "8", "value": "64px" }
+    ]
+  },
+  "radii": [
+    { "name": "sm",   "value": "4px",   "usage": "Buttons, inputs, small controls. Fluent ControlCornerRadius." },
+    { "name": "md",   "value": "8px",   "usage": "Cards, dialogs, flyouts. Fluent OverlayCornerRadius." },
+    { "name": "lg",   "value": "12px",  "usage": "Large panels and grouped surfaces." },
+    { "name": "pill", "value": "999px", "usage": "Status pills, badges, toggles." }
+  ],
+  "shadows": [
+    { "name": "sm", "value": "0 1px 2px rgba(0,0,0,0.10)" },
+    { "name": "md", "value": "0 4px 16px rgba(0,0,0,0.12)" },
+    { "name": "lg", "value": "0 12px 40px rgba(0,0,0,0.16)" }
+  ],
+  "principles": [
+    "Defer to Windows. Theme off SystemAccentColor and Fluent resources so the app follows the user's accent, light/dark, and high-contrast choices.",
+    "One accent, and it means \"act here\". Selection, focus, and primary actions share the system accent; don't spend it on decoration.",
+    "Hierarchy over decoration — size, weight, and space do the work before color does.",
+    "State must be legible: connected, pairing, and error states read clearly via positive/warning/critical, never color alone.",
+    "No hard-coded hex in UI. Use tokens/theme resources so dark and high-contrast modes stay correct.",
+    "Motion is a cue, not a garnish: 120-200ms ease-out, no bounce."
+  ]
+}
