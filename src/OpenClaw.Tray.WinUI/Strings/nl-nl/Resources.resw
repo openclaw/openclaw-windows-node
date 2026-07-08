@@ -2414,34 +2414,10 @@ Gebruik een van deze opties:
     <value>Taak verwijderen</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
-    <value>Instellingen voor Voice &amp; Audio</value>
+    <value>Spraak- en audio-instellingen</value>
   </data>
-  <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
-    <value>ElevenLabs API-sleutel</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsHelp.Text" xml:space="preserve">
-    <value>API-sleutel wordt versleuteld opgeslagen met Windows DPAPI. Laat leeg om de eerder opgeslagen waarde te behouden bij het wijzigen van andere velden.</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsModel.Header" xml:space="preserve">
-    <value>ElevenLabs-model</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsModel.PlaceholderText" xml:space="preserve">
-    <value>eleven_multilingual_v2</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsVoiceId.Header" xml:space="preserve">
-    <value>ElevenLabs stem-ID</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderComboBox.Header" xml:space="preserve">
-    <value>Aanbieder</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderElevenLabs.Content" xml:space="preserve">
-    <value>ElevenLabs</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderPiper.Content" xml:space="preserve">
-    <value>Piper (lokale ML, aanbevolen)</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderWindows.Content" xml:space="preserve">
-    <value>Ingebouwde Windows-spraak</value>
+  <data name="PermissionsPage_VoiceSettingsHelp.Text" xml:space="preserve">
+    <value>Mogelijk moet je eerst een spraakmodel of stem downloaden of selecteren voordat deze mogelijkheden werken.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Spraak en audio</value>
@@ -3359,18 +3335,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="PermissionsPage_Cap_SystemRun_Description" xml:space="preserve">
     <value>Lets agents run shell commands and scripts on this PC. Turn this off to block all command execution.</value>
   </data>
-  <data name="PermissionsPage_SttHint_Ready" xml:space="preserve">
-    <value>Whisper model is ready. Speech-to-text runs fully on this PC; no audio leaves the device.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_Downloading" xml:space="preserve">
-    <value>Whisper model is downloading. Speech-to-text will be available once it's ready.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_FailedFormat" xml:space="preserve">
-    <value>Whisper model download failed: {0}. Toggle Speech-to-text off and back on to retry.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_NotDownloaded" xml:space="preserve">
-    <value>Whisper model is not downloaded. Open More voice settings… to download it before using speech-to-text.</value>
-  </data>
   <data name="PermissionsPage_NodeStatus_Disabled" xml:space="preserve">
     <value>Node mode disabled</value>
   </data>
@@ -3436,12 +3400,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="PermissionsPage_Allowlist_ParseFailed" xml:space="preserve">
     <value>Failed to parse allowlist from config.</value>
-  </data>
-  <data name="PermissionsPage_TtsStatus_DefaultProviderFormat" xml:space="preserve">
-    <value>Default provider: {0}</value>
-  </data>
-  <data name="PermissionsPage_TtsStatus_ElevenLabsSaved" xml:space="preserve">
-    <value>ElevenLabs settings saved.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>

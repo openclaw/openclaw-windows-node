@@ -2413,34 +2413,10 @@
     <value>删除任务</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
-    <value>Voice &amp; Audio 设置</value>
+    <value>语音和音频设置</value>
   </data>
-  <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
-    <value>ElevenLabs API 密钥</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsHelp.Text" xml:space="preserve">
-    <value>API 密钥使用 Windows DPAPI 加密保存。修改其他字段时如保持为空，则保留先前保存的值。</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsModel.Header" xml:space="preserve">
-    <value>ElevenLabs 模型</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsModel.PlaceholderText" xml:space="preserve">
-    <value>eleven_multilingual_v2</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsVoiceId.Header" xml:space="preserve">
-    <value>ElevenLabs 语音 ID</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderComboBox.Header" xml:space="preserve">
-    <value>提供程序</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderElevenLabs.Content" xml:space="preserve">
-    <value>ElevenLabs</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderPiper.Content" xml:space="preserve">
-    <value>Piper（本地 ML，推荐）</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderWindows.Content" xml:space="preserve">
-    <value>Windows 内置语音</value>
+  <data name="PermissionsPage_VoiceSettingsHelp.Text" xml:space="preserve">
+    <value>你可能需要先下载或选择语音模型或语音，这些功能才能正常工作。</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>语音和音频</value>
@@ -3358,18 +3334,6 @@
   <data name="PermissionsPage_Cap_SystemRun_Description" xml:space="preserve">
     <value>Lets agents run shell commands and scripts on this PC. Turn this off to block all command execution.</value>
   </data>
-  <data name="PermissionsPage_SttHint_Ready" xml:space="preserve">
-    <value>Whisper model is ready. Speech-to-text runs fully on this PC; no audio leaves the device.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_Downloading" xml:space="preserve">
-    <value>Whisper model is downloading. Speech-to-text will be available once it's ready.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_FailedFormat" xml:space="preserve">
-    <value>Whisper model download failed: {0}. Toggle Speech-to-text off and back on to retry.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_NotDownloaded" xml:space="preserve">
-    <value>Whisper model is not downloaded. Open More voice settings… to download it before using speech-to-text.</value>
-  </data>
   <data name="PermissionsPage_NodeStatus_Disabled" xml:space="preserve">
     <value>Node mode disabled</value>
   </data>
@@ -3435,12 +3399,6 @@
   </data>
   <data name="PermissionsPage_Allowlist_ParseFailed" xml:space="preserve">
     <value>Failed to parse allowlist from config.</value>
-  </data>
-  <data name="PermissionsPage_TtsStatus_DefaultProviderFormat" xml:space="preserve">
-    <value>Default provider: {0}</value>
-  </data>
-  <data name="PermissionsPage_TtsStatus_ElevenLabsSaved" xml:space="preserve">
-    <value>ElevenLabs settings saved.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>

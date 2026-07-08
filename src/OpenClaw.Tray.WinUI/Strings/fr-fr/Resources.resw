@@ -2413,34 +2413,10 @@ Utilisez l'une de ces options :
     <value>Supprimer la tâche</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
-    <value>Paramètres Voice &amp; Audio</value>
+    <value>Paramètres Voix et audio</value>
   </data>
-  <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
-    <value>Clé API ElevenLabs</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsHelp.Text" xml:space="preserve">
-    <value>La clé API est chiffrée au repos avec Windows DPAPI. Laissez vide pour conserver la valeur précédente lorsque vous modifiez d'autres champs.</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsModel.Header" xml:space="preserve">
-    <value>Modèle ElevenLabs</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsModel.PlaceholderText" xml:space="preserve">
-    <value>eleven_multilingual_v2</value>
-  </data>
-  <data name="PermissionsPage_TtsElevenLabsVoiceId.Header" xml:space="preserve">
-    <value>ID de voix ElevenLabs</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderComboBox.Header" xml:space="preserve">
-    <value>Fournisseur</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderElevenLabs.Content" xml:space="preserve">
-    <value>ElevenLabs</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderPiper.Content" xml:space="preserve">
-    <value>Piper (ML local, recommandé)</value>
-  </data>
-  <data name="PermissionsPage_TtsProviderWindows.Content" xml:space="preserve">
-    <value>Voix intégrée à Windows</value>
+  <data name="PermissionsPage_VoiceSettingsHelp.Text" xml:space="preserve">
+    <value>Vous devrez peut-être télécharger ou sélectionner un modèle vocal ou une voix avant que ces fonctionnalités puissent fonctionner.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Voix et audio</value>
@@ -3358,18 +3334,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="PermissionsPage_Cap_SystemRun_Description" xml:space="preserve">
     <value>Lets agents run shell commands and scripts on this PC. Turn this off to block all command execution.</value>
   </data>
-  <data name="PermissionsPage_SttHint_Ready" xml:space="preserve">
-    <value>Whisper model is ready. Speech-to-text runs fully on this PC; no audio leaves the device.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_Downloading" xml:space="preserve">
-    <value>Whisper model is downloading. Speech-to-text will be available once it's ready.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_FailedFormat" xml:space="preserve">
-    <value>Whisper model download failed: {0}. Toggle Speech-to-text off and back on to retry.</value>
-  </data>
-  <data name="PermissionsPage_SttHint_NotDownloaded" xml:space="preserve">
-    <value>Whisper model is not downloaded. Open More voice settings… to download it before using speech-to-text.</value>
-  </data>
   <data name="PermissionsPage_NodeStatus_Disabled" xml:space="preserve">
     <value>Node mode disabled</value>
   </data>
@@ -3435,12 +3399,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="PermissionsPage_Allowlist_ParseFailed" xml:space="preserve">
     <value>Failed to parse allowlist from config.</value>
-  </data>
-  <data name="PermissionsPage_TtsStatus_DefaultProviderFormat" xml:space="preserve">
-    <value>Default provider: {0}</value>
-  </data>
-  <data name="PermissionsPage_TtsStatus_ElevenLabsSaved" xml:space="preserve">
-    <value>ElevenLabs settings saved.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>

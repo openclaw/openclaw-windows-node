@@ -39,10 +39,6 @@ public class LocalizationValidationTests
         "Onboarding_Connection_Token",
         "WindowTitle_TrayMenu",
         "WindowTitle_Update",
-        // STT/TTS card invariants — these are protocol/brand identifiers
-        // not user-visible prose. They intentionally read the same in every
-        // locale: "eleven_multilingual_v2" is an ElevenLabs model
-        // identifier, "ElevenLabs" is a brand name.
         // VoiceOverlayWindow window-title key — matches the convention
         // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
@@ -54,8 +50,6 @@ public class LocalizationValidationTests
         // Technical product term — "Gateway" is kept in English across
         // supported locales per onboarding terminology.
         "DiagnosticsPage_Section_Gateway.Text",
-        "PermissionsPage_TtsElevenLabsModel.PlaceholderText",
-        "PermissionsPage_TtsProviderElevenLabs.Content",
         // Sample IDs / brand identifiers — same across locales.
         "VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText",
         "VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText",
@@ -93,10 +87,6 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_Stt_Description",
         "PermissionsPage_Cap_SystemRun_Label",
         "PermissionsPage_Cap_SystemRun_Description",
-        "PermissionsPage_SttHint_Ready",
-        "PermissionsPage_SttHint_Downloading",
-        "PermissionsPage_SttHint_FailedFormat",
-        "PermissionsPage_SttHint_NotDownloaded",
         "PermissionsPage_NodeStatus_Disabled",
         // About / Gateway info strings added as part of the Windows-native
         // settings reorg are seeded in English across locales until the next
@@ -125,8 +115,6 @@ public class LocalizationValidationTests
         "PermissionsPage_Allowlist_NoConfig",
         "PermissionsPage_Allowlist_NoCommands",
         "PermissionsPage_Allowlist_ParseFailed",
-        "PermissionsPage_TtsStatus_DefaultProviderFormat",
-        "PermissionsPage_TtsStatus_ElevenLabsSaved",
         "PermissionsPage_McpStatus_TokenReadFailedFormat",
         // Session key display formatter: "{agent} / {slot}" intentionally
         // uses an invariant separator while the surrounding notification copy

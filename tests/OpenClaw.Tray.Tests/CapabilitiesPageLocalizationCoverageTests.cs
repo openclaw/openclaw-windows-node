@@ -46,6 +46,7 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     /// </summary>
     public static IEnumerable<object[]> VoiceSettingsCardUids => new[]
     {
+        new object[] { "PermissionsPage_VoiceSettingsHelp", new[] { ".Text" } },
         new object[] { "PermissionsPage_VoiceSettingsLink", new[] { ".Content" } },
     };
 
@@ -77,6 +78,9 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         var xaml = File.ReadAllText(GetCapabilitiesXamlPath());
 
         Assert.Contains("x:Name=\"VoiceSettingsCard\"", xaml);
+        Assert.Contains("x:Name=\"VoiceSettingsHelpPanel\"", xaml);
+        Assert.Contains("x:Name=\"VoiceSettingsHelpText\"", xaml);
+        Assert.Contains("x:Name=\"VoiceSettingsWarningIcon\"", xaml);
         Assert.Contains("x:Name=\"VoiceSettingsLink\"", xaml);
         Assert.DoesNotContain("x:Name=\"SttCard\"", xaml);
         Assert.DoesNotContain("x:Name=\"TtsCard\"", xaml);
@@ -85,12 +89,19 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     }
 
     [Fact]
-    public void PermissionsPage_ShowsSharedVoiceCard_WhenEitherSpeechCapabilityIsEnabled()
+    public void PermissionsPage_ShowsSharedVoiceCard_WhenEitherSpeechCapabilityIsEnabled_AndSetupTextOnlyWhenNeeded()
     {
         var source = File.ReadAllText(GetCapabilitiesCodeBehindPath());
 
         Assert.Contains("settings?.NodeSttEnabled == true || settings?.NodeTtsEnabled == true", source);
         Assert.Contains("VoiceSettingsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;", source);
+        Assert.Contains("VoiceSettingsHelpPanel.Visibility = settings != null && IsVoiceSetupRequired(settings)", source);
+        Assert.Contains("settings.NodeSttEnabled && !IsConfiguredWhisperModelDownloaded(settings)", source);
+        Assert.Contains("settings.NodeTtsEnabled && IsConfiguredTtsProviderSetupRequired(settings)", source);
+        Assert.Contains("TtsCapability.WindowsProvider", source);
+        Assert.Contains("TtsCapability.PiperProvider", source);
+        Assert.Contains("TtsCapability.ElevenLabsProvider", source);
+        Assert.DoesNotContain("EnsureWhisperModelDownloaded", source);
         Assert.DoesNotContain("UpdateSttCard", source);
         Assert.DoesNotContain("UpdateTtsCard", source);
     }

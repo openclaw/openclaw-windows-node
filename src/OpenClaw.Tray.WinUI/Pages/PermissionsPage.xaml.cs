@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Audio;
+using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
@@ -150,47 +152,45 @@ public sealed partial class PermissionsPage : Page
         if (CurrentApp.Settings == null) return;
         var settings = CurrentApp.Settings;
 
-        // OnToggleSideEffect runs after the new value is persisted.
-        var capabilities = new (string Icon, string Label, string Description, bool Value, Action<bool> Setter, Action<bool>? OnToggleSideEffect)[]
+        var capabilities = new (string Icon, string Label, string Description, bool Value, Action<bool> Setter)[]
         {
             ("⚡",
                 LocalizationHelper.GetString("PermissionsPage_Cap_SystemRun_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_SystemRun_Description"),
-                settings.NodeSystemRunEnabled, v => settings.NodeSystemRunEnabled = v, null),
+                settings.NodeSystemRunEnabled, v => settings.NodeSystemRunEnabled = v),
             ("🌐",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Browser_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Browser_Description"),
-                settings.NodeBrowserProxyEnabled, v => settings.NodeBrowserProxyEnabled = v, null),
+                settings.NodeBrowserProxyEnabled, v => settings.NodeBrowserProxyEnabled = v),
             ("📷",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Camera_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Camera_Description"),
-                settings.NodeCameraEnabled, v => settings.NodeCameraEnabled = v, null),
+                settings.NodeCameraEnabled, v => settings.NodeCameraEnabled = v),
             ("🎨",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Canvas_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Canvas_Description"),
-                settings.NodeCanvasEnabled, v => settings.NodeCanvasEnabled = v, null),
+                settings.NodeCanvasEnabled, v => settings.NodeCanvasEnabled = v),
             ("🖥️",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Screen_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Screen_Description"),
-                settings.NodeScreenEnabled, v => settings.NodeScreenEnabled = v, null),
+                settings.NodeScreenEnabled, v => settings.NodeScreenEnabled = v),
             ("📍",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Location_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Location_Description"),
-                settings.NodeLocationEnabled, v => settings.NodeLocationEnabled = v, null),
+                settings.NodeLocationEnabled, v => settings.NodeLocationEnabled = v),
             ("🔊",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Tts_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Tts_Description"),
-                settings.NodeTtsEnabled, v => settings.NodeTtsEnabled = v, null),
+                settings.NodeTtsEnabled, v => settings.NodeTtsEnabled = v),
             ("🎤",
                 LocalizationHelper.GetString("PermissionsPage_Cap_Stt_Label"),
                 LocalizationHelper.GetString("PermissionsPage_Cap_Stt_Description"),
-                settings.NodeSttEnabled, v => settings.NodeSttEnabled = v,
-                v => { if (v) EnsureWhisperModelDownloadedAsync(); }),
+                settings.NodeSttEnabled, v => settings.NodeSttEnabled = v),
         };
 
         var items = new List<UIElement>();
         _featureToggles.Clear();
-        foreach (var (icon, label, description, value, setter, sideEffect) in capabilities)
+        foreach (var (icon, label, description, value, setter) in capabilities)
         {
             var toggle = new ToggleSwitch
             {
@@ -200,13 +200,11 @@ public sealed partial class PermissionsPage : Page
                 OffContent = "",
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, label);
-            var capturedSideEffect = sideEffect;
             toggle.Toggled += (s, e) =>
             {
                 setter(toggle.IsOn);
                 settings.Save();
                 ((IAppCommands)CurrentApp).NotifySettingsSaved();
-                capturedSideEffect?.Invoke(toggle.IsOn);
                 UpdateVoiceSettingsCard();
                 UpdateNodeStatus();
             };
@@ -215,56 +213,6 @@ public sealed partial class PermissionsPage : Page
         }
 
         CapabilityRepeater.ItemsSource = items;
-    }
-
-    private bool _isDownloadingWhisperModel;
-
-    /// <summary>
-    /// Kicks off a Whisper model download if one isn't already on disk.
-    /// </summary>
-    private void EnsureWhisperModelDownloadedAsync() =>
-        AsyncEventHandlerGuard.Run(
-            EnsureWhisperModelDownloadedCoreAsync,
-            new OpenClawTray.AppLogger(),
-            nameof(EnsureWhisperModelDownloadedAsync));
-
-    private async Task EnsureWhisperModelDownloadedCoreAsync()
-    {
-        var logger = new AppLogger();
-        try
-        {
-            var modelName = CurrentApp.Settings?.SttModelName ?? "base";
-            var modelManager = new OpenClaw.Shared.Audio.WhisperModelManager(
-                SettingsManager.SettingsDirectoryPath, logger);
-
-            if (modelManager.IsModelDownloaded(modelName) || _isDownloadingWhisperModel) return;
-            // Also defer to a VoiceService-initiated download that may be in flight —
-            // concurrent writes to the same model file would otherwise be possible.
-            if (CurrentApp.VoiceService?.IsWhisperDownloadingModel == true)
-            {
-                return;
-            }
-
-            _isDownloadingWhisperModel = true;
-
-            try
-            {
-                await modelManager.DownloadModelAsync(modelName, progress: null, default).ConfigureAwait(true);
-            }
-            catch (Exception ex)
-            {
-                logger.Error($"[PermissionsPage] Whisper model download failed: {ex.Message}");
-            }
-            finally
-            {
-                _isDownloadingWhisperModel = false;
-            }
-        }
-        catch (Exception ex)
-        {
-            // Last-resort guard: log and swallow so background work can never crash the app.
-            logger.Error($"[PermissionsPage] EnsureWhisperModelDownloadedAsync unexpected failure: {ex}");
-        }
     }
 
     private static Border BuildCapabilityRow(string icon, string label, string description, ToggleSwitch toggle)
@@ -321,6 +269,54 @@ public sealed partial class PermissionsPage : Page
         var settings = CurrentApp.Settings;
         var enabled = settings?.NodeSttEnabled == true || settings?.NodeTtsEnabled == true;
         VoiceSettingsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        VoiceSettingsHelpPanel.Visibility = settings != null && IsVoiceSetupRequired(settings)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private static bool IsVoiceSetupRequired(SettingsManager settings)
+    {
+        if (settings.NodeSttEnabled && !IsConfiguredWhisperModelDownloaded(settings))
+            return true;
+
+        return settings.NodeTtsEnabled && IsConfiguredTtsProviderSetupRequired(settings);
+    }
+
+    private static bool IsConfiguredWhisperModelDownloaded(SettingsManager settings)
+    {
+        var modelName = settings.SttModelName;
+        if (!WhisperModelManager.AvailableModels.Any(m =>
+                string.Equals(m.Name, modelName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var manager = new WhisperModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
+        return manager.IsModelDownloaded(modelName);
+    }
+
+    private static bool IsConfiguredTtsProviderSetupRequired(SettingsManager settings)
+    {
+        var provider = TtsCapability.ResolveProvider(null, settings.TtsProvider);
+        if (string.Equals(provider, TtsCapability.WindowsProvider, StringComparison.Ordinal))
+            return false;
+
+        if (string.Equals(provider, TtsCapability.PiperProvider, StringComparison.Ordinal))
+        {
+            if (string.IsNullOrWhiteSpace(settings.TtsPiperVoiceId))
+                return true;
+
+            var voices = new PiperVoiceManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
+            return !voices.IsVoiceDownloaded(settings.TtsPiperVoiceId);
+        }
+
+        if (string.Equals(provider, TtsCapability.ElevenLabsProvider, StringComparison.Ordinal))
+        {
+            return string.IsNullOrWhiteSpace(settings.TtsElevenLabsApiKey) ||
+                string.IsNullOrWhiteSpace(settings.TtsElevenLabsVoiceId);
+        }
+
+        return true;
     }
 
     private void OnVoiceSettingsClick(object sender, RoutedEventArgs e)
