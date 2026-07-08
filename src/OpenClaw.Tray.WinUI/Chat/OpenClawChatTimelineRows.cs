@@ -1,4 +1,6 @@
 using OpenClawTray.FunctionalUI.Core;
+using OpenClawTray.FunctionalUI;
+using static OpenClawTray.FunctionalUI.Factories;
 
 namespace OpenClawTray.Chat;
 
@@ -36,4 +38,55 @@ public sealed record OpenClawChatTimelineView(
         null,
         0,
         0);
+}
+
+public partial class OpenClawChatTimeline
+{
+    private static OpenClawChatTimelineView BuildVirtualizedTimelineView(
+        OpenClawChatTimelineProps props,
+        IReadOnlyList<Element> timelineRows,
+        Element loadMoreButton,
+        int entryCount,
+        string? firstEntryId,
+        string? lastEntryId,
+        int suppressAutoFollowToken)
+    {
+        var virtualizedRows = new List<OpenClawChatTimelineRow>(timelineRows.Count + 3);
+        if (props.HasMoreHistory)
+        {
+            var loadMoreRow = loadMoreButton;
+            virtualizedRows.Add(new OpenClawChatTimelineRow(
+                "chrome:load-more",
+                () => loadMoreRow));
+        }
+
+        virtualizedRows.Add(new OpenClawChatTimelineRow(
+            "chrome:top-spacer",
+            () => Border(Empty()).Height(20)));
+
+        for (var rowIndex = 0; rowIndex < timelineRows.Count; rowIndex++)
+        {
+            var rowElement = timelineRows[rowIndex];
+            var rowKey = string.IsNullOrEmpty(rowElement.Key)
+                ? $"row:index:{rowIndex}"
+                : $"row:{rowElement.Key}";
+            virtualizedRows.Add(new OpenClawChatTimelineRow(rowKey, () => rowElement, EstimatedHeight: 64));
+        }
+
+        virtualizedRows.Add(new OpenClawChatTimelineRow(
+            "chrome:bottom-spacer",
+            () => Border(Empty()).Height(24)));
+
+        return new OpenClawChatTimelineView(
+            virtualizedRows,
+            props.SessionId,
+            entryCount,
+            firstEntryId,
+            lastEntryId,
+            props.Entries.Select(e => e.Id).ToHashSet(StringComparer.Ordinal),
+            props.HasMoreHistory,
+            props.OnLoadMoreHistory,
+            props.ScrollToBottomToken,
+            suppressAutoFollowToken);
+    }
 }

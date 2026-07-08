@@ -198,39 +198,7 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
 
     private void SyncRows(IReadOnlyList<OpenClawChatTimelineRow> desiredRows)
     {
-        var desiredKeys = desiredRows.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
-        for (var index = _rows.Count - 1; index >= 0; index--)
-        {
-            if (!desiredKeys.Contains(_rows[index].Key))
-                _rows.RemoveAt(index);
-        }
-
-        for (var desiredIndex = 0; desiredIndex < desiredRows.Count; desiredIndex++)
-        {
-            var desired = desiredRows[desiredIndex];
-            if (desiredIndex < _rows.Count &&
-                string.Equals(_rows[desiredIndex].Key, desired.Key, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var existingIndex = IndexOfRowKey(desired.Key, desiredIndex + 1);
-            if (existingIndex >= 0)
-                _rows.Move(existingIndex, desiredIndex);
-            else
-                _rows.Insert(desiredIndex, desired);
-        }
-    }
-
-    private int IndexOfRowKey(string key, int startIndex)
-    {
-        for (var index = Math.Max(0, startIndex); index < _rows.Count; index++)
-        {
-            if (string.Equals(_rows[index].Key, key, StringComparison.Ordinal))
-                return index;
-        }
-
-        return -1;
+        StableRowCollection.Sync(_rows, desiredRows, row => row.Key);
     }
 
     public void Dispose()

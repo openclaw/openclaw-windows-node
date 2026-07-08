@@ -45,7 +45,6 @@ public record OpenClawChatTimelineProps(
     bool HasMoreHistory,
     Action? OnLoadMoreHistory,
     IReadOnlyDictionary<string, ChatEntryMetadata>? EntryMetadata = null,
-    long TimelineGeneration = 0,
     string UserSenderLabel = "OpenClaw Windows Tray",
     string AssistantSenderLabel = "Field",
     string? DefaultModel = null,
@@ -56,7 +55,7 @@ public record OpenClawChatTimelineProps(
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     int ScrollToBottomToken = 0,
-    Action<string, string>? OnPermissionResponse = null);
+    Action<string, bool>? OnPermissionResponse = null);
 
 /// <summary>
 /// OpenClaw-skinned variant of <see cref="ChatTimeline"/> from the vendored
@@ -73,362 +72,8 @@ public record OpenClawChatTimelineProps(
 ///   <item>Reasoning / status entries: muted styling as in upstream.</item>
 /// </list>
 /// </summary>
-public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
+public partial class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 {
-    // SECURITY (chat-rubber-duck HIGH 1 / MEDIUM 3): chat-bubble Markdown is
-    // rendered as sanitized inert text that:
-    //   1. Renders images as inert ``[Image: <alt>]`` text (no Uri fetch) —
-    //      blocks SSRF / tracking-pixel beacons triggered by a compromised
-    //      gateway, malicious tool output, or a prompt-injected model.
-    //   2. Pre-strips inline link / image / ref-def syntax via
-    //      <see cref="ChatMarkdownSanitizer.Sanitize(string?)"/> so explicit
-    //      ``[text](url)`` syntax never reaches the parser.
-    //   3. Renders raw HTML blocks as selectable plain text.
-    //      Net effect: no click-to-navigate hyperlink or network-fetching
-    //      image can be manufactured by untrusted Markdown inside a chat bubble.
-    private static Element SafeMarkdownText(string? text)
-    {
-        // Fast path: bubbles with no block-level markdown (the common case)
-        // keep the lightweight inline sanitizer to avoid the parser cost.
-        if (!Markdown.ChatMarkdownRenderer.ContainsBlockMarkdown(text))
-        {
-            return TextBlock(string.Empty)
-                .Set(t =>
-                {
-                    t.TextWrapping = TextWrapping.Wrap;
-                    t.IsTextSelectionEnabled = true;
-                    ApplySafeMarkdownInlines(t, text);
-                });
-        }
-        return Markdown.ChatMarkdownRenderer.Render(text)
-               ?? TextBlock(text ?? string.Empty)
-                    .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.IsTextSelectionEnabled = true; });
-    }
-
-    // Cache plain (non-markdown) text per TextBlock so we can reuse the
-    // assistant-bubble's Inlines-based render path for user prompts without
-    // re-clearing/rebuilding the run on every re-render. Going through
-    // Inlines (instead of the TextBlock.Text property) avoids a WinUI quirk
-    // where setting Text on a selection-enabled TextBlock during a parent
-    // re-render that fires immediately after the user finishes selecting can
-    // leave the glyph layer visually empty until the next focus change.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBlock, string>
-        s_plainCache = new();
-
-    // FontFamily instances are immutable, but `new FontFamily(...)` per
-    // render allocates a fresh CLR object whose reference does not equal
-    // the previous one. Reassigning a referentially-different FontFamily
-    // to a TextBlock invalidates its inline runs even when the source
-    // string is identical, which (in the tool-output panel) makes
-    // multi-line wrapped text vanish during a pointer-exit re-render.
-    // Caching sidesteps both the GC pressure and the invalidation.
-    //
-    // FontFamily is a DependencyObject with thread affinity, so a single
-    // process-wide singleton would crash with RPC_E_WRONG_THREAD if a
-    // second window on a different dispatcher ever tried to read it.
-    // Keying by DispatcherQueue mirrors the brush cache above: one
-    // shared instance per window, collected with its dispatcher.
-    // Off-dispatcher callers (tests, design-time) get a one-shot
-    // uncached instance — correct, just not reused.
-    private const string MonoFontFamilySource = "Cascadia Code, Cascadia Mono, Consolas";
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue, FontFamily> s_monoFontByDispatcher = new();
-    private const string ChatTextFontFamilySource = "Segoe UI Variable Text, Segoe UI";
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue, FontFamily> s_chatTextFontByDispatcher = new();
-    private static FontFamily s_monoFontFamily
-    {
-        get
-        {
-            var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-            if (dispatcher is null)
-            {
-                return new FontFamily(MonoFontFamilySource);
-            }
-            if (!s_monoFontByDispatcher.TryGetValue(dispatcher, out var family))
-            {
-                family = new FontFamily(MonoFontFamilySource);
-                s_monoFontByDispatcher.Add(dispatcher, family);
-            }
-            return family;
-        }
-    }
-    private static FontFamily s_chatTextFontFamily
-    {
-        get
-        {
-            var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-            if (dispatcher is null)
-            {
-                return new FontFamily(ChatTextFontFamilySource);
-            }
-            if (!s_chatTextFontByDispatcher.TryGetValue(dispatcher, out var family))
-            {
-                family = new FontFamily(ChatTextFontFamilySource);
-                s_chatTextFontByDispatcher.Add(dispatcher, family);
-            }
-            return family;
-        }
-    }
-
-    // Per-DispatcherQueue selection-highlight brushes for the user
-    // bubble. The bubble background is the user's chosen system accent
-    // (which may be red, green, purple, …), so a hardcoded color would
-    // clash whenever the accent is non-blue. SystemAccentColorDark2 is
-    // the OS-defined "darker shade of the current accent" — guaranteed
-    // darker than the bubble's AccentFillColorDefault background and
-    // high-contrast against the bubble's white foreground for every
-    // accent. In High Contrast the bubble switches to
-    // SystemColorHighlight (often near-black), so we fall back to the
-    // OS-guaranteed SystemColorHighlightColor for the band there.
-    //
-    // SolidColorBrush is a DependencyObject with thread affinity, so a
-    // single static instance would crash with RPC_E_WRONG_THREAD if a
-    // second window on a different dispatcher ever tried to use it.
-    // Keying by DispatcherQueue keeps one shared brush per window while
-    // still avoiding per-render allocation. ConditionalWeakTable lets a
-    // closing window's brush be collected with its dispatcher. The
-    // brush's Color is mutated in place when the source color changes
-    // (e.g. user switches their accent in Windows Settings) so
-    // already-rendered TextBlocks update atomically.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue, SolidColorBrush> s_accentDarkByDispatcher = new();
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue, SolidColorBrush> s_hcHighlightByDispatcher = new();
-    // AccessibilitySettings is a WinRT object with DispatcherQueue
-    // affinity: an instance created on one dispatcher cannot reliably
-    // be read from another. We deliberately avoid Lazy<>: Lazy
-    // permanently caches the factory's result, so a single failed
-    // construction would cache null forever and silently disable the
-    // High Contrast code path. Per-dispatcher cache keyed by
-    // ConditionalWeakTable lets each window have its own instance,
-    // collected when its dispatcher dies. On any thrown exception we
-    // drop the cached instance so the next render retries from scratch.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue,
-        global::Windows.UI.ViewManagement.AccessibilitySettings> s_a11yByDispatcher = new();
-
-    private static bool TryDetectHighContrast()
-    {
-        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        if (dispatcher is null)
-        {
-            // Off-thread caller (tests, design-time). One-shot, no caching.
-            try { return new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast; }
-            catch { return false; }
-        }
-        if (!s_a11yByDispatcher.TryGetValue(dispatcher, out var settings))
-        {
-            try
-            {
-                settings = new global::Windows.UI.ViewManagement.AccessibilitySettings();
-                s_a11yByDispatcher.Add(dispatcher, settings);
-            }
-            catch { return false; }
-        }
-        try { return settings.HighContrast; }
-        catch
-        {
-            // Drop the cached instance so the next call retries.
-            s_a11yByDispatcher.Remove(dispatcher);
-            return false;
-        }
-    }
-
-    private static SolidColorBrush GetUserBubbleSelectionBrush(bool isHighContrast)
-    {
-        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        var table = isHighContrast ? s_hcHighlightByDispatcher : s_accentDarkByDispatcher;
-        var color = isHighContrast
-            ? TryGetThemeColor("SystemColorHighlightColor", Microsoft.UI.Colors.Blue)
-            : TryGetThemeColor("SystemAccentColorDark2", Microsoft.UI.Colors.DarkBlue);
-
-        // No dispatcher means we're being called off-thread (e.g.
-        // from a unit test). Allocate a one-shot brush — it can't be
-        // safely cached without a dispatcher to key it on.
-        if (dispatcher is null)
-            return new SolidColorBrush(color);
-
-        if (!table.TryGetValue(dispatcher, out var brush))
-        {
-            brush = new SolidColorBrush(color);
-            table.Add(dispatcher, brush);
-        }
-        else if (brush.Color != color)
-        {
-            // Mutate in place rather than reallocating: TextBlocks
-            // rendered earlier hold a reference to this brush, so
-            // updating .Color updates them atomically without waiting
-            // for the next render pass.
-            brush.Color = color;
-        }
-        return brush;
-    }
-
-    private static Color TryGetThemeColor(string key, Color fallback)
-    {
-        try
-        {
-            var app = Application.Current;
-            if (app is null) return fallback;
-            if (app.Resources.TryGetValue(key, out var v))
-            {
-                // Theme dictionaries usually store Color, but a custom
-                // theme override can supply a SolidColorBrush under the
-                // same key. Accept either rather than silently falling
-                // back to DarkBlue / Blue when the resource is present
-                // but wrapped in a brush.
-                if (v is Color c) return c;
-                if (v is SolidColorBrush brush) return brush.Color;
-            }
-        }
-        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: resource brush lookup failed (unpackaged/test host?): {ex.Message}"); }
-        return fallback;
-    }
-
-    private static void ApplyPlainSelectableInlines(TextBlock textBlock, string? text)
-    {
-        var normalized = text ?? string.Empty;
-        // ConfigureTextBlock may set Text="" and clear Inlines before this
-        // setter runs again, so only skip when the cached run is still present.
-        if (textBlock.Inlines.Count > 0
-            && s_plainCache.TryGetValue(textBlock, out var cached)
-            && cached == normalized)
-            return;
-        s_plainCache.AddOrUpdate(textBlock, normalized);
-        textBlock.Inlines.Clear();
-        if (normalized.Length > 0)
-            textBlock.Inlines.Add(new Run { Text = normalized });
-    }
-
-    // Cache parsed markdown text per TextBlock to avoid re-clearing and
-    // rebuilding Inlines on every re-render when message content is stable.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBlock, string>
-        s_markdownCache = new();
-
-    private static void ApplySafeMarkdownInlines(TextBlock textBlock, string? text)
-    {
-        // Skip re-parsing only when text is unchanged AND inlines are still
-        // present. ConfigureTextBlock sets control.Text="" which clears
-        // Inlines, so we must re-apply even if the source text matches.
-        if (textBlock.Inlines.Count > 0
-            && s_markdownCache.TryGetValue(textBlock, out var cached)
-            && cached == text)
-            return;
-        s_markdownCache.AddOrUpdate(textBlock, text ?? "");
-
-        textBlock.Inlines.Clear();
-
-        foreach (var segment in ChatMarkdownSanitizer.SanitizeAndSplitStrongEmphasis(text))
-        {
-            if (segment.Text.Length == 0)
-                continue;
-
-            if (segment.IsStrong)
-            {
-                var bold = new Bold();
-                bold.Inlines.Add(new Run { Text = segment.Text });
-                textBlock.Inlines.Add(bold);
-            }
-            else
-            {
-                textBlock.Inlines.Add(new Run { Text = segment.Text });
-            }
-        }
-    }
-
-    static string FormatToolLabel(ChatTimelineItem e)    {
-        var text = e.Text ?? "";
-        return e.ToolName switch
-        {
-            "bash" or "powershell" => $"$ {text}",
-            "read" or "view" => text,
-            "edit" or "create" => text,
-            "grep" => $"🔍 {text}",
-            "glob" => $"📂 {text}",
-            "web_fetch" => $"🌐 {text}",
-            "web_search" => $"🔎 {text}",
-            "task" => text,
-            "report_intent" => text,
-            _ => text == e.ToolName || string.IsNullOrEmpty(text) ? e.ToolName ?? "tool" : $"{e.ToolName}: {text}"
-        };
-    }
-
-    /// <summary>
-    /// Title-case a single token: <c>"exec"</c> → <c>"Exec"</c>. Used by the
-    /// tool-chip inner header to mirror the web's <c>Exec</c>/<c>Process</c>
-    /// styling. Returns the empty string for null/empty input.
-    /// </summary>
-    static string CapitalizeFirst(string? s)
-    {
-        if (string.IsNullOrEmpty(s)) return string.Empty;
-        return char.ToUpperInvariant(s[0]) + (s.Length > 1 ? s[1..] : string.Empty);
-    }
-
-    /// <summary>
-    /// If <paramref name="text"/> looks like a JSON object/array, pretty-print
-    /// it with 2-space indentation. Otherwise return the string verbatim.
-    /// Used so tool chips render gateway action blobs (<c>{"action":"poll"…}</c>)
-    /// the same way the web does, without affecting plain shell output.
-    /// </summary>
-    static string TryFormatJsonForDisplay(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return text;
-        var trimmed = text.TrimStart();
-        if (trimmed.Length == 0) return text;
-        var first = trimmed[0];
-        if (first != '{' && first != '[') return text;
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(trimmed);
-            return System.Text.Json.JsonSerializer.Serialize(doc.RootElement,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        }
-        catch
-        {
-            return text;
-        }
-    }
-
-    /// <summary>
-    /// Process-wide cache so we decode each cached image only once. Keyed by
-    /// byte-array reference so cache invalidates automatically when bytes
-    /// are replaced. BitmapImage instances are UI-thread-affine but read
-    /// access from other threads through ImageBrush is safe.
-    /// </summary>
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], Microsoft.UI.Xaml.Media.Imaging.BitmapImage> _bitmapCache = new();
-
-    /// <summary>
-    /// Decodes <paramref name="bytes"/> into a <see cref="Microsoft.UI.Xaml.Media.Imaging.BitmapImage"/>,
-    /// caching the result so repeated renders of the same image don't re-run
-    /// the decoder. Returns <c>null</c> on any decode failure (renderer will
-    /// fall back to a filename chip).
-    /// </summary>
-    static Microsoft.UI.Xaml.Media.Imaging.BitmapImage? TryDecodeBitmap(byte[] bytes)
-    {
-        if (_bitmapCache.TryGetValue(bytes, out var existing))
-            return existing;
-        try
-        {
-            var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
-            using (var writer = new global::Windows.Storage.Streams.DataWriter(stream))
-            {
-                writer.WriteBytes(bytes);
-                writer.StoreAsync().AsTask().GetAwaiter().GetResult();
-                writer.DetachStream();
-            }
-            stream.Seek(0);
-            var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
-            bmp.SetSource(stream);
-            _bitmapCache.Add(bytes, bmp);
-            return bmp;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     public override Element Render()
     {
         var bubbleRadius     = new CornerRadius(16);
@@ -669,12 +314,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         ChatEntryMetadata? MetaFor(string id) =>
             meta is not null && meta.TryGetValue(id, out var m) ? m : null;
-
-        string RowKey(ChatTimelineItem entry) =>
-            $"thread:{Props.SessionId ?? "none"}|generation:{Props.TimelineGeneration}|kind:{entry.Kind}|id:{entry.Id}";
-
-        string SyntheticRowKey(string id, ChatTimelineItemKind kind) =>
-            $"thread:{Props.SessionId ?? "none"}|generation:{Props.TimelineGeneration}|kind:{kind}|synthetic:{id}";
 
         // Hover-revealed action icon (copy / read aloud / trash). Opacity 0
         // and not hit-testable until the entry is hovered, then fades in
@@ -1009,7 +648,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // bubbleRadius wraps both so they read as one message.
             var bubbleChildren = new List<Element>();
             foreach (var ae in attachmentElements) bubbleChildren.Add(ae);
-            var entryMeta = MetaFor(entry.Id);
             if (hasMessage)
             {
                 // Resolve HC + selection brush once per render method call
@@ -1026,14 +664,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             t.FontSize = 14;
                             t.Foreground = userBubbleFg;
                             t.IsTextSelectionEnabled = true;
-                            t.FontFamily = s_chatTextFontFamily;
-                            t.TextTrimming = TextTrimming.None;
-                            t.MaxLines = 0;
-                            t.LineHeight = 0;
-                            t.CharacterSpacing = 0;
-                            t.Width = double.NaN;
-                            t.MinWidth = 0;
-                            t.MaxWidth = double.PositiveInfinity;
                             // The default SelectionHighlightColor is the
                             // system accent — which equals the user bubble's
                             // background — so the highlight band is invisible
@@ -1061,6 +691,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             ApplyPlainSelectableInlines(t, messageText);
                         }));
             }
+
             Element content;
             if (bubbleChildren.Count > 0)
             {
@@ -1103,6 +734,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             Element footer = Empty();
             if (endsBurst && showTimestamps)
             {
+                var entryMeta = MetaFor(entry.Id);
                 var timeStr = FormatTime(entryMeta?.Timestamp);
                 var rightInset = showUserAvatar ? (36 + bubbleSideMargin) : 0;
                 rightInset += (int)bubblePadding.Right;
@@ -1163,7 +795,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // collapsed multi-step summary) is rendered INSIDE the bubble's
             // content area — directly below the assistant text with a small
             // top gap — so it visually reads as a child of the bubble.
-            var assistantEntryMeta = MetaFor(entry.Id);
             Element bubbleContent = overrideBubbleContent ?? SafeMarkdownText(entry.Text);
             if (nestedTool != null)
             {
@@ -1196,11 +827,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             Element footer = Empty();
             if (endsBurst && showTimestamps && !suppressFooter)
             {
-                var timeStr = FormatTime(assistantEntryMeta?.Timestamp);
-                var modelStr = assistantEntryMeta?.Model ?? defaultModel;
+                var entryMeta = MetaFor(entry.Id);
+                var timeStr = FormatTime(entryMeta?.Timestamp);
+                var modelStr = entryMeta?.Model ?? defaultModel;
                 footer = BuildAssistantFooter(assistantSender, timeStr, modelStr,
-                    assistantEntryMeta?.InputTokens, assistantEntryMeta?.OutputTokens,
-                    assistantEntryMeta?.ResponseTokens, assistantEntryMeta?.ContextPercent,
+                    entryMeta?.InputTokens, entryMeta?.OutputTokens,
+                    entryMeta?.ResponseTokens, entryMeta?.ContextPercent,
                     chatStampFg, entry.Id, entry.Text ?? "",
                     entry.Id == latestAssistantEntryId ? Props.DefaultUsageSummary : null);
                 var leftInset = showAssistAvatar ? (36 + bubbleSideMargin) : 0;
@@ -1817,45 +1449,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var detail = entry.Text;
             var onResponse = Props.OnPermissionResponse;
 
-            static bool ActionEquals(string? action, string expected) =>
-                string.Equals(action, expected, StringComparison.OrdinalIgnoreCase);
-
-            string LabelForAction(string action) =>
-                ActionEquals(action, ChatPermissionActionKeys.AllowOnce) ? LocalizationHelper.GetString("Chat_Permission_Allow") :
-                ActionEquals(action, ChatPermissionActionKeys.AllowAlways) ? LocalizationHelper.GetString("Chat_Permission_AllowAlways") :
-                ActionEquals(action, ChatPermissionActionKeys.Deny) ? LocalizationHelper.GetString("Chat_Permission_Deny") :
-                action;
-
-            var actionKeys = ChatPermissionActionKeys.NormalizeActions(entry.PermissionActions);
-
             Element body;
             if (entry.PermissionDecision == ChatPermissionDecision.Pending)
             {
-                Element PermissionActionButton(string actionKey, int index)
-                {
-                    var label = LabelForAction(actionKey);
-                    var isAccent = ActionEquals(actionKey, ChatPermissionActionKeys.AllowOnce)
-                        || (!actionKeys.Any(a => ActionEquals(a, ChatPermissionActionKeys.AllowOnce))
-                            && index == 0
-                            && !ActionEquals(actionKey, ChatPermissionActionKeys.Deny));
-
-                    return Button(label,
-                        () => onResponse?.Invoke(requestId, actionKey))
-                        .Set(b =>
-                        {
-                            b.CornerRadius = new CornerRadius(4);
-                            b.Padding = new Thickness(14, 6, 14, 6);
-                            b.MinWidth = 0; b.MinHeight = 0;
-                            b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
-                            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{label}{automationSuffix}");
-                            if (isAccent)
-                            {
-                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; }
-                                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
-                            }
-                        });
-                }
-
+                var allowLabel = LocalizationHelper.GetString("Chat_Permission_Allow");
+                var denyLabel = LocalizationHelper.GetString("Chat_Permission_Deny");
                 body = VStack(8,
                     TextBlock($"⚠ {kind}")
                         .Set(t => { t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; t.TextWrapping = TextWrapping.Wrap; }),
@@ -1880,8 +1478,32 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                      }),
                     TextBlock(LocalizationHelper.GetString("Chat_Permission_Caption"))
                         .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.FontSize = 11; t.Opacity = 0.7; }),
-                    HStack(8, actionKeys.Select(PermissionActionButton).ToArray())
-                        .HAlign(HorizontalAlignment.Right)
+                    HStack(8,
+                        Button(allowLabel,
+                            () => onResponse?.Invoke(requestId, true))
+                            .Set(b =>
+                            {
+                                b.CornerRadius = new CornerRadius(4);
+                                b.Padding = new Thickness(14, 6, 14, 6);
+                                b.MinWidth = 0; b.MinHeight = 0;
+                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
+                                // Include the operation kind in the screen-reader name so
+                                // users hear "Allow shell.exec" instead of bare "Allow".
+                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{allowLabel}{automationSuffix}");
+                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; }
+                                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
+                            }),
+                        Button(denyLabel,
+                            () => onResponse?.Invoke(requestId, false))
+                            .Set(b =>
+                            {
+                                b.CornerRadius = new CornerRadius(4);
+                                b.Padding = new Thickness(14, 6, 14, 6);
+                                b.MinWidth = 0; b.MinHeight = 0;
+                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
+                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{denyLabel}{automationSuffix}");
+                            })
+                    ).HAlign(HorizontalAlignment.Right)
                 );
             }
             else
@@ -1891,10 +1513,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 // was approved/denied without expanding anything.
                 var (glyph, labelKey) = entry.PermissionDecision switch
                 {
-                    ChatPermissionDecision.Allowed       => ("✓", "Chat_Permission_DecisionAllowed"),
-                    ChatPermissionDecision.AllowedAlways => ("✓", "Chat_Permission_DecisionAlwaysAllowed"),
-                    ChatPermissionDecision.Denied        => ("✕", "Chat_Permission_DecisionDenied"),
-                    _                                    => ("⌛", "Chat_Permission_DecisionExpired"),
+                    ChatPermissionDecision.Allowed => ("✓", "Chat_Permission_DecisionAllowed"),
+                    ChatPermissionDecision.Denied  => ("✕", "Chat_Permission_DecisionDenied"),
+                    _                              => ("⌛", "Chat_Permission_DecisionExpired"),
                 };
                 var label = LocalizationHelper.GetString(labelKey);
                 // Surrogate-safe truncation: if char 119 is a high surrogate,
@@ -2194,19 +1815,19 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             {
                 if (!showToolCalls)
                 {
-                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
+                    renderedEntries[k] = Empty().WithKey(entry.Id);
                     continue;
                 }
                 if (!startsBurst)
                 {
-                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
+                    renderedEntries[k] = Empty().WithKey(entry.Id);
                     continue;
                 }
                 if (nestedConsumed.Contains(k))
                 {
                     // The assistant bubble above already rendered this burst
                     // inline as a child element — emit nothing here.
-                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
+                    renderedEntries[k] = Empty().WithKey(entry.Id);
                     continue;
                 }
                 var burst = new System.Collections.Generic.List<ChatTimelineItem> { entry };
@@ -2216,7 +1837,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     burst.Add(Props.Entries[orderedIdx[kj]]);
                     kj++;
                 }
-                renderedEntries[k] = RenderToolBurst(burst, showAvatar, currentBubbleSlot).WithKey(RowKey(entry));
+                renderedEntries[k] = RenderToolBurst(burst, showAvatar, currentBubbleSlot).WithKey(entry.Id);
                 continue;
             }
 
@@ -2252,11 +1873,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     }
                 }
 
-                renderedEntries[k] = RenderAssistantEntry(entry, startsBurst, endsBurst, showAvatar, currentBubbleSlot, nestedTool).WithKey(RowKey(entry));
+                renderedEntries[k] = RenderAssistantEntry(entry, startsBurst, endsBurst, showAvatar, currentBubbleSlot, nestedTool).WithKey(entry.Id);
                 continue;
             }
 
-            renderedEntries[k] = RenderEntry(entry, startsBurst, endsBurst, showAvatar).WithKey(RowKey(entry));
+            renderedEntries[k] = RenderEntry(entry, startsBurst, endsBurst, showAvatar).WithKey(entry.Id);
         }
 
         var thinkingNestedConsumed = new System.Collections.Generic.HashSet<int>();
@@ -2323,8 +1944,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 nestedTool: thinkingNestedTool,
                 suppressFooter: true,
                 forceVisible: true)
-                .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite)
-                .WithKey(SyntheticRowKey("__thinking__", ChatTimelineItemKind.Assistant));
+                .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         }
 
         // Build the final element list, splicing the thinking indicator
@@ -2363,42 +1983,13 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             timelineRows = renderedEntries;
         }
 
-        var virtualizedRows = new List<OpenClawChatTimelineRow>(timelineRows.Length + 3);
-        if (Props.HasMoreHistory)
-        {
-            var loadMoreRow = loadMoreButton;
-            virtualizedRows.Add(new OpenClawChatTimelineRow(
-                "chrome:load-more",
-                () => loadMoreRow));
-        }
-
-        virtualizedRows.Add(new OpenClawChatTimelineRow(
-            "chrome:top-spacer",
-            () => Border(Empty()).Height(20)));
-
-        for (var rowIndex = 0; rowIndex < timelineRows.Length; rowIndex++)
-        {
-            var rowElement = timelineRows[rowIndex];
-            var rowKey = string.IsNullOrEmpty(rowElement.Key)
-                ? $"row:index:{rowIndex}"
-                : $"row:{rowElement.Key}";
-            virtualizedRows.Add(new OpenClawChatTimelineRow(rowKey, () => rowElement, EstimatedHeight: 64));
-        }
-
-        virtualizedRows.Add(new OpenClawChatTimelineRow(
-            "chrome:bottom-spacer",
-            () => Border(Empty()).Height(24)));
-
-        var timelineView = new OpenClawChatTimelineView(
-            virtualizedRows,
-            Props.SessionId,
+        var timelineView = BuildVirtualizedTimelineView(
+            Props,
+            timelineRows,
+            loadMoreButton,
             entryCount,
             firstEntryId,
             lastEntryId,
-            Props.Entries.Select(e => e.Id).ToHashSet(StringComparer.Ordinal),
-            Props.HasMoreHistory,
-            Props.OnLoadMoreHistory,
-            Props.ScrollToBottomToken,
             suppressAutoFollowToken);
 
         return Grid([GridSize.Star()], [GridSize.Star()],
