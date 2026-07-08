@@ -2415,8 +2415,14 @@ Utilisez l'une de ces options :
   <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
     <value>Paramètres Voix et audio</value>
   </data>
-  <data name="PermissionsPage_VoiceSettingsHelp.Text" xml:space="preserve">
-    <value>Vous devrez peut-être télécharger ou sélectionner un modèle vocal ou une voix avant que ces fonctionnalités puissent fonctionner.</value>
+  <data name="PermissionsPage_VoiceSettingsHelp_SpeechModel" xml:space="preserve">
+    <value>Téléchargez un modèle de reconnaissance vocale avant que la reconnaissance vocale puisse fonctionner.</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
+    <value>Sélectionnez ou téléchargez une voix avant que la synthèse vocale puisse fonctionner.</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
+    <value>Téléchargez un modèle de reconnaissance vocale et sélectionnez ou téléchargez une voix avant que la reconnaissance vocale et la synthèse vocale puissent fonctionner.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Voix et audio</value>

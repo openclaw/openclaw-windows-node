@@ -118,8 +118,7 @@
                                   Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                   AutomationProperties.AccessibilityView="Raw"/>
                         <TextBlock x:Name="VoiceSettingsHelpText"
-                                   x:Uid="PermissionsPage_VoiceSettingsHelp"
-                                   Text="You may need to download or select a speech model or voice before these capabilities can work."
+                                   Text=""
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"/>

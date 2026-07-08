@@ -268,18 +268,50 @@ public sealed partial class PermissionsPage : Page
     {
         var settings = CurrentApp.Settings;
         var enabled = settings?.NodeSttEnabled == true || settings?.NodeTtsEnabled == true;
+        var setupRequirement = settings == null
+            ? VoiceSetupRequirement.None
+            : GetVoiceSetupRequirement(settings);
+
         VoiceSettingsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        VoiceSettingsHelpPanel.Visibility = settings != null && IsVoiceSetupRequired(settings)
+        VoiceSettingsHelpPanel.Visibility = setupRequirement != VoiceSetupRequirement.None
             ? Visibility.Visible
             : Visibility.Collapsed;
+        VoiceSettingsHelpText.Text = GetVoiceSetupRequirementText(setupRequirement);
     }
 
-    private static bool IsVoiceSetupRequired(SettingsManager settings)
+    private enum VoiceSetupRequirement
     {
-        if (settings.NodeSttEnabled && !IsConfiguredWhisperModelDownloaded(settings))
-            return true;
+        None,
+        SpeechModel,
+        VoiceSetup,
+        SpeechModelAndVoiceSetup
+    }
 
-        return settings.NodeTtsEnabled && IsConfiguredTtsProviderSetupRequired(settings);
+    private static VoiceSetupRequirement GetVoiceSetupRequirement(SettingsManager settings)
+    {
+        var needsSpeechModel = settings.NodeSttEnabled && !IsConfiguredWhisperModelDownloaded(settings);
+        var needsVoiceSetup = settings.NodeTtsEnabled && IsConfiguredTtsProviderSetupRequired(settings);
+
+        return (needsSpeechModel, needsVoiceSetup) switch
+        {
+            (true, true) => VoiceSetupRequirement.SpeechModelAndVoiceSetup,
+            (true, false) => VoiceSetupRequirement.SpeechModel,
+            (false, true) => VoiceSetupRequirement.VoiceSetup,
+            _ => VoiceSetupRequirement.None
+        };
+    }
+
+    private static string GetVoiceSetupRequirementText(VoiceSetupRequirement requirement)
+    {
+        var key = requirement switch
+        {
+            VoiceSetupRequirement.SpeechModel => "PermissionsPage_VoiceSettingsHelp_SpeechModel",
+            VoiceSetupRequirement.VoiceSetup => "PermissionsPage_VoiceSettingsHelp_VoiceSetup",
+            VoiceSetupRequirement.SpeechModelAndVoiceSetup => "PermissionsPage_VoiceSettingsHelp_Both",
+            _ => ""
+        };
+
+        return string.IsNullOrEmpty(key) ? "" : LocalizationHelper.GetString(key);
     }
 
     private static bool IsConfiguredWhisperModelDownloaded(SettingsManager settings)

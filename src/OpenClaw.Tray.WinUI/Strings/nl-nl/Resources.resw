@@ -2416,8 +2416,14 @@ Gebruik een van deze opties:
   <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
     <value>Spraak- en audio-instellingen</value>
   </data>
-  <data name="PermissionsPage_VoiceSettingsHelp.Text" xml:space="preserve">
-    <value>Mogelijk moet je eerst een spraakmodel of stem downloaden of selecteren voordat deze mogelijkheden werken.</value>
+  <data name="PermissionsPage_VoiceSettingsHelp_SpeechModel" xml:space="preserve">
+    <value>Download een spraakmodel voordat spraak-naar-tekst kan werken.</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
+    <value>Selecteer of download een stem voordat tekst-naar-spraak kan werken.</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
+    <value>Download een spraakmodel en selecteer of download een stem voordat spraak-naar-tekst en tekst-naar-spraak kunnen werken.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Spraak en audio</value>

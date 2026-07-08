@@ -2462,8 +2462,14 @@ Use one of these options:
   <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
     <value>Voice &amp; Audio settings</value>
   </data>
-  <data name="PermissionsPage_VoiceSettingsHelp.Text" xml:space="preserve">
-    <value>You may need to download or select a speech model or voice before these capabilities can work.</value>
+  <data name="PermissionsPage_VoiceSettingsHelp_SpeechModel" xml:space="preserve">
+    <value>Download a speech model before speech-to-text can work.</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
+    <value>Select or download a voice before text-to-speech can work.</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
+    <value>Download a speech model and select or download a voice before speech-to-text and text-to-speech can work.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Voice &amp; Audio</value>

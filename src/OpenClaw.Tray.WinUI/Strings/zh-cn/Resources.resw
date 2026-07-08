@@ -2415,8 +2415,14 @@
   <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
     <value>语音和音频设置</value>
   </data>
-  <data name="PermissionsPage_VoiceSettingsHelp.Text" xml:space="preserve">
-    <value>你可能需要先下载或选择语音模型或语音，这些功能才能正常工作。</value>
+  <data name="PermissionsPage_VoiceSettingsHelp_SpeechModel" xml:space="preserve">
+    <value>请先下载语音模型，语音转文本才能正常工作。</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
+    <value>请先选择或下载语音，文本转语音才能正常工作。</value>
+  </data>
+  <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
+    <value>请先下载语音模型并选择或下载语音，语音转文本和文本转语音才能正常工作。</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>语音和音频</value>
