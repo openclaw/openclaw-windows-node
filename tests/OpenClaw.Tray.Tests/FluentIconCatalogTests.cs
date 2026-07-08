@@ -5,8 +5,8 @@ namespace OpenClaw.Tray.Tests;
 
 /// <summary>
 /// Pins the <c>FluentIconCatalog</c> contract: every advertised glyph is a
-/// single Unicode Private Use Area character (or the documented Brand
-/// emoji), and the helper builder uses the SymbolThemeFontFamily resource.
+/// single Unicode Private Use Area character, and the helper builder uses
+/// the SymbolThemeFontFamily resource.
 ///
 /// We parse the source rather than reflect on the assembly because
 /// <c>OpenClaw.Tray.Tests</c> is a pure net10.0 project that doesn't
@@ -24,7 +24,6 @@ public sealed class FluentIconCatalogTests
         "Add", "Back", "Sync", "Lock", "Plug", "MoreOverflow",
         "People", "Money", "ServerEnvironment", "CapabilityOff", "Channels",
         "ChevronR", "Check",
-        "Brand",
         // Diagnostics surface (see src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml).
         "Bug", "Briefcase", "Folder", "Copy", "Document", "Refresh", "Reset", "Clear", "Develop",
         // Workspace surface (see src/OpenClaw.Tray.WinUI/Pages/WorkspacePage.xaml).
@@ -41,8 +40,7 @@ public sealed class FluentIconCatalogTests
 
     private static IDictionary<string, string> ParseConstants(string source)
     {
-        // Matches:   public const string Name = "\uXXXX";   or
-        //            public const string Name = "🦞";
+        // Matches:   public const string Name = "\uXXXX";
         var rx = new Regex(
             @"public\s+const\s+string\s+(?<name>\w+)\s*=\s*""(?<value>(?:\\u[0-9A-Fa-f]{4}|[^""\\]|\\.)*)"";",
             RegexOptions.Compiled);
@@ -74,9 +72,6 @@ public sealed class FluentIconCatalogTests
         var map = ParseConstants(src);
         foreach (var name in ExpectedConstants)
         {
-            if (name == "Brand")
-                continue; // Brand is an emoji surrogate pair by design.
-
             Assert.True(map.TryGetValue(name, out var value),
                 $"FluentIconCatalog.{name} not found in source");
             Assert.True(value!.Length == 1,

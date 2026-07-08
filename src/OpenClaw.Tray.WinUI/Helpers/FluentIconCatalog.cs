@@ -73,9 +73,6 @@ public static class FluentIconCatalog
     public const string ChevronR = "\uE76C";       // ChevronRight
     public const string Check = "\uE73E";          // CheckMark
 
-    // ── Brand placeholder ──────────────────────────────────────────
-    public const string Brand = "🦞";
-
     // ── Diagnostics page glyphs ────────────────────────────────────
     // Added 2026-05 for the Diagnostics surface
     // (src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml). Keep these here

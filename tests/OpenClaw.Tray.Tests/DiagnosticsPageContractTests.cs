@@ -439,8 +439,10 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("BorderBrush=\"Transparent\"", xaml);
         Assert.Contains("BorderThickness=\"0\"", xaml);
         Assert.Contains("FontSize=\"16\"", xaml);
-        Assert.Contains("Text=\"\ud83e\udd9e\" FontSize=\"18\"", xaml);
-        Assert.Contains("Translation=\"0,-1,0\"", xaml);
+        Assert.Contains("xmlns:controls=\"using:OpenClawTray.Controls\"", xaml);
+        Assert.Contains("<controls:BrandMark Grid.Column=\"1\"", xaml);
+        Assert.Contains("MarkSize=\"18\"", xaml);
+        Assert.DoesNotContain("Translation=\"0,-1,0\"", xaml);
         Assert.Contains("IsPaneToggleButtonVisible=\"False\"", xaml);
         Assert.Contains("x:Name=\"NavContentHost\"", xaml);
         Assert.Contains("x:Name=\"NavContentClip\"", xaml);
@@ -449,7 +451,7 @@ public sealed class DiagnosticsPageContractTests
 
         var titleBarIndex = xaml.IndexOf("x:Name=\"AppTitleBar\"", StringComparison.Ordinal);
         var toggleIndex = xaml.IndexOf("x:Name=\"NavPaneToggleButton\"", StringComparison.Ordinal);
-        var iconIndex = xaml.IndexOf("Text=\"\ud83e\udd9e\"", StringComparison.Ordinal);
+        var iconIndex = xaml.IndexOf("<controls:BrandMark Grid.Column=\"1\"", StringComparison.Ordinal);
         var navViewIndex = xaml.IndexOf("x:Name=\"NavView\"", StringComparison.Ordinal);
         Assert.True(titleBarIndex >= 0, "The hub title bar must exist.");
         Assert.True(toggleIndex > titleBarIndex, "The nav pane toggle must live inside the title bar block.");

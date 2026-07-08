@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenClawTray.Controls;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -45,10 +46,9 @@ public sealed class WelcomeDialog : WindowEx
             Spacing = 12,
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        headerPanel.Children.Add(new TextBlock
+        headerPanel.Children.Add(new BrandMark
         {
-            Text = "🦞",
-            FontSize = 48
+            MarkSize = 48
         });
         headerPanel.Children.Add(new TextBlock
         {
@@ -130,10 +130,9 @@ public sealed class WelcomeDialog : WindowEx
         outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         var titleBar = new Grid { Padding = new Thickness(16, 0, 140, 0) };
-        var titleIcon = new TextBlock
+        var titleIcon = new BrandMark
         {
-            Text = "🦞",
-            FontSize = 20,
+            MarkSize = 20,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 10, 0)
         };
