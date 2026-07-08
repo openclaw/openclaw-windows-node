@@ -2576,11 +2576,14 @@ Use one of these options:
   <data name="VoiceSettingsPage_SttDescription.Text" xml:space="preserve">
     <value>Enable voice input via microphone. Requires a Whisper model download.</value>
   </data>
-  <data name="VoiceSettingsPage_SttEnabledToggle.Header" xml:space="preserve">
-    <value>Enable Voice Input</value>
-  </data>
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Speech Model</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>Speech-to-text is disabled. Configure models here, then enable the capability in Permissions when you're ready.</value>
+  </data>
+  <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
+    <value>Open Permissions</value>
   </data>
   <data name="VoiceSettingsPage_ModelCombo.Header" xml:space="preserve">
     <value>Model Size</value>
@@ -2647,6 +2650,9 @@ Use one of these options:
   </data>
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Choose the voice used when reading responses aloud.</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>Text-to-speech is disabled. Configure providers and voices here, then enable the capability in Permissions when you're ready.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Provider</value>

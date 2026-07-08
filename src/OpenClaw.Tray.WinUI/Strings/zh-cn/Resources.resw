@@ -2529,11 +2529,14 @@
   <data name="VoiceSettingsPage_SttDescription.Text" xml:space="preserve">
     <value>通过麦克风启用语音输入。需要下载 Whisper 模型。</value>
   </data>
-  <data name="VoiceSettingsPage_SttEnabledToggle.Header" xml:space="preserve">
-    <value>启用语音输入</value>
-  </data>
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>语音模型</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>语音转文本已禁用。请先在此配置模型，准备好后再在“权限”中启用此功能。</value>
+  </data>
+  <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
+    <value>打开权限</value>
   </data>
   <data name="VoiceSettingsPage_ModelCombo.Header" xml:space="preserve">
     <value>模型大小</value>
@@ -2600,6 +2603,9 @@
   </data>
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>选择朗读响应时使用的语音。</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>文本转语音已禁用。请先在此配置提供程序和语音，准备好后再在“权限”中启用此功能。</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>提供商</value>

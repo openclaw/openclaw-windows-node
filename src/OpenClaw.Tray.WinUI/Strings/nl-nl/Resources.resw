@@ -2530,11 +2530,14 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_SttDescription.Text" xml:space="preserve">
     <value>Schakel spraakinvoer via microfoon in. Vereist een Whisper-modeldownload.</value>
   </data>
-  <data name="VoiceSettingsPage_SttEnabledToggle.Header" xml:space="preserve">
-    <value>Spraakinvoer inschakelen</value>
-  </data>
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Spraakmodel</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>Spraak-naar-tekst is uitgeschakeld. Configureer de modellen hier en schakel de mogelijkheid in Machtigingen in wanneer je klaar bent.</value>
+  </data>
+  <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
+    <value>Machtigingen openen</value>
   </data>
   <data name="VoiceSettingsPage_ModelCombo.Header" xml:space="preserve">
     <value>Modelgrootte</value>
@@ -2601,6 +2604,9 @@ Gebruik een van deze opties:
   </data>
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Kies de stem die wordt gebruikt bij het hardop voorlezen van antwoorden.</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>Tekst-naar-spraak is uitgeschakeld. Configureer de providers en stemmen hier en schakel de mogelijkheid in Machtigingen in wanneer je klaar bent.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Aanbieder</value>

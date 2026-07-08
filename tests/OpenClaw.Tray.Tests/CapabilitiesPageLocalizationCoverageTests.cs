@@ -21,6 +21,12 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     private static string GetEnUsReswPath() =>
         Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
 
+    private static string GetVoiceSettingsXamlPath() =>
+        Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages", "VoiceSettingsPage.xaml");
+
+    private static string GetVoiceSettingsCodeBehindPath() =>
+        Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages", "VoiceSettingsPage.xaml.cs");
+
     private static HashSet<string> LoadReswKeys()
     {
         var doc = XDocument.Load(GetEnUsReswPath());
@@ -104,5 +110,33 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         Assert.DoesNotContain("EnsureWhisperModelDownloaded", source);
         Assert.DoesNotContain("UpdateSttCard", source);
         Assert.DoesNotContain("UpdateTtsCard", source);
+    }
+
+    [Fact]
+    public void VoiceSettingsPage_LinksToPermissions_InsteadOfOwningCapabilityToggles()
+    {
+        var xaml = File.ReadAllText(GetVoiceSettingsXamlPath());
+        var source = File.ReadAllText(GetVoiceSettingsCodeBehindPath());
+        var keys = LoadReswKeys();
+
+        Assert.Contains("x:Name=\"SttCapabilityNotice\"", xaml);
+        Assert.Contains("x:Name=\"TtsCapabilityNotice\"", xaml);
+        Assert.Contains("x:Name=\"SttCapabilityNoticeIcon\"", xaml);
+        Assert.Contains("x:Name=\"TtsCapabilityNoticeIcon\"", xaml);
+        Assert.Contains("x:Name=\"VoiceChatCard\"", xaml);
+        Assert.Contains("x:Uid=\"VoiceSettingsPage_SttCapabilityDisabledNotice\"", xaml);
+        Assert.Contains("x:Uid=\"VoiceSettingsPage_TtsCapabilityDisabledNotice\"", xaml);
+        Assert.Contains("x:Uid=\"VoiceSettingsPage_OpenPermissionsLink\"", xaml);
+        Assert.DoesNotContain("SttEnabledToggle", xaml);
+        Assert.DoesNotContain("OnSttToggled", source);
+        Assert.Contains("((IAppCommands)CurrentApp).Navigate(\"permissions\")", source);
+        Assert.Contains("SttCapabilityNotice.Visibility = sttEnabled ? Visibility.Collapsed : Visibility.Visible;", source);
+        Assert.Contains("TtsCapabilityNotice.Visibility = ttsEnabled ? Visibility.Collapsed : Visibility.Visible;", source);
+        Assert.Contains("VoiceChatCard.IsHitTestVisible = sttEnabled;", source);
+        Assert.Contains("TestVoiceButton.IsEnabled = sttEnabled;", source);
+        Assert.Contains("PreviewVoiceButton.IsEnabled = ttsEnabled;", source);
+        Assert.Contains("VoiceSettingsPage_SttCapabilityDisabledNotice.Text", keys);
+        Assert.Contains("VoiceSettingsPage_TtsCapabilityDisabledNotice.Text", keys);
+        Assert.Contains("VoiceSettingsPage_OpenPermissionsLink.Content", keys);
     }
 }

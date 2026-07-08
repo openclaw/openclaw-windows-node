@@ -2529,11 +2529,14 @@ Utilisez l'une de ces options :
   <data name="VoiceSettingsPage_SttDescription.Text" xml:space="preserve">
     <value>Activer la saisie vocale via le microphone. Nécessite le téléchargement d'un modèle Whisper.</value>
   </data>
-  <data name="VoiceSettingsPage_SttEnabledToggle.Header" xml:space="preserve">
-    <value>Activer la saisie vocale</value>
-  </data>
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Modèle vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>La reconnaissance vocale est désactivée. Configurez les modèles ici, puis activez la capacité dans Autorisations lorsque vous êtes prêt.</value>
+  </data>
+  <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
+    <value>Ouvrir les autorisations</value>
   </data>
   <data name="VoiceSettingsPage_ModelCombo.Header" xml:space="preserve">
     <value>Taille du modèle</value>
@@ -2600,6 +2603,9 @@ Utilisez l'une de ces options :
   </data>
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Choisissez la voix utilisée pour lire les réponses à voix haute.</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
+    <value>La synthèse vocale est désactivée. Configurez les fournisseurs et les voix ici, puis activez la capacité dans Autorisations lorsque vous êtes prêt.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Fournisseur</value>
