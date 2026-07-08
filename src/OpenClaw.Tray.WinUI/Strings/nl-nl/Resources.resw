@@ -2917,6 +2917,9 @@ Gebruik een van deze opties:
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>Eerdere berichten laden</value>
   </data>
+  <data name="Chat_Timeline_ScrollToLatest" xml:space="preserve">
+    <value>Naar nieuwste bericht scrollen</value>
+  </data>
   <data name="Chat_Tool_CallLabel" xml:space="preserve">
     <value>Hulpmiddelaanroep</value>
   </data>

@@ -2916,8 +2916,11 @@ Utilisez l'une de ces options :
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>Charger les messages précédents</value>
   </data>
+  <data name="Chat_Timeline_ScrollToLatest" xml:space="preserve">
+    <value>Faire défiler jusqu’au dernier message</value>
+  </data>
   <data name="Chat_Tool_CallLabel" xml:space="preserve">
-    <value>Appel d'outil</value>
+    <value>Appel d’outil</value>
   </data>
   <data name="Chat_Tool_OutputLabel" xml:space="preserve">
     <value>Sortie d'outil</value>

@@ -2916,6 +2916,9 @@
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>加载更早的消息</value>
   </data>
+  <data name="Chat_Timeline_ScrollToLatest" xml:space="preserve">
+    <value>滚动到最新消息</value>
+  </data>
   <data name="Chat_Tool_CallLabel" xml:space="preserve">
     <value>工具调用</value>
   </data>

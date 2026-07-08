@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using OpenClawTray.Chat.Controls;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using Windows.UI;
@@ -74,18 +75,6 @@ public record OpenClawChatTimelineProps(
 /// </summary>
 public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 {
-    const double FollowThreshold = 60;
-    const int FollowToBottomMaxStabilizationPasses = 4;
-    const double FollowToBottomExtentEpsilon = 0.5;
-
-    /// <summary>
-    /// Static scroll-offset store shared across all timeline instances so that
-    /// scroll position survives page navigation (which recreates the page and
-    /// component instances). Bounded to avoid unbounded memory growth.
-    /// </summary>
-    private static readonly Dictionary<string, double> s_sessionOffsets = new();
-    private const int MaxSessionOffsets = 50;
-
     // SECURITY (chat-rubber-duck HIGH 1 / MEDIUM 3): chat-bubble Markdown is
     // rendered as sanitized inert text that:
     //   1. Renders images as inert ``[Image: <alt>]`` text (no Uri fetch) —
@@ -401,20 +390,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         }
     }
 
-    static bool ContainsEntryId(IReadOnlyList<ChatTimelineItem> entries, string id)
-    {
-        for (var i = 0; i < entries.Count; i++)
-        {
-            if (entries[i].Id == id)
-                return true;
-        }
-
-        return false;
-    }
-
-    static double ClampOffset(double offset, double max) =>
-        Math.Max(0, Math.Min(offset, max));
-
     /// <summary>
     /// Process-wide cache so we decode each cached image only once. Keyed by
     /// byte-array reference so cache invalidates automatically when bytes
@@ -466,25 +441,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         const bool showAssistAvatar = true;
         const bool showTimestamps = true;
 
-        var scrollViewRef = UseRef<Microsoft.UI.Xaml.Controls.ScrollViewer?>(null);
-        var isFollowingRef = UseRef(true);
-        var contentRef = UseRef<FrameworkElement?>(null);
-        var prevEntryCountRef = UseRef(0);
-        var prevSessionIdRef = UseRef<string?>(null);
-        var prevFirstEntryIdRef = UseRef<string?>(null);
-        var prevLastEntryIdRef = UseRef<string?>(null);
-        var lastVerticalOffsetRef = UseRef(0.0);
-        var lastScrollableHeightRef = UseRef(0.0);
-        var suppressAutoFollowRef = UseRef(false);
-        var sessionOffsetsRef = UseRef<Dictionary<string, double>>(new());
-        var prevScrollToBottomTokenRef = UseRef(0);
-        var hasMoreHistoryRef = UseRef(Props.HasMoreHistory);
-        var loadMoreHistoryRef = UseRef<Action?>(Props.OnLoadMoreHistory);
-        var loadMoreRequestedForCountRef = UseRef(-1);
-        // Pending offset to restore after layout completes (SizeChanged).
-        // Set during initialLoad when ScrollableHeight is still 0.
-        var pendingRestoreOffsetRef = UseRef<double?>(null);
-
         // Per-entry expand state for tool chips. Tokens are
         // "{entryId}:call" and "{entryId}:out" so call and output
         // toggle independently. HashSet so the empty default is "all
@@ -503,19 +459,15 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 expandedToolChips.Set(new HashSet<string>());
         }
 
-        // When showToolCalls changes, pre-clear the native StackPanel so the
-        // reconciler (SyncChildren) only does inserts into an empty panel
-        // instead of expensive per-element RemoveAt calls that cascade
-        // Unloaded events through deep visual subtrees.
+        // Keep the last showToolCalls value so collapsing the tool-call surface
+        // can reset row-local expanded state without forcing a full timeline
+        // StackPanel clear. Row realization now belongs to OpenClawVirtualizedChatView.
         var prevShowToolCallsRef = UseRef(showToolCalls);
         if (prevShowToolCallsRef.Current != showToolCalls)
         {
             prevShowToolCallsRef.Current = showToolCalls;
-            if (contentRef.Current is ItemsRepeater repeater)
-                repeater.ItemsSource = Array.Empty<object>();
-            else if (contentRef.Current is StackPanel stackPanel)
-                stackPanel.Children.Clear();
         }
+        var (suppressAutoFollowToken, suppressAutoFollowUpdate) = UseReducer<int>(0, threadSafe: true);
 
         // Hover state — set of entry ids currently under the pointer. Used to
         // reveal the trash / speak action icons beside user / assistant
@@ -587,100 +539,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             else dq.TryEnqueue(Clear);
         }
 
-        hasMoreHistoryRef.Current = Props.HasMoreHistory;
-        loadMoreHistoryRef.Current = Props.OnLoadMoreHistory;
-
         var entryCount = Props.Entries.Count;
         var firstEntryId = entryCount > 0 ? Props.Entries[0].Id : null;
         var lastEntryId = entryCount > 0 ? Props.Entries[entryCount - 1].Id : null;
-        var previousSessionId = prevSessionIdRef.Current;
-        var previousEntryCount = prevEntryCountRef.Current;
-        var previousFirstEntryId = prevFirstEntryIdRef.Current;
-        var previousLastEntryId = prevLastEntryIdRef.Current;
-        var sessionChanged = Props.SessionId != previousSessionId;
-        var isFirstMount = sessionChanged && previousSessionId is null;
-        var initialLoad = isFirstMount
-            ? entryCount > 0
-            : (!sessionChanged && previousEntryCount == 0 && entryCount > 0);
-        var prependedHistory = !sessionChanged
-            && previousEntryCount > 0
-            && entryCount > previousEntryCount
-            && previousFirstEntryId is not null
-            && firstEntryId != previousFirstEntryId
-            && lastEntryId == previousLastEntryId
-            && ContainsEntryId(Props.Entries, previousFirstEntryId);
-        var appendedEntries = !sessionChanged
-            && entryCount > previousEntryCount
-            && !prependedHistory;
 
-        void StoreSessionOffset(string? sessionId, double offset)
-        {
-            if (sessionId is { Length: > 0 })
-            {
-                sessionOffsetsRef.Current[sessionId] = offset;
-                s_sessionOffsets[sessionId] = offset;
-                // Evict oldest entries when cache exceeds bound
-                if (s_sessionOffsets.Count > MaxSessionOffsets)
-                {
-                    var first = s_sessionOffsets.Keys.First();
-                    s_sessionOffsets.Remove(first);
-                }
-            }
-        }
-
-        void UpdateScrollMetrics(Microsoft.UI.Xaml.Controls.ScrollViewer sv)
-        {
-            if (sv.ViewportHeight <= 0) return;
-
-            lastVerticalOffsetRef.Current = sv.VerticalOffset;
-            lastScrollableHeightRef.Current = sv.ScrollableHeight;
-            isFollowingRef.Current = sv.ScrollableHeight - sv.VerticalOffset <= FollowThreshold;
-            StoreSessionOffset(prevSessionIdRef.Current, sv.VerticalOffset);
-        }
-
-        void QueueScrollToBottom(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, bool disableAnimation)
-        {
-            isFollowingRef.Current = true;
-
-            void QueuePass(int pass, double previousScrollableHeight, bool passDisableAnimation)
-            {
-                sv.DispatcherQueue.TryEnqueue(() =>
-                {
-                    sv.UpdateLayout();
-                    var bottom = sv.ScrollableHeight;
-                    sv.ChangeView(null, bottom, null, passDisableAnimation);
-                    lastVerticalOffsetRef.Current = bottom;
-                    lastScrollableHeightRef.Current = sv.ScrollableHeight;
-                    isFollowingRef.Current = true;
-                    StoreSessionOffset(sessionId, bottom);
-
-                    var extentStable = Math.Abs(bottom - previousScrollableHeight) <= FollowToBottomExtentEpsilon;
-                    var atBottom = sv.ScrollableHeight - sv.VerticalOffset <= FollowThreshold;
-                    if (pass < FollowToBottomMaxStabilizationPasses && (!extentStable || !atBottom))
-                        QueuePass(pass + 1, sv.ScrollableHeight, passDisableAnimation: true);
-                });
-            }
-
-            QueuePass(0, double.NaN, disableAnimation);
-        }
-
-        void QueuePreservePrependOffset(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, double oldOffset, double oldScrollableHeight)
-        {
-            suppressAutoFollowRef.Current = true;
-            sv.DispatcherQueue.TryEnqueue(() =>
-            {
-                var delta = sv.ScrollableHeight - oldScrollableHeight;
-                var target = ClampOffset(oldOffset + delta, sv.ScrollableHeight);
-                sv.ChangeView(null, target, null, disableAnimation: true);
-                lastVerticalOffsetRef.Current = target;
-                lastScrollableHeightRef.Current = sv.ScrollableHeight;
-                isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
-                StoreSessionOffset(sessionId, target);
-                sv.DispatcherQueue.TryEnqueue(() => suppressAutoFollowRef.Current = false);
-            });
-        }
-
-        // Load more button — outside the repeated items
+        // Load more button — rendered as the first virtualized row so it scrolls
+        // with history rather than living outside the timeline viewport.
         var loadMoreButton = Props.HasMoreHistory
             ? Button(LocalizationHelper.GetString("Chat_Timeline_LoadEarlier"), () => Props.OnLoadMoreHistory?.Invoke())
                 .HAlign(HorizontalAlignment.Center)
@@ -1625,7 +1489,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 {
                     var next = new HashSet<string>(expandedToolChips.Value);
                     if (!next.Add(token)) next.Remove(token);
-                    suppressAutoFollowRef.Current = true;
+                    suppressAutoFollowUpdate(v => v + 1);
                     expandedToolChips.Set(next);
                 };
 
@@ -1847,7 +1711,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     // Suppress auto-follow so the scroll position stays put
                     // while the card unfurls — the SizeChanged handler would
                     // otherwise chase the new bottom.
-                    suppressAutoFollowRef.Current = true;
+                    suppressAutoFollowUpdate(v => v + 1);
                     expandedToolChips.Set(next);
                 };
 
@@ -2499,132 +2363,50 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             timelineRows = renderedEntries;
         }
 
+        var virtualizedRows = new List<OpenClawChatTimelineRow>(timelineRows.Length + 3);
+        if (Props.HasMoreHistory)
+        {
+            var loadMoreRow = loadMoreButton;
+            virtualizedRows.Add(new OpenClawChatTimelineRow(
+                "chrome:load-more",
+                () => loadMoreRow));
+        }
+
+        virtualizedRows.Add(new OpenClawChatTimelineRow(
+            "chrome:top-spacer",
+            () => Border(Empty()).Height(20)));
+
+        for (var rowIndex = 0; rowIndex < timelineRows.Length; rowIndex++)
+        {
+            var rowElement = timelineRows[rowIndex];
+            var rowKey = string.IsNullOrEmpty(rowElement.Key)
+                ? $"row:index:{rowIndex}"
+                : $"row:{rowElement.Key}";
+            virtualizedRows.Add(new OpenClawChatTimelineRow(rowKey, () => rowElement, EstimatedHeight: 64));
+        }
+
+        virtualizedRows.Add(new OpenClawChatTimelineRow(
+            "chrome:bottom-spacer",
+            () => Border(Empty()).Height(24)));
+
+        var timelineView = new OpenClawChatTimelineView(
+            virtualizedRows,
+            Props.SessionId,
+            entryCount,
+            firstEntryId,
+            lastEntryId,
+            Props.Entries.Select(e => e.Id).ToHashSet(StringComparer.Ordinal),
+            Props.HasMoreHistory,
+            Props.OnLoadMoreHistory,
+            Props.ScrollToBottomToken,
+            suppressAutoFollowToken);
+
         return Grid([GridSize.Star()], [GridSize.Star()],
             // Page background matches dash-light --bg so bubbles stand out.
             Border(
-                ScrollView(
-                    Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
-                        loadMoreButton.Grid(row: 0, column: 0),
-                        Border(Empty()).Height(20).Grid(row: 1, column: 0),
-                        VirtualVStack(2, timelineRows).Set(host =>
-                        {
-                            if (contentRef.Current != host)
-                            {
-                                contentRef.Current = host;
-                                host.SizeChanged += (_, _) =>
-                                {
-                                    if (scrollViewRef.Current is not { } sv) return;
-
-                                    // Pending scroll restoration from initialLoad — apply
-                                    // once the layout is ready (ScrollableHeight > 0).
-                                    if (pendingRestoreOffsetRef.Current is { } pendingOffset && sv.ScrollableHeight > 0)
-                                    {
-                                        pendingRestoreOffsetRef.Current = null;
-                                        var target = ClampOffset(pendingOffset, sv.ScrollableHeight);
-                                        isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
-                                        sv.ChangeView(null, target, null, disableAnimation: true);
-                                        lastVerticalOffsetRef.Current = target;
-                                        lastScrollableHeightRef.Current = sv.ScrollableHeight;
-                                        suppressAutoFollowRef.Current = false;
-                                        return;
-                                    }
-
-                                    if (!suppressAutoFollowRef.Current && isFollowingRef.Current)
-                                    {
-                                        QueueScrollToBottom(sv, prevSessionIdRef.Current, disableAnimation: true);
-                                    }
-                                    else if (suppressAutoFollowRef.Current)
-                                    {
-                                        // Reset after one suppressed layout pass (e.g. tool expand/collapse).
-                                        suppressAutoFollowRef.Current = false;
-                                    }
-                                };
-                            }
-                        }).Grid(row: 2, column: 0),
-                        Border(Empty()).Height(24).Grid(row: 3, column: 0)
-                    )
-                ).Set(sv =>
-            {
-                sv.HorizontalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Disabled;
-                sv.HorizontalScrollMode = Microsoft.UI.Xaml.Controls.ScrollMode.Disabled;
-                sv.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                if (scrollViewRef.Current != sv)
-                {
-                    scrollViewRef.Current = sv;
-                    sv.ViewChanged += (_, _) =>
-                    {
-                        UpdateScrollMetrics(sv);
-
-                        if (sv.ScrollableHeight > 0
-                            && sv.VerticalOffset <= FollowThreshold
-                            && hasMoreHistoryRef.Current
-                            && loadMoreRequestedForCountRef.Current != prevEntryCountRef.Current)
-                        {
-                            loadMoreRequestedForCountRef.Current = prevEntryCountRef.Current;
-                            loadMoreHistoryRef.Current?.Invoke();
-                        }
-                    };
-                }
-
-                if (entryCount != previousEntryCount)
-                    loadMoreRequestedForCountRef.Current = -1;
-
-                if (sessionChanged && !isFirstMount)
-                {
-                    StoreSessionOffset(previousSessionId, lastVerticalOffsetRef.Current);
-
-                    if (entryCount > 0)
-                    {
-                        // Always scroll to bottom when switching sessions
-                        QueueScrollToBottom(sv, Props.SessionId, disableAnimation: true);
-                    }
-                }
-                else if (prependedHistory)
-                {
-                    QueuePreservePrependOffset(sv, Props.SessionId, lastVerticalOffsetRef.Current, lastScrollableHeightRef.Current);
-                }
-                else if (initialLoad)
-                {
-                    // Check instance-level ref first, then static store (survives page recreation)
-                    double? savedOffset = null;
-                    if (Props.SessionId is not null)
-                    {
-                        if (sessionOffsetsRef.Current.TryGetValue(Props.SessionId, out var refOffset))
-                            savedOffset = refOffset;
-                        else if (s_sessionOffsets.TryGetValue(Props.SessionId, out var staticOffset))
-                            savedOffset = staticOffset;
-                    }
-
-                    if (savedOffset is not null)
-                    {
-                        // Defer the scroll restoration: the ScrollViewer hasn't
-                        // laid out yet (ScrollableHeight=0) so we can't scroll
-                        // now. Store the target and let SizeChanged apply it
-                        // once the layout is ready.
-                        pendingRestoreOffsetRef.Current = savedOffset.Value;
-                        suppressAutoFollowRef.Current = true;
-                        isFollowingRef.Current = false;
-                    }
-                    else
-                        QueueScrollToBottom(sv, Props.SessionId, disableAnimation: true);
-                }
-                else if (appendedEntries && isFollowingRef.Current)
-                {
-                    QueueScrollToBottom(sv, Props.SessionId, disableAnimation: false);
-                }
-
-                // External scroll-to-bottom request (e.g. user sent a message)
-                if (Props.ScrollToBottomToken != prevScrollToBottomTokenRef.Current)
-                {
-                    prevScrollToBottomTokenRef.Current = Props.ScrollToBottomToken;
-                    QueueScrollToBottom(sv, Props.SessionId, disableAnimation: false);
-                }
-
-                prevSessionIdRef.Current = Props.SessionId;
-                prevFirstEntryIdRef.Current = firstEntryId;
-                prevLastEntryIdRef.Current = lastEntryId;
-                prevEntryCountRef.Current = entryCount;
-            })
+                Native(
+                    () => new OpenClawVirtualizedChatView(),
+                    (OpenClawVirtualizedChatView element) => element.Update(timelineView))
             ).Background(chatPageBg).Grid(row: 0, column: 0)
         );
     }

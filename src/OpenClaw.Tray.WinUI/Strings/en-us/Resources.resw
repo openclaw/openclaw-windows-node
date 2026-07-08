@@ -2963,6 +2963,9 @@ Use one of these options:
   <data name="Chat_Timeline_LoadEarlier" xml:space="preserve">
     <value>Load earlier messages</value>
   </data>
+  <data name="Chat_Timeline_ScrollToLatest" xml:space="preserve">
+    <value>Scroll to latest message</value>
+  </data>
   <data name="Chat_Tool_CallLabel" xml:space="preserve">
     <value>Tool call</value>
   </data>

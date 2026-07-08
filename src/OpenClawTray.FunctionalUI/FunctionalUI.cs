@@ -210,6 +210,7 @@ public sealed record FlexRowElement(IReadOnlyList<Element?> Children) : Element
 public sealed record GridElement(string[] Columns, string[] Rows, IReadOnlyList<Element?> Children) : Element;
 public sealed record ScrollViewElement(Element? Child) : Element;
 public sealed record ExpanderElement(string Header, Element? Child, bool IsExpanded = false) : Element;
+public sealed record NativeElement(string Identity, Func<FrameworkElement> Create, Action<FrameworkElement>? Configure = null) : Element;
 public sealed record ComponentElement(Type ComponentType, object? Props) : Element;
 public abstract record FlyoutElement(FlyoutPlacementMode Placement);
 public sealed record ContentFlyoutElement(Element Content, FlyoutPlacementMode Placement) : FlyoutElement(Placement);
@@ -605,6 +606,14 @@ public static class Factories
         new(columns.Select(c => c.ToString()).ToArray(), rows.Select(r => r.ToString()).ToArray(), children);
     public static ScrollViewElement ScrollView(Element? child) => new(child);
     public static ExpanderElement Expander(string header, Element? child, bool isExpanded = false) => new(header, child, isExpanded);
+    public static NativeElement Native<TControl>(Func<TControl> create, Action<TControl>? configure = null, string? key = null)
+        where TControl : FrameworkElement =>
+        new(
+            key ?? typeof(TControl).AssemblyQualifiedName ?? typeof(TControl).FullName ?? typeof(TControl).Name,
+            () => create(),
+            configure is null ? null : element => configure((TControl)element));
+    public static NativeElement Native(Func<FrameworkElement> create, Action<FrameworkElement>? configure = null, string? key = null) =>
+        new(key ?? $"{create.Method.Module.ModuleVersionId:N}:{create.Method.MetadataToken}", create, configure);
     public static ContentFlyoutElement ContentFlyout(Element content, FlyoutPlacementMode placement = FlyoutPlacementMode.Bottom) =>
         new(content, placement);
     public static MenuFlyoutContentElement MenuItems(params MenuFlyoutItemBase[] items) =>
@@ -831,6 +840,9 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
 
     public void Mount(Component component)
     {
+        if (!ReferenceEquals(_rootComponent, component) || _rootRender is not null || _rootContext is not null)
+            ClearRootState();
+
         _rootRender = null;
         _rootContext = null;
         _rootComponent = component;
@@ -839,6 +851,7 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
 
     public void Mount(Func<RenderContext, Element> render)
     {
+        ClearRootState();
         _rootComponent = null;
         _rootRender = render;
         _rootContext = new RenderContext();
@@ -853,6 +866,12 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
         _rootContext?.RunEffectCleanups();
         _renderer.Dispose();
         Content = null;
+    }
+
+    private void ClearRootState()
+    {
+        _rootComponent?.Context.RunEffectCleanups();
+        _rootContext?.RunEffectCleanups();
     }
 
     private void RequestRender()
@@ -926,6 +945,13 @@ internal sealed class UiRenderer(Action requestRender)
     internal int CachedVirtualStackControlCount =>
         _controls.Keys.Count(IsOwnedByVirtualStack);
 
+    private static readonly DependencyProperty NativeIdentityProperty =
+        DependencyProperty.RegisterAttached(
+            "NativeIdentity",
+            typeof(string),
+            typeof(UiRenderer),
+            new PropertyMetadata(null));
+
     public UIElement Render(Element element, string path, List<Action> effects)
     {
         _visitedControlPaths.Clear();
@@ -983,6 +1009,7 @@ internal sealed class UiRenderer(Action requestRender)
             GridElement e => ConfigureGrid(GetOrCreate<Border>(path), e, path, effects),
             ScrollViewElement e => ConfigureScrollView(GetOrCreate<ScrollViewer>(path), e, path, effects),
             ExpanderElement e => ConfigureExpander(GetOrCreate<Expander>(path), e, path, effects),
+            NativeElement e => ConfigureNative(GetOrCreate<ContentControl>(path), e),
             ComponentElement e => RenderComponent(e, path, effects),
             INavigationHostElement e => RenderNavigationHost(e, path, effects),
             _ => throw new NotSupportedException($"Unsupported functional UI element: {element.GetType().Name}")
@@ -1583,6 +1610,34 @@ internal sealed class UiRenderer(Action requestRender)
         return control;
     }
 
+    private ContentControl ConfigureNative(ContentControl wrapper, NativeElement element)
+    {
+        var currentIdentity = (string?)wrapper.GetValue(NativeIdentityProperty);
+        if (wrapper.Content is not FrameworkElement native
+            || !string.Equals(currentIdentity, element.Identity, StringComparison.Ordinal))
+        {
+            DisposeNativeContent(wrapper.Content);
+            native = element.Create();
+            native.HorizontalAlignment = HorizontalAlignment.Stretch;
+            native.VerticalAlignment = VerticalAlignment.Stretch;
+            wrapper.Content = native;
+            wrapper.SetValue(NativeIdentityProperty, element.Identity);
+        }
+
+        wrapper.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        wrapper.VerticalContentAlignment = VerticalAlignment.Stretch;
+        element.Configure?.Invoke(native);
+        ApplyModifiers(wrapper, element);
+        ApplySetters(native, element);
+        return wrapper;
+    }
+
+    private static void DisposeNativeContent(object? content)
+    {
+        if (content is IDisposable disposable)
+            disposable.Dispose();
+    }
+
     private FlyoutBase CreateFlyout(FlyoutElement element, string path, List<Action> effects)
     {
         return element switch
@@ -1887,6 +1942,7 @@ internal sealed class UiRenderer(Action requestRender)
                 scrollViewer.Content = null;
                 break;
             case ContentControl contentControl:
+                DisposeNativeContent(contentControl.Content);
                 contentControl.Content = null;
                 break;
         }
