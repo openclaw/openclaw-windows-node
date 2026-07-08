@@ -7,13 +7,18 @@ internal static class StableRowCollection
     public static void Sync<T>(
         ObservableCollection<T> current,
         IReadOnlyList<T> desired,
-        Func<T, string> keySelector)
+        Func<T, string> keySelector,
+        HashSet<string>? scratchKeys = null)
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(desired);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var desiredKeys = desired.Select(keySelector).ToHashSet(StringComparer.Ordinal);
+        var desiredKeys = scratchKeys ?? new HashSet<string>(StringComparer.Ordinal);
+        desiredKeys.Clear();
+        foreach (var item in desired)
+            desiredKeys.Add(keySelector(item));
+
         for (var index = current.Count - 1; index >= 0; index--)
         {
             if (!desiredKeys.Contains(keySelector(current[index])))
@@ -36,6 +41,9 @@ internal static class StableRowCollection
             else
                 current.Insert(desiredIndex, desiredItem);
         }
+
+        if (scratchKeys is null)
+            desiredKeys.Clear();
     }
 
     private static int IndexOfKey<T>(

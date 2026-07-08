@@ -849,12 +849,16 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
         RequestRender();
     }
 
-    public void Mount(Func<RenderContext, Element> render)
+    public void Mount(Func<RenderContext, Element> render, bool preserveRootContext = false)
     {
-        ClearRootState();
+        if (!preserveRootContext || _rootComponent is not null || _rootContext is null)
+        {
+            ClearRootState();
+            _rootContext = new RenderContext();
+        }
+
         _rootComponent = null;
         _rootRender = render;
-        _rootContext = new RenderContext();
         RequestRender();
     }
 

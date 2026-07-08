@@ -1944,6 +1944,7 @@ public partial class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 nestedTool: thinkingNestedTool,
                 suppressFooter: true,
                 forceVisible: true)
+                .WithKey("__thinking__")
                 .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         }
 

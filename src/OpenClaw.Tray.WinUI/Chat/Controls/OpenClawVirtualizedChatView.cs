@@ -19,12 +19,14 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
     private const int MaxSessionOffsets = 50;
     private const int RequiredStableRestorePasses = 2;
     private static readonly Dictionary<string, double> s_sessionOffsets = new(StringComparer.Ordinal);
+    private static readonly object s_sessionOffsetsLock = new();
 
     private readonly ScrollViewer _scrollViewer;
     private readonly ItemsRepeater _itemsRepeater;
     private readonly Button _scrollToLatestButton;
     private readonly ChatRowElementFactory _rowFactory;
     private readonly ObservableCollection<OpenClawChatTimelineRow> _rows = new();
+    private readonly HashSet<string> _rowKeyScratch = new(StringComparer.Ordinal);
 
     private OpenClawChatTimelineView _view = OpenClawChatTimelineView.Empty;
     private string? _previousSessionId;
@@ -38,6 +40,11 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
     private double? _pendingRestoreOffset;
     private double? _lastRestoreScrollableHeight;
     private int _stableRestorePasses;
+    private string? _pendingPrependSessionId;
+    private double? _pendingPrependOldOffset;
+    private double? _pendingPrependOldScrollableHeight;
+    private double? _lastPrependScrollableHeight;
+    private int _stablePrependPasses;
     private int _previousScrollToBottomToken;
     private int _previousSuppressAutoFollowToken;
     private int _loadMoreRequestedForCount = -1;
@@ -127,7 +134,7 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
             && previousFirstEntryId is not null
             && !string.Equals(view.FirstEntryId, previousFirstEntryId, StringComparison.Ordinal)
             && string.Equals(view.LastEntryId, previousLastEntryId, StringComparison.Ordinal)
-            && view.EntryIds.Contains(previousFirstEntryId);
+            && view.ContainsEntryId(previousFirstEntryId);
         var appendedEntries = !sessionChanged
             && view.EntryCount > previousEntryCount
             && !prependedHistory;
@@ -192,13 +199,14 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
     public void ScrollToEnd()
     {
         _pendingRestoreOffset = null;
+        ClearPendingPrependCorrection();
         _suppressAutoFollow = false;
         QueueScrollToBottom(_view.SessionId, disableAnimation: false);
     }
 
     private void SyncRows(IReadOnlyList<OpenClawChatTimelineRow> desiredRows)
     {
-        StableRowCollection.Sync(_rows, desiredRows, row => row.Key);
+        StableRowCollection.Sync(_rows, desiredRows, row => row.Key, _rowKeyScratch);
     }
 
     public void Dispose()
@@ -219,6 +227,9 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
     private void OnContentSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (ApplyPendingRestoreIfReady())
+            return;
+
+        if (ApplyPendingPrependCorrectionIfReady())
             return;
 
         if (!_suppressAutoFollow && _isFollowing)
@@ -304,6 +315,8 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
 
     private void QueueScrollToBottom(string? sessionId, bool disableAnimation)
     {
+        _pendingRestoreOffset = null;
+        ClearPendingPrependCorrection();
         _isFollowing = true;
         _scrollToLatestButton.Visibility = Visibility.Collapsed;
         EnqueueOnView(() =>
@@ -319,19 +332,65 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
 
     private void QueuePreservePrependOffset(string? sessionId, double oldOffset, double oldScrollableHeight)
     {
+        _pendingPrependSessionId = sessionId;
+        _pendingPrependOldOffset = oldOffset;
+        _pendingPrependOldScrollableHeight = oldScrollableHeight;
+        _lastPrependScrollableHeight = null;
+        _stablePrependPasses = 0;
         _suppressAutoFollow = true;
-        EnqueueOnView(() =>
+        EnqueueOnView(() => { _ = ApplyPendingPrependCorrectionIfReady(); });
+    }
+
+    private bool ApplyPendingPrependCorrectionIfReady()
+    {
+        if (_pendingPrependOldOffset is not { } oldOffset ||
+            _pendingPrependOldScrollableHeight is not { } oldScrollableHeight ||
+            _scrollViewer.ScrollableHeight <= 0)
         {
-            var delta = _scrollViewer.ScrollableHeight - oldScrollableHeight;
-            var target = ClampOffset(oldOffset + delta, _scrollViewer.ScrollableHeight);
-            _scrollViewer.ChangeView(null, target, null, disableAnimation: true);
-            _lastVerticalOffset = target;
-            _lastScrollableHeight = _scrollViewer.ScrollableHeight;
-            _isFollowing = _scrollViewer.ScrollableHeight - target <= FollowThreshold;
-            _scrollToLatestButton.Visibility = _isFollowing ? Visibility.Collapsed : Visibility.Visible;
-            StoreSessionOffset(sessionId, target);
-            EnqueueOnView(() => _suppressAutoFollow = false);
-        });
+            return false;
+        }
+
+        var scrollableHeight = _scrollViewer.ScrollableHeight;
+        var delta = scrollableHeight - oldScrollableHeight;
+        var target = ClampOffset(oldOffset + delta, scrollableHeight);
+        _scrollViewer.ChangeView(null, target, null, disableAnimation: true);
+        _lastVerticalOffset = target;
+        _lastScrollableHeight = scrollableHeight;
+        _isFollowing = scrollableHeight - target <= FollowThreshold;
+        _scrollToLatestButton.Visibility = _isFollowing ? Visibility.Collapsed : Visibility.Visible;
+        StoreSessionOffset(_pendingPrependSessionId, target);
+
+        if (_lastPrependScrollableHeight is { } previousHeight &&
+            Math.Abs(previousHeight - scrollableHeight) < 0.5)
+        {
+            _stablePrependPasses++;
+        }
+        else
+        {
+            _stablePrependPasses = 0;
+            _lastPrependScrollableHeight = scrollableHeight;
+        }
+
+        if (_stablePrependPasses >= RequiredStableRestorePasses)
+        {
+            ClearPendingPrependCorrection();
+            _suppressAutoFollow = false;
+        }
+        else
+        {
+            EnqueueOnView(() => { _ = ApplyPendingPrependCorrectionIfReady(); });
+        }
+
+        return true;
+    }
+
+    private void ClearPendingPrependCorrection()
+    {
+        _pendingPrependSessionId = null;
+        _pendingPrependOldOffset = null;
+        _pendingPrependOldScrollableHeight = null;
+        _lastPrependScrollableHeight = null;
+        _stablePrependPasses = 0;
     }
 
     private void EnqueueOnView(Action action)
@@ -361,7 +420,10 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
         if (sessionId is not { Length: > 0 })
             return null;
 
-        return s_sessionOffsets.TryGetValue(sessionId, out var offset) ? offset : null;
+        lock (s_sessionOffsetsLock)
+        {
+            return s_sessionOffsets.TryGetValue(sessionId, out var offset) ? offset : null;
+        }
     }
 
     private static void StoreSessionOffset(string? sessionId, double offset)
@@ -369,12 +431,15 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
         if (sessionId is not { Length: > 0 })
             return;
 
-        s_sessionOffsets[sessionId] = offset;
-        if (s_sessionOffsets.Count <= MaxSessionOffsets)
-            return;
+        lock (s_sessionOffsetsLock)
+        {
+            s_sessionOffsets[sessionId] = offset;
+            if (s_sessionOffsets.Count <= MaxSessionOffsets)
+                return;
 
-        var first = s_sessionOffsets.Keys.First();
-        s_sessionOffsets.Remove(first);
+            var first = s_sessionOffsets.Keys.First();
+            s_sessionOffsets.Remove(first);
+        }
     }
 
     private sealed class ChatRowElementFactory : IElementFactory, IDisposable
@@ -439,6 +504,10 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
                 };
                 _hosts[row.Key] = host;
             }
+            else if (host.Parent is not null)
+            {
+                DetachFromParent(host);
+            }
 
             Mount(host, row);
             return host;
@@ -468,7 +537,26 @@ public sealed class OpenClawVirtualizedChatView : ContentControl, IDisposable
 
         private static void Mount(FunctionalHostControl host, OpenClawChatTimelineRow row)
         {
-            host.Mount(_ => row.Render());
+            host.Mount(_ => row.Render(), preserveRootContext: true);
+        }
+
+        private static void DetachFromParent(FunctionalHostControl host)
+        {
+            switch (host.Parent)
+            {
+                case Panel panel:
+                    panel.Children.Remove(host);
+                    break;
+                case Border border when ReferenceEquals(border.Child, host):
+                    border.Child = null;
+                    break;
+                case ScrollViewer scrollViewer when ReferenceEquals(scrollViewer.Content, host):
+                    scrollViewer.Content = null;
+                    break;
+                case ContentControl contentControl when ReferenceEquals(contentControl.Content, host):
+                    contentControl.Content = null;
+                    break;
+            }
         }
     }
 }
