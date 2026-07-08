@@ -195,9 +195,103 @@ export function ChatBubble({
 
 // Chat input. A rounded surface (md radius / 8px) with a 1px hairline border wrapping a
 // borderless, transparent, auto-growing textarea (min-height 56 → max-height 200, then it
-// scrolls) and a primary Send button pinned bottom-right. Mirrors OpenClawComposer:
-// CornerRadius 8, transparent TextBox chrome, MinHeight 56 / MaxHeight 200.
-export function ChatComposer({ placeholder = "Message OpenClaw…" }) {
+// scrolls) over a toolbar row. Mirrors OpenClawComposer chrome (CornerRadius 8,
+// transparent TextBox, MinHeight 56 / MaxHeight 200) and the GitHub Copilot composer
+// layout: left cluster = Add, model picker, reasoning-effort picker; right cluster = mic
+// + Send. Only Send spends the accent ("act here"); every other control stays subtle so
+// the toolbar reads as quiet chrome, not a row of competing buttons.
+function ComposerIconButton({ label, primary = false, children }) {
+  const [hover, setHover] = React.useState(false);
+  const [pressed, setPressed] = React.useState(false);
+  // WinUI SubtleButtonStyle: transparent at rest, SubtleFillColorSecondary on hover,
+  // SubtleFillColorTertiary on press, and the glyph darkens to primary text on hover.
+  const bg = primary
+    ? "var(--color-accent)"
+    : pressed
+    ? "var(--color-subtlePressed)"
+    : hover
+    ? "var(--color-subtleHover)"
+    : "transparent";
+  const fg = primary ? "var(--color-accentInk)" : hover ? "var(--color-ink)" : "var(--color-muted)";
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "32px",
+        height: "32px",
+        padding: 0,
+        borderRadius: "var(--radius-sm)",
+        cursor: "pointer",
+        border: primary ? "none" : "1px solid transparent",
+        background: bg,
+        color: fg,
+        transition: "background 120ms ease-out, color 120ms ease-out",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Subtle inline picker — text label + chevron, no border until hover in the app. Used
+// for the model and reasoning-effort selectors; reads as a quiet dropdown, not a button.
+// Same SubtleButtonStyle hover/press treatment as the icon buttons.
+function ComposerPicker({ label }) {
+  const [hover, setHover] = React.useState(false);
+  const [pressed, setPressed] = React.useState(false);
+  const bg = pressed
+    ? "var(--color-subtlePressed)"
+    : hover
+    ? "var(--color-subtleHover)"
+    : "transparent";
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "var(--space-1)",
+        height: "32px",
+        padding: "0 var(--space-2)",
+        borderRadius: "var(--radius-sm)",
+        border: "1px solid transparent",
+        background: bg,
+        color: hover ? "var(--color-ink)" : "var(--color-muted)",
+        fontFamily: "var(--font-body)",
+        fontSize: "13px",
+        lineHeight: "18px",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        transition: "background 120ms ease-out, color 120ms ease-out",
+      }}
+    >
+      <span>{label}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </button>
+  );
+}
+
+export function ChatComposer({
+  placeholder = "Message OpenClaw…",
+  model = "Claude Opus 4.8",
+  effort = "High",
+}) {
   return (
     <div
       style={{
@@ -227,8 +321,34 @@ export function ChatComposer({ placeholder = "Message OpenClaw…" }) {
           padding: "var(--space-2)",
         }}
       />
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <Button>Send</Button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)" }}>
+        {/* Left cluster: add attachment, model, reasoning effort */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)", minWidth: 0 }}>
+          <ComposerIconButton label="Add context">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </ComposerIconButton>
+          <ComposerPicker label={model} />
+          <ComposerPicker label={effort} />
+        </div>
+        {/* Right cluster: dictation + send */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+          <ComposerIconButton label="Dictate">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+            </svg>
+          </ComposerIconButton>
+          <ComposerIconButton label="Send" primary>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </ComposerIconButton>
+        </div>
       </div>
     </div>
   );

@@ -30,7 +30,9 @@
     { "name": "accentInk", "value": "#ffffff", "usage": "Text/glyphs on accent fills." },
     { "name": "positive",  "value": "#0f7b0f", "usage": "Success / connected states. Fluent SystemFillColorSuccess." },
     { "name": "warning",   "value": "#9d5d00", "usage": "Warnings / attention. Fluent SystemFillColorCaution." },
-    { "name": "critical",  "value": "#c42b1c", "usage": "Errors, disconnected, destructive. Fluent SystemFillColorCritical." }
+    { "name": "critical",  "value": "#c42b1c", "usage": "Errors, disconnected, destructive. Fluent SystemFillColorCritical." },
+    { "name": "subtleHover",   "value": "rgba(0,0,0,0.037)", "usage": "Hover fill for subtle/transparent controls (icon buttons, inline pickers). Fluent SubtleFillColorSecondary (light #09000000)." },
+    { "name": "subtlePressed", "value": "rgba(0,0,0,0.024)", "usage": "Pressed fill for subtle/transparent controls. Fluent SubtleFillColorTertiary (light #06000000)." }
   ],
   "typography": {
     "display": {
