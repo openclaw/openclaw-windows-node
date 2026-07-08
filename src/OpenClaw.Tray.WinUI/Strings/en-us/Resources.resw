@@ -2459,8 +2459,8 @@ Use one of these options:
   <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
     <value>Remove job</value>
   </data>
-  <data name="PermissionsPage_SttMoreSettingsLink.Content" xml:space="preserve">
-    <value>More voice settings…</value>
+  <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
+    <value>Voice &amp; Audio settings</value>
   </data>
   <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
     <value>ElevenLabs API key</value>

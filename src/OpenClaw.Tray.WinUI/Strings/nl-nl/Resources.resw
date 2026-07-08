@@ -2413,8 +2413,8 @@ Gebruik een van deze opties:
   <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
     <value>Taak verwijderen</value>
   </data>
-  <data name="PermissionsPage_SttMoreSettingsLink.Content" xml:space="preserve">
-    <value>Meer spraakinstellingen…</value>
+  <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
+    <value>Instellingen voor Voice &amp; Audio</value>
   </data>
   <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
     <value>ElevenLabs API-sleutel</value>

@@ -99,62 +99,17 @@
                 </ItemsRepeater.Layout>
             </ItemsRepeater>
 
-            <!-- ═════════ Speech-to-text engine details (only when STT capability is on) ═════════ -->
-            <Border x:Name="SttCard" Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+            <!-- ═════════ Voice settings link (only when STT or TTS capability is on) ═════════ -->
+            <Border x:Name="VoiceSettingsCard" Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16,10,16,12" Margin="0,-4,0,0"
-                    Visibility="Collapsed">
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                    <FontIcon Glyph="&#xE946;" FontSize="14" VerticalAlignment="Top" Margin="0,3,0,0"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel Spacing="4">
-                        <TextBlock x:Name="SttEngineHint"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                        <HyperlinkButton x:Name="SttMoreSettingsLink"
-                                         x:Uid="PermissionsPage_SttMoreSettingsLink"
-                                         Content="More voice settings…"
-                                         Click="OnSttMoreSettingsClick"
-                                         Padding="0"/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
-            <!-- ═════════ Text-to-speech engine details (only when TTS capability is on) ═════════ -->
-            <Border x:Name="TtsCard" Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16,10,16,12" Margin="0,-4,0,0"
-                    Visibility="Collapsed">
-                <StackPanel Spacing="8">
-                    <ComboBox x:Name="TtsProviderComboBox" x:Uid="PermissionsPage_TtsProviderComboBox" Header="Provider"
-                              SelectionChanged="OnTtsProviderSelectionChanged">
-                        <ComboBoxItem x:Uid="PermissionsPage_TtsProviderPiper" Content="Piper (local ML, recommended)" Tag="piper"/>
-                        <ComboBoxItem x:Uid="PermissionsPage_TtsProviderWindows" Content="Windows built-in speech" Tag="windows"/>
-                        <ComboBoxItem x:Uid="PermissionsPage_TtsProviderElevenLabs" Content="ElevenLabs" Tag="elevenlabs"/>
-                    </ComboBox>
-                    <StackPanel x:Name="TtsElevenLabsPanel" Spacing="6" Visibility="Collapsed">
-                        <PasswordBox x:Name="TtsElevenLabsApiKeyBox"
-                                     x:Uid="PermissionsPage_TtsElevenLabsApiKey"
-                                     Header="ElevenLabs API key"
-                                     LostFocus="OnTtsElevenLabsCommitted"/>
-                        <TextBox x:Name="TtsElevenLabsVoiceIdBox"
-                                 x:Uid="PermissionsPage_TtsElevenLabsVoiceId"
-                                 Header="ElevenLabs voice ID"
-                                 LostFocus="OnTtsElevenLabsCommitted"/>
-                        <TextBox x:Name="TtsElevenLabsModelBox"
-                                 x:Uid="PermissionsPage_TtsElevenLabsModel"
-                                 Header="ElevenLabs model"
-                                 PlaceholderText="eleven_multilingual_v2"
-                                 LostFocus="OnTtsElevenLabsCommitted"/>
-                        <TextBlock x:Uid="PermissionsPage_TtsElevenLabsHelp"
-                                   Text="API key is encrypted at rest with Windows DPAPI. Leave blank to keep the previously saved value when you change other fields."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                    </StackPanel>
-                    <TextBlock x:Name="TtsStatusText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                </StackPanel>
+                    Visibility="Collapsed"
+                    AutomationProperties.AutomationId="PermissionsVoiceSettingsCard">
+                <HyperlinkButton x:Name="VoiceSettingsLink"
+                                 x:Uid="PermissionsPage_VoiceSettingsLink"
+                                 Content="Voice &amp; Audio settings"
+                                 Click="OnVoiceSettingsClick"
+                                 Padding="0"/>
             </Border>
 
             <!-- ═════════ Integrations ═════════ -->

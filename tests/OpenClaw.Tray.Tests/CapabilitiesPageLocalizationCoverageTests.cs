@@ -3,7 +3,7 @@ using System.Xml.Linq;
 namespace OpenClaw.Tray.Tests;
 
 /// <summary>
-/// Pins that the STT/TTS card controls on PermissionsPage are localized (have an
+/// Pins that the voice settings card controls on PermissionsPage are localized (have an
 /// x:Uid) and that en-us\Resources.resw provides matching keys. LocalizationValidationTests
 /// catches drift between locales but not the case where a developer adds a control with
 /// hardcoded English text and never registers it.
@@ -14,6 +14,9 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
 
     private static string GetCapabilitiesXamlPath() =>
         Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml");
+
+    private static string GetCapabilitiesCodeBehindPath() =>
+        Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs");
 
     private static string GetEnUsReswPath() =>
         Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
@@ -37,37 +40,26 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     }
 
     /// <summary>
-    /// Contract for the STT/TTS surface. Each entry: x:Uid + the resw key suffixes that
-    /// MUST exist in en-us. The legacy STT/TTS card-header/description x:Uids are no
-    /// longer rendered in the merged Permissions page (they used to live on the standalone
-    /// CapabilitiesPage); the orphaned resw entries are left in place but not pinned here.
+    /// Contract for the shared voice settings link. Each entry: x:Uid + the resw key
+    /// suffixes that MUST exist in en-us. The dedicated Voice & Audio page owns provider,
+    /// model, and voice configuration; Permissions only deep-links to that surface.
     /// </summary>
-    public static IEnumerable<object[]> SttAndTtsCardUids => new[]
+    public static IEnumerable<object[]> VoiceSettingsCardUids => new[]
     {
-        // STT card (deep-link to dedicated voice settings)
-        new object[] { "PermissionsPage_SttMoreSettingsLink",  new[] { ".Content" } },
-        // TTS card (provider picker, ElevenLabs sub-panel)
-        new object[] { "PermissionsPage_TtsProviderComboBox",  new[] { ".Header" } },
-        new object[] { "PermissionsPage_TtsProviderPiper",     new[] { ".Content" } },
-        new object[] { "PermissionsPage_TtsProviderWindows",   new[] { ".Content" } },
-        new object[] { "PermissionsPage_TtsProviderElevenLabs",new[] { ".Content" } },
-        new object[] { "PermissionsPage_TtsElevenLabsApiKey",  new[] { ".Header" } },
-        new object[] { "PermissionsPage_TtsElevenLabsVoiceId", new[] { ".Header" } },
-        new object[] { "PermissionsPage_TtsElevenLabsModel",   new[] { ".Header", ".PlaceholderText" } },
-        new object[] { "PermissionsPage_TtsElevenLabsHelp",    new[] { ".Text" } },
+        new object[] { "PermissionsPage_VoiceSettingsLink", new[] { ".Content" } },
     };
 
     [Theory]
-    [MemberData(nameof(SttAndTtsCardUids))]
-    public void SttOrTtsControl_HasXUid_InCapabilitiesPageXaml(string uid, string[] _)
+    [MemberData(nameof(VoiceSettingsCardUids))]
+    public void VoiceSettingsControl_HasXUid_InCapabilitiesPageXaml(string uid, string[] _)
     {
         var uids = LoadXamlUids();
         Assert.Contains(uid, uids);
     }
 
     [Theory]
-    [MemberData(nameof(SttAndTtsCardUids))]
-    public void SttOrTtsControl_AllExpectedReswKeys_ExistInEnUs(string uid, string[] suffixes)
+    [MemberData(nameof(VoiceSettingsCardUids))]
+    public void VoiceSettingsControl_AllExpectedReswKeys_ExistInEnUs(string uid, string[] suffixes)
     {
         var keys = LoadReswKeys();
         var missing = suffixes
@@ -77,5 +69,29 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
 
         Assert.True(missing.Count == 0,
             $"Missing en-us resw keys for x:Uid '{uid}': {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void PermissionsPage_UsesSharedVoiceSettingsCard_InsteadOfProviderControls()
+    {
+        var xaml = File.ReadAllText(GetCapabilitiesXamlPath());
+
+        Assert.Contains("x:Name=\"VoiceSettingsCard\"", xaml);
+        Assert.Contains("x:Name=\"VoiceSettingsLink\"", xaml);
+        Assert.DoesNotContain("x:Name=\"SttCard\"", xaml);
+        Assert.DoesNotContain("x:Name=\"TtsCard\"", xaml);
+        Assert.DoesNotContain("TtsProviderComboBox", xaml);
+        Assert.DoesNotContain("TtsElevenLabs", xaml);
+    }
+
+    [Fact]
+    public void PermissionsPage_ShowsSharedVoiceCard_WhenEitherSpeechCapabilityIsEnabled()
+    {
+        var source = File.ReadAllText(GetCapabilitiesCodeBehindPath());
+
+        Assert.Contains("settings?.NodeSttEnabled == true || settings?.NodeTtsEnabled == true", source);
+        Assert.Contains("VoiceSettingsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;", source);
+        Assert.DoesNotContain("UpdateSttCard", source);
+        Assert.DoesNotContain("UpdateTtsCard", source);
     }
 }

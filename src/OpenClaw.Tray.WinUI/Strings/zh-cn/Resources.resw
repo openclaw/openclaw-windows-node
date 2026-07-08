@@ -2412,8 +2412,8 @@
   <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
     <value>删除任务</value>
   </data>
-  <data name="PermissionsPage_SttMoreSettingsLink.Content" xml:space="preserve">
-    <value>更多语音设置…</value>
+  <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
+    <value>Voice &amp; Audio 设置</value>
   </data>
   <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
     <value>ElevenLabs API 密钥</value>

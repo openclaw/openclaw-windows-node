@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
-using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
@@ -22,14 +21,9 @@ public sealed partial class PermissionsPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private bool _suppressMcpToggle;
-    private bool _suppressTtsProviderChange;
     private readonly List<ToggleSwitch> _featureToggles = new();
     private List<ExecPolicyRule> _policyRules = new();
     private const int BrowserProxyToggleIndex = 1;
-
-    // Sentinel rendered into the API key PasswordBox so the user can see
-    // that a key is already saved without us ever surfacing the plaintext.
-    private const string SavedApiKeySentinel = "••••••••";
 
     public PermissionsPage()
     {
@@ -45,8 +39,7 @@ public sealed partial class PermissionsPage : Page
         BindNodeModeMaster();
         BuildCapabilityToggles();
         UpdateMcpStatus();
-        UpdateSttCard();
-        UpdateTtsCard();
+        UpdateVoiceSettingsCard();
         UpdateNodeStatus();
         ApplyFeaturesEnabledState();
 
@@ -101,8 +94,7 @@ public sealed partial class PermissionsPage : Page
         ((IAppCommands)CurrentApp).NotifySettingsSaved();
         ApplyFeaturesEnabledState();
         UpdateNodeStatus();
-        UpdateSttCard();
-        UpdateTtsCard();
+        UpdateVoiceSettingsCard();
     }
 
     private void OnSettingsSaved(object? sender, EventArgs e)
@@ -115,8 +107,7 @@ public sealed partial class PermissionsPage : Page
             UpdateNodeStatus();
             ReloadFeatureToggleStates();
             UpdateMcpStatus();
-            UpdateSttCard();
-            UpdateTtsCard();
+            UpdateVoiceSettingsCard();
         });
     }
 
@@ -216,8 +207,7 @@ public sealed partial class PermissionsPage : Page
                 settings.Save();
                 ((IAppCommands)CurrentApp).NotifySettingsSaved();
                 capturedSideEffect?.Invoke(toggle.IsOn);
-                UpdateSttCard();
-                UpdateTtsCard();
+                UpdateVoiceSettingsCard();
                 UpdateNodeStatus();
             };
             _featureToggles.Add(toggle);
@@ -228,12 +218,9 @@ public sealed partial class PermissionsPage : Page
     }
 
     private bool _isDownloadingWhisperModel;
-    private string? _whisperDownloadError;
 
     /// <summary>
-    /// Kicks off a Whisper model download if one isn't already on disk. Tracks state
-    /// page-locally so <see cref="UpdateSttEngineHint"/> can surface "downloading" /
-    /// failure copy that's accurate regardless of which code path started the download.
+    /// Kicks off a Whisper model download if one isn't already on disk.
     /// </summary>
     private void EnsureWhisperModelDownloadedAsync() =>
         AsyncEventHandlerGuard.Run(
@@ -255,13 +242,10 @@ public sealed partial class PermissionsPage : Page
             // concurrent writes to the same model file would otherwise be possible.
             if (CurrentApp.VoiceService?.IsWhisperDownloadingModel == true)
             {
-                if (IsLoaded) UpdateSttCard();
                 return;
             }
 
             _isDownloadingWhisperModel = true;
-            _whisperDownloadError = null;
-            if (IsLoaded) UpdateSttCard();
 
             try
             {
@@ -269,13 +253,11 @@ public sealed partial class PermissionsPage : Page
             }
             catch (Exception ex)
             {
-                _whisperDownloadError = ex.Message;
                 logger.Error($"[PermissionsPage] Whisper model download failed: {ex.Message}");
             }
             finally
             {
                 _isDownloadingWhisperModel = false;
-                if (IsLoaded) UpdateSttCard();
             }
         }
         catch (Exception ex)
@@ -332,159 +314,18 @@ public sealed partial class PermissionsPage : Page
         };
     }
 
-    // ── Speech-to-Text card ──────────────────────────────────────────
+    // ── Voice settings link ──────────────────────────────────────────
 
-    private void UpdateSttCard()
+    private void UpdateVoiceSettingsCard()
     {
-        var enabled = CurrentApp.Settings?.NodeSttEnabled == true;
-        SttCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        if (!enabled || CurrentApp.Settings == null) return;
-        UpdateSttEngineHint();
+        var settings = CurrentApp.Settings;
+        var enabled = settings?.NodeSttEnabled == true || settings?.NodeTtsEnabled == true;
+        VoiceSettingsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void UpdateSttEngineHint()
-    {
-        var modelName = CurrentApp.Settings?.SttModelName ?? "base";
-        var modelManager = new OpenClaw.Shared.Audio.WhisperModelManager(
-            SettingsManager.SettingsDirectoryPath, new AppLogger());
-        var modelDownloaded = modelManager.IsModelDownloaded(modelName);
-        var modelDownloading = _isDownloadingWhisperModel
-            || (CurrentApp.VoiceService?.IsWhisperDownloadingModel ?? false);
-
-        if (modelDownloaded)
-        {
-            SttEngineHint.Text = LocalizationHelper.GetString("PermissionsPage_SttHint_Ready");
-        }
-        else if (modelDownloading)
-        {
-            SttEngineHint.Text = LocalizationHelper.GetString("PermissionsPage_SttHint_Downloading");
-        }
-        else if (!string.IsNullOrWhiteSpace(_whisperDownloadError))
-        {
-            SttEngineHint.Text = LocalizationHelper.Format(
-                "PermissionsPage_SttHint_FailedFormat", _whisperDownloadError);
-        }
-        else
-        {
-            SttEngineHint.Text = LocalizationHelper.GetString("PermissionsPage_SttHint_NotDownloaded");
-        }
-    }
-
-    private void OnSttMoreSettingsClick(object sender, RoutedEventArgs e)
+    private void OnVoiceSettingsClick(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).Navigate("voice");
-    }
-
-    // ── Text-to-Speech card ──────────────────────────────────────────
-
-    private void UpdateTtsCard()
-    {
-        var enabled = CurrentApp.Settings?.NodeTtsEnabled == true;
-        TtsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        if (!enabled || CurrentApp.Settings == null) return;
-
-        var settings = CurrentApp.Settings;
-
-        _suppressTtsProviderChange = true;
-        TtsProviderComboBox.SelectedIndex = settings.TtsProvider switch
-        {
-            var p when string.Equals(p, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase) => 2,
-            var p when string.Equals(p, TtsCapability.WindowsProvider, StringComparison.OrdinalIgnoreCase)    => 1,
-            _ => 0
-        };
-        _suppressTtsProviderChange = false;
-
-        // Don't overwrite a field the user is currently editing — external Settings.Saved
-        // events can fire while the user has focus on these boxes (Permissions subscribes
-        // to the same event), and rewriting would lose their in-progress input.
-        if (TtsElevenLabsApiKeyBox.FocusState == FocusState.Unfocused)
-        {
-            TtsElevenLabsApiKeyBox.Password =
-                string.IsNullOrEmpty(settings.TtsElevenLabsApiKey) ? "" : SavedApiKeySentinel;
-        }
-        if (TtsElevenLabsVoiceIdBox.FocusState == FocusState.Unfocused)
-        {
-            TtsElevenLabsVoiceIdBox.Text = settings.TtsElevenLabsVoiceId;
-        }
-        if (TtsElevenLabsModelBox.FocusState == FocusState.Unfocused)
-        {
-            TtsElevenLabsModelBox.Text = settings.TtsElevenLabsModel;
-        }
-
-        UpdateTtsElevenLabsPanelVisibility();
-        // No unconditional TtsStatusText reset: this method is dispatched from
-        // OnSettingsSaved, which can fire one frame after a local handler set the
-        // status ("Default provider: x", "ElevenLabs settings saved.") — wiping it
-        // here would erase the auto-save toast. Status is left to the handlers that
-        // explicitly set or clear it.
-    }
-
-    private void UpdateTtsElevenLabsPanelVisibility()
-    {
-        var isEleven = (TtsProviderComboBox.SelectedItem is ComboBoxItem item)
-            && string.Equals(item.Tag as string, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase);
-        TtsElevenLabsPanel.Visibility = isEleven ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void OnTtsProviderSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressTtsProviderChange) return;
-        if (CurrentApp.Settings == null) return;
-
-        var newProvider = (TtsProviderComboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
-            ? tag
-            : TtsCapability.WindowsProvider;
-
-        if (!string.Equals(CurrentApp.Settings.TtsProvider, newProvider, StringComparison.OrdinalIgnoreCase))
-        {
-            CurrentApp.Settings.TtsProvider = newProvider;
-            CurrentApp.Settings.Save();
-            TtsStatusText.Text = LocalizationHelper.Format(
-                "PermissionsPage_TtsStatus_DefaultProviderFormat", newProvider);
-        }
-
-        UpdateTtsElevenLabsPanelVisibility();
-    }
-
-    private void OnTtsElevenLabsCommitted(object sender, RoutedEventArgs e)
-    {
-        if (CurrentApp.Settings == null) return;
-        var settings = CurrentApp.Settings;
-
-        var changed = false;
-
-        var typedKey = TtsElevenLabsApiKeyBox.Password ?? "";
-        if (!string.Equals(typedKey, SavedApiKeySentinel, StringComparison.Ordinal))
-        {
-            var trimmedKey = typedKey.Trim();
-            if (!string.Equals(settings.TtsElevenLabsApiKey, trimmedKey, StringComparison.Ordinal))
-            {
-                settings.TtsElevenLabsApiKey = trimmedKey;
-                changed = true;
-            }
-        }
-
-        var voiceId = TtsElevenLabsVoiceIdBox.Text?.Trim() ?? "";
-        if (!string.Equals(settings.TtsElevenLabsVoiceId, voiceId, StringComparison.Ordinal))
-        {
-            settings.TtsElevenLabsVoiceId = voiceId;
-            changed = true;
-        }
-
-        var model = TtsElevenLabsModelBox.Text?.Trim() ?? "";
-        if (!string.Equals(settings.TtsElevenLabsModel, model, StringComparison.Ordinal))
-        {
-            settings.TtsElevenLabsModel = model;
-            changed = true;
-        }
-
-        if (changed)
-        {
-            settings.Save();
-            TtsElevenLabsApiKeyBox.Password =
-                string.IsNullOrEmpty(settings.TtsElevenLabsApiKey) ? "" : SavedApiKeySentinel;
-            TtsStatusText.Text = LocalizationHelper.GetString("PermissionsPage_TtsStatus_ElevenLabsSaved");
-        }
     }
 
     // ── Node status ──────────────────────────────────────────────────

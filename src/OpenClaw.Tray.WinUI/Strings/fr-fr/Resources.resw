@@ -2412,8 +2412,8 @@ Utilisez l'une de ces options :
   <data name="CronPageRemoveJobToolTip.Content" xml:space="preserve">
     <value>Supprimer la tâche</value>
   </data>
-  <data name="PermissionsPage_SttMoreSettingsLink.Content" xml:space="preserve">
-    <value>Plus de paramètres vocaux…</value>
+  <data name="PermissionsPage_VoiceSettingsLink.Content" xml:space="preserve">
+    <value>Paramètres Voice &amp; Audio</value>
   </data>
   <data name="PermissionsPage_TtsElevenLabsApiKey.Header" xml:space="preserve">
     <value>Clé API ElevenLabs</value>
