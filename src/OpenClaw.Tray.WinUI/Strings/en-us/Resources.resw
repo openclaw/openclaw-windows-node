@@ -2288,9 +2288,6 @@ Use one of these options:
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Diagnostics</value>
   </data>
-<data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
-  <value>Notifications</value>
-  </data>
 <data name="Onboarding_UnknownPage" xml:space="preserve">
   <value>Unknown page</value>
 </data>

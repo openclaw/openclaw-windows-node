@@ -2241,9 +2241,6 @@ Utilisez l'une de ces options :
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Débogage</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
-    <value>Alertes</value>
-  </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>Page inconnue</value>
   </data>

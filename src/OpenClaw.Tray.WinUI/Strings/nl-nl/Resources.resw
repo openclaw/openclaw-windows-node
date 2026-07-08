@@ -2242,9 +2242,6 @@ Gebruik een van deze opties:
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>Foutopsporing</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
-    <value>Meldingen</value>
-  </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>Onbekende pagina</value>
   </data>

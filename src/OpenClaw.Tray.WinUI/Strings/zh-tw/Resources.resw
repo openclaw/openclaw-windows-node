@@ -2241,9 +2241,6 @@
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
     <value>偵錯</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_Notifications.Content" xml:space="preserve">
-    <value>通知</value>
-  </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>未知頁面</value>
   </data>

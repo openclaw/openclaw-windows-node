@@ -410,7 +410,6 @@
                 <SvgImageSource x:Key="Permissions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Permissions.svg"/>
                 <SvgImageSource x:Key="Sandbox_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sandbox.svg"/>
                 <SvgImageSource x:Key="Activity_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Activity.svg"/>
-                <SvgImageSource x:Key="Notifications_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Notifications.svg"/>
                 <SvgImageSource x:Key="Debug_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Debug.svg"/>
             </NavigationView.Resources>
 
@@ -483,9 +482,6 @@
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Notifications" Tag="notifications" Content="Notifications">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Notifications_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Debug">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
             </NavigationViewItem>
