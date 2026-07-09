@@ -3877,6 +3877,84 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="DiagnosticsPage_DeveloperWarning.Message" xml:space="preserve">
     <value>These tools may change app behavior, restart the app, or open experimental UI.</value>
   </data>
+  <data name="DiagnosticsPage_Expander_OpenTelemetry.Header" xml:space="preserve">
+    <value>OpenTelemetry connection</value>
+  </data>
+  <data name="DiagnosticsPage_Expander_OpenTelemetry.Description" xml:space="preserve">
+    <value>Sends a small diagnostic probe only to the OTLP collector endpoint you configure.</value>
+  </data>
+  <data name="DiagnosticsPage_Card_OpenTelemetryEndpoint.Header" xml:space="preserve">
+    <value>OTel endpoint</value>
+  </data>
+  <data name="DiagnosticsPage_Card_OpenTelemetryEndpoint.Description" xml:space="preserve">
+    <value>Collector URL used by OpenClaw telemetry.</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetrySummary.Text" xml:space="preserve">
+    <value>Not configured</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetrySummary_NotConfigured" xml:space="preserve">
+    <value>Not configured</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetrySummary_Configured" xml:space="preserve">
+    <value>Configured</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointBox.Header" xml:space="preserve">
+    <value>Endpoint URL</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointBox.PlaceholderText" xml:space="preserve">
+    <value>http://localhost:4317</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryProtocolLabel.Text" xml:space="preserve">
+    <value>Protocol</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryProtocolGrpc.Content" xml:space="preserve">
+    <value>OTLP/gRPC</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryProtocolHttp.Content" xml:space="preserve">
+    <value>OTLP/HTTP</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus.Title" xml:space="preserve">
+    <value>No telemetry endpoint</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus.Message" xml:space="preserve">
+    <value>No endpoint configured.</value>
+  </data>
+  <data name="DiagnosticsPage_SaveOpenTelemetryEndpointButton.Content" xml:space="preserve">
+    <value>Save connection</value>
+  </data>
+  <data name="DiagnosticsPage_ClearOpenTelemetryEndpointButton.Content" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_InvalidTitle" xml:space="preserve">
+    <value>Endpoint needs attention</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_InvalidMessage" xml:space="preserve">
+    <value>Enter an absolute HTTP or HTTPS OTLP collector URL, for example http://localhost:4317.</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_ClearedTitle" xml:space="preserve">
+    <value>Endpoint cleared</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_OffTitle" xml:space="preserve">
+    <value>No telemetry endpoint</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_OffMessage" xml:space="preserve">
+    <value>No endpoint configured.</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_SavedTitle" xml:space="preserve">
+    <value>Endpoint saved</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_SavedMessageFormat" xml:space="preserve">
+    <value>Telemetry endpoint: {0}</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_ConfiguredTitle" xml:space="preserve">
+    <value>Endpoint configured</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_ConfiguredMessageFormat" xml:space="preserve">
+    <value>Telemetry endpoint: {0}</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_UnsavedMessage" xml:space="preserve">
+    <value>Save to apply this connection.</value>
+  </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Header" xml:space="preserve">
     <value>Chat surface overrides</value>
   </data>

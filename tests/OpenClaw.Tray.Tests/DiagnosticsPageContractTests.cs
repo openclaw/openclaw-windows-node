@@ -32,6 +32,29 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void DebugPage_PutsOpenTelemetryEndpointInDiagnosticsDeveloperTools()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs");
+
+        Assert.Contains("DiagnosticsPage_Expander_OpenTelemetry", xaml);
+        Assert.Contains("OpenTelemetry connection", xaml);
+        Assert.Contains("FluentIconCatalog.Telemetry", xaml);
+        Assert.Contains("DiagnosticsOpenTelemetryEndpoint", xaml);
+        Assert.Contains("DiagnosticsOpenTelemetryProtocolGrpc", xaml);
+        Assert.Contains("DiagnosticsOpenTelemetryProtocolHttp", xaml);
+        Assert.Contains("OTLP/gRPC", xaml);
+        Assert.Contains("OTLP/HTTP", xaml);
+        Assert.Contains("SettingsExpander.ItemsHeader", xaml);
+        Assert.DoesNotContain("DiagnosticsPage_Card_OpenTelemetryEndpoint", xaml);
+        Assert.Contains("Sends a small diagnostic probe only to the OTLP collector endpoint you configure.", xaml);
+        Assert.Contains("OpenTelemetryEndpoint", cs);
+        Assert.Contains("OpenTelemetryProtocol", cs);
+        Assert.Contains("TryNormalizeOpenTelemetryEndpoint", cs);
+        Assert.Contains("NotifySettingsSaved", cs);
+    }
+
+    [Fact]
     public void DebugPage_GatewayDoctorCard_IsGatedOnWslControlAndRunsDoctor()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");

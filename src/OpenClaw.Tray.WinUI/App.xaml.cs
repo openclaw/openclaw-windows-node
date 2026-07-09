@@ -155,6 +155,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private SettingsManager? _settings;
     private ConnectionSettingsSnapshot? _previousSettingsSnapshot;
+    private OpenTelemetryEndpointConnection? _openTelemetryConnection;
     private SshTunnelService? _sshTunnelService;
     private GlobalHotkeyService? _globalHotkey;
     private Mutex? _mutex;
@@ -365,6 +366,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             try { Console.Error.WriteLine($"Process exiting (logger unavailable): {ex.GetType().Name}: {ex.Message}"); }
             catch (Exception) { /* Console.Error itself failed during process exit — nothing left to call. */ }
         }
+
+        try
+        {
+            Interlocked.Exchange(ref _openTelemetryConnection, null)?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            try { System.Diagnostics.Trace.WriteLine($"App.OnProcessExit: OpenTelemetry dispose failed: {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception) { }
+        }
     }
 
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
@@ -484,6 +495,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Initialize settings before update check so skip selections can be remembered.
         _settings = new SettingsManager();
         _previousSettingsSnapshot = _settings.ToSettingsData().ToConnectionSnapshot();
+        _openTelemetryConnection = new OpenTelemetryEndpointConnection();
+        ApplyOpenTelemetryEndpointSettings();
         _chatCoordinator = new OpenClawTray.Chat.OpenClawChatCoordinator(
             _settings,
             () => _nodeService,
@@ -1689,6 +1702,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         }
+    }
+
+    private void ApplyOpenTelemetryEndpointSettings()
+    {
+        var connection = _openTelemetryConnection;
+        var settings = _settings;
+        if (connection == null || settings == null)
+            return;
+
+        var options = OpenTelemetryEndpointOptions.FromSettings(settings);
+        ObserveBackgroundFault(
+            connection.ApplyAsync(options),
+            "[App] Failed to apply OpenTelemetry endpoint settings");
     }
 
     private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(
@@ -3403,6 +3429,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ObserveBackgroundFault(
             AutoStartManager.SetAutoStartAsync(_settings.AutoStart),
             "[App] Failed to apply auto-start setting");
+        ApplyOpenTelemetryEndpointSettings();
 
         // Apply UI-only settings and notify ad-hoc listeners. This public
         // entry point can be invoked from background work, while existing
@@ -4417,6 +4444,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             _chatCoordinator?.Dispose();
             _chatCoordinator = null;
+        });
+
+        SafeShutdownStep("OpenTelemetry endpoint", () =>
+        {
+            _openTelemetryConnection?.Dispose();
+            _openTelemetryConnection = null;
         });
 
         // Dispose runtime services

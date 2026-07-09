@@ -297,9 +297,73 @@
                                       Message="These tools may change app behavior, restart the app, or open experimental UI."
                                       Margin="0,0,0,4"/>
 
+                    <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_OpenTelemetry"
+                                            Header="OpenTelemetry connection"
+                                            Description="Sends a small diagnostic probe only to the OTLP collector endpoint you configure.">
+                       <toolkit:SettingsExpander.HeaderIcon>
+                           <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Telemetry, Mode=OneTime}"
+                                     FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
+                       </toolkit:SettingsExpander.HeaderIcon>
+                       <TextBlock x:Uid="DiagnosticsPage_OpenTelemetrySummary"
+                                  x:Name="OpenTelemetryEndpointSummary"
+                                  Text="Not configured"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  TextTrimming="CharacterEllipsis"/>
+                       <toolkit:SettingsExpander.ItemsHeader>
+                           <StackPanel Spacing="8"
+                                       Padding="24,16,24,16"
+                                       HorizontalAlignment="Stretch">
+                               <TextBox x:Uid="DiagnosticsPage_OpenTelemetryEndpointBox"
+                                        x:Name="OpenTelemetryEndpointBox"
+                                        Header="Endpoint URL"
+                                        PlaceholderText="http://localhost:4317"
+                                        TextChanged="OnOpenTelemetryEndpointTextChanged"
+                                        AutomationProperties.AutomationId="DiagnosticsOpenTelemetryEndpoint"/>
+                               <StackPanel Spacing="4">
+                                   <TextBlock x:Uid="DiagnosticsPage_OpenTelemetryProtocolLabel"
+                                              Text="Protocol"
+                                              Style="{StaticResource CaptionTextBlockStyle}"
+                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                   <StackPanel Orientation="Horizontal"
+                                               Spacing="16">
+                                       <RadioButton x:Uid="DiagnosticsPage_OpenTelemetryProtocolGrpc"
+                                                    x:Name="OpenTelemetryProtocolGrpcButton"
+                                                    Content="OTLP/gRPC"
+                                                    Checked="OnOpenTelemetryProtocolChanged"
+                                                    AutomationProperties.AutomationId="DiagnosticsOpenTelemetryProtocolGrpc"/>
+                                       <RadioButton x:Uid="DiagnosticsPage_OpenTelemetryProtocolHttp"
+                                                    x:Name="OpenTelemetryProtocolHttpButton"
+                                                    Content="OTLP/HTTP"
+                                                    Checked="OnOpenTelemetryProtocolChanged"
+                                                    AutomationProperties.AutomationId="DiagnosticsOpenTelemetryProtocolHttp"/>
+                                   </StackPanel>
+                               </StackPanel>
+                               <TextBlock x:Name="OpenTelemetryEndpointStatusText"
+                                          Text=""
+                                          TextWrapping="Wrap"
+                                          MinHeight="20"
+                                          Style="{StaticResource CaptionTextBlockStyle}"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                               <StackPanel Orientation="Horizontal"
+                                           Spacing="8">
+                                   <Button x:Uid="DiagnosticsPage_SaveOpenTelemetryEndpointButton"
+                                           x:Name="SaveOpenTelemetryEndpointButton"
+                                           Content="Save connection"
+                                           Click="OnSaveOpenTelemetryEndpoint"
+                                           AutomationProperties.AutomationId="DiagnosticsSaveOpenTelemetryEndpoint"/>
+                                   <Button x:Uid="DiagnosticsPage_ClearOpenTelemetryEndpointButton"
+                                           x:Name="ClearOpenTelemetryEndpointButton"
+                                           Content="Clear"
+                                           Click="OnClearOpenTelemetryEndpoint"
+                                           AutomationProperties.AutomationId="DiagnosticsClearOpenTelemetryEndpoint"/>
+                               </StackPanel>
+                           </StackPanel>
+                       </toolkit:SettingsExpander.ItemsHeader>
+                    </toolkit:SettingsExpander>
+
                     <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_ChatOverrides"
-                                              Header="Chat surface overrides"
-                                              Description="Per-surface override of the chat UI. Resets when OpenClaw restarts.">
+                                             Header="Chat surface overrides"
+                                             Description="Per-surface override of the chat UI. Resets when OpenClaw restarts.">
                         <toolkit:SettingsExpander.HeaderIcon>
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Chat, Mode=OneTime}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"/>

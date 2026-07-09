@@ -25,7 +25,7 @@ public sealed class FluentIconCatalogTests
         "People", "Money", "ServerEnvironment", "CapabilityOff", "Channels",
         "ChevronR", "Check",
         // Diagnostics surface (see src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml).
-        "Bug", "Briefcase", "Folder", "Copy", "Document", "Refresh", "Reset", "Clear", "Develop",
+        "Bug", "Briefcase", "Folder", "Copy", "Document", "Refresh", "Reset", "Clear", "Develop", "Telemetry",
         // Workspace surface (see src/OpenClaw.Tray.WinUI/Pages/WorkspacePage.xaml).
         "Workspace",
     };

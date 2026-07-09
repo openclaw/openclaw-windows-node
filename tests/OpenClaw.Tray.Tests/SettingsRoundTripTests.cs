@@ -58,6 +58,8 @@ public class SettingsRoundTripTests
             PreferStructuredCategories = true,
             AppTheme = "Dark",
             ShowDiagnostics = true,
+            OpenTelemetryEndpoint = "http://localhost:4317",
+            OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.HttpProtobuf,
             ShowCompletedSessions = true,
             SystemRunSandboxEnabled = true,
             SystemRunBlockHostFallbackWhenMxcUnavailable = true,
@@ -120,6 +122,8 @@ public class SettingsRoundTripTests
         Assert.Equal(original.PreferStructuredCategories, restored.PreferStructuredCategories);
         Assert.Equal(original.AppTheme, restored.AppTheme);
         Assert.Equal(original.ShowDiagnostics, restored.ShowDiagnostics);
+        Assert.Equal(original.OpenTelemetryEndpoint, restored.OpenTelemetryEndpoint);
+        Assert.Equal(original.OpenTelemetryProtocol, restored.OpenTelemetryProtocol);
         Assert.Equal(original.ShowCompletedSessions, restored.ShowCompletedSessions);
         Assert.Equal(original.SystemRunSandboxEnabled, restored.SystemRunSandboxEnabled);
         Assert.Equal(original.SystemRunBlockHostFallbackWhenMxcUnavailable, restored.SystemRunBlockHostFallbackWhenMxcUnavailable);
@@ -191,6 +195,8 @@ public class SettingsRoundTripTests
         Assert.True(settings.PreferStructuredCategories);
         Assert.Equal("System", settings.AppTheme);
         Assert.Null(settings.ShowDiagnostics);
+        Assert.Null(settings.OpenTelemetryEndpoint);
+        Assert.Equal(OpenTelemetryEndpointProtocol.Grpc, settings.OpenTelemetryProtocol);
         Assert.False(settings.ShowCompletedSessions);
         Assert.True(settings.SystemRunSandboxEnabled);
         Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
@@ -199,6 +205,35 @@ public class SettingsRoundTripTests
         // installs and for any settings file that predates the field).
         Assert.True(settings.HubNavPaneOpen);
         Assert.Null(settings.UserRules);
+    }
+
+    [Fact]
+    public void SettingsManager_OpenTelemetryEndpoint_TrimsAndClearsEmptyValues()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var settings = new SettingsManager(dir)
+            {
+                OpenTelemetryEndpoint = "  http://localhost:4317  ",
+                OpenTelemetryProtocol = "otlp/http"
+            };
+
+            Assert.Equal("http://localhost:4317", settings.OpenTelemetryEndpoint);
+            Assert.Equal(OpenTelemetryEndpointProtocol.HttpProtobuf, settings.OpenTelemetryProtocol);
+
+            settings.OpenTelemetryEndpoint = "   ";
+            settings.OpenTelemetryProtocol = "not-a-protocol";
+            Assert.Equal(string.Empty, settings.OpenTelemetryEndpoint);
+            Assert.Equal(OpenTelemetryEndpointProtocol.Grpc, settings.OpenTelemetryProtocol);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]

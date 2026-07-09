@@ -136,6 +136,15 @@ public record class SettingsData
     public bool ShowCompletedSessions { get; set; } = false;
     public string AppTheme { get; set; } = "System";
     public bool? ShowDiagnostics { get; set; }
+    /// <summary>
+    /// Optional OTLP collector endpoint for diagnostic telemetry.
+    /// Null or empty means telemetry is disabled.
+    /// </summary>
+    public string? OpenTelemetryEndpoint { get; set; }
+    /// <summary>
+    /// OTLP transport protocol for the configured OpenTelemetry endpoint.
+    /// </summary>
+    public string OpenTelemetryProtocol { get; set; } = "grpc";
     public List<UserNotificationRule>? UserRules { get; set; }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
