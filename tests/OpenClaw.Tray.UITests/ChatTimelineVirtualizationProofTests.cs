@@ -47,7 +47,7 @@ public sealed class ChatTimelineVirtualizationProofTests
                 SuppressAutoDispose = true,
             };
             _ui.Container.Children.Add(host);
-            host.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
+            host.Mount(_ => Component<ChatTimeline, ChatTimelineProps>(props));
         });
 
         await DrainRenderQueueAsync();
@@ -100,7 +100,7 @@ public sealed class ChatTimelineVirtualizationProofTests
             stableItemsSource = repeater.ItemsSource;
             stableItemTemplate = repeater.ItemTemplate;
 
-            host!.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
+            host!.Mount(_ => Component<ChatTimeline, ChatTimelineProps>(props));
         });
 
         await DrainRenderQueueAsync();
@@ -124,7 +124,7 @@ public sealed class ChatTimelineVirtualizationProofTests
         props = BuildProps(appendedRows, scrollToBottomToken: 1, textRevision: 1);
         await _ui.RunOnUIAsync(() =>
         {
-            host!.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
+            host!.Mount(_ => Component<ChatTimeline, ChatTimelineProps>(props));
         });
 
         await DrainRenderQueueAsync();
@@ -221,7 +221,7 @@ public sealed class ChatTimelineVirtualizationProofTests
         await _ui.RunOnUIAsync(() => { });
     }
 
-    private static OpenClawChatTimelineProps BuildProps(int rows, int scrollToBottomToken, int textRevision = 0) =>
+    private static ChatTimelineProps BuildProps(int rows, int scrollToBottomToken, int textRevision = 0) =>
         new(
             SessionId: "ui-proof-large-chat",
             Entries: BuildEntries(rows, textRevision),

@@ -7,7 +7,9 @@ public sealed class ChatUserBubbleTextContractTests
     [Fact]
     public void UserPromptText_ResetsStaleTextBlockVisualStateBeforeApplyingInlines()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = string.Concat(
+            Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs"),
+            Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.Helpers.cs"));
 
         Assert.Contains("private const string ChatTextFontFamilySource", timeline);
         Assert.Contains("TextBlock(string.Empty)", timeline);

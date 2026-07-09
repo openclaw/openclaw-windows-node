@@ -7,7 +7,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
     [Fact]
     public void TimelineRows_UseGenerationQualifiedKindedKeys()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
 
         Assert.Contains("long TimelineGeneration = 0", timeline);
         Assert.Contains("string RowKey(ChatTimelineItem entry)", timeline);
@@ -23,7 +23,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
     [Fact]
     public void ThinkingIndicator_UsesSyntheticGenerationQualifiedKey()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
 
         Assert.Contains("string SyntheticRowKey(string id, ChatTimelineItemKind kind)", timeline);
         Assert.Contains("SyntheticRowKey(\"__thinking__\", ChatTimelineItemKind.Assistant)", timeline);
@@ -34,7 +34,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
     {
         var models = Read("src", "OpenClaw.Chat", "ChatModels.cs");
         var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatRoot.cs");
 
         Assert.Contains("IReadOnlyDictionary<string, long>? TimelineGenerations = null", models);
         Assert.Contains("new Dictionary<string, long>(_resetVersions)", provider);
@@ -48,9 +48,9 @@ public sealed class ChatTimelineRenderIdentityContractTests
     {
         var models = Read("src", "OpenClaw.Chat", "ChatModels.cs");
         var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
-        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatRoot.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposer.cs");
 
         Assert.Contains("public record ChatQueuedMessage", models);
         Assert.Contains("QueuedMessagesByThread", models);
@@ -91,8 +91,8 @@ public sealed class ChatTimelineRenderIdentityContractTests
     [Fact]
     public void Composer_DisablesMessageOptionDropdownsWhileTurnOrPendingQueueSendIsActive()
     {
-        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposer.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatRoot.cs");
 
         Assert.Contains("var messageOptionControlsEnabled = !Props.MessageOptionsDisabled;", composer);
         Assert.Contains("MessageOptionsDisabled: turnActiveOverride || hasPendingQueuedSend", root);
@@ -106,7 +106,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
     [Fact]
     public void Timeline_DoesNotRenderTemporaryDebugMetadata()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
 
         Assert.DoesNotContain("BuildDebugMetadata", timeline);
         Assert.DoesNotContain("DEBUG kind=", timeline);

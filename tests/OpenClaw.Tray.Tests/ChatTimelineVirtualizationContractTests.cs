@@ -5,30 +5,29 @@ public sealed class ChatTimelineVirtualizationContractTests
     [Fact]
     public void ProductionTimeline_UsesVirtualizedItemsRepeaterRows()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
+        var virtualizedView = Read("src", "OpenClaw.Tray.WinUI", "Chat", "Controls", "VirtualizedChatView.cs");
         var functionalUi = Read("src", "OpenClawTray.FunctionalUI", "FunctionalUI.cs");
 
-        Assert.Contains("VirtualVStack(2, timelineRows)", timeline);
+        Assert.Contains("new VirtualizedChatView()", timeline);
         Assert.DoesNotContain("                        VStack(2, timelineRows)", timeline);
-        Assert.Contains("UseRef<FrameworkElement?>", timeline);
-        Assert.Contains("ItemsRepeater repeater", timeline);
+        Assert.Contains("ItemsRepeater", virtualizedView);
+        Assert.Contains("StackLayout", virtualizedView);
 
-        Assert.Contains("VirtualStackElement", functionalUi);
-        Assert.Contains("ItemsRepeater", functionalUi);
-        Assert.Contains("StackLayout", functionalUi);
-        Assert.Contains("IElementFactory", functionalUi);
+        Assert.Contains("NativeElement", functionalUi);
+        Assert.Contains("ConfigureNative", functionalUi);
+        Assert.Contains("NativeIdentityProperty", functionalUi);
     }
 
     [Fact]
     public void ProductionTimeline_StabilizesFollowToBottomForVirtualizedRows()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var virtualizedView = Read("src", "OpenClaw.Tray.WinUI", "Chat", "Controls", "VirtualizedChatView.cs");
 
-        Assert.Contains("FollowToBottomMaxStabilizationPasses", timeline);
-        Assert.Contains("FollowToBottomExtentEpsilon", timeline);
-        Assert.Contains("void QueuePass(", timeline);
-        Assert.Contains("sv.UpdateLayout();", timeline);
-        Assert.Contains("QueuePass(pass + 1", timeline);
+        Assert.Contains("RequiredStableRestorePasses", virtualizedView);
+        Assert.Contains("ApplyPendingRestoreIfReady", virtualizedView);
+        Assert.Contains("QueueScrollToBottom", virtualizedView);
+        Assert.Contains("EnqueueOnView", virtualizedView);
     }
 
     [Fact]

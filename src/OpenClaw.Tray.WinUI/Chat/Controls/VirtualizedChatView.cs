@@ -48,7 +48,18 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
     private int _previousScrollToBottomToken;
     private int _previousSuppressAutoFollowToken;
     private int _loadMoreRequestedForCount = -1;
+    private ScrollToEndState _scrollToEndState;
+    private bool _scrollToEndPending;
+    private string? _scrollToEndSessionId;
+    private bool _scrollToEndDisableAnimation;
     private bool _disposed;
+
+    private enum ScrollToEndState
+    {
+        Idle,
+        Queued,
+        BringingIntoView,
+    }
 
     public VirtualizedChatView()
     {
@@ -200,6 +211,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
     {
         _pendingRestoreOffset = null;
         ClearPendingPrependCorrection();
+        ResetScrollToEndState();
         _suppressAutoFollow = false;
         QueueScrollToBottom(_view.SessionId, disableAnimation: false);
     }
@@ -232,7 +244,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         if (ApplyPendingPrependCorrectionIfReady())
             return;
 
-        if (!_suppressAutoFollow && _isFollowing)
+        if (!_suppressAutoFollow && _isFollowing && _scrollToEndState == ScrollToEndState.Idle)
         {
             QueueScrollToBottom(_view.SessionId, disableAnimation: true);
         }
@@ -244,25 +256,41 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
 
     private void OnViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
-        var movedUp = _scrollViewer.VerticalOffset < _lastVerticalOffset - 0.5;
+        var verticalOffset = _scrollViewer.VerticalOffset;
 
-        if (IsAtBottom)
+        if (!e.IsIntermediate && _scrollToEndState == ScrollToEndState.BringingIntoView)
+        {
+            CompleteScrollToEnd();
+        }
+
+        var movedUp = verticalOffset < _lastVerticalOffset - 0.5;
+
+        if (e.IsIntermediate && _scrollToEndState != ScrollToEndState.BringingIntoView)
+        {
+            CancelPendingCorrectionsForManualScroll();
+            ResetScrollToEndState();
+            _isFollowing = false;
+            _scrollToLatestButton.Visibility = Visibility.Visible;
+        }
+        else if (_scrollToEndState == ScrollToEndState.Idle && IsAtBottom)
         {
             _isFollowing = true;
             _scrollToLatestButton.Visibility = Visibility.Collapsed;
         }
-        else if (movedUp || !_isFollowing)
+        else if (_scrollToEndState == ScrollToEndState.Idle && (movedUp || !_isFollowing))
         {
             _isFollowing = false;
             _scrollToLatestButton.Visibility = Visibility.Visible;
         }
 
-        _lastVerticalOffset = _scrollViewer.VerticalOffset;
+        _lastVerticalOffset = verticalOffset;
         _lastScrollableHeight = _scrollViewer.ScrollableHeight;
-        StoreSessionOffset(_view.SessionId, _scrollViewer.VerticalOffset);
+        StoreSessionOffset(_view.SessionId, verticalOffset);
 
         if (_scrollViewer.ScrollableHeight > 0
             && _scrollViewer.VerticalOffset <= FollowThreshold
+            && (movedUp || _scrollViewer.VerticalOffset <= 1)
+            && _scrollToEndState == ScrollToEndState.Idle
             && _view.HasMoreHistory
             && _loadMoreRequestedForCount != _view.EntryCount)
         {
@@ -305,10 +333,6 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             _stableRestorePasses = 0;
             _suppressAutoFollow = false;
         }
-        else
-        {
-            EnqueueOnView(() => { _ = ApplyPendingRestoreIfReady(); });
-        }
 
         return true;
     }
@@ -319,15 +343,82 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         ClearPendingPrependCorrection();
         _isFollowing = true;
         _scrollToLatestButton.Visibility = Visibility.Collapsed;
+        if (_scrollToEndState != ScrollToEndState.Idle)
+        {
+            _scrollToEndPending = true;
+            _scrollToEndSessionId = sessionId;
+            _scrollToEndDisableAnimation = true;
+            QueueStuckBringIntoViewFallback();
+            return;
+        }
+
+        _scrollToEndPending = false;
+        _scrollToEndSessionId = sessionId;
+        _scrollToEndDisableAnimation = disableAnimation;
+        _scrollToEndState = ScrollToEndState.Queued;
+        EnqueueOnView(StartScrollToEndIfFollowing);
+    }
+
+    private void StartScrollToEndIfFollowing()
+    {
+        if (_scrollToEndState != ScrollToEndState.Queued)
+            return;
+
+        _scrollToEndState = ScrollToEndState.Idle;
+        if (!_isFollowing || _rows.Count == 0)
+        {
+            _scrollToEndPending = false;
+            return;
+        }
+
+        var latest = _itemsRepeater.GetOrCreateElement(_rows.Count - 1);
+        _scrollToEndState = ScrollToEndState.BringingIntoView;
+        latest.StartBringIntoView(new BringIntoViewOptions
+        {
+            AnimationDesired = !_scrollToEndDisableAnimation,
+            VerticalAlignmentRatio = 1.0,
+        });
+        QueueBringIntoViewCompletionFallback();
+    }
+
+    private void CompleteScrollToEnd()
+    {
+        if (_scrollToEndState != ScrollToEndState.BringingIntoView)
+            return;
+
+        _scrollToEndState = ScrollToEndState.Idle;
+        var bottom = _scrollViewer.ScrollableHeight;
+        _scrollViewer.ChangeView(null, bottom, null, _scrollToEndDisableAnimation);
+        _lastVerticalOffset = bottom;
+        _lastScrollableHeight = _scrollViewer.ScrollableHeight;
+        _isFollowing = true;
+        StoreSessionOffset(_scrollToEndSessionId, bottom);
+
+        if (_scrollToEndPending)
+        {
+            _scrollToEndPending = false;
+            QueueScrollToBottom(_scrollToEndSessionId, disableAnimation: true);
+        }
+    }
+
+    private void QueueStuckBringIntoViewFallback()
+    {
+        QueueBringIntoViewCompletionFallback();
+    }
+
+    private void QueueBringIntoViewCompletionFallback()
+    {
         EnqueueOnView(() =>
         {
-            var bottom = _scrollViewer.ScrollableHeight;
-            _scrollViewer.ChangeView(null, bottom, null, disableAnimation);
-            _lastVerticalOffset = bottom;
-            _lastScrollableHeight = _scrollViewer.ScrollableHeight;
-            _isFollowing = true;
-            StoreSessionOffset(sessionId, bottom);
+            if (_scrollToEndState == ScrollToEndState.BringingIntoView)
+                EnqueueOnView(CompleteScrollToEnd);
         });
+    }
+
+    private void ResetScrollToEndState()
+    {
+        _scrollToEndPending = false;
+        _scrollToEndState = ScrollToEndState.Idle;
     }
 
     private void QueuePreservePrependOffset(string? sessionId, double oldOffset, double oldScrollableHeight)
@@ -376,10 +467,6 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             ClearPendingPrependCorrection();
             _suppressAutoFollow = false;
         }
-        else
-        {
-            EnqueueOnView(() => { _ = ApplyPendingPrependCorrectionIfReady(); });
-        }
 
         return true;
     }
@@ -410,6 +497,15 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             if (!_disposed)
                 action();
         });
+    }
+
+    private void CancelPendingCorrectionsForManualScroll()
+    {
+        _pendingRestoreOffset = null;
+        _lastRestoreScrollableHeight = null;
+        _stableRestorePasses = 0;
+        ClearPendingPrependCorrection();
+        _suppressAutoFollow = false;
     }
 
     private static double ClampOffset(double offset, double max) =>
@@ -446,7 +542,6 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
     {
         private readonly Dictionary<string, ChatTimelineRow> _rows = new(StringComparer.Ordinal);
         private readonly Dictionary<string, FunctionalHostControl> _hosts = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, double> _rowHeights = new(StringComparer.Ordinal);
         private readonly HashSet<string> _realizedKeys = new(StringComparer.Ordinal);
 
         public void Update(IReadOnlyList<ChatTimelineRow> rows)
@@ -454,9 +549,6 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             _rows.Clear();
             foreach (var row in rows)
                 _rows[row.Key] = row;
-
-            foreach (var staleKey in _rowHeights.Keys.Where(key => !_rows.ContainsKey(key)).ToArray())
-                _rowHeights.Remove(staleKey);
 
             RefreshRealizedRows();
         }
@@ -467,7 +559,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             {
                 if (_rows.TryGetValue(key, out var row) && _hosts.TryGetValue(key, out var host))
                 {
-                    Mount(host, row);
+                    Mount(host, row, renderImmediately: false);
                 }
                 else
                 {
@@ -495,20 +587,6 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
                     VerticalContentAlignment = VerticalAlignment.Stretch,
                     Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
                 };
-                if (_rowHeights.TryGetValue(row.Key, out var cachedHeight))
-                    host.MinHeight = cachedHeight;
-                else if (row.EstimatedHeight > 0)
-                    host.MinHeight = row.EstimatedHeight;
-
-                host.SizeChanged += (_, e) =>
-                {
-                    if (e.NewSize.Height <= 0)
-                        return;
-
-                    _rowHeights[row.Key] = e.NewSize.Height;
-                    if (host.MinHeight > 0)
-                        host.MinHeight = 0;
-                };
                 _hosts[row.Key] = host;
             }
             else if (host.Parent is not null)
@@ -516,7 +594,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
                 DetachFromParent(host);
             }
 
-            Mount(host, row);
+            Mount(host, row, renderImmediately: true);
             _realizedKeys.Add(row.Key);
             return host;
         }
@@ -545,9 +623,9 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             _realizedKeys.Clear();
         }
 
-        private static void Mount(FunctionalHostControl host, ChatTimelineRow row)
+        private static void Mount(FunctionalHostControl host, ChatTimelineRow row, bool renderImmediately)
         {
-            host.Mount(_ => row.Render(), preserveRootContext: true);
+            host.Mount(_ => row.Render(), preserveRootContext: true, renderImmediately: renderImmediately);
         }
 
         private static void DetachFromParent(FunctionalHostControl host)

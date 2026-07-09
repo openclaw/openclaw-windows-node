@@ -983,7 +983,7 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void ChatSlashPalette_HiddenNoMatchStateDoesNotTrapKeys()
     {
-        var source = ReadOpenClawComposerSource();
+        var source = ReadChatComposerSource();
 
         Assert.Contains("else if (slashActive && Props.AvailableCommands is null)", source);
         Assert.Contains("No-match input hides the popup", source);
@@ -1024,11 +1024,11 @@ public sealed class AppRefactorContractTests
             root, "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml.cs"));
     }
 
-    private static string ReadOpenClawComposerSource()
+    private static string ReadChatComposerSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
-            root, "src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs"));
+            root, "src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposer.cs"));
     }
 
     private static string ExtractMethod(string source, string methodName)

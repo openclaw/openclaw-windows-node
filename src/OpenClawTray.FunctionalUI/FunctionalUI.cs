@@ -849,7 +849,7 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
         RequestRender();
     }
 
-    public void Mount(Func<RenderContext, Element> render, bool preserveRootContext = false)
+    public void Mount(Func<RenderContext, Element> render, bool preserveRootContext = false, bool renderImmediately = false)
     {
         if (!preserveRootContext || _rootComponent is not null || _rootContext is null)
         {
@@ -859,7 +859,10 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
 
         _rootComponent = null;
         _rootRender = render;
-        RequestRender();
+        if (renderImmediately && _dispatcherQueue.HasThreadAccess)
+            Render();
+        else
+            RequestRender();
     }
 
     public void Dispose()

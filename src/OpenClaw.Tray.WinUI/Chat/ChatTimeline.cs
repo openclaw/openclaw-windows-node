@@ -45,6 +45,7 @@ public record ChatTimelineProps(
     bool HasMoreHistory,
     Action? OnLoadMoreHistory,
     IReadOnlyDictionary<string, ChatEntryMetadata>? EntryMetadata = null,
+    long TimelineGeneration = 0,
     string UserSenderLabel = "OpenClaw Windows Tray",
     string AssistantSenderLabel = "Field",
     string? DefaultModel = null,
@@ -55,7 +56,7 @@ public record ChatTimelineProps(
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     int ScrollToBottomToken = 0,
-    Action<string, bool>? OnPermissionResponse = null);
+    Action<string, string>? OnPermissionResponse = null);
 
 /// <summary>
 /// OpenClaw-skinned variant of <see cref="ChatTimeline"/> from the vendored
@@ -187,6 +188,9 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
         var entryCount = Props.Entries.Count;
         var firstEntryId = entryCount > 0 ? Props.Entries[0].Id : null;
         var lastEntryId = entryCount > 0 ? Props.Entries[entryCount - 1].Id : null;
+        string SyntheticRowKey(string id, ChatTimelineItemKind kind) =>
+            $"{Props.TimelineGeneration}:{kind}:{id}";
+        string RowKey(ChatTimelineItem entry) => SyntheticRowKey(entry.Id, entry.Kind);
 
         // Load more button — rendered as the first virtualized row so it scrolls
         // with history rather than living outside the timeline viewport.
@@ -664,6 +668,14 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                             t.FontSize = 14;
                             t.Foreground = userBubbleFg;
                             t.IsTextSelectionEnabled = true;
+                            t.FontFamily = s_chatTextFontFamily;
+                            t.TextTrimming = TextTrimming.None;
+                            t.MaxLines = 0;
+                            t.LineHeight = 0;
+                            t.CharacterSpacing = 0;
+                            t.Width = double.NaN;
+                            t.MinWidth = 0;
+                            t.MaxWidth = double.PositiveInfinity;
                             // The default SelectionHighlightColor is the
                             // system accent — which equals the user bubble's
                             // background — so the highlight band is invisible
@@ -1480,7 +1492,7 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                         .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.FontSize = 11; t.Opacity = 0.7; }),
                     HStack(8,
                         Button(allowLabel,
-                            () => onResponse?.Invoke(requestId, true))
+                            () => onResponse?.Invoke(requestId, ChatPermissionActionKeys.AllowOnce))
                             .Set(b =>
                             {
                                 b.CornerRadius = new CornerRadius(4);
@@ -1494,7 +1506,7 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                                 catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
                             }),
                         Button(denyLabel,
-                            () => onResponse?.Invoke(requestId, false))
+                            () => onResponse?.Invoke(requestId, ChatPermissionActionKeys.Deny))
                             .Set(b =>
                             {
                                 b.CornerRadius = new CornerRadius(4);
@@ -1815,19 +1827,19 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
             {
                 if (!showToolCalls)
                 {
-                    renderedEntries[k] = Empty().WithKey(entry.Id);
+                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
                     continue;
                 }
                 if (!startsBurst)
                 {
-                    renderedEntries[k] = Empty().WithKey(entry.Id);
+                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
                     continue;
                 }
                 if (nestedConsumed.Contains(k))
                 {
                     // The assistant bubble above already rendered this burst
                     // inline as a child element — emit nothing here.
-                    renderedEntries[k] = Empty().WithKey(entry.Id);
+                    renderedEntries[k] = Empty().WithKey(RowKey(entry));
                     continue;
                 }
                 var burst = new System.Collections.Generic.List<ChatTimelineItem> { entry };
@@ -1837,7 +1849,7 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                     burst.Add(Props.Entries[orderedIdx[kj]]);
                     kj++;
                 }
-                renderedEntries[k] = RenderToolBurst(burst, showAvatar, currentBubbleSlot).WithKey(entry.Id);
+                renderedEntries[k] = RenderToolBurst(burst, showAvatar, currentBubbleSlot).WithKey(RowKey(entry));
                 continue;
             }
 
@@ -1873,11 +1885,11 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                     }
                 }
 
-                renderedEntries[k] = RenderAssistantEntry(entry, startsBurst, endsBurst, showAvatar, currentBubbleSlot, nestedTool).WithKey(entry.Id);
+                renderedEntries[k] = RenderAssistantEntry(entry, startsBurst, endsBurst, showAvatar, currentBubbleSlot, nestedTool).WithKey(RowKey(entry));
                 continue;
             }
 
-            renderedEntries[k] = RenderEntry(entry, startsBurst, endsBurst, showAvatar).WithKey(entry.Id);
+            renderedEntries[k] = RenderEntry(entry, startsBurst, endsBurst, showAvatar).WithKey(RowKey(entry));
         }
 
         var thinkingNestedConsumed = new System.Collections.Generic.HashSet<int>();
@@ -1944,7 +1956,7 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                 nestedTool: thinkingNestedTool,
                 suppressFooter: true,
                 forceVisible: true)
-                .WithKey("__thinking__")
+                .WithKey(SyntheticRowKey("__thinking__", ChatTimelineItemKind.Assistant))
                 .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         }
 

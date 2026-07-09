@@ -8,7 +8,7 @@ namespace OpenClawTray.Chat;
 /// Keyed, renderer-agnostic row descriptor consumed by the virtualized chat host.
 /// The row keeps identity separate from the bubble/tool/permission UI that renders it.
 /// </summary>
-public sealed record ChatTimelineRow(string Key, Func<Element> Render, double EstimatedHeight = 0);
+public sealed record ChatTimelineRow(string Key, Func<Element> Render);
 
 /// <summary>
 /// Snapshot passed from <see cref="ChatTimeline"/> into the native
@@ -70,7 +70,7 @@ public partial class ChatTimeline
             var rowKey = string.IsNullOrEmpty(rowElement.Key)
                 ? $"row:index:{rowIndex}"
                 : $"row:{rowElement.Key}";
-            virtualizedRows.Add(new ChatTimelineRow(rowKey, () => rowElement, EstimatedHeight: 64));
+            virtualizedRows.Add(new ChatTimelineRow(rowKey, () => rowElement));
         }
 
         virtualizedRows.Add(new ChatTimelineRow(
