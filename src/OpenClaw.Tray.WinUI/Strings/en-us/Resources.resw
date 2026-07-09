@@ -2721,7 +2721,7 @@ Use one of these options:
     <value>Voice Input Is Off</value>
   </data>
   <data name="ChatVoiceDialog_InputOffMessage" xml:space="preserve">
-    <value>Turn on Speech-to-Text in Voice settings, then download a speech model before using the microphone in chat.</value>
+    <value>Speech-to-text is disabled. Enable the capability in Permissions before using the microphone in chat.</value>
   </data>
   <data name="ChatVoiceDialog_ModelRequiredTitle" xml:space="preserve">
     <value>Speech Model Required</value>
@@ -2731,6 +2731,9 @@ Use one of these options:
   </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Open Voice &amp; Audio Settings</value>
+  </data>
+  <data name="ChatVoiceDialog_OpenPermissionsSettings" xml:space="preserve">
+    <value>Open Permissions</value>
   </data>
   <data name="ChatVoiceDialog_Dismiss" xml:space="preserve">
     <value>Dismiss</value>

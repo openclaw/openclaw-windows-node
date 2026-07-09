@@ -2675,7 +2675,7 @@ Gebruik een van deze opties:
     <value>Spraakinvoer is uitgeschakeld</value>
   </data>
   <data name="ChatVoiceDialog_InputOffMessage" xml:space="preserve">
-    <value>Schakel Spraak-naar-tekst in bij Spraakinstellingen en download daarna een spraakmodel voordat u de microfoon in de chat gebruikt.</value>
+    <value>Spraak-naar-tekst is uitgeschakeld. Schakel de capaciteit in bij Machtigingen voordat u de microfoon in de chat gebruikt.</value>
   </data>
   <data name="ChatVoiceDialog_ModelRequiredTitle" xml:space="preserve">
     <value>Spraakmodel vereist</value>
@@ -2685,6 +2685,9 @@ Gebruik een van deze opties:
   </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Spraak- en audio-instellingen openen</value>
+  </data>
+  <data name="ChatVoiceDialog_OpenPermissionsSettings" xml:space="preserve">
+    <value>Machtigingen openen</value>
   </data>
   <data name="ChatVoiceDialog_Dismiss" xml:space="preserve">
     <value>Sluiten</value>

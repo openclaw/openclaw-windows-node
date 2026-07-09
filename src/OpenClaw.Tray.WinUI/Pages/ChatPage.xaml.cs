@@ -829,7 +829,8 @@ public sealed partial class ChatPage : Page
             await ShowVoiceSettingsDialogAsync(
                 LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
                 LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
-                NavigateToVoiceSettings);
+                LocalizationHelper.GetString("ChatVoiceDialog_OpenPermissionsSettings"),
+                NavigateToPermissionsSettings);
             return null;
         }
 
@@ -840,7 +841,8 @@ public sealed partial class ChatPage : Page
             await ShowVoiceSettingsDialogAsync(
                 LocalizationHelper.GetString("ChatVoiceDialog_InputOffTitle"),
                 LocalizationHelper.GetString("ChatVoiceDialog_InputOffMessage"),
-                NavigateToVoiceSettings);
+                LocalizationHelper.GetString("ChatVoiceDialog_OpenPermissionsSettings"),
+                NavigateToPermissionsSettings);
             return null;
         }
 
@@ -850,6 +852,7 @@ public sealed partial class ChatPage : Page
             await ShowVoiceSettingsDialogAsync(
                 LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredTitle"),
                 LocalizationHelper.GetString("ChatVoiceDialog_ModelRequiredMessage"),
+                LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
                 NavigateToVoiceSettings);
             return null;
         }
@@ -880,7 +883,7 @@ public sealed partial class ChatPage : Page
         }
     }
 
-    private async Task ShowVoiceSettingsDialogAsync(string title, string message, Action openVoiceSettings)
+    private async Task ShowVoiceSettingsDialogAsync(string title, string message, string primaryButtonText, Action openSettings)
     {
         var tcs = new TaskCompletionSource();
         if (DispatcherQueue is null || !DispatcherQueue.TryEnqueue(async () =>
@@ -891,7 +894,7 @@ public sealed partial class ChatPage : Page
                 {
                     Title = title,
                     Content = message,
-                    PrimaryButtonText = LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
+                    PrimaryButtonText = primaryButtonText,
                     CloseButtonText = LocalizationHelper.GetString("ChatVoiceDialog_Dismiss"),
                     DefaultButton = ContentDialogButton.Primary,
                     XamlRoot = Content?.XamlRoot
@@ -912,7 +915,7 @@ public sealed partial class ChatPage : Page
                 };
 
                 if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-                    openVoiceSettings();
+                    openSettings();
             }
             catch (InvalidOperationException ex)
             {
@@ -936,6 +939,14 @@ public sealed partial class ChatPage : Page
             _hub.NavigateTo("voice");
         else
             (App.Current as App)?.ShowHub("voice");
+    }
+
+    private void NavigateToPermissionsSettings()
+    {
+        if (_hub is not null)
+            _hub.NavigateTo("permissions");
+        else
+            (App.Current as App)?.ShowHub("permissions");
     }
 
     private void OnAttachClicked()

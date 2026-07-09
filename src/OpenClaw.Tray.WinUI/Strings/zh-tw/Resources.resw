@@ -2674,7 +2674,7 @@
     <value>語音輸入已關閉</value>
   </data>
   <data name="ChatVoiceDialog_InputOffMessage" xml:space="preserve">
-    <value>請在語音設定中開啟語音轉文字，然後下載語音模型，才能在聊天中使用麥克風。</value>
+    <value>語音轉文字已停用。請先在「權限」中啟用此功能，然後再在聊天中使用麥克風。</value>
   </data>
   <data name="ChatVoiceDialog_ModelRequiredTitle" xml:space="preserve">
     <value>需要語音模型</value>
@@ -2684,6 +2684,9 @@
   </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>開啟語音和音訊設定</value>
+  </data>
+  <data name="ChatVoiceDialog_OpenPermissionsSettings" xml:space="preserve">
+    <value>開啟權限</value>
   </data>
   <data name="ChatVoiceDialog_Dismiss" xml:space="preserve">
     <value>關閉</value>
