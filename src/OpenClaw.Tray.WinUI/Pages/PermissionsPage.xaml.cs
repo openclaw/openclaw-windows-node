@@ -4,7 +4,6 @@ using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Audio;
-using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
@@ -290,7 +289,7 @@ public sealed partial class PermissionsPage : Page
     private static VoiceSetupRequirement GetVoiceSetupRequirement(SettingsManager settings)
     {
         var needsSpeechModel = settings.NodeSttEnabled && !IsConfiguredWhisperModelDownloaded(settings);
-        var needsVoiceSetup = settings.NodeTtsEnabled && IsConfiguredTtsProviderSetupRequired(settings);
+        var needsVoiceSetup = settings.NodeTtsEnabled && SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired(settings);
 
         return (needsSpeechModel, needsVoiceSetup) switch
         {
@@ -325,30 +324,6 @@ public sealed partial class PermissionsPage : Page
 
         var manager = new WhisperModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
         return manager.IsModelDownloaded(modelName);
-    }
-
-    private static bool IsConfiguredTtsProviderSetupRequired(SettingsManager settings)
-    {
-        var provider = TtsCapability.ResolveProvider(null, settings.TtsProvider);
-        if (string.Equals(provider, TtsCapability.WindowsProvider, StringComparison.Ordinal))
-            return false;
-
-        if (string.Equals(provider, TtsCapability.PiperProvider, StringComparison.Ordinal))
-        {
-            if (string.IsNullOrWhiteSpace(settings.TtsPiperVoiceId))
-                return true;
-
-            var voices = new PiperVoiceManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
-            return !voices.IsVoiceDownloaded(settings.TtsPiperVoiceId);
-        }
-
-        if (string.Equals(provider, TtsCapability.ElevenLabsProvider, StringComparison.Ordinal))
-        {
-            return string.IsNullOrWhiteSpace(settings.TtsElevenLabsApiKey) ||
-                string.IsNullOrWhiteSpace(settings.TtsElevenLabsVoiceId);
-        }
-
-        return true;
     }
 
     private void OnVoiceSettingsClick(object sender, RoutedEventArgs e)

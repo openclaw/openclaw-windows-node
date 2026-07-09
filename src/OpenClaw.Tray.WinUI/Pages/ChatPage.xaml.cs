@@ -33,6 +33,8 @@ public sealed partial class ChatPage : Page
     private bool _webViewInitialized;
     private bool _webViewMode;
     private bool _pageActive;
+    private readonly SemaphoreSlim _speakerMuteGate = new(1, 1);
+    private int _voiceSettingsDialogOpen;
     private bool _navigationStarted;
     private CancellationTokenSource? _navigationCts;
     private global::Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2NavigationCompletedEventArgs>? _navCompletedHandler;
@@ -232,7 +234,7 @@ public sealed partial class ChatPage : Page
 
         var app = App.Current as App;
         var provider = ResolveChatProvider(app);
-        Func<string, Task>? readAloud = app is null ? null : app.SpeakChatTextAsync;
+        Func<string, Task>? readAloud = app is null ? null : ReadChatTextAloudAsync;
 
         // Consume a pending session-key hand-off from SessionsPage or a
         // notification toast so the chat root mounts with that thread selected.
@@ -292,8 +294,8 @@ public sealed partial class ChatPage : Page
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
-            onSpeakerMuteChanged: muted => (App.Current as App)?.SetChatSpeakerMuted(muted),
-            initialMuted: CurrentApp.Settings?.VoiceTtsEnabled == false,
+            onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
+            initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings),
             suppressAutoDispose: true);
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
@@ -883,8 +885,91 @@ public sealed partial class ChatPage : Page
         }
     }
 
+    private async Task ReadChatTextAloudAsync(string text)
+    {
+        if (!await EnsureTtsReadyForChatAsync())
+            return;
+
+        await CurrentApp.SpeakChatTextAsync(text);
+    }
+
+    private async Task OnSpeakerMuteChangedAsync(bool muted)
+    {
+        if (!await _speakerMuteGate.WaitAsync(0))
+            return;
+
+        try
+        {
+            if (muted)
+            {
+                (App.Current as App)?.SetChatSpeakerMuted(true);
+                return;
+            }
+
+            if (IsTtsReadyForChat())
+            {
+                (App.Current as App)?.SetChatSpeakerMuted(false);
+                return;
+            }
+
+            (App.Current as App)?.SetChatSpeakerMuted(true);
+            _functionalHost?.SetSpeakerMuted(true);
+            await ShowTtsUnavailableDialogAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Speaker mute change failed: {ex.Message}");
+        }
+        finally
+        {
+            _speakerMuteGate.Release();
+        }
+    }
+
+    private async Task<bool> EnsureTtsReadyForChatAsync()
+    {
+        if (IsTtsReadyForChat())
+            return true;
+
+        await ShowTtsUnavailableDialogAsync();
+        return false;
+    }
+
+    private static bool IsTtsReadyForChat()
+    {
+        return SpeechSetupReadiness.IsChatTtsPlaybackReady(CurrentApp.Settings);
+    }
+
+    private async Task ShowTtsUnavailableDialogAsync()
+    {
+        var settings = CurrentApp.Settings;
+        if (settings?.NodeTtsEnabled != true)
+        {
+            await ShowVoiceSettingsDialogAsync(
+                LocalizationHelper.GetString("ChatVoiceDialog_OutputOffTitle"),
+                LocalizationHelper.GetString("ChatVoiceDialog_OutputOffMessage"),
+                LocalizationHelper.GetString("ChatVoiceDialog_OpenPermissionsSettings"),
+                NavigateToPermissionsSettings);
+            return;
+        }
+
+        await ShowVoiceSettingsDialogAsync(
+            LocalizationHelper.GetString("ChatVoiceDialog_TtsSetupRequiredTitle"),
+            LocalizationHelper.GetString("ChatVoiceDialog_TtsSetupRequiredMessage"),
+            LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
+            NavigateToVoiceSettings);
+    }
+
+    private static bool ShouldStartSpeakerMuted(SettingsManager? settings)
+    {
+        return !SpeechSetupReadiness.IsAutomaticChatTtsEnabled(settings);
+    }
+
     private async Task ShowVoiceSettingsDialogAsync(string title, string message, string primaryButtonText, Action openSettings)
     {
+        if (Interlocked.Exchange(ref _voiceSettingsDialogOpen, 1) == 1)
+            return;
+
         var tcs = new TaskCompletionSource();
         if (DispatcherQueue is null || !DispatcherQueue.TryEnqueue(async () =>
         {
@@ -927,10 +1012,18 @@ public sealed partial class ChatPage : Page
             }
         }))
         {
+            Interlocked.Exchange(ref _voiceSettingsDialogOpen, 0);
             return;
         }
 
-        await tcs.Task;
+        try
+        {
+            await tcs.Task;
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _voiceSettingsDialogOpen, 0);
+        }
     }
 
     private void NavigateToVoiceSettings()

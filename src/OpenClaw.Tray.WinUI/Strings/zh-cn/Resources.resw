@@ -2682,6 +2682,18 @@
   <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
     <value>语音转文字已开启，但至少下载一个语音模型后，语音输入才会工作。</value>
   </data>
+  <data name="ChatVoiceDialog_OutputOffTitle" xml:space="preserve">
+    <value>语音输出已关闭</value>
+  </data>
+  <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
+    <value>文字转语音已禁用。请先在“权限”中启用该功能，然后再在聊天中使用朗读。</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
+    <value>需要语音设置</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
+    <value>文字转语音已开启，但需要先配置语音或提供程序后，朗读才会工作。</value>
+  </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>打开语音和音频设置</value>
   </data>

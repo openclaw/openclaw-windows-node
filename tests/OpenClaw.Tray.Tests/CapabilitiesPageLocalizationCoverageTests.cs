@@ -116,6 +116,12 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     public void PermissionsPage_ShowsSharedVoiceCard_WhenEitherSpeechCapabilityIsEnabled_AndSetupTextOnlyWhenNeeded()
     {
         var source = File.ReadAllText(GetCapabilitiesCodeBehindPath());
+        var readiness = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "SpeechSetupReadiness.cs"));
 
         Assert.Contains("settings?.NodeSttEnabled == true || settings?.NodeTtsEnabled == true", source);
         Assert.Contains("VoiceSettingsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;", source);
@@ -124,13 +130,13 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         Assert.Contains("VoiceSetupRequirement.VoiceSetup", source);
         Assert.Contains("VoiceSetupRequirement.SpeechModelAndVoiceSetup", source);
         Assert.Contains("var needsSpeechModel = settings.NodeSttEnabled && !IsConfiguredWhisperModelDownloaded(settings)", source);
-        Assert.Contains("var needsVoiceSetup = settings.NodeTtsEnabled && IsConfiguredTtsProviderSetupRequired(settings)", source);
+        Assert.Contains("var needsVoiceSetup = settings.NodeTtsEnabled && SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired(settings)", source);
         Assert.Contains("PermissionsPage_VoiceSettingsHelp_SpeechModel", source);
         Assert.Contains("PermissionsPage_VoiceSettingsHelp_VoiceSetup", source);
         Assert.Contains("PermissionsPage_VoiceSettingsHelp_Both", source);
-        Assert.Contains("TtsCapability.WindowsProvider", source);
-        Assert.Contains("TtsCapability.PiperProvider", source);
-        Assert.Contains("TtsCapability.ElevenLabsProvider", source);
+        Assert.Contains("TtsCapability.WindowsProvider", readiness);
+        Assert.Contains("TtsCapability.PiperProvider", readiness);
+        Assert.Contains("TtsCapability.ElevenLabsProvider", readiness);
         Assert.DoesNotContain("EnsureWhisperModelDownloaded", source);
         Assert.DoesNotContain("UpdateSttCard", source);
         Assert.DoesNotContain("UpdateTtsCard", source);

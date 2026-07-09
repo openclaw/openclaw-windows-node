@@ -2766,8 +2766,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             //     });
             // }
 
-            // TTS: read response aloud whenever the toggle is on (any chat surface).
-            if (_settings?.VoiceTtsEnabled == true)
+            // TTS: read response aloud whenever chat TTS is enabled and ready (any chat surface).
+            if (SpeechSetupReadiness.IsAutomaticChatTtsEnabled(_settings))
             {
                 _ = (_chatCoordinator?.SpeakResponseAsync(speechText) ?? Task.CompletedTask);
             }

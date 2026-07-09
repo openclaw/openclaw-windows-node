@@ -2729,6 +2729,18 @@ Use one of these options:
   <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
     <value>Speech-to-Text is on, but voice input will not work until at least one speech model is downloaded.</value>
   </data>
+  <data name="ChatVoiceDialog_OutputOffTitle" xml:space="preserve">
+    <value>Voice Output Is Off</value>
+  </data>
+  <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
+    <value>Text-to-speech is disabled. Enable the capability in Permissions before using read aloud in chat.</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
+    <value>Voice Setup Required</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
+    <value>Text-to-speech is on, but read aloud will not work until a voice or provider is configured.</value>
+  </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Open Voice &amp; Audio Settings</value>
   </data>

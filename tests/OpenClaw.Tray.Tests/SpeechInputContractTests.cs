@@ -26,7 +26,7 @@ public sealed class SpeechInputContractTests
     }
 
     [Fact]
-    public void ChatVoiceDialogs_RouteDisabledCapabilityToPermissions_AndMissingModelToVoiceSettings()
+    public void ChatVoiceDialogs_RouteDisabledSttCapabilityToPermissions_AndMissingModelToVoiceSettings()
     {
         var chatPage = Read("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
         var chatWindow = Read("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
@@ -48,5 +48,52 @@ public sealed class SpeechInputContractTests
         Assert.Contains("ChatVoiceDialog_OpenPermissionsSettings", resources);
         Assert.Contains("Open Permissions", resources);
         Assert.Contains("Speech-to-Text is on, but voice input will not work until at least one speech model is downloaded.", resources);
+    }
+
+    [Fact]
+    public void ChatVoiceDialogs_RouteDisabledTtsCapabilityToPermissions_AndMissingSetupToVoiceSettings()
+    {
+        var chatPage = Read("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
+        var chatWindow = Read("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
+        var permissionsPage = Read("src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs");
+        var resources = Read("src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
+
+        Assert.Contains("ReadChatTextAloudAsync", chatPage);
+        Assert.Contains("OnSpeakerMuteChangedAsync", chatPage);
+        Assert.Contains("EnsureTtsReadyForChatAsync", chatPage);
+        Assert.Contains("ShowTtsUnavailableDialogAsync", chatPage);
+        Assert.Contains("IsAutomaticChatTtsEnabled", chatPage);
+        Assert.Contains("IsChatTtsPlaybackReady", chatPage);
+        Assert.Contains("_speakerMuteGate.WaitAsync(0)", chatPage);
+        Assert.Contains("_voiceSettingsDialogOpen", chatPage);
+        Assert.Contains("_functionalHost?.SetSpeakerMuted(true);\r\n            await ShowTtsUnavailableDialogAsync();", chatPage);
+        Assert.Contains("ChatVoiceDialog_OutputOffTitle", chatPage);
+        Assert.Contains("ChatVoiceDialog_OutputOffMessage", chatPage);
+        Assert.Contains("ChatVoiceDialog_TtsSetupRequiredTitle", chatPage);
+        Assert.Contains("ChatVoiceDialog_TtsSetupRequiredMessage", chatPage);
+        Assert.Contains("NavigateToPermissionsSettings", chatPage);
+        Assert.Contains("NavigateToVoiceSettings", chatPage);
+
+        Assert.Contains("ReadChatTextAloudAsync", chatWindow);
+        Assert.Contains("OnSpeakerMuteChangedAsync", chatWindow);
+        Assert.Contains("EnsureTtsReadyForChatAsync", chatWindow);
+        Assert.Contains("ShowTtsUnavailableDialogAsync", chatWindow);
+        Assert.Contains("IsAutomaticChatTtsEnabled", chatWindow);
+        Assert.Contains("IsChatTtsPlaybackReady", chatWindow);
+        Assert.Contains("_speakerMuteGate.WaitAsync(0)", chatWindow);
+        Assert.Contains("_voiceSettingsDialogOpen", chatWindow);
+        Assert.Contains("_functionalHost?.SetSpeakerMuted(true);\r\n            await ShowTtsUnavailableDialogAsync();", chatWindow);
+        Assert.Contains("ChatVoiceDialog_OutputOffTitle", chatWindow);
+        Assert.Contains("ChatVoiceDialog_OutputOffMessage", chatWindow);
+        Assert.Contains("ChatVoiceDialog_TtsSetupRequiredTitle", chatWindow);
+        Assert.Contains("ChatVoiceDialog_TtsSetupRequiredMessage", chatWindow);
+        Assert.Contains("ShowHub(\"permissions\")", chatWindow);
+        Assert.Contains("ShowHub(\"voice\")", chatWindow);
+
+        Assert.Contains("SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired", permissionsPage);
+        Assert.Contains("SpeechSetupReadiness.IsAutomaticChatTtsEnabled", Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        Assert.Contains("IsAutomaticChatTtsEnabled", Read("src", "OpenClaw.Tray.WinUI", "Services", "SpeechSetupReadiness.cs"));
+        Assert.Contains("Text-to-speech is disabled. Enable the capability in Permissions", resources);
+        Assert.Contains("Text-to-speech is on, but read aloud will not work until a voice or provider is configured.", resources);
     }
 }

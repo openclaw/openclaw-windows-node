@@ -2682,6 +2682,18 @@ Utilisez l'une de ces options :
   <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
     <value>La reconnaissance vocale est activée, mais la saisie vocale ne fonctionnera pas tant qu'au moins un modèle vocal n'aura pas été téléchargé.</value>
   </data>
+  <data name="ChatVoiceDialog_OutputOffTitle" xml:space="preserve">
+    <value>Sortie vocale désactivée</value>
+  </data>
+  <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
+    <value>La synthèse vocale est désactivée. Activez la capacité dans Autorisations avant d'utiliser la lecture à voix haute dans le chat.</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
+    <value>Configuration vocale requise</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
+    <value>La synthèse vocale est activée, mais la lecture à voix haute ne fonctionnera pas tant qu'une voix ou un fournisseur n'aura pas été configuré.</value>
+  </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Ouvrir les paramètres Voix et audio</value>
   </data>

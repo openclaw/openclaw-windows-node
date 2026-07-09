@@ -2683,6 +2683,18 @@ Gebruik een van deze opties:
   <data name="ChatVoiceDialog_ModelRequiredMessage" xml:space="preserve">
     <value>Spraak-naar-tekst is ingeschakeld, maar spraakinvoer werkt pas nadat ten minste één spraakmodel is gedownload.</value>
   </data>
+  <data name="ChatVoiceDialog_OutputOffTitle" xml:space="preserve">
+    <value>Spraakuitvoer is uitgeschakeld</value>
+  </data>
+  <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
+    <value>Tekst-naar-spraak is uitgeschakeld. Schakel de mogelijkheid in Machtigingen in voordat u hardop voorlezen in chat gebruikt.</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
+    <value>Spraakconfiguratie vereist</value>
+  </data>
+  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
+    <value>Tekst-naar-spraak is ingeschakeld, maar hardop voorlezen werkt pas nadat een stem of provider is geconfigureerd.</value>
+  </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Spraak- en audio-instellingen openen</value>
   </data>
