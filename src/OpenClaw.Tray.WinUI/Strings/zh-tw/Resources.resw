@@ -3045,6 +3045,9 @@
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>拒絕一次</value>
   </data>
+  <data name="Chat_Permission_ActionFallbackFormat" xml:space="preserve">
+    <value>動作：{0}</value>
+  </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>已允許</value>
   </data>

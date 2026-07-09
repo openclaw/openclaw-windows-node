@@ -3092,6 +3092,9 @@ Use one of these options:
   <data name="Chat_Permission_Deny" xml:space="preserve">
     <value>Deny once</value>
   </data>
+  <data name="Chat_Permission_ActionFallbackFormat" xml:space="preserve">
+    <value>Action: {0}</value>
+  </data>
   <data name="Chat_Permission_DecisionAllowed" xml:space="preserve">
     <value>Allowed</value>
   </data>

@@ -8,7 +8,20 @@ public sealed class ChatPermissionRenderingContractTests
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
 
         Assert.Contains("ChatPermissionActionKeys.NormalizeActions(entry.PermissionActions)", timeline);
+        Assert.Contains("ChatPermissionActionKeys.AllowOnce => allowLabel", timeline);
         Assert.Contains("ChatPermissionActionKeys.AllowAlways => allowAlwaysLabel", timeline);
+        Assert.Contains("onResponse?.Invoke(requestId, action)", timeline);
+    }
+
+    [Fact]
+    public void PendingPermission_UnknownActionUsesExplicitFallbackLabel()
+    {
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatTimeline.cs");
+        var resources = Read("src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
+
+        Assert.Contains("Chat_Permission_ActionFallbackFormat", timeline);
+        Assert.Contains("Action: {0}", resources);
+        Assert.DoesNotContain("_ => allowLabel", timeline);
         Assert.Contains("onResponse?.Invoke(requestId, action)", timeline);
     }
 

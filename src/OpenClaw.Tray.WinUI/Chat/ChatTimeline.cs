@@ -1473,9 +1473,10 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                     var isDeny = string.Equals(action, ChatPermissionActionKeys.Deny, StringComparison.OrdinalIgnoreCase);
                     var label = action switch
                     {
+                        ChatPermissionActionKeys.AllowOnce => allowLabel,
                         ChatPermissionActionKeys.AllowAlways => allowAlwaysLabel,
                         ChatPermissionActionKeys.Deny => denyLabel,
-                        _ => allowLabel,
+                        _ => LocalizationHelper.Format("Chat_Permission_ActionFallbackFormat", action),
                     };
 
                     var button = Button(label, () => onResponse?.Invoke(requestId, action))
