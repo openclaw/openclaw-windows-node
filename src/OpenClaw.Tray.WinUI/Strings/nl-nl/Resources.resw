@@ -2123,7 +2123,7 @@ Gebruik een van deze opties:
     <value>Couldn't load this file.</value>
   </data>
   <data name="WorkspacePage_BrowserOnlyFileNote" xml:space="preserve">
-    <value>Only files read or edited in this session can be previewed.</value>
+    <value>Select a file to preview it. Some binary or oversized files may not load inline.</value>
   </data>
   <data name="WorkspacePage_OpenFolder" xml:space="preserve">
     <value>Open</value>

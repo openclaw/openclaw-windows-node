@@ -7,11 +7,10 @@ using OpenClaw.Shared;
 namespace OpenClawTray.Pages;
 
 /// <summary>
-/// Pure projection layer for the Workspace page's session file rail. Adapts the
-/// typed gateway protocol DTOs (<see cref="SessionFileList"/> /
-/// <see cref="SessionFileContent"/> from <c>sessions.files.list/get</c>) into
-/// view rows and owns the search/sort/format logic so the code-behind stays a
-/// thin view.
+/// Pure projection layer for the Workspace page file rail. Adapts the current
+/// read-only agent workspace browser (<c>agents.workspace.list/get</c>) plus
+/// legacy/typed DTO shapes into view rows and owns the search/sort/format logic
+/// so the code-behind stays a thin view.
 ///
 /// This layer <i>consumes</i> the protocol DTOs — it does not re-parse wire JSON
 /// or redefine the protocol contract (that lives in
@@ -33,7 +32,7 @@ internal static class WorkspaceFilesModel
 
         /// <summary>
         /// The original path string from the gateway DTO — used verbatim when
-        /// requesting content via <c>sessions.files.get</c> so normalization
+        /// requesting content from the gateway so normalization
         /// never diverges from what the gateway expects.
         /// </summary>
         public required string RequestPath { get; init; }
@@ -50,7 +49,7 @@ internal static class WorkspaceFilesModel
         /// <summary>True when this row came from transcript/session relevance.</summary>
         public bool IsSessionFile { get; init; }
 
-        /// <summary>True when selecting this file may call <c>sessions.files.get</c>.</summary>
+        /// <summary>True when selecting this file may request a gateway preview.</summary>
         public bool CanPreview { get; init; }
 
         /// <summary>The agent wrote/modified this file during the session.</summary>
@@ -144,6 +143,48 @@ internal static class WorkspaceFilesModel
     }
 
     /// <summary>
+    /// Project the read-only <c>agents.workspace.list</c> payload into rows.
+    /// Unlike <c>sessions.files.*</c>, this is not limited to files mentioned
+    /// in the transcript, so every regular file row is previewable.
+    /// </summary>
+    public static WorkspaceListState FromAgentWorkspaceList(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object)
+            return new WorkspaceListState();
+
+        var entries = new List<WorkspaceFileEntry>();
+        if (payload.TryGetProperty("entries", out var entriesEl) &&
+            entriesEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entryEl in entriesEl.EnumerateArray())
+            {
+                if (MapAgentWorkspaceEntry(entryEl) is { } entry)
+                    entries.Add(entry);
+            }
+        }
+
+        var path = NormalizeBrowserPath(GetString(payload, "path"));
+        var parentPathRaw = GetString(payload, "parentPath");
+        var totalEntries = GetLong(payload, "totalEntries");
+        var offset = GetLong(payload, "offset") ?? 0;
+        var truncated = totalEntries is { } total && offset + entries.Count < total;
+
+        return new WorkspaceListState
+        {
+            WorkspacePath = GetString(payload, "workspace") ??
+                            GetString(payload, "root") ??
+                            "Agent workspace",
+            Supported = true,
+            Entries = Sort(entries),
+            BrowserPath = path,
+            BrowserParentPath = parentPathRaw is not null
+                ? NormalizeBrowserPath(parentPathRaw)
+                : null,
+            BrowserTruncated = truncated,
+        };
+    }
+
+    /// <summary>
     /// Project the legacy <c>agents.files.list</c> payload used by older
     /// gateways. It does not support path browsing or session relevance badges,
     /// but the rows remain previewable through <c>agents.files.get</c>.
@@ -230,7 +271,7 @@ internal static class WorkspaceFilesModel
         };
     }
 
-    private static WorkspaceFileEntry? MapLegacyFileEntry(JsonElement item)
+    private static WorkspaceFileEntry? MapAgentWorkspaceEntry(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object) return null;
 
@@ -241,11 +282,41 @@ internal static class WorkspaceFilesModel
         var name = GetString(item, "name") ?? LeafName(relative);
         if (string.IsNullOrEmpty(name)) return null;
 
+        var kind = GetString(item, "kind");
+        var isDirectory = string.Equals(kind, "directory", StringComparison.OrdinalIgnoreCase);
+
         return new WorkspaceFileEntry
         {
             Name = name,
             RelativePath = relative,
             RequestPath = requestPath,
+            Size = GetLong(item, "size"),
+            Exists = true,
+            IsDirectory = isDirectory,
+            IsSessionFile = false,
+            CanPreview = !isDirectory,
+            Touched = false,
+            Read = false,
+            ModifiedUtc = ToUtc(GetLong(item, "updatedAtMs")),
+        };
+    }
+
+    private static WorkspaceFileEntry? MapLegacyFileEntry(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object) return null;
+
+        var displayPath = GetString(item, "path") ?? GetString(item, "name");
+        if (string.IsNullOrEmpty(displayPath)) return null;
+
+        var relative = NormalizePath(displayPath);
+        var name = GetString(item, "name") ?? LeafName(relative);
+        if (string.IsNullOrEmpty(name)) return null;
+
+        return new WorkspaceFileEntry
+        {
+            Name = name,
+            RelativePath = relative,
+            RequestPath = name,
             Size = GetLong(item, "size"),
             Exists = GetBool(item, "exists") ?? !GetBool(item, "missing").GetValueOrDefault(),
             IsDirectory = false,
@@ -335,6 +406,19 @@ internal static class WorkspaceFilesModel
         return dt.Kind == DateTimeKind.Unspecified
             ? new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc))
             : new DateTimeOffset(dt.ToUniversalTime());
+    }
+
+    private static DateTimeOffset? ToUtc(long? unixTimeMilliseconds)
+    {
+        if (unixTimeMilliseconds is not { } value) return null;
+        try
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(value);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     private static string? GetString(JsonElement item, string name)

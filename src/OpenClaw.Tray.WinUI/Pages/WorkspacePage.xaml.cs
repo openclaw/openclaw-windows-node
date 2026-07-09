@@ -45,6 +45,9 @@ public sealed partial class WorkspacePage : Page
     private string _searchQuery = string.Empty;
     private bool _suppressSearchTextChanged;
     private bool _usingLegacyAgentFilesFallback;
+    private bool _workspaceListApiUnsupported;
+    private bool _workspaceGetApiUnsupported;
+    private IOperatorGatewayClient? _workspaceCapabilityClient;
     private bool _renderMarkdown = true;
 
     // Monotonic token guarding against out-of-order async results: a list/file
@@ -67,7 +70,7 @@ public sealed partial class WorkspacePage : Page
         _searchDebounceTimer.Tick += (_, _) =>
         {
             _searchDebounceTimer.Stop();
-            _ = LoadAsync();
+            ApplyFilter();
         };
     }
 
@@ -126,14 +129,64 @@ public sealed partial class WorkspacePage : Page
             return;
         }
 
+        ResetWorkspaceCapabilityProbeIfClientChanged(client);
+        BeginLoading();
+
+        if (_workspaceListApiUnsupported)
+        {
+            await StartSessionFilesFallbackAsync(token);
+            return;
+        }
+
+        JsonElement result;
+        try
+        {
+            result = await client.SendWizardRequestAsync(
+                "agents.workspace.list",
+                new
+                {
+                    agentId = AgentId,
+                    path = _browserPath,
+                    limit = 500
+                },
+                timeoutMs: 15000);
+        }
+        catch (Exception ex) when (IsUnknownWorkspaceMethod(ex))
+        {
+            if (token != _loadToken) return;
+            Services.Logger.Warn($"[WorkspacePage] agents.workspace.list unsupported; falling back to sessions.files.list: {ex.Message}");
+            _workspaceListApiUnsupported = true;
+            await StartSessionFilesFallbackAsync(token);
+            return;
+        }
+        catch (Exception ex)
+        {
+            if (token != _loadToken) return;
+            Services.Logger.Warn($"[WorkspacePage] agents.workspace.list failed: {ex.Message}");
+            EndLoading();
+            if (CurrentApp.AppState?.Status == ConnectionStatus.Connected)
+                ShowLoadError();
+            else
+                ShowDisconnected();
+            return;
+        }
+
+        if (token != _loadToken) return; // a newer load superseded this one
+        EndLoading();
+        ApplyWorkspaceListResult(result);
+    }
+
+    private async Task StartSessionFilesFallbackAsync(int token)
+    {
+        if (token != _loadToken) return;
+
+        var client = CurrentApp.GatewayClient;
         var key = ResolveSessionKey();
-        if (string.IsNullOrWhiteSpace(key))
+        if (client == null || string.IsNullOrWhiteSpace(key))
         {
             ShowDisconnected();
             return;
         }
-
-        BeginLoading();
 
         SessionFileList result;
         try
@@ -145,7 +198,7 @@ public sealed partial class WorkspacePage : Page
         catch (Exception ex)
         {
             if (token != _loadToken) return;
-            Services.Logger.Warn($"[WorkspacePage] sessions.files.list failed: {ex.Message}");
+            Services.Logger.Warn($"[WorkspacePage] sessions.files.list fallback failed: {ex.Message}");
             EndLoading();
             if (CurrentApp.AppState?.Status == ConnectionStatus.Connected)
                 ShowLoadError();
@@ -154,7 +207,7 @@ public sealed partial class WorkspacePage : Page
             return;
         }
 
-        if (token != _loadToken) return; // a newer load superseded this one
+        if (token != _loadToken) return;
         if (!result.IsSupported)
         {
             await StartLegacyAgentFilesFallbackAsync(token);
@@ -224,6 +277,39 @@ public sealed partial class WorkspacePage : Page
         ClearFiles();
 
         var state = WorkspaceFilesModel.FromSessionFileList(result);
+        WorkspacePathText.Text = state.WorkspacePath;
+        _browserPath = state.BrowserPath;
+        _browserParentPath = state.BrowserParentPath;
+        UpdateBrowserChrome(state);
+
+        if (!state.Supported)
+        {
+            ShowUnsupported();
+            return;
+        }
+
+        foreach (var entry in state.Entries)
+        {
+            _allEntries.Add(entry);
+            _entriesByPath[entry.RelativePath] = entry;
+        }
+
+        if (_allEntries.Count == 0 && string.IsNullOrWhiteSpace(_searchQuery) && string.IsNullOrEmpty(_browserPath))
+        {
+            ShowNoFiles();
+            return;
+        }
+
+        HideFallback();
+        BodyGrid.Visibility = Visibility.Visible;
+        ApplyFilter();
+    }
+
+    private void ApplyWorkspaceListResult(JsonElement result)
+    {
+        ClearFiles();
+
+        var state = WorkspaceFilesModel.FromAgentWorkspaceList(result);
         WorkspacePathText.Text = state.WorkspacePath;
         _browserPath = state.BrowserPath;
         _browserParentPath = state.BrowserParentPath;
@@ -576,6 +662,85 @@ public sealed partial class WorkspacePage : Page
     private async Task LoadFileAsync(WorkspaceFilesModel.WorkspaceFileEntry entry)
     {
         var client = CurrentApp.GatewayClient;
+        if (client == null)
+        {
+            ShowFileUnavailable(entry.RelativePath);
+            return;
+        }
+        ResetWorkspaceCapabilityProbeIfClientChanged(client);
+
+        var token = _loadToken;
+        if (_usingLegacyAgentFilesFallback)
+        {
+            await StartLegacyAgentFileGetFallbackAsync(entry, token);
+            return;
+        }
+
+        if (_workspaceGetApiUnsupported)
+        {
+            await StartSessionFileGetFallbackAsync(entry, token);
+            return;
+        }
+
+        try
+        {
+            // Use the gateway's original path string, not the normalized display
+            // path, so the request matches exactly what the gateway listed.
+            var result = await client.SendWizardRequestAsync(
+                "agents.workspace.get",
+                new { agentId = AgentId, path = entry.RequestPath },
+                timeoutMs: 15000);
+            if (token != _loadToken) return; // list reloaded underneath us
+
+            ApplyWorkspaceFileContent(result, entry);
+        }
+        catch (Exception ex) when (IsUnknownWorkspaceMethod(ex))
+        {
+            if (token != _loadToken) return;
+            Services.Logger.Warn($"[WorkspacePage] agents.workspace.get unsupported; falling back to sessions.files.get: {ex.Message}");
+            _workspaceGetApiUnsupported = true;
+            await StartSessionFileGetFallbackAsync(entry, token);
+        }
+        catch (Exception ex)
+        {
+            if (token != _loadToken) return;
+            // The gateway returns an error for missing / too-large files. Show it
+            // inline without caching so the user can retry by reselecting.
+            Services.Logger.Warn($"[WorkspacePage] agents.workspace.get failed for '{entry.RequestPath}': {ex.Message}");
+            ShowFileUnavailable(entry.RelativePath);
+        }
+    }
+
+    private void ApplyWorkspaceFileContent(JsonElement payload, WorkspaceFilesModel.WorkspaceFileEntry entry)
+    {
+        if (payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("file", out var fileEl) ||
+            fileEl.ValueKind != JsonValueKind.Object)
+        {
+            ShowFileUnavailable(entry.RelativePath);
+            return;
+        }
+
+        bool missing = GetBool(fileEl, "missing") ?? false;
+        if (missing)
+        {
+            SetFileBody(entry.RelativePath, FileBodyKind.Missing, null);
+            return;
+        }
+
+        var content = GetString(fileEl, "content");
+        var encoding = GetString(fileEl, "encoding");
+        if (content is null || string.Equals(encoding, "base64", StringComparison.OrdinalIgnoreCase))
+            ShowFileUnavailable(entry.RelativePath);
+        else
+            SetFileBody(entry.RelativePath, FileBodyKind.Loaded, content);
+    }
+
+    private async Task StartSessionFileGetFallbackAsync(
+        WorkspaceFilesModel.WorkspaceFileEntry entry,
+        int token)
+    {
+        var client = CurrentApp.GatewayClient;
         var key = ResolveSessionKey();
         if (client == null || string.IsNullOrWhiteSpace(key))
         {
@@ -583,13 +748,10 @@ public sealed partial class WorkspacePage : Page
             return;
         }
 
-        var token = _loadToken;
         try
         {
-            // Use the gateway's original path string, not the normalized display
-            // path, so the request matches exactly what the gateway indexed.
             var result = await client.GetSessionFileAsync(key, entry.RequestPath);
-            if (token != _loadToken) return; // list reloaded underneath us
+            if (token != _loadToken) return;
 
             if (!result.IsSupported)
             {
@@ -607,9 +769,7 @@ public sealed partial class WorkspacePage : Page
         catch (Exception ex)
         {
             if (token != _loadToken) return;
-            // The gateway returns an error for missing / too-large files. Show it
-            // inline without caching so the user can retry by reselecting.
-            Services.Logger.Warn($"[WorkspacePage] sessions.files.get failed for '{entry.RequestPath}': {ex.Message}");
+            Services.Logger.Warn($"[WorkspacePage] sessions.files.get fallback failed for '{entry.RequestPath}': {ex.Message}");
             ShowFileUnavailable(entry.RelativePath);
         }
     }
@@ -628,7 +788,12 @@ public sealed partial class WorkspacePage : Page
         _usingLegacyAgentFilesFallback = true;
         try
         {
-            await client.RequestAgentFileGetAsync(AgentId, entry.RequestPath);
+            var payload = await client.SendWizardRequestAsync(
+                "agents.files.get",
+                new { agentId = AgentId, name = entry.RequestPath },
+                timeoutMs: 15000);
+            if (token != _loadToken) return;
+            ApplyLegacyAgentFileContent(payload);
         }
         catch (Exception ex)
         {
@@ -1104,6 +1269,14 @@ public sealed partial class WorkspacePage : Page
     private void RepairLink_Click(object sender, RoutedEventArgs e)
         => ((IAppCommands)CurrentApp).Navigate("connection");
 
+    private void ResetWorkspaceCapabilityProbeIfClientChanged(IOperatorGatewayClient client)
+    {
+        if (ReferenceEquals(_workspaceCapabilityClient, client)) return;
+        _workspaceCapabilityClient = client;
+        _workspaceListApiUnsupported = false;
+        _workspaceGetApiUnsupported = false;
+    }
+
     private void HideFallback()
     {
         FallbackInfoBar.IsOpen = false;
@@ -1133,9 +1306,9 @@ public sealed partial class WorkspacePage : Page
         FallbackInfoBar.IsOpen = true;
     }
 
-    // Connected gateway that doesn't implement sessions.files.list (older
-    // gateway) or errored serving it. Same repair affordance, distinct copy so
-    // the user knows it's a capability gap.
+    // Connected gateway that doesn't implement workspace/session file browsing
+    // or errored serving it. Same repair affordance, distinct copy so the user
+    // knows it's a capability gap.
     private void ShowUnsupported()
     {
         EndLoading();
@@ -1167,5 +1340,13 @@ public sealed partial class WorkspacePage : Page
         return item.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? value.GetBoolean()
             : null;
+    }
+
+    private static bool IsUnknownWorkspaceMethod(Exception ex)
+    {
+        var message = ex.Message;
+        return message.Contains("unknown method", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("method not found", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("-32601", StringComparison.OrdinalIgnoreCase);
     }
 }

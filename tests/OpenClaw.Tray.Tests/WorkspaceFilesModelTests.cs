@@ -238,7 +238,7 @@ public class WorkspaceFilesModelTests
             {
               "workspace": "C:\\repo",
               "files": [
-                { "name": "README.md", "size": 2048, "exists": true },
+                { "path": "C:\\repo\\README.md", "name": "README.md", "size": 2048, "exists": true },
                 { "name": "gone.md", "missing": true }
               ]
             }
@@ -255,10 +255,76 @@ public class WorkspaceFilesModelTests
         Assert.True(readme.CanPreview);
         Assert.True(readme.Exists);
         Assert.Equal(2048, readme.Size);
+        Assert.Equal("README.md", readme.RequestPath);
 
         var missing = Assert.Single(state.Entries, e => e.Name == "gone.md");
         Assert.False(missing.Exists);
         Assert.True(missing.CanPreview);
+    }
+
+    [Fact]
+    public void FromAgentWorkspaceList_MapsAllWorkspaceFilesAsPreviewable()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "agentId": "main",
+              "path": "src",
+              "parentPath": "",
+              "entries": [
+                { "path": "src", "name": "src", "kind": "directory", "updatedAtMs": 1700000000000 },
+                { "path": "src/app.cs", "name": "app.cs", "kind": "file", "size": 42, "updatedAtMs": 1700000000123 },
+                { "path": "README.md", "name": "README.md", "kind": "file" }
+              ],
+              "totalEntries": 3,
+              "offset": 0
+            }
+            """);
+
+        var state = WorkspaceFilesModel.FromAgentWorkspaceList(doc.RootElement);
+
+        Assert.True(state.Supported);
+        Assert.Equal("Agent workspace", state.WorkspacePath);
+        Assert.Equal("src", state.BrowserPath);
+        Assert.Equal(string.Empty, state.BrowserParentPath);
+        Assert.False(state.BrowserTruncated);
+
+        var directory = Assert.Single(state.Entries, e => e.Name == "src");
+        Assert.True(directory.IsDirectory);
+        Assert.False(directory.CanPreview);
+        Assert.False(directory.IsSessionFile);
+
+        var app = Assert.Single(state.Entries, e => e.Name == "app.cs");
+        Assert.False(app.IsDirectory);
+        Assert.True(app.CanPreview);
+        Assert.False(app.IsSessionFile);
+        Assert.False(app.Read);
+        Assert.False(app.Touched);
+        Assert.Equal(42, app.Size);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1700000000123), app.ModifiedUtc);
+
+        var readme = Assert.Single(state.Entries, e => e.Name == "README.md");
+        Assert.True(readme.CanPreview);
+    }
+
+    [Fact]
+    public void FromAgentWorkspaceList_DetectsPaginationTruncation()
+    {
+        using var doc = JsonDocument.Parse("""
+            {
+              "path": "src/app",
+              "parentPath": "src",
+              "entries": [
+                { "path": "src/app/a.txt", "name": "a.txt", "kind": "file" }
+              ],
+              "totalEntries": 5,
+              "offset": 0
+            }
+            """);
+
+        var state = WorkspaceFilesModel.FromAgentWorkspaceList(doc.RootElement);
+
+        Assert.True(state.BrowserTruncated);
+        Assert.Equal("src", state.BrowserParentPath);
     }
 
     // ── Unsupported / null handling ─────────────────────────────────────
