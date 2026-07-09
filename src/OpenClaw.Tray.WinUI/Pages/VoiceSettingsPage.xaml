@@ -206,8 +206,7 @@
             </Border>
 
             <!-- Language -->
-            <Border x:Name="VoiceChatCard"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <StackPanel Spacing="8">

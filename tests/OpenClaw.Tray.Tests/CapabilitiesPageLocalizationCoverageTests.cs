@@ -45,6 +45,25 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
             .ToHashSet(StringComparer.Ordinal);
     }
 
+    private static List<string> LoadVoiceSettingsXamlUids()
+    {
+        var doc = XDocument.Load(GetVoiceSettingsXamlPath());
+        return doc.Descendants()
+            .Select(e => e.Attribute(XNs + "Uid")?.Value)
+            .Where(v => !string.IsNullOrEmpty(v))
+            .Cast<string>()
+            .ToList();
+    }
+
+    private static string LoadReswValue(string key)
+    {
+        var doc = XDocument.Load(GetEnUsReswPath());
+        return doc.Descendants("data")
+            .Single(e => string.Equals(e.Attribute("name")?.Value, key, StringComparison.Ordinal))
+            .Element("value")!
+            .Value;
+    }
+
     /// <summary>
     /// Contract for the shared voice settings link. Each entry: x:Uid + the resw key
     /// suffixes that MUST exist in en-us. The dedicated Voice & Audio page owns provider,
@@ -118,6 +137,15 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     }
 
     [Fact]
+    public void PermissionsPage_SttDescription_DoesNotClaimCapabilityToggleDownloadsModel()
+    {
+        var description = LoadReswValue("PermissionsPage_Cap_Stt_Description");
+
+        Assert.DoesNotContain("Turning this on downloads", description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Download a speech model in Voice & Audio settings", description);
+    }
+
+    [Fact]
     public void PermissionsPage_VoiceSetupWarnings_HaveTailoredResources()
     {
         var keys = LoadReswKeys();
@@ -138,18 +166,20 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         Assert.Contains("x:Name=\"TtsCapabilityNotice\"", xaml);
         Assert.Contains("x:Name=\"SttCapabilityNoticeIcon\"", xaml);
         Assert.Contains("x:Name=\"TtsCapabilityNoticeIcon\"", xaml);
-        Assert.Contains("x:Name=\"VoiceChatCard\"", xaml);
         Assert.Contains("x:Uid=\"VoiceSettingsPage_SttCapabilityDisabledNotice\"", xaml);
         Assert.Contains("x:Uid=\"VoiceSettingsPage_TtsCapabilityDisabledNotice\"", xaml);
-        Assert.Contains("x:Uid=\"VoiceSettingsPage_OpenPermissionsLink\"", xaml);
+        Assert.Equal(2, LoadVoiceSettingsXamlUids().Count(uid =>
+            string.Equals(uid, "VoiceSettingsPage_OpenPermissionsLink", StringComparison.Ordinal)));
         Assert.DoesNotContain("SttEnabledToggle", xaml);
         Assert.DoesNotContain("OnSttToggled", source);
         Assert.Contains("((IAppCommands)CurrentApp).Navigate(\"permissions\")", source);
         Assert.Contains("SttCapabilityNotice.Visibility = sttEnabled ? Visibility.Collapsed : Visibility.Visible;", source);
         Assert.Contains("TtsCapabilityNotice.Visibility = ttsEnabled ? Visibility.Collapsed : Visibility.Visible;", source);
-        Assert.Contains("VoiceChatCard.IsHitTestVisible = sttEnabled;", source);
-        Assert.Contains("TestVoiceButton.IsEnabled = sttEnabled;", source);
-        Assert.Contains("PreviewVoiceButton.IsEnabled = ttsEnabled;", source);
+        Assert.DoesNotContain("IsHitTestVisible = sttEnabled", source);
+        Assert.DoesNotContain("TestVoiceButton.IsEnabled = sttEnabled", source);
+        Assert.DoesNotContain("InlineTestStartBtn.IsEnabled = sttEnabled", source);
+        Assert.DoesNotContain("PiperPreviewButton.IsEnabled = ttsEnabled", source);
+        Assert.DoesNotContain("PreviewVoiceButton.IsEnabled = ttsEnabled", source);
         Assert.Contains("VoiceSettingsPage_SttCapabilityDisabledNotice.Text", keys);
         Assert.Contains("VoiceSettingsPage_TtsCapabilityDisabledNotice.Text", keys);
         Assert.Contains("VoiceSettingsPage_OpenPermissionsLink.Content", keys);

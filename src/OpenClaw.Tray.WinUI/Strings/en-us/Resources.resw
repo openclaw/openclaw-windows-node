@@ -3385,7 +3385,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Speech-to-text</value>
   </data>
   <data name="PermissionsPage_Cap_Stt_Description" xml:space="preserve">
-    <value>Lets agents transcribe microphone audio locally using Whisper. Turning this on downloads the Whisper model (~140 MB) on first use.</value>
+    <value>Lets agents transcribe microphone audio locally. Download a speech model in Voice &amp; Audio settings before first use.</value>
   </data>
   <data name="PermissionsPage_Cap_SystemRun_Label" xml:space="preserve">
     <value>System tools</value>

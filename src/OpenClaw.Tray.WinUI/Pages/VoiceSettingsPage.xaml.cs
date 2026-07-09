@@ -29,6 +29,7 @@ public sealed partial class VoiceSettingsPage : Page
 
     private CancellationTokenSource? _whisperDownloadCts;
     private CancellationTokenSource? _piperDownloadCts;
+    private bool _piperPreviewInProgress;
 
     public VoiceSettingsPage()
     {
@@ -417,14 +418,6 @@ public sealed partial class VoiceSettingsPage : Page
 
         SttCapabilityNotice.Visibility = sttEnabled ? Visibility.Collapsed : Visibility.Visible;
         TtsCapabilityNotice.Visibility = ttsEnabled ? Visibility.Collapsed : Visibility.Visible;
-
-        VoiceChatCard.Opacity = sttEnabled ? 1.0 : 0.5;
-        VoiceChatCard.IsHitTestVisible = sttEnabled;
-
-        TestVoiceButton.IsEnabled = sttEnabled;
-        InlineTestStartBtn.IsEnabled = sttEnabled;
-        PiperPreviewButton.IsEnabled = ttsEnabled && PiperPreviewButton.Visibility == Visibility.Visible;
-        PreviewVoiceButton.IsEnabled = ttsEnabled;
     }
 
     private void OnModelChanged(object sender, SelectionChangedEventArgs e)
@@ -884,6 +877,7 @@ public sealed partial class VoiceSettingsPage : Page
         PiperDownloadIcon.Glyph = downloaded ? "\uE73E" : "\uE896";  // checkmark vs download arrow
         PiperDeleteButton.Visibility = downloaded ? Visibility.Visible : Visibility.Collapsed;
         PiperPreviewButton.Visibility = downloaded ? Visibility.Visible : Visibility.Collapsed;
+        PiperPreviewButton.IsEnabled = downloaded && !_piperPreviewInProgress;
 
         if (downloaded)
         {
@@ -1005,6 +999,7 @@ public sealed partial class VoiceSettingsPage : Page
         if (PiperVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
 
         PiperPreviewButton.IsEnabled = false;
+        _piperPreviewInProgress = true;
         var oldLabel = PiperPreviewLabel.Text;
         PiperPreviewLabel.Text = L("VoiceSettingsPage_PreviewButtonPlaying");
 
@@ -1028,9 +1023,10 @@ public sealed partial class VoiceSettingsPage : Page
         }
         finally
         {
+            _piperPreviewInProgress = false;
             PiperPreviewIcon.Glyph = "\uE768";
             PiperPreviewLabel.Text = oldLabel;
-            UpdateCapabilityState();
+            UpdatePiperVoiceState();
         }
     }
 
@@ -1153,7 +1149,7 @@ public sealed partial class VoiceSettingsPage : Page
         {
             PreviewVoiceIcon.Glyph = "\uE768";
             PreviewVoiceLabel.Text = L("VoiceSettingsPage_PreviewVoiceButtonContent");
-            UpdateCapabilityState();
+            PreviewVoiceButton.IsEnabled = true;
         }
     }
 
