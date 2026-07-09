@@ -94,6 +94,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly object _attachmentMetaSaveGate = new();
     private readonly string _toolMetaCacheFilePath;
     private readonly string _attachmentMetaCacheFilePath;
+    private readonly string _lastChatStateFilePath;
+    private readonly TimeSpan _lastChatStateSaveDelay;
     private System.Threading.Timer? _toolMetaSaveTimer; // debounce cache writes
     private long _toolMetaSaveVersion;
     private bool _toolMetaCacheDirty;
@@ -242,7 +244,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         IChatGatewayBridge bridge,
         Action<Action>? post,
         string toolMetaCacheFilePath,
-        string? attachmentMetaCacheFilePath = null)
+        string? attachmentMetaCacheFilePath = null,
+        string? lastChatStateFilePath = null,
+        TimeSpan? lastChatStateSaveDelay = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _post = post;
@@ -252,11 +256,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _attachmentMetaCacheFilePath = !string.IsNullOrWhiteSpace(attachmentMetaCacheFilePath)
             ? attachmentMetaCacheFilePath
             : DefaultAttachmentMetaCacheFilePath(_toolMetaCacheFilePath);
+        _lastChatStateFilePath = !string.IsNullOrWhiteSpace(lastChatStateFilePath)
+            ? lastChatStateFilePath
+            : LastChatStateFilePath;
+        _lastChatStateSaveDelay = lastChatStateSaveDelay ?? TimeSpan.FromSeconds(2);
         _status = bridge.CurrentStatus;
         _persistedAbortedIds = LoadAbortedIds();
         _toolMetaCache = LoadToolMetaCache(_toolMetaCacheFilePath);
         _attachmentMetaCache = LoadAttachmentMetaCache(_attachmentMetaCacheFilePath);
-        _lastChatState = LoadLastChatState();
+        _lastChatState = LoadLastChatState(_lastChatStateFilePath);
 
         // Seed models from whatever the bridge already knows about (a connect
         // that completed before the provider was constructed will have its
@@ -304,6 +312,34 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             RememberLastSessionStateLocked();
             return Task.FromResult(BuildSnapshotLocked());
         }
+    }
+
+    internal void RememberSelectedThread(string? threadId)
+    {
+        if (string.IsNullOrWhiteSpace(threadId))
+            return;
+
+        LastChatState? state;
+        lock (_gate)
+        {
+            if (!TryGetSessionLocked(threadId, out var session))
+                return;
+
+            state = new LastChatState
+            {
+                DefaultThreadId = threadId,
+                ThreadTitle = BuildSessionTitle(session),
+                Model = session.Model,
+                ModelProvider = session.Provider,
+                AvailableModels = _availableModels,
+            };
+            _lastChatState = state;
+            _lastChatStateSaveVersion++;
+            _lastChatStateSaveTimer?.Dispose();
+            _lastChatStateSaveTimer = null;
+        }
+
+        SaveLastChatState(state, _lastChatStateFilePath);
     }
 
     // Explicit interface implementation (no attachments).
@@ -5678,6 +5714,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private string? ResolveDefaultThreadIdLocked()
     {
+        if (_lastChatState?.DefaultThreadId is { Length: > 0 } rememberedThreadId)
+        {
+            if (TryGetSessionLocked(rememberedThreadId, out _) || !_sessionsListReceived)
+                return rememberedThreadId;
+        }
+
         // Prefer the gateway's canonical main session (IsMain on SessionInfo)
         // so we never have to guess from a literal like "main". Only fall back
         // to the compose target (pre-materialization) or the first available
@@ -5700,8 +5742,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private void RememberLastSessionStateLocked()
     {
         if (_sessions.Length == 0) return;
-        var session = _sessions.FirstOrDefault(s => s.IsMain && !string.IsNullOrEmpty(s.Key))
-            ?? _sessions.FirstOrDefault(s => !string.IsNullOrEmpty(s.Key));
+        var defaultThreadId = ResolveDefaultThreadIdLocked();
+        var session = defaultThreadId is { Length: > 0 } && TryGetSessionLocked(defaultThreadId, out var selected)
+            ? selected
+            : _sessions.FirstOrDefault(s => s.IsMain && !string.IsNullOrEmpty(s.Key))
+                ?? _sessions.FirstOrDefault(s => !string.IsNullOrEmpty(s.Key));
         if (session is null) return;
 
         _lastChatState = new LastChatState
@@ -5712,6 +5757,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ModelProvider = session.Provider,
             AvailableModels = _availableModels,
         };
+    }
+
+    private bool TryGetSessionLocked(string threadId, out SessionInfo session)
+    {
+        for (int i = 0; i < _sessions.Length; i++)
+        {
+            var candidate = _sessions[i];
+            if (string.Equals(candidate.Key, threadId, StringComparison.Ordinal))
+            {
+                session = candidate;
+                return true;
+            }
+        }
+
+        session = default!;
+        return false;
     }
 
     private static ChatThread ToThread(SessionInfo s)
@@ -5811,6 +5872,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         AppIdentity.ResolveLocalDataDirectory(), "last-chat-state.json");
 
     private System.Threading.Timer? _lastChatStateSaveTimer;
+    private long _lastChatStateSaveVersion;
 
     internal sealed class LastChatState
     {
@@ -5861,21 +5923,38 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         lock (_gate)
         {
             _lastChatState = state;
+            _lastChatStateSaveVersion++;
+            var saveVersion = _lastChatStateSaveVersion;
             _lastChatStateSaveTimer?.Dispose();
-            _lastChatStateSaveTimer = new System.Threading.Timer(_ => SaveLastChatState(state), null, 2000, Timeout.Infinite);
+            var path = _lastChatStateFilePath;
+            _lastChatStateSaveTimer = new System.Threading.Timer(_ => SaveLastChatStateIfCurrent(state, path, saveVersion), null, _lastChatStateSaveDelay, Timeout.InfiniteTimeSpan);
         }
     }
 
-    private static void SaveLastChatState(LastChatState state)
+    private void SaveLastChatStateIfCurrent(LastChatState state, string path, long saveVersion)
     {
+        lock (_gate)
+        {
+            if (saveVersion != _lastChatStateSaveVersion)
+                return;
+
+            SaveLastChatState(state, path);
+            _lastChatStateSaveTimer?.Dispose();
+            _lastChatStateSaveTimer = null;
+        }
+    }
+
+    private static void SaveLastChatState(LastChatState state, string? pathOverride = null)
+    {
+        var path = pathOverride ?? LastChatStateFilePath;
         try
         {
-            var dir = Path.GetDirectoryName(LastChatStateFilePath);
+            var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             var json = System.Text.Json.JsonSerializer.Serialize(state);
-            var tmp = LastChatStateFilePath + ".tmp";
+            var tmp = path + ".tmp";
             File.WriteAllText(tmp, json);
-            File.Move(tmp, LastChatStateFilePath, overwrite: true);
+            File.Move(tmp, path, overwrite: true);
         }
         catch (Exception ex) { Logger.Debug($"ChatDataProvider: persist LastChatState failed: {ex.Message}"); }
     }
