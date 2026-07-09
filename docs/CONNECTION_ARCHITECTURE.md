@@ -135,6 +135,8 @@ Idle → Connecting → Connected
 
 Each `GatewayRecord` contains: `Id`, `Url`, `FriendlyName`, `SharedGatewayToken`, `BootstrapToken`, `LastConnected`, `SshTunnel` config, `IsLocal`, `RequiresV2Signature`, `SetupManagedDistroName`, and `BrowserControlPort`. The `IdentityDirName` property is computed from `Id`.
 
+Many gateway records may be saved, but only `ActiveId` in `gateways.json` is the effective gateway. Active gateway changes must be made through `GatewayRegistry.SetActive(...)` and saved immediately by connection flows that switch or apply credentials. `SetActive(...)` raises `GatewayRegistry.Changed`, so UI and diagnostics can observe a gateway switch even before the new connection finishes. Each active gateway resolves identity from `%APPDATA%\OpenClawTray\gateways\<id>\`; old gateway events are ignored by `GatewayConnectionManager` generation + gateway-id guards after a switch.
+
 `SettingsManager` still owns general tray settings (node mode, MCP mode, SSH tunnel toggles, notifications, UI preferences). It may read legacy `Token` / `BootstrapToken` JSON fields into memory for migration, but save must not write those legacy credential fields back.
 
 ## Credential precedence
@@ -148,7 +150,7 @@ Credential resolution order is intentionally strict:
 
 The invariant is that a paired device token always wins. Do not downgrade a paired operator or node to a shared/bootstrap token, because that can reduce scopes or trigger unnecessary re-pairing.
 
-**`CredentialResolver`** implements the precedence for WebSocket connections (operator and node roles).
+**`CredentialResolver`** implements the precedence for WebSocket connections (operator and node roles). It also returns a detailed `GatewayCredentialResolution` so the active snapshot and diagnostics can distinguish `Resolved`, `Missing`, `Unreadable`, `Corrupt`, `FallbackUsed`, and `BootstrapRequired`. Shared-token-only gateways are a clean resolved state when no paired device token exists. If a stored per-gateway device token is unreadable or corrupt and the resolver falls back to a shared/bootstrap token, `GatewayConnectionSnapshot` preserves that fallback status instead of reporting only the token source.
 
 Node credential precedence follows the same invariant with a distinct stored token:
 
@@ -157,7 +159,7 @@ Node credential precedence follows the same invariant with a distinct stored tok
 3. **`GatewayRecord.BootstrapToken`** — one-time setup, limited scopes.
 4. **No credential** — caller logs and skips node client init.
 
-**`InteractiveGatewayCredentialResolver`** resolves credentials for HTTP surfaces (chat URL `?token=` auth). It **prefers SharedGatewayToken** over DeviceToken because HTTP endpoints expect the shared token, not the per-device WebSocket token.
+**`InteractiveGatewayCredentialResolver`** resolves credentials for HTTP surfaces (chat URL `?token=` auth). It **prefers SharedGatewayToken** over DeviceToken because HTTP endpoints expect the shared token, not the per-device WebSocket token. Browser proxy diagnostics should treat the missing shared token as a browser-control caveat, not as proof that the operator or node gateway connection is disconnected.
 
 ## Client instance lifecycle
 

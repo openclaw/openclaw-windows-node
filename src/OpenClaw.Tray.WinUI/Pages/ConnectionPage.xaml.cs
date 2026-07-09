@@ -1502,8 +1502,7 @@ public sealed partial class ConnectionPage : Page
     {
         if (isActive)
         {
-            var credentialLabel = ConnectionPagePlan.FormatCredentialSource(
-                snapshot.OperatorCredentialSource ?? snapshot.NodeCredentialSource);
+            var credentialLabel = ConnectionPagePlan.FormatCredentialSummary(snapshot);
             if (!string.IsNullOrEmpty(credentialLabel))
                 return credentialLabel;
 

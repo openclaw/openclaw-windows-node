@@ -335,6 +335,25 @@ public class DeviceIdentityIntegrationTests
         finally { Directory.Delete(dir, true); }
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("null")]
+    public void ReadStoredDeviceToken_WrongJsonRoot_ReturnsCorrupt(string json)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "device-key-ed25519.json"), json);
+
+            var result = DeviceIdentity.ReadStoredDeviceToken(dir);
+
+            Assert.Null(result.Token);
+            Assert.Equal(DeviceTokenReadStatus.Corrupt, result.Status);
+            Assert.Contains("not a JSON object", result.Detail, StringComparison.OrdinalIgnoreCase);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [IntegrationFact]
     public void DifferentDirs_ProduceDifferentIdentities()
     {

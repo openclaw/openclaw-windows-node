@@ -195,19 +195,29 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (!Directory.Exists(perGatewayIdentityDir))
                 Directory.CreateDirectory(perGatewayIdentityDir);
 
-            var credential = _credentialResolver.ResolveOperator(record, perGatewayIdentityDir);
+            var credentialResolution = _credentialResolver.ResolveOperatorDetailed(record, perGatewayIdentityDir);
+            var credential = credentialResolution.Credential;
             if (_forceBootstrapForGatewayRecordId == record.Id &&
                 !string.IsNullOrWhiteSpace(record.BootstrapToken))
             {
                 credential = new GatewayCredential(
                     record.BootstrapToken!,
                     IsBootstrapToken: true,
-                    CredentialResolver.SourceBootstrapToken);
+                    CredentialResolver.SourceBootstrapToken)
+                {
+                    ResolutionStatus = GatewayCredentialResolutionStatus.BootstrapRequired,
+                    ResolutionDetail = "Using setup-code bootstrap token for this connection."
+                };
+                credentialResolution = new GatewayCredentialResolution(
+                    credential,
+                    GatewayCredentialResolutionStatus.BootstrapRequired,
+                    BootstrapRequired: true,
+                    Detail: credential.ResolutionDetail);
                 _forceBootstrapForGatewayRecordId = null;
             }
             _activeConnectUsedBootstrapToken = credential?.IsBootstrapToken == true;
             _postBootstrapOperatorReconnectScheduled = false;
-            _diagnostics.RecordCredentialResolution(credential);
+            _diagnostics.RecordCredentialResolutionResult(credentialResolution);
             _activeIdentityPath = perGatewayIdentityDir;
             _activeGatewayRecordId = record.Id;
             _activeSshTunnel = record.SshTunnel;
@@ -219,8 +229,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _logger.Warn("[ConnMgr] No credential available for gateway");
                 // Must go through Connecting → Error since AuthenticationFailed requires Connecting state
                 _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
-                _stateMachine.SetOperatorCredentialSource(null);
-                _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, "No credential available");
+                _stateMachine.SetOperatorCredentialResolution(credentialResolution);
+                _stateMachine.TryTransition(
+                    ConnectionTrigger.AuthenticationFailed,
+                    BuildCredentialFailureMessage("operator", credentialResolution));
                 EmitStateChanged();
                 return;
             }
@@ -228,7 +240,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // Transition to Connecting
             var prevState = _stateMachine.Current.OverallState;
             _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
-            _stateMachine.SetOperatorCredentialSource(credential.Source);
+            _stateMachine.SetOperatorCredentialResolution(credentialResolution);
             _diagnostics.RecordStateChange(prevState, _stateMachine.Current.OverallState);
             EmitStateChanged();
 
@@ -277,41 +289,40 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 NewClient = lifecycle.DataClient
             });
 
-            // Subscribe to client events with generation guard
+            // Subscribe to client events with generation and gateway guards.
+            var subscribedGatewayId = record.Id;
             lifecycle.StatusChanged += (s, status) =>
             {
-                if (Interlocked.Read(ref _generation) != gen) return;
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 _ = HandleOperatorStatusChangedAsync(status, gen);
             };
             lifecycle.AuthenticationFailed += (s, msg) =>
             {
-                if (Interlocked.Read(ref _generation) != gen) return;
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 _ = HandleAuthenticationFailedAsync(msg, gen);
             };
             lifecycle.DataClient.HandshakeSucceeded += (s, e) =>
             {
-                if (Interlocked.Read(ref _generation) != gen) return;
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 _ = HandleHandshakeSucceededAsync(gen);
             };
             lifecycle.DataClient.DeviceTokenReceived += (s, e) =>
             {
-                if (Interlocked.Read(ref _generation) != gen) return;
-                HandleDeviceTokenReceived(e);
+                _ = HandleDeviceTokenReceivedAsync(e, gen, subscribedGatewayId, perGatewayIdentityDir);
             };
             lifecycle.DataClient.PairingRequired += (s, requestId) =>
             {
-                if (Interlocked.Read(ref _generation) != gen) return;
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 _ = HandlePairingRequiredAsync(requestId, gen);
             };
             lifecycle.DataClient.NodePairListUpdated += (s, list) =>
             {
-                if (Interlocked.Read(ref _generation) != gen) return;
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 _ = HandleNodePairListUpdatedAsync(list, gen);
             };
-            lifecycle.DataClient.V2SignatureFallback += (s, _) =>
+            lifecycle.DataClient.V2SignatureFallback += (s, e) =>
             {
-                if (Interlocked.Read(ref _generation) != gen) return;
-                RememberGatewayNeedsV2Signature(record.Id);
+                _ = HandleV2SignatureFallbackAsync(gen, subscribedGatewayId);
             };
 
             // Local gateways only support v2 signatures — skip the v3 attempt entirely
@@ -372,9 +383,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
             string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
             Equals(_activeSshTunnel, record.SshTunnel);
-        var operatorCredentialSource = preservesOperatorConnection
-            ? _stateMachine.Current.OperatorCredentialSource
-            : null;
         var gen = Interlocked.Read(ref _generation);
         if (!preservesOperatorConnection)
         {
@@ -400,24 +408,30 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _stateMachine.StartNodeConnecting();
         _stateMachine.SetNodeCredentialSource(null);
 
-        var nodeCredential = _credentialResolver.ResolveNode(record, perGatewayIdentityDir);
+        var nodeCredentialResolution = _credentialResolver.ResolveNodeDetailed(record, perGatewayIdentityDir);
+        var nodeCredential = nodeCredentialResolution.Credential;
         if (nodeCredential == null)
         {
             _logger.Warn("[ConnMgr] No node credential available for node-only connect");
-            _diagnostics.Record("node", "No node credential available for node-only connect");
-            _stateMachine.BlockNodeStart(MissingNodeCredentialMessage);
+            _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
+            _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
+            _stateMachine.BlockNodeStart(
+                BuildCredentialFailureMessage("node", nodeCredentialResolution),
+                preserveCredentialResolution: true);
             EmitStateChanged();
             return null;
         }
 
-        _diagnostics.RecordCredentialResolution(nodeCredential);
-        _stateMachine.SetOperatorCredentialSource(operatorCredentialSource);
+        _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
+        if (!preservesOperatorConnection)
+            _stateMachine.SetOperatorCredentialSource(null);
         _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
             $"Credential source: {nodeCredential.Source}");
 
         if (!preservesOperatorConnection && !await TryStartTunnelForNodeOnlyAsync(record))
         {
-            _stateMachine.BlockNodeStart(NodeTunnelStartFailedMessage);
+            _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
+            _stateMachine.BlockNodeStart(NodeTunnelStartFailedMessage, preserveCredentialResolution: true);
             EmitStateChanged();
             return null;
         }
@@ -512,6 +526,28 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
+            if (_registry.GetById(gatewayId) == null)
+            {
+                _logger.Warn($"[ConnMgr] Cannot switch gateway — record {gatewayId} not found");
+                _diagnostics.Record("state", "Switch gateway failed", $"Gateway record not found: {gatewayId}");
+                return;
+            }
+
+            var previousActiveId = _registry.ActiveGatewayId;
+            _diagnostics.Record("state", $"Switching active gateway to {gatewayId}");
+            _registry.SetActive(gatewayId);
+            try
+            {
+                _registry.Save();
+            }
+            catch (Exception ex)
+            {
+                _registry.SetActive(previousActiveId);
+                _logger.Warn($"[ConnMgr] Failed to persist active gateway switch: {ex.Message}");
+                _diagnostics.Record("state", "Switch gateway failed", $"Could not persist active gateway: {ex.Message}");
+                return;
+            }
+
             await DisconnectCoreAsync();
             // Stop tunnel when switching gateways — the new one may not need it.
             // Use a bounded timeout to avoid blocking all connection transitions.
@@ -526,7 +562,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error on gateway switch: {ex.Message}"); }
             }
             _gatewayNeedsV2Signature = false; // new gateway might support v3
-            _registry.SetActive(gatewayId);
             await ConnectCoreAsync(gatewayId);
         }
         finally
@@ -550,47 +585,70 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
             return new SetupCodeResult(SetupCodeOutcome.InvalidUrl, "Invalid gateway URL");
 
-        // 3. Disconnect current gateway if any
-        await DisconnectAsync();
-
-        var existing = _registry.FindByUrl(gatewayUrl);
-
-        // New gateway URL → reset v2 signature flag (new gateway might support v3)
-        var isNewGateway = existing == null;
-        if (isNewGateway)
-            _gatewayNeedsV2Signature = false;
-
-        // 4. Create or update gateway record
-        var recordId = existing?.Id ?? Guid.NewGuid().ToString();
-
-        // Setup codes from `openclaw qr` always provide bootstrap tokens.
-        // Store as BootstrapToken so the credential resolver passes IsBootstrapToken=true,
-        // causing the client to send auth.bootstrapToken (not auth.token).
-        var record = (existing ?? new GatewayRecord { Id = recordId }) with
+        await _transitionSemaphore.WaitAsync();
+        try
         {
-            Url = gatewayUrl,
-            SharedGatewayToken = existing?.SharedGatewayToken, // preserve existing shared token if any
-            BootstrapToken = decoded.Token ?? existing?.BootstrapToken,
-            SshTunnel = sshTunnel ?? existing?.SshTunnel,
-        };
-        _registry.AddOrUpdate(record);
-        _registry.SetActive(recordId);
-        _registry.Save();
+            var existing = _registry.FindByUrl(gatewayUrl);
 
-        // Ensure identity directory
-        var identityDir = _registry.GetIdentityDirectory(recordId);
-        if (!Directory.Exists(identityDir))
-            Directory.CreateDirectory(identityDir);
+            // New gateway URL → reset v2 signature flag (new gateway might support v3)
+            var isNewGateway = existing == null;
+            if (isNewGateway)
+                _gatewayNeedsV2Signature = false;
 
-        // Clear stored device tokens so we start fresh with the bootstrap token.
-        // The keypair (device ID) stays — only the tokens are wiped.
-        DeviceIdentityStore.ClearStoredTokens(identityDir, _logger);
-        _diagnostics.Record("setup", $"Setup code applied for {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
+            // 4. Create or update gateway record
+            var recordId = existing?.Id ?? Guid.NewGuid().ToString();
 
-        // 5. Connect to new gateway
-        if (!string.IsNullOrWhiteSpace(decoded.Token))
-            _forceBootstrapForGatewayRecordId = recordId;
-        await ConnectAsync(recordId);
+            // Setup codes from `openclaw qr` always provide bootstrap tokens.
+            // Store as BootstrapToken so the credential resolver passes IsBootstrapToken=true,
+            // causing the client to send auth.bootstrapToken (not auth.token).
+            var record = (existing ?? new GatewayRecord { Id = recordId }) with
+            {
+                Url = gatewayUrl,
+                SharedGatewayToken = existing?.SharedGatewayToken, // preserve existing shared token if any
+                BootstrapToken = decoded.Token ?? existing?.BootstrapToken,
+                SshTunnel = sshTunnel ?? existing?.SshTunnel,
+            };
+            var previousRecord = existing;
+            var previousActiveId = _registry.ActiveGatewayId;
+            _registry.AddOrUpdate(record);
+            _registry.SetActive(recordId);
+            try
+            {
+                _registry.Save();
+            }
+            catch (Exception ex)
+            {
+                if (previousRecord == null)
+                    _registry.Remove(recordId);
+                else
+                    _registry.AddOrUpdate(previousRecord);
+                _registry.SetActive(previousActiveId);
+                _logger.Warn($"[ConnMgr] Failed to persist setup-code gateway update: {ex.Message}");
+                return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, ex.Message);
+            }
+
+            // 3. Disconnect current gateway only after the new active gateway is persisted.
+            await DisconnectCoreAsync();
+
+            // Ensure identity directory
+            var identityDir = _registry.GetIdentityDirectory(recordId);
+            if (!Directory.Exists(identityDir))
+                Directory.CreateDirectory(identityDir);
+
+            // Clear stored device tokens so we start fresh with the bootstrap token.
+            // The keypair (device ID) stays — only the tokens are wiped.
+            DeviceIdentityStore.ClearStoredTokens(identityDir, _logger);
+            _diagnostics.Record("setup", $"Setup code applied for {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
+
+            // 5. Connect to new gateway
+            if (!string.IsNullOrWhiteSpace(decoded.Token))
+                _forceBootstrapForGatewayRecordId = recordId;
+            await ConnectCoreAsync(recordId);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
 
         return new SetupCodeResult(SetupCodeOutcome.Success, GatewayUrl: gatewayUrl);
     }
@@ -603,49 +661,70 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (!GatewayUrlHelper.IsValidGatewayUrl(gatewayUrl))
             return new SetupCodeResult(SetupCodeOutcome.InvalidUrl, "Invalid gateway URL");
 
-        // Find or create gateway record (dedup by URL)
-        var existing = _registry.FindByUrl(gatewayUrl);
-        var recordId = existing?.Id ?? Guid.NewGuid().ToString();
-        var identityDir = _registry.GetIdentityDirectory(recordId);
-        var hasDurableTokens =
-            DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "operator", _logger) ||
-            DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", _logger);
-
-        if (existing != null && hasDurableTokens)
-        {
-            var validation = await ValidateSharedTokenBeforeReplacementAsync(
-                gatewayUrl,
-                token,
-                identityDir,
-                existing);
-            if (validation.Outcome != SetupCodeOutcome.Success)
-                return validation;
-        }
-
-        // Disconnect current gateway only after replacement credentials have been validated.
-        await DisconnectAsync();
-
-        var record = (existing ?? new GatewayRecord { Id = recordId }) with
-        {
-            Url = gatewayUrl,
-            SharedGatewayToken = token,
-            BootstrapToken = null,
-            SshTunnel = sshTunnel,
-        };
-        _registry.AddOrUpdate(record);
-
-        // Clear stored device tokens so the shared token is used
-        if (!Directory.Exists(identityDir))
-            Directory.CreateDirectory(identityDir);
-        DeviceIdentityStore.ClearStoredTokens(identityDir, _logger);
-
-        _registry.SetActive(recordId);
-        _registry.Save();
-
-        // Connect to the gateway
         try
         {
-            await ConnectAsync(recordId);
+            await _transitionSemaphore.WaitAsync();
+            try
+            {
+                var existing = _registry.FindByUrl(gatewayUrl);
+                var recordId = existing?.Id ?? Guid.NewGuid().ToString();
+                var identityDir = _registry.GetIdentityDirectory(recordId);
+                var hasDurableTokens =
+                    DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "operator", _logger) ||
+                    DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", _logger);
+
+                if (existing != null && hasDurableTokens)
+                {
+                    var validation = await ValidateSharedTokenBeforeReplacementAsync(
+                        gatewayUrl,
+                        token,
+                        identityDir,
+                        existing);
+                    if (validation.Outcome != SetupCodeOutcome.Success)
+                        return validation;
+                }
+
+                var record = (existing ?? new GatewayRecord { Id = recordId }) with
+                {
+                    Url = gatewayUrl,
+                    SharedGatewayToken = token,
+                    BootstrapToken = null,
+                    SshTunnel = sshTunnel,
+                };
+                var previousRecord = existing;
+                var previousActiveId = _registry.ActiveGatewayId;
+                _registry.AddOrUpdate(record);
+                _registry.SetActive(recordId);
+                try
+                {
+                    _registry.Save();
+                }
+                catch (Exception ex)
+                {
+                    if (previousRecord == null)
+                        _registry.Remove(recordId);
+                    else
+                        _registry.AddOrUpdate(previousRecord);
+                    _registry.SetActive(previousActiveId);
+                    _logger.Warn($"[ConnMgr] Failed to persist shared-token gateway update: {ex.Message}");
+                    return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, ex.Message);
+                }
+
+                // Disconnect current gateway only after replacement credentials have been validated and persisted.
+                await DisconnectCoreAsync();
+
+                // Clear stored device tokens so the shared token is used.
+                if (!Directory.Exists(identityDir))
+                    Directory.CreateDirectory(identityDir);
+                DeviceIdentityStore.ClearStoredTokens(identityDir, _logger);
+
+                // Connect to the gateway
+                await ConnectCoreAsync(recordId);
+            }
+            finally
+            {
+                _transitionSemaphore.Release();
+            }
             return new SetupCodeResult(SetupCodeOutcome.Success, GatewayUrl: gatewayUrl);
         }
         catch (Exception ex)
@@ -897,39 +976,56 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private void HandleDeviceTokenReceived(DeviceTokenReceivedEventArgs e)
+    private async Task HandleDeviceTokenReceivedAsync(
+        DeviceTokenReceivedEventArgs e,
+        long gen,
+        string gatewayRecordId,
+        string identityPath)
     {
-        _diagnostics.Record("credential", $"Device token received for {e.Role}",
-            $"Scopes={string.Join(",", e.Scopes ?? [])}");
-
-        if (_identityStore != null && _activeIdentityPath != null)
+        await _transitionSemaphore.WaitAsync();
+        try
         {
-            try
-            {
-                _identityStore.StoreToken(_activeIdentityPath, e.Token, e.Scopes, e.Role);
-                _logger.Info($"[ConnMgr] Persisted {e.Role} device token via identity store");
-            }
-            catch (Exception ex)
-            {
-                _logger.Warn($"[ConnMgr] Failed to persist {e.Role} device token: {ex.Message}");
-            }
-        }
+            if (!IsCurrentGatewayAttempt(gen, gatewayRecordId))
+                return;
 
-        TryClearBootstrapTokenAfterDurablePairing();
-        TrySchedulePostBootstrapOperatorReconnect(e);
+            _diagnostics.Record("credential", $"Device token received for {e.Role}",
+                $"Scopes={string.Join(",", e.Scopes ?? [])}");
+
+            if (_identityStore != null)
+            {
+                try
+                {
+                    _identityStore.StoreToken(identityPath, e.Token, e.Scopes, e.Role);
+                    _logger.Info($"[ConnMgr] Persisted {e.Role} device token via identity store");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"[ConnMgr] Failed to persist {e.Role} device token: {ex.Message}");
+                }
+            }
+
+            TryClearBootstrapTokenAfterDurablePairing(gatewayRecordId, identityPath);
+            TrySchedulePostBootstrapOperatorReconnect(e, gen, gatewayRecordId, identityPath);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
     }
 
     private void TryClearBootstrapTokenAfterDurablePairing()
     {
-        if (_activeGatewayRecordId == null || _activeIdentityPath == null)
+        var activeGatewayRecordId = _activeGatewayRecordId;
+        var activeIdentityPath = _activeIdentityPath;
+        if (activeGatewayRecordId == null || activeIdentityPath == null)
             return;
 
-        var record = _registry.GetById(_activeGatewayRecordId);
+        var record = _registry.GetById(activeGatewayRecordId);
         if (record?.BootstrapToken == null)
             return;
 
-        var hasOperatorToken = DeviceIdentity.HasStoredDeviceTokenForRole(_activeIdentityPath, "operator", _logger);
-        var hasNodeToken = DeviceIdentity.HasStoredDeviceTokenForRole(_activeIdentityPath, "node", _logger);
+        var hasOperatorToken = DeviceIdentity.HasStoredDeviceTokenForRole(activeIdentityPath, "operator", _logger);
+        var hasNodeToken = DeviceIdentity.HasStoredDeviceTokenForRole(activeIdentityPath, "node", _logger);
         if (!hasOperatorToken || !hasNodeToken)
         {
             _diagnostics.Record(
@@ -939,24 +1035,71 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return;
         }
 
-        _registry.AddOrUpdate(record with { BootstrapToken = null });
-        _registry.Save();
-        _diagnostics.Record("credential", "Cleared bootstrap token — operator and node tokens are durable");
+        var updated = _registry.Update(activeGatewayRecordId, r => r with { BootstrapToken = null });
+        if (updated == null)
+            return;
+
+        try
+        {
+            _registry.Save();
+            _diagnostics.Record("credential", "Cleared bootstrap token — operator and node tokens are durable");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Failed to persist cleared bootstrap token: {ex.Message}");
+            _diagnostics.Record("credential", "Failed to persist cleared bootstrap token", ex.Message);
+        }
     }
 
-    private void TrySchedulePostBootstrapOperatorReconnect(DeviceTokenReceivedEventArgs e)
+    private void TryClearBootstrapTokenAfterDurablePairing(string gatewayRecordId, string identityPath)
     {
-        if (!_activeConnectUsedBootstrapToken ||
-            _postBootstrapOperatorReconnectScheduled ||
-            _activeIdentityPath == null ||
-            _activeGatewayRecordId == null)
+        var record = _registry.GetById(gatewayRecordId);
+        if (record?.BootstrapToken == null)
+            return;
+
+        var hasOperatorToken = DeviceIdentity.HasStoredDeviceTokenForRole(identityPath, "operator", _logger);
+        var hasNodeToken = DeviceIdentity.HasStoredDeviceTokenForRole(identityPath, "node", _logger);
+        if (!hasOperatorToken || !hasNodeToken)
+        {
+            _diagnostics.Record(
+                "credential",
+                "Retaining bootstrap token until role tokens are durable",
+                $"operatorToken={hasOperatorToken}; nodeToken={hasNodeToken}");
+            return;
+        }
+
+        var updated = _registry.Update(gatewayRecordId, r => r with { BootstrapToken = null });
+        if (updated == null)
+            return;
+
+        try
+        {
+            _registry.Save();
+            _diagnostics.Record("credential", "Cleared bootstrap token — operator and node tokens are durable");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Failed to persist cleared bootstrap token: {ex.Message}");
+            _diagnostics.Record("credential", "Failed to persist cleared bootstrap token", ex.Message);
+        }
+    }
+
+    private void TrySchedulePostBootstrapOperatorReconnect(
+        DeviceTokenReceivedEventArgs e,
+        long gen,
+        string gatewayRecordId,
+        string identityPath)
+    {
+        if (!IsCurrentGatewayAttempt(gen, gatewayRecordId) ||
+            !_activeConnectUsedBootstrapToken ||
+            _postBootstrapOperatorReconnectScheduled)
         {
             return;
         }
 
         var hasOperatorToken = !string.IsNullOrWhiteSpace(
-            DeviceIdentity.TryReadStoredDeviceTokenForRole(_activeIdentityPath, "operator", _logger));
-        var record = _registry.GetById(_activeGatewayRecordId);
+            DeviceIdentity.TryReadStoredDeviceTokenForRole(identityPath, "operator", _logger));
+        var record = _registry.GetById(gatewayRecordId);
         var canReconnectWithSharedToken = !string.IsNullOrWhiteSpace(record?.SharedGatewayToken);
 
         if (!hasOperatorToken && !canReconnectWithSharedToken)
@@ -966,15 +1109,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return;
 
         _postBootstrapOperatorReconnectScheduled = true;
-        var reconnectGeneration = Interlocked.Read(ref _generation);
         var detail = hasOperatorToken
             ? "using persisted operator device token"
             : "using preserved shared gateway token";
-        RememberGatewayNeedsV2Signature(_activeGatewayRecordId);
+        RememberGatewayNeedsV2Signature(gatewayRecordId, markActiveAttempt: true);
         _diagnostics.Record("credential", "Bootstrap handoff complete — reconnecting operator role", detail);
 
         ScheduleDelayedReconnect(
-            reconnectGeneration,
+            gen,
             "[ConnMgr] Post-bootstrap operator reconnect failed",
             ex => _diagnostics.Record("credential", "Post-bootstrap operator reconnect failed", ex.Message));
     }
@@ -1004,9 +1146,25 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         });
     }
 
-    private void RememberGatewayNeedsV2Signature(string? gatewayRecordId)
+    private async Task HandleV2SignatureFallbackAsync(long gen, string gatewayRecordId)
     {
-        _gatewayNeedsV2Signature = true;
+        await _transitionSemaphore.WaitAsync();
+        try
+        {
+            RememberGatewayNeedsV2Signature(
+                gatewayRecordId,
+                markActiveAttempt: IsCurrentGatewayAttempt(gen, gatewayRecordId));
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    private void RememberGatewayNeedsV2Signature(string? gatewayRecordId, bool markActiveAttempt = true)
+    {
+        if (markActiveAttempt)
+            _gatewayNeedsV2Signature = true;
 
         if (string.IsNullOrWhiteSpace(gatewayRecordId))
             return;
@@ -1281,6 +1439,30 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         (!expectedNodeGeneration.HasValue ||
          Interlocked.Read(ref _nodeConnectionGeneration) == expectedNodeGeneration.Value);
 
+    private bool IsCurrentGatewayAttempt(long expectedGeneration, string expectedGatewayId) =>
+        !_disposed &&
+        Interlocked.Read(ref _generation) == expectedGeneration &&
+        string.Equals(_activeGatewayRecordId, expectedGatewayId, StringComparison.Ordinal);
+
+    private static string BuildCredentialFailureMessage(string role, GatewayCredentialResolution resolution)
+    {
+        var prefix = role.Equals("node", StringComparison.OrdinalIgnoreCase)
+            ? "No node credential available"
+            : "No operator credential available";
+        return resolution.Status switch
+        {
+            GatewayCredentialResolutionStatus.Corrupt =>
+                $"{prefix}: stored device token is corrupt. Re-pair this PC or add a shared/bootstrap gateway token.",
+            GatewayCredentialResolutionStatus.Unreadable =>
+                $"{prefix}: stored device token is unreadable. Check file permissions, re-pair this PC, or add a shared/bootstrap gateway token.",
+            _ when !string.IsNullOrWhiteSpace(resolution.Detail) =>
+                $"{prefix}. {resolution.Detail}",
+            _ => role.Equals("node", StringComparison.OrdinalIgnoreCase)
+                ? MissingNodeCredentialMessage
+                : $"{prefix}. Add a shared/bootstrap gateway token or re-pair this PC."
+        };
+    }
+
     private async Task BlockNodeStartAsync(
         string detail,
         CancellationToken cancellationToken,
@@ -1340,13 +1522,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return false;
         }
 
-        if (_activeGatewayRecordId == null || _activeIdentityPath == null)
+        if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, nodeGeneration))
+            return false;
+
+        var activeGatewayRecordId = _activeGatewayRecordId;
+        var activeIdentityPath = _activeIdentityPath;
+        if (activeGatewayRecordId == null || activeIdentityPath == null)
         {
             await BlockNodeStartAsync(MissingActiveGatewayForNodeMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
             return false;
         }
 
-        var record = _registry.GetById(_activeGatewayRecordId);
+        var record = _registry.GetById(activeGatewayRecordId);
         if (record == null)
         {
             _logger.Warn("[ConnMgr] Cannot start node — gateway record not found");
@@ -1375,13 +1562,28 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
 
-        // Use root identity path — clients always read/write from root, not per-gateway
-        var nodeCredential = _credentialResolver.ResolveNode(record, _activeIdentityPath!);
+        var nodeCredentialResolution = _credentialResolver.ResolveNodeDetailed(record, activeIdentityPath);
+        var nodeCredential = nodeCredentialResolution.Credential;
         if (nodeCredential == null)
         {
             _logger.Warn("[ConnMgr] No node credential available — skipping node connection");
-            _diagnostics.Record("node", "No node credential available");
-            await BlockNodeStartAsync(MissingNodeCredentialMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
+            _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
+            await _transitionSemaphore.WaitAsync(cancellationToken);
+            try
+            {
+                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, nodeGeneration))
+                    return false;
+
+                _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
+                _stateMachine.BlockNodeStart(
+                    BuildCredentialFailureMessage("node", nodeCredentialResolution),
+                    preserveCredentialResolution: true);
+                EmitStateChanged();
+            }
+            finally
+            {
+                _transitionSemaphore.Release();
+            }
             return false;
         }
 
@@ -1392,6 +1594,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 return false;
 
             _stateMachine.SetNodeCredentialSource(nodeCredential.Source);
+            _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
         }
         finally
         {
@@ -1413,7 +1616,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         try
         {
-            await _nodeConnector.ConnectAsync(nodeConnectUrl, nodeCredential, _activeIdentityPath,
+            await _nodeConnector.ConnectAsync(nodeConnectUrl, nodeCredential, activeIdentityPath,
                 useV2Signature: _gatewayNeedsV2Signature,
                 cancellationToken: cancellationToken);
         }

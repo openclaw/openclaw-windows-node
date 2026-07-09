@@ -270,6 +270,33 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
         Assert.Equal("No node credential available. Re-pair this PC.", plan.NodeErrorDetail);
     }
 
+    [Fact]
+    public void ActiveGatewayDetailLine_ShowsCredentialFallback()
+    {
+        var settings = new SettingsManager(_settingsDirectory)
+        {
+            EnableNodeMode = true
+        };
+        var plan = ConnectionPagePlan.Build(
+            new GatewayConnectionSnapshot
+            {
+                OverallState = OverallConnectionState.Ready,
+                OperatorState = RoleConnectionState.Connected,
+                NodeState = RoleConnectionState.Disabled,
+                GatewayId = "gw-1",
+                GatewayUrl = "wss://test",
+                OperatorCredentialSource = CredentialResolver.SourceSharedGatewayToken,
+                OperatorCredentialStatus = GatewayCredentialResolutionStatus.FallbackUsed,
+                OperatorCredentialFallbackUsed = true
+            },
+            activeRecord: new GatewayRecord { Id = "gw-1", Url = "wss://test" },
+            self: null,
+            settings: settings,
+            savedGatewayCount: 1);
+
+        Assert.Contains("shared token (fallback)", plan.ActiveGatewayDetailLine);
+    }
+
     private ConnectionPagePlan Build(
         PairingApprovalKind pairingApprovalKind,
         GatewayNodeInfo? localNode,

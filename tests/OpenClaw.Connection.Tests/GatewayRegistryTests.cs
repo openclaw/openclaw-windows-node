@@ -79,6 +79,21 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void SetActive_FiresChangedWithActiveGatewayId()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1"));
+        _registry.AddOrUpdate(MakeRecord("gw-2", "wss://test2"));
+        GatewayRegistryChangedEventArgs? args = null;
+        _registry.Changed += (_, e) => args = e;
+
+        _registry.SetActive("gw-2");
+
+        Assert.NotNull(args);
+        Assert.Equal("gw-2", args!.ActiveGatewayId);
+        Assert.Equal(2, args.Records.Count);
+    }
+
+    [Fact]
     public void SaveAndLoad_RoundTrips()
     {
         var r1 = MakeRecord("gw-1", "wss://test1") with { FriendlyName = "Home" };
@@ -95,6 +110,22 @@ public class GatewayRegistryTests : IDisposable
         Assert.Equal("Home", registry2.GetById("gw-1")!.FriendlyName);
         Assert.Equal("tok-123", registry2.GetById("gw-2")!.SharedGatewayToken);
         Assert.Equal("gw-1", registry2.GetActive()!.Id);
+    }
+
+    [Fact]
+    public void Save_WhenMoveFails_RemovesTempFile()
+    {
+        var registryPath = Path.Combine(_tempDir, "gateways.json");
+        File.WriteAllText(registryPath, "{}");
+        using var lockFile = new FileStream(registryPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        _registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1"));
+
+        var ex = Assert.ThrowsAny<Exception>(() => _registry.Save());
+
+        Assert.True(
+            ex is IOException or UnauthorizedAccessException,
+            $"Expected an IO/access failure, got {ex.GetType().FullName}: {ex.Message}");
+        Assert.Empty(Directory.GetFiles(_tempDir, "gateways.json.*.tmp"));
     }
 
     [Fact]
@@ -195,13 +226,16 @@ public class GatewayRegistryTests : IDisposable
     [Fact]
     public void Changed_FiresOnAddOrUpdate()
     {
+        _registry.AddOrUpdate(MakeRecord("active", "wss://active"));
+        _registry.SetActive("active");
         GatewayRegistryChangedEventArgs? args = null;
         _registry.Changed += (s, e) => args = e;
 
         _registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1"));
 
         Assert.NotNull(args);
-        Assert.Single(args.Records);
+        Assert.Equal("active", args!.ActiveGatewayId);
+        Assert.Equal(2, args.Records.Count);
     }
 
     [Fact]

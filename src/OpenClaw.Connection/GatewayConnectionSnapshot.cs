@@ -15,6 +15,10 @@ public sealed record GatewayConnectionSnapshot
     public bool OperatorPairingRequired { get; init; }
     public string? OperatorDeviceId { get; init; }
     public string? OperatorCredentialSource { get; init; }
+    public GatewayCredentialResolutionStatus? OperatorCredentialStatus { get; init; }
+    public bool OperatorCredentialFallbackUsed { get; init; }
+    public bool OperatorCredentialBootstrapRequired { get; init; }
+    public string? OperatorCredentialDetail { get; init; }
     /// <summary>
     /// The requestId returned by the gateway when operator pairing is required.
     /// Used by setup flows to approve the specific pairing request via CLI.
@@ -28,6 +32,10 @@ public sealed record GatewayConnectionSnapshot
     public OpenClaw.Shared.PairingStatus NodePairingStatus { get; init; }
     public string? NodeDeviceId { get; init; }
     public string? NodeCredentialSource { get; init; }
+    public GatewayCredentialResolutionStatus? NodeCredentialStatus { get; init; }
+    public bool NodeCredentialFallbackUsed { get; init; }
+    public bool NodeCredentialBootstrapRequired { get; init; }
+    public string? NodeCredentialDetail { get; init; }
     /// <summary>
     /// The requestId returned by the gateway when node pairing is required.
     /// Used by the connection page to show the correct approval command.

@@ -272,11 +272,10 @@ internal sealed class CommandCenterStateBuilder
 
     private IEnumerable<GatewayDiagnosticWarning> BuildBrowserProxyAuthWarnings(IReadOnlyList<NodeCapabilityHealthInfo> nodes)
     {
-        if (_snapshot.Settings?.NodeBrowserProxyEnabled == false ||
-            !nodes.Any(node =>
-                node.BrowserApprovedCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase) ||
-                node.UnverifiedDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase) ||
-                node.LocalDeclaredCommands.Contains("browser.proxy", StringComparer.OrdinalIgnoreCase)))
+        if (!CommandCenterBrowserProxyAuthWarningPolicy.ShouldShow(
+                _snapshot.Settings?.NodeBrowserProxyEnabled != false,
+                _snapshot.ActiveGatewayHasSharedToken,
+                nodes))
         {
             yield break;
         }

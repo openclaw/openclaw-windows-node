@@ -10,6 +10,11 @@ public sealed class ConnectionPageNodeApprovalSourceTests
             "OpenClaw.Tray.WinUI",
             "Services",
             "CommandCenterStateBuilder.cs");
+        var browserProxyPolicySource = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "CommandCenterBrowserProxyAuthWarningPolicy.cs");
         var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
         Assert.Contains("NodeCapabilityHealthInfo.FromLocalDeclarations(localNode)", builderSource);
@@ -28,8 +33,8 @@ public sealed class ConnectionPageNodeApprovalSourceTests
             "PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId)",
             builderSource);
         Assert.Contains("_ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()", builderSource);
-        Assert.Contains("node.UnverifiedDeclaredCommands.Contains(\"browser.proxy\"", builderSource);
-        Assert.Contains("node.LocalDeclaredCommands.Contains(\"browser.proxy\"", builderSource);
+        Assert.Contains("node.UnverifiedDeclaredCommands.Contains(\"browser.proxy\"", browserProxyPolicySource);
+        Assert.Contains("node.LocalDeclaredCommands.Contains(\"browser.proxy\"", browserProxyPolicySource);
         Assert.Contains(
             "NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind",
             appSource);

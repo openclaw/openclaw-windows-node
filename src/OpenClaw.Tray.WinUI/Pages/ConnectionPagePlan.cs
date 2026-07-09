@@ -784,7 +784,7 @@ internal sealed record ConnectionPagePlan
         var url = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(rec?.Url);
         if (!string.IsNullOrEmpty(url)) bits.Add(url);
         if (rec?.SshTunnel != null) bits.Add("via SSH tunnel");
-        var credential = FormatCredentialSource(snap.OperatorCredentialSource ?? snap.NodeCredentialSource);
+        var credential = FormatCredentialSummary(snap);
         if (!string.IsNullOrEmpty(credential)) bits.Add(credential);
         if (!string.IsNullOrWhiteSpace(self?.ServerVersion)) bits.Add($"v{self!.ServerVersion}");
         if (self?.UptimeMs is long uptime && uptime > 0)
@@ -802,6 +802,25 @@ internal sealed record ConnectionPagePlan
             CredentialResolver.SourceBootstrapToken => "bootstrap token",
             _ => "",
         };
+    }
+
+    internal static string FormatCredentialSummary(GatewayConnectionSnapshot snap)
+    {
+        var useOperator = !string.IsNullOrEmpty(snap.OperatorCredentialSource);
+        var source = useOperator ? snap.OperatorCredentialSource : snap.NodeCredentialSource;
+        var label = FormatCredentialSource(source);
+        if (string.IsNullOrEmpty(label))
+            return "";
+
+        var status = useOperator ? snap.OperatorCredentialStatus : snap.NodeCredentialStatus;
+        var fallbackUsed = useOperator ? snap.OperatorCredentialFallbackUsed : snap.NodeCredentialFallbackUsed;
+        if (fallbackUsed || status == GatewayCredentialResolutionStatus.FallbackUsed)
+            return $"{label} (fallback)";
+        if (status == GatewayCredentialResolutionStatus.BootstrapRequired ||
+            (useOperator ? snap.OperatorCredentialBootstrapRequired : snap.NodeCredentialBootstrapRequired))
+            return $"{label} (pairing required)";
+
+        return label;
     }
 
     private static int CountEnabledCapabilities(SettingsManager s)

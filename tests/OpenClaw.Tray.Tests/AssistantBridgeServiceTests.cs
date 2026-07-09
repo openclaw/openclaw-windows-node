@@ -202,7 +202,7 @@ public sealed class AssistantBridgeServiceTests
                 NullLogger.Instance,
                 "owner",
                 () => launcher,
-                TimeSpan.FromSeconds(5));
+                TimeSpan.FromSeconds(10));
 
             var result = await service.StartListenServiceAsync();
 

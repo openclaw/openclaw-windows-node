@@ -11,6 +11,7 @@ public interface IFileSystem
     void CreateDirectory(string path);
     bool DirectoryExists(string path);
     void CopyFile(string source, string destination, bool overwrite);
+    void DeleteFile(string path);
 }
 
 /// <summary>
@@ -28,4 +29,5 @@ public sealed class RealFileSystem : IFileSystem
     public bool DirectoryExists(string path) => Directory.Exists(path);
     public void CopyFile(string source, string destination, bool overwrite) =>
         File.Copy(source, destination, overwrite);
+    public void DeleteFile(string path) => File.Delete(path);
 }

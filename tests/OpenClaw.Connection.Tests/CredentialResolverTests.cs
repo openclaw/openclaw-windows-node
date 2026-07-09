@@ -56,6 +56,28 @@ public class CredentialResolverTests
     }
 
     [Fact]
+    public void ResolveOperatorDetailed_SharedTokenOnly_IsResolvedNotFallback()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            SharedGatewayToken = "shared",
+            BootstrapToken = "boot"
+        };
+        _mockReader.OperatorToken = null;
+
+        var result = _resolver.ResolveOperatorDetailed(record, "/id");
+
+        Assert.NotNull(result.Credential);
+        Assert.Equal("shared", result.Credential!.Token);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, result.Credential.Source);
+        Assert.Equal(GatewayCredentialResolutionStatus.Resolved, result.Status);
+        Assert.False(result.FallbackUsed);
+        Assert.False(result.Credential.FallbackUsed);
+    }
+
+    [Fact]
     public void ResolveOperator_FallsToBootstrap_WhenNoDeviceOrShared()
     {
         var record = new GatewayRecord
@@ -83,6 +105,129 @@ public class CredentialResolverTests
         var result = _resolver.ResolveOperator(record, "/id");
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public void ResolveOperatorDetailed_ReturnsMissing_WhenNoCredentials()
+    {
+        var record = new GatewayRecord { Id = "gw-1", Url = "wss://test" };
+        _mockReader.OperatorToken = null;
+
+        var result = _resolver.ResolveOperatorDetailed(record, "/id");
+
+        Assert.Null(result.Credential);
+        Assert.Equal(GatewayCredentialResolutionStatus.Missing, result.Status);
+    }
+
+    [Fact]
+    public void ResolveOperatorDetailed_ReturnsCorrupt_WhenStoredTokenFileIsInvalidAndNoFallbackExists()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-corrupt-token-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "device-key-ed25519.json"), "{ broken json");
+            var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+            var record = new GatewayRecord { Id = "gw-1", Url = "wss://test" };
+
+            var result = resolver.ResolveOperatorDetailed(record, tempDir);
+
+            Assert.Null(result.Credential);
+            Assert.Equal(GatewayCredentialResolutionStatus.Corrupt, result.Status);
+            Assert.Contains("corrupt", result.Detail, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("null")]
+    public void ResolveOperatorDetailed_ReturnsCorrupt_WhenStoredTokenFileHasWrongJsonShape(string json)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-wrong-shape-token-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "device-key-ed25519.json"), json);
+            var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+            var record = new GatewayRecord { Id = "gw-1", Url = "wss://test" };
+
+            var result = resolver.ResolveOperatorDetailed(record, tempDir);
+
+            Assert.Null(result.Credential);
+            Assert.Equal(GatewayCredentialResolutionStatus.Corrupt, result.Status);
+            Assert.Contains("not a JSON object", result.Detail, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveOperatorDetailed_FallsBack_WhenStoredTokenFileHasWrongJsonShapeAndSharedTokenExists()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-wrong-shape-fallback-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "device-key-ed25519.json"), "[]");
+            var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+            var record = new GatewayRecord
+            {
+                Id = "gw-1",
+                Url = "wss://test",
+                SharedGatewayToken = "shared"
+            };
+
+            var result = resolver.ResolveOperatorDetailed(record, tempDir);
+
+            Assert.NotNull(result.Credential);
+            Assert.Equal("shared", result.Credential!.Token);
+            Assert.Equal(GatewayCredentialResolutionStatus.FallbackUsed, result.Status);
+            Assert.Equal(GatewayCredentialResolutionStatus.Corrupt, result.PrimaryStatus);
+            Assert.True(result.FallbackUsed);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveOperatorDetailed_ReportsFallbackUsed_WhenStoredTokenIsCorruptAndSharedTokenExists()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-fallback-token-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "device-key-ed25519.json"), "{ broken json");
+            var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+            var record = new GatewayRecord
+            {
+                Id = "gw-1",
+                Url = "wss://test",
+                SharedGatewayToken = "shared"
+            };
+
+            var result = resolver.ResolveOperatorDetailed(record, tempDir);
+
+            Assert.NotNull(result.Credential);
+            Assert.Equal("shared", result.Credential!.Token);
+            Assert.Equal(CredentialResolver.SourceSharedGatewayToken, result.Credential.Source);
+            Assert.Equal(GatewayCredentialResolutionStatus.FallbackUsed, result.Status);
+            Assert.Equal(GatewayCredentialResolutionStatus.Corrupt, result.PrimaryStatus);
+            Assert.True(result.FallbackUsed);
+            Assert.True(result.Credential.FallbackUsed);
+            Assert.Contains("corrupt", result.Detail, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     [Fact]
@@ -160,6 +305,26 @@ public class CredentialResolverTests
         Assert.NotNull(result);
         Assert.Equal("boot", result.Token);
         Assert.True(result.IsBootstrapToken);
+    }
+
+    [Fact]
+    public void ResolveNodeDetailed_ReportsBootstrapRequired_WhenBootstrapTokenIsUsed()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "boot"
+        };
+        _mockReader.NodeToken = null;
+
+        var result = _resolver.ResolveNodeDetailed(record, "/id");
+
+        Assert.NotNull(result.Credential);
+        Assert.Equal("boot", result.Credential!.Token);
+        Assert.True(result.Credential.IsBootstrapToken);
+        Assert.Equal(GatewayCredentialResolutionStatus.BootstrapRequired, result.Status);
+        Assert.True(result.BootstrapRequired);
     }
 
     [Fact]

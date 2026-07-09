@@ -28,43 +28,133 @@ public sealed class CredentialResolver : ICredentialResolver
         _identityReader = identityReader ?? throw new ArgumentNullException(nameof(identityReader));
     }
 
-    public GatewayCredential? ResolveOperator(GatewayRecord record, string identityPath)
+    public GatewayCredential? ResolveOperator(GatewayRecord record, string identityPath) =>
+        ResolveOperatorDetailed(record, identityPath).Credential;
+
+    public GatewayCredentialResolution ResolveOperatorDetailed(GatewayRecord record, string identityPath)
     {
         ArgumentNullException.ThrowIfNull(record);
 
-        // 1. Paired device token — highest priority, never downgrade
-        var storedToken = _identityReader.TryReadStoredDeviceToken(identityPath);
-        if (!string.IsNullOrWhiteSpace(storedToken))
-            return new GatewayCredential(storedToken!, false, SourceDeviceToken);
-
-        // 2. Shared gateway token — works for any device, full scopes
-        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken))
-            return new GatewayCredential(record.SharedGatewayToken!, false, SourceSharedGatewayToken);
-
-        // 3. Bootstrap token — one-time setup, limited scopes
-        if (!string.IsNullOrWhiteSpace(record.BootstrapToken))
-            return new GatewayCredential(record.BootstrapToken!, true, SourceBootstrapToken);
-
-        return null;
+        return ResolveRole(
+            _identityReader.ReadStoredDeviceToken(identityPath),
+            SourceDeviceToken,
+            record.SharedGatewayToken,
+            record.BootstrapToken);
     }
 
-    public GatewayCredential? ResolveNode(GatewayRecord record, string identityPath)
+    public GatewayCredential? ResolveNode(GatewayRecord record, string identityPath) =>
+        ResolveNodeDetailed(record, identityPath).Credential;
+
+    public GatewayCredentialResolution ResolveNodeDetailed(GatewayRecord record, string identityPath)
     {
         ArgumentNullException.ThrowIfNull(record);
 
-        // 1. Paired node token — highest priority
-        var storedToken = _identityReader.TryReadStoredNodeDeviceToken(identityPath);
-        if (!string.IsNullOrWhiteSpace(storedToken))
-            return new GatewayCredential(storedToken!, false, SourceNodeDeviceToken);
+        return ResolveRole(
+            _identityReader.ReadStoredNodeDeviceToken(identityPath),
+            SourceNodeDeviceToken,
+            record.SharedGatewayToken,
+            record.BootstrapToken);
+    }
 
-        // 2. Shared gateway token
-        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken))
-            return new GatewayCredential(record.SharedGatewayToken!, false, SourceSharedGatewayToken);
+    private static GatewayCredentialResolution ResolveRole(
+        DeviceTokenReadResult storedToken,
+        string deviceTokenSource,
+        string? sharedGatewayToken,
+        string? bootstrapToken)
+    {
+        if (storedToken.Status == DeviceTokenReadStatus.Resolved &&
+            !string.IsNullOrWhiteSpace(storedToken.Token))
+        {
+            var credential = new GatewayCredential(storedToken.Token!, false, deviceTokenSource);
+            return new GatewayCredentialResolution(credential, GatewayCredentialResolutionStatus.Resolved);
+        }
 
-        // 3. Bootstrap token
-        if (!string.IsNullOrWhiteSpace(record.BootstrapToken))
-            return new GatewayCredential(record.BootstrapToken!, true, SourceBootstrapToken);
+        var primaryStatus = MapPrimaryStatus(storedToken.Status);
+        if (!string.IsNullOrWhiteSpace(sharedGatewayToken))
+        {
+            var fallbackUsed = primaryStatus is GatewayCredentialResolutionStatus.Unreadable
+                or GatewayCredentialResolutionStatus.Corrupt;
+            var detail = fallbackUsed
+                ? BuildFallbackDetail(deviceTokenSource, primaryStatus, SourceSharedGatewayToken, storedToken.Detail)
+                : null;
+            var credential = new GatewayCredential(sharedGatewayToken!, false, SourceSharedGatewayToken)
+            {
+                ResolutionStatus = fallbackUsed
+                    ? GatewayCredentialResolutionStatus.FallbackUsed
+                    : GatewayCredentialResolutionStatus.Resolved,
+                FallbackUsed = fallbackUsed,
+                ResolutionDetail = detail
+            };
+            return new GatewayCredentialResolution(
+                credential,
+                fallbackUsed
+                    ? GatewayCredentialResolutionStatus.FallbackUsed
+                    : GatewayCredentialResolutionStatus.Resolved,
+                FallbackUsed: fallbackUsed,
+                BootstrapRequired: false,
+                Detail: detail,
+                PrimaryStatus: primaryStatus);
+        }
 
-        return null;
+        if (!string.IsNullOrWhiteSpace(bootstrapToken))
+        {
+            var fallbackUsed = storedToken.Status is DeviceTokenReadStatus.Unreadable or DeviceTokenReadStatus.Corrupt;
+            var detail = fallbackUsed
+                ? BuildFallbackDetail(deviceTokenSource, primaryStatus, SourceBootstrapToken, storedToken.Detail)
+                : "Using bootstrap token; pairing is required before a durable device token is available.";
+            var credential = new GatewayCredential(bootstrapToken!, true, SourceBootstrapToken)
+            {
+                ResolutionStatus = GatewayCredentialResolutionStatus.BootstrapRequired,
+                FallbackUsed = fallbackUsed,
+                ResolutionDetail = detail
+            };
+            return new GatewayCredentialResolution(
+                credential,
+                GatewayCredentialResolutionStatus.BootstrapRequired,
+                FallbackUsed: fallbackUsed,
+                BootstrapRequired: true,
+                Detail: detail,
+                PrimaryStatus: primaryStatus);
+        }
+
+        var missingDetail = storedToken.Status switch
+        {
+            DeviceTokenReadStatus.Unreadable => $"Stored {deviceTokenSource} is unreadable and no shared/bootstrap fallback is available. {storedToken.Detail}",
+            DeviceTokenReadStatus.Corrupt => $"Stored {deviceTokenSource} is corrupt and no shared/bootstrap fallback is available. {storedToken.Detail}",
+            _ => "No device, shared, or bootstrap credential is available."
+        };
+        return new GatewayCredentialResolution(
+            null,
+            primaryStatus == GatewayCredentialResolutionStatus.Resolved
+                ? GatewayCredentialResolutionStatus.Missing
+                : primaryStatus,
+            Detail: missingDetail,
+            PrimaryStatus: primaryStatus);
+    }
+
+    private static GatewayCredentialResolutionStatus MapPrimaryStatus(DeviceTokenReadStatus status) =>
+        status switch
+        {
+            DeviceTokenReadStatus.Resolved => GatewayCredentialResolutionStatus.Resolved,
+            DeviceTokenReadStatus.Unreadable => GatewayCredentialResolutionStatus.Unreadable,
+            DeviceTokenReadStatus.Corrupt => GatewayCredentialResolutionStatus.Corrupt,
+            _ => GatewayCredentialResolutionStatus.Missing
+        };
+
+    private static string BuildFallbackDetail(
+        string primarySource,
+        GatewayCredentialResolutionStatus primaryStatus,
+        string fallbackSource,
+        string? readDetail)
+    {
+        var reason = primaryStatus switch
+        {
+            GatewayCredentialResolutionStatus.Unreadable => $"{primarySource} is unreadable",
+            GatewayCredentialResolutionStatus.Corrupt => $"{primarySource} is corrupt",
+            _ => $"{primarySource} is missing"
+        };
+        return string.IsNullOrWhiteSpace(readDetail)
+            ? $"{reason}; using {fallbackSource}."
+            : $"{reason}; using {fallbackSource}. {readDetail}";
     }
 }

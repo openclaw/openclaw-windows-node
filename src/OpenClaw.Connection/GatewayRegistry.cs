@@ -74,6 +74,7 @@ public sealed class GatewayRegistry
     public GatewayRecord AddOrUpdate(GatewayRecord record)
     {
         List<GatewayRecord> snapshot;
+        string? activeId;
         lock (_lock)
         {
             var idx = _records.FindIndex(r => r.Id == record.Id);
@@ -82,26 +83,35 @@ public sealed class GatewayRegistry
             else
                 _records.Add(record);
             snapshot = _records.ToList();
+            activeId = _activeId;
         }
-        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot));
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot, activeId));
         return record;
     }
 
     public void Remove(string id)
     {
         List<GatewayRecord> snapshot;
+        string? activeId;
         lock (_lock)
         {
             _records.RemoveAll(r => r.Id == id);
             if (_activeId == id) _activeId = null;
             snapshot = _records.ToList();
+            activeId = _activeId;
         }
-        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot));
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot, activeId));
     }
 
-    public void SetActive(string gatewayId)
+    public void SetActive(string? gatewayId)
     {
-        lock (_lock) _activeId = gatewayId;
+        List<GatewayRecord> snapshot;
+        lock (_lock)
+        {
+            _activeId = gatewayId;
+            snapshot = _records.ToList();
+        }
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot, gatewayId));
     }
 
     /// <summary>
@@ -114,6 +124,7 @@ public sealed class GatewayRegistry
     {
         GatewayRecord? updated;
         List<GatewayRecord> snapshot;
+        string? activeId;
         lock (_lock)
         {
             var idx = _records.FindIndex(r => r.Id == id);
@@ -122,8 +133,9 @@ public sealed class GatewayRegistry
             ArgumentNullException.ThrowIfNull(updated, nameof(updater));
             _records[idx] = updated;
             snapshot = _records.ToList();
+            activeId = _activeId;
         }
-        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot));
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot, activeId));
         return updated;
     }
 
@@ -131,22 +143,42 @@ public sealed class GatewayRegistry
 
     public void Save()
     {
-        RegistryData data;
         lock (_lock)
         {
-            data = new RegistryData { Gateways = _records.ToList(), ActiveId = _activeId };
+            var data = new RegistryData { Gateways = _records.ToList(), ActiveId = _activeId };
+            var json = JsonSerializer.Serialize(data, s_jsonOptions);
+
+            var dir = Path.GetDirectoryName(_filePath);
+            if (dir != null && !_fs.DirectoryExists(dir))
+                _fs.CreateDirectory(dir);
+
+            // Atomic write: unique temp file then rename. Keep the registry lock
+            // through the move so concurrent saves cannot publish stale snapshots.
+            var tempPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
+            _fs.WriteAllText(tempPath, json);
+            try
+            {
+                File.Move(tempPath, _filePath, overwrite: true);
+            }
+            catch
+            {
+                TryDeleteTempFile(tempPath);
+                throw;
+            }
         }
-        var json = JsonSerializer.Serialize(data, s_jsonOptions);
+    }
 
-        var dir = Path.GetDirectoryName(_filePath);
-        if (dir != null && !_fs.DirectoryExists(dir))
-            _fs.CreateDirectory(dir);
-
-        // Atomic write: temp file then rename
-        var tempPath = _filePath + ".tmp";
-        _fs.WriteAllText(tempPath, json);
-        // On Windows, File.Move with overwrite works as atomic rename
-        File.Move(tempPath, _filePath, overwrite: true);
+    private void TryDeleteTempFile(string tempPath)
+    {
+        try
+        {
+            if (_fs.FileExists(tempPath))
+                _fs.DeleteFile(tempPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to delete temporary gateway registry file '{tempPath}': {ex.Message}");
+        }
     }
 
     public void Load()
@@ -378,8 +410,10 @@ public sealed class GatewayRegistry
 public sealed class GatewayRegistryChangedEventArgs : EventArgs
 {
     public IReadOnlyList<GatewayRecord> Records { get; }
-    public GatewayRegistryChangedEventArgs(IReadOnlyList<GatewayRecord> records)
+    public string? ActiveGatewayId { get; }
+    public GatewayRegistryChangedEventArgs(IReadOnlyList<GatewayRecord> records, string? activeGatewayId = null)
     {
         Records = records;
+        ActiveGatewayId = activeGatewayId;
     }
 }

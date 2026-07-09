@@ -33,20 +33,32 @@ public class DeviceIdentity
     public IReadOnlyList<string>? NodeDeviceTokenScopes => _nodeDeviceTokenScopes;
 
     public static string? TryReadStoredDeviceToken(string dataPath, IOpenClawLogger? logger = null) =>
-        TryReadStoredDeviceTokenForRole(dataPath, "operator", logger);
+        ReadStoredDeviceToken(dataPath, logger).Token;
 
-    public static string? TryReadStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null)
+    public static DeviceTokenReadResult ReadStoredDeviceToken(string dataPath, IOpenClawLogger? logger = null) =>
+        ReadStoredDeviceTokenForRole(dataPath, "operator", logger);
+
+    public static string? TryReadStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null) =>
+        ReadStoredDeviceTokenForRole(dataPath, role, logger).Token;
+
+    public static DeviceTokenReadResult ReadStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null)
     {
         var tokenRole = ParseDeviceTokenRole(role);
         var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
         if (!File.Exists(keyPath))
         {
-            return null;
+            return DeviceTokenReadResult.Missing("Identity file is missing.");
         }
 
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(keyPath));
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                logger?.Warn("Failed to read stored device token: device-key-ed25519.json root is not a JSON object.");
+                return DeviceTokenReadResult.Corrupt("Identity file root is not a JSON object.");
+            }
+
             var tokenPropertyName = tokenRole == DeviceTokenRole.Node
                 ? nameof(DeviceKeyData.NodeDeviceToken)
                 : nameof(DeviceKeyData.DeviceToken);
@@ -55,23 +67,33 @@ public class DeviceIdentity
                 deviceToken.ValueKind == JsonValueKind.String)
             {
                 var value = deviceToken.GetString();
-                return string.IsNullOrWhiteSpace(value) ? null : value;
+                return string.IsNullOrWhiteSpace(value)
+                    ? DeviceTokenReadResult.Missing($"No stored {role} device token.")
+                    : DeviceTokenReadResult.Resolved(value!);
             }
+
+            return DeviceTokenReadResult.Missing($"No stored {role} device token.");
         }
         catch (IOException ex)
         {
             logger?.Warn($"Failed to read stored device token: {ex.Message}");
+            return DeviceTokenReadResult.Unreadable(ex.Message);
         }
         catch (UnauthorizedAccessException ex)
         {
             logger?.Warn($"Failed to read stored device token: {ex.Message}");
+            return DeviceTokenReadResult.Unreadable(ex.Message);
         }
         catch (JsonException ex)
         {
             logger?.Warn($"Failed to read stored device token: {ex.Message}");
+            return DeviceTokenReadResult.Corrupt(ex.Message);
         }
-
-        return null;
+        catch (InvalidOperationException ex)
+        {
+            logger?.Warn($"Failed to read stored device token: {ex.Message}");
+            return DeviceTokenReadResult.Corrupt(ex.Message);
+        }
     }
 
     public static bool HasStoredDeviceToken(string dataPath, IOpenClawLogger? logger = null) =>

@@ -128,22 +128,18 @@ public sealed class ConnectionPageApproveCommandTests
     [Fact]
     public void GatewayCredentialDisplay_PrefersOperatorCredentialOverNodeCredential()
     {
-        var planSource = ReadPlanSource();
-        var pageSource = ReadConnectionPageSource();
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OperatorCredentialSource = CredentialResolver.SourceSharedGatewayToken,
+            OperatorCredentialStatus = GatewayCredentialResolutionStatus.Resolved,
+            NodeCredentialSource = CredentialResolver.SourceNodeDeviceToken,
+            NodeCredentialStatus = GatewayCredentialResolutionStatus.FallbackUsed,
+            NodeCredentialFallbackUsed = true
+        };
 
-        Assert.Contains(
-            "snap.OperatorCredentialSource ?? snap.NodeCredentialSource",
-            planSource);
-        Assert.DoesNotContain(
-            "snap.NodeCredentialSource ?? snap.OperatorCredentialSource",
-            planSource);
+        var summary = ConnectionPagePlan.FormatCredentialSummary(snapshot);
 
-        Assert.Contains(
-            "snapshot.OperatorCredentialSource ?? snapshot.NodeCredentialSource",
-            pageSource);
-        Assert.DoesNotContain(
-            "snapshot.NodeCredentialSource ?? snapshot.OperatorCredentialSource",
-            pageSource);
+        Assert.Equal("shared token", summary);
     }
 
     [Fact]

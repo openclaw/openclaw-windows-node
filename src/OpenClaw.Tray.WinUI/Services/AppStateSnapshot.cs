@@ -37,6 +37,7 @@ internal sealed record AppStateSnapshot
     /// <summary>True when a GatewayRecord is currently active. Distinguishes "active gateway
     /// has no tunnel" from "no active gateway (fall back to global settings)".</summary>
     public bool HasActiveGatewayRecord          { get; init; }
+    public bool ActiveGatewayHasSharedToken     { get; init; }
 
     /// <summary>SSH tunnel config from the active GatewayRecord. Null means this gateway is
     /// direct (no tunnel), NOT "unknown". Only meaningful when HasActiveGatewayRecord is true.</summary>

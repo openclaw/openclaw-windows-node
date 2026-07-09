@@ -169,6 +169,252 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task SwitchGatewayAsync_PersistsActiveGatewayIdAfterReload()
+    {
+        SetupGateway("gw-1", "wss://test1");
+        SetupGateway("gw-2", "wss://test2");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+        await _manager.SwitchGatewayAsync("gw-2");
+
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+
+        Assert.Equal("gw-2", reloaded.ActiveGatewayId);
+        Assert.Equal("gw-2", reloaded.GetActive()?.Id);
+    }
+
+    [Fact]
+    public async Task SwitchGatewayAsync_UnknownGateway_DoesNotPersistInvalidActiveId()
+    {
+        SetupGateway("gw-1", "wss://test1");
+        _registry.Save();
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.SwitchGatewayAsync("missing-gateway");
+
+        Assert.Equal("gw-1", _registry.ActiveGatewayId);
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.Equal("gw-1", reloaded.ActiveGatewayId);
+        Assert.Empty(_factory.CreatedClients);
+    }
+
+    [Fact]
+    public async Task SwitchGatewayAsync_SaveFailureWithNoPreviousActive_ClearsInMemoryActiveId()
+    {
+        var fs = new ThrowingWriteFileSystem();
+        var registry = new GatewayRegistry(_tempDir, fs);
+        registry.AddOrUpdate(new GatewayRecord { Id = "gw-1", Url = "wss://test1" });
+        var resolver = new MockCredentialResolver
+        {
+            OperatorCredential = new GatewayCredential("tok", false, "test")
+        };
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            resolver,
+            factory,
+            registry,
+            NullLogger.Instance);
+
+        await manager.SwitchGatewayAsync("gw-1");
+
+        Assert.Null(registry.ActiveGatewayId);
+        Assert.Empty(factory.CreatedClients);
+    }
+
+    [Fact]
+    public async Task SwitchGatewayAsync_SaveFailureWithPreviousActive_PreservesActiveGatewayAndLiveClient()
+    {
+        var fs = new ThrowingWriteFileSystem();
+        var registry = new GatewayRegistry(_tempDir, fs);
+        registry.AddOrUpdate(new GatewayRecord { Id = "gw-1", Url = "wss://test1" });
+        registry.AddOrUpdate(new GatewayRecord { Id = "gw-2", Url = "wss://test2" });
+        registry.SetActive("gw-1");
+        var resolver = new MockCredentialResolver
+        {
+            OperatorCredential = new GatewayCredential("tok", false, "test")
+        };
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            resolver,
+            factory,
+            registry,
+            NullLogger.Instance);
+        await manager.ConnectAsync("gw-1");
+        var activeLifecycle = Assert.Single(factory.CreatedClients);
+
+        await manager.SwitchGatewayAsync("gw-2");
+
+        Assert.Equal("gw-1", registry.ActiveGatewayId);
+        Assert.Same(activeLifecycle.DataClient, manager.OperatorClient);
+        Assert.False(activeLifecycle.IsDisposed);
+        Assert.Single(factory.CreatedClients);
+    }
+
+    [Fact]
+    public async Task ApplySetupCodeAsync_SaveFailure_PreservesActiveGatewayAndLiveClient()
+    {
+        var fs = new ThrowingWriteFileSystem();
+        var registry = new GatewayRegistry(_tempDir, fs);
+        registry.AddOrUpdate(new GatewayRecord { Id = "gw-1", Url = "wss://test1" });
+        registry.SetActive("gw-1");
+        var resolver = new MockCredentialResolver
+        {
+            OperatorCredential = new GatewayCredential("tok", false, "test")
+        };
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            resolver,
+            factory,
+            registry,
+            NullLogger.Instance);
+        await manager.ConnectAsync("gw-1");
+        var activeLifecycle = Assert.Single(factory.CreatedClients);
+        var setupCode = BuildSetupCode("wss://test2", "bootstrap-token");
+
+        var result = await manager.ApplySetupCodeAsync(setupCode);
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.Equal("gw-1", registry.ActiveGatewayId);
+        Assert.Same(activeLifecycle.DataClient, manager.OperatorClient);
+        Assert.False(activeLifecycle.IsDisposed);
+        Assert.Single(factory.CreatedClients);
+        Assert.Null(registry.FindByUrl("wss://test2"));
+    }
+
+    [Fact]
+    public async Task StaleOldGatewayHandshakeAfterSwitch_DoesNotMutateCurrentSnapshot()
+    {
+        SetupGateway("gw-1", "wss://test1");
+        SetupGateway("gw-2", "wss://test2");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+        var oldGatewayLifecycle = _factory.CreatedClients[0];
+        await _manager.SwitchGatewayAsync("gw-2");
+
+        oldGatewayLifecycle.SimulateHandshake();
+        // slopwatch-ignore: SW004 Bounded wait gives a wrongly accepted stale async event time to mutate state.
+        await Task.Delay(50);
+
+        Assert.Equal("gw-2", _manager.CurrentSnapshot.GatewayId);
+        Assert.Equal("wss://test2", _manager.CurrentSnapshot.GatewayUrl);
+        Assert.Equal(RoleConnectionState.Connecting, _manager.CurrentSnapshot.OperatorState);
+        Assert.Null(_registry.GetById("gw-1")?.LastConnected);
+    }
+
+    [Fact]
+    public async Task StaleOldGatewayDeviceTokenAfterSwitch_DoesNotPersistToCurrentIdentity()
+    {
+        var capturedTokens = new List<(string path, string token, string role)>();
+        var store = new CaptureIdentityStore(capturedTokens);
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            identityStore: store);
+        SetupGateway("gw-1", "wss://test1");
+        SetupGateway("gw-2", "wss://test2");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await manager.ConnectAsync("gw-1");
+        var oldGatewayLifecycle = _factory.CreatedClients[0];
+        await manager.SwitchGatewayAsync("gw-2");
+
+        oldGatewayLifecycle.SimulateDeviceTokenReceived("old-gateway-token", "operator");
+        // slopwatch-ignore: SW004 Bounded wait gives a wrongly accepted stale async event time to persist credentials.
+        await Task.Delay(50);
+
+        Assert.DoesNotContain(capturedTokens, token => token.token == "old-gateway-token");
+        Assert.Equal("gw-2", manager.CurrentSnapshot.GatewayId);
+    }
+
+    [Fact]
+    public async Task StaleOldGatewayV2FallbackAfterSwitch_DoesNotMarkCurrentGatewayAsV2Required()
+    {
+        SetupGateway("gw-1", "wss://test1");
+        SetupGateway("gw-2", "wss://test2");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+
+        await _manager.ConnectAsync("gw-1");
+        var oldGatewayLifecycle = _factory.CreatedClients[0];
+        await _manager.SwitchGatewayAsync("gw-2");
+
+        oldGatewayLifecycle.SimulateV2SignatureFallback();
+        await WaitUntilAsync(() => _registry.GetById("gw-1")?.RequiresV2Signature == true);
+
+        Assert.False(_registry.GetById("gw-2")?.RequiresV2Signature);
+        Assert.False(_factory.CreatedClients[1].DataClient.UseV2Signature);
+    }
+
+    [Fact]
+    public async Task ConnectWithSharedTokenAsync_RevalidatesDurableTokensUnderTransitionSemaphore()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://127.0.0.1:9",
+            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678)
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        var tunnel = new BlockingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+        var connectTask = manager.ConnectAsync("gw-1");
+        await tunnel.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var replaceTask = manager.ConnectWithSharedTokenAsync("ws://127.0.0.1:9", "bad-shared-token");
+        var identityDir = _registry.GetIdentityDirectory("gw-1");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "operator-token");
+        tunnel.AllowStart.SetResult(true);
+        await connectTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.Null(_registry.GetById("gw-1")?.SharedGatewayToken);
+        Assert.Equal("operator-token", DeviceIdentity.TryReadStoredDeviceToken(identityDir));
+    }
+
+    [Fact]
+    public async Task ConnectAsync_CorruptDeviceTokenWithSharedFallback_IsVisibleInSnapshot()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            SharedGatewayToken = "shared-token"
+        });
+        _registry.SetActive("gw-1");
+        var identityDir = _registry.GetIdentityDirectory("gw-1");
+        Directory.CreateDirectory(identityDir);
+        File.WriteAllText(Path.Combine(identityDir, "device-key-ed25519.json"), "{ broken json");
+        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            resolver,
+            factory,
+            _registry,
+            NullLogger.Instance);
+
+        await manager.ConnectAsync("gw-1");
+
+        Assert.Single(factory.CreatedCredentials);
+        Assert.Equal("shared-token", factory.CreatedCredentials[0].Token);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
+        Assert.Equal(GatewayCredentialResolutionStatus.FallbackUsed, manager.CurrentSnapshot.OperatorCredentialStatus);
+        Assert.True(manager.CurrentSnapshot.OperatorCredentialFallbackUsed);
+        Assert.Contains("corrupt", manager.CurrentSnapshot.OperatorCredentialDetail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task StateChanged_Fires_OnConnect()
     {
         SetupGateway("gw-1", "wss://test");
@@ -794,6 +1040,19 @@ public class GatewayConnectionManagerTests : IDisposable
         }
     }
 
+    private static string BuildSetupCode(string url, string bootstrapToken)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            url,
+            bootstrapToken
+        });
+        return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
     // ─── EnsureNodeConnectedAsync tests ───
 
     [Fact]
@@ -937,13 +1196,23 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
         Assert.Equal(OverallConnectionState.Degraded, manager.CurrentSnapshot.OverallState);
         Assert.Contains("no active gateway context", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(manager.CurrentSnapshot.NodeCredentialStatus);
     }
 
     [Fact]
     public async Task ConnectNodeOnlyAsync_PreservesConnectedOperatorForNodeListRefresh()
     {
         SetupGateway("gw-1", "wss://test");
-        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, CredentialResolver.SourceSharedGatewayToken);
+        _resolver.OperatorResolution = new GatewayCredentialResolution(
+            new GatewayCredential("operator-token", false, CredentialResolver.SourceSharedGatewayToken)
+            {
+                ResolutionStatus = GatewayCredentialResolutionStatus.FallbackUsed,
+                FallbackUsed = true,
+                ResolutionDetail = "operator fallback"
+            },
+            GatewayCredentialResolutionStatus.FallbackUsed,
+            FallbackUsed: true,
+            Detail: "operator fallback");
         _resolver.NodeCredential = new GatewayCredential("node-token", false, CredentialResolver.SourceNodeDeviceToken);
         var node = new CountingNodeConnector();
         using var manager = new GatewayConnectionManager(
@@ -955,6 +1224,8 @@ public class GatewayConnectionManagerTests : IDisposable
 
         await manager.ConnectAsync("gw-1");
         Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
+        Assert.Equal(GatewayCredentialResolutionStatus.FallbackUsed, manager.CurrentSnapshot.OperatorCredentialStatus);
+        Assert.True(manager.CurrentSnapshot.OperatorCredentialFallbackUsed);
         await InvokeHandshakeSucceededAsync(manager);
         Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
         var operatorLifecycle = Assert.Single(_factory.CreatedClients);
@@ -967,6 +1238,8 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Single(_factory.CreatedClients);
         Assert.Equal(1, node.ConnectCount);
         Assert.Equal(CredentialResolver.SourceSharedGatewayToken, manager.CurrentSnapshot.OperatorCredentialSource);
+        Assert.Equal(GatewayCredentialResolutionStatus.FallbackUsed, manager.CurrentSnapshot.OperatorCredentialStatus);
+        Assert.True(manager.CurrentSnapshot.OperatorCredentialFallbackUsed);
         Assert.Equal(CredentialResolver.SourceNodeDeviceToken, manager.CurrentSnapshot.NodeCredentialSource);
     }
 
@@ -1114,8 +1387,47 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.True(manager.CurrentSnapshot.NodeConnectionIntended);
         Assert.Equal(OverallConnectionState.Error, manager.CurrentSnapshot.OverallState);
         Assert.Contains("SSH tunnel", manager.CurrentSnapshot.NodeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(manager.CurrentSnapshot.NodeCredentialSource);
+        Assert.Equal(GatewayCredentialResolutionStatus.Resolved, manager.CurrentSnapshot.NodeCredentialStatus);
+        Assert.False(manager.CurrentSnapshot.NodeCredentialFallbackUsed);
+        Assert.False(manager.CurrentSnapshot.NodeCredentialBootstrapRequired);
         Assert.Contains(snapshots, snapshot => snapshot.NodeState == RoleConnectionState.Error);
         Assert.NotEqual(RoleConnectionState.Connecting, snapshots.Last().NodeState);
+    }
+
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_TunnelStartFailure_PreservesFallbackCredentialFlags()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-ssh",
+            Url = "wss://remote.example",
+            SharedGatewayToken = "shared-token",
+            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678)
+        });
+        _registry.SetActive("gw-ssh");
+        var identityDir = _registry.GetIdentityDirectory("gw-ssh");
+        Directory.CreateDirectory(identityDir);
+        File.WriteAllText(Path.Combine(identityDir, "device-key-ed25519.json"), "{ broken json");
+        var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
+        var node = new CountingNodeConnector();
+        var tunnel = new FailingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node,
+            tunnelManager: tunnel);
+
+        await manager.ConnectNodeOnlyAsync("gw-ssh");
+
+        Assert.Equal(0, node.ConnectCount);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+        Assert.Null(manager.CurrentSnapshot.NodeCredentialSource);
+        Assert.Equal(GatewayCredentialResolutionStatus.FallbackUsed, manager.CurrentSnapshot.NodeCredentialStatus);
+        Assert.True(manager.CurrentSnapshot.NodeCredentialFallbackUsed);
+        Assert.False(manager.CurrentSnapshot.NodeCredentialBootstrapRequired);
     }
 
     [Fact]
@@ -1272,9 +1584,15 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         public GatewayCredential? OperatorCredential { get; set; }
         public GatewayCredential? NodeCredential { get; set; }
+        public GatewayCredentialResolution? OperatorResolution { get; set; }
+        public GatewayCredentialResolution? NodeResolution { get; set; }
 
         public GatewayCredential? ResolveOperator(GatewayRecord record, string identityPath) => OperatorCredential;
         public GatewayCredential? ResolveNode(GatewayRecord record, string identityPath) => NodeCredential;
+        public GatewayCredentialResolution ResolveOperatorDetailed(GatewayRecord record, string identityPath) =>
+            OperatorResolution ?? GatewayCredentialResolution.FromLegacy(OperatorCredential);
+        public GatewayCredentialResolution ResolveNodeDetailed(GatewayRecord record, string identityPath) =>
+            NodeResolution ?? GatewayCredentialResolution.FromLegacy(NodeCredential);
     }
 
     private sealed class MockClientFactory : IGatewayClientFactory
@@ -1293,6 +1611,19 @@ public class GatewayConnectionManagerTests : IDisposable
             CreatedGatewayUrls.Add(gatewayUrl);
             return mock;
         }
+    }
+
+    private sealed class ThrowingWriteFileSystem : IFileSystem
+    {
+        public bool FileExists(string path) => File.Exists(path);
+        public string ReadAllText(string path) => File.ReadAllText(path);
+        public void WriteAllText(string path, string content) =>
+            throw new IOException("simulated save failure");
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+        public bool DirectoryExists(string path) => Directory.Exists(path);
+        public void CopyFile(string source, string destination, bool overwrite) =>
+            File.Copy(source, destination, overwrite);
+        public void DeleteFile(string path) => File.Delete(path);
     }
 
     internal sealed class MockLifecycle : IGatewayClientLifecycle
@@ -1792,6 +2123,24 @@ public class GatewayConnectionManagerTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public void Dispose() { }
+    }
+
+    private sealed class BlockingTunnelManager : ISshTunnelManager
+    {
+        public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> AllowStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool IsActive => false;
+        public string? LocalTunnelUrl => null;
+
+        public async Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
+        {
+            Started.SetResult(true);
+            await AllowStart.Task.WaitAsync(ct);
+            return $"ws://localhost:{config.LocalPort}";
+        }
+
+        public Task StopAsync() => Task.CompletedTask;
         public void Dispose() { }
     }
 

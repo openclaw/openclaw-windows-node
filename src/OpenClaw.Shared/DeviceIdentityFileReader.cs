@@ -11,6 +11,12 @@ public sealed class DeviceIdentityFileReader : IDeviceIdentityReader
     public string? TryReadStoredDeviceToken(string dataPath) =>
         DeviceIdentity.TryReadStoredDeviceToken(dataPath);
 
+    public DeviceTokenReadResult ReadStoredDeviceToken(string dataPath) =>
+        DeviceIdentity.ReadStoredDeviceToken(dataPath);
+
     public string? TryReadStoredNodeDeviceToken(string dataPath) =>
         DeviceIdentity.TryReadStoredDeviceTokenForRole(dataPath, "node");
+
+    public DeviceTokenReadResult ReadStoredNodeDeviceToken(string dataPath) =>
+        DeviceIdentity.ReadStoredDeviceTokenForRole(dataPath, "node");
 }
