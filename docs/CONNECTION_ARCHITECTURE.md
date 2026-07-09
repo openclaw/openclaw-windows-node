@@ -152,6 +152,8 @@ The invariant is that a paired device token always wins. Do not downgrade a pair
 
 **`CredentialResolver`** implements the precedence for WebSocket connections (operator and node roles). It also returns a detailed `GatewayCredentialResolution` so the active snapshot and diagnostics can distinguish `Resolved`, `Missing`, `Unreadable`, `Corrupt`, `FallbackUsed`, and `BootstrapRequired`. Shared-token-only gateways are a clean resolved state when no paired device token exists. If a stored per-gateway device token is unreadable or corrupt and the resolver falls back to a shared/bootstrap token, `GatewayConnectionSnapshot` preserves that fallback status instead of reporting only the token source.
 
+Unreadable/corrupt identity fallback is an explicit same-gateway recovery path, not a silent cross-gateway downgrade. A readable stored device token still always wins. When the per-gateway identity file cannot be read or parsed, fallback may use only credentials already stored on the same active `GatewayRecord`; the snapshot and diagnostics report `FallbackUsed` with `PrimaryStatus=Unreadable` or `Corrupt` so UI/diagnostics can prompt repair or re-pair. Credential reads never fall back to another gateway's identity directory.
+
 Node credential precedence follows the same invariant with a distinct stored token:
 
 1. **Stored node device token** in the per-gateway identity directory.

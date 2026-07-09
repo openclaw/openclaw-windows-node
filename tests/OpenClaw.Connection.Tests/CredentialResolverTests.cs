@@ -231,6 +231,34 @@ public class CredentialResolverTests
     }
 
     [Fact]
+    public void ResolveOperatorDetailed_ReportsFallbackUsed_WhenStoredTokenIsUnreadableAndSharedTokenExists()
+    {
+        var reader = new MockDeviceIdentityReader
+        {
+            OperatorReadResult = DeviceTokenReadResult.Unreadable("access denied")
+        };
+        var resolver = new CredentialResolver(reader);
+        var record = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            SharedGatewayToken = "shared"
+        };
+
+        var result = resolver.ResolveOperatorDetailed(record, "/id");
+
+        Assert.NotNull(result.Credential);
+        Assert.Equal("shared", result.Credential!.Token);
+        Assert.Equal(CredentialResolver.SourceSharedGatewayToken, result.Credential.Source);
+        Assert.Equal(GatewayCredentialResolutionStatus.FallbackUsed, result.Status);
+        Assert.Equal(GatewayCredentialResolutionStatus.Unreadable, result.PrimaryStatus);
+        Assert.True(result.FallbackUsed);
+        Assert.True(result.Credential.FallbackUsed);
+        Assert.Contains("unreadable", result.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("access denied", result.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ResolveOperator_NeverDowngradesPairedDevice()
     {
         // Even if bootstrap is present, paired device token wins
@@ -393,8 +421,22 @@ public class CredentialResolverTests
     {
         public string? OperatorToken { get; set; }
         public string? NodeToken { get; set; }
+        public DeviceTokenReadResult? OperatorReadResult { get; set; }
+        public DeviceTokenReadResult? NodeReadResult { get; set; }
 
         public string? TryReadStoredDeviceToken(string dataPath) => OperatorToken;
         public string? TryReadStoredNodeDeviceToken(string dataPath) => NodeToken;
+        public DeviceTokenReadResult ReadStoredDeviceToken(string dataPath) =>
+            OperatorReadResult ?? IDeviceIdentityReaderExtensions.FromToken(OperatorToken);
+        public DeviceTokenReadResult ReadStoredNodeDeviceToken(string dataPath) =>
+            NodeReadResult ?? IDeviceIdentityReaderExtensions.FromToken(NodeToken);
+    }
+
+    private static class IDeviceIdentityReaderExtensions
+    {
+        public static DeviceTokenReadResult FromToken(string? token) =>
+            string.IsNullOrWhiteSpace(token)
+                ? DeviceTokenReadResult.Missing()
+                : DeviceTokenReadResult.Resolved(token!);
     }
 }
