@@ -281,6 +281,10 @@ jobs:
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
       id: a11y
+      env:
+        OPENCLAW_UI_PROOF_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        OPENCLAW_UI_PROOF_PATH: ${{ github.workspace }}\TestResults\Accessibility\session-title-uia-proof.txt
+        OPENCLAW_UI_SCREENSHOT_PATH: ${{ github.workspace }}\TestResults\Accessibility\session-title-proof.png
       run: >
         dotnet test tests/OpenClaw.Tray.UITests
         --no-build
@@ -296,14 +300,25 @@ jobs:
       shell: pwsh
       run: |
         if ("${{ steps.a11y.outcome }}" -eq "failure") {
-          "### :x: Accessibility violations detected" >> $env:GITHUB_STEP_SUMMARY
+          "### :x: Real-process UI or accessibility tests failed" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY
-          "Axe.Windows scans found WCAG violations in one or more pages." >> $env:GITHUB_STEP_SUMMARY
+          "A UI Automation behavior proof or Axe.Windows page scan failed." >> $env:GITHUB_STEP_SUMMARY
           "See the `Accessibility.trx` artifact for details." >> $env:GITHUB_STEP_SUMMARY
         } else {
-          "### :white_check_mark: Accessibility scans passed" >> $env:GITHUB_STEP_SUMMARY
+          "### :white_check_mark: Real-process UI and accessibility tests passed" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY
-          "All pages passed Axe.Windows accessibility validation." >> $env:GITHUB_STEP_SUMMARY
+          "All UI Automation behavior proofs and Axe.Windows page scans passed." >> $env:GITHUB_STEP_SUMMARY
+        }
+
+        $proofPath = "TestResults\Accessibility\session-title-uia-proof.txt"
+        if (Test-Path -LiteralPath $proofPath) {
+          Write-Host "Session title UIA proof:"
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "### Session title UIA proof" >> $env:GITHUB_STEP_SUMMARY
+          Get-Content -LiteralPath $proofPath | ForEach-Object {
+            Write-Host $_
+            "- ``$_``" >> $env:GITHUB_STEP_SUMMARY
+          }
         }
 
     - name: Verify DevBuild identity marker

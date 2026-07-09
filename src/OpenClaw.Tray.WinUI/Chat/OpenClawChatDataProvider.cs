@@ -328,7 +328,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             state = new LastChatState
             {
                 DefaultThreadId = threadId,
-                ThreadTitle = BuildSessionTitle(session),
+                ThreadTitle = SessionTitleFormatter.Format(session, _sessions),
                 Model = session.Model,
                 ModelProvider = session.Provider,
                 AvailableModels = _availableModels,
@@ -5608,8 +5608,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // a usable composer even before the first session materializes server-
         // side (e.g. fresh install with zero sessions).
         var threadList = new List<ChatThread>(_sessions.Length + 1);
+        var threadTitles = SessionTitleFormatter.FormatUnique(_sessions);
         for (int i = 0; i < _sessions.Length; i++)
-            threadList.Add(ToThread(_sessions[i]));
+            threadList.Add(ToThread(_sessions[i], threadTitles[i]));
 
         var composeKey = _bridge.MainSessionKey;
         var composeReady = _bridge.HasHandshakeSnapshot
@@ -5752,7 +5753,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _lastChatState = new LastChatState
         {
             DefaultThreadId = session.Key,
-            ThreadTitle = BuildSessionTitle(session),
+            ThreadTitle = SessionTitleFormatter.Format(session, _sessions),
             Model = session.Model,
             ModelProvider = session.Provider,
             AvailableModels = _availableModels,
@@ -5775,10 +5776,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return false;
     }
 
-    private static ChatThread ToThread(SessionInfo s)
+    private static ChatThread ToThread(SessionInfo s, string title)
     {
-        var title = BuildSessionTitle(s);
-
         return new ChatThread
         {
             Id = s.Key ?? string.Empty,
@@ -5796,40 +5795,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             CreatedAt = s.StartedAt is { } st ? ToOffset(st) : null,
             UpdatedAt = s.UpdatedAt is { } ut ? ToOffset(ut) : null,
         };
-    }
-
-    /// <summary>
-    /// Builds a human-readable title from the session key and display name.
-    /// Keys follow the pattern agent:{agentId}:{sessionSlot} (e.g. agent:main:main, agent:assistant:main).
-    /// When a DisplayName is set, we append the agent/slot as a qualifier to disambiguate
-    /// sessions that share the same DisplayName.
-    /// </summary>
-    private static string BuildSessionTitle(SessionInfo s)
-    {
-        var baseName = !string.IsNullOrWhiteSpace(s.DisplayName)
-            ? s.DisplayName!
-            : (s.IsMain ? "OpenClaw Windows Tray" : s.ShortKey);
-
-        // Parse agent:agentId:sessionSlot from the key
-        var parts = (s.Key ?? "").Split(':');
-        if (parts.Length >= 3 && parts[0] == "agent")
-        {
-            var agentId = parts[1];     // e.g. "main", "assistant"
-            var sessionSlot = parts[2]; // e.g. "main", "assistant", "cron"
-
-            // For the canonical main session (agent:main:main), just show the base name
-            if (agentId == "main" && sessionSlot == "main")
-                return baseName;
-
-            // Otherwise, qualify with agent/slot to distinguish
-            var qualifier = agentId == sessionSlot
-                ? agentId                       // e.g. "assistant" when both match
-                : $"{agentId}/{sessionSlot}";   // e.g. "assistant/main"
-
-            return $"{baseName} ({qualifier})";
-        }
-
-        return baseName;
     }
 
     private static DateTimeOffset ToOffset(DateTime dt)

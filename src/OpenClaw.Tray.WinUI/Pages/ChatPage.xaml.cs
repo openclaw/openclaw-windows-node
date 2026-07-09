@@ -334,7 +334,9 @@ public sealed partial class ChatPage : Page
 
     private sealed class AccessibilityChatDataProvider : IChatDataProvider
     {
-        private const string ThreadId = "accessibility-main";
+        private const string DefaultThreadId = "accessibility-main";
+        private const string MainThreadId = "agent:main:main";
+        private const string ForkThreadId = "agent:main:fork";
         private static readonly ChatDataSnapshot Snapshot = CreateSnapshot();
 
         public string DisplayName => "Accessibility test chat";
@@ -389,15 +391,15 @@ public sealed partial class ChatPage : Page
 
         private static ChatDataSnapshot CreateSnapshot()
         {
-            var timeline = ChatTimelineState.Initial() with
+            static ChatTimelineState CreateTimeline(string id) => ChatTimelineState.Initial() with
             {
                 Entries = ChatTimelineState.Initial().Entries
                     .Add(new ChatTimelineItem(
-                        "accessibility-user",
+                        $"accessibility-user-{id}",
                         ChatTimelineItemKind.User,
                         "Verify the native chat surface."))
                     .Add(new ChatTimelineItem(
-                        "accessibility-assistant",
+                        $"accessibility-assistant-{id}",
                         ChatTimelineItemKind.Assistant,
                         "The timeline and composer are ready.")),
                 NextId = 3,
@@ -405,22 +407,42 @@ public sealed partial class ChatPage : Page
             };
 
             return new ChatDataSnapshot(
-                [new ChatThread
-                {
-                    Id = ThreadId,
-                    Title = "Accessibility session",
-                    Status = ChatThreadStatus.Running,
-                    Activity = ChatActivity.Idle,
-                    Model = "test-model",
-                }],
+                [
+                    new ChatThread
+                    {
+                        Id = DefaultThreadId,
+                        Title = "Accessibility session",
+                        Status = ChatThreadStatus.Running,
+                        Activity = ChatActivity.Idle,
+                        Model = "test-model",
+                    },
+                    new ChatThread
+                    {
+                        Id = MainThreadId,
+                        Title = $"Route target: {MainThreadId}",
+                        Status = ChatThreadStatus.Running,
+                        Activity = ChatActivity.Idle,
+                        Model = "test-model",
+                    },
+                    new ChatThread
+                    {
+                        Id = ForkThreadId,
+                        Title = $"Route target: {ForkThreadId}",
+                        Status = ChatThreadStatus.Running,
+                        Activity = ChatActivity.Idle,
+                        Model = "test-model",
+                    },
+                ],
                 new Dictionary<string, ChatTimelineState>
                 {
-                    [ThreadId] = timeline,
+                    [DefaultThreadId] = CreateTimeline(DefaultThreadId),
+                    [MainThreadId] = CreateTimeline(MainThreadId),
+                    [ForkThreadId] = CreateTimeline(ForkThreadId),
                 },
-                ThreadId,
+                DefaultThreadId,
                 "Connected (accessibility test)",
                 ["test-model"],
-                new ChatComposeTarget(ThreadId, IsReady: true));
+                new ChatComposeTarget(DefaultThreadId, IsReady: true));
         }
     }
 

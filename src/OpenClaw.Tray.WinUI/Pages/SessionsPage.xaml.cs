@@ -55,6 +55,35 @@ public sealed partial class SessionsPage : Page
 
         var client = CurrentApp.GatewayClient;
 
+        // The real-process accessibility suite has no gateway. Give it an
+        // isolated, deterministic duplicate-name scenario so UI Automation can
+        // prove both the rendered titles and the row-to-chat key hand-off.
+        // Requiring the test data directory as well as the explicit flag keeps
+        // this path unreachable from a normal app launch.
+        if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_SESSIONS") == "1"
+            && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 })
+        {
+            UpdateSessions(
+            [
+                new SessionInfo
+                {
+                    Key = "agent:main:main",
+                    IsMain = true,
+                    Status = "active",
+                    DisplayName = "OpenClaw Windows Tray",
+                    UpdatedAt = DateTime.UtcNow,
+                },
+                new SessionInfo
+                {
+                    Key = "agent:main:fork",
+                    Status = "active",
+                    DisplayName = "OpenClaw Windows Tray",
+                    UpdatedAt = DateTime.UtcNow.AddSeconds(-1),
+                },
+            ]);
+            return;
+        }
+
         // Rebind when the client instance changes so a cached page never holds
         // a stale command-result subscription.
         if (_subscribedClient != client)
@@ -161,18 +190,23 @@ public sealed partial class SessionsPage : Page
             return;
         }
 
-        IEnumerable<SessionInfo> filtered = _allSessions ?? Array.Empty<SessionInfo>();
-        filtered = SessionVisibilityFilter.VisibleSessions(filtered, ShowCompletedSessions);
+        var activeSessions = SessionVisibilityFilter.VisibleSessions(
+                _allSessions ?? Array.Empty<SessionInfo>(),
+                ShowCompletedSessions)
+            .ToList();
+        var activeTitles = SessionTitleFormatter.FormatUnique(activeSessions);
+        IEnumerable<(SessionInfo Session, string Title)> filtered = activeSessions
+            .Select((session, index) => (Session: session, Title: activeTitles[index]));
 
         if (_activeChannel != "all")
         {
-            filtered = filtered.Where(s =>
-                string.Equals(s.Channel, _activeChannel, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(item =>
+                string.Equals(item.Session.Channel, _activeChannel, StringComparison.OrdinalIgnoreCase));
         }
 
         var viewModels = filtered
-            .OrderByDescending(s => s.UpdatedAt ?? s.LastSeen)
-            .Select(s => ToViewModel(s))
+            .OrderByDescending(item => item.Session.UpdatedAt ?? item.Session.LastSeen)
+            .Select(item => ToViewModel(item.Session, item.Title))
             .ToList();
 
         if (viewModels.Count == 0)
@@ -232,7 +266,7 @@ public sealed partial class SessionsPage : Page
         }
     }
 
-    private SessionViewModel ToViewModel(SessionInfo s)
+    private SessionViewModel ToViewModel(SessionInfo s, string displayName)
     {
         var parts = new List<string>(3);
         if (!string.IsNullOrWhiteSpace(s.Provider)) parts.Add(s.Provider!);
@@ -259,7 +293,7 @@ public sealed partial class SessionsPage : Page
         return new SessionViewModel
         {
             Key = s.Key,
-            DisplayName = !string.IsNullOrWhiteSpace(s.DisplayName) ? s.DisplayName! : s.Key,
+            DisplayName = displayName,
             AgeText = s.AgeText,
             DetailLine = parts.Count > 0 ? string.Join(" · ", parts) : "",
             StatusBrush = ResolveStatusBrush(s),
