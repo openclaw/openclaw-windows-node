@@ -1465,7 +1465,36 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
             if (entry.PermissionDecision == ChatPermissionDecision.Pending)
             {
                 var allowLabel = LocalizationHelper.GetString("Chat_Permission_Allow");
+                var allowAlwaysLabel = LocalizationHelper.GetString("Chat_Permission_AllowAlways");
                 var denyLabel = LocalizationHelper.GetString("Chat_Permission_Deny");
+                var actions = new List<Element>();
+                foreach (var action in ChatPermissionActionKeys.NormalizeActions(entry.PermissionActions))
+                {
+                    var isDeny = string.Equals(action, ChatPermissionActionKeys.Deny, StringComparison.OrdinalIgnoreCase);
+                    var label = action switch
+                    {
+                        ChatPermissionActionKeys.AllowAlways => allowAlwaysLabel,
+                        ChatPermissionActionKeys.Deny => denyLabel,
+                        _ => allowLabel,
+                    };
+
+                    var button = Button(label, () => onResponse?.Invoke(requestId, action))
+                        .Set(b =>
+                        {
+                            b.CornerRadius = new CornerRadius(4);
+                            b.Padding = new Thickness(14, 6, 14, 6);
+                            b.MinWidth = 0; b.MinHeight = 0;
+                            b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{label}{automationSuffix}");
+                            if (!isDeny)
+                            {
+                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; }
+                                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
+                            }
+                        });
+                    actions.Add(button);
+                }
+
                 body = VStack(8,
                     TextBlock($"⚠ {kind}")
                         .Set(t => { t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; t.TextWrapping = TextWrapping.Wrap; }),
@@ -1490,32 +1519,7 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                      }),
                     TextBlock(LocalizationHelper.GetString("Chat_Permission_Caption"))
                         .Set(t => { t.TextWrapping = TextWrapping.Wrap; t.FontSize = 11; t.Opacity = 0.7; }),
-                    HStack(8,
-                        Button(allowLabel,
-                            () => onResponse?.Invoke(requestId, ChatPermissionActionKeys.AllowOnce))
-                            .Set(b =>
-                            {
-                                b.CornerRadius = new CornerRadius(4);
-                                b.Padding = new Thickness(14, 6, 14, 6);
-                                b.MinWidth = 0; b.MinHeight = 0;
-                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
-                                // Include the operation kind in the screen-reader name so
-                                // users hear "Allow shell.exec" instead of bare "Allow".
-                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{allowLabel}{automationSuffix}");
-                                try { b.Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["AccentButtonStyle"]; }
-                                catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: accent button style lookup failed: {ex.Message}"); }
-                            }),
-                        Button(denyLabel,
-                            () => onResponse?.Invoke(requestId, ChatPermissionActionKeys.Deny))
-                            .Set(b =>
-                            {
-                                b.CornerRadius = new CornerRadius(4);
-                                b.Padding = new Thickness(14, 6, 14, 6);
-                                b.MinWidth = 0; b.MinHeight = 0;
-                                b.IsEnabled = onResponse is not null && !string.IsNullOrEmpty(requestId);
-                                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{denyLabel}{automationSuffix}");
-                            })
-                    ).HAlign(HorizontalAlignment.Right)
+                    HStack(8, actions.ToArray()).HAlign(HorizontalAlignment.Right)
                 );
             }
             else
@@ -1525,9 +1529,10 @@ public partial class ChatTimeline : Component<ChatTimelineProps>
                 // was approved/denied without expanding anything.
                 var (glyph, labelKey) = entry.PermissionDecision switch
                 {
-                    ChatPermissionDecision.Allowed => ("✓", "Chat_Permission_DecisionAllowed"),
-                    ChatPermissionDecision.Denied  => ("✕", "Chat_Permission_DecisionDenied"),
-                    _                              => ("⌛", "Chat_Permission_DecisionExpired"),
+                    ChatPermissionDecision.Allowed       => ("✓", "Chat_Permission_DecisionAllowed"),
+                    ChatPermissionDecision.AllowedAlways => ("✓", "Chat_Permission_DecisionAlwaysAllowed"),
+                    ChatPermissionDecision.Denied        => ("✕", "Chat_Permission_DecisionDenied"),
+                    _                                    => ("⌛", "Chat_Permission_DecisionExpired"),
                 };
                 var label = LocalizationHelper.GetString(labelKey);
                 // Surrogate-safe truncation: if char 119 is a high surrogate,
