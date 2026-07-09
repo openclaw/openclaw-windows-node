@@ -159,7 +159,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
 
         if (sessionChanged && !isFirstMount)
         {
-            StoreSessionOffset(previousSessionId, _lastVerticalOffset);
+            StoreCurrentOffsetForSession(previousSessionId);
             if (view.EntryCount > 0)
                 QueueScrollToBottom(view.SessionId, disableAnimation: true);
         }
@@ -213,6 +213,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         ClearPendingPrependCorrection();
         ResetScrollToEndState();
         _suppressAutoFollow = false;
+        ClearSessionOffset(_view.SessionId);
         QueueScrollToBottom(_view.SessionId, disableAnimation: false);
     }
 
@@ -285,7 +286,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
 
         _lastVerticalOffset = verticalOffset;
         _lastScrollableHeight = _scrollViewer.ScrollableHeight;
-        StoreSessionOffset(_view.SessionId, verticalOffset);
+        StoreCurrentOffsetForSession(_view.SessionId);
 
         if (_scrollViewer.ScrollableHeight > 0
             && _scrollViewer.VerticalOffset <= FollowThreshold
@@ -392,7 +393,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         _lastVerticalOffset = bottom;
         _lastScrollableHeight = _scrollViewer.ScrollableHeight;
         _isFollowing = true;
-        StoreSessionOffset(_scrollToEndSessionId, bottom);
+        ClearSessionOffset(_scrollToEndSessionId);
 
         if (_scrollToEndPending)
         {
@@ -449,7 +450,10 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         _lastScrollableHeight = scrollableHeight;
         _isFollowing = scrollableHeight - target <= FollowThreshold;
         _scrollToLatestButton.Visibility = _isFollowing ? Visibility.Collapsed : Visibility.Visible;
-        StoreSessionOffset(_pendingPrependSessionId, target);
+        if (_isFollowing)
+            ClearSessionOffset(_pendingPrependSessionId);
+        else
+            StoreSessionOffset(_pendingPrependSessionId, target);
 
         if (_lastPrependScrollableHeight is { } previousHeight &&
             Math.Abs(previousHeight - scrollableHeight) < 0.5)
@@ -535,6 +539,31 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
 
             var first = s_sessionOffsets.Keys.First();
             s_sessionOffsets.Remove(first);
+        }
+    }
+
+    private void StoreCurrentOffsetForSession(string? sessionId)
+    {
+        if (sessionId is not { Length: > 0 })
+            return;
+
+        if (_isFollowing || IsAtBottom)
+        {
+            ClearSessionOffset(sessionId);
+            return;
+        }
+
+        StoreSessionOffset(sessionId, _lastVerticalOffset);
+    }
+
+    private static void ClearSessionOffset(string? sessionId)
+    {
+        if (sessionId is not { Length: > 0 })
+            return;
+
+        lock (s_sessionOffsetsLock)
+        {
+            s_sessionOffsets.Remove(sessionId);
         }
     }
 

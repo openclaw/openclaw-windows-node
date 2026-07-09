@@ -73,10 +73,6 @@ public partial class ChatTimeline
             virtualizedRows.Add(new ChatTimelineRow(rowKey, () => rowElement));
         }
 
-        virtualizedRows.Add(new ChatTimelineRow(
-            "chrome:bottom-spacer",
-            () => Border(Empty()).Height(24)));
-
         return new ChatTimelineView(
             virtualizedRows,
             props.SessionId,
