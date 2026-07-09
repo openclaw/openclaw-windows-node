@@ -31,7 +31,6 @@ public sealed class ChatTimelineVirtualizationProofTests
 
         var props = BuildProps(InitialRows, scrollToBottomToken: 0);
         FunctionalHostControl? host = null;
-        var initialCachedVirtualControls = 0;
 
         await _ui.RunOnUIAsync(() =>
         {
@@ -58,12 +57,11 @@ public sealed class ChatTimelineVirtualizationProofTests
             var layout = Assert.IsType<StackLayout>(repeater.Layout);
             Assert.Equal(Orientation.Vertical, layout.Orientation);
             Assert.Equal(2, layout.Spacing);
-            Assert.Equal(InitialRows, CountItems(repeater.ItemsSource));
-            var realizedRows = Enumerable.Range(0, InitialRows)
+            Assert.Equal(InitialRows + 1, CountItems(repeater.ItemsSource)); // top chrome spacer + chat rows
+            var realizedRows = Enumerable.Range(0, InitialRows + 1)
                 .Count(index => repeater.TryGetElement(index) is not null);
-            Assert.InRange(realizedRows, 1, InitialRows - 1);
-            initialCachedVirtualControls = host!.CachedVirtualStackControlCount;
-            Assert.True(initialCachedVirtualControls > 0);
+            Assert.InRange(realizedRows, 1, InitialRows);
+            Assert.Equal(0, host!.CachedVirtualStackControlCount);
 
             var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
             _ui.Container.UpdateLayout();
@@ -92,11 +90,8 @@ public sealed class ChatTimelineVirtualizationProofTests
         {
             var repeater = FindLogical<ItemsRepeater>(host!).Single();
             Assert.Null(repeater.TryGetElement(0));
-            Assert.NotNull(repeater.TryGetElement(InitialRows - 1));
-            Assert.InRange(
-                host!.CachedVirtualStackControlCount,
-                1,
-                initialCachedVirtualControls * 2);
+            Assert.NotNull(repeater.TryGetElement(InitialRows));
+            Assert.Equal(0, host!.CachedVirtualStackControlCount);
             stableItemsSource = repeater.ItemsSource;
             stableItemTemplate = repeater.ItemTemplate;
 
@@ -133,7 +128,7 @@ public sealed class ChatTimelineVirtualizationProofTests
         await _ui.RunOnUIAsync(() =>
         {
             var repeater = FindLogical<ItemsRepeater>(host!).Single();
-            Assert.Equal(appendedRows, CountItems(repeater.ItemsSource));
+            Assert.Equal(appendedRows + 1, CountItems(repeater.ItemsSource));
 
             var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
             _ui.Container.UpdateLayout();
