@@ -561,7 +561,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 }
                 catch (Exception ex) { _logger.Warn($"[ConnMgr] Tunnel stop error on gateway switch: {ex.Message}"); }
             }
-            _gatewayNeedsV2Signature = false; // new gateway might support v3
             await ConnectCoreAsync(gatewayId);
         }
         finally
@@ -589,11 +588,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             var existing = _registry.FindByUrl(gatewayUrl);
-
-            // New gateway URL → reset v2 signature flag (new gateway might support v3)
-            var isNewGateway = existing == null;
-            if (isNewGateway)
-                _gatewayNeedsV2Signature = false;
 
             // 4. Create or update gateway record
             var recordId = existing?.Id ?? Guid.NewGuid().ToString();
@@ -1020,35 +1014,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (activeGatewayRecordId == null || activeIdentityPath == null)
             return;
 
-        var record = _registry.GetById(activeGatewayRecordId);
-        if (record?.BootstrapToken == null)
-            return;
-
-        var hasOperatorToken = DeviceIdentity.HasStoredDeviceTokenForRole(activeIdentityPath, "operator", _logger);
-        var hasNodeToken = DeviceIdentity.HasStoredDeviceTokenForRole(activeIdentityPath, "node", _logger);
-        if (!hasOperatorToken || !hasNodeToken)
-        {
-            _diagnostics.Record(
-                "credential",
-                "Retaining bootstrap token until role tokens are durable",
-                $"operatorToken={hasOperatorToken}; nodeToken={hasNodeToken}");
-            return;
-        }
-
-        var updated = _registry.Update(activeGatewayRecordId, r => r with { BootstrapToken = null });
-        if (updated == null)
-            return;
-
-        try
-        {
-            _registry.Save();
-            _diagnostics.Record("credential", "Cleared bootstrap token — operator and node tokens are durable");
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"[ConnMgr] Failed to persist cleared bootstrap token: {ex.Message}");
-            _diagnostics.Record("credential", "Failed to persist cleared bootstrap token", ex.Message);
-        }
+        TryClearBootstrapTokenAfterDurablePairing(activeGatewayRecordId, activeIdentityPath);
     }
 
     private void TryClearBootstrapTokenAfterDurablePairing(string gatewayRecordId, string identityPath)
@@ -1455,6 +1421,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 $"{prefix}: stored device token is corrupt. Re-pair this PC or add a shared/bootstrap gateway token.",
             GatewayCredentialResolutionStatus.Unreadable =>
                 $"{prefix}: stored device token is unreadable. Check file permissions, re-pair this PC, or add a shared/bootstrap gateway token.",
+            GatewayCredentialResolutionStatus.Missing => role.Equals("node", StringComparison.OrdinalIgnoreCase)
+                ? MissingNodeCredentialMessage
+                : $"{prefix}. Add a shared/bootstrap gateway token or re-pair this PC.",
             _ when !string.IsNullOrWhiteSpace(resolution.Detail) =>
                 $"{prefix}. {resolution.Detail}",
             _ => role.Equals("node", StringComparison.OrdinalIgnoreCase)

@@ -129,6 +129,19 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Save_WhenTempWriteFailsAfterCreatingFile_RemovesTempFile()
+    {
+        var fs = new FailingTempWriteFileSystem();
+        var registry = new GatewayRegistry(_tempDir, fs);
+        registry.AddOrUpdate(MakeRecord("gw-1", "wss://test1"));
+
+        var ex = Assert.Throws<IOException>(() => registry.Save());
+
+        Assert.Equal("simulated partial write failure", ex.Message);
+        Assert.Empty(Directory.GetFiles(_tempDir, "gateways.json.*.tmp"));
+    }
+
+    [Fact]
     public void Load_WithNoFile_DoesNotThrow()
     {
         var registry = new GatewayRegistry(Path.Combine(_tempDir, "nonexistent"));
@@ -437,5 +450,21 @@ public class GatewayRegistryTests : IDisposable
         public void Debug(string message) { }
         public void Warn(string message) => Warnings.Add(message);
         public void Error(string message, Exception? ex = null) { }
+    }
+
+    private sealed class FailingTempWriteFileSystem : IFileSystem
+    {
+        public bool FileExists(string path) => File.Exists(path);
+        public string ReadAllText(string path) => File.ReadAllText(path);
+        public void WriteAllText(string path, string content)
+        {
+            File.WriteAllText(path, content[..Math.Min(content.Length, 16)]);
+            throw new IOException("simulated partial write failure");
+        }
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+        public bool DirectoryExists(string path) => Directory.Exists(path);
+        public void CopyFile(string source, string destination, bool overwrite) =>
+            File.Copy(source, destination, overwrite);
+        public void DeleteFile(string path) => File.Delete(path);
     }
 }

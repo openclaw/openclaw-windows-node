@@ -155,9 +155,9 @@ public sealed class GatewayRegistry
             // Atomic write: unique temp file then rename. Keep the registry lock
             // through the move so concurrent saves cannot publish stale snapshots.
             var tempPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
-            _fs.WriteAllText(tempPath, json);
             try
             {
+                _fs.WriteAllText(tempPath, json);
                 File.Move(tempPath, _filePath, overwrite: true);
             }
             catch
