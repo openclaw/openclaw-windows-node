@@ -232,7 +232,6 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         _scrollViewer.SizeChanged -= OnContentSizeChanged;
         _itemsRepeater.SizeChanged -= OnContentSizeChanged;
         _itemsRepeater.ItemsSource = null;
-        _itemsRepeater.ItemTemplate = null;
         _rowFactory.Dispose();
         Content = null;
     }
