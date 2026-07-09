@@ -7,8 +7,7 @@ public static class SpeechSetupReadiness
 {
     public static bool IsChatTtsPlaybackReady(SettingsManager? settings)
     {
-        return settings?.NodeTtsEnabled == true &&
-            !IsConfiguredTtsProviderSetupRequired(settings);
+        return settings?.NodeTtsEnabled == true;
     }
 
     public static bool IsAutomaticChatTtsEnabled(SettingsManager? settings)

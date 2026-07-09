@@ -942,22 +942,11 @@ public sealed partial class ChatPage : Page
 
     private async Task ShowTtsUnavailableDialogAsync()
     {
-        var settings = CurrentApp.Settings;
-        if (settings?.NodeTtsEnabled != true)
-        {
-            await ShowVoiceSettingsDialogAsync(
-                LocalizationHelper.GetString("ChatVoiceDialog_OutputOffTitle"),
-                LocalizationHelper.GetString("ChatVoiceDialog_OutputOffMessage"),
-                LocalizationHelper.GetString("ChatVoiceDialog_OpenPermissionsSettings"),
-                NavigateToPermissionsSettings);
-            return;
-        }
-
         await ShowVoiceSettingsDialogAsync(
-            LocalizationHelper.GetString("ChatVoiceDialog_TtsSetupRequiredTitle"),
-            LocalizationHelper.GetString("ChatVoiceDialog_TtsSetupRequiredMessage"),
-            LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
-            NavigateToVoiceSettings);
+            LocalizationHelper.GetString("ChatVoiceDialog_OutputOffTitle"),
+            LocalizationHelper.GetString("ChatVoiceDialog_OutputOffMessage"),
+            LocalizationHelper.GetString("ChatVoiceDialog_OpenPermissionsSettings"),
+            NavigateToPermissionsSettings);
     }
 
     private static bool ShouldStartSpeakerMuted(SettingsManager? settings)

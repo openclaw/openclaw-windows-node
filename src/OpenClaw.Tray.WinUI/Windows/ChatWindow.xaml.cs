@@ -618,21 +618,11 @@ public sealed partial class ChatWindow : WindowEx
 
     private async Task ShowTtsUnavailableDialogAsync()
     {
-        if (App.Current is not App app || app.Settings?.NodeTtsEnabled != true)
-        {
-            await ShowVoiceSettingsDialogAsync(
-                LocalizationHelper.GetString("ChatVoiceDialog_OutputOffTitle"),
-                LocalizationHelper.GetString("ChatVoiceDialog_OutputOffMessage"),
-                LocalizationHelper.GetString("ChatVoiceDialog_OpenPermissionsSettings"),
-                () => (App.Current as App)?.ShowHub("permissions"));
-            return;
-        }
-
         await ShowVoiceSettingsDialogAsync(
-            LocalizationHelper.GetString("ChatVoiceDialog_TtsSetupRequiredTitle"),
-            LocalizationHelper.GetString("ChatVoiceDialog_TtsSetupRequiredMessage"),
-            LocalizationHelper.GetString("ChatVoiceDialog_OpenVoiceSettings"),
-            () => app.ShowHub("voice"));
+            LocalizationHelper.GetString("ChatVoiceDialog_OutputOffTitle"),
+            LocalizationHelper.GetString("ChatVoiceDialog_OutputOffMessage"),
+            LocalizationHelper.GetString("ChatVoiceDialog_OpenPermissionsSettings"),
+            () => (App.Current as App)?.ShowHub("permissions"));
     }
 
     private static bool ShouldStartSpeakerMuted(SettingsManager? settings)

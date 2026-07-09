@@ -2419,10 +2419,10 @@
     <value>請先下載語音模型，語音轉文字才能正常運作。</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
-    <value>請先選取或下載語音，文字轉語音才能正常運作。</value>
+    <value>所選 TTS 提供者仍需要語音設定；聊天朗讀可以回退到 Windows 語音。</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
-    <value>請先下載語音模型並選取或下載語音，語音轉文字和文字轉語音才能正常運作。</value>
+    <value>請為語音輸入下載語音模型。所選 TTS 提供者也需要語音設定，但聊天朗讀可以回退到 Windows 語音。</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>語音與音訊</value>
@@ -2687,12 +2687,6 @@
   </data>
   <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
     <value>文字轉語音已停用。請先在「權限」中啟用此功能，然後再在聊天中使用朗讀。</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
-    <value>需要語音設定</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
-    <value>文字轉語音已開啟，但需要先設定語音或提供者後，朗讀才會運作。</value>
   </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>開啟語音和音訊設定</value>

@@ -2420,10 +2420,10 @@ Gebruik een van deze opties:
     <value>Download een spraakmodel voordat spraak-naar-tekst kan werken.</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
-    <value>Selecteer of download een stem voordat tekst-naar-spraak kan werken.</value>
+    <value>De geselecteerde TTS-provider heeft nog spraakconfiguratie nodig; hardop voorlezen in chat kan terugvallen op Windows-spraak.</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
-    <value>Download een spraakmodel en selecteer of download een stem voordat spraak-naar-tekst en tekst-naar-spraak kunnen werken.</value>
+    <value>Download een spraakmodel voor spraakinvoer. De geselecteerde TTS-provider heeft ook spraakconfiguratie nodig, hoewel hardop voorlezen in chat kan terugvallen op Windows-spraak.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Spraak en audio</value>
@@ -2688,12 +2688,6 @@ Gebruik een van deze opties:
   </data>
   <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
     <value>Tekst-naar-spraak is uitgeschakeld. Schakel de mogelijkheid in Machtigingen in voordat u hardop voorlezen in chat gebruikt.</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
-    <value>Spraakconfiguratie vereist</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
-    <value>Tekst-naar-spraak is ingeschakeld, maar hardop voorlezen werkt pas nadat een stem of provider is geconfigureerd.</value>
   </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Spraak- en audio-instellingen openen</value>

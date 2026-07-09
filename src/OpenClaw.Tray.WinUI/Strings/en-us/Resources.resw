@@ -2466,10 +2466,10 @@ Use one of these options:
     <value>Download a speech model before speech-to-text can work.</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
-    <value>Select or download a voice before text-to-speech can work.</value>
+    <value>Your selected TTS provider still needs voice setup; chat read aloud can fall back to Windows speech.</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
-    <value>Download a speech model and select or download a voice before speech-to-text and text-to-speech can work.</value>
+    <value>Download a speech model for voice input. Your selected TTS provider also needs voice setup, though chat read aloud can fall back to Windows speech.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Voice &amp; Audio</value>
@@ -2734,12 +2734,6 @@ Use one of these options:
   </data>
   <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
     <value>Text-to-speech is disabled. Enable the capability in Permissions before using read aloud in chat.</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
-    <value>Voice Setup Required</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
-    <value>Text-to-speech is on, but read aloud will not work until a voice or provider is configured.</value>
   </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Open Voice &amp; Audio Settings</value>

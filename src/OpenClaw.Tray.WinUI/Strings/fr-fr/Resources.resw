@@ -2419,10 +2419,10 @@ Utilisez l'une de ces options :
     <value>Téléchargez un modèle de reconnaissance vocale avant que la reconnaissance vocale puisse fonctionner.</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_VoiceSetup" xml:space="preserve">
-    <value>Sélectionnez ou téléchargez une voix avant que la synthèse vocale puisse fonctionner.</value>
+    <value>Le fournisseur TTS sélectionné nécessite encore une configuration vocale ; la lecture à voix haute du chat peut utiliser la synthèse vocale Windows en secours.</value>
   </data>
   <data name="PermissionsPage_VoiceSettingsHelp_Both" xml:space="preserve">
-    <value>Téléchargez un modèle de reconnaissance vocale et sélectionnez ou téléchargez une voix avant que la reconnaissance vocale et la synthèse vocale puissent fonctionner.</value>
+    <value>Téléchargez un modèle de reconnaissance vocale pour la saisie vocale. Le fournisseur TTS sélectionné nécessite aussi une configuration vocale, même si la lecture à voix haute du chat peut utiliser la synthèse vocale Windows en secours.</value>
   </data>
   <data name="VoiceSettingsPage_PageTitle.Text" xml:space="preserve">
     <value>Voix et audio</value>
@@ -2687,12 +2687,6 @@ Utilisez l'une de ces options :
   </data>
   <data name="ChatVoiceDialog_OutputOffMessage" xml:space="preserve">
     <value>La synthèse vocale est désactivée. Activez la capacité dans Autorisations avant d'utiliser la lecture à voix haute dans le chat.</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredTitle" xml:space="preserve">
-    <value>Configuration vocale requise</value>
-  </data>
-  <data name="ChatVoiceDialog_TtsSetupRequiredMessage" xml:space="preserve">
-    <value>La synthèse vocale est activée, mais la lecture à voix haute ne fonctionnera pas tant qu'une voix ou un fournisseur n'aura pas été configuré.</value>
   </data>
   <data name="ChatVoiceDialog_OpenVoiceSettings" xml:space="preserve">
     <value>Ouvrir les paramètres Voix et audio</value>
