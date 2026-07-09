@@ -121,16 +121,23 @@ public class OpenClawChatDataProviderTests
     }
 
     private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots, List<ChatProviderNotification> notifications)
-        CreateProvider(SessionInfo[]? initial = null, string? toolMetaCachePath = null, string? attachmentMetaCachePath = null)
+        CreateProvider(
+            SessionInfo[]? initial = null,
+            string? toolMetaCachePath = null,
+            string? attachmentMetaCachePath = null,
+            string? lastChatStatePath = null,
+            TimeSpan? lastChatStateSaveDelay = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
-        var provider = toolMetaCachePath is null && attachmentMetaCachePath is null
+        var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null && lastChatStateSaveDelay is null
             ? new OpenClawChatDataProvider(bridge)
             : new OpenClawChatDataProvider(
                 bridge,
                 post: null,
                 toolMetaCacheFilePath: toolMetaCachePath ?? Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "tool-metadata.json"),
-                attachmentMetaCacheFilePath: attachmentMetaCachePath);
+                attachmentMetaCacheFilePath: attachmentMetaCachePath,
+                lastChatStateFilePath: lastChatStatePath,
+                lastChatStateSaveDelay: lastChatStateSaveDelay);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
@@ -6642,6 +6649,116 @@ public class OpenClawChatDataProviderTests
         });
         var snap = await provider.LoadAsync();
         Assert.Equal("agent:main:main", snap.DefaultThreadId);
+    }
+
+    [Fact]
+    public async Task RememberSelectedThread_PrefersSelectionAfterReload()
+    {
+        using var temp = new TempDirectory();
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "agent:main:main", IsMain = true, DisplayName = "Main" },
+            new SessionInfo { Key = "agent:main:review", IsMain = false, DisplayName = "Review", Model = "gpt-5.1", Provider = "openai" }
+        };
+        var (_, provider, _, _) = CreateProvider(
+            sessions,
+            lastChatStatePath: Path.Combine(temp.DirectoryPath, "last-chat-state.json"));
+
+        var first = await provider.LoadAsync();
+        Assert.Equal("agent:main:main", first.DefaultThreadId);
+
+        provider.RememberSelectedThread("agent:main:review");
+        var reloaded = await provider.LoadAsync();
+
+        Assert.Equal("agent:main:review", reloaded.DefaultThreadId);
+        Assert.Equal("agent:main:review", provider.CachedLastChatState?.DefaultThreadId);
+        Assert.Equal("Review (main/review)", provider.CachedLastChatState?.ThreadTitle);
+        Assert.Equal("gpt-5.1", provider.CachedLastChatState?.Model);
+        Assert.Equal("openai", provider.CachedLastChatState?.ModelProvider);
+    }
+
+    [Fact]
+    public async Task RememberSelectedThread_FallsBackWhenSelectionDisappears()
+    {
+        using var temp = new TempDirectory();
+        var main = new SessionInfo { Key = "agent:main:main", IsMain = true, DisplayName = "Main" };
+        var review = new SessionInfo { Key = "agent:main:review", IsMain = false, DisplayName = "Review" };
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            new[] { main, review },
+            lastChatStatePath: Path.Combine(temp.DirectoryPath, "last-chat-state.json"));
+
+        await provider.LoadAsync();
+        provider.RememberSelectedThread("agent:main:review");
+        snapshots.Clear();
+
+        bridge.RaiseSessions(new[] { main });
+
+        Assert.Equal("agent:main:main", snapshots[^1].DefaultThreadId);
+        Assert.Equal("agent:main:main", provider.CachedLastChatState?.DefaultThreadId);
+    }
+
+    [Fact]
+    public async Task RememberSelectedThread_CancelsPendingDefaultStateSave()
+    {
+        using var temp = new TempDirectory();
+        var statePath = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        var main = new SessionInfo { Key = "agent:main:main", IsMain = true, DisplayName = "Main" };
+        var review = new SessionInfo { Key = "agent:main:review", IsMain = false, DisplayName = "Review" };
+        var (bridge, provider, _, _) = CreateProvider(
+            new[] { main, review },
+            lastChatStatePath: statePath,
+            lastChatStateSaveDelay: TimeSpan.FromMilliseconds(25));
+
+        bridge.RaiseSessions(new[] { main, review });
+        provider.RememberSelectedThread("agent:main:review");
+
+        await Task.Delay(150);
+
+        var persisted = OpenClawChatDataProvider.LoadLastChatState(statePath);
+        Assert.Equal("agent:main:review", persisted?.DefaultThreadId);
+    }
+
+    [Fact]
+    public async Task RememberSelectedThread_ModelsBeforeSessionsKeepsSavedSelectionPending()
+    {
+        using var temp = new TempDirectory();
+        var statePath = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        await File.WriteAllTextAsync(statePath, JsonSerializer.Serialize(new OpenClawChatDataProvider.LastChatState
+        {
+            DefaultThreadId = "agent:main:review",
+            ThreadTitle = "Review (main/review)",
+            Model = "gpt-5.1",
+            ModelProvider = "openai",
+            AvailableModels = new[] { "gpt-5.0" }
+        }));
+        var main = new SessionInfo { Key = "agent:main:main", IsMain = true, DisplayName = "Main" };
+        var review = new SessionInfo { Key = "agent:main:review", IsMain = false, DisplayName = "Review", Model = "gpt-5.1", Provider = "openai" };
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            lastChatStatePath: statePath,
+            lastChatStateSaveDelay: TimeSpan.FromMilliseconds(25));
+
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = new List<ModelInfo>
+            {
+                new() { Id = "gpt-5.1", Name = "GPT-5.1" }
+            }
+        });
+
+        Assert.Equal("agent:main:review", snapshots[^1].DefaultThreadId);
+        Assert.Equal("agent:main:review", provider.CachedLastChatState?.DefaultThreadId);
+
+        await Task.Delay(150);
+        var persistedBeforeSessions = OpenClawChatDataProvider.LoadLastChatState(statePath);
+        Assert.Equal("agent:main:review", persistedBeforeSessions?.DefaultThreadId);
+
+        bridge.RaiseSessions(new[] { main, review });
+
+        Assert.Equal("agent:main:review", snapshots[^1].DefaultThreadId);
+        Assert.Equal("agent:main:review", provider.CachedLastChatState?.DefaultThreadId);
     }
 
     // ─── RespondToPermissionAsync routes through the RPC bridge ────────────

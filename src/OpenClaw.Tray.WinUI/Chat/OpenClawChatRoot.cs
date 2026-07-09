@@ -145,10 +145,11 @@ public sealed class OpenClawChatRoot : Component
         _scrollToBottomToken = () => scrollToBottomToken.Set(scrollToBottomToken.Value + 1);
         SetSpeakerMuted = muted => speakerMuted.Set(muted);
         var snapshotState = UseState<ChatDataSnapshot?>(null, threadSafe: true);
-        var selectedIdState = UseState<string?>(_initialThreadId, threadSafe: true);
+        var initialSelectedId = _initialThreadId ?? (_provider as OpenClawChatDataProvider)?.CachedLastChatState?.DefaultThreadId;
+        var selectedIdState = UseState<string?>(initialSelectedId, threadSafe: true);
         // UseRef tracks the selected ID across renders so that closures captured
         // inside UseEffect always read the latest value (UseState structs go stale).
-        var selectedIdRef = UseRef<string?>(_initialThreadId);
+        var selectedIdRef = UseRef<string?>(initialSelectedId);
         selectedIdRef.Current = selectedIdState.Value;
 
         UseEffect((Func<Action>)(() =>
@@ -581,6 +582,8 @@ public sealed class OpenClawChatRoot : Component
                 {
                     selectedIdState.Set(id);
                     selectedIdRef.Current = id;
+                    if (_provider is OpenClawChatDataProvider nativeProvider)
+                        nativeProvider.RememberSelectedThread(id);
                 },
                 OnModelChanged: model => ObserveFireAndForget(_provider.SetModelAsync(composerThread.Id!, model)),
                 OnModelCleared: () => ObserveFireAndForget(_provider.ClearModelAsync(composerThread.Id!)),
