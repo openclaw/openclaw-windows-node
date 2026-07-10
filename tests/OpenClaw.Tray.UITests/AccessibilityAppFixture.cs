@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -15,6 +18,10 @@ namespace OpenClaw.Tray.UITests;
 public sealed class AccessibilityAppFixture : IDisposable
 {
     private const int ShowMaximized = 3;
+    private const int VirtualScreenLeft = 76;
+    private const int VirtualScreenTop = 77;
+    private const int VirtualScreenWidth = 78;
+    private const int VirtualScreenHeight = 79;
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan DeepLinkTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
@@ -78,6 +85,76 @@ public sealed class AccessibilityAppFixture : IDisposable
         await WaitForPageMarkerAsync(pageTag, pageMarkerAutomationId);
     }
 
+    public string? CaptureHubScreenshotIfRequested()
+    {
+        var configuredPath = Environment.GetEnvironmentVariable("OPENCLAW_UI_SCREENSHOT_PATH");
+        if (string.IsNullOrWhiteSpace(configuredPath))
+            return null;
+
+        EnsureTargetIsAlive();
+        var foreground = false;
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            _ = ShowWindow(HubWindowHandle, ShowMaximized);
+            _ = BringWindowToTop(HubWindowHandle);
+            _ = SetForegroundWindow(HubWindowHandle);
+            if (GetForegroundWindow() == HubWindowHandle)
+            {
+                foreground = true;
+                break;
+            }
+            Thread.Sleep(100);
+        }
+        if (!foreground)
+            throw new InvalidOperationException("Could not foreground the Hub window for screenshot capture.");
+        Thread.Sleep(500);
+
+        var bounds = AutomationElement.FromHandle(HubWindowHandle).Current.BoundingRectangle;
+        var screenLeft = GetSystemMetrics(VirtualScreenLeft);
+        var screenTop = GetSystemMetrics(VirtualScreenTop);
+        var screenRight = screenLeft + GetSystemMetrics(VirtualScreenWidth);
+        var screenBottom = screenTop + GetSystemMetrics(VirtualScreenHeight);
+        var left = Math.Max(screenLeft, (int)Math.Floor(bounds.Left));
+        var top = Math.Max(screenTop, (int)Math.Floor(bounds.Top));
+        var right = Math.Min(screenRight, (int)Math.Ceiling(bounds.Right));
+        var bottom = Math.Min(screenBottom, (int)Math.Ceiling(bounds.Bottom));
+        var width = right - left;
+        var height = bottom - top;
+        if (width <= 0 || height <= 0)
+            throw new InvalidOperationException($"Hub screenshot bounds were invalid: {width}x{height}.");
+
+        var path = Path.GetFullPath(configuredPath, Environment.CurrentDirectory);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.CopyFromScreen(
+                left,
+                top,
+                0,
+                0,
+                new Size(width, height),
+                CopyPixelOperation.SourceCopy);
+        }
+
+        var sampledColors = new HashSet<int>();
+        var stepX = Math.Max(1, width / 32);
+        var stepY = Math.Max(1, height / 32);
+        for (var y = 0; y < height && sampledColors.Count < 8; y += stepY)
+        {
+            for (var x = 0; x < width && sampledColors.Count < 8; x += stepX)
+                sampledColors.Add(bitmap.GetPixel(x, y).ToArgb());
+        }
+        if (sampledColors.Count < 3)
+            throw new InvalidOperationException("Hub screenshot capture was blank or near-uniform.");
+
+        bitmap.Save(path, ImageFormat.Png);
+
+        if (new FileInfo(path).Length == 0)
+            throw new InvalidOperationException("Hub screenshot capture produced an empty file.");
+        return path;
+    }
+
     private async Task WaitForPageMarkerAsync(string pageTag, string automationId)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -111,7 +188,9 @@ public sealed class AccessibilityAppFixture : IDisposable
         startInfo.Environment["OPENCLAW_TRAY_DATA_DIR"] = _dataDirectory;
         startInfo.Environment["OPENCLAW_SKIP_UPDATE_CHECK"] = "1";
         startInfo.Environment["OPENCLAW_FORCE_ONBOARDING"] = "0";
+        startInfo.Environment["OPENCLAW_LANGUAGE"] = "en-US";
         startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_CHAT"] = "1";
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_SESSIONS"] = "1";
 
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start the OpenClaw tray executable.");
@@ -174,4 +253,18 @@ public sealed class AccessibilityAppFixture : IDisposable
 
     [DllImport("user32.dll")]
     private static extern int ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BringWindowToTop(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 }

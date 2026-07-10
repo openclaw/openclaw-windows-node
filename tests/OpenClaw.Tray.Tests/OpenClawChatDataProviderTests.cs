@@ -175,6 +175,24 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadAsync_DistinguishesDuplicateMultiSegmentSessionTitles()
+    {
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "agent:main:subagent:uuid-b", DisplayName = "Research" },
+            new SessionInfo { Key = "agent:main:subagent:uuid-a", DisplayName = "Research" },
+        };
+        var (_, provider, _, _) = CreateProvider(sessions);
+
+        var snapshot = await provider.LoadAsync();
+
+        Assert.Equal(2, snapshot.Threads.Select(thread => thread.Title)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal("agent:main:subagent:uuid-b", snapshot.Threads[0].Id);
+        Assert.Equal("agent:main:subagent:uuid-a", snapshot.Threads[1].Id);
+    }
+
+    [Fact]
     public async Task LoadAsync_CarriesSessionModelProviderToThreads()
     {
         var session = MainSession();
