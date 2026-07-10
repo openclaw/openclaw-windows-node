@@ -51,6 +51,8 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("OpenTelemetryEndpoint", cs);
         Assert.Contains("OpenTelemetryProtocol", cs);
         Assert.Contains("TryNormalizeOpenTelemetryEndpoint", cs);
+        Assert.Contains("OpenTelemetryEndpointOptions.TryCreateEndpointUri", cs);
+        Assert.Contains("CurrentApp.Settings.OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Grpc", cs);
         Assert.Contains("NotifySettingsSaved", cs);
     }
 

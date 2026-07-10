@@ -725,12 +725,13 @@ public sealed partial class DebugPage : Page
 
         OpenTelemetryEndpointBox.Text = string.Empty;
         CurrentApp.Settings.OpenTelemetryEndpoint = string.Empty;
+        CurrentApp.Settings.OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Grpc;
         CurrentApp.Settings.Save();
         ((IAppCommands)CurrentApp).NotifySettingsSaved();
         _suppressOpenTelemetryEndpointChange = true;
         try
         {
-            SelectOpenTelemetryProtocol(CurrentApp.Settings.OpenTelemetryProtocol);
+            SelectOpenTelemetryProtocol(OpenTelemetryEndpointProtocol.Grpc);
         }
         finally
         {
@@ -804,9 +805,7 @@ public sealed partial class DebugPage : Page
         if (endpoint == null)
             return true;
 
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-            string.IsNullOrWhiteSpace(uri.Host))
+        if (!OpenTelemetryEndpointOptions.TryCreateEndpointUri(endpoint, out _))
         {
             error = LocalizationHelper.GetString("DiagnosticsPage_OpenTelemetryEndpointStatus_InvalidMessage");
             return false;

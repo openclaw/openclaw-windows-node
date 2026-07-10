@@ -87,6 +87,28 @@ public sealed class OpenTelemetryEndpointConnectionTests
         }
     }
 
+    [Theory]
+    [InlineData("http://localhost:4317")]
+    [InlineData("https://collector.example.test:4318/otlp")]
+    public void EndpointOptions_AcceptsPlainCollectorUrls(string endpoint)
+    {
+        var options = OpenTelemetryEndpointOptions.Create(endpoint, OpenTelemetryEndpointProtocol.Grpc);
+
+        Assert.True(options.TryGetEndpointUri(out var uri));
+        Assert.NotNull(uri);
+    }
+
+    [Theory]
+    [InlineData("https://user:password@collector.example.test:4318")]
+    [InlineData("https://collector.example.test:4318/otlp?api_key=secret")]
+    [InlineData("https://collector.example.test:4318/#token=secret")]
+    public void EndpointOptions_RejectsCredentialOrParameterizedUrls(string endpoint)
+    {
+        var options = OpenTelemetryEndpointOptions.Create(endpoint, OpenTelemetryEndpointProtocol.Grpc);
+
+        Assert.False(options.TryGetEndpointUri(out _));
+    }
+
     [Fact]
     public void Apply_SendsOneProbeAndFlushes_ForConfiguredEndpoint()
     {
@@ -173,6 +195,33 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal(1, sinks[0].SendProbeCount);
         Assert.Equal(1, sinks[1].SendProbeCount);
         Assert.Equal(OpenTelemetryEndpointProtocol.HttpProtobuf, connection.CurrentOptions.Protocol);
+    }
+
+    [Fact]
+    public void Apply_OldSinkDisposeFailure_StillAppliesNewOptionsAndLogsWarning()
+    {
+        var sinks = new List<FakeProbeSink>();
+        var warnings = new List<string>();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ =>
+            {
+                var sink = new FakeProbeSink();
+                sinks.Add(sink);
+                return sink;
+            },
+            _ => { },
+            warnings.Add);
+
+        connection.Apply(OpenTelemetryEndpointOptions.Create("http://localhost:4317", OpenTelemetryEndpointProtocol.Grpc));
+        sinks[0].ThrowOnDispose = true;
+        connection.Apply(OpenTelemetryEndpointOptions.Create("http://localhost:4318", OpenTelemetryEndpointProtocol.HttpProtobuf));
+
+        Assert.Equal(2, sinks.Count);
+        Assert.Equal(1, sinks[0].DisposeCount);
+        Assert.False(sinks[1].Disposed);
+        Assert.Equal(OpenTelemetryEndpointConnectionState.Connected, connection.State);
+        Assert.Equal("http://localhost:4318", connection.CurrentOptions.Endpoint);
+        Assert.Contains(warnings, warning => warning.Contains("sink disposal failed", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -273,6 +322,8 @@ public sealed class OpenTelemetryEndpointConnectionTests
         public bool ForceFlushResult { get; init; } = true;
         public Action? OnForceFlush { get; set; }
         public bool Disposed { get; private set; }
+        public int DisposeCount { get; private set; }
+        public bool ThrowOnDispose { get; set; }
         public OpenTelemetryEndpointOptions? LastProbeOptions { get; private set; }
 
         public void SendProbe(OpenTelemetryEndpointOptions options)
@@ -290,6 +341,10 @@ public sealed class OpenTelemetryEndpointConnectionTests
 
         public void Dispose()
         {
+            DisposeCount++;
+            if (ThrowOnDispose)
+                throw new InvalidOperationException("dispose failed");
+
             Disposed = true;
         }
     }

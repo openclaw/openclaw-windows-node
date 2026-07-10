@@ -106,11 +106,11 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
             {
                 newSink = _sinkFactory(options);
                 newSink.SendProbe(options);
-                if (!newSink.ForceFlush(3_000))
+                if (!newSink.ForceFlush(OpenTelemetryOtlpProbeSink.ProbeFlushTimeoutMilliseconds))
                 {
-                    newSink.Dispose();
+                    DisposeProbeSink(newSink, "discarding an unflushed OpenTelemetry probe sink");
                     State = OpenTelemetryEndpointConnectionState.Failed;
-                    LastError = "OpenTelemetry probe did not flush within 3000 ms.";
+                    LastError = $"OpenTelemetry probe did not flush within {OpenTelemetryOtlpProbeSink.ProbeFlushTimeoutMilliseconds} ms.";
                     _currentOptions = options;
                     _logWarn($"OpenTelemetry endpoint probe failed: {LastError}");
                     return;
@@ -118,10 +118,12 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
 
                 if (IsStale(generation))
                 {
-                    newSink.Dispose();
+                    DisposeProbeSink(newSink, "discarding a stale OpenTelemetry probe sink");
                     return;
                 }
 
+                // ForceFlush confirms the SDK processed queued batches; OTLP does not provide
+                // a collector acknowledgment round-trip for this probe.
                 _sink = newSink;
                 newSink = null;
                 _currentOptions = options;
@@ -131,7 +133,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
             }
             catch (Exception ex)
             {
-                newSink?.Dispose();
+                DisposeProbeSink(newSink, "discarding a failed OpenTelemetry probe sink");
                 State = OpenTelemetryEndpointConnectionState.Failed;
                 LastError = ex.Message;
                 _currentOptions = options;
@@ -165,7 +167,22 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     {
         var sink = _sink;
         _sink = null;
-        sink?.Dispose();
+        DisposeProbeSink(sink, "disposing the current OpenTelemetry probe sink");
+    }
+
+    private void DisposeProbeSink(IOpenTelemetryProbeSink? sink, string context)
+    {
+        if (sink == null)
+            return;
+
+        try
+        {
+            sink.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"OpenTelemetry endpoint sink disposal failed while {context}: {ex.Message}");
+        }
     }
 
     private bool IsStale(long? generation) =>
@@ -175,6 +192,8 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
 
 internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 {
+    internal const int ProbeFlushTimeoutMilliseconds = 3_000;
+    private const int DisposeFlushTimeoutMilliseconds = 500;
     private const string ExporterTagKey = "openclaw.exporter";
     private const string ExporterProtocolTagKey = "openclaw.exporter.protocol";
     private const string SignalTagKey = "openclaw.signal";
@@ -279,12 +298,16 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 
     public void Dispose()
     {
-        _tracerProvider.ForceFlush(2_000);
-        _meterProvider.ForceFlush(2_000);
-        _loggerPipeline.ForceFlush(2_000);
-        _tracerProvider.Dispose();
-        _meterProvider.Dispose();
-        _loggerPipeline.Dispose();
+        List<Exception>? errors = null;
+        TryDisposeStep(() => _tracerProvider.ForceFlush(DisposeFlushTimeoutMilliseconds), ref errors);
+        TryDisposeStep(() => _meterProvider.ForceFlush(DisposeFlushTimeoutMilliseconds), ref errors);
+        TryDisposeStep(() => _loggerPipeline.ForceFlush(DisposeFlushTimeoutMilliseconds), ref errors);
+        TryDisposeStep(_tracerProvider.Dispose, ref errors);
+        TryDisposeStep(_meterProvider.Dispose, ref errors);
+        TryDisposeStep(_loggerPipeline.Dispose, ref errors);
+
+        if (errors != null)
+            throw new AggregateException("OpenTelemetry endpoint sink disposal failed.", errors);
     }
 
     private static ResourceBuilder CreateResourceBuilder() =>
@@ -352,6 +375,19 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         new(SignalTagKey, "logs"),
         new(ExporterProtocolTagKey, OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
     ];
+
+    private static void TryDisposeStep(Action step, ref List<Exception>? errors)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception ex)
+        {
+            errors ??= [];
+            errors.Add(ex);
+        }
+    }
 
     private sealed class OpenTelemetryLoggerPipeline : IDisposable
     {

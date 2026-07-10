@@ -17,13 +17,28 @@ internal sealed record OpenTelemetryEndpointOptions(string? Endpoint, string Pro
 
     public bool TryGetEndpointUri(out Uri? uri)
     {
-        uri = null;
         if (!IsEnabled)
+        {
+            uri = null;
+            return false;
+        }
+
+        return TryCreateEndpointUri(Endpoint, out uri);
+    }
+
+    internal static bool TryCreateEndpointUri(string? endpoint, out Uri? uri)
+    {
+        uri = null;
+        var normalized = NormalizeEndpoint(endpoint);
+        if (normalized == null)
             return false;
 
-        if (!Uri.TryCreate(Endpoint, UriKind.Absolute, out var parsed) ||
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var parsed) ||
             (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps) ||
-            string.IsNullOrWhiteSpace(parsed.Host))
+            string.IsNullOrWhiteSpace(parsed.Host) ||
+            !string.IsNullOrEmpty(parsed.UserInfo) ||
+            !string.IsNullOrEmpty(parsed.Query) ||
+            !string.IsNullOrEmpty(parsed.Fragment))
         {
             return false;
         }
