@@ -1003,6 +1003,31 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void ConfigureGateway_TailscaleUsesNativeServeAndDefersPublicUrlUntilEndpointKnown()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "loopback" },
+            18789,
+            "'[]'",
+            new TailscaleConfig { Enabled = true });
+
+        Assert.Contains("openclaw config set gateway.tailscale.mode serve", commands);
+        Assert.Contains("openclaw config set gateway.tailscale.resetOnExit false", commands);
+        Assert.Contains("openclaw config set gateway.auth.allowTailscale true", commands);
+        Assert.DoesNotContain("http://127.0.0.1:18789", commands);
+    }
+
+    [Fact]
+    public void TailscalePolicy_ParsesAuthorizationUrlsAndServeRoutes()
+    {
+        var url = TailscaleSetupPolicy.TryReadAuthorizationUrl("To authenticate, visit https://login.tailscale.com/a/abc_123-now");
+
+        Assert.Equal("https://login.tailscale.com/a/abc_123-now", url!.AbsoluteUri);
+        Assert.True(TailscaleSetupPolicy.ServeStatusRoutesToPort("{\"Backend\":\"http://127.0.0.1:18789\"}", 18789));
+        Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort("{\"Backend\":\"http://127.0.0.1:9999\"}", 18789));
+    }
+
+    [Fact]
     public void ConfigureGateway_EnablesDevicePairPluginWhenPublicUrlOverridden()
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
@@ -2305,6 +2330,77 @@ public class SetupStepsTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task PreflightWindowsTailscale_RequiresRunningMagicDnsClientBeforeCleanup()
+    {
+        var config = new SetupConfig { Tailscale = new TailscaleConfig { Enabled = true } };
+        var commands = new FakeCommandRunner(_ => Ok("""{"BackendState":"Running","Self":{"DNSName":"windows.tailnet.ts.net"}}"""));
+        var ctx = CreateContext(config, commands);
+
+        var result = await new PreflightWindowsTailscaleStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("tailnet.ts.net", ctx.WindowsTailnetDnsSuffix);
+        Assert.Equal("tailnet.ts.net", config.Tailscale.TailnetDnsSuffix);
+        Assert.Contains(commands.Calls, call => call.Arguments.SequenceEqual(["status", "--json"]));
+    }
+
+    [Fact]
+    public async Task AuthorizeTailscale_AuthKeyUsesTransientEnvironmentAndDerivesMagicDnsName()
+    {
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig
+            {
+                Enabled = true,
+                AuthMode = TailscaleAuthMode.AuthKey,
+                AuthKey = "tskey-auth-only-in-memory",
+                AuthTimeoutSeconds = 30,
+            }
+        };
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("tailscale status --json")
+                ? Ok("""{"BackendState":"Running","Self":{"DNSName":"openclaw.tailnet.ts.net"}}""")
+                : Ok());
+        var ctx = CreateContext(config, commands);
+        ctx.WindowsTailnetDnsSuffix = "tailnet.ts.net";
+
+        var result = await new AuthorizeTailscaleStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("openclaw.tailnet.ts.net", ctx.TailscaleDnsName);
+        Assert.Null(config.Tailscale.AuthKey);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("--auth-key=\"$TS_AUTHKEY\""));
+        Assert.Contains(commands.WslEnvironments, environment => environment?["TS_AUTHKEY"] == "tskey-auth-only-in-memory");
+    }
+
+    [Fact]
+    public async Task AuthorizeTailscale_BrowserPresentsUrlWithoutWritingItToSetupState()
+    {
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, AuthTimeoutSeconds = 30 }
+        };
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("tailscale up")
+                ? FailWithStdout("https://login.tailscale.com/a/browser-only-token")
+                : command.Contains("tailscale status --json")
+                    ? Ok("""{"BackendState":"Running","Self":{"DNSName":"openclaw.tailnet.ts.net"}}""")
+                    : Ok());
+        var presenter = new RecordingAuthorizationPresenter();
+        var ctx = CreateContext(config, commands);
+        ctx.WindowsTailnetDnsSuffix = "tailnet.ts.net";
+        ctx.ExternalAuthorizationPresenter = presenter;
+
+        var result = await new AuthorizeTailscaleStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Tailscale", presenter.Request!.Provider);
+        Assert.Equal("https://login.tailscale.com/a/browser-only-token", presenter.Request.AuthorizationUri.AbsoluteUri);
+    }
+
     private sealed class FakeCommandRunner(
         Func<string[], CommandResult> run,
         Func<string, string, TimeSpan, CommandResult>? runInWsl = null) : ICommandRunner
@@ -2312,6 +2408,7 @@ public class SetupStepsTests : IDisposable
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
         public List<(string Executable, string[] Arguments, string? StdinInput)> DetailedCalls { get; } = [];
         public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin)> WslCalls { get; } = [];
+        public List<IReadOnlyDictionary<string, string>?> WslEnvironments { get; } = [];
 
         public Task<CommandResult> RunAsync(
             string executable,
@@ -2337,10 +2434,22 @@ public class SetupStepsTests : IDisposable
             bool inputViaStdin = false)
         {
             WslCalls.Add((distroName, command, timeout, user, inputViaStdin));
+            WslEnvironments.Add(environment);
             if (runInWsl == null)
                 throw new NotSupportedException("RunInWslAsync is not expected in these tests.");
 
             return Task.FromResult(runInWsl(distroName, command, timeout));
+        }
+    }
+
+    private sealed class RecordingAuthorizationPresenter : IExternalAuthorizationPresenter
+    {
+        public ExternalAuthorizationRequest? Request { get; private set; }
+
+        public Task PresentAsync(ExternalAuthorizationRequest request, CancellationToken cancellationToken)
+        {
+            Request = request;
+            return Task.CompletedTask;
         }
     }
 }

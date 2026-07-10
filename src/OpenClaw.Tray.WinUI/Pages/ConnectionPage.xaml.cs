@@ -1076,6 +1076,7 @@ public sealed partial class ConnectionPage : Page
             RecoveryCategory.Scope => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderScope"),
             RecoveryCategory.Tls => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderTls"),
             RecoveryCategory.RateLimited => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderRateLimited"),
+            RecoveryCategory.Tailscale => "Check Tailscale access",
             _ => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderServer"),
         };
 
@@ -1121,6 +1122,12 @@ public sealed partial class ConnectionPage : Page
             {
                 LocalizationHelper.GetString("ConnectionPage_RecoveryRateLimitedBullet1"),
                 LocalizationHelper.GetString("ConnectionPage_RecoveryRateLimitedBullet2"),
+            },
+            RecoveryCategory.Tailscale => new[]
+            {
+                "Confirm Tailscale is running and signed in on this Windows PC.",
+                "Confirm this PC and the generated WSL gateway belong to the same tailnet.",
+                "Open the managed WSL gateway terminal and check tailscaled, Tailscale Serve, and the OpenClaw gateway service.",
             },
             _ => new[]
             {

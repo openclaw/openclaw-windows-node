@@ -94,6 +94,28 @@ wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "ls -ld /home/openclaw/.o
 
 Do not run `systemctl --user` as `root`; that checks root's user service manager, not the gateway's service.
 
+## Inspect an optional Tailscale Serve endpoint
+
+When the setup review enabled **Tailnet access with Tailscale Serve**, the generated distro runs its own Tailscale daemon. The Windows Companion intentionally uses the generated `wss://<node>.<tailnet>.ts.net` endpoint; it does not silently fall back to localhost.
+
+Windows must also have Tailscale installed and signed in to the same tailnet. These checks do not print credentials:
+
+```powershell
+# Windows Companion side: confirm this PC is connected to Tailscale.
+& "$env:ProgramFiles\Tailscale\tailscale.exe" status --json
+
+# WSL side: confirm the daemon is connected and has a MagicDNS name.
+wsl.exe -d OpenClawGateway --user root -- tailscale status --json
+
+# Confirm Serve routes tailnet HTTPS to the loopback OpenClaw gateway port.
+wsl.exe -d OpenClawGateway --user openclaw -- tailscale serve status --json
+
+# Check the OpenClaw gateway itself; it remains loopback-bound inside WSL.
+wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "systemctl --user status openclaw-gateway.service --no-pager || true"
+```
+
+The setup trusts Tailscale identity headers for this tailnet-only gateway (`gateway.auth.allowTailscale=true`). Tailnet ACLs therefore control who may reach this authentication path; token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
+
 ## Use root instead of sudo
 
 There is no interactive sudo password prompt. Open a root shell only when you intentionally need to inspect or change protected files:

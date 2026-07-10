@@ -27,10 +27,19 @@ public static class SetupReviewSummaryBuilder
             : $"Fetched over HTTPS from {installerHost}; runs as a non-root {Display(config.Wsl.User, "openclaw")} user inside the instance.";
         var installerBadge = installerHost is null ? "Invalid URL" : "HTTPS";
         var isLanBind = gatewayBind.Equals("lan", StringComparison.OrdinalIgnoreCase);
-        var gatewayDescription = isLanBind
+        var tailscaleEnabled = config.Tailscale.Enabled;
+        var tailnetDnsSuffix = config.Tailscale.TailnetDnsSuffix?.Trim().Trim('.');
+        var tailscaleEndpoint = string.IsNullOrWhiteSpace(tailnetDnsSuffix)
+            ? $"wss://{config.Tailscale.EffectiveHostname}.<tailnet>.ts.net"
+            : $"wss://{config.Tailscale.EffectiveHostname}.{tailnetDnsSuffix}";
+        var gatewayDescription = tailscaleEnabled
+            ? "Tailscale Serve enabled — the gateway stays loopback-only, trusts tailnet identity authentication, and Companion connects over private HTTPS/WSS."
+            : isLanBind
             ? "LAN bind enabled — reachable from this PC and your local network according to Windows firewall/routing."
             : "Loopback only — not reachable from your network or the internet.";
-        var gatewayEndpoint = isLanBind ? $"LAN:{gatewayPort}" : $"127.0.0.1:{gatewayPort}";
+        var gatewayEndpoint = tailscaleEnabled
+            ? tailscaleEndpoint
+            : isLanBind ? $"LAN:{gatewayPort}" : $"127.0.0.1:{gatewayPort}";
         var wslCommand = "wsl " + string.Join(' ', WslInstallSupport.BuildDirectInstallArgs(baseDistro, distroName, installPath));
         var installCommand = string.IsNullOrWhiteSpace(config.Gateway.Version)
             ? "curl -fsSL --proto '=https' --tlsv1.2 <install-url> | bash"
@@ -45,12 +54,16 @@ public static class SetupReviewSummaryBuilder
             GatewayEndpoint: gatewayEndpoint,
             ExactCommands: string.Join(
                 Environment.NewLine,
-                wslCommand,
-                installCommand,
-                $"openclaw config set gateway.bind {gatewayBind} · port {gatewayPort}",
-                "openclaw gateway install --force   (systemd --user service)",
-                $"writes -> {installPath}",
-                $"writes -> {gatewayDataPath} + identity"),
+                new[]
+                {
+                    wslCommand,
+                    installCommand,
+                    $"openclaw config set gateway.bind {gatewayBind} · port {gatewayPort}",
+                    tailscaleEnabled ? "install tailscale · tailscale up · openclaw Tailscale Serve" : null,
+                    "openclaw gateway install --force   (systemd --user service)",
+                    $"writes -> {installPath}",
+                    $"writes -> {gatewayDataPath} + identity"
+                }.Where(line => line is not null)),
             CompletionGatewaySummary: $"{distroName} · {gatewayEndpoint}");
     }
 

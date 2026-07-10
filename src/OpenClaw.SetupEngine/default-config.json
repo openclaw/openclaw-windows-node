@@ -38,6 +38,13 @@
   "LogPath": null,
   // Override gateway WebSocket URL (null = ws://localhost:{GatewayPort})
   "GatewayUrl": null,
+  // Optional tailnet-only HTTPS/WSS endpoint for the generated WSL gateway.
+  "Tailscale": {
+    "Enabled": false,
+    "AuthMode": "Browser",
+    "Hostname": null,
+    "AuthTimeoutSeconds": 300
+  },
   // Pre-shared bootstrap token (null = auto-mint during setup)
   "BootstrapToken": null,
   // Rollback completed steps on failure (transactional undo)

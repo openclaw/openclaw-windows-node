@@ -117,6 +117,8 @@ internal enum RecoveryCategory
     Tls,
     /// <summary>Gateway is temporarily rate-limiting this client.</summary>
     RateLimited,
+    /// <summary>A managed Tailscale endpoint cannot be reached from this Companion.</summary>
+    Tailscale,
 }
 
 /// <summary>
@@ -442,6 +444,28 @@ internal sealed record ConnectionPagePlan
         var err = ConnectionCardPlanSanitizer.Sanitize(errRaw);
         var category = ClassifyError(err);
         var url = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(rec?.Url ?? snap.GatewayUrl);
+
+        if (category == RecoveryCategory.Network && IsTailscaleEndpoint(rec?.Url ?? snap.GatewayUrl))
+        {
+            return new ConnectionPagePlan
+            {
+                Mode = ConnectionPageMode.Recovery,
+                Recovery = RecoveryCategory.Tailscale,
+                StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusErr,
+                StripAccent = ConnectionAccent.Critical,
+                StripHeadline = "Tailscale gateway unavailable",
+                StripSub = string.IsNullOrEmpty(err)
+                    ? $"Can't reach the private tailnet endpoint {url}."
+                    : err,
+                StripPrimaryLabel = "Retry",
+                StripPrimaryAction = ConnectionPrimaryAction.Retry,
+                RecoveryDetail = err,
+                ActiveGatewayDisplayName = name,
+                ActiveGatewayDetailLine = url,
+                ActiveGatewayHasSshTunnel = false,
+                RelevantGatewayId = rec?.Id,
+            };
+        }
 
         return category switch
         {
@@ -856,6 +880,21 @@ internal sealed record ConnectionPagePlan
             OpenClaw.Shared.GatewayErrorKind.PairingRequired => RecoveryCategory.Auth,
             _ => RecoveryCategory.Network,
         };
+    }
+
+    private static bool IsTailscaleEndpoint(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            return false;
+
+        var host = uri.Host;
+        if (host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var parts = host.Split('.');
+        return parts.Length == 4 &&
+               int.TryParse(parts[0], out var first) && first == 100 &&
+               int.TryParse(parts[1], out var second) && second is >= 64 and <= 127;
     }
 
     private static string FormatUptime(long uptimeMs)

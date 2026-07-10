@@ -27,6 +27,9 @@ public static class Program
         var localDataDir = GetArg(args, "--local-data-dir");
         var distroName = GetArg(args, "--distro-name");
         var gatewayPortText = GetArg(args, "--gateway-port");
+        var tailscale = HasFlag(args, "--tailscale");
+        var tailscaleAuth = GetArg(args, "--tailscale-auth");
+        var tailscaleHostname = GetArg(args, "--tailscale-hostname");
         var autoStartName = GetArg(args, "--autostart-name") ?? "OpenClawTray";
         var startupTaskName = GetArg(args, "--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
 
@@ -67,6 +70,19 @@ public static class Program
             config.GatewayPort = gatewayPort;
             config.GatewayUrl = null;
         }
+        if (tailscale)
+            config.Tailscale.Enabled = true;
+        if (!string.IsNullOrWhiteSpace(tailscaleAuth))
+        {
+            if (!TailscaleConfig.TryParseAuthMode(tailscaleAuth, out var authMode))
+            {
+                Console.Error.WriteLine($"ERROR: Invalid --tailscale-auth value '{tailscaleAuth}'. Use browser or auth-key.");
+                return 2;
+            }
+            config.Tailscale.AuthMode = authMode;
+        }
+        if (!string.IsNullOrWhiteSpace(tailscaleHostname))
+            config.Tailscale.Hostname = tailscaleHostname;
         GatewayLkgVersion.ApplyToConfig(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
@@ -75,6 +91,12 @@ public static class Program
         if (logPath != null) config.LogPath = logPath;
         if (dryRun) config.DryRun = true;
         if (confirmDestructive) config.ConfirmDestructive = true;
+
+        if (TailscaleSetupPolicy.ValidateConfig(config) is { } tailscaleConfigError)
+        {
+            Console.Error.WriteLine($"ERROR: {tailscaleConfigError}");
+            return 2;
+        }
 
         // Default log path if not specified
         var logLabel = uninstall ? "uninstall" : "setup";
@@ -137,7 +159,8 @@ public static class Program
             commands,
             cts.Token,
             dataDir,
-            localDataDir);
+            localDataDir,
+            new ConsoleExternalAuthorizationPresenter());
 
         // Build step pipeline
         List<SetupStep> steps;

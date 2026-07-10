@@ -34,6 +34,7 @@ public sealed class SetupConfig
     public TraySettingsConfig Settings { get; set; } = new();
     public PairingConfig Pairing { get; set; } = new();
     public WindowsNodeContextConfig WindowsNodeContext { get; set; } = new();
+    public TailscaleConfig Tailscale { get; set; } = new();
 
     public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://localhost:{GatewayPort}";
 
@@ -55,6 +56,15 @@ public sealed class SetupConfig
             config.Headless = true;
         if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_LOG_PATH") is { Length: > 0 } logPath)
             config.LogPath = logPath;
+        if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE") is "1" or "true")
+            config.Tailscale.Enabled = true;
+        if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_AUTH") is { Length: > 0 } authMode &&
+            TailscaleConfig.TryParseAuthMode(authMode, out var parsedAuthMode))
+            config.Tailscale.AuthMode = parsedAuthMode;
+        if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_HOSTNAME") is { Length: > 0 } hostname)
+            config.Tailscale.Hostname = hostname;
+        if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_AUTH_KEY") is { Length: > 0 } authKey)
+            config.Tailscale.AuthKey = authKey;
 
         return config;
     }
@@ -298,6 +308,64 @@ public sealed class WindowsNodeContextConfig
     public int TimeoutSeconds { get; set; } = 180;
 }
 
+// ─── Tailscale Serve Configuration ───
+
+[JsonConverter(typeof(JsonStringEnumConverter<TailscaleAuthMode>))]
+public enum TailscaleAuthMode
+{
+    Browser,
+    AuthKey
+}
+
+public sealed class TailscaleConfig
+{
+    public bool Enabled { get; set; }
+    public TailscaleAuthMode AuthMode { get; set; } = TailscaleAuthMode.Browser;
+    public string? Hostname { get; set; }
+    public int AuthTimeoutSeconds { get; set; } = 300;
+
+    [JsonIgnore]
+    public string? AuthKey { get; set; }
+
+    // Discovered from Windows Tailscale status. Keep this runtime-only so a
+    // previously observed tailnet is never persisted as setup input.
+    [JsonIgnore]
+    public string? TailnetDnsSuffix { get; set; }
+
+    public string EffectiveHostname => TailscaleSetupPolicy.NormalizeHostname(
+        Hostname,
+        Environment.MachineName);
+
+    internal static bool TryParseAuthMode(string value, out TailscaleAuthMode mode)
+    {
+        var normalized = value.Trim().Replace("-", string.Empty, StringComparison.Ordinal);
+        return Enum.TryParse(normalized, ignoreCase: true, out mode);
+    }
+}
+
+public sealed record ExternalAuthorizationRequest(
+    string Provider,
+    Uri AuthorizationUri,
+    string Message);
+
+public interface IExternalAuthorizationPresenter
+{
+    Task PresentAsync(ExternalAuthorizationRequest request, CancellationToken cancellationToken);
+}
+
+public sealed class ConsoleExternalAuthorizationPresenter : IExternalAuthorizationPresenter
+{
+    public Task PresentAsync(ExternalAuthorizationRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Console.WriteLine();
+        Console.WriteLine(request.Message);
+        Console.WriteLine(request.AuthorizationUri.AbsoluteUri);
+        Console.WriteLine();
+        return Task.CompletedTask;
+    }
+}
+
 // ─── Step Result ───
 
 public enum StepOutcome { Success, Skipped, Failed, FailedTerminal }
@@ -330,6 +398,9 @@ public sealed class SetupContext
     public string? GatewayRecordId { get; set; }
     public string? OperatorDeviceId { get; set; }
     public string? NodeDeviceId { get; set; }
+    public string? WindowsTailnetDnsSuffix { get; set; }
+    public string? TailscaleDnsName { get; set; }
+    public IExternalAuthorizationPresenter? ExternalAuthorizationPresenter { get; set; }
 
     // Data directory for gateway registry and identity files
     public string DataDir { get; }
@@ -345,13 +416,15 @@ public sealed class SetupContext
         ICommandRunner commands,
         CancellationToken ct,
         string? dataDir = null,
-        string? localDataDir = null)
+        string? localDataDir = null,
+        IExternalAuthorizationPresenter? externalAuthorizationPresenter = null)
     {
         Config = config;
         Logger = logger;
         Journal = journal;
         Commands = commands;
         CancellationToken = ct;
+        ExternalAuthorizationPresenter = externalAuthorizationPresenter;
 
         DataDir = dataDir ?? ResolveDataDir();
         LocalDataDir = localDataDir ?? ResolveLocalDataDir();
