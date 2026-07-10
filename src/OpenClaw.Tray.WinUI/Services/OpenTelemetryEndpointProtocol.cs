@@ -19,4 +19,6 @@ internal static class OpenTelemetryEndpointProtocol
 
     public static string ToDisplayName(string? value) =>
         Normalize(value) == HttpProtobuf ? "OTLP/HTTP" : "OTLP/gRPC";
+
+    public static string ToTelemetryValue(string? value) => Normalize(value);
 }

@@ -1,8 +1,8 @@
-using System.Diagnostics;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClawTray.Services;
 
@@ -21,8 +21,6 @@ internal interface IOpenTelemetryProbeSink : IDisposable
 
 internal sealed class OpenTelemetryEndpointConnection : IDisposable
 {
-    internal const string ProbeActivityName = "openclaw.telemetry.probe";
-
     private readonly object _gate = new();
     private readonly Func<OpenTelemetryEndpointOptions, IOpenTelemetryProbeSink> _sinkFactory;
     private readonly Action<string> _logInfo;
@@ -172,8 +170,6 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
 
 internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 {
-    private const string ActivitySourceName = "OpenClaw.Companion.TelemetryProbe";
-    private static readonly ActivitySource s_activitySource = new(ActivitySourceName);
     private readonly TracerProvider _provider;
 
     private OpenTelemetryOtlpProbeSink(TracerProvider provider)
@@ -189,13 +185,13 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         var provider = Sdk.CreateTracerProviderBuilder()
             .SetResourceBuilder(ResourceBuilder.CreateDefault()
                 .AddService(
-                    serviceName: "OpenClaw.Companion",
+                    serviceName: OpenClawResourceNames.Tray,
                     serviceVersion: typeof(OpenTelemetryOtlpProbeSink).Assembly.GetName().Version?.ToString())
                 .AddAttributes(new Dictionary<string, object>
                 {
                     ["process.pid"] = Environment.ProcessId
                 }))
-            .AddSource(ActivitySourceName)
+            .AddSource(OpenClawActivitySources.ExportedNames.ToArray())
             .AddOtlpExporter(exporter =>
             {
                 exporter.Endpoint = endpoint;
@@ -210,12 +206,21 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 
     public void SendProbe(OpenTelemetryEndpointOptions options)
     {
-        using var activity = s_activitySource.StartActivity(
-            OpenTelemetryEndpointConnection.ProbeActivityName,
-            ActivityKind.Internal);
-        activity?.SetTag("openclaw.telemetry.protocol", OpenTelemetryEndpointProtocol.ToDisplayName(options.Protocol));
-        activity?.SetTag("openclaw.telemetry.probe", true);
-        activity?.SetStatus(ActivityStatusCode.Ok);
+        OpenClawTelemetry.Trace(
+            OpenClawActivitySources.OpenClawSource,
+            "openclaw.telemetry.exporter.probe",
+            static () => { },
+            [
+                OpenClawTelemetryTag.String(
+                    OpenClawTelemetryTags.Exporter,
+                    "tray-otel"),
+                OpenClawTelemetryTag.String(
+                    OpenClawTelemetryTags.Signal,
+                    "traces"),
+                OpenClawTelemetryTag.String(
+                    OpenClawTelemetryTags.ExporterProtocol,
+                    OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
+            ]);
     }
 
     public bool ForceFlush(int timeoutMilliseconds) => _provider.ForceFlush(timeoutMilliseconds);

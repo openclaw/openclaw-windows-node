@@ -1,4 +1,5 @@
 using OpenClawTray.Services;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -22,6 +23,28 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal(0, created);
         Assert.Equal(OpenTelemetryEndpointConnectionState.Disabled, connection.State);
         Assert.False(connection.CurrentOptions.IsEnabled);
+    }
+
+    [Fact]
+    public void Probe_UsesGatewayAlignedTelemetryConstants()
+    {
+        Assert.Contains(OpenClawActivitySources.OpenClaw, OpenClawActivitySources.ExportedNames);
+        Assert.Equal("openclaw-windows-tray", OpenClawResourceNames.Tray);
+        Assert.Equal("grpc", OpenTelemetryEndpointProtocol.ToTelemetryValue(OpenTelemetryEndpointProtocol.Grpc));
+        Assert.Equal("http/protobuf", OpenTelemetryEndpointProtocol.ToTelemetryValue(OpenTelemetryEndpointProtocol.HttpProtobuf));
+    }
+
+    [Fact]
+    public void ProviderRuntime_IsAppLevel_NotDebugPageOwned()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var debugPage = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs"));
+
+        Assert.Contains("_openTelemetryConnection = new OpenTelemetryEndpointConnection();", app);
+        Assert.Contains("ApplyOpenTelemetryEndpointSettings();", app);
+        Assert.Contains("OnSettingsSaved", app);
+        Assert.DoesNotContain("new OpenTelemetryEndpointConnection", debugPage);
     }
 
     [Fact]
