@@ -1018,13 +1018,49 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void TailscalePolicy_ParsesAuthorizationUrlsAndServeRoutes()
+    public void TailscalePolicy_ParsesAuthorizationUrlsAndOnlyAcceptsGatewayServeProxy()
     {
         var url = TailscaleSetupPolicy.TryReadAuthorizationUrl("To authenticate, visit https://login.tailscale.com/a/abc_123-now");
+        const string expectedServeStatus = """
+            {
+              "TCP": { "443": { "HTTPS": true } },
+              "Web": {
+                "openclaw.example.ts.net:443": {
+                  "Handlers": {
+                    "/": { "Proxy": "http://127.0.0.1:18789" }
+                  }
+                }
+              }
+            }
+            """;
+        const string wrongBackendStatus = """
+            {
+              "Web": {
+                "openclaw.example.ts.net:443": {
+                  "Handlers": {
+                    "/": { "Proxy": "http://127.0.0.1:9999" }
+                  }
+                }
+              }
+            }
+            """;
+        const string unrelatedPortStatus = """
+            {
+              "TCP": { "18789": { "HTTPS": true } },
+              "Web": {
+                "openclaw.example.ts.net:443": {
+                  "Handlers": {
+                    "/": { "Proxy": "http://127.0.0.1:9999" }
+                  }
+                }
+              }
+            }
+            """;
 
         Assert.Equal("https://login.tailscale.com/a/abc_123-now", url!.AbsoluteUri);
-        Assert.True(TailscaleSetupPolicy.ServeStatusRoutesToPort("{\"Backend\":\"http://127.0.0.1:18789\"}", 18789));
-        Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort("{\"Backend\":\"http://127.0.0.1:9999\"}", 18789));
+        Assert.True(TailscaleSetupPolicy.ServeStatusRoutesToPort(expectedServeStatus, 18789));
+        Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort(wrongBackendStatus, 18789));
+        Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort(unrelatedPortStatus, 18789));
     }
 
     [Fact]

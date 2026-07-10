@@ -85,10 +85,54 @@ public static partial class TailscaleSetupPolicy
             : null;
     }
 
-    public static bool ServeStatusRoutesToPort(string status, int port) =>
-        status.Contains($"127.0.0.1:{port}", StringComparison.OrdinalIgnoreCase) ||
-        status.Contains($"localhost:{port}", StringComparison.OrdinalIgnoreCase) ||
-        status.Contains($"\"{port}\"", StringComparison.Ordinal);
+    /// <summary>
+    /// Verifies that a Tailscale Serve status document has an actual Web handler
+    /// proxying to the generated gateway's loopback HTTP port. Do not accept a
+    /// matching port elsewhere in the document: TCP listeners and unrelated
+    /// handlers do not prove that this gateway endpoint routes to OpenClaw.
+    /// </summary>
+    public static bool ServeStatusRoutesToPort(string status, int port)
+    {
+        if (port is <= 0 or > 65535)
+            return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(status);
+            if (!document.RootElement.TryGetProperty("Web", out var web) || web.ValueKind != JsonValueKind.Object)
+                return false;
+
+            foreach (var webEndpoint in web.EnumerateObject())
+            {
+                if (!webEndpoint.Value.TryGetProperty("Handlers", out var handlers) || handlers.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                foreach (var handler in handlers.EnumerateObject())
+                {
+                    if (handler.Value.ValueKind != JsonValueKind.Object ||
+                        !handler.Value.TryGetProperty("Proxy", out var proxy) ||
+                        proxy.ValueKind != JsonValueKind.String)
+                        continue;
+
+                    if (IsLoopbackGatewayProxy(proxy.GetString(), port))
+                        return true;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Serve has not produced a usable JSON status document.
+        }
+
+        return false;
+    }
+
+    private static bool IsLoopbackGatewayProxy(string? proxy, int port) =>
+        Uri.TryCreate(proxy, UriKind.Absolute, out var uri) &&
+        uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+        uri.Port == port &&
+        (uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+         uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase));
 
     [GeneratedRegex("[^a-z0-9-]+", RegexOptions.CultureInvariant)]
     private static partial Regex InvalidHostnameCharacters();
