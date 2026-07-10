@@ -138,6 +138,18 @@ public class GatewayUrlHelperTests
     }
 
     [Theory]
+    [InlineData("wss://example.com/path?token=secret", "wss://example.com/path")]
+    [InlineData("wss://example.com/path#access_token=secret", "wss://example.com/path")]
+    [InlineData("wss://user:pass@example.com/path?token=secret#access_token=fragment-secret", "wss://example.com/path")]
+    public void SanitizeForDisplay_RemovesQueryAndFragmentSecrets(string inputUrl, string expectedUrl)
+    {
+        var sanitized = GatewayUrlHelper.SanitizeForDisplay(inputUrl);
+
+        Assert.Equal(expectedUrl, sanitized);
+        Assert.DoesNotContain("secret", sanitized);
+    }
+
+    [Theory]
     [InlineData("ws://localhost:18789")]
     [InlineData("wss://host.tailnet.ts.net")]
     [InlineData("http://localhost:18789")]

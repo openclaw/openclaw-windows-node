@@ -63,7 +63,7 @@ The capability list lives on `NodeService`, *not* on `WindowsNodeClient`. That s
 `OpenClaw.Shared/Mcp/McpToolBridge.cs` is transport-agnostic JSON-RPC 2.0. It implements:
 
 - `initialize` — protocol version `2024-11-05`, server info.
-- `tools/list` — flattens `_capabilities` into MCP tools. Tool name = command name (`"screen.snapshot"`); description = `"{category} capability: {command}"`; `inputSchema` is permissive.
+- `tools/list` — flattens `_capabilities` into MCP tools. Tool name = command name (`"screen.snapshot"`); known commands get curated descriptions from `McpToolBridge.CommandDescriptions`; unknown commands fall back to `"{category} capability: {command}"`. `inputSchema` is permissive.
 - `tools/call` — finds the capability via `INodeCapability.CanHandle(name)`, builds a `NodeInvokeRequest` (the same struct the gateway path uses), calls `ExecuteAsync`, wraps the result as MCP `content[].text`. Tool failures come back as `result.isError = true`, not JSON-RPC errors (per MCP spec — JSON-RPC errors are reserved for protocol issues).
 - `ping`, `notifications/initialized` — protocol housekeeping.
 
@@ -173,7 +173,15 @@ Local MCP-only app control commands currently include:
 
 - `app.navigate`, `app.status`, `app.sessions`, `app.agents`, `app.nodes`, `app.config.get`, `app.settings.get`, `app.settings.set`, `app.menu`, `app.search`, `app.dashboard.url`
 - Chat automation: `app.chat.snapshot`, `app.chat.send`, `app.chat.reset`
-- Connection automation: `app.connection.applySetupCode`, `app.connection.connectSharedToken`, `app.connection.pendingApprovals`, `app.connection.approveDevicePairing`, `app.connection.rejectDevicePairing`, `app.connection.approveNodePairing`, `app.connection.rejectNodePairing`, `app.connection.reconnect`, `app.connection.reconnectNode`
+- Connection diagnostics/automation: `app.connection.status`, `app.connection.gateways`, `app.connection.applySetupCode`, `app.connection.connectSharedToken`, `app.connection.pendingApprovals`, `app.connection.approveDevicePairing`, `app.connection.rejectDevicePairing`, `app.connection.approveNodePairing`, `app.connection.rejectNodePairing`, `app.connection.reconnect`, `app.connection.reconnectNode`
+
+For connection troubleshooting, prefer `app.connection.status` over the older
+`app.status` summary. It is read-only and returns the manager-owned
+operator/node snapshot, active gateway metadata, credential source/status,
+MCP listener state, browser-proxy shared-token caveat, pending approval commands,
+retry hints inferred from recent diagnostics, and recent diagnostic events.
+`app.connection.gateways` lists saved gateway records with credential presence
+booleans only; it never returns token values.
 
 Example chat automation smoke:
 

@@ -284,6 +284,28 @@ public class McpToolBridge
             "READ-ALL: List native chat outgoing queue entries. Args: threadId/sessionKey (string, optional; omit to return all queued threads). Returns { defaultThreadId, requestedThreadId, totalCount, selectedThread, threads: [{ threadId, count, messages: [{ id, text, createdAt, sendState, errorText, canCancel }] }] }.",
         ["app.chat.queue.cancel"] =
             "Cancel/remove one native chat outgoing queue entry before it is sent. Args: queuedMessageId (string, required), threadId/sessionKey (string, required; use the threadId returned by app.chat.queue.list or app.chat.snapshot). Only Queued/Failed entries can be removed; Sending entries may already have reached the gateway. Returns { canceled, threadId, queuedMessageId, remainingCount, error? }.",
+        ["app.connection.status"] =
+            "READ-ONLY local MCP connection diagnostics. No args. Returns effective mode/state, active gateway metadata, operator/node credential resolution, MCP runtime state, browser proxy caveat, pending approval actions, retry hints, and recent diagnostic events.",
+        ["app.connection.gateways"] =
+            "READ-ONLY saved gateway diagnostics. No args. Returns { activeGatewayId, count, gateways[] } with per-gateway id/name/url, active flag, lastConnected, credential presence booleans, SSH/browser-proxy configuration, and no token values.",
+        ["app.connection.applySetupCode"] =
+            "Apply a setup/QR code to create or update the active gateway record and connect. Args: setupCode (string, required). Local MCP-only; not advertised to the gateway node transport. Returns { outcome, error, gatewayUrl, connected }.",
+        ["app.connection.connectSharedToken"] =
+            "Connect the tray to a gateway using a shared token. Args: gatewayUrl (string, required), token (string, required). Persists the gateway record and active gateway. Local MCP-only. Returns { outcome, error, gatewayUrl, connected }.",
+        ["app.connection.pendingApprovals"] =
+            "READ-ONLY pending pairing approval snapshot from the connected gateway. No args. Returns { connected, error, totalPending, devicePending[], nodePending[] }.",
+        ["app.connection.approveDevicePairing"] =
+            "Approve a pending device pairing request through the connected operator client. Args: requestId or id (string, required). Local MCP-only. Returns the refreshed pending approvals payload plus decision metadata.",
+        ["app.connection.rejectDevicePairing"] =
+            "Reject a pending device pairing request through the connected operator client. Args: requestId or id (string, required). Local MCP-only. Returns the refreshed pending approvals payload plus decision metadata.",
+        ["app.connection.approveNodePairing"] =
+            "Approve a pending Windows node pairing or command-trust request through the connected operator client. Args: requestId or id (string, required). Local MCP-only. Returns the refreshed pending approvals payload plus decision metadata.",
+        ["app.connection.rejectNodePairing"] =
+            "Reject a pending Windows node pairing or command-trust request through the connected operator client. Args: requestId or id (string, required). Local MCP-only. Returns the refreshed pending approvals payload plus decision metadata.",
+        ["app.connection.reconnect"] =
+            "Reconnect the active gateway through GatewayConnectionManager. No args. Local MCP-only. Returns { reconnected, error? }.",
+        ["app.connection.reconnectNode"] =
+            "Reconnect only the Windows node role for the active gateway through GatewayConnectionManager. No args. Local MCP-only. Returns { reconnected, error? }.",
 
         // location.*
         ["location.get"] =
