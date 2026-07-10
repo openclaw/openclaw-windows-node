@@ -723,20 +723,21 @@ public sealed partial class DebugPage : Page
         if (CurrentApp.Settings == null)
             return;
 
-        OpenTelemetryEndpointBox.Text = string.Empty;
-        CurrentApp.Settings.OpenTelemetryEndpoint = string.Empty;
-        CurrentApp.Settings.OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Grpc;
-        CurrentApp.Settings.Save();
-        ((IAppCommands)CurrentApp).NotifySettingsSaved();
         _suppressOpenTelemetryEndpointChange = true;
         try
         {
+            OpenTelemetryEndpointBox.Text = string.Empty;
             SelectOpenTelemetryProtocol(OpenTelemetryEndpointProtocol.Grpc);
         }
         finally
         {
             _suppressOpenTelemetryEndpointChange = false;
         }
+
+        CurrentApp.Settings.OpenTelemetryEndpoint = string.Empty;
+        CurrentApp.Settings.OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Grpc;
+        CurrentApp.Settings.Save();
+        ((IAppCommands)CurrentApp).NotifySettingsSaved();
         UpdateOpenTelemetryEndpointStatus(cleared: true);
     }
 

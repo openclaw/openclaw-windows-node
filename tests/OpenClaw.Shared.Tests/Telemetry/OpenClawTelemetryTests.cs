@@ -17,7 +17,7 @@ public sealed class OpenClawTelemetryTests
         Assert.Equal("openclaw-windows-node", OpenClawResourceName.WindowsNode.ToServiceName());
         Assert.Equal("openclaw.source", OpenClawTelemetryTagKey.Source.ToTelemetryName());
         Assert.Equal("openclaw.outcome", OpenClawTelemetryTagKey.Outcome.ToTelemetryName());
-        Assert.Equal("openclaw.errorCategory", OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName());
+        Assert.Equal("openclaw.error.category", OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName());
         Assert.Equal("openclaw.reason", OpenClawTelemetryTagKey.Reason.ToTelemetryName());
         Assert.Equal("openclaw.status", OpenClawTelemetryTagKey.Status.ToTelemetryName());
         Assert.Equal("error.type", OpenClawTelemetryTagKey.ErrorType.ToTelemetryName());

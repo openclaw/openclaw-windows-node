@@ -20,7 +20,7 @@ public static class OpenClawTelemetryTags
         {
             OpenClawTelemetryTagKey.Source => "openclaw.source",
             OpenClawTelemetryTagKey.Outcome => "openclaw.outcome",
-            OpenClawTelemetryTagKey.ErrorCategory => "openclaw.errorCategory",
+            OpenClawTelemetryTagKey.ErrorCategory => "openclaw.error.category",
             OpenClawTelemetryTagKey.ErrorType => "error.type",
             OpenClawTelemetryTagKey.Reason => "openclaw.reason",
             OpenClawTelemetryTagKey.Status => "openclaw.status",

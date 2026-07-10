@@ -14,7 +14,7 @@ namespace OpenClawTray.Services;
 internal enum OpenTelemetryEndpointConnectionState
 {
     Disabled,
-    Connected,
+    ProbeFlushed,
     Failed
 }
 
@@ -96,7 +96,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
                 return;
             }
 
-            if (_sink != null && State == OpenTelemetryEndpointConnectionState.Connected && options == _currentOptions)
+            if (_sink != null && State == OpenTelemetryEndpointConnectionState.ProbeFlushed && options == _currentOptions)
                 return;
 
             DisposeSink();
@@ -127,7 +127,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
                 _sink = newSink;
                 newSink = null;
                 _currentOptions = options;
-                State = OpenTelemetryEndpointConnectionState.Connected;
+                State = OpenTelemetryEndpointConnectionState.ProbeFlushed;
                 LastError = null;
                 _logInfo($"OpenTelemetry endpoint probe sent using {OpenTelemetryEndpointProtocol.ToDisplayName(options.Protocol)}.");
             }

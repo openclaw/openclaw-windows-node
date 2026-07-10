@@ -57,7 +57,7 @@ Recommended span attributes:
 - `openclaw.error.category`
 - `error.type`
 
-Use local span attributes only when the values are reviewed as safe and useful for diagnostics.
+Use the named constants in `OpenClawTelemetryTagKey` for shared attributes instead of duplicating string literals. Use local span attributes only when the values are reviewed as safe and useful for diagnostics.
 
 ## Metrics
 

@@ -175,7 +175,7 @@ public sealed class OpenTelemetryEndpointConnectionTests
 
         connection.Apply(options);
 
-        Assert.Equal(OpenTelemetryEndpointConnectionState.Connected, connection.State);
+        Assert.Equal(OpenTelemetryEndpointConnectionState.ProbeFlushed, connection.State);
         Assert.Equal("http://localhost:4318", connection.CurrentOptions.Endpoint);
         Assert.Equal(OpenTelemetryEndpointProtocol.HttpProtobuf, connection.CurrentOptions.Protocol);
         Assert.Equal(1, sink.SendProbeCount);
@@ -184,7 +184,7 @@ public sealed class OpenTelemetryEndpointConnectionTests
     }
 
     [Fact]
-    public void Apply_FailedFlush_DoesNotReportConnected()
+    public void Apply_FailedFlush_DoesNotReportProbeFlushed()
     {
         var sink = new FakeProbeSink { ForceFlushResult = false };
         using var connection = new OpenTelemetryEndpointConnection(
@@ -270,7 +270,7 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal(2, sinks.Count);
         Assert.Equal(1, sinks[0].DisposeCount);
         Assert.False(sinks[1].Disposed);
-        Assert.Equal(OpenTelemetryEndpointConnectionState.Connected, connection.State);
+        Assert.Equal(OpenTelemetryEndpointConnectionState.ProbeFlushed, connection.State);
         Assert.Equal("http://localhost:4318", connection.CurrentOptions.Endpoint);
         Assert.Contains(warnings, warning => warning.Contains("sink disposal failed", StringComparison.Ordinal));
     }
@@ -331,7 +331,7 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal(2, sinks.Count);
         Assert.True(sinks[0].Disposed);
         Assert.False(sinks[1].Disposed);
-        Assert.Equal(OpenTelemetryEndpointConnectionState.Connected, connection.State);
+        Assert.Equal(OpenTelemetryEndpointConnectionState.ProbeFlushed, connection.State);
         Assert.Equal(latest, connection.CurrentOptions);
     }
 
