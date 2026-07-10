@@ -36,6 +36,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
     private double _lastVerticalOffset;
     private double _lastScrollableHeight;
     private bool _isFollowing = true;
+    private bool _userScrollOverride;
     private bool _suppressAutoFollow;
     private double? _pendingRestoreOffset;
     private double? _lastRestoreScrollableHeight;
@@ -149,7 +150,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         var appendedEntries = !sessionChanged
             && view.EntryCount > previousEntryCount
             && !prependedHistory;
-        var shouldFollowAppendedEntries = _isFollowing || IsAtBottom;
+        var shouldFollowAppendedEntries = !_userScrollOverride && (_isFollowing || IsAtBottom);
 
         _view = view;
         _rowFactory.Update(view.Rows);
@@ -177,6 +178,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
                 _lastRestoreScrollableHeight = null;
                 _stableRestorePasses = 0;
                 _suppressAutoFollow = true;
+                _userScrollOverride = true;
                 _isFollowing = false;
                 ApplyPendingRestoreIfReady();
             }
@@ -215,6 +217,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         ResetScrollToEndState();
         _suppressAutoFollow = false;
         ClearSessionOffset(_view.SessionId);
+        _userScrollOverride = false;
         _isFollowing = true;
         _scrollToLatestButton.Visibility = Visibility.Collapsed;
         EnqueueOnView(() => ForceScrollToLatest(_view.SessionId, remainingPasses: 4, disableAnimation: false));
@@ -268,11 +271,22 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         {
             CancelPendingCorrectionsForManualScroll();
             ResetScrollToEndState();
-            _isFollowing = false;
-            _scrollToLatestButton.Visibility = Visibility.Visible;
+            if (IsAtBottom)
+            {
+                _userScrollOverride = false;
+                _isFollowing = true;
+                _scrollToLatestButton.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                _userScrollOverride = true;
+                _isFollowing = false;
+                _scrollToLatestButton.Visibility = Visibility.Visible;
+            }
         }
         else if (_scrollToEndState == ScrollToEndState.Idle && IsAtBottom)
         {
+            _userScrollOverride = false;
             _isFollowing = true;
             _scrollToLatestButton.Visibility = Visibility.Collapsed;
         }
@@ -392,6 +406,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         _lastScrollableHeight = _scrollViewer.ScrollableHeight;
         _isFollowing = true;
         ClearSessionOffset(_scrollToEndSessionId);
+        _userScrollOverride = false;
 
         if (_scrollToEndPending)
         {
@@ -438,6 +453,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             _scrollViewer.ChangeView(null, bottom, null, disableAnimation);
             _lastVerticalOffset = bottom;
             _lastScrollableHeight = _scrollViewer.ScrollableHeight;
+            _userScrollOverride = false;
             _isFollowing = true;
             ClearSessionOffset(sessionId);
 
@@ -571,7 +587,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         if (sessionId is not { Length: > 0 })
             return;
 
-        if (_isFollowing || IsAtBottom)
+        if (!_userScrollOverride || _isFollowing || IsAtBottom)
         {
             ClearSessionOffset(sessionId);
             return;
