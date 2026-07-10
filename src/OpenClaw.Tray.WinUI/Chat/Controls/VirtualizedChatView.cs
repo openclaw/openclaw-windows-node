@@ -68,7 +68,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
 
-        _rowFactory = new ChatRowElementFactory();
+        _rowFactory = new ChatRowElementFactory(ShouldRenderRowsImmediately);
         _itemsRepeater = new ItemsRepeater
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -244,11 +244,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         if (ApplyPendingPrependCorrectionIfReady())
             return;
 
-        if (!_suppressAutoFollow && _isFollowing && _scrollToEndState == ScrollToEndState.Idle)
-        {
-            QueueScrollToBottom(_view.SessionId, disableAnimation: true);
-        }
-        else if (_suppressAutoFollow)
+        if (_suppressAutoFollow)
         {
             _suppressAutoFollow = false;
         }
@@ -371,8 +367,8 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
             return;
         }
 
-        var latest = _itemsRepeater.GetOrCreateElement(_rows.Count - 1);
         _scrollToEndState = ScrollToEndState.BringingIntoView;
+        var latest = _itemsRepeater.GetOrCreateElement(_rows.Count - 1);
         latest.StartBringIntoView(new BringIntoViewOptions
         {
             AnimationDesired = !_scrollToEndDisableAnimation,
@@ -566,7 +562,10 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         }
     }
 
-    private sealed class ChatRowElementFactory : IElementFactory, IDisposable
+    private bool ShouldRenderRowsImmediately() =>
+        _scrollToEndState == ScrollToEndState.BringingIntoView;
+
+    private sealed class ChatRowElementFactory(Func<bool> shouldRenderImmediately) : IElementFactory, IDisposable
     {
         private readonly Dictionary<string, ChatTimelineRow> _rows = new(StringComparer.Ordinal);
         private readonly Dictionary<string, FunctionalHostControl> _hosts = new(StringComparer.Ordinal);
@@ -622,7 +621,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
                 DetachFromParent(host);
             }
 
-            Mount(host, row, renderImmediately: true);
+            Mount(host, row, renderImmediately: shouldRenderImmediately());
             _realizedKeys.Add(row.Key);
             return host;
         }
