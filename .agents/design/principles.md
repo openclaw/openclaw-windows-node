@@ -1,7 +1,8 @@
-# Design principles — OpenClaw Windows Hub
+# Design principles — Windows Fluent UI for OpenClaw
 
 > This is the prose companion to `design.json`. Designers write here; developers
 > and Copilot read here. Keep it short enough that people actually read it.
+> This is the design system for the **OpenClaw Windows Hub** app.
 
 ## The one-line brief
 A calm native Windows companion for your AI assistant. It should feel like a

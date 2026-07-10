@@ -6,9 +6,9 @@
     "note": "Derived from the repo's WinUI 3 / XAML surfaces. This app themes off Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable), so tokens below map to Fluent theme resources rather than a bespoke hex palette. Edit in the Design System canvas or directly."
   },
   "brand": {
-    "name": "OpenClaw Windows Hub",
+    "name": "Windows Fluent UI for OpenClaw",
     "tagline": "A calm native Windows companion for your AI assistant.",
-    "description": "OpenClaw Windows Hub is a native Windows companion suite for OpenClaw, the AI-powered personal assistant. Built on WinUI 3 as a system-tray app, it pairs your PC to an OpenClaw gateway, exposes allowlisted Windows node capabilities over MCP, and guides first-run pairing through a setup wizard. Its interface follows Windows Fluent design conventions — Mica surfaces, the user's system accent, and Segoe UI Variable type — so it feels like a quiet, native extension of the OS rather than a bolted-on dashboard.",
+    "description": "Windows Fluent UI for OpenClaw is the design system for OpenClaw's native Windows companion suite — a WinUI 3 system-tray app that connects your PC to OpenClaw, the AI-powered personal assistant. The app pairs your PC to an OpenClaw gateway, exposes allowlisted Windows node capabilities over MCP, and guides first-run pairing through a setup wizard. Its interface follows Windows Fluent design conventions — Mica surfaces, the user's system accent, and Segoe UI Variable type — so it feels like a quiet, native extension of the OS rather than a bolted-on dashboard.",
     "surface": "product",
     "voice": "Clear, respectful, and native to Windows. Explain pairing, permissions, and security plainly. State what will happen and why; never alarmist, never hype.",
     "personality": ["native", "trustworthy", "calm", "precise"],
