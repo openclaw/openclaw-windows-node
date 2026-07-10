@@ -5623,7 +5623,7 @@ Controleer of de gateway actief is.</value>
     <value>Een Telegram-bot aanmaken →</value>
   </data>
   <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>Een Discord-webhook aanmaken →</value>
+    <value>Een Discord-bot aanmaken →</value>
   </data>
   <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
     <value>Een Google Chat-webhook toevoegen →</value>
@@ -5677,19 +5677,19 @@ Controleer of de gateway actief is.</value>
     <value>Klik op "Save and start". Het kanaal start automatisch.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>Discord verbinden via een webhook</value>
+    <value>Discord verbinden via een bot</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>Open uw Discord-serverinstellingen → Integraties → Webhooks.</value>
+    <value>Open de Discord Developer Portal en maak of selecteer een toepassing.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Klik op "New Webhook", geef het een naam en kopieer de webhook-URL.</value>
+    <value>Open Bot, voeg zo nodig een bot toe en stel het token opnieuw in om het te kopiëren.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>Plak de URL in het configuratieformulier hieronder.</value>
+    <value>Plak het bottoken in het configuratieformulier hieronder.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Klik op "Save and start".</value>
+    <value>Klik op "Save and start" en voeg de bot daarna toe aan uw server met de OAuth2-installatielink.</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>Google Chat verbinden via een webhook</value>
@@ -5763,6 +5763,12 @@ Controleer of de gateway actief is.</value>
   <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
     <value>Bot-token</value>
   </data>
+  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
+    <value>Discord-bottoken</value>
+  </data>
+  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
+    <value>Plak het Discord-bottoken</value>
+  </data>
   <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
     <value>Webhook-URL</value>
   </data>
@@ -5778,8 +5784,8 @@ Controleer of de gateway actief is.</value>
   <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
     <value>Verkrijg het via @BotFather (/newbot).</value>
   </data>
-  <data name="ChannelsPage_HelpWebhookDiscord" xml:space="preserve">
-    <value>Serverinstellingen → Integraties → Webhooks → New Webhook.</value>
+  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
+    <value>Kopieer uit de Discord Developer Portal → Bot → Token opnieuw instellen.</value>
   </data>
   <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
     <value>Open een ruimte → Webhooks beheren → Webhook toevoegen.</value>

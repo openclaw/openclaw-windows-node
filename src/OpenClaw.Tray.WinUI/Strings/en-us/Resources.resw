@@ -5626,7 +5626,7 @@ Make sure the gateway is running.</value>
     <value>How to create a Telegram bot →</value>
   </data>
   <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>How to create a Discord webhook →</value>
+    <value>How to create a Discord bot →</value>
   </data>
   <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
     <value>How to add a Google Chat webhook →</value>
@@ -5680,19 +5680,19 @@ Make sure the gateway is running.</value>
     <value>Click &quot;Save and start&quot;. The channel will start automatically.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>Connect Discord via a webhook</value>
+    <value>Connect Discord via a bot</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>Open your Discord server settings → Integrations → Webhooks.</value>
+    <value>Open the Discord Developer Portal, then create or select an application.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Click &quot;New Webhook&quot;, give it a name, and copy the webhook URL.</value>
+    <value>Open Bot, add a bot if needed, then reset and copy its token.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>Paste the URL into the Configuration form below.</value>
+    <value>Paste the bot token into the Configuration form below.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
+    <value>Click &quot;Save and start&quot;, then add the bot to your server with its OAuth2 installation link.</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>Connect Google Chat via a webhook</value>
@@ -5766,6 +5766,12 @@ Make sure the gateway is running.</value>
   <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
     <value>Bot token</value>
   </data>
+  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
+    <value>Discord Bot Token</value>
+  </data>
+  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
+    <value>Paste Discord bot token</value>
+  </data>
   <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
     <value>Webhook URL</value>
   </data>
@@ -5781,8 +5787,8 @@ Make sure the gateway is running.</value>
   <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
     <value>Get from @BotFather (/newbot).</value>
   </data>
-  <data name="ChannelsPage_HelpWebhookDiscord" xml:space="preserve">
-    <value>Server Settings → Integrations → Webhooks → New Webhook.</value>
+  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
+    <value>Copy from Discord Developer Portal → Bot → Reset Token.</value>
   </data>
   <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
     <value>Open a space → Manage webhooks → Add webhook.</value>

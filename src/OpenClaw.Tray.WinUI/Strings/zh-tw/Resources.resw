@@ -5622,7 +5622,7 @@
     <value>如何建立 Telegram 機器人 →</value>
   </data>
   <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>如何建立 Discord webhook →</value>
+    <value>如何建立 Discord 機器人 →</value>
   </data>
   <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
     <value>如何新增 Google Chat webhook →</value>
@@ -5676,19 +5676,19 @@
     <value>點擊 "Save and start"。頻道將自動啟動。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>透過 webhook 連接 Discord</value>
+    <value>透過機器人連接 Discord</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>開啟您的 Discord 伺服器設定 → 整合 → Webhooks。</value>
+    <value>開啟 Discord 開發者入口網站，然後建立或選取應用程式。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>點擊 "New Webhook"，為其命名，然後複製 webhook URL。</value>
+    <value>開啟 Bot，視需要新增機器人，然後重設並複製其權杖。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>將 URL 貼到下方的設定表單中。</value>
+    <value>將機器人權杖貼到下方的設定表單中。</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。</value>
+    <value>點擊 "Save and start"，然後使用 OAuth2 安裝連結將機器人新增到伺服器。</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>透過 webhook 連接 Google Chat</value>
@@ -5762,6 +5762,12 @@
   <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
     <value>機器人權杖</value>
   </data>
+  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
+    <value>Discord 機器人權杖</value>
+  </data>
+  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
+    <value>貼上 Discord 機器人權杖</value>
+  </data>
   <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
     <value>Webhook 網址</value>
   </data>
@@ -5777,8 +5783,8 @@
   <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
     <value>從 @BotFather (/newbot) 取得。</value>
   </data>
-  <data name="ChannelsPage_HelpWebhookDiscord" xml:space="preserve">
-    <value>伺服器設定 → 整合 → Webhooks → New Webhook。</value>
+  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
+    <value>從 Discord 開發者入口網站 → Bot → Reset Token 複製。</value>
   </data>
   <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
     <value>開啟聊天室 → 管理 webhook → 新增 webhook。</value>

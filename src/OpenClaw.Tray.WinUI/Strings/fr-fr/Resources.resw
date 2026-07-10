@@ -5622,7 +5622,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Comment créer un bot Telegram →</value>
   </data>
   <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>Comment créer un webhook Discord →</value>
+    <value>Comment créer un bot Discord →</value>
   </data>
   <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
     <value>Comment ajouter un webhook Google Chat →</value>
@@ -5676,19 +5676,19 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Cliquez sur "Save and start". Le canal démarrera automatiquement.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>Connecter Discord via un webhook</value>
+    <value>Connecter Discord via un bot</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>Ouvrez les paramètres de votre serveur Discord → Intégrations → Webhooks.</value>
+    <value>Ouvrez le portail des développeurs Discord, puis créez ou sélectionnez une application.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Cliquez sur "New Webhook", donnez-lui un nom et copiez l’URL du webhook.</value>
+    <value>Ouvrez Bot, ajoutez un bot si nécessaire, puis réinitialisez et copiez son jeton.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>Collez l’URL dans le formulaire de configuration ci-dessous.</value>
+    <value>Collez le jeton du bot dans le formulaire de configuration ci-dessous.</value>
   </data>
   <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Cliquez sur "Save and start".</value>
+    <value>Cliquez sur "Save and start", puis ajoutez le bot à votre serveur avec son lien d’installation OAuth2.</value>
   </data>
   <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
     <value>Connecter Google Chat via un webhook</value>
@@ -5762,6 +5762,12 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
     <value>Jeton du bot</value>
   </data>
+  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
+    <value>Jeton du bot Discord</value>
+  </data>
+  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
+    <value>Collez le jeton du bot Discord</value>
+  </data>
   <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
     <value>URL du webhook</value>
   </data>
@@ -5777,8 +5783,8 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
     <value>Obtenez-le auprès de @BotFather (/newbot).</value>
   </data>
-  <data name="ChannelsPage_HelpWebhookDiscord" xml:space="preserve">
-    <value>Paramètres du serveur → Intégrations → Webhooks → New Webhook.</value>
+  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
+    <value>Copiez-le depuis le portail des développeurs Discord → Bot → Reset Token.</value>
   </data>
   <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
     <value>Ouvrez un espace → Gérer les webhooks → Ajouter un webhook.</value>

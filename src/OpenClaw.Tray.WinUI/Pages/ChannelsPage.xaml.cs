@@ -814,7 +814,7 @@ public sealed partial class ChannelsPage : Page
             stack.Children.Add(BuildLinkingPlaceholder(record));
 
         // Configuration section — inline credential form for channels we have
-        // explicit field definitions for (Telegram bot token, Discord webhook,
+        // explicit field definitions for (Telegram/Discord bot tokens,
         // Slack tokens, Google Chat webhook, Nostr key/relays).
         //
         // For configured channels the section header reads "Replace
@@ -1067,7 +1067,7 @@ public sealed partial class ChannelsPage : Page
             "whatsapp"   => (LocalizationHelper.GetString("ChannelsPage_HelpWhatsApp"),     "https://faq.whatsapp.com/378279004439436/"),
             "signal"     => (LocalizationHelper.GetString("ChannelsPage_HelpSignal"),       "https://support.signal.org/hc/en-us/articles/360007320551"),
             "telegram"   => (LocalizationHelper.GetString("ChannelsPage_HelpTelegram"),     "https://core.telegram.org/bots/features#botfather"),
-            "discord"    => (LocalizationHelper.GetString("ChannelsPage_HelpDiscord"),  "https://support.discord.com/hc/en-us/articles/228383668"),
+            "discord"    => (LocalizationHelper.GetString("ChannelsPage_HelpDiscord"),  "https://discord.com/developers/applications"),
             "googlechat" => (LocalizationHelper.GetString("ChannelsPage_HelpGoogleChat"), "https://developers.google.com/chat/how-tos/webhooks"),
             "slack"      => (LocalizationHelper.GetString("ChannelsPage_HelpSlack"),              "https://api.slack.com/apps"),
             "nostr"      => (LocalizationHelper.GetString("ChannelsPage_HelpNostr"),                      "https://nostr.com/"),
@@ -1160,7 +1160,7 @@ public sealed partial class ChannelsPage : Page
     /// Per-channel inline-form schema. Fields were validated against the
     /// gateway test fixtures (src/cli/config-cli.test.ts and related tests
     /// confirm channels.telegram.botToken, channels.slack.botToken/signingSecret,
-    /// channels.discord.webhookUrl, etc.). Returns null for channels without an
+    /// channels.discord.token, etc.). Returns null for channels without an
     /// inline form — those still get the "Open Config page" stub.
     /// </summary>
     private static IReadOnlyList<ConfigField>? ResolveConfigFields(string channelId) =>
@@ -1179,12 +1179,12 @@ public sealed partial class ChannelsPage : Page
             "discord" => new[]
             {
                 new ConfigField(
-                    "channels.discord.webhookUrl",
-                    LocalizationHelper.GetString("ChannelsPage_FieldWebhookUrl"),
-                    "https://discord.com/api/webhooks/...",
+                    "channels.discord.token",
+                    LocalizationHelper.GetString("ChannelsPage_FieldDiscordBotToken"),
+                    LocalizationHelper.GetString("ChannelsPage_PlaceholderDiscordBotToken"),
                     Sensitive: true,
                     Required: true,
-                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpWebhookDiscord")),
+                    HelpText: LocalizationHelper.GetString("ChannelsPage_HelpDiscordBotToken")),
             },
             "googlechat" => new[]
             {
@@ -2357,7 +2357,7 @@ public sealed partial class ChannelsPage : Page
     {
         "whatsapp"   => "Link your phone — scan a QR to connect",
         "telegram"   => "Bot integration — paste your bot token to set up",
-        "discord"    => "Webhook integration — paste a Discord webhook URL",
+        "discord"    => "Bot integration — paste your Discord bot token",
         "googlechat" => "Webhook integration — paste a Google Chat webhook",
         "slack"      => "OAuth app — install a Slack app to connect",
         "signal"     => "Link your phone — scan a QR to connect",

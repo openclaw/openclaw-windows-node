@@ -49,7 +49,7 @@ public class ChannelConfigPatchBuilderTests
         var existing = Json("""
             {
               "channels": {
-                "discord":  { "webhookUrl": "https://discord.com/api/webhooks/123/abc", "enabled": true },
+                "discord":  { "token": "discord-token", "enabled": true },
                 "telegram": { "botToken": "old-token", "enabled": false }
               }
             }
@@ -64,8 +64,8 @@ public class ChannelConfigPatchBuilderTests
         var channels = patch.GetProperty("channels");
         Assert.Equal("new-token", channels.GetProperty("telegram").GetProperty("botToken").GetString());
         Assert.True(channels.GetProperty("telegram").GetProperty("enabled").GetBoolean()); // forced to true
-        Assert.Equal("https://discord.com/api/webhooks/123/abc",
-            channels.GetProperty("discord").GetProperty("webhookUrl").GetString());
+        Assert.Equal("discord-token",
+            channels.GetProperty("discord").GetProperty("token").GetString());
         Assert.True(channels.GetProperty("discord").GetProperty("enabled").GetBoolean()); // untouched
     }
 
@@ -108,12 +108,12 @@ public class ChannelConfigPatchBuilderTests
 
         var result = ChannelConfigPatchBuilder.BuildPatch(
             empty, "discord",
-            Updates(("channels.discord.webhookUrl", "https://discord.com/api/webhooks/123/abc")));
+            Updates(("channels.discord.token", "discord-token")));
 
         Assert.Null(result.BlockedReason);
         var channels = result.Patch!.Value.GetProperty("channels");
-        Assert.Equal("https://discord.com/api/webhooks/123/abc",
-            channels.GetProperty("discord").GetProperty("webhookUrl").GetString());
+        Assert.Equal("discord-token",
+            channels.GetProperty("discord").GetProperty("token").GetString());
     }
 
     [Fact]
