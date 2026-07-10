@@ -207,7 +207,8 @@ explicit gateway policy matching the node's advertised commands.
 
 1. Calls `issueDeviceBootstrapToken()` on the gateway
 2. Generates a **short-lived, single-use** `bootstrapToken`
-3. Encodes `{ url, bootstrapToken, expiresAtMs }` as base64url
+3. Encodes `{ url, urls?, bootstrapToken }` as base64url. The gateway enforces
+   the 10-minute token lifetime; the payload does not include expiry metadata.
 4. Renders as QR code or pasteable setup code
 
 ### 4.2 bootstrapToken vs gateway.auth.token
@@ -238,7 +239,7 @@ The setup code and QR code are the same bootstrap concept in different packaging
 QR image
   -> decodes to setup code text
     -> decodes to JSON payload
-      -> contains gateway URL + bootstrapToken + expiry
+      -> contains gateway URL(s) + bootstrapToken
 ```
 
 Advanced users can drop into setup at any level:
@@ -255,7 +256,8 @@ The QR/setup-code path is preferred for first-time node onboarding because it av
 
 The Windows Setup Wizard:
 1. Accepts a QR image, clipboard QR image, pasteable setup code, or manual gateway URL/token.
-2. For QR/setup-code input, decodes `{ url, bootstrapToken, expiresAtMs }`.
+2. For QR/setup-code input, decodes `{ url, bootstrapToken }`; the optional
+   upstream `urls` fallback list is not used by the current decoder.
 3. Stores `bootstrapToken` in the active `GatewayRecord.BootstrapToken`; manual long-lived tokens are stored as `GatewayRecord.SharedGatewayToken`.
 4. Sends it as `auth.bootstrapToken` in the node connect handshake.
 
@@ -279,7 +281,7 @@ Windows stores `hello-ok.auth.deviceToken` in the per-gateway device identity fi
 ```
 1. User runs `openclaw qr` on gateway host
 2. User imports/scans QR image or pastes setup code into Windows Setup Wizard
-3. Wizard decodes → { url, bootstrapToken, expiresAtMs }
+3. Wizard decodes → { url, bootstrapToken }
 4. Node connects with: auth: { bootstrapToken: "<token>" }
 5. Gateway auto-approves pairing (bootstrap-token auth method)
 6. Gateway returns hello-ok with: auth: { deviceToken: "<token>" }
@@ -355,7 +357,6 @@ After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyComman
 - [x] Handle `hello-ok.auth.deviceToken` — save it for future connections
 - [x] Accept QR images and clipboard setup content as alternate ways to enter the same bootstrap payload
 - [x] Show "auto-paired!" vs "waiting for approval" based on auth method
-- [x] Handle bootstrap token expiry gracefully when setup code payloads include expiry metadata (`expiresAt`, `expires_at`, `expires`, `expiry`, or `exp`)
 - [x] Add Settings toggles for optional Windows node capability groups (`canvas`, `screen`, `camera`, `location`, `browser.proxy`)
 
 ### 5.4 Upstream Alignment
