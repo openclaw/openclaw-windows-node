@@ -5,36 +5,37 @@ namespace OpenClaw.Shared.Telemetry;
 /// </summary>
 public sealed class OpenClawTelemetryTag
 {
-    private const int DefaultStringMaxLength = 128;
+    public OpenClawTelemetryTag(OpenClawTelemetryTagKey key, object? value)
+        : this(key.ToTelemetryName(), value)
+    {
+    }
 
-    public OpenClawTelemetryTag(string key, object? value)
+    private OpenClawTelemetryTag(string key, object? value)
     {
         if (string.IsNullOrWhiteSpace(key))
             throw new ArgumentException("Telemetry tag key cannot be empty.", nameof(key));
 
-        Key = key;
-        Value = value;
+        (Key, Value) = (key, value);
     }
 
     public string Key { get; }
     public object? Value { get; }
 
-    public static OpenClawTelemetryTag String(string key, string? value, int maxLength = DefaultStringMaxLength) =>
-        new(key, BoundString(value, maxLength));
-
-    public static OpenClawTelemetryTag Bool(string key, bool value) =>
+    public static OpenClawTelemetryTag String(OpenClawTelemetryTagKey key, string? value) =>
         new(key, value);
 
-    public static OpenClawTelemetryTag Number(string key, long value) =>
+    public static OpenClawTelemetryTag String(string localKey, string? value) =>
+        new(localKey, value);
+
+    public static OpenClawTelemetryTag Bool(OpenClawTelemetryTagKey key, bool value) =>
         new(key, value);
 
-    private static string? BoundString(string? value, int maxLength)
-    {
-        if (value == null)
-            return null;
-        if (maxLength <= 0)
-            throw new ArgumentOutOfRangeException(nameof(maxLength), "Maximum string length must be positive.");
+    public static OpenClawTelemetryTag Bool(string localKey, bool value) =>
+        new(localKey, value);
 
-        return value.Length <= maxLength ? value : value[..maxLength];
-    }
+    public static OpenClawTelemetryTag Number(OpenClawTelemetryTagKey key, long value) =>
+        new(key, value);
+
+    public static OpenClawTelemetryTag Number(string localKey, long value) =>
+        new(localKey, value);
 }

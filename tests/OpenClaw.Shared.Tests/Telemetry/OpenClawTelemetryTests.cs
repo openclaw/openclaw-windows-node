@@ -8,20 +8,16 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void Constants_AreStable()
     {
-        Assert.Equal("openclaw", OpenClawActivitySources.OpenClaw);
-        Assert.Equal(["openclaw"], OpenClawActivitySources.ExportedNames);
-        Assert.Throws<NotSupportedException>(() => ((IList<string>)OpenClawActivitySources.ExportedNames)[0] = "changed");
-        Assert.Equal("openclaw-windows-tray", OpenClawResourceNames.Tray);
-        Assert.Equal("openclaw-windows-node", OpenClawResourceNames.WindowsNode);
-        Assert.Equal("openclaw.source", OpenClawTelemetryTags.Source);
-        Assert.Equal("openclaw.outcome", OpenClawTelemetryTags.Outcome);
-        Assert.Equal("openclaw.errorCategory", OpenClawTelemetryTags.ErrorCategory);
-        Assert.Equal("openclaw.exporter", OpenClawTelemetryTags.Exporter);
-        Assert.Equal("openclaw.exporter.protocol", OpenClawTelemetryTags.ExporterProtocol);
-        Assert.Equal("openclaw.reason", OpenClawTelemetryTags.Reason);
-        Assert.Equal("openclaw.signal", OpenClawTelemetryTags.Signal);
-        Assert.Equal("openclaw.status", OpenClawTelemetryTags.Status);
-        Assert.Equal("error.type", OpenClawTelemetryTags.ErrorType);
+        Assert.Equal("openclaw", OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        Assert.Equal("openclaw", OpenClawActivitySources.OpenClawSource.Name);
+        Assert.Equal("openclaw-windows-tray", OpenClawResourceName.WindowsTray.ToServiceName());
+        Assert.Equal("openclaw-windows-node", OpenClawResourceName.WindowsNode.ToServiceName());
+        Assert.Equal("openclaw.source", OpenClawTelemetryTagKey.Source.ToTelemetryName());
+        Assert.Equal("openclaw.outcome", OpenClawTelemetryTagKey.Outcome.ToTelemetryName());
+        Assert.Equal("openclaw.errorCategory", OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName());
+        Assert.Equal("openclaw.reason", OpenClawTelemetryTagKey.Reason.ToTelemetryName());
+        Assert.Equal("openclaw.status", OpenClawTelemetryTagKey.Status.ToTelemetryName());
+        Assert.Equal("error.type", OpenClawTelemetryTagKey.ErrorType.ToTelemetryName());
     }
 
     [Fact]
@@ -30,7 +26,6 @@ public sealed class OpenClawTelemetryTests
         var ran = false;
 
         var result = OpenClawTelemetry.Trace(
-            OpenClawActivitySources.OpenClawSource,
             "test.no_listener",
             () =>
             {
@@ -43,51 +38,77 @@ public sealed class OpenClawTelemetryTests
     }
 
     [Fact]
+    public void MarkHelpers_AreSafeForNullActivities()
+    {
+        var exception = new InvalidOperationException("boom");
+
+        OpenClawTelemetry.MarkSuccess(null);
+        OpenClawTelemetry.MarkCanceled(null);
+        OpenClawTelemetry.MarkFailure(null, exception);
+    }
+
+    [Fact]
+    public void StartActivity_WithListener_AllowsManualMarking()
+    {
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var activity = OpenClawTelemetry.StartActivity(
+            "test.manual",
+            [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "unit-test")]);
+
+        OpenClawTelemetry.MarkSuccess(activity);
+
+        Assert.NotNull(activity);
+        Assert.Equal(ActivityStatusCode.Ok, activity.Status);
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Source.ToTelemetryName() && tag.Value == "unit-test");
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Outcome.ToTelemetryName() && tag.Value == "success");
+    }
+
+    [Fact]
     public void Trace_WithListener_RecordsSuccessAndTags()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySources.OpenClaw);
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
 
         OpenClawTelemetry.Trace(
-            OpenClawActivitySources.OpenClawSource,
             "test.success",
             () => { },
             [
-                OpenClawTelemetryTag.String(OpenClawTelemetryTags.Source, "unit-test"),
-                OpenClawTelemetryTag.String(OpenClawTelemetryTags.Exporter, "tray-otel")
+                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "unit-test"),
+                OpenClawTelemetryTag.String("openclaw.test.exporter", "tray-otel")
             ]);
 
         var activity = Assert.Single(collector.Stopped);
         Assert.Equal("test.success", activity.OperationName);
         Assert.Equal(ActivityStatusCode.Ok, activity.Status);
-        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTags.Source && tag.Value == "unit-test");
-        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTags.Exporter && tag.Value == "tray-otel");
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Source.ToTelemetryName() && tag.Value == "unit-test");
+        Assert.Contains(activity.Tags, tag => tag.Key == "openclaw.test.exporter" && tag.Value == "tray-otel");
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Outcome.ToTelemetryName() && tag.Value == "success");
     }
 
     [Fact]
     public void Trace_Exception_MarksErrorAndRethrowsOriginal()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySources.OpenClaw);
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
         var expected = new InvalidOperationException("boom");
 
         var thrown = Assert.Throws<InvalidOperationException>(() =>
-            OpenClawTelemetry.Trace(OpenClawActivitySources.OpenClawSource, "test.error", () => throw expected));
+            OpenClawTelemetry.Trace("test.error", () => throw expected));
 
         Assert.Same(expected, thrown);
         var activity = Assert.Single(collector.Stopped);
         Assert.Equal(ActivityStatusCode.Error, activity.Status);
         Assert.Equal(nameof(InvalidOperationException), activity.StatusDescription);
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Outcome.ToTelemetryName() && tag.Value == "failure");
         Assert.Contains(
             activity.Tags,
-            tag => tag.Key == OpenClawTelemetryTags.ErrorType && tag.Value == typeof(InvalidOperationException).FullName);
+            tag => tag.Key == OpenClawTelemetryTagKey.ErrorType.ToTelemetryName() && tag.Value == typeof(InvalidOperationException).FullName);
     }
 
     [Fact]
     public async Task TraceAsync_WithListener_RecordsSuccessAndReturnsResult()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySources.OpenClaw);
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
 
         var result = await OpenClawTelemetry.TraceAsync(
-            OpenClawActivitySources.OpenClawSource,
             "test.async.success",
             _ => Task.FromResult("ok"));
 
@@ -95,40 +116,73 @@ public sealed class OpenClawTelemetryTests
         var activity = Assert.Single(collector.Stopped);
         Assert.Equal("test.async.success", activity.OperationName);
         Assert.Equal(ActivityStatusCode.Ok, activity.Status);
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Outcome.ToTelemetryName() && tag.Value == "success");
     }
 
     [Fact]
     public async Task TraceAsync_CanceledTask_MarksCanceledAndPreservesCancellation()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySources.OpenClaw);
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
         await Assert.ThrowsAsync<TaskCanceledException>(() =>
             OpenClawTelemetry.TraceAsync(
-                OpenClawActivitySources.OpenClawSource,
                 "test.async.cancel",
                 token => Task.FromCanceled(token),
                 cancellationToken: cts.Token));
 
         var activity = Assert.Single(collector.Stopped);
         Assert.Equal(ActivityStatusCode.Unset, activity.Status);
-        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTags.Outcome && tag.Value == "canceled");
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Outcome.ToTelemetryName() && tag.Value == "canceled");
     }
 
     [Fact]
-    public void StringTag_BoundsLongValues()
+    public void Trace_OperationCanceled_MarksCanceledAndRethrowsOriginal()
     {
-        var tag = OpenClawTelemetryTag.String(OpenClawTelemetryTags.Source, "abcdef", maxLength: 3);
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        var expected = new OperationCanceledException();
 
-        Assert.Equal("abc", tag.Value);
+        var thrown = Assert.Throws<OperationCanceledException>(() =>
+            OpenClawTelemetry.Trace("test.sync.cancel", () => throw expected));
+
+        Assert.Same(expected, thrown);
+        var activity = Assert.Single(collector.Stopped);
+        Assert.Equal(ActivityStatusCode.Unset, activity.Status);
+        Assert.Contains(activity.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Outcome.ToTelemetryName() && tag.Value == "canceled");
+    }
+
+    [Fact]
+    public void StringTag_PreservesStringValues()
+    {
+        const string value = "diagnostic-label";
+
+        var tag = OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, value);
+
+        Assert.Equal(value, tag.Value);
+    }
+
+    [Fact]
+    public void LocalStringTag_UsesLocalKey()
+    {
+        var tag = OpenClawTelemetryTag.String("openclaw.test.local", "value");
+
+        Assert.Equal("openclaw.test.local", tag.Key);
+        Assert.Equal("value", tag.Value);
     }
 
     [Fact]
     public void TelemetryTag_IsReferenceType_WithValidatedConstruction()
     {
         Assert.False(typeof(OpenClawTelemetryTag).IsValueType);
-        Assert.Throws<ArgumentException>(() => new OpenClawTelemetryTag("", "value"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OpenClawTelemetryTag((OpenClawTelemetryTagKey)999, "value"));
+        Assert.Throws<ArgumentException>(() => OpenClawTelemetryTag.String("", "value"));
+    }
+
+    [Fact]
+    public void MarkFailure_RequiresException()
+    {
+        Assert.Throws<ArgumentNullException>(() => OpenClawTelemetry.MarkFailure(null, null!));
     }
 
     private sealed class ActivityCollector : IDisposable

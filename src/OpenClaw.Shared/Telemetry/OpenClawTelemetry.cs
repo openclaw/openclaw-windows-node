@@ -8,30 +8,53 @@ namespace OpenClaw.Shared.Telemetry;
 /// </summary>
 public static class OpenClawTelemetry
 {
+    private const string OutcomeSuccess = "success";
+    private const string OutcomeCanceled = "canceled";
+    private const string OutcomeFailure = "failure";
+
+    /// <summary>
+    /// Starts a span for work that needs manual lifetime control.
+    /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="Trace(string, Action, IEnumerable{OpenClawTelemetryTag}?, System.Diagnostics.ActivityKind, OpenClawActivitySourceName)"/>
+    /// or <see cref="TraceAsync(string, Func{CancellationToken, Task}, IEnumerable{OpenClawTelemetryTag}?, System.Diagnostics.ActivityKind, CancellationToken, OpenClawActivitySourceName)"/>
+    /// when the span should cover a single function call. Use this method when a span must cross multiple calls,
+    /// has custom lifetime boundaries, or needs manual success/failure/cancellation marking.
+    /// <para>
+    /// The returned <see cref="Activity"/> can be <see langword="null"/> when no listener is recording this
+    /// source or the configured sampler drops the span. Callers should use null-safe disposal and mark helpers.
+    /// </para>
+    /// </remarks>
     public static Activity? StartActivity(
-        ActivitySource source,
         string spanName,
         IEnumerable<OpenClawTelemetryTag>? tags = null,
-        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal)
+        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
     {
-        ArgumentNullException.ThrowIfNull(source);
         if (string.IsNullOrWhiteSpace(spanName))
             throw new ArgumentException("Span name cannot be empty.", nameof(spanName));
 
-        var activity = source.StartActivity(spanName, kind);
+        var activity = source.ToActivitySource().StartActivity(spanName, kind);
         ApplyTags(activity, tags);
         return activity;
     }
 
+    /// <summary>
+    /// Runs a synchronous action inside a span and automatically marks success, cancellation, or failure.
+    /// </summary>
+    /// <remarks>
+    /// Use this for the common case where a span should cover exactly one function call. Exceptions and
+    /// cancellations are rethrown unchanged after the span is annotated.
+    /// </remarks>
     public static void Trace(
-        ActivitySource source,
         string spanName,
         Action action,
         IEnumerable<OpenClawTelemetryTag>? tags = null,
-        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal)
+        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
     {
         ArgumentNullException.ThrowIfNull(action);
-        using var activity = StartActivity(source, spanName, tags, kind);
+        using var activity = StartActivity(spanName, tags, kind, source);
 
         try
         {
@@ -50,15 +73,22 @@ public static class OpenClawTelemetry
         }
     }
 
+    /// <summary>
+    /// Runs a synchronous function inside a span and returns its result.
+    /// </summary>
+    /// <remarks>
+    /// Use this for the common case where a span should cover exactly one value-returning function call.
+    /// Exceptions and cancellations are rethrown unchanged after the span is annotated.
+    /// </remarks>
     public static T Trace<T>(
-        ActivitySource source,
         string spanName,
         Func<T> action,
         IEnumerable<OpenClawTelemetryTag>? tags = null,
-        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal)
+        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
     {
         ArgumentNullException.ThrowIfNull(action);
-        using var activity = StartActivity(source, spanName, tags, kind);
+        using var activity = StartActivity(spanName, tags, kind, source);
 
         try
         {
@@ -78,16 +108,23 @@ public static class OpenClawTelemetry
         }
     }
 
+    /// <summary>
+    /// Runs an asynchronous action inside a span and automatically marks success, cancellation, or failure.
+    /// </summary>
+    /// <remarks>
+    /// Use this for the common case where a span should cover exactly one asynchronous operation. The supplied
+    /// cancellation token is passed to <paramref name="action"/> and cancellations are rethrown unchanged.
+    /// </remarks>
     public static async Task TraceAsync(
-        ActivitySource source,
         string spanName,
         Func<CancellationToken, Task> action,
         IEnumerable<OpenClawTelemetryTag>? tags = null,
         System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
     {
         ArgumentNullException.ThrowIfNull(action);
-        using var activity = StartActivity(source, spanName, tags, kind);
+        using var activity = StartActivity(spanName, tags, kind, source);
 
         try
         {
@@ -106,16 +143,24 @@ public static class OpenClawTelemetry
         }
     }
 
+    /// <summary>
+    /// Runs an asynchronous function inside a span and returns its result.
+    /// </summary>
+    /// <remarks>
+    /// Use this for the common case where a span should cover exactly one value-returning asynchronous
+    /// operation. The supplied cancellation token is passed to <paramref name="action"/> and cancellations are
+    /// rethrown unchanged.
+    /// </remarks>
     public static async Task<T> TraceAsync<T>(
-        ActivitySource source,
         string spanName,
         Func<CancellationToken, Task<T>> action,
         IEnumerable<OpenClawTelemetryTag>? tags = null,
         System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
     {
         ArgumentNullException.ThrowIfNull(action);
-        using var activity = StartActivity(source, spanName, tags, kind);
+        using var activity = StartActivity(spanName, tags, kind, source);
 
         try
         {
@@ -144,18 +189,46 @@ public static class OpenClawTelemetry
             activity.SetTag(tag.Key, tag.Value);
     }
 
-    private static void MarkSuccess(Activity? activity) =>
-        activity?.SetStatus(ActivityStatusCode.Ok);
-
-    private static void MarkCanceled(Activity? activity) =>
-        activity?.SetTag(OpenClawTelemetryTags.Outcome, "canceled");
-
-    private static void MarkFailure(Activity? activity, Exception ex)
+    /// <summary>
+    /// Marks a manually-created span as successful.
+    /// </summary>
+    /// <remarks>
+    /// This method accepts a nullable activity because <see cref="StartActivity"/> may return
+    /// <see langword="null"/> when telemetry is not recording.
+    /// </remarks>
+    public static void MarkSuccess(Activity? activity)
     {
         if (activity == null)
             return;
 
-        activity.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
-        activity.SetTag(OpenClawTelemetryTags.ErrorType, ex.GetType().FullName);
+        activity.SetStatus(ActivityStatusCode.Ok);
+        activity.SetTag(OpenClawTelemetryTagKey.Outcome.ToTelemetryName(), OutcomeSuccess);
+    }
+
+    /// <summary>
+    /// Marks a manually-created span as canceled without setting error status.
+    /// </summary>
+    /// <remarks>
+    /// Use this for expected cancellation paths so observability backends do not count normal cancellation as
+    /// a failed operation.
+    /// </remarks>
+    public static void MarkCanceled(Activity? activity) =>
+        activity?.SetTag(OpenClawTelemetryTagKey.Outcome.ToTelemetryName(), OutcomeCanceled);
+
+    /// <summary>
+    /// Marks a manually-created span as failed and records the exception type.
+    /// </summary>
+    /// <remarks>
+    /// The exception message is intentionally not recorded to avoid leaking user content or secrets.
+    /// </remarks>
+    public static void MarkFailure(Activity? activity, Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        if (activity == null)
+            return;
+
+        activity.SetStatus(ActivityStatusCode.Error, exception.GetType().Name);
+        activity.SetTag(OpenClawTelemetryTagKey.Outcome.ToTelemetryName(), OutcomeFailure);
+        activity.SetTag(OpenClawTelemetryTagKey.ErrorType.ToTelemetryName(), exception.GetType().FullName);
     }
 }

@@ -1,17 +1,29 @@
 namespace OpenClaw.Shared.Telemetry;
 
+public enum OpenClawTelemetryTagKey
+{
+    Source,
+    Outcome,
+    ErrorCategory,
+    ErrorType,
+    Reason,
+    Status
+}
+
 /// <summary>
 /// Stable tag keys used by OpenClaw instrumentation.
 /// </summary>
 public static class OpenClawTelemetryTags
 {
-    public const string Source = "openclaw.source";
-    public const string Outcome = "openclaw.outcome";
-    public const string ErrorCategory = "openclaw.errorCategory";
-    public const string ErrorType = "error.type";
-    public const string Exporter = "openclaw.exporter";
-    public const string ExporterProtocol = "openclaw.exporter.protocol";
-    public const string Reason = "openclaw.reason";
-    public const string Signal = "openclaw.signal";
-    public const string Status = "openclaw.status";
+    public static string ToTelemetryName(this OpenClawTelemetryTagKey key) =>
+        key switch
+        {
+            OpenClawTelemetryTagKey.Source => "openclaw.source",
+            OpenClawTelemetryTagKey.Outcome => "openclaw.outcome",
+            OpenClawTelemetryTagKey.ErrorCategory => "openclaw.errorCategory",
+            OpenClawTelemetryTagKey.ErrorType => "error.type",
+            OpenClawTelemetryTagKey.Reason => "openclaw.reason",
+            OpenClawTelemetryTagKey.Status => "openclaw.status",
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown OpenClaw telemetry tag key.")
+        };
 }

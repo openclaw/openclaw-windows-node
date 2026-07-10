@@ -28,8 +28,8 @@ public sealed class OpenTelemetryEndpointConnectionTests
     [Fact]
     public void Probe_UsesGatewayAlignedTelemetryConstants()
     {
-        Assert.Contains(OpenClawActivitySources.OpenClaw, OpenClawActivitySources.ExportedNames);
-        Assert.Equal("openclaw-windows-tray", OpenClawResourceNames.Tray);
+        Assert.Equal("openclaw", OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        Assert.Equal("openclaw-windows-tray", OpenClawResourceName.WindowsTray.ToServiceName());
         Assert.Equal("grpc", OpenTelemetryEndpointProtocol.ToTelemetryValue(OpenTelemetryEndpointProtocol.Grpc));
         Assert.Equal("http/protobuf", OpenTelemetryEndpointProtocol.ToTelemetryValue(OpenTelemetryEndpointProtocol.HttpProtobuf));
     }

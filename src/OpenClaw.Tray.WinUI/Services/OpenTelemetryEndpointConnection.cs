@@ -170,6 +170,10 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
 
 internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 {
+    private const string ExporterTagKey = "openclaw.exporter";
+    private const string ExporterProtocolTagKey = "openclaw.exporter.protocol";
+    private const string SignalTagKey = "openclaw.signal";
+
     private readonly TracerProvider _provider;
 
     private OpenTelemetryOtlpProbeSink(TracerProvider provider)
@@ -185,13 +189,13 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         var provider = Sdk.CreateTracerProviderBuilder()
             .SetResourceBuilder(ResourceBuilder.CreateDefault()
                 .AddService(
-                    serviceName: OpenClawResourceNames.Tray,
+                    serviceName: OpenClawResourceName.WindowsTray.ToServiceName(),
                     serviceVersion: typeof(OpenTelemetryOtlpProbeSink).Assembly.GetName().Version?.ToString())
                 .AddAttributes(new Dictionary<string, object>
                 {
                     ["process.pid"] = Environment.ProcessId
                 }))
-            .AddSource(OpenClawActivitySources.ExportedNames.ToArray())
+            .AddSource(OpenClawActivitySourceName.OpenClaw.ToTelemetryName())
             .AddOtlpExporter(exporter =>
             {
                 exporter.Endpoint = endpoint;
@@ -207,18 +211,17 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     public void SendProbe(OpenTelemetryEndpointOptions options)
     {
         OpenClawTelemetry.Trace(
-            OpenClawActivitySources.OpenClawSource,
             "openclaw.telemetry.exporter.probe",
             static () => { },
             [
                 OpenClawTelemetryTag.String(
-                    OpenClawTelemetryTags.Exporter,
+                    ExporterTagKey,
                     "tray-otel"),
                 OpenClawTelemetryTag.String(
-                    OpenClawTelemetryTags.Signal,
+                    SignalTagKey,
                     "traces"),
                 OpenClawTelemetryTag.String(
-                    OpenClawTelemetryTags.ExporterProtocol,
+                    ExporterProtocolTagKey,
                     OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
             ]);
     }
