@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Tests.Telemetry;
@@ -10,6 +11,8 @@ public sealed class OpenClawTelemetryTests
     {
         Assert.Equal("openclaw", OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
         Assert.Equal("openclaw", OpenClawActivitySources.OpenClawSource.Name);
+        Assert.Equal("openclaw", OpenClawMeterName.OpenClaw.ToTelemetryName());
+        Assert.Equal("openclaw", OpenClawMeters.OpenClawMeter.Name);
         Assert.Equal("openclaw-windows-tray", OpenClawResourceName.WindowsTray.ToServiceName());
         Assert.Equal("openclaw-windows-node", OpenClawResourceName.WindowsNode.ToServiceName());
         Assert.Equal("openclaw.source", OpenClawTelemetryTagKey.Source.ToTelemetryName());
@@ -180,6 +183,44 @@ public sealed class OpenClawTelemetryTests
     }
 
     [Fact]
+    public void CounterMetric_WithListener_RecordsMeasurementAndTags()
+    {
+        var metricName = $"test.counter.{Guid.NewGuid():N}";
+        using var collector = MetricCollector.Listen(OpenClawMeterName.OpenClaw.ToTelemetryName());
+        var counter = OpenClawTelemetry.CreateCounter(metricName, unit: "{event}");
+
+        OpenClawTelemetry.Add(
+            counter,
+            2,
+            [
+                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "unit-test"),
+                OpenClawTelemetryTag.Number("openclaw.test.count", 7)
+            ]);
+
+        var measurement = Assert.Single(collector.LongMeasurements, m => m.Name == metricName);
+        Assert.Equal(2, measurement.Value);
+        Assert.Contains(measurement.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Source.ToTelemetryName() && (string?)tag.Value == "unit-test");
+        Assert.Contains(measurement.Tags, tag => tag.Key == "openclaw.test.count" && (long)tag.Value! == 7);
+    }
+
+    [Fact]
+    public void HistogramMetric_WithListener_RecordsMeasurementAndTags()
+    {
+        var metricName = $"test.histogram.{Guid.NewGuid():N}";
+        using var collector = MetricCollector.Listen(OpenClawMeterName.OpenClaw.ToTelemetryName());
+        var histogram = OpenClawTelemetry.CreateHistogram(metricName, unit: "ms");
+
+        OpenClawTelemetry.Record(
+            histogram,
+            42.5,
+            [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "unit-test")]);
+
+        var measurement = Assert.Single(collector.DoubleMeasurements, m => m.Name == metricName);
+        Assert.Equal(42.5, measurement.Value);
+        Assert.Contains(measurement.Tags, tag => tag.Key == OpenClawTelemetryTagKey.Source.ToTelemetryName() && (string?)tag.Value == "unit-test");
+    }
+
+    [Fact]
     public void MarkFailure_RequiresException()
     {
         Assert.Throws<ArgumentNullException>(() => OpenClawTelemetry.MarkFailure(null, null!));
@@ -206,4 +247,38 @@ public sealed class OpenClawTelemetryTests
 
         public void Dispose() => _listener.Dispose();
     }
+
+    private sealed class MetricCollector : IDisposable
+    {
+        private readonly MeterListener _listener;
+
+        private MetricCollector(string meterName)
+        {
+            _listener = new MeterListener
+            {
+                InstrumentPublished = (instrument, listener) =>
+                {
+                    if (instrument.Meter.Name == meterName)
+                        listener.EnableMeasurementEvents(instrument);
+                }
+            };
+            _listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+                LongMeasurements.Add(new MetricMeasurement<long>(instrument.Name, measurement, tags.ToArray())));
+            _listener.SetMeasurementEventCallback<double>((instrument, measurement, tags, _) =>
+                DoubleMeasurements.Add(new MetricMeasurement<double>(instrument.Name, measurement, tags.ToArray())));
+            _listener.Start();
+        }
+
+        public List<MetricMeasurement<long>> LongMeasurements { get; } = new();
+        public List<MetricMeasurement<double>> DoubleMeasurements { get; } = new();
+
+        public static MetricCollector Listen(string meterName) => new(meterName);
+
+        public void Dispose() => _listener.Dispose();
+    }
+
+    private sealed record MetricMeasurement<T>(
+        string Name,
+        T Value,
+        KeyValuePair<string, object?>[] Tags);
 }

@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenClaw.Shared.Telemetry;
@@ -173,12 +176,18 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     private const string ExporterTagKey = "openclaw.exporter";
     private const string ExporterProtocolTagKey = "openclaw.exporter.protocol";
     private const string SignalTagKey = "openclaw.signal";
+    private static readonly Counter<long> ExporterProbeCounter = OpenClawTelemetry.CreateCounter(
+        "openclaw.telemetry.exporter.probes",
+        unit: "{probe}",
+        description: "Number of OpenClaw telemetry exporter probe metrics sent.");
 
-    private readonly TracerProvider _provider;
+    private readonly TracerProvider _tracerProvider;
+    private readonly MeterProvider _meterProvider;
 
-    private OpenTelemetryOtlpProbeSink(TracerProvider provider)
+    private OpenTelemetryOtlpProbeSink(TracerProvider tracerProvider, MeterProvider meterProvider)
     {
-        _provider = provider;
+        _tracerProvider = tracerProvider;
+        _meterProvider = meterProvider;
     }
 
     public static IOpenTelemetryProbeSink Create(OpenTelemetryEndpointOptions options)
@@ -186,26 +195,33 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         if (!options.TryGetEndpointUri(out var endpoint) || endpoint == null)
             throw new InvalidOperationException("OpenTelemetry endpoint must be configured before creating the exporter.");
 
-        var provider = Sdk.CreateTracerProviderBuilder()
-            .SetResourceBuilder(ResourceBuilder.CreateDefault()
-                .AddService(
-                    serviceName: OpenClawResourceName.WindowsTray.ToServiceName(),
-                    serviceVersion: typeof(OpenTelemetryOtlpProbeSink).Assembly.GetName().Version?.ToString())
-                .AddAttributes(new Dictionary<string, object>
-                {
-                    ["process.pid"] = Environment.ProcessId
-                }))
-            .AddSource(OpenClawActivitySourceName.OpenClaw.ToTelemetryName())
-            .AddOtlpExporter(exporter =>
-            {
-                exporter.Endpoint = endpoint;
-                exporter.Protocol = options.Protocol == OpenTelemetryEndpointProtocol.HttpProtobuf
-                    ? OtlpExportProtocol.HttpProtobuf
-                    : OtlpExportProtocol.Grpc;
-            })
-            .Build();
+        TracerProvider? tracerProvider = null;
+        MeterProvider? meterProvider = null;
 
-        return new OpenTelemetryOtlpProbeSink(provider);
+        try
+        {
+            tracerProvider = Sdk.CreateTracerProviderBuilder()
+                .SetResourceBuilder(CreateResourceBuilder())
+                .AddSource(OpenClawActivitySourceName.OpenClaw.ToTelemetryName())
+                .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, options.Protocol))
+                .Build();
+
+            meterProvider = Sdk.CreateMeterProviderBuilder()
+                .SetResourceBuilder(CreateResourceBuilder())
+                .AddMeter(OpenClawMeterName.OpenClaw.ToTelemetryName())
+                .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, options.Protocol))
+                .Build();
+
+            var sink = new OpenTelemetryOtlpProbeSink(tracerProvider, meterProvider);
+            tracerProvider = null;
+            meterProvider = null;
+            return sink;
+        }
+        finally
+        {
+            tracerProvider?.Dispose();
+            meterProvider?.Dispose();
+        }
     }
 
     public void SendProbe(OpenTelemetryEndpointOptions options)
@@ -213,24 +229,68 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         OpenClawTelemetry.Trace(
             "openclaw.telemetry.exporter.probe",
             static () => { },
-            [
-                OpenClawTelemetryTag.String(
-                    ExporterTagKey,
-                    "tray-otel"),
-                OpenClawTelemetryTag.String(
-                    SignalTagKey,
-                    "traces"),
-                OpenClawTelemetryTag.String(
-                    ExporterProtocolTagKey,
-                    OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
-            ]);
+            CreateProbeTags(options, "traces"));
+
+        OpenClawTelemetry.Add(
+            ExporterProbeCounter,
+            tags: CreateProbeTags(options, "metrics"));
     }
 
-    public bool ForceFlush(int timeoutMilliseconds) => _provider.ForceFlush(timeoutMilliseconds);
+    public bool ForceFlush(int timeoutMilliseconds)
+    {
+        if (timeoutMilliseconds < 0)
+        {
+            var tracesOk = _tracerProvider.ForceFlush(timeoutMilliseconds);
+            var metricsOk = _meterProvider.ForceFlush(timeoutMilliseconds);
+            return tracesOk && metricsOk;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        var tracesFlushed = _tracerProvider.ForceFlush(timeoutMilliseconds);
+        var remainingMilliseconds = Math.Max(0, timeoutMilliseconds - (int)Math.Min(int.MaxValue, stopwatch.ElapsedMilliseconds));
+        var metricsFlushed = _meterProvider.ForceFlush(remainingMilliseconds);
+        return tracesFlushed && metricsFlushed;
+    }
 
     public void Dispose()
     {
-        _provider.ForceFlush(2_000);
-        _provider.Dispose();
+        _tracerProvider.ForceFlush(2_000);
+        _meterProvider.ForceFlush(2_000);
+        _tracerProvider.Dispose();
+        _meterProvider.Dispose();
     }
+
+    private static ResourceBuilder CreateResourceBuilder() =>
+        ResourceBuilder.CreateDefault()
+            .AddService(
+                serviceName: OpenClawResourceName.WindowsTray.ToServiceName(),
+                serviceVersion: typeof(OpenTelemetryOtlpProbeSink).Assembly.GetName().Version?.ToString())
+            .AddAttributes(new Dictionary<string, object>
+            {
+                ["process.pid"] = Environment.ProcessId
+            });
+
+    private static void ConfigureExporter(
+        OtlpExporterOptions exporter,
+        Uri endpoint,
+        string? protocol)
+    {
+        exporter.Endpoint = endpoint;
+        exporter.Protocol = protocol == OpenTelemetryEndpointProtocol.HttpProtobuf
+            ? OtlpExportProtocol.HttpProtobuf
+            : OtlpExportProtocol.Grpc;
+    }
+
+    private static OpenClawTelemetryTag[] CreateProbeTags(OpenTelemetryEndpointOptions options, string signal) =>
+    [
+        OpenClawTelemetryTag.String(
+            ExporterTagKey,
+            "tray-otel"),
+        OpenClawTelemetryTag.String(
+            SignalTagKey,
+            signal),
+        OpenClawTelemetryTag.String(
+            ExporterProtocolTagKey,
+            OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
+    ];
 }

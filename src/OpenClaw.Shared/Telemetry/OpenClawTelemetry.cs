@@ -1,9 +1,10 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 
 namespace OpenClaw.Shared.Telemetry;
 
 /// <summary>
-/// Small helpers for OpenClaw code paths that want to expose traced spans.
+/// Small helpers for OpenClaw code paths that want to expose traced spans and metrics.
 /// Exporter configuration remains owned by the app process.
 /// </summary>
 public static class OpenClawTelemetry
@@ -180,6 +181,68 @@ public static class OpenClawTelemetry
         }
     }
 
+    /// <summary>
+    /// Creates a long-lived counter instrument for monotonically increasing measurements.
+    /// </summary>
+    /// <remarks>
+    /// Store the returned counter in a static field near the instrumentation point and call
+    /// <see cref="Add(Counter{long}, long, IEnumerable{OpenClawTelemetryTag}?)"/> whenever an event occurs.
+    /// Use counters for counts such as attempts, completions, or probe sends.
+    /// </remarks>
+    public static Counter<long> CreateCounter(
+        string metricName,
+        string? unit = null,
+        string? description = null,
+        OpenClawMeterName meter = OpenClawMeterName.OpenClaw)
+    {
+        ValidateMetricName(metricName);
+        return meter.ToMeter().CreateCounter<long>(metricName, unit, description);
+    }
+
+    /// <summary>
+    /// Creates a long-lived histogram instrument for recording distributions.
+    /// </summary>
+    /// <remarks>
+    /// Store the returned histogram in a static field near the instrumentation point and call
+    /// <see cref="Record(Histogram{double}, double, IEnumerable{OpenClawTelemetryTag}?)"/> for each value.
+    /// Use histograms for durations, sizes, or other values where percentiles are useful.
+    /// </remarks>
+    public static Histogram<double> CreateHistogram(
+        string metricName,
+        string? unit = null,
+        string? description = null,
+        OpenClawMeterName meter = OpenClawMeterName.OpenClaw)
+    {
+        ValidateMetricName(metricName);
+        return meter.ToMeter().CreateHistogram<double>(metricName, unit, description);
+    }
+
+    /// <summary>
+    /// Adds a measurement to a counter instrument.
+    /// </summary>
+    public static void Add(
+        Counter<long> counter,
+        long delta = 1,
+        IEnumerable<OpenClawTelemetryTag>? tags = null)
+    {
+        ArgumentNullException.ThrowIfNull(counter);
+        var tagList = ToTagList(tags);
+        counter.Add(delta, in tagList);
+    }
+
+    /// <summary>
+    /// Records a value in a histogram instrument.
+    /// </summary>
+    public static void Record(
+        Histogram<double> histogram,
+        double value,
+        IEnumerable<OpenClawTelemetryTag>? tags = null)
+    {
+        ArgumentNullException.ThrowIfNull(histogram);
+        var tagList = ToTagList(tags);
+        histogram.Record(value, in tagList);
+    }
+
     private static void ApplyTags(Activity? activity, IEnumerable<OpenClawTelemetryTag>? tags)
     {
         if (activity == null || tags == null)
@@ -187,6 +250,24 @@ public static class OpenClawTelemetry
 
         foreach (var tag in tags)
             activity.SetTag(tag.Key, tag.Value);
+    }
+
+    private static TagList ToTagList(IEnumerable<OpenClawTelemetryTag>? tags)
+    {
+        var tagList = new TagList();
+        if (tags == null)
+            return tagList;
+
+        foreach (var tag in tags)
+            tagList.Add(tag.Key, tag.Value);
+
+        return tagList;
+    }
+
+    private static void ValidateMetricName(string metricName)
+    {
+        if (string.IsNullOrWhiteSpace(metricName))
+            throw new ArgumentException("Metric name cannot be empty.", nameof(metricName));
     }
 
     /// <summary>
