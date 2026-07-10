@@ -314,6 +314,7 @@ Returns `{ navigated, page }`.
 ### app.status
 Current connection / node state.
 No params. Returns `{ connectionStatus, overallState, operatorState, nodeState, nodeConnected, nodePaired, nodePendingApproval, nodeError, gatewayVersion, sessionCount, nodeCount }`.
+For agent-facing connection troubleshooting, prefer `app.connection.status`.
 
 ### app.sessions
 Active sessions, optionally filtered by agent.
@@ -368,6 +369,100 @@ Build the same gateway dashboard URL the tray opens.
 {"path": "string"}           // optional
 ```
 Returns `{ url, credentialSource, usesSharedGatewayToken, hasTokenQuery }`.
+
+## App connection diagnostics and setup (app.connection.*)
+
+Local MCP-only tools for connection diagnostics, setup, pairing approvals, and
+targeted reconnects. These tools are not advertised to the remote gateway node
+transport. Read-only diagnostics redact token values and expose credential
+presence/outcome only.
+
+### app.connection.status
+Read-only connection diagnostics for agents and CLIs. No params. Returns:
+`{ schemaVersion, connectionState, effectiveMode, legacyConnectionStatus, gateway, operator, node, mcp, browserProxy, pendingActions, retry, diagnostics }`.
+
+The payload includes the active gateway id/name/url, operator and node role
+states, credential sources/statuses, MCP enabled/running/error state, browser
+proxy shared-token caveat, pending approval commands, retry hints inferred from
+recent diagnostics, and recent connection diagnostic events. `effectiveMode`
+reflects Settings mode (`EnableNodeMode` / `EnableMcpServer`); `node.intended`
+reflects the manager snapshot plus current Node mode setting.
+
+### app.connection.gateways
+Read-only saved gateway diagnostics. No params. Returns:
+`{ activeGatewayId, count, gateways[] }`.
+
+Each gateway includes id/name/url, active flag, local/v2 flags, lastConnected,
+credential presence booleans (`hasSharedGatewayToken`, `hasBootstrapToken`),
+browser-control port/caveat, and SSH tunnel metadata. Token values are never
+returned.
+
+### app.connection.applySetupCode
+Apply a setup or QR code and connect the tray to that gateway.
+```
+{"setupCode": "string"}      // required
+```
+Returns `{ outcome, error, gatewayUrl, connected }`. Side effects: creates or
+updates a gateway record, sets it active, persists credentials from the setup
+code, and asks `GatewayConnectionManager` to connect.
+
+### app.connection.connectSharedToken
+Connect with a shared gateway token.
+```
+{
+  "gatewayUrl": "string",    // required
+  "token": "string"          // required
+}
+```
+Returns `{ outcome, error, gatewayUrl, connected }`. Side effects: creates or
+updates a gateway record, stores the shared token on that record, sets it active,
+and asks `GatewayConnectionManager` to connect.
+
+### app.connection.pendingApprovals
+Read pending device/node pairing approvals from the connected gateway. No params.
+Returns `{ connected, error, totalPending, devicePending[], nodePending[] }`.
+
+### app.connection.approveDevicePairing
+Approve a pending device pairing request.
+```
+{"requestId": "string"}      // required; "id" alias accepted
+```
+Returns the refreshed pending approvals payload plus `{ decision }`. Side effect:
+calls the connected operator client's device-pair approval RPC.
+
+### app.connection.rejectDevicePairing
+Reject a pending device pairing request.
+```
+{"requestId": "string"}      // required; "id" alias accepted
+```
+Returns the refreshed pending approvals payload plus `{ decision }`. Side effect:
+calls the connected operator client's device-pair rejection RPC.
+
+### app.connection.approveNodePairing
+Approve a pending Windows node pairing or command-trust request.
+```
+{"requestId": "string"}      // required; "id" alias accepted
+```
+Returns the refreshed pending approvals payload plus `{ decision }`. Side effect:
+calls the connected operator client's node-pair approval RPC.
+
+### app.connection.rejectNodePairing
+Reject a pending Windows node pairing or command-trust request.
+```
+{"requestId": "string"}      // required; "id" alias accepted
+```
+Returns the refreshed pending approvals payload plus `{ decision }`. Side effect:
+calls the connected operator client's node-pair rejection RPC.
+
+### app.connection.reconnect
+Reconnect the active gateway through `GatewayConnectionManager`. No params.
+Returns `{ reconnected, error? }`. Side effect: disconnects and reconnects the
+operator/node lifecycle for the active gateway.
+
+### app.connection.reconnectNode
+Reconnect only the Windows node role for the active gateway through
+`GatewayConnectionManager`. No params. Returns `{ reconnected, error? }`.
+Side effect: restarts node connection intent without changing the active gateway.
 
 ### app.chat.snapshot
 Read the current native chat snapshot for local automation and diagnostics.

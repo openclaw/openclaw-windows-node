@@ -77,7 +77,9 @@ public static class GatewayUrlHelper
     }
 
     /// <summary>
-    /// Remove user-info credentials from a URL for safe logging and display.
+    /// Remove user-info credentials plus query/fragment data from a URL for safe
+    /// logging and display. Gateway URLs can carry token-like query parameters
+    /// even when the connection stack does not normally use them.
     /// </summary>
     public static string SanitizeForDisplay(string? gatewayUrl)
     {
@@ -86,7 +88,7 @@ public static class GatewayUrlHelper
             return gatewayUrl?.Trim() ?? string.Empty;
         }
 
-        return RemoveUserInfo(gatewayUrl.Trim());
+        return RemoveQueryAndFragment(RemoveUserInfo(gatewayUrl.Trim()));
     }
 
     public static bool TryNormalizeWebSocketUrl(string? gatewayUrl, out string normalizedUrl)
@@ -156,5 +158,18 @@ public static class GatewayUrlHelper
 
         return string.Concat(url.AsSpan(0, authorityStart), url.AsSpan(atIndex + 1));
     }
-}
 
+    private static string RemoveQueryAndFragment(string url)
+    {
+        var queryIndex = url.IndexOf('?');
+        var fragmentIndex = url.IndexOf('#');
+        var cutIndex = queryIndex switch
+        {
+            >= 0 when fragmentIndex >= 0 => Math.Min(queryIndex, fragmentIndex),
+            >= 0 => queryIndex,
+            _ => fragmentIndex
+        };
+
+        return cutIndex >= 0 ? url[..cutIndex] : url;
+    }
+}

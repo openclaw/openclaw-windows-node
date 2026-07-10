@@ -233,6 +233,34 @@ public partial class App
         app.ChatQueueListHandler = ListQueuedChatMessagesForMcpAsync;
         app.ChatQueueCancelHandler = CancelQueuedChatMessageForMcpAsync;
 
+        connection.StatusHandler = () =>
+        {
+            var enableMcpServer = _settings?.EnableMcpServer == true;
+            var isMcpRunning = _nodeService?.IsMcpRunning == true;
+            var mcpPlan = McpRuntimeStatePolicy.PlanStartupNotification(
+                enableMcpServer,
+                isMcpRunning,
+                _nodeService?.McpStartupError);
+            var diagnostics = _connectionManager?.Diagnostics;
+            var recentDiagnostics = diagnostics?.GetRecent(50) ?? [];
+            return Task.FromResult<object?>(ConnectionDiagnosticsProjection.BuildStatus(
+                _connectionManager?.CurrentSnapshot,
+                _gatewayRegistry?.GetActive(),
+                enableNodeMode: _settings?.EnableNodeMode == true,
+                enableMcpServer: enableMcpServer,
+                isMcpRunning: isMcpRunning,
+                mcpError: mcpPlan.ShouldShow ? mcpPlan.Message : null,
+                nodeBrowserProxyEnabled: _settings?.NodeBrowserProxyEnabled != false,
+                recentDiagnostics: recentDiagnostics,
+                diagnosticEventCount: diagnostics?.Count ?? recentDiagnostics.Count));
+        };
+
+        connection.GatewaysHandler = () =>
+            Task.FromResult<object?>(ConnectionDiagnosticsProjection.BuildGateways(
+                _gatewayRegistry?.GetAll() ?? [],
+                _gatewayRegistry?.ActiveGatewayId,
+                nodeBrowserProxyEnabled: _settings?.NodeBrowserProxyEnabled != false));
+
         connection.ApplySetupCodeHandler = async setupCode =>
         {
             if (_connectionManager == null)

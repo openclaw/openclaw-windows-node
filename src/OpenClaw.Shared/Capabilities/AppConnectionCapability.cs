@@ -14,6 +14,8 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
 
     private static readonly string[] s_commands =
     [
+        "app.connection.status",
+        "app.connection.gateways",
         "app.connection.applySetupCode",
         "app.connection.connectSharedToken",
         "app.connection.pendingApprovals",
@@ -29,6 +31,8 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
 
     public Func<string, Task<object?>>? ApplySetupCodeHandler;
     public Func<string, string, Task<object?>>? ConnectSharedTokenHandler;
+    public Func<Task<object?>>? StatusHandler;
+    public Func<Task<object?>>? GatewaysHandler;
     public Func<Task<object?>>? PendingApprovalsHandler;
     public Func<string, Task<object?>>? ApproveDevicePairingHandler;
     public Func<string, Task<object?>>? RejectDevicePairingHandler;
@@ -43,6 +47,8 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
     {
         return request.Command switch
         {
+            "app.connection.status" => await HandleStatus(),
+            "app.connection.gateways" => await HandleGateways(),
             "app.connection.applySetupCode" => await HandleApplySetupCode(request),
             "app.connection.connectSharedToken" => await HandleConnectSharedToken(request),
             "app.connection.pendingApprovals" => await HandlePendingApprovals(),
@@ -54,6 +60,22 @@ public sealed class AppConnectionCapability : NodeCapabilityBase
             "app.connection.reconnectNode" => await HandleReconnectNode(),
             _ => Error($"Unknown command: {request.Command}")
         };
+    }
+
+    private async Task<NodeInvokeResponse> HandleStatus()
+    {
+        if (StatusHandler == null)
+            return Error("Connection status handler not registered");
+        var result = await StatusHandler();
+        return Success(result);
+    }
+
+    private async Task<NodeInvokeResponse> HandleGateways()
+    {
+        if (GatewaysHandler == null)
+            return Error("Connection gateways handler not registered");
+        var result = await GatewaysHandler();
+        return Success(result);
     }
 
     private async Task<NodeInvokeResponse> HandleApplySetupCode(NodeInvokeRequest request)

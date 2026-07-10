@@ -80,6 +80,7 @@ public class SkillMdDriftTests
         var capabilities = new INodeCapability[]
         {
             new AppCapability(NullLogger.Instance),
+            new AppConnectionCapability(NullLogger.Instance),
             new BrowserProxyCapability(NullLogger.Instance, "ws://127.0.0.1:8080", bearerToken: null),
             new CameraCapability(NullLogger.Instance),
             new CanvasCapability(NullLogger.Instance),

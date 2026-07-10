@@ -123,6 +123,29 @@ Idle → Connecting → Connected
 
 `GatewayConnectionSnapshot.NodeConnectionIntended` records the Node mode intent used by the manager's state machine. If Node mode is enabled but node startup is skipped, blocked, or missing a node credential, the manager publishes a blocked node snapshot (`NodeState=Error`, `NodeError=...`) instead of leaving the node idle and letting tray surfaces report a healthy connection.
 
+### Status projection and legacy ledger
+
+`GatewayConnectionManager.CurrentSnapshot` is the lifecycle truth. Tray/UI state
+must treat `AppState.Status` / `ConnectionStatus` as a derived compatibility
+projection only, produced from the manager snapshot by
+`ConnectionStatusPresenter`. New connection diagnostics should read
+`GatewayConnectionSnapshot`, `GatewayRegistry`, and `ConnectionDiagnostics`
+directly instead of writing a second runtime model.
+
+Current derived compatibility debt:
+
+| Surface | Status | Notes |
+|---|---|---|
+| `AppState.Status` | Derived read-side adapter | The only writer is the manager `StateChanged` handler, which maps the snapshot through `ConnectionStatusPresenter` for older UI consumers. |
+| `ConnectionStatus` enum | Retained | Still used by shared gateway/client and tray read-side surfaces. Do not remove it until protocol/client and UI consumers are separated in a smaller migration. |
+| Command Center / tray projections | Mixed | New diagnostics use snapshot-derived DTOs. Some older warnings still read `AppStateSnapshot.Status`; those reads are compatibility gates, not lifecycle ownership. |
+
+The local MCP `app.connection.status` command is the agent-facing projection of
+this model. It reports effective mode/state, active gateway metadata,
+operator/node credential resolution, MCP runtime state, browser-proxy caveats,
+pending approval actions, retry hints from diagnostics, and recent diagnostic
+events without exposing token values.
+
 ## Gateway registry and persistence
 
 `GatewayRegistry` is the source of truth for configured gateways:

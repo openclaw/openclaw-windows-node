@@ -79,6 +79,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ChatNotificationSpeechText.cs" Link="Services\ChatNotificationSpeechText.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationPublisher.cs" Link="Services\AppNotificationPublisher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionStatusPresenter.cs" Link="Services\ConnectionStatusPresenter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionDiagnosticsProjection.cs" Link="Services\ConnectionDiagnosticsProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\McpRuntimeStatePolicy.cs" Link="Services\McpRuntimeStatePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UsageCostApplicationPolicy.cs" Link="Services\UsageCostApplicationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CanvasGatewayUrlRewriter.cs" Link="Helpers\CanvasGatewayUrlRewriter.cs" />
