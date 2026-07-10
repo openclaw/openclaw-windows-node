@@ -194,6 +194,10 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 {
     internal const int ProbeFlushTimeoutMilliseconds = 3_000;
     private const int DisposeFlushTimeoutMilliseconds = 500;
+    private const string HttpVersionPath = "v1";
+    private const string TraceHttpPath = "v1/traces";
+    private const string MetricHttpPath = "v1/metrics";
+    private const string LogHttpPath = "v1/logs";
     private const string ExporterTagKey = "openclaw.exporter";
     private const string ExporterProtocolTagKey = "openclaw.exporter.protocol";
     private const string SignalTagKey = "openclaw.signal";
@@ -202,6 +206,13 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         "openclaw.telemetry.exporter.probes",
         unit: "{probe}",
         description: "Number of OpenClaw telemetry exporter probe metrics sent.");
+
+    internal enum OpenTelemetryOtlpSignal
+    {
+        Traces,
+        Metrics,
+        Logs
+    }
 
     private readonly TracerProvider _tracerProvider;
     private readonly MeterProvider _meterProvider;
@@ -233,13 +244,13 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             tracerProvider = Sdk.CreateTracerProviderBuilder()
                 .SetResourceBuilder(CreateResourceBuilder())
                 .AddSource(OpenClawActivitySourceName.OpenClaw.ToTelemetryName())
-                .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, options.Protocol))
+                .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, options.Protocol, OpenTelemetryOtlpSignal.Traces))
                 .Build();
 
             meterProvider = Sdk.CreateMeterProviderBuilder()
                 .SetResourceBuilder(CreateResourceBuilder())
                 .AddMeter(OpenClawMeterName.OpenClaw.ToTelemetryName())
-                .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, options.Protocol))
+                .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, options.Protocol, OpenTelemetryOtlpSignal.Metrics))
                 .Build();
 
             loggerPipeline = CreateLoggerPipeline(endpoint, options.Protocol);
@@ -323,12 +334,66 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     private static void ConfigureExporter(
         OtlpExporterOptions exporter,
         Uri endpoint,
-        string? protocol)
+        string? protocol,
+        OpenTelemetryOtlpSignal signal)
     {
-        exporter.Endpoint = endpoint;
-        exporter.Protocol = protocol == OpenTelemetryEndpointProtocol.HttpProtobuf
+        var normalizedProtocol = OpenTelemetryEndpointProtocol.Normalize(protocol);
+        exporter.Endpoint = ResolveExporterEndpoint(endpoint, normalizedProtocol, signal);
+        exporter.Protocol = normalizedProtocol == OpenTelemetryEndpointProtocol.HttpProtobuf
             ? OtlpExportProtocol.HttpProtobuf
             : OtlpExportProtocol.Grpc;
+    }
+
+    // Explicitly resolve full signal endpoints for HTTP/protobuf so traces,
+    // metrics, and logs do not compete for one collector URL.
+    internal static Uri ResolveExporterEndpoint(
+        Uri endpoint,
+        string? protocol,
+        OpenTelemetryOtlpSignal signal) =>
+        OpenTelemetryEndpointProtocol.Normalize(protocol) == OpenTelemetryEndpointProtocol.HttpProtobuf
+            ? AppendHttpSignalPath(endpoint, signal)
+            : endpoint;
+
+    private static Uri AppendHttpSignalPath(Uri endpoint, OpenTelemetryOtlpSignal signal)
+    {
+        var prefix = TrimKnownHttpSignalSuffix(endpoint.AbsolutePath.Trim('/'));
+        var signalPath = signal switch
+        {
+            OpenTelemetryOtlpSignal.Traces => TraceHttpPath,
+            OpenTelemetryOtlpSignal.Metrics => MetricHttpPath,
+            OpenTelemetryOtlpSignal.Logs => LogHttpPath,
+            _ => throw new ArgumentOutOfRangeException(nameof(signal), signal, null)
+        };
+        var path = string.IsNullOrEmpty(prefix)
+            ? signalPath
+            : $"{prefix}/{signalPath}";
+
+        return new UriBuilder(endpoint)
+        {
+            Path = path,
+            Query = string.Empty,
+            Fragment = string.Empty
+        }.Uri;
+    }
+
+    private static string TrimKnownHttpSignalSuffix(string path)
+    {
+        foreach (var suffix in new[] { TraceHttpPath, MetricHttpPath, LogHttpPath })
+        {
+            if (string.Equals(path, suffix, StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+
+            if (path.EndsWith($"/{suffix}", StringComparison.OrdinalIgnoreCase))
+                return path[..^(suffix.Length + 1)];
+        }
+
+        if (string.Equals(path, HttpVersionPath, StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+
+        if (path.EndsWith($"/{HttpVersionPath}", StringComparison.OrdinalIgnoreCase))
+            return path[..^(HttpVersionPath.Length + 1)];
+
+        return path;
     }
 
     private static OpenTelemetryLoggerPipeline CreateLoggerPipeline(Uri endpoint, string? protocol)
@@ -339,7 +404,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             sdk = OpenTelemetrySdk.Create(builder => builder.WithLogging(
                 logging => logging
                     .SetResourceBuilder(CreateResourceBuilder())
-                    .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, protocol)),
+                    .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, protocol, OpenTelemetryOtlpSignal.Logs)),
                 options =>
                 {
                     options.IncludeScopes = false;

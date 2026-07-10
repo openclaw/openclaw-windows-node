@@ -109,6 +109,57 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.False(options.TryGetEndpointUri(out _));
     }
 
+    [Theory]
+    [InlineData("http://localhost:4318", "http://localhost:4318/v1/traces", "http://localhost:4318/v1/metrics", "http://localhost:4318/v1/logs")]
+    [InlineData("http://localhost:4318/", "http://localhost:4318/v1/traces", "http://localhost:4318/v1/metrics", "http://localhost:4318/v1/logs")]
+    [InlineData("https://collector.example.test:4318/otlp", "https://collector.example.test:4318/otlp/v1/traces", "https://collector.example.test:4318/otlp/v1/metrics", "https://collector.example.test:4318/otlp/v1/logs")]
+    [InlineData("https://collector.example.test:4318/v1", "https://collector.example.test:4318/v1/traces", "https://collector.example.test:4318/v1/metrics", "https://collector.example.test:4318/v1/logs")]
+    [InlineData("https://collector.example.test:4318/otlp/v1", "https://collector.example.test:4318/otlp/v1/traces", "https://collector.example.test:4318/otlp/v1/metrics", "https://collector.example.test:4318/otlp/v1/logs")]
+    [InlineData("https://collector.example.test:4318/v1/traces", "https://collector.example.test:4318/v1/traces", "https://collector.example.test:4318/v1/metrics", "https://collector.example.test:4318/v1/logs")]
+    [InlineData("https://collector.example.test:4318/v1/metrics", "https://collector.example.test:4318/v1/traces", "https://collector.example.test:4318/v1/metrics", "https://collector.example.test:4318/v1/logs")]
+    [InlineData("https://collector.example.test:4318/v1/logs", "https://collector.example.test:4318/v1/traces", "https://collector.example.test:4318/v1/metrics", "https://collector.example.test:4318/v1/logs")]
+    [InlineData("https://collector.example.test:4318/otlp/V1/TrAcEs", "https://collector.example.test:4318/otlp/v1/traces", "https://collector.example.test:4318/otlp/v1/metrics", "https://collector.example.test:4318/otlp/v1/logs")]
+    public void ResolveExporterEndpoint_HttpProtobuf_UsesSignalSpecificPaths(
+        string configuredEndpoint,
+        string expectedTraceEndpoint,
+        string expectedMetricEndpoint,
+        string expectedLogEndpoint)
+    {
+        var endpoint = new Uri(configuredEndpoint);
+
+        Assert.Equal(
+            expectedTraceEndpoint,
+            OpenTelemetryOtlpProbeSink.ResolveExporterEndpoint(
+                endpoint,
+                OpenTelemetryEndpointProtocol.HttpProtobuf,
+                OpenTelemetryOtlpProbeSink.OpenTelemetryOtlpSignal.Traces).AbsoluteUri);
+        Assert.Equal(
+            expectedMetricEndpoint,
+            OpenTelemetryOtlpProbeSink.ResolveExporterEndpoint(
+                endpoint,
+                OpenTelemetryEndpointProtocol.HttpProtobuf,
+                OpenTelemetryOtlpProbeSink.OpenTelemetryOtlpSignal.Metrics).AbsoluteUri);
+        Assert.Equal(
+            expectedLogEndpoint,
+            OpenTelemetryOtlpProbeSink.ResolveExporterEndpoint(
+                endpoint,
+                OpenTelemetryEndpointProtocol.HttpProtobuf,
+                OpenTelemetryOtlpProbeSink.OpenTelemetryOtlpSignal.Logs).AbsoluteUri);
+    }
+
+    [Fact]
+    public void ResolveExporterEndpoint_Grpc_UsesConfiguredEndpoint()
+    {
+        var endpoint = new Uri("http://localhost:4317/collector");
+
+        var resolved = OpenTelemetryOtlpProbeSink.ResolveExporterEndpoint(
+            endpoint,
+            OpenTelemetryEndpointProtocol.Grpc,
+            OpenTelemetryOtlpProbeSink.OpenTelemetryOtlpSignal.Traces);
+
+        Assert.Same(endpoint, resolved);
+    }
+
     [Fact]
     public void Apply_SendsOneProbeAndFlushes_ForConfiguredEndpoint()
     {
