@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using OpenClawTray.Services;
 using OpenClaw.Shared.Telemetry;
 
@@ -31,8 +32,24 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal("openclaw", OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
         Assert.Equal("openclaw", OpenClawMeterName.OpenClaw.ToTelemetryName());
         Assert.Equal("openclaw-windows-tray", OpenClawResourceName.WindowsTray.ToServiceName());
+        Assert.Equal("OpenClaw.Telemetry.Exporter", OpenTelemetryLogPolicy.TelemetryExporterCategory);
         Assert.Equal("grpc", OpenTelemetryEndpointProtocol.ToTelemetryValue(OpenTelemetryEndpointProtocol.Grpc));
         Assert.Equal("http/protobuf", OpenTelemetryEndpointProtocol.ToTelemetryValue(OpenTelemetryEndpointProtocol.HttpProtobuf));
+    }
+
+    [Theory]
+    [InlineData("OpenClaw.Telemetry.Exporter", LogLevel.Information, true)]
+    [InlineData("OpenClaw.Telemetry.Connection", LogLevel.Warning, true)]
+    [InlineData("OpenClaw.Telemetry.Exporter", LogLevel.Debug, false)]
+    [InlineData("OpenClaw.Telemetry.Exporter", LogLevel.None, false)]
+    [InlineData("OpenClawTray.Services.GatewayService", LogLevel.Warning, false)]
+    [InlineData(null, LogLevel.Warning, false)]
+    public void OpenTelemetryLogPolicy_AllowsOnlySafeTelemetryCategories(
+        string? category,
+        LogLevel level,
+        bool expected)
+    {
+        Assert.Equal(expected, OpenTelemetryLogPolicy.ShouldExport(category, level));
     }
 
     [Fact]

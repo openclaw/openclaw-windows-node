@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -176,6 +178,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     private const string ExporterTagKey = "openclaw.exporter";
     private const string ExporterProtocolTagKey = "openclaw.exporter.protocol";
     private const string SignalTagKey = "openclaw.signal";
+    private static readonly EventId ExporterProbeLogEvent = new(1000, "OpenTelemetryExporterProbeSent");
     private static readonly Counter<long> ExporterProbeCounter = OpenClawTelemetry.CreateCounter(
         "openclaw.telemetry.exporter.probes",
         unit: "{probe}",
@@ -183,11 +186,18 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 
     private readonly TracerProvider _tracerProvider;
     private readonly MeterProvider _meterProvider;
+    private readonly OpenTelemetryLoggerPipeline _loggerPipeline;
+    private readonly ILogger _probeLogger;
 
-    private OpenTelemetryOtlpProbeSink(TracerProvider tracerProvider, MeterProvider meterProvider)
+    private OpenTelemetryOtlpProbeSink(
+        TracerProvider tracerProvider,
+        MeterProvider meterProvider,
+        OpenTelemetryLoggerPipeline loggerPipeline)
     {
         _tracerProvider = tracerProvider;
         _meterProvider = meterProvider;
+        _loggerPipeline = loggerPipeline;
+        _probeLogger = loggerPipeline.CreateLogger(OpenTelemetryLogPolicy.TelemetryExporterCategory);
     }
 
     public static IOpenTelemetryProbeSink Create(OpenTelemetryEndpointOptions options)
@@ -197,6 +207,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
 
         TracerProvider? tracerProvider = null;
         MeterProvider? meterProvider = null;
+        OpenTelemetryLoggerPipeline? loggerPipeline = null;
 
         try
         {
@@ -212,15 +223,19 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
                 .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, options.Protocol))
                 .Build();
 
-            var sink = new OpenTelemetryOtlpProbeSink(tracerProvider, meterProvider);
+            loggerPipeline = CreateLoggerPipeline(endpoint, options.Protocol);
+
+            var sink = new OpenTelemetryOtlpProbeSink(tracerProvider, meterProvider, loggerPipeline);
             tracerProvider = null;
             meterProvider = null;
+            loggerPipeline = null;
             return sink;
         }
         finally
         {
             tracerProvider?.Dispose();
             meterProvider?.Dispose();
+            loggerPipeline?.Dispose();
         }
     }
 
@@ -234,6 +249,13 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         OpenClawTelemetry.Add(
             ExporterProbeCounter,
             tags: CreateProbeTags(options, "metrics"));
+
+        _probeLogger.Log(
+            LogLevel.Information,
+            ExporterProbeLogEvent,
+            CreateProbeLogAttributes(options),
+            null,
+            static (_, _) => "OpenClaw telemetry exporter probe log sent.");
     }
 
     public bool ForceFlush(int timeoutMilliseconds)
@@ -242,22 +264,27 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         {
             var tracesOk = _tracerProvider.ForceFlush(timeoutMilliseconds);
             var metricsOk = _meterProvider.ForceFlush(timeoutMilliseconds);
-            return tracesOk && metricsOk;
+            var logsOk = _loggerPipeline.ForceFlush(timeoutMilliseconds);
+            return tracesOk && metricsOk && logsOk;
         }
 
         var stopwatch = Stopwatch.StartNew();
         var tracesFlushed = _tracerProvider.ForceFlush(timeoutMilliseconds);
         var remainingMilliseconds = Math.Max(0, timeoutMilliseconds - (int)Math.Min(int.MaxValue, stopwatch.ElapsedMilliseconds));
         var metricsFlushed = _meterProvider.ForceFlush(remainingMilliseconds);
-        return tracesFlushed && metricsFlushed;
+        remainingMilliseconds = Math.Max(0, timeoutMilliseconds - (int)Math.Min(int.MaxValue, stopwatch.ElapsedMilliseconds));
+        var logsFlushed = _loggerPipeline.ForceFlush(remainingMilliseconds);
+        return tracesFlushed && metricsFlushed && logsFlushed;
     }
 
     public void Dispose()
     {
         _tracerProvider.ForceFlush(2_000);
         _meterProvider.ForceFlush(2_000);
+        _loggerPipeline.ForceFlush(2_000);
         _tracerProvider.Dispose();
         _meterProvider.Dispose();
+        _loggerPipeline.Dispose();
     }
 
     private static ResourceBuilder CreateResourceBuilder() =>
@@ -281,6 +308,31 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             : OtlpExportProtocol.Grpc;
     }
 
+    private static OpenTelemetryLoggerPipeline CreateLoggerPipeline(Uri endpoint, string? protocol)
+    {
+        OpenTelemetrySdk? sdk = null;
+        try
+        {
+            sdk = OpenTelemetrySdk.Create(builder => builder.WithLogging(
+                logging => logging
+                    .SetResourceBuilder(CreateResourceBuilder())
+                    .AddOtlpExporter(exporter => ConfigureExporter(exporter, endpoint, protocol)),
+                options =>
+                {
+                    options.IncludeScopes = false;
+                    options.IncludeFormattedMessage = false;
+                    options.ParseStateValues = true;
+                }));
+            var pipeline = new OpenTelemetryLoggerPipeline(sdk, sdk.GetLoggerFactory());
+            sdk = null;
+            return pipeline;
+        }
+        finally
+        {
+            sdk?.Dispose();
+        }
+    }
+
     private static OpenClawTelemetryTag[] CreateProbeTags(OpenTelemetryEndpointOptions options, string signal) =>
     [
         OpenClawTelemetryTag.String(
@@ -293,4 +345,69 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             ExporterProtocolTagKey,
             OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
     ];
+
+    private static KeyValuePair<string, object?>[] CreateProbeLogAttributes(OpenTelemetryEndpointOptions options) =>
+    [
+        new(ExporterTagKey, "tray-otel"),
+        new(SignalTagKey, "logs"),
+        new(ExporterProtocolTagKey, OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
+    ];
+
+    private sealed class OpenTelemetryLoggerPipeline : IDisposable
+    {
+        private readonly OpenTelemetrySdk _sdk;
+        private readonly ILoggerFactory _loggerFactory;
+
+        public OpenTelemetryLoggerPipeline(
+            OpenTelemetrySdk sdk,
+            ILoggerFactory loggerFactory)
+        {
+            _sdk = sdk;
+            _loggerFactory = loggerFactory;
+        }
+
+        public ILogger CreateLogger(string categoryName) =>
+            new PolicyLogger(categoryName, _loggerFactory.CreateLogger(categoryName));
+
+        public bool ForceFlush(int timeoutMilliseconds) =>
+            _sdk.LoggerProvider.ForceFlush(timeoutMilliseconds);
+
+        public void Dispose() =>
+            _sdk.Dispose();
+    }
+
+    private sealed class PolicyLogger : ILogger
+    {
+        private readonly string _categoryName;
+        private readonly ILogger _inner;
+
+        public PolicyLogger(string categoryName, ILogger inner)
+        {
+            _categoryName = categoryName;
+            _inner = inner;
+        }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull =>
+            _inner.BeginScope(state);
+
+        public bool IsEnabled(LogLevel logLevel) =>
+            OpenTelemetryLogPolicy.ShouldExport(_categoryName, logLevel) && _inner.IsEnabled(logLevel);
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (!OpenTelemetryLogPolicy.ShouldExport(_categoryName, logLevel))
+                return;
+
+            if (!_inner.IsEnabled(logLevel))
+                return;
+
+            _inner.Log(logLevel, eventId, state, exception, formatter);
+        }
+    }
 }
