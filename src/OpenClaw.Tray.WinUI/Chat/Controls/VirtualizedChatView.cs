@@ -149,6 +149,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         var appendedEntries = !sessionChanged
             && view.EntryCount > previousEntryCount
             && !prependedHistory;
+        var shouldFollowAppendedEntries = _isFollowing || IsAtBottom;
 
         _view = view;
         _rowFactory.Update(view.Rows);
@@ -184,7 +185,7 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
                 QueueScrollToBottom(view.SessionId, disableAnimation: true);
             }
         }
-        else if (appendedEntries && _isFollowing)
+        else if (appendedEntries && shouldFollowAppendedEntries)
         {
             QueueScrollToBottom(view.SessionId, disableAnimation: false);
         }
@@ -214,7 +215,9 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
         ResetScrollToEndState();
         _suppressAutoFollow = false;
         ClearSessionOffset(_view.SessionId);
-        QueueScrollToBottom(_view.SessionId, disableAnimation: false);
+        _isFollowing = true;
+        _scrollToLatestButton.Visibility = Visibility.Collapsed;
+        EnqueueOnView(() => ForceScrollToLatest(_view.SessionId, remainingPasses: 4, disableAnimation: false));
     }
 
     private void SyncRows(IReadOnlyList<ChatTimelineRow> desiredRows)
@@ -415,6 +418,32 @@ public sealed class VirtualizedChatView : ContentControl, IDisposable
     {
         _scrollToEndPending = false;
         _scrollToEndState = ScrollToEndState.Idle;
+    }
+
+    private void ForceScrollToLatest(string? sessionId, int remainingPasses, bool disableAnimation)
+    {
+        if (_rows.Count == 0)
+            return;
+
+        var latest = _itemsRepeater.GetOrCreateElement(_rows.Count - 1);
+        latest.StartBringIntoView(new BringIntoViewOptions
+        {
+            AnimationDesired = !disableAnimation,
+            VerticalAlignmentRatio = 1.0,
+        });
+
+        EnqueueOnView(() =>
+        {
+            var bottom = _scrollViewer.ScrollableHeight;
+            _scrollViewer.ChangeView(null, bottom, null, disableAnimation);
+            _lastVerticalOffset = bottom;
+            _lastScrollableHeight = _scrollViewer.ScrollableHeight;
+            _isFollowing = true;
+            ClearSessionOffset(sessionId);
+
+            if (remainingPasses > 0)
+                ForceScrollToLatest(sessionId, remainingPasses - 1, disableAnimation: true);
+        });
     }
 
     private void QueuePreservePrependOffset(string? sessionId, double oldOffset, double oldScrollableHeight)
