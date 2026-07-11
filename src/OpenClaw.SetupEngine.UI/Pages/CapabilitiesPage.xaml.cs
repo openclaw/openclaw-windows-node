@@ -83,6 +83,7 @@ public sealed partial class CapabilitiesPage : Page
             _setupWindow.Activated += SetupWindow_Activated;
         ApplySetupReviewSummary(_config);
         TailscaleToggle.IsOn = _config.Tailscale.Enabled;
+        TailscaleTrustAuthToggle.IsOn = _config.Tailscale.TrustTailscaleAuth;
         TailscaleAuthModeSelector.SelectedIndex = _config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey ? 1 : 0;
         UpdateTailscaleOptions();
         GoToStep(1);
@@ -206,6 +207,7 @@ public sealed partial class CapabilitiesPage : Page
         }
         config.Settings.ApplyCapabilities(caps);
         config.Tailscale.Enabled = TailscaleToggle.IsOn == true;
+        config.Tailscale.TrustTailscaleAuth = TailscaleTrustAuthToggle.IsOn == true;
         config.Tailscale.AuthMode = TailscaleAuthModeSelector.SelectedIndex == 1
             ? TailscaleAuthMode.AuthKey
             : TailscaleAuthMode.Browser;
@@ -244,6 +246,15 @@ public sealed partial class CapabilitiesPage : Page
         TailscaleAuthKeyBox.Visibility = TailscaleAuthModeSelector.SelectedIndex == 1
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void TailscaleTrustAuthToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_config is null)
+            return;
+
+        _config.Tailscale.TrustTailscaleAuth = TailscaleTrustAuthToggle.IsOn == true;
+        ApplySetupReviewSummary(_config);
     }
 
     private void UpdateTailscaleOptions()

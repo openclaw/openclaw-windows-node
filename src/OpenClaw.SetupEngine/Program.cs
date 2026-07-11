@@ -28,6 +28,7 @@ public static class Program
         var distroName = GetArg(args, "--distro-name");
         var gatewayPortText = GetArg(args, "--gateway-port");
         var tailscale = HasFlag(args, "--tailscale");
+        var tailscaleTrustAuth = HasFlag(args, "--tailscale-trust-auth");
         var tailscaleAuth = GetArg(args, "--tailscale-auth");
         var tailscaleHostname = GetArg(args, "--tailscale-hostname");
         var autoStartName = GetArg(args, "--autostart-name") ?? "OpenClawTray";
@@ -72,6 +73,11 @@ public static class Program
         }
         if (tailscale)
             config.Tailscale.Enabled = true;
+        if (tailscaleTrustAuth)
+        {
+            config.Tailscale.Enabled = true;
+            config.Tailscale.TrustTailscaleAuth = true;
+        }
         if (!string.IsNullOrWhiteSpace(tailscaleAuth))
         {
             if (!TailscaleConfig.TryParseAuthMode(tailscaleAuth, out var authMode))

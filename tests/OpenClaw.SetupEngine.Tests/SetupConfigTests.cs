@@ -38,6 +38,7 @@ public class SetupConfigTests : IDisposable
         Assert.Null(config.WindowsNodeContext.WorkspacePath);
         Assert.Equal(180, config.WindowsNodeContext.TimeoutSeconds);
         Assert.False(config.Tailscale.Enabled);
+        Assert.False(config.Tailscale.TrustTailscaleAuth);
         Assert.Equal(TailscaleAuthMode.Browser, config.Tailscale.AuthMode);
         Assert.Equal(300, config.Tailscale.AuthTimeoutSeconds);
     }
@@ -148,22 +149,27 @@ public class SetupConfigTests : IDisposable
         var prevDistro = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_DISTRO");
         var prevPort = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_PORT");
         var prevHeadless = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_HEADLESS");
+        var prevTrustTailscaleAuth = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_TRUST_AUTH");
         try
         {
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_DISTRO", "EnvDistro");
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_PORT", "9876");
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_HEADLESS", "true");
+            Environment.SetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_TRUST_AUTH", "true");
 
             var config = SetupConfig.FromEnvironment();
             Assert.Equal("EnvDistro", config.DistroName);
             Assert.Equal(9876, config.GatewayPort);
             Assert.True(config.Headless);
+            Assert.True(config.Tailscale.Enabled);
+            Assert.True(config.Tailscale.TrustTailscaleAuth);
         }
         finally
         {
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_DISTRO", prevDistro);
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_PORT", prevPort);
             Environment.SetEnvironmentVariable("OPENCLAW_SETUP_HEADLESS", prevHeadless);
+            Environment.SetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_TRUST_AUTH", prevTrustTailscaleAuth);
         }
     }
 
@@ -337,8 +343,21 @@ public class SetupConfigTests : IDisposable
 
         Assert.Equal("wss://openclaw-test.example.ts.net", summary.GatewayEndpoint);
         Assert.DoesNotContain("<tailnet>", summary.GatewayEndpoint);
-        Assert.Contains("trusts tailnet identity authentication", summary.GatewayDescription);
+        Assert.Contains("requires existing Companion token or device authentication", summary.GatewayDescription);
         Assert.Equal("OpenClawGateway · wss://openclaw-test.example.ts.net", summary.CompletionGatewaySummary);
+    }
+
+    [Fact]
+    public void SetupReviewSummary_StatesWhenTailscaleAuthIsTrusted()
+    {
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, TrustTailscaleAuth = true }
+        };
+
+        var summary = SetupReviewSummaryBuilder.Build(config);
+
+        Assert.Contains("trusts tailnet identity authentication", summary.GatewayDescription);
     }
 
     [Fact]

@@ -1003,7 +1003,7 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void ConfigureGateway_TailscaleUsesNativeServeAndDefersPublicUrlUntilEndpointKnown()
+    public void ConfigureGateway_TailscaleUsesNativeServeAndKeepsTailscaleAuthOptIn()
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
             new GatewayConfig { Bind = "loopback" },
@@ -1013,8 +1013,20 @@ public class SetupStepsTests : IDisposable
 
         Assert.Contains("openclaw config set gateway.tailscale.mode serve", commands);
         Assert.Contains("openclaw config set gateway.tailscale.resetOnExit false", commands);
-        Assert.Contains("openclaw config set gateway.auth.allowTailscale true", commands);
+        Assert.Contains("openclaw config set gateway.auth.allowTailscale false", commands);
         Assert.DoesNotContain("http://127.0.0.1:18789", commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_EnablesTailscaleIdentityAuthOnlyWhenRequested()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Bind = "loopback" },
+            18789,
+            "'[]'",
+            new TailscaleConfig { Enabled = true, TrustTailscaleAuth = true });
+
+        Assert.Contains("openclaw config set gateway.auth.allowTailscale true", commands);
     }
 
     [Fact]

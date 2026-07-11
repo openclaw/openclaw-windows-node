@@ -116,7 +116,7 @@ wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "systemctl --user status 
 
 The generated WSL distro is Ubuntu 24.04 (noble). Setup installs Tailscale from its signed stable APT repository rather than executing the mutable `install.sh` bootstrap script as root.
 
-The setup trusts Tailscale identity headers for this tailnet-only gateway (`gateway.auth.allowTailscale=true`). Tailnet ACLs therefore control who may reach this authentication path; token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
+Tailscale Serve preserves Companion token and device authentication by default (`gateway.auth.allowTailscale=false`). In the setup review, **Trust Tailscale identities for gateway authentication** is an explicit opt-in; when enabled, verified Tailscale identity headers and tailnet ACLs become part of the gateway access-control boundary. Token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
 
 ## Use root instead of sudo
 

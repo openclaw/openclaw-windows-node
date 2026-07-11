@@ -41,6 +41,8 @@
   // Optional tailnet-only HTTPS/WSS endpoint for the generated WSL gateway.
   "Tailscale": {
     "Enabled": false,
+    // Opt in only when tailnet identity and ACLs should participate in gateway authentication.
+    "TrustTailscaleAuth": false,
     "AuthMode": "Browser",
     "Hostname": null,
     "AuthTimeoutSeconds": 300

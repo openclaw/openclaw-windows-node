@@ -126,6 +126,8 @@
                                                 <x:String>Use one-off auth key</x:String>
                                             </RadioButtons>
                                             <PasswordBox x:Name="TailscaleAuthKeyBox" Visibility="Collapsed" PlaceholderText="Tailscale auth key (not saved)" />
+                                            <ToggleSwitch x:Name="TailscaleTrustAuthToggle" Header="Trust Tailscale identities for gateway authentication" OnContent="Enabled" OffContent="Disabled" Toggled="TailscaleTrustAuthToggle_Toggled" />
+                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Off by default. Enable only when your Tailscale ACLs should be part of the gateway access-control boundary." />
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>

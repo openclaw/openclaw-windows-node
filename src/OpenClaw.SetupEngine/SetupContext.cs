@@ -58,6 +58,11 @@ public sealed class SetupConfig
             config.LogPath = logPath;
         if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE") is "1" or "true")
             config.Tailscale.Enabled = true;
+        if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_TRUST_AUTH") is "1" or "true")
+        {
+            config.Tailscale.Enabled = true;
+            config.Tailscale.TrustTailscaleAuth = true;
+        }
         if (Environment.GetEnvironmentVariable("OPENCLAW_SETUP_TAILSCALE_AUTH") is { Length: > 0 } authMode &&
             TailscaleConfig.TryParseAuthMode(authMode, out var parsedAuthMode))
             config.Tailscale.AuthMode = parsedAuthMode;
@@ -320,6 +325,12 @@ public enum TailscaleAuthMode
 public sealed class TailscaleConfig
 {
     public bool Enabled { get; set; }
+    /// <summary>
+    /// Allows verified Tailscale identity headers to participate in gateway
+    /// authentication. Disabled by default so Serve does not expand the
+    /// gateway's authorization boundary without an explicit choice.
+    /// </summary>
+    public bool TrustTailscaleAuth { get; set; }
     public TailscaleAuthMode AuthMode { get; set; } = TailscaleAuthMode.Browser;
     public string? Hostname { get; set; }
     public int AuthTimeoutSeconds { get; set; } = 300;

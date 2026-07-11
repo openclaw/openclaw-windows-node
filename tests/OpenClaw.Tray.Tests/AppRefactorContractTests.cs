@@ -548,6 +548,7 @@ public sealed class AppRefactorContractTests
         var method = ExtractMethod(source, "WriteCapabilities");
 
         Assert.Contains("config.Settings.ApplyCapabilities(caps)", method);
+        Assert.Contains("config.Tailscale.TrustTailscaleAuth = TailscaleTrustAuthToggle.IsOn == true", method);
         AssertInOrder(
             method,
             "prop?.SetValue(caps, toggle.IsOn)",
