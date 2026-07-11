@@ -2382,6 +2382,29 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallTailscale_UsesSignedUbuntuNoblePackageRepository()
+    {
+        var config = new SetupConfig { Tailscale = new TailscaleConfig { Enabled = true } };
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, _, _) => Ok("tailscale 1.98.8"));
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new InstallTailscaleStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        var install = Assert.Single(commands.WslCalls);
+        Assert.Equal("root", install.User);
+        Assert.True(install.InputViaStdin);
+        Assert.Contains("VERSION_ID\" != \"24.04", install.Command);
+        Assert.Contains("noble.noarmor.gpg", install.Command);
+        Assert.Contains("signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg", install.Command);
+        Assert.Contains("apt-get install -y tailscale", install.Command);
+        Assert.DoesNotContain("tailscale.com/install.sh", install.Command);
+    }
+
+    [Fact]
     public async Task AuthorizeTailscale_AuthKeyUsesTransientEnvironmentAndDerivesMagicDnsName()
     {
         var config = new SetupConfig

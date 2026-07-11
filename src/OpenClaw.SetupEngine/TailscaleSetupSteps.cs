@@ -191,7 +191,8 @@ public sealed class PreflightWindowsTailscaleStep : SetupStep
 
 public sealed class InstallTailscaleStep : SetupStep
 {
-    private const string InstallerUrl = "https://tailscale.com/install.sh";
+    private const string NobleKeyringUrl = "https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg";
+    private const string NobleRepository = "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main";
 
     public override string Id => "install-tailscale";
     public override string DisplayName => "Install Tailscale in WSL";
@@ -200,13 +201,7 @@ public sealed class InstallTailscaleStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var script = $"""
-            set -e
-            curl -fsSL --proto '=https' --tlsv1.2 {InstallerUrl} -o /tmp/openclaw-tailscale-install.sh
-            sh /tmp/openclaw-tailscale-install.sh
-            systemctl enable --now tailscaled
-            tailscale version
-            """;
+        var script = BuildInstallScript();
         var result = await ctx.Commands.RunInWslAsync(
             ctx.DistroName!, script, TimeSpan.FromMinutes(3), ct: ct, user: "root", inputViaStdin: true);
         if (result.ExitCode != 0)
@@ -214,6 +209,26 @@ public sealed class InstallTailscaleStep : SetupStep
 
         return StepResult.Ok("Tailscale daemon installed");
     }
+
+    internal static string BuildInstallScript() => $"""
+        set -eu
+        . /etc/os-release
+        if [ "$ID" != "ubuntu" ] || [ "$VERSION_ID" != "24.04" ] || [ "$VERSION_CODENAME" != "noble" ]; then
+            echo "OpenClaw's generated Tailscale gateway requires Ubuntu 24.04 (noble); found $ID $VERSION_ID $VERSION_CODENAME" >&2
+            exit 1
+        fi
+        install -d -m 0755 /usr/share/keyrings
+        curl -fsSL --proto '=https' --tlsv1.2 {NobleKeyringUrl} -o /tmp/openclaw-tailscale-keyring.gpg
+        install -m 0644 /tmp/openclaw-tailscale-keyring.gpg /usr/share/keyrings/tailscale-archive-keyring.gpg
+        rm -f /tmp/openclaw-tailscale-keyring.gpg
+        cat > /etc/apt/sources.list.d/tailscale.list <<'EOF'
+        {NobleRepository}
+        EOF
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale
+        systemctl enable --now tailscaled
+        tailscale version
+        """;
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
