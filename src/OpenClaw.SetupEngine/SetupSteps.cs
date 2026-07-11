@@ -1639,6 +1639,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
     internal static async Task DeleteManagedNativeProfileAsync(string stateDirectory, CancellationToken ct)
     {
+        if (!Directory.Exists(stateDirectory))
+            return;
+
         if (new DirectoryInfo(stateDirectory).Attributes.HasFlag(FileAttributes.ReparsePoint))
             throw new InvalidOperationException($"Refusing to remove app-owned native profile reparse point '{stateDirectory}'.");
 
@@ -2404,6 +2407,9 @@ public sealed class PairOperatorStep : SetupStep
                 SetupManagedDistroName = ctx.Config.InstallMode == GatewayInstallMode.Wsl
                     ? ctx.DistroName
                     : null,
+                SetupManagedNativeTaskName = ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+                    ? GatewayCliRunner.GetManagedNativeTaskName(ctx.Config)
+                    : null,
                 SshTunnel = null,
             });
             registry.SetActive(existing.Id);
@@ -2424,6 +2430,9 @@ public sealed class PairOperatorStep : SetupStep
                 IsLocal = true,
                 SetupManagedDistroName = ctx.Config.InstallMode == GatewayInstallMode.Wsl
                     ? ctx.DistroName
+                    : null,
+                SetupManagedNativeTaskName = ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+                    ? GatewayCliRunner.GetManagedNativeTaskName(ctx.Config)
                     : null,
                 LastConnected = DateTime.UtcNow
             };
@@ -2897,6 +2906,8 @@ public sealed class PairNodeStep : SetupStep
 
         try
         {
+            ClearStoredNodeDeviceTokenBeforeSetupPairing(identityPath, wsLogger);
+
             // Phase 1: Connect (may get PAIRING_REQUIRED)
             client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
             client.UseV2Signature = true;
@@ -3046,6 +3057,11 @@ public sealed class PairNodeStep : SetupStep
     private enum NodeConnectionOutcome { Connected, PairingRequired, Error, Timeout }
 
     private sealed record NodeConnectionResult(NodeConnectionOutcome Outcome, string? RequestId = null);
+
+    internal static bool ClearStoredNodeDeviceTokenBeforeSetupPairing(
+        string identityPath,
+        IOpenClawLogger? logger = null)
+        => DeviceIdentity.TryClearDeviceTokenForRole(identityPath, "node", logger);
 
     private static async Task<NodeConnectionResult> WaitForNodeConnection(
         WindowsNodeClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)

@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using System.Text;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -65,6 +66,51 @@ public class GatewayTerminalLaunchCommandBuilderTests
     }
 
     [Fact]
+    public void Build_NativeTerminal_OpensPowerShellForManagedTask()
+    {
+        var access = GatewayHostAccessClassifier.Classify(new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+            SetupManagedNativeTaskName = "OpenClaw Gateway (OpenClawGateway)",
+        });
+
+        var command = GatewayTerminalLaunchCommandBuilder.Build(access, windowsTerminalPath: null);
+
+        Assert.Equal("powershell.exe", command.FileName);
+        Assert.False(command.UsesWindowsTerminal);
+        Assert.Contains("-NoExit", command.Arguments);
+        Assert.Contains("-EncodedCommand", command.Arguments);
+        var script = DecodePowerShellEncodedCommand(command.Arguments);
+        Assert.Contains("Use: openclaw gateway status --json", script);
+        Assert.Contains("$env:OPENCLAW_PROFILE = $profile", script);
+        Assert.Contains("OpenClawTray\\native-cli", script);
+        Assert.Contains("Set-Location -LiteralPath $stateDir", script);
+        Assert.Contains("OpenClawGateway", script);
+    }
+
+    [Fact]
+    public void Build_NativeWithWindowsTerminal_UsesTaskNameInTitle()
+    {
+        var access = GatewayHostAccessClassifier.Classify(new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+            SetupManagedNativeTaskName = "OpenClaw Gateway (OpenClawGateway)",
+        });
+
+        var command = GatewayTerminalLaunchCommandBuilder.Build(access, @"C:\Users\me\AppData\Local\Microsoft\WindowsApps\wt.exe");
+
+        Assert.Equal(@"C:\Users\me\AppData\Local\Microsoft\WindowsApps\wt.exe", command.FileName);
+        Assert.True(command.UsesWindowsTerminal);
+        Assert.Contains("OpenClaw Gateway (OpenClawGateway)", command.Arguments);
+        Assert.Contains("powershell.exe", command.Arguments);
+        Assert.DoesNotContain(command.Arguments, argument => argument.Contains(';', StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Build_RejectsRecordsWithoutTerminalAccess()
     {
         var access = GatewayHostAccessClassifier.Classify(new GatewayRecord
@@ -75,6 +121,22 @@ public class GatewayTerminalLaunchCommandBuilderTests
 
         Assert.Throws<InvalidOperationException>(() =>
             GatewayTerminalLaunchCommandBuilder.Build(access, windowsTerminalPath: null));
+    }
+
+    private static string DecodePowerShellEncodedCommand(IReadOnlyList<string> arguments)
+    {
+        var index = -1;
+        for (var i = 0; i < arguments.Count; i++)
+        {
+            if (arguments[i] == "-EncodedCommand")
+            {
+                index = i;
+                break;
+            }
+        }
+
+        Assert.True(index >= 0 && index + 1 < arguments.Count);
+        return Encoding.Unicode.GetString(Convert.FromBase64String(arguments[index + 1]));
     }
 
     [Fact]

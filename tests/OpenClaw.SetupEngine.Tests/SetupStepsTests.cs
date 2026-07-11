@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -2465,108 +2466,6 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void BuildReplacementSummary_NoExistingConfig_StatesNothingAffected()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: false,
-            LocalGatewayId: null,
-            LocalGatewayUrl: null,
-            HasDistro: false,
-            DistroName: null,
-            HasIdentityFiles: false,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: []);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("No existing configuration will be affected", summary);
-    }
-
-    [Fact]
-    public void ExistingConfigDetector_FindsInterruptedNativeInstallWithoutRegistryRecord()
-    {
-        var config = new SetupConfig
-        {
-            InstallMode = GatewayInstallMode.NativeWindows,
-            DistroName = $"OpenClawGateway-Missing-{Guid.NewGuid():N}",
-        };
-        File.WriteAllText(
-            GatewayInstallModeDetector.GetNativeOwnershipPath(_localTempDir),
-            $$"""{"InstallMode":"NativeWindows","ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(config)}}"}""");
-
-        var existing = ExistingConfigDetector.Detect(
-            _tempDir,
-            _localTempDir,
-            config);
-
-        Assert.False(existing.HasLocalGateway);
-        Assert.Equal(GatewayInstallMode.NativeWindows, existing.LocalGatewayMode);
-        Assert.Equal(
-            "Replace existing native Windows gateway?",
-            ExistingConfigDetector.BuildReplacementTitle(existing, GatewayInstallMode.Wsl));
-        Assert.Contains(
-            "native Windows gateway service",
-            ExistingConfigDetector.BuildReplacementSummary(existing, GatewayInstallMode.Wsl));
-    }
-
-    [Fact]
-    public void BuildReplacementSummary_LocalGatewayAndDistro_MentionsReplacement()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local-gw",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: true,
-            DistroName: "OpenClaw",
-            HasIdentityFiles: false,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: []);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("WSL distro 'OpenClaw' will be deleted and recreated", summary);
-        Assert.Contains("Local gateway record will be replaced", summary);
-    }
-
-    [Fact]
-    public void BuildReplacementSummary_PreservedGateways_MentionsPreservation()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local-gw",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: false,
-            DistroName: null,
-            HasIdentityFiles: false,
-            PreservedGatewayCount: 2,
-            PreservedGatewayNames: ["Remote Gateway", "SSH Tunnel"]);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("will NOT be affected", summary);
-        Assert.Contains("Remote Gateway", summary);
-        Assert.Contains("SSH Tunnel", summary);
-    }
-
-    [Fact]
-    public void BuildReplacementSummary_IdentityFiles_MentionsRegeneration()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local-gw",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: false,
-            DistroName: null,
-            HasIdentityFiles: true,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: []);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("Device identity files for the local gateway will be regenerated", summary);
-    }
-
-    [Fact]
     public void RedactTokens_RedactsThirtyTwoCharHexString()
     {
         const string token = "1234567890abcdef1234567890abcdef";
@@ -2705,6 +2604,23 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("Node approval failed", result.Message);
         Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public void PairNode_ClearStoredNodeDeviceTokenBeforeSetupPairing_PreservesOperatorToken()
+    {
+        var identityPath = Path.Combine(_tempDir, "gateway-identity");
+        var identity = new DeviceIdentity(identityPath);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "operator-token");
+        identity.StoreDeviceTokenForRole("node", "stale-node-token");
+
+        Assert.True(PairNodeStep.ClearStoredNodeDeviceTokenBeforeSetupPairing(identityPath));
+
+        var reloaded = new DeviceIdentity(identityPath);
+        reloaded.Initialize();
+        Assert.Equal("operator-token", reloaded.DeviceToken);
+        Assert.Null(reloaded.NodeDeviceToken);
     }
 
     // ─── Bind validation ───

@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -41,6 +42,7 @@ public sealed partial class ConnectionPage : Page
     private global::Windows.UI.ViewManagement.AccessibilitySettings? _accessibilitySettings;
     private IGatewayTerminalLauncher? _terminalLauncher;
     private WslGatewayController? _wslGatewayController;
+    private ManagedNativeGatewayController? _nativeGatewayController;
 
     // ─── UI state ───
     private UserIntent _userIntent = UserIntent.None;
@@ -101,6 +103,11 @@ public sealed partial class ConnectionPage : Page
         _wslGatewayController ??= new WslGatewayController(
             new WslExeCommandRunner(new OpenClawTray.AppLogger()),
             new OpenClawTray.AppLogger());
+
+    private ManagedNativeGatewayController NativeGatewayController =>
+        _nativeGatewayController ??= new ManagedNativeGatewayController(
+            AppIdentity.ResolveRoamingDataDirectory(),
+            AppIdentity.ResolveSetupLocalDataDirectory());
 
     // ─── Initialization ───────────────────────────────────────────────
 
@@ -491,7 +498,8 @@ public sealed partial class ConnectionPage : Page
         var showInPageMode = plan.Mode is ConnectionPageMode.Cockpit or ConnectionPageMode.Recovery;
         var showTerminal = showInPageMode &&
                            _activeHostAccessPlan.CanOpenTerminal &&
-                           !_activeHostAccessPlan.CanControlWslGateway;
+                           !_activeHostAccessPlan.CanControlWslGateway &&
+                           !_activeHostAccessPlan.CanControlNativeGateway;
         StripTerminalButton.Visibility = showTerminal ? Visibility.Visible : Visibility.Collapsed;
         StripTerminalButton.IsEnabled = !_gatewayHostActionInProgress;
         ToolTipService.SetToolTip(StripTerminalButton, _activeHostAccessPlan.TerminalTooltip);
@@ -499,17 +507,23 @@ public sealed partial class ConnectionPage : Page
             StripTerminalButton,
             _activeHostAccessPlan.TerminalLabel);
 
-        var showWslControls = showInPageMode && _activeHostAccessPlan.CanControlWslGateway;
-        GatewayHostControlsSection.Visibility = showWslControls ? Visibility.Visible : Visibility.Collapsed;
-        if (!showWslControls)
+        var showGatewayControls = showInPageMode &&
+                                  (_activeHostAccessPlan.CanControlWslGateway ||
+                                   _activeHostAccessPlan.CanControlNativeGateway);
+        GatewayHostControlsSection.Visibility = showGatewayControls ? Visibility.Visible : Visibility.Collapsed;
+        if (!showGatewayControls)
         {
             ClearGatewayHostActionStatus();
             return;
         }
 
-        GatewayHostControlsDescriptionText.Text = LocalizationHelper.Format(
-            "ConnectionPage_GatewayHostControlsDescription_Format",
-            _activeHostAccessPlan.DistroName);
+        GatewayHostControlsDescriptionText.Text = _activeHostAccessPlan.CanControlNativeGateway
+            ? LocalizationHelper.Format(
+                "ConnectionPage_GatewayHostControlsNativeDescription_Format",
+                _activeHostAccessPlan.NativeTaskName)
+            : LocalizationHelper.Format(
+                "ConnectionPage_GatewayHostControlsDescription_Format",
+                _activeHostAccessPlan.DistroName);
         GatewayHostOpenTerminalButton.IsEnabled = !_gatewayHostActionInProgress && _activeHostAccessPlan.CanOpenTerminal;
         GatewayHostStartButton.IsEnabled = !_gatewayHostActionInProgress;
         GatewayHostStopButton.IsEnabled = !_gatewayHostActionInProgress;
@@ -2081,28 +2095,49 @@ public sealed partial class ConnectionPage : Page
 
     private void OnStartGatewayClicked(object sender, RoutedEventArgs e)
     {
-        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Start);
+        _ = RunGatewayControlAsync(WslGatewayControlAction.Start, NativeGatewayControlAction.Start);
     }
 
     private void OnStopGatewayClicked(object sender, RoutedEventArgs e)
     {
-        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Stop);
+        _ = RunGatewayControlAsync(WslGatewayControlAction.Stop, NativeGatewayControlAction.Stop);
     }
 
     private void OnRestartGatewayClicked(object sender, RoutedEventArgs e)
     {
-        _ = RunWslGatewayControlAsync(WslGatewayControlAction.Restart);
+        _ = RunGatewayControlAsync(WslGatewayControlAction.Restart, NativeGatewayControlAction.Restart);
     }
 
-    private async Task RunWslGatewayControlAsync(WslGatewayControlAction action)
+    private async Task RunGatewayControlAsync(
+        WslGatewayControlAction wslAction,
+        NativeGatewayControlAction nativeAction)
+    {
+        var activeRecord = _gatewayRegistry?.GetActive();
+        var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (accessPlan.CanControlWslGateway)
+        {
+            await RunWslGatewayControlAsync(wslAction, accessPlan);
+            return;
+        }
+
+        if (accessPlan.CanControlNativeGateway)
+        {
+            await RunNativeGatewayControlAsync(nativeAction, accessPlan);
+            return;
+        }
+
+        SetGatewayHostActionStatus("This gateway is not an app-managed local gateway.", isError: true);
+    }
+
+    private async Task RunWslGatewayControlAsync(
+        WslGatewayControlAction action,
+        GatewayHostAccessPlan accessPlan)
     {
         if (_gatewayHostActionInProgress)
         {
             return;
         }
 
-        var activeRecord = _gatewayRegistry?.GetActive();
-        var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
         if (!accessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(accessPlan.DistroName))
         {
             SetGatewayHostActionStatus("This gateway is not an app-managed WSL gateway.", isError: true);
@@ -2178,6 +2213,92 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
+    private async Task RunNativeGatewayControlAsync(
+        NativeGatewayControlAction action,
+        GatewayHostAccessPlan accessPlan)
+    {
+        if (_gatewayHostActionInProgress)
+        {
+            return;
+        }
+
+        if (!accessPlan.CanControlNativeGateway || string.IsNullOrWhiteSpace(accessPlan.NativeTaskName))
+        {
+            SetGatewayHostActionStatus("This gateway is not an app-managed native Windows gateway.", isError: true);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _gatewayHostActionCts = cts;
+        var cancellationToken = cts.Token;
+        _gatewayHostActionInProgress = true;
+        ApplyGatewayHostAccess(_currentPlan);
+        var verb = ManagedNativeGatewayController.ToVerb(action);
+        SetGatewayHostActionStatus($"{ActionInProgressLabel(action)} OpenClaw…");
+
+        try
+        {
+            if (action == NativeGatewayControlAction.Stop && _connectionManager != null)
+            {
+                try
+                {
+                    await _connectionManager.DisconnectAsync();
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Services.Logger.Warn($"[ConnectionPage] Disconnect before native gateway stop failed; continuing stop: {ex.Message}");
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await NativeGatewayController.RunAsync(accessPlan.NativeTaskName!, action, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!result.Success)
+            {
+                var details = string.IsNullOrWhiteSpace(result.OutputSummary)
+                    ? $"openclaw gateway {verb} exited with code {result.ExitCode}."
+                    : result.OutputSummary;
+                SetGatewayHostActionStatus($"{UppercaseFirst(verb)} failed: {details}", isError: true);
+                return;
+            }
+
+            if (action == NativeGatewayControlAction.Stop)
+            {
+                NativeGatewayKeepAliveService.RecordUserStopped(accessPlan.NativeTaskName!);
+                SetGatewayHostActionStatus("OpenClaw gateway stopped.");
+                RefreshFromSnapshot(_connectionManager?.CurrentSnapshot ?? _lastSnapshot);
+                return;
+            }
+
+            NativeGatewayKeepAliveService.ClearUserStopped();
+            SetGatewayHostActionStatus($"OpenClaw gateway {PastTense(action)}. Reconnecting…");
+            BeginReconnectMask();
+            ((IAppCommands)CurrentApp).Reconnect();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Services.Logger.Info($"[ConnectionPage] Native gateway {verb} cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] Native gateway {verb} failed: {ex.Message}");
+            SetGatewayHostActionStatus($"{UppercaseFirst(verb)} failed: {ex.Message}", isError: true);
+        }
+        finally
+        {
+            _gatewayHostActionInProgress = false;
+            if (ReferenceEquals(_gatewayHostActionCts, cts))
+            {
+                _gatewayHostActionCts = null;
+            }
+            cts.Dispose();
+            if (IsLoaded)
+            {
+                ApplyGatewayHostAccess(_currentPlan);
+            }
+        }
+    }
+
     private void ShowGatewayHostFailure(string title, string message, bool preferInlineStatus)
     {
         if (preferInlineStatus && GatewayHostControlsSection.Visibility == Visibility.Visible)
@@ -2223,6 +2344,17 @@ public sealed partial class ConnectionPage : Page
         };
     }
 
+    private static string PastTense(NativeGatewayControlAction action)
+    {
+        return action switch
+        {
+            NativeGatewayControlAction.Start => "started",
+            NativeGatewayControlAction.Restart => "restarted",
+            NativeGatewayControlAction.Stop => "stopped",
+            _ => "updated"
+        };
+    }
+
     private static string ActionInProgressLabel(WslGatewayControlAction action)
     {
         return action switch
@@ -2230,6 +2362,17 @@ public sealed partial class ConnectionPage : Page
             WslGatewayControlAction.Start => "Starting",
             WslGatewayControlAction.Stop => "Stopping",
             WslGatewayControlAction.Restart => "Restarting",
+            _ => "Updating"
+        };
+    }
+
+    private static string ActionInProgressLabel(NativeGatewayControlAction action)
+    {
+        return action switch
+        {
+            NativeGatewayControlAction.Start => "Starting",
+            NativeGatewayControlAction.Stop => "Stopping",
+            NativeGatewayControlAction.Restart => "Restarting",
             _ => "Updating"
         };
     }

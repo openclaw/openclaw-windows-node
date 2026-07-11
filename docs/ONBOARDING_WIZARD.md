@@ -4,7 +4,7 @@ The onboarding wizard installs a managed local gateway natively on Windows or in
 
 ## Overview
 
-On first launch, the wizard appears only when there is no usable saved gateway connection. Users choose the recommended native Windows runtime, the WSL 2 runtime, or an existing gateway. Existing connections remain managed from the tray app's Connections tab.
+On first launch, the wizard appears only when there is no usable saved gateway connection. Users choose the recommended WSL 2 runtime, the simpler native Windows runtime, or an existing gateway. Existing connections remain managed from the tray app's Connections tab.
 
 The setup flow walks users through:
 
@@ -21,7 +21,7 @@ The setup flow no longer configures remote/manual gateways inline. The Welcome p
 ## Screen Details
 
 ### Welcome
-Displays the OpenClaw icon, app title, and three explicit choices. **Install on Windows (native)** is recommended and requires no WSL. **Install in WSL** uses an isolated Ubuntu WSL 2 instance. **Connect to an existing gateway** hands off to Connections. Each local choice shows a confirmation summary before changing an existing local setup; external gateway records remain available.
+Displays the OpenClaw icon, app title, and three explicit choices. **Install in WSL** is recommended for the safest local boundary and uses an isolated Ubuntu WSL 2 instance. **Install on Windows (native)** is the simpler setup path, but runs directly in the Windows user context. **Connect to an existing gateway** hands off to Connections. Local install choices continue to the capabilities review.
 
 ### Local setup progress
 Native mode installs the pinned OpenClaw CLI through the official HTTPS PowerShell installer into an app-owned LocalAppData prefix, configures an isolated `OpenClawGateway` profile, and installs its per-user Windows Scheduled Task. Existing global OpenClaw packages, wrappers, PATH entries, and the default profile are preserved. WSL mode installs and connects a new app-owned `OpenClawGateway` instance from a clean WSL baseline. It does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message.
@@ -90,7 +90,7 @@ Use a temp settings directory for tests that construct `SettingsManager`, or set
 |------|---------|
 | `src/OpenClaw.SetupEngine.UI/SetupWindow.xaml(.cs)` | Tray-hosted setup shell, run lock, preview routing, and page navigation |
 | `src/OpenClaw.SetupEngine.UI/Pages/SecurityNoticePage.xaml(.cs)` | First-run device-trust warning before setup choices |
-| `src/OpenClaw.SetupEngine.UI/Pages/WelcomePage.xaml(.cs)` | Native Windows, WSL, or connect-existing choice and replacement prompt |
+| `src/OpenClaw.SetupEngine.UI/Pages/WelcomePage.xaml(.cs)` | Native Windows, WSL, or connect-existing choice |
 | `src/OpenClaw.SetupEngine.UI/Pages/AdvancedSetupPage.xaml(.cs)` | Connect-existing handoff to Connection settings |
 | `src/OpenClaw.SetupEngine.UI/Pages/CapabilitiesPage.xaml(.cs)` | Capability profile, inline Windows permission status, and install review |
 | `src/OpenClaw.SetupEngine.UI/Pages/ProgressPage.xaml(.cs)` | Mode-aware local gateway install progress and gateway-installed handoff |

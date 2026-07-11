@@ -63,7 +63,7 @@ public sealed partial class CapabilitiesPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
         InstallRuntimeBadgeText.Text = _config.InstallMode == GatewayInstallMode.NativeWindows
-            ? "No WSL"
+            ? "Native"
             : "~200 MB";
         // The tray always registers device.info/status with Node Mode. Keep the
         // setup declaration and gateway allowlist aligned with that runtime contract.

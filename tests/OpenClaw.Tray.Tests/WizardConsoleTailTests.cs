@@ -28,6 +28,8 @@ public class WizardConsoleTailTests
         Assert.Contains("CreationTimeUtc.Ticks", command);
         Assert.Contains("$latest.Length -lt $position", command);
         Assert.Contains("[IO.File]::Open", command);
+        Assert.Contains("[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)", command);
+        Assert.Contains("} catch {", command);
         Assert.DoesNotContain("Get-Content", command);
     }
 

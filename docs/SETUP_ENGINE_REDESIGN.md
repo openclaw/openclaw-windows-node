@@ -8,7 +8,7 @@ The Setup Engine is a **config-driven system** for provisioning an OpenClaw gate
 2. **`OpenClaw.SetupEngine.UI`** — WinUI3 setup window/pages that wrap the same pipeline with a fluent wizard UI.
 3. **`OpenClaw.Tray.WinUI`** — The only shipped WinUI executable. It hosts `SetupWindow` directly and self-restarts after successful setup.
 
-The bundled `default-config.json` ships with the tray executable and provides secure defaults (loopback bind, pinned gateway version, WSL isolation). The UI recommends native Windows; headless callers retain the explicit `InstallMode` config default. Values can be overridden via config file or environment variables.
+The bundled `default-config.json` ships with the tray executable and provides secure defaults (loopback bind, pinned gateway version, WSL isolation). The UI recommends WSL 2 for the safest local boundary while still offering native Windows as the simpler setup path. Headless callers retain the explicit `InstallMode` config default. Values can be overridden via config file or environment variables.
 
 > **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
 
@@ -278,8 +278,8 @@ The WinUI app is a **thin shell** — no business logic, just rendering pipeline
 
 **WelcomePage**
 - OpenClaw icon + "OpenClaw Setup" title bar
-- Install natively on Windows (recommended), install an app-owned WSL gateway, or connect to an existing gateway
-- Mode-aware replacement prompt for an existing local gateway
+- Install the recommended app-owned WSL gateway, install natively on Windows, or connect to an existing gateway
+- Local install choices continue directly to the capabilities review
 
 **CapabilitiesPage**
 - Capability profile defaults to Standard

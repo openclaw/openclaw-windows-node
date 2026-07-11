@@ -43,6 +43,26 @@ public class GatewayHostAccessTests
     }
 
     [Fact]
+    public void Classify_UsesNativeTerminal_WhenRecordWasCreatedByNativeSetup()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+            SetupManagedNativeTaskName = "OpenClaw Gateway (OpenClawGateway)",
+        };
+
+        var access = GatewayHostAccessClassifier.Classify(record);
+
+        Assert.Equal(GatewayTerminalTarget.Native, access.TerminalTarget);
+        Assert.True(access.CanOpenTerminal);
+        Assert.False(access.CanControlWslGateway);
+        Assert.True(access.CanControlNativeGateway);
+        Assert.Equal("OpenClaw Gateway (OpenClawGateway)", access.NativeTaskName);
+    }
+
+    [Fact]
     public void Classify_PrefersWslTerminal_WhenRecordHasWslAndSshMetadata()
     {
         var record = new GatewayRecord
@@ -74,6 +94,7 @@ public class GatewayHostAccessTests
         Assert.Equal(GatewayTerminalTarget.None, access.TerminalTarget);
         Assert.False(access.CanOpenTerminal);
         Assert.False(access.CanControlWslGateway);
+        Assert.False(access.CanControlNativeGateway);
         Assert.NotNull(access.DisabledReason);
     }
 }

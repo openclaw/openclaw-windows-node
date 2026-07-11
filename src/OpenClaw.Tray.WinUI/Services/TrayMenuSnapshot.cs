@@ -14,6 +14,7 @@ internal sealed record TrayMenuSnapshot
     internal required string? GatewayUrl { get; init; }
     internal required GatewaySelfInfo? GatewaySelf { get; init; }
     internal required PresenceEntry[]? Presence { get; init; }
+    internal string? ActiveGatewayNativeTaskName { get; init; }
 
     // ── Node ──
     internal required bool EnableNodeMode { get; init; }

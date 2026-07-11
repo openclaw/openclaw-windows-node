@@ -380,26 +380,25 @@ public sealed class SetupWizardRunner
     }
 
     private static string? InferOptionAnswer(WizardPayload step) =>
-        InferOptionAnswer(step.Options, step.InitialValue);
+        InferOptionAnswer(step.Options, step.InitialValue, step.Title, step.Message, step.StepId);
 
     internal static string? InferOptionAnswer(
         IReadOnlyList<WizardOptionValue> options,
-        string? initialValue)
+        string? initialValue,
+        string? title = null,
+        string? message = null,
+        string? stepId = null)
     {
-        // An RPC-driven desktop wizard cannot host the terminal UI that the CLI
-        // recommends by default. Prefer the gateway's explicit deferred choice
-        // independent of localized or version-specific prompt wording.
-        if (options.Any(option => string.Equals(option.Value, "tui", StringComparison.Ordinal))
-            && options.Any(option => string.Equals(option.Value, "later", StringComparison.Ordinal)))
-        {
-            return "later";
-        }
+        if (WizardSelection.PreferredDesktopSelectAnswer(
+                options,
+                initialValue,
+                title,
+                message,
+                stepId) is { } preferred)
+            return preferred;
 
-        if (!string.IsNullOrWhiteSpace(initialValue))
-            return initialValue;
-
-        var preferred = new[] { "__skip__", "skip", "__keep__", "keep" };
-        foreach (var value in preferred)
+        var fallbackValues = new[] { "__skip__", "skip", "__keep__", "keep" };
+        foreach (var value in fallbackValues)
         {
             if (options.Any(o => string.Equals(o.Value, value, StringComparison.Ordinal)))
                 return value;

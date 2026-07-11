@@ -174,6 +174,11 @@ internal sealed class WizardConsoleTail : IDisposable
 
     internal static string BuildNativeTailCommand() =>
         """
+        try {
+            [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+            $OutputEncoding = [Console]::OutputEncoding
+        } catch {
+        }
         $logPath = $env:OPENCLAW_SETUP_WIZARD_LOG
         $startedUtc = [DateTime]::UtcNow
         $currentIdentity = $null

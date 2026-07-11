@@ -323,6 +323,10 @@ internal sealed class TrayMenuStateBuilder
         menu.AddMenuItem("Chat", FluentIconCatalog.Build(FluentIconCatalog.Chat), "openchat");
         menu.AddMenuItem("Canvas", FluentIconCatalog.Build(FluentIconCatalog.CanvasAct), "canvas");
         menu.AddMenuItem("Diagnostics", FluentIconCatalog.Build(FluentIconCatalog.Bug), "diagnostics");
+        if (!string.IsNullOrWhiteSpace(_snapshot.ActiveGatewayNativeTaskName))
+        {
+            menu.AddMenuItem("Restart Local Gateway", FluentIconCatalog.Build(FluentIconCatalog.Refresh), "restartlocalgateway");
+        }
         // Voice overlay disabled — inline chat voice mode is used instead.
         // menu.AddMenuItem("Voice", FluentIconCatalog.Build(FluentIconCatalog.VoiceAct), "voice");
 

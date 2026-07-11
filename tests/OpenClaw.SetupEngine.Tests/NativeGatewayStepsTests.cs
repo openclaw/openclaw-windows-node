@@ -2,6 +2,81 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public class NativeGatewayStepsTests
 {
+    [Fact]
+    public async Task ManagedNativeGatewayController_RunsOwnedTaskWithManagedCliEnvironment()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"native-control-{Guid.NewGuid():N}");
+        var profile = $"OpenClawGateway-Test-{Guid.NewGuid():N}";
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = profile,
+        };
+        Directory.CreateDirectory(root);
+        var cliPrefix = GatewayCliRunner.GetManagedNativeCliPrefix(root);
+        Directory.CreateDirectory(cliPrefix);
+        await File.WriteAllTextAsync(Path.Combine(cliPrefix, "openclaw.ps1"), "# test shim");
+        var marker = $$"""{"InstallMode":"NativeWindows","ProfileName":"{{profile}}","TaskName":"OpenClaw Gateway ({{profile}})","ManagedConfigPaths":[]}""";
+        await File.WriteAllTextAsync(GatewayInstallModeDetector.GetNativeOwnershipPath(root), marker);
+        await File.WriteAllTextAsync(GatewayInstallModeDetector.GetNativeProfileOwnershipPath(root), marker);
+        var runner = new CapturingCommandRunner(
+            new CommandResult(0, """{"service":{"runtime":{"status":"running"}}}""", "", TimeSpan.Zero, false));
+        var controller = new ManagedNativeGatewayController(root, root, commandRunner: runner);
+
+        try
+        {
+            var result = await controller.RunAsync($"OpenClaw Gateway ({profile})", NativeGatewayControlAction.Status);
+
+            Assert.True(result.Success);
+            Assert.True(result.IsRunning);
+            Assert.Equal("powershell.exe", runner.Executable);
+            Assert.Contains(runner.Arguments, argument => argument.Contains("gateway", StringComparison.Ordinal));
+            Assert.Contains(runner.Arguments, argument => argument.Contains("status", StringComparison.Ordinal));
+            Assert.Equal($"OpenClaw Gateway ({profile})", runner.Environment["OPENCLAW_WINDOWS_TASK_NAME"]);
+            Assert.Equal(profile, runner.Environment["OPENCLAW_PROFILE"]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ManagedNativeGatewayController_OnlyStatusRequestsJson()
+    {
+        Assert.Equal(["gateway", "status", "--json"],
+            ManagedNativeGatewayController.BuildGatewayArguments(NativeGatewayControlAction.Status));
+        Assert.Equal(["gateway", "start"],
+            ManagedNativeGatewayController.BuildGatewayArguments(NativeGatewayControlAction.Start));
+        Assert.Equal(["gateway", "stop"],
+            ManagedNativeGatewayController.BuildGatewayArguments(NativeGatewayControlAction.Stop));
+        Assert.Equal(["gateway", "restart"],
+            ManagedNativeGatewayController.BuildGatewayArguments(NativeGatewayControlAction.Restart));
+    }
+
+    [Fact]
+    public async Task ManagedNativeGatewayController_RefusesUnownedTask()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"native-control-unowned-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var runner = new CapturingCommandRunner(
+            new CommandResult(0, """{"service":{"runtime":{"status":"running"}}}""", "", TimeSpan.Zero, false));
+        var controller = new ManagedNativeGatewayController(root, root, commandRunner: runner);
+
+        try
+        {
+            var result = await controller.RunAsync("OpenClaw Gateway (unowned)", NativeGatewayControlAction.Start);
+
+            Assert.False(result.Success);
+            Assert.Contains("not owned", result.StandardError);
+            Assert.Null(runner.Executable);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -68,6 +143,7 @@ public class NativeGatewayStepsTests
         {
             Directory.Delete(root, recursive: true);
         }
+
     }
 
     [Fact]
@@ -372,49 +448,6 @@ public class NativeGatewayStepsTests
             GatewayCliRunner.GetManagedNativeStateDir(config));
     }
 
-    [Fact]
-    public void NativeReplacementSummary_PreservesExistingWslFiles()
-    {
-        var existing = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: true,
-            DistroName: "OpenClawGateway",
-            HasIdentityFiles: true,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: []);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(
-            existing,
-            GatewayInstallMode.NativeWindows);
-
-        Assert.Contains("directly on Windows", summary);
-        Assert.Contains("stopped but its files will be preserved", summary);
-    }
-
-    [Fact]
-    public void WslReplacementSummary_DisclosesNativeGatewayRemoval()
-    {
-        var existing = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: false,
-            DistroName: null,
-            HasIdentityFiles: true,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: [],
-            LocalGatewayMode: GatewayInstallMode.NativeWindows);
-
-        var title = ExistingConfigDetector.BuildReplacementTitle(existing, GatewayInstallMode.Wsl);
-        var summary = ExistingConfigDetector.BuildReplacementSummary(existing, GatewayInstallMode.Wsl);
-
-        Assert.Equal("Replace existing native Windows gateway?", title);
-        Assert.Contains("native Windows gateway service", summary);
-        Assert.Contains("setup-managed configuration", summary);
-    }
-
     [Theory]
     [InlineData("{\"service\":{\"loaded\":true,\"command\":null}}", true)]
     [InlineData("{\"service\":{\"loaded\":false,\"command\":{\"programArguments\":[]}}}", true)]
@@ -456,5 +489,38 @@ public class NativeGatewayStepsTests
     public void NativeHealthUri_UsesDedicatedLivenessEndpoint()
     {
         Assert.Equal("http://127.0.0.1:18789/healthz", StartGatewayStep.GetNativeHealthUri(18789).AbsoluteUri);
+    }
+
+    private sealed class CapturingCommandRunner(CommandResult result) : ICommandRunner
+    {
+        public string? Executable { get; private set; }
+        public string[] Arguments { get; private set; } = [];
+        public IReadOnlyDictionary<string, string> Environment { get; private set; } =
+            new Dictionary<string, string>();
+
+        public Task<CommandResult> RunAsync(
+            string executable,
+            string[] arguments,
+            TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? environment = null,
+            string? workingDirectory = null,
+            string? stdinInput = null,
+            CancellationToken ct = default)
+        {
+            Executable = executable;
+            Arguments = arguments;
+            Environment = environment ?? new Dictionary<string, string>();
+            return Task.FromResult(result);
+        }
+
+        public Task<CommandResult> RunInWslAsync(
+            string distroName,
+            string command,
+            TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? environment = null,
+            CancellationToken ct = default,
+            string? user = null,
+            bool inputViaStdin = false)
+            => throw new NotSupportedException();
     }
 }

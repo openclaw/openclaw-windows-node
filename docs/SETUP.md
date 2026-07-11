@@ -9,7 +9,7 @@ Before installing, make sure you have:
 - **Windows 10 (20H2 or later)** or **Windows 11**
 - **WebView2 Runtime** — pre-installed on Windows 11 and most up-to-date Windows 10 systems. If missing, download from [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install OpenClaw natively on Windows (recommended), install a dedicated local WSL gateway, or connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the install-new and connect-existing handoff flow.
+You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway (recommended for the safest local boundary), install OpenClaw natively on Windows, or connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the install-new and connect-existing handoff flow.
 
 New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local gateway modes, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
 
@@ -52,8 +52,8 @@ The installer also creates a Start Menu group with shortcuts for **OpenClaw Comp
 
 On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The wizard offers two managed local gateway modes:
 
-- **Native Windows (recommended)** — installs the pinned OpenClaw CLI into an app-owned LocalAppData prefix with the official PowerShell installer and runs an isolated gateway profile as a per-user Windows Scheduled Task. Existing global OpenClaw installs and the default profile are preserved; no WSL dependency is required.
-- **WSL 2** — creates a locked-down app-owned `OpenClawGateway` Ubuntu instance for maximum Linux compatibility. Requires WSL 2 and virtualization.
+- **WSL 2 (recommended)** — creates a locked-down app-owned `OpenClawGateway` Ubuntu instance for the safest local boundary and maximum Linux compatibility. Requires WSL 2 and virtualization.
+- **Native Windows** — installs the pinned OpenClaw CLI into an app-owned LocalAppData prefix with the official PowerShell installer and runs an isolated gateway profile as a per-user Windows Scheduled Task. Existing global OpenClaw installs and the default profile are preserved; it runs directly in the Windows user context.
 
 1. **Security notice** — Confirms this is a trusted PC before local setup starts.
 

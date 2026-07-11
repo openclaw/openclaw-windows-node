@@ -1,6 +1,6 @@
 # 🏗️ Architecture: Windows Platform Strategy & Native Node Roadmap
 
-> **📝 Note**: This document was written during the initial planning phase (early 2026). Windows Node mode is implemented, and onboarding now supports both a native Windows gateway (recommended) and an isolated WSL 2 gateway. The scenarios and design rationale remain historical reference material; see README.md for current capabilities.
+> **📝 Note**: This document was written during the initial planning phase (early 2026). Windows Node mode is implemented, and onboarding now supports both a recommended isolated WSL 2 gateway and a simpler native Windows gateway. The scenarios and design rationale remain historical reference material; see README.md for current capabilities.
 
 ## Summary
 
@@ -173,7 +173,7 @@ The tray now also has a Command Center surface that combines gateway channel hea
 | **Setup complexity** | Low — `npm install -g openclaw && openclaw onboard` from PowerShell. Same as Mac. |
 | **UX Rating** | ⭐⭐⭐⭐⭐ True feature parity with Mac |
 
-**Current recommended local mode.** No WSL2 dependency is required. The official PowerShell installer installs OpenClaw into a Companion-owned LocalAppData prefix without replacing the user's global CLI, the gateway uses its Windows service adapter, and the onboarding wizard configures, pairs, and verifies the tray app against it.
+**Simpler native local mode.** The official PowerShell installer installs OpenClaw into a Companion-owned LocalAppData prefix without replacing the user's global CLI, the gateway uses its Windows service adapter, and the onboarding wizard configures, pairs, and verifies the tray app against it. Because it runs directly in the Windows user context, WSL 2 remains the recommended path when isolation is the priority.
 
 ---
 

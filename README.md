@@ -34,7 +34,7 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 
 > **End-user installer?** Download the latest stable x64 or ARM64 installer from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows), or see [docs/SETUP.md](docs/SETUP.md) for step-by-step installation (no build required).
 >
-> **Native or WSL gateway?** First-run setup recommends a native Windows gateway with no WSL dependency, while an isolated app-owned `OpenClawGateway` WSL 2 distro remains available for maximum Linux compatibility. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for WSL administration.
+> **Native or WSL gateway?** First-run setup recommends the isolated app-owned `OpenClawGateway` WSL 2 distro for the safest local boundary. A native Windows gateway remains available as the simpler setup path. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for WSL administration.
 >
 > **Operator or node?** Start with [Operator and node concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the beginner-facing glossary of gateway, operator, node, pairing, reapproval, and allowlisted node capabilities.
 
@@ -421,7 +421,7 @@ Default gateway: `ws://localhost:18789`
 On first run, Molty launches a guided setup flow:
 
 1. **Security notice** — confirms this is a trusted PC before local setup starts.
-2. **Welcome** — choose the recommended **Install on Windows (native)** path, **Install in WSL**, or connect to an existing gateway from Connections.
+2. **Welcome** — choose the recommended **Install in WSL** path, the simpler **Install on Windows (native)** path, or connect to an existing gateway from Connections.
 3. **Capabilities** — choose a profile, review matching Windows permission status, and see exactly what setup will install.
 4. **Progress** — installs the native Windows gateway or app-owned `OpenClawGateway` WSL instance and keeps Live activity available but collapsed by default.
 5. **Gateway installed** — confirms the selected local gateway is running before moving into OpenClaw onboard.

@@ -41,4 +41,39 @@ public static class WizardSelection
 
     public static bool ShouldDisableContinue(string stepType, string? textInput) =>
         stepType == "text" && string.IsNullOrWhiteSpace(textInput);
+
+    public static string? PreferredDesktopSelectAnswer(
+        IReadOnlyList<WizardOptionValue> options,
+        string? initialValue,
+        string? title = null,
+        string? message = null,
+        string? stepId = null)
+        => DesktopAutoSelectAnswer(options, title, message, stepId)
+            ?? (string.IsNullOrWhiteSpace(initialValue) ? null : initialValue);
+
+    public static string? DesktopAutoSelectAnswer(
+        IReadOnlyList<WizardOptionValue> options,
+        string? title = null,
+        string? message = null,
+        string? stepId = null)
+    {
+        // The desktop wizard is RPC-driven and cannot host the terminal TUI that
+        // the gateway CLI recommends by default. Prefer the explicit deferred
+        // hatch path whenever the gateway offers it.
+        if (options.Any(option => string.Equals(option.Value, "tui", StringComparison.Ordinal))
+            && options.Any(option => string.Equals(option.Value, "later", StringComparison.Ordinal)))
+        {
+            return "later";
+        }
+
+        var promptText = $"{title} {message} {stepId}";
+        if (promptText.Contains("gateway service", StringComparison.OrdinalIgnoreCase)
+            && promptText.Contains("already installed", StringComparison.OrdinalIgnoreCase)
+            && options.Any(option => string.Equals(option.Value, "skip", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "skip";
+        }
+
+        return null;
+    }
 }
