@@ -741,7 +741,30 @@ public sealed partial class DebugPage : Page
         UpdateOpenTelemetryEndpointStatus(cleared: true);
     }
 
-    private void UpdateOpenTelemetryEndpointStatus(bool saved = false, bool cleared = false)
+    private void OnResendOpenTelemetryProbe(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            ResendOpenTelemetryProbeAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnResendOpenTelemetryProbe));
+
+    private async Task ResendOpenTelemetryProbeAsync()
+    {
+        ResendOpenTelemetryProbeButton.IsEnabled = false;
+        bool? probeFlushed = null;
+        try
+        {
+            probeFlushed = await ((IAppCommands)CurrentApp).ResendOpenTelemetryProbeAsync();
+        }
+        finally
+        {
+            UpdateOpenTelemetryEndpointStatus(probeFlushed: probeFlushed);
+        }
+    }
+
+    private void UpdateOpenTelemetryEndpointStatus(
+        bool saved = false,
+        bool cleared = false,
+        bool? probeFlushed = null)
     {
         var current = CurrentApp.Settings?.OpenTelemetryEndpoint ?? string.Empty;
         var currentProtocol = OpenTelemetryEndpointProtocol.Normalize(CurrentApp.Settings?.OpenTelemetryProtocol);
@@ -755,6 +778,7 @@ public sealed partial class DebugPage : Page
             !string.Equals(currentProtocol, selectedProtocol, StringComparison.Ordinal);
 
         SaveOpenTelemetryEndpointButton.IsEnabled = valid && dirty;
+        ResendOpenTelemetryProbeButton.IsEnabled = valid && hasEndpoint && !dirty;
         ClearOpenTelemetryEndpointButton.IsEnabled = hasEndpoint || !string.IsNullOrWhiteSpace(current);
         OpenTelemetryEndpointSummary.Text = string.IsNullOrWhiteSpace(current)
             ? LocalizationHelper.GetString("DiagnosticsPage_OpenTelemetrySummary_NotConfigured")
@@ -778,6 +802,17 @@ public sealed partial class DebugPage : Page
         if (saved && hasEndpoint)
         {
             OpenTelemetryEndpointStatusText.Text = LocalizationHelper.GetString("DiagnosticsPage_OpenTelemetryEndpointStatus_SavedTitle");
+            return;
+        }
+
+        if (probeFlushed.HasValue)
+        {
+            OpenTelemetryEndpointStatusText.Foreground =
+                probeFlushed.Value ? DimTextBrush : WarnTextBrush;
+            OpenTelemetryEndpointStatusText.Text = LocalizationHelper.GetString(
+                probeFlushed.Value
+                    ? "DiagnosticsPage_OpenTelemetryEndpointStatus_ProbeFlushedMessage"
+                    : "DiagnosticsPage_OpenTelemetryEndpointStatus_ProbeFailedMessage");
             return;
         }
 

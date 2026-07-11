@@ -61,20 +61,26 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
         Apply(OpenTelemetryEndpointOptions.FromSettings(settings));
 
     public Task ApplyAsync(OpenTelemetryEndpointOptions options)
+        => ApplyAsync(options, forceProbe: false);
+
+    public Task ProbeAsync(OpenTelemetryEndpointOptions options)
+        => ApplyAsync(options, forceProbe: true);
+
+    private Task ApplyAsync(OpenTelemetryEndpointOptions options, bool forceProbe)
     {
         if (_disposed)
             return Task.CompletedTask;
 
         var generation = Interlocked.Increment(ref _applyGeneration);
-        return Task.Run(() => Apply(options, generation));
+        return Task.Run(() => Apply(options, generation, forceProbe));
     }
 
     internal void Apply(OpenTelemetryEndpointOptions options)
     {
-        Apply(options, generation: null);
+        Apply(options, generation: null, forceProbe: false);
     }
 
-    private void Apply(OpenTelemetryEndpointOptions options, long? generation)
+    private void Apply(OpenTelemetryEndpointOptions options, long? generation, bool forceProbe)
     {
         lock (_gate)
         {
@@ -96,7 +102,10 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
                 return;
             }
 
-            if (_sink != null && State == OpenTelemetryEndpointConnectionState.ProbeFlushed && options == _currentOptions)
+            if (!forceProbe &&
+                _sink != null &&
+                State == OpenTelemetryEndpointConnectionState.ProbeFlushed &&
+                options == _currentOptions)
                 return;
 
             DisposeSink();

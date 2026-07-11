@@ -3923,6 +3923,9 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="DiagnosticsPage_SaveOpenTelemetryEndpointButton.Content" xml:space="preserve">
     <value>Save connection</value>
   </data>
+  <data name="DiagnosticsPage_ResendOpenTelemetryProbeButton.Content" xml:space="preserve">
+    <value>Send probe again</value>
+  </data>
   <data name="DiagnosticsPage_ClearOpenTelemetryEndpointButton.Content" xml:space="preserve">
     <value>Clear</value>
   </data>
@@ -3955,6 +3958,12 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_UnsavedMessage" xml:space="preserve">
     <value>Save to apply this connection.</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_ProbeFlushedMessage" xml:space="preserve">
+    <value>Probe flushed locally; collector receipt is not confirmed.</value>
+  </data>
+  <data name="DiagnosticsPage_OpenTelemetryEndpointStatus_ProbeFailedMessage" xml:space="preserve">
+    <value>Probe did not finish for the saved endpoint. Verify the settings and try again.</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Header" xml:space="preserve">
     <value>Chat surface overrides</value>

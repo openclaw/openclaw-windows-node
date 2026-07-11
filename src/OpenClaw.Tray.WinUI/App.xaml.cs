@@ -1717,6 +1717,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             "[App] Failed to apply OpenTelemetry endpoint settings");
     }
 
+    private async Task<bool> ResendOpenTelemetryProbeAsync()
+    {
+        var connection = _openTelemetryConnection;
+        var settings = _settings;
+        if (connection == null || settings == null)
+            return false;
+
+        var options = OpenTelemetryEndpointOptions.FromSettings(settings);
+        await connection.ProbeAsync(options);
+        return connection.State == OpenTelemetryEndpointConnectionState.ProbeFlushed &&
+            connection.CurrentOptions == options;
+    }
+
     private OpenClaw.Connection.GatewayCredential? ResolveStartupOperatorCredential(
         GatewayRecord record,
         CredentialResolver resolver,
@@ -4021,6 +4034,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
+    Task<bool> IAppCommands.ResendOpenTelemetryProbeAsync() => ResendOpenTelemetryProbeAsync();
 
     private void ToggleChannel(string channelName) =>
         AsyncEventHandlerGuard.Run(

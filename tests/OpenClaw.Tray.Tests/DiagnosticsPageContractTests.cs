@@ -54,6 +54,11 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("OpenTelemetryEndpointOptions.TryCreateEndpointUri", cs);
         Assert.Contains("CurrentApp.Settings.OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Grpc", cs);
         Assert.Contains("NotifySettingsSaved", cs);
+        Assert.Contains("DiagnosticsResendOpenTelemetryProbe", xaml);
+        Assert.Contains("Send probe again", xaml);
+        Assert.Contains("OnResendOpenTelemetryProbe", xaml);
+        Assert.Contains("ResendOpenTelemetryProbeAsync", cs);
+        Assert.Contains("probeFlushed.Value ? DimTextBrush : WarnTextBrush", cs);
     }
 
     [Fact]

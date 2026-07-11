@@ -351,6 +351,11 @@
                                            Content="Save connection"
                                            Click="OnSaveOpenTelemetryEndpoint"
                                            AutomationProperties.AutomationId="DiagnosticsSaveOpenTelemetryEndpoint"/>
+                                   <Button x:Uid="DiagnosticsPage_ResendOpenTelemetryProbeButton"
+                                           x:Name="ResendOpenTelemetryProbeButton"
+                                           Content="Send probe again"
+                                           Click="OnResendOpenTelemetryProbe"
+                                           AutomationProperties.AutomationId="DiagnosticsResendOpenTelemetryProbe"/>
                                    <Button x:Uid="DiagnosticsPage_ClearOpenTelemetryEndpointButton"
                                            x:Name="ClearOpenTelemetryEndpointButton"
                                            Content="Clear"

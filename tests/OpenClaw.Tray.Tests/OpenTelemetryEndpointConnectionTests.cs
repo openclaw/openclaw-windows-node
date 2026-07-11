@@ -224,6 +224,36 @@ public sealed class OpenTelemetryEndpointConnectionTests
     }
 
     [Fact]
+    public async Task ProbeAsync_SameOptions_ResendsWithoutChangingAutomaticDeduplication()
+    {
+        var sinks = new List<FakeProbeSink>();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ =>
+            {
+                var sink = new FakeProbeSink();
+                sinks.Add(sink);
+                return sink;
+            },
+            _ => { },
+            _ => { });
+        var options = OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4317",
+            OpenTelemetryEndpointProtocol.Grpc);
+
+        connection.Apply(options);
+        await connection.ProbeAsync(options);
+        connection.Apply(options);
+
+        Assert.Equal(2, sinks.Count);
+        Assert.True(sinks[0].Disposed);
+        Assert.False(sinks[1].Disposed);
+        Assert.Equal(1, sinks[0].SendProbeCount);
+        Assert.Equal(1, sinks[1].SendProbeCount);
+        Assert.Equal(OpenTelemetryEndpointConnectionState.ProbeFlushed, connection.State);
+        Assert.Equal(options, connection.CurrentOptions);
+    }
+
+    [Fact]
     public void Apply_NewOptions_DisposesOldSinkAndSendsNewProbe()
     {
         var sinks = new List<FakeProbeSink>();

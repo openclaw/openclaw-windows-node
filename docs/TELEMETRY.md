@@ -107,6 +107,8 @@ If users need authenticated collectors, prefer a local collector or proxy that h
 
 Plain `http://` endpoints are useful for local development collectors such as `localhost`. Prefer `https://` for remote collectors unless the user intentionally controls and trusts the network path.
 
+Automatic startup and settings application should deduplicate an unchanged endpoint. The diagnostics UI may offer an explicit resend action so users can repeat the bounded probe after a collector outage; local SDK flush completion must not be described as collector acknowledgement.
+
 ## Adding new instrumentation
 
 Before adding new exported telemetry:
