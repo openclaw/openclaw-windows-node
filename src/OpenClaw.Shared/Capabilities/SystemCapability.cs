@@ -557,7 +557,11 @@ public class SystemCapability : NodeCapabilityBase
         var approval = _approvalPolicy.Evaluate(fullCommand, shell);
         var hasNestedTargets = parseResult.Targets.Count > 0;
         var hasExplicitOuterRule = !string.IsNullOrWhiteSpace(approval.MatchedPattern);
-        var evaluateOuter = !hasNestedTargets || hasExplicitOuterRule || approval.Allowed;
+        var evaluateOuter =
+            !hasNestedTargets ||
+            hasExplicitOuterRule ||
+            approval.Allowed ||
+            approval.Action == ExecApprovalAction.Prompt;
         var approvalCheck = new ExecApprovalCheckResult(false, null);
         if (evaluateOuter)
         {
@@ -573,9 +577,9 @@ public class SystemCapability : NodeCapabilityBase
             approvalCheck.PromptDecisionKind != null ||
             IsExactAllowRuleForCommand(approval, fullCommand);
 
-        // Gateway execution wraps Windows commands in cmd.exe. When no rule
-        // explicitly targets that wrapper, authorize every parsed payload so
-        // exact inner rules remain usable without granting a broad shell rule.
+        // Gateway execution wraps Windows commands in cmd.exe. Only an
+        // unmatched default deny may defer to exact parsed-payload rules;
+        // explicit/default prompts still show and persist the full wrapper.
         foreach (var target in parseResult.Targets)
         {
             var innerApproval = _approvalPolicy.Evaluate(target.Command, target.Shell);
