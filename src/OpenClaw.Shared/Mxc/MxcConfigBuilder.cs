@@ -1,6 +1,7 @@
 using System.Text;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Runtime.Versioning;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -22,9 +23,9 @@ namespace OpenClaw.Shared.Mxc;
 ///   launched shell. Explicit <c>process.env</c> injection is intentionally
 ///   disabled for the current Windows MXC 0.7 processcontainer backend because
 ///   non-empty env entries fail process creation.</item>
-/// <item>Cwd auto-grant — adds <c>request.Cwd</c> as readonly when not already
-///   covered by an allow grant. AppContainer does NOT auto-grant cwd, so this
-///   is required for commands to even start.</item>
+/// <item>Cwd handling — defaults omitted cwd to the writable per-run scratch
+///   directory, and adds an explicit request cwd as readonly when not already
+///   covered by an allow grant. AppContainer does NOT auto-grant cwd.</item>
 /// <item>Defensive re-filter of allow lists against the deny list.</item>
 /// <item>Shell command-line construction (cmd <c>/S /C</c>, powershell
 ///   <c>-EncodedCommand</c>).</item>
@@ -68,6 +69,7 @@ public static class MxcConfigBuilder
         var readonlyGrantIsBackendSafe = context.ReadonlyGrantIsBackendSafe ?? IsBackendSafeReadonlyGrant;
 
         var policy = request.Policy;
+        var workingDirectory = string.IsNullOrWhiteSpace(request.Cwd) ? scratchDir : request.Cwd;
         var args = ParseSystemRunArgs(request.Args);
         var shell = NormalizeSupportedShell(args.Shell);
         if (IsPowerShellFamilyShell(shell) && policy?.Ui?.AllowWindows != true)
@@ -171,7 +173,7 @@ public static class MxcConfigBuilder
             Process = new MxcProcess
             {
                 CommandLine = commandLine,
-                Cwd = string.IsNullOrWhiteSpace(request.Cwd) ? null : request.Cwd,
+                Cwd = workingDirectory,
                 Env = env,
                 TimeoutMs = timeoutMs,
             },
@@ -263,50 +265,70 @@ public static class MxcConfigBuilder
         if (!OperatingSystem.IsWindows())
             return true;
 
+        return CanMxcDaclFallbackPreparePathWindows(dir);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool CanMxcDaclFallbackPreparePathWindows(string dir)
+    {
         try
         {
             var identity = WindowsIdentity.GetCurrent();
-            var principals = new HashSet<SecurityIdentifier>();
-            if (identity.User is not null)
-                principals.Add(identity.User);
+            if (identity.User is null)
+                return false;
+
+            var tokenSids = new HashSet<SecurityIdentifier> { identity.User };
             if (identity.Groups is not null)
             {
-                foreach (var group in identity.Groups)
-                {
-                    if (group is SecurityIdentifier sid)
-                        principals.Add(sid);
-                }
+                foreach (var group in identity.Groups.OfType<SecurityIdentifier>())
+                    tokenSids.Add(group);
             }
-
-            if (principals.Count == 0)
-                return false;
 
             var rules = new DirectoryInfo(dir)
                 .GetAccessControl(AccessControlSections.Access)
                 .GetAccessRules(includeExplicit: true, includeInherited: true, targetType: typeof(SecurityIdentifier));
 
-            var allowed = false;
-            foreach (FileSystemAccessRule rule in rules)
-            {
-                if (rule.IdentityReference is not SecurityIdentifier sid || !principals.Contains(sid))
-                    continue;
-
-                if ((rule.FileSystemRights & (FileSystemRights.ChangePermissions | FileSystemRights.FullControl)) == 0)
-                    continue;
-
-                if (rule.AccessControlType == AccessControlType.Deny)
-                    return false;
-
-                if (rule.AccessControlType == AccessControlType.Allow)
-                    allowed = true;
-            }
-
-            return allowed;
+            return HasDirectUserChangePermissions(
+                rules.OfType<FileSystemAccessRule>(),
+                identity.User,
+                tokenSids.Contains);
         }
         catch
         {
             return false;
         }
+    }
+
+    [SupportedOSPlatform("windows")]
+    internal static bool HasDirectUserChangePermissions(
+        IEnumerable<FileSystemAccessRule> rules,
+        SecurityIdentifier userSid,
+        Func<SecurityIdentifier, bool> isTokenSid)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        ArgumentNullException.ThrowIfNull(userSid);
+        ArgumentNullException.ThrowIfNull(isTokenSid);
+
+        var allowed = false;
+        foreach (var rule in rules)
+        {
+            if (rule.IdentityReference is not SecurityIdentifier sid)
+                continue;
+
+            if ((rule.FileSystemRights & FileSystemRights.ChangePermissions) == 0)
+                continue;
+
+            var isUser = sid.Equals(userSid);
+            if (rule.AccessControlType == AccessControlType.Deny && (isUser || isTokenSid(sid)))
+                return false;
+
+            // MXC's DACL fallback runs under a restricted token. An admin-group
+            // allow on the host does not grant that token WRITE_DAC.
+            if (rule.AccessControlType == AccessControlType.Allow && isUser)
+                allowed = true;
+        }
+
+        return allowed;
     }
 
     private static bool IsProtectedSystemPath(string dir)

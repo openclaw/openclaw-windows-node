@@ -1,3 +1,6 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using Xunit;
@@ -445,6 +448,57 @@ public class MxcConfigBuilderTests
             try { Directory.Delete(unsafeDir, true); } catch { }
             try { Directory.Delete(safeDir, true); } catch { }
         }
+    }
+
+    [Fact]
+    public void Build_DefaultsMissingCwdToWritableScratchDirectory()
+    {
+        var config = BuildConfig(RequestFor(LockedDownPolicy()), pathEnvVar: "");
+
+        Assert.Equal(P.Scratch, config.Process.Cwd);
+        Assert.Contains(P.Scratch, config.Filesystem!.ReadwritePaths!);
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void HasDirectUserChangePermissions_IgnoresGroupOnlyAllow()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        var user = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+        var rules = new[]
+        {
+            new FileSystemAccessRule(
+                administrators,
+                FileSystemRights.FullControl,
+                AccessControlType.Allow),
+        };
+
+        Assert.False(MxcConfigBuilder.HasDirectUserChangePermissions(rules, user, _ => true));
+
+        var readOnlyUserRule = new FileSystemAccessRule(
+            user,
+            FileSystemRights.Read,
+            AccessControlType.Allow);
+        Assert.False(MxcConfigBuilder.HasDirectUserChangePermissions([readOnlyUserRule], user, _ => false));
+
+        var directUserRule = new FileSystemAccessRule(
+            user,
+            FileSystemRights.ChangePermissions,
+            AccessControlType.Allow);
+        Assert.True(MxcConfigBuilder.HasDirectUserChangePermissions([directUserRule], user, _ => false));
+
+        var groupDenyRule = new FileSystemAccessRule(
+            administrators,
+            FileSystemRights.ChangePermissions,
+            AccessControlType.Deny);
+        Assert.False(
+            MxcConfigBuilder.HasDirectUserChangePermissions(
+                [directUserRule, groupDenyRule],
+                user,
+                sid => sid.Equals(administrators)));
     }
 
     [Fact]
