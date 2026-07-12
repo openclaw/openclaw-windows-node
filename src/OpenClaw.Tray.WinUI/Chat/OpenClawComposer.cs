@@ -38,8 +38,6 @@ namespace OpenClawTray.Chat;
 /// banner that <c>InputBar</c> used to render are preserved here above the
 /// composer.
 /// </summary>
-public record ChannelGroup(string AgentLabel, (string Id, string Title)[] Sessions);
-
 public record OpenClawComposerProps(
     string ConnectionState,
     bool TurnActive,
@@ -249,64 +247,87 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // Build grouped session ComboBox directly (bypassing the FunctionalUI
         // ComboBox helper which only supports flat string[] items).
         var groups = Props.AvailableChannels;
+        var channelComboRef = UseRef<ComboBox?>(null);
+        var channelGroupsRef = UseRef<SessionPickerSnapshot?>(null);
+        var channelChangedRef = UseRef(Props.OnChannelChanged);
+        var channelComboUpdatingRef = UseRef(false);
+        channelChangedRef.Current = Props.OnChannelChanged;
         var channelCombo = Border()
             .Set(border =>
             {
-                var cb = new ComboBox
+                var cb = channelComboRef.Current;
+                if (cb is null)
                 {
-                    MinWidth = 0,
-                    Width = double.NaN,
-                    Height = 28,
-                    FontSize = 11,
-                    Padding = new Thickness(8, 0, 4, 0),
-                    CornerRadius = composerCornerRadius,
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-                    cb,
-                    LocalizationHelper.GetString("Chat_Composer_Accessibility_Session"));
-
-                ComboBoxItem? selectedItem = null;
-                foreach (var group in groups)
-                {
-                    if (groups.Length > 1)
+                    cb = new ComboBox
                     {
-                        cb.Items.Add(new ComboBoxItem
-                        {
-                            Content = group.AgentLabel,
-                            IsEnabled = false,
-                            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                            FontSize = 10,
-                            Padding = new Thickness(4, 2, 4, 2),
-                            IsHitTestVisible = false,
-                        });
-                    }
-                    foreach (var session in group.Sessions)
+                        MinWidth = 0,
+                        Width = double.NaN,
+                        Height = 28,
+                        FontSize = 11,
+                        Padding = new Thickness(8, 0, 4, 0),
+                        CornerRadius = composerCornerRadius,
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                        cb,
+                        LocalizationHelper.GetString("Chat_Composer_Accessibility_Session"));
+                    cb.SelectionChanged += (_, _) =>
                     {
-                        var item = new ComboBoxItem
-                        {
-                            Content = session.Title,
-                            Tag = session.Id,
-                            Padding = groups.Length > 1
-                                ? new Thickness(16, 4, 4, 4)
-                                : new Thickness(8, 4, 4, 4),
-                        };
-                        cb.Items.Add(item);
-                        if (session.Id == (Props.ChannelId ?? ""))
-                            selectedItem = item;
-                    }
+                        if (!channelComboUpdatingRef.Current &&
+                            cb.SelectedItem is ComboBoxItem { Tag: string id })
+                            channelChangedRef.Current(id);
+                    };
+                    channelComboRef.Current = cb;
                 }
 
-                if (selectedItem != null)
-                    cb.SelectedItem = selectedItem;
-
-                var onChanged = Props.OnChannelChanged;
-                cb.SelectionChanged += (_, _) =>
+                var groupsChanged = channelGroupsRef.Current?.Matches(groups) != true;
+                channelComboUpdatingRef.Current = true;
+                try
                 {
-                    if (cb.SelectedItem is ComboBoxItem { Tag: string id })
-                        onChanged(id);
-                };
+                    if (groupsChanged)
+                    {
+                        cb.Items.Clear();
+                        foreach (var group in groups)
+                        {
+                            if (groups.Length > 1)
+                            {
+                                cb.Items.Add(new ComboBoxItem
+                                {
+                                    Content = group.AgentLabel,
+                                    IsEnabled = false,
+                                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                                    FontSize = 10,
+                                    Padding = new Thickness(4, 2, 4, 2),
+                                    IsHitTestVisible = false,
+                                });
+                            }
+                            foreach (var session in group.Sessions)
+                            {
+                                cb.Items.Add(new ComboBoxItem
+                                {
+                                    Content = session.Title,
+                                    Tag = session.Id,
+                                    Padding = groups.Length > 1
+                                        ? new Thickness(16, 4, 4, 4)
+                                        : new Thickness(8, 4, 4, 4),
+                                });
+                            }
+                        }
+                        channelGroupsRef.Current = SessionPickerSnapshot.Capture(groups);
+                    }
+
+                    var selectedId = Props.ChannelId ?? "";
+                    var selectedItem = cb.Items
+                        .OfType<ComboBoxItem>()
+                        .FirstOrDefault(item => item.Tag is string id && id == selectedId);
+                    if (!ReferenceEquals(cb.SelectedItem, selectedItem))
+                        cb.SelectedItem = selectedItem;
+                }
+                finally
+                {
+                    channelComboUpdatingRef.Current = false;
+                }
 
                 border.Child = cb;
             });
