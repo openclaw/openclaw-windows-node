@@ -472,6 +472,7 @@ public class SystemCapability : NodeCapabilityBase
                 stderr = result.Stderr,
                 exitCode = result.ExitCode,
                 timedOut = result.TimedOut,
+                success = result.ExitCode == 0 && !result.TimedOut,
                 durationMs = result.DurationMs
             });
         }

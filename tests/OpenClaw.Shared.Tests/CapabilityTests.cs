@@ -110,6 +110,29 @@ public class SystemCapabilityTests
         Assert.True(res.Ok);
         Assert.Equal("echo", runner.LastRequest!.Command);
         Assert.Equal(new[] { "hello", "world" }, runner.LastRequest.Args);
+        var payload = JsonSerializer.SerializeToElement(res.Payload);
+        Assert.True(payload.GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Run_ReportsUnsuccessfulExit()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(new FakeCommandRunner
+        {
+            Result = new CommandResult { ExitCode = 1, TimedOut = false }
+        });
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "r1-failed",
+            Command = "system.run",
+            Args = Parse("""{"command":["cmd.exe","/d","/s","/c","exit 1"]}""")
+        });
+
+        Assert.True(res.Ok);
+        var payload = JsonSerializer.SerializeToElement(res.Payload);
+        Assert.False(payload.GetProperty("success").GetBoolean());
     }
 
     [Fact]
@@ -927,6 +950,14 @@ public class SystemCapabilityTests
         public CommandRequest? LastRequest { get; private set; }
         public string? LastResolvedShell { get; private set; }
         public string? ForcedEffectiveShell { get; set; }
+        public CommandResult Result { get; set; } = new()
+        {
+            Stdout = "ok",
+            Stderr = "",
+            ExitCode = 0,
+            TimedOut = false,
+            DurationMs = 1
+        };
 
         public string ResolveEffectiveShell(string? requestedShell)
         {
@@ -949,14 +980,7 @@ public class SystemCapabilityTests
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
         {
             LastRequest = request;
-            return Task.FromResult(new CommandResult
-            {
-                Stdout = "ok",
-                Stderr = "",
-                ExitCode = 0,
-                TimedOut = false,
-                DurationMs = 1
-            });
+            return Task.FromResult(Result);
         }
     }
 
