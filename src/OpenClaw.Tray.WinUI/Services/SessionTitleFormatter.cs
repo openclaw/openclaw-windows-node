@@ -66,12 +66,21 @@ internal static class SessionTitleFormatter
         var parts = new List<string>(5);
         if (FormatWorktree(session.Worktree) is { } worktree) parts.Add(worktree);
         if (!string.IsNullOrWhiteSpace(presentation.Channel)) parts.Add(ChannelLabel(presentation.Channel));
-        if (!string.IsNullOrWhiteSpace(presentation.AccountId))
-            parts.Add(LocalizedFormat("SessionSubtitle_Account", $"account {ShortContext(presentation.AccountId)}", ShortContext(presentation.AccountId)));
-        if (!string.IsNullOrWhiteSpace(presentation.AgentId))
-            parts.Add(LocalizedFormat("SessionSubtitle_Agent", $"agent {ShortContext(presentation.AgentId)}", ShortContext(presentation.AgentId)));
-        if (!string.IsNullOrWhiteSpace(session.ExecNode))
-            parts.Add(LocalizedFormat("SessionSubtitle_Node", $"node {ShortContext(session.ExecNode)}", ShortContext(session.ExecNode)));
+        if (presentation.AccountId is { } accountId && !string.IsNullOrWhiteSpace(accountId))
+        {
+            var display = SessionPresentationResolver.FormatContext(accountId);
+            parts.Add(LocalizedFormat("SessionSubtitle_Account", $"account {display}", display));
+        }
+        if (presentation.AgentId is { } agentId && !string.IsNullOrWhiteSpace(agentId))
+        {
+            var display = SessionPresentationResolver.FormatContext(agentId);
+            parts.Add(LocalizedFormat("SessionSubtitle_Agent", $"agent {display}", display));
+        }
+        if (session.ExecNode is { } execNode && !string.IsNullOrWhiteSpace(execNode))
+        {
+            var display = SessionPresentationResolver.FormatContext(execNode);
+            parts.Add(LocalizedFormat("SessionSubtitle_Node", $"node {display}", display));
+        }
         return parts.Count > 0 ? string.Join(" · ", parts) : presentation.Subtitle;
     }
 
@@ -195,8 +204,6 @@ internal static class SessionTitleFormatter
         { Length: > 0 } value => char.ToUpperInvariant(value[0]) + value[1..],
         _ => "Channel",
     };
-
-    private static string ShortContext(string value) => value.Length > 12 ? $"…{value[^4..]}" : value;
 
     private static string? FormatWorktree(SessionWorktreeInfo? worktree)
     {

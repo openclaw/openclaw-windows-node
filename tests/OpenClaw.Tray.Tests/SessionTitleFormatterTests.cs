@@ -187,6 +187,26 @@ public sealed class SessionTitleFormatterTests
     }
 
     [Fact]
+    public void FormatSubtitle_MasksPhoneLikeAccountIds()
+    {
+        var session = new SessionInfo
+        {
+            Key = "custom",
+            Presentation = new SessionPresentationInfo
+            {
+                Title = "Telegram direct message",
+                Family = "direct",
+                AccountId = "491234567890",
+            },
+        };
+
+        var subtitle = SessionTitleFormatter.FormatSubtitle(session);
+
+        Assert.Equal("account …7890", subtitle);
+        Assert.DoesNotContain("491234567890", subtitle, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SessionLocalizationResources_CoverGeneratedTitlesAndSubtitleLabels()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

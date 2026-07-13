@@ -59,6 +59,15 @@ public static partial class SessionPresentationResolver
     public static bool IsVisible(SessionInfo session, bool showBackground) =>
         showBackground || !IsBackground(session);
 
+    /// <summary>
+    /// Produces a bounded context label while masking opaque identifiers.
+    /// </summary>
+    public static string FormatContext(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return ReadableTail(value);
+    }
+
     private static SessionPresentationInfo ResolveKey(
         string? rawKey,
         bool isMain,
@@ -67,7 +76,9 @@ public static partial class SessionPresentationResolver
     {
         var key = rawKey?.Trim() ?? string.Empty;
         if (key.Length == 0)
-            return Presentation("Session", "unknown", isMain: isMain);
+            return isMain
+                ? Presentation("Main session", "main", agentId: "main", isMain: true)
+                : Presentation("Session", "unknown");
         if (key.Equals("global", StringComparison.OrdinalIgnoreCase))
             return Presentation("Global session", "global", agentId: isMain ? "main" : null, isMain: isMain);
         if (key.Equals("unknown", StringComparison.OrdinalIgnoreCase))

@@ -1693,6 +1693,29 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_UsesPresentationMainBeforeHandshakeAuthority()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "global",
+            "isMain": false,
+            "presentation": {
+              "title": "Global session",
+              "titleSource": "generated",
+              "family": "global",
+              "isMain": true,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+
+        Assert.True(Assert.Single(helper.GetSessionList()).IsMain);
+    }
+
+    [Fact]
     public void ParseSessions_RejectsPartialPresentationObjects()
     {
         var helper = new GatewayClientTestHelper();
