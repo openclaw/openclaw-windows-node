@@ -4698,10 +4698,10 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SessionTitle_DirectGeneric" xml:space="preserve"><value>Direct bericht</value></data>
   <data name="SessionTitle_GroupGeneric" xml:space="preserve"><value>Groepsgesprek</value></data>
   <data name="SessionTitle_ChannelGeneric" xml:space="preserve"><value>Kanaalgesprek</value></data>
-  <data name="SessionTitle_ThreadGeneric" xml:space="preserve"><value>Thread</value></data>
+  <data name="SessionTitle_ThreadGeneric" xml:space="preserve"><value>Discussie</value></data>
   <data name="SessionTitle_Cron" xml:space="preserve"><value>Geplande taak</value></data>
   <data name="SessionTitle_Heartbeat" xml:space="preserve"><value>Hartslag</value></data>
-  <data name="SessionTitle_Subagent" xml:space="preserve"><value>Subagent</value></data>
+  <data name="SessionTitle_Subagent" xml:space="preserve"><value>Deelagent</value></data>
   <data name="SessionTitle_Acp" xml:space="preserve"><value>ACP-sessie</value></data>
   <data name="SessionTitle_Dashboard" xml:space="preserve"><value>Nieuwe sessie</value></data>
   <data name="SessionTitle_Tui" xml:space="preserve"><value>Terminalsessie</value></data>
@@ -4710,9 +4710,9 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SessionTitle_Voice" xml:space="preserve"><value>Spraakoproep</value></data>
   <data name="SessionTitle_Dreaming" xml:space="preserve"><value>Dromen</value></data>
   <data name="SessionTitle_System" xml:space="preserve"><value>Achtergrondtaak</value></data>
-  <data name="SessionSubtitle_Account" xml:space="preserve"><value>account {0}</value></data>
-  <data name="SessionSubtitle_Agent" xml:space="preserve"><value>agent {0}</value></data>
-  <data name="SessionSubtitle_Node" xml:space="preserve"><value>node {0}</value></data>
+  <data name="SessionSubtitle_Account" xml:space="preserve"><value>gebruikersaccount {0}</value></data>
+  <data name="SessionSubtitle_Agent" xml:space="preserve"><value>assistent {0}</value></data>
+  <data name="SessionSubtitle_Node" xml:space="preserve"><value>knooppunt {0}</value></data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway losgekoppeld</value>
   </data>

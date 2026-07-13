@@ -4710,7 +4710,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SessionTitle_Dreaming" xml:space="preserve"><value>Rêve</value></data>
   <data name="SessionTitle_System" xml:space="preserve"><value>Tâche en arrière-plan</value></data>
   <data name="SessionSubtitle_Account" xml:space="preserve"><value>compte {0}</value></data>
-  <data name="SessionSubtitle_Agent" xml:space="preserve"><value>agent {0}</value></data>
+  <data name="SessionSubtitle_Agent" xml:space="preserve"><value>agent logiciel {0}</value></data>
   <data name="SessionSubtitle_Node" xml:space="preserve"><value>nœud {0}</value></data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Passerelle déconnectée</value>

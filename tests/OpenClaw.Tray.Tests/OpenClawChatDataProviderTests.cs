@@ -7114,7 +7114,7 @@ public class OpenClawChatDataProviderTests
 
         Assert.Equal("agent:main:review", reloaded.DefaultThreadId);
         Assert.Equal("agent:main:review", provider.CachedLastChatState?.DefaultThreadId);
-        Assert.Equal("Review (main/review)", provider.CachedLastChatState?.ThreadTitle);
+        Assert.Equal("Review", provider.CachedLastChatState?.ThreadTitle);
         Assert.Equal("gpt-5.1", provider.CachedLastChatState?.Model);
         Assert.Equal("openai", provider.CachedLastChatState?.ModelProvider);
     }

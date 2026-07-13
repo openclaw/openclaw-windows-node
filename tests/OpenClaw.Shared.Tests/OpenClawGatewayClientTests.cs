@@ -281,7 +281,11 @@ public class OpenClawGatewayClientTests
             InvokePrivatePayloadParser("ParseSessions", payloadJson);
         }
 
-        public void SetMainSessionKey(string key) => SetPrivateField("_mainSessionKey", key);
+        public void SetMainSessionKey(string key, bool isCanonical = true)
+        {
+            SetPrivateField("_mainSessionKeyIsCanonical", isCanonical);
+            SetPrivateField("_mainSessionKey", key);
+        }
 
         public ModelsListInfo ParseModelsListPayload(string payloadJson)
         {
@@ -1693,6 +1697,35 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_LegacyHandshakeAliasUsesRowMetadataAndBoundedCanonicalFallback()
+    {
+        var withPresentation = new GatewayClientTestHelper();
+        withPresentation.SetMainSessionKey("main", isCanonical: false);
+        withPresentation.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:main",
+            "presentation": {
+              "title": "Main session",
+              "titleSource": "generated",
+              "family": "main",
+              "isMain": true,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+        Assert.True(Assert.Single(withPresentation.GetSessionList()).IsMain);
+
+        var withoutPresentation = new GatewayClientTestHelper();
+        withoutPresentation.SetMainSessionKey("main", isCanonical: false);
+        withoutPresentation.ParseSessionsPayload("""
+        [ { "key": "agent:main:main", "status": "active" } ]
+        """);
+        Assert.True(Assert.Single(withoutPresentation.GetSessionList()).IsMain);
+    }
+
+    [Fact]
     public void ParseSessions_UsesPresentationMainBeforeHandshakeAuthority()
     {
         var helper = new GatewayClientTestHelper();
@@ -1755,6 +1788,35 @@ public class OpenClawGatewayClientTests
         """);
         Assert.False(Assert.Single(connected.GetSessionList(), session => session.Key == "session-custom").IsMain);
         Assert.True(Assert.Single(connected.GetSessionList(), session => session.Key == "global").IsMain);
+    }
+
+    [Fact]
+    public void ParseSessions_SparseUpdatesPreserveExplicitFalseMainStatus()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:main",
+            "presentation": {
+              "title": "Not main",
+              "titleSource": "label",
+              "family": "custom",
+              "isMain": false,
+              "isBackground": false
+            }
+          },
+          { "key": "main", "isMain": false }
+        ]
+        """);
+        helper.ParseSessionsPayload("""
+        [
+          { "key": "agent:main:main", "status": "active" },
+          { "key": "main", "status": "active" }
+        ]
+        """);
+
+        Assert.All(helper.GetSessionList(), session => Assert.False(session.IsMain));
     }
 
     [Fact]

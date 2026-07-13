@@ -47,13 +47,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private readonly DeviceIdentity _deviceIdentity;
     private readonly string _currentGatewayUrl;
     private string? _mainSessionKey;
+    private bool _mainSessionKeyIsCanonical;
     private bool _hasHandshakeSnapshot;
 
     /// <summary>
-    /// The gateway's canonical main session key as published in the hello-ok
-    /// snapshot (preferring the canonical <c>sessionDefaults.mainSessionKey</c>
-    /// over the legacy alias <c>mainKey</c>). <c>null</c> until handshake
-    /// completes or after a disconnect. Callers should pass this exact value
+    /// The gateway's resolved main session key as published in the hello-ok
+    /// snapshot (preferring canonical <c>sessionDefaults.mainSessionKey</c>,
+    /// with <c>mainKey</c> retained for older gateways). <c>null</c> until
+    /// handshake completes or after a disconnect. Callers should pass this value
     /// (or <c>null</c>) to <see cref="SendChatMessageForRunAsync"/>; never
     /// substitute a literal like <c>"main"</c>, which can drift from the
     /// canonical key the gateway echoes back in chat events.
@@ -186,6 +187,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // stale canonical key that the new server doesn't recognize, and
         // HasHandshakeSnapshot would lie about the offline state to callers.
         Volatile.Write(ref _mainSessionKey, null);
+        Volatile.Write(ref _mainSessionKeyIsCanonical, false);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
     }
 
@@ -1789,7 +1791,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // Volatile.Read on the public getters so a reader observing
             // HasHandshakeSnapshot==true is guaranteed to see the populated
             // MainSessionKey (release/acquire ordering).
-            Volatile.Write(ref _mainSessionKey, TryGetHandshakeMainSessionKey(payload));
+            var hasCanonicalMainSessionKey = TryGetCanonicalHandshakeMainSessionKey(
+                payload,
+                out var canonicalMainSessionKey);
+            Volatile.Write(ref _mainSessionKeyIsCanonical, hasCanonicalMainSessionKey);
+            Volatile.Write(
+                ref _mainSessionKey,
+                hasCanonicalMainSessionKey ? canonicalMainSessionKey : TryGetHandshakeMainSessionKey(payload));
             Volatile.Write(ref _hasHandshakeSnapshot, true);
             _logger.Info($"[HANDSHAKE] deviceId={_operatorDeviceId}, scopes=[{string.Join(", ", _grantedOperatorScopes)}], mainSession={_mainSessionKey ?? "(unset)"}");
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
@@ -2428,13 +2436,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // are keyed by the canonical form. Using the alias here would cause
         // the tray's local timeline (keyed by the alias) to diverge from the
         // gateway's echo (keyed by canonical), stranding optimistic state.
-        if (sessionDefaults.TryGetProperty("mainSessionKey", out var canonical) &&
-            canonical.ValueKind == JsonValueKind.String)
-        {
-            var canonicalValue = canonical.GetString();
-            if (!string.IsNullOrWhiteSpace(canonicalValue))
-                return canonicalValue;
-        }
+        if (TryGetCanonicalHandshakeMainSessionKey(payload, out var canonicalValue))
+            return canonicalValue;
 
         if (sessionDefaults.TryGetProperty("mainKey", out var mainKey) &&
             mainKey.ValueKind == JsonValueKind.String)
@@ -2445,6 +2448,21 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         return null;
+    }
+
+    private static bool TryGetCanonicalHandshakeMainSessionKey(JsonElement payload, out string? value)
+    {
+        value = null;
+        if (!payload.TryGetProperty("snapshot", out var snapshot)
+            || snapshot.ValueKind != JsonValueKind.Object
+            || !snapshot.TryGetProperty("sessionDefaults", out var sessionDefaults)
+            || sessionDefaults.ValueKind != JsonValueKind.Object
+            || !sessionDefaults.TryGetProperty("mainSessionKey", out var canonical)
+            || canonical.ValueKind != JsonValueKind.String)
+            return false;
+
+        value = canonical.GetString();
+        return !string.IsNullOrWhiteSpace(value);
     }
 
     private static string? TryGetHandshakeDeviceToken(JsonElement payload)
@@ -3546,7 +3564,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         var mainSessionKey = MainSessionKey;
         if (!string.IsNullOrWhiteSpace(mainSessionKey))
-            return string.Equals(sessionKey, mainSessionKey, StringComparison.Ordinal);
+        {
+            if (string.Equals(sessionKey, mainSessionKey, StringComparison.Ordinal))
+                return true;
+            if (Volatile.Read(ref _mainSessionKeyIsCanonical))
+                return false;
+
+            // Legacy hello-ok snapshots exposed only the routing alias. Older
+            // gateways canonicalized that alias with the default main agent.
+            return string.Equals(sessionKey, $"agent:main:{mainSessionKey}", StringComparison.Ordinal);
+        }
 
         // Compatibility for pre-handshake and older gateways. Once the
         // handshake resolves a canonical key it is the only authority.
@@ -3556,9 +3583,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void UpdateSessionMainStatus(SessionInfo session, string sessionKey, JsonElement item)
     {
-        if (!string.IsNullOrWhiteSpace(MainSessionKey))
+        if (!string.IsNullOrWhiteSpace(MainSessionKey)
+            && Volatile.Read(ref _mainSessionKeyIsCanonical))
         {
             session.IsMain = IsMainSessionKey(sessionKey);
+            session.IsMainResolved = true;
             return;
         }
 
@@ -3568,6 +3597,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             && TryGetRequiredBoolean(presentation, "isMain", out var presentationIsMain))
         {
             session.IsMain = presentationIsMain;
+            session.IsMainResolved = true;
             return;
         }
 
@@ -3576,13 +3606,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             && isMain.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
             session.IsMain = isMain.GetBoolean();
+            session.IsMainResolved = true;
             return;
         }
 
-        // Sparse pre-handshake updates preserve a prior explicit row value;
-        // new sessions still get the bounded legacy key fallback.
-        if (!session.IsMain)
+        // Sparse pre-handshake updates preserve both true and false row values;
+        // only an unclassified session receives the bounded legacy key fallback.
+        if (!session.IsMainResolved)
+        {
             session.IsMain = IsMainSessionKey(sessionKey);
+            session.IsMainResolved = true;
+        }
     }
 
     private void PopulateSessionFromObject(SessionInfo session, JsonElement item)

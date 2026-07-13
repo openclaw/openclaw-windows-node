@@ -280,6 +280,7 @@ public class SessionInfo
 
     public string Key { get; set; } = "";
     public bool IsMain { get; set; }
+    internal bool IsMainResolved { get; set; }
     public string? Label { get; set; }
     public string Status { get; set; } = "unknown";
     public string? Model { get; set; }
