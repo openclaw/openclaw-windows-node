@@ -45,6 +45,8 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     private OpenTelemetryEndpointOptions _currentOptions = OpenTelemetryEndpointOptions.Disabled;
     private long _applyGeneration;
     private long _sinkGeneration;
+    private long _connectionStateSequence;
+    private long _lastProcessedConnectionStateSequence;
     private int _connectionStateDrainScheduled;
     private volatile bool _disposed;
 
@@ -96,28 +98,40 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     public void SendConnectionState(GatewayConnectionSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var state = CreateConnectionState(snapshot);
-        var sinkGeneration = Volatile.Read(ref _sinkGeneration);
+        var pending = new PendingConnectionState(
+            CreateConnectionState(snapshot),
+            Volatile.Read(ref _sinkGeneration),
+            Interlocked.Increment(ref _connectionStateSequence));
 
-        if (TrySendConnectionState(state))
+        if (TrySendConnectionState(pending))
             return;
 
-        _pendingConnectionStates.Enqueue(
-            new PendingConnectionState(state, sinkGeneration));
+        _pendingConnectionStates.Enqueue(pending);
         ScheduleConnectionStateDrain();
     }
 
-    private bool TrySendConnectionState(OpenTelemetryConnectionState state)
+    private bool TrySendConnectionState(PendingConnectionState pending)
     {
         if (!Monitor.TryEnter(_gate))
             return false;
 
         try
         {
-            if (_disposed || _sink == null || state == _lastConnectionState)
+            if (_disposed ||
+                pending.SinkGeneration != _sinkGeneration ||
+                pending.Sequence <= _lastProcessedConnectionStateSequence ||
+                _sink == null)
+            {
                 return true;
+            }
 
-            SendConnectionStateCore(state);
+            if (pending.State == _lastConnectionState)
+            {
+                _lastProcessedConnectionStateSequence = pending.Sequence;
+                return true;
+            }
+
+            SendConnectionStateCore(pending);
             return true;
         }
         finally
@@ -149,13 +163,19 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
                         return;
 
                     if (pending.SinkGeneration != _sinkGeneration ||
+                        pending.Sequence <= _lastProcessedConnectionStateSequence ||
                         _sink == null ||
                         pending.State == _lastConnectionState)
                     {
+                        if (pending.SinkGeneration == _sinkGeneration &&
+                            pending.Sequence > _lastProcessedConnectionStateSequence)
+                        {
+                            _lastProcessedConnectionStateSequence = pending.Sequence;
+                        }
                         continue;
                     }
 
-                    SendConnectionStateCore(pending.State);
+                    SendConnectionStateCore(pending);
                 }
             }
         }
@@ -167,16 +187,20 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
         }
     }
 
-    private void SendConnectionStateCore(OpenTelemetryConnectionState state)
+    private void SendConnectionStateCore(PendingConnectionState pending)
     {
         try
         {
-            _sink!.SendConnectionState(state);
-            _lastConnectionState = state;
+            _sink!.SendConnectionState(pending.State);
+            _lastConnectionState = pending.State;
         }
         catch (Exception ex)
         {
             _logWarn($"OpenTelemetry connection state export failed: {ex.Message}");
+        }
+        finally
+        {
+            _lastProcessedConnectionStateSequence = pending.Sequence;
         }
     }
 
@@ -321,7 +345,8 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
 
     private sealed record PendingConnectionState(
         OpenTelemetryConnectionState State,
-        long SinkGeneration);
+        long SinkGeneration,
+        long Sequence);
 }
 
 internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink

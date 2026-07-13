@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using OpenClaw.Connection;
 using OpenClawTray.Services;
@@ -128,6 +129,47 @@ public sealed class OpenTelemetryEndpointConnectionTests
 
         Assert.Equal(1, sinks[0].SendConnectionStateCount);
         Assert.Equal(1, sinks[1].SendConnectionStateCount);
+    }
+
+    [Fact]
+    public void SendConnectionState_QueuedOlderState_DoesNotFollowNewerState()
+    {
+        var sink = new FakeProbeSink();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ => sink,
+            _ => { },
+            _ => { });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4317",
+            OpenTelemetryEndpointProtocol.Grpc));
+        var gate = typeof(OpenTelemetryEndpointConnection)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(connection)!;
+
+        Monitor.Enter(gate);
+        try
+        {
+            using var queuedSendCompleted = new ManualResetEventSlim();
+            var queuedSendThread = new Thread(() =>
+            {
+                connection.SendConnectionState(CreateConnectingSnapshot());
+                queuedSendCompleted.Set();
+            });
+            queuedSendThread.Start();
+            Assert.True(queuedSendCompleted.Wait(TimeSpan.FromSeconds(5)));
+            connection.SendConnectionState(CreateReadySnapshot());
+        }
+        finally
+        {
+            Monitor.Exit(gate);
+        }
+
+        Assert.True(SpinWait.SpinUntil(
+            () => sink.SendConnectionStateCount == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(
+            [new OpenTelemetryConnectionState("ready", "ready", "connected", "connected")],
+            sink.ConnectionStates);
     }
 
     [Fact]
@@ -508,8 +550,19 @@ public sealed class OpenTelemetryEndpointConnectionTests
             NodeState = RoleConnectionState.Connected
         };
 
+    private static GatewayConnectionSnapshot CreateConnectingSnapshot() =>
+        new()
+        {
+            OverallState = OverallConnectionState.Connecting,
+            OperatorState = RoleConnectionState.Connecting,
+            NodeState = RoleConnectionState.Idle
+        };
+
     private sealed class FakeProbeSink : IOpenTelemetryProbeSink
     {
+        private readonly List<OpenTelemetryConnectionState> _connectionStates = [];
+        private readonly object _connectionStateGate = new();
+
         public int SendProbeCount { get; private set; }
         public int ForceFlushCount { get; private set; }
         public bool ForceFlushResult { get; init; } = true;
@@ -518,8 +571,30 @@ public sealed class OpenTelemetryEndpointConnectionTests
         public int DisposeCount { get; private set; }
         public bool ThrowOnDispose { get; set; }
         public OpenTelemetryEndpointOptions? LastProbeOptions { get; private set; }
-        public OpenTelemetryConnectionState? LastConnectionState { get; private set; }
-        public int SendConnectionStateCount { get; private set; }
+        public OpenTelemetryConnectionState? LastConnectionState
+        {
+            get
+            {
+                lock (_connectionStateGate)
+                    return _connectionStates.LastOrDefault();
+            }
+        }
+        public int SendConnectionStateCount
+        {
+            get
+            {
+                lock (_connectionStateGate)
+                    return _connectionStates.Count;
+            }
+        }
+        public OpenTelemetryConnectionState[] ConnectionStates
+        {
+            get
+            {
+                lock (_connectionStateGate)
+                    return [.. _connectionStates];
+            }
+        }
 
         public void SendProbe(OpenTelemetryEndpointOptions options)
         {
@@ -529,8 +604,8 @@ public sealed class OpenTelemetryEndpointConnectionTests
 
         public void SendConnectionState(OpenTelemetryConnectionState state)
         {
-            SendConnectionStateCount++;
-            LastConnectionState = state;
+            lock (_connectionStateGate)
+                _connectionStates.Add(state);
         }
 
         public bool ForceFlush(int timeoutMilliseconds)
