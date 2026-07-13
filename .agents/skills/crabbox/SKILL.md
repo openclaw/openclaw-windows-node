@@ -1,6 +1,6 @@
 ---
 name: crabbox
-description: Use Crabbox to run OpenClaw Windows node builds, tests, and targeted proof on remote native Windows or WSL2 hosts, including brokered Azure leases and static SSH hosts. Use when remote Windows validation is needed, the local host is not Windows, or the user asks for Crabbox validation. Always report the actual provider and lease id.
+description: Use Crabbox to run OpenClaw Windows node builds, tests, and targeted proof on remote native Windows or WSL2 hosts, including Azure or brokered AWS leases and static SSH hosts. Use when remote Windows validation is needed, the local host is not Windows, or the user asks for Crabbox validation. Always report the actual provider and lease id.
 ---
 
 # Crabbox
@@ -23,8 +23,8 @@ lanes into this repository. They do not prove the Windows node.
 | An operator-managed Windows machine | `--provider ssh --target windows --windows-mode normal --static-host <host>` |
 | Azure is unavailable and the operator accepts the older AWS Windows path | `--provider aws --target windows --windows-mode normal` |
 
-Prefer Azure for brokered Windows and WSL2 work when the installed Crabbox CLI
-advertises it. Do not use WSL2 as proof for native WinUI, MSIX, Windows App SDK,
+Prefer Azure for Windows and WSL2 work when the installed Crabbox CLI advertises
+it and Azure auth is already configured. Do not use WSL2 as proof for native WinUI, MSIX, Windows App SDK,
 PowerShell, registry, or Windows process behavior. Do not use Linux Testbox for
 this repo's required closeout validation.
 
@@ -44,6 +44,8 @@ fi
 test -n "$CRABBOX"
 "$CRABBOX" --version
 "$CRABBOX" run --help 2>&1 | rg 'provider|target|windows-mode|static-host|script-stdin|timing-json'
+"$CRABBOX" config show
+"$CRABBOX" whoami
 git status --short --branch
 git rev-parse HEAD
 ```
@@ -55,6 +57,21 @@ with the resolved absolute binary path.
 Require the CLI to list the intended provider and the `windows` target before
 starting a lease. Use explicit provider and target flags; this repository has no
 `.crabbox.yaml`, so inherited user defaults are not a validation contract.
+
+Azure requires its subscription auth and usually the Azure CLI. If Azure is
+unavailable, use AWS only with an existing Crabbox broker session. If normal AWS
+validation asks for `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, an AWS profile,
+or an EC2 instance role, stop: the command fell through to raw cloud auth. Check
+`crabbox config show`, `crabbox doctor`, and `crabbox whoami`, then authenticate
+through the broker if authorized:
+
+```sh
+"$CRABBOX" login --url https://crabbox.openclaw.ai --provider aws
+```
+
+Do not ask the user for raw cloud keys for routine repository validation. Report
+an auth blocker when neither Azure nor brokered AWS nor an approved static host
+is available.
 
 Treat contributor or fork code as untrusted until it has been reviewed. This
 repo does not carry OpenClaw's sanitized Crabbox bootstrap, so do not run
@@ -239,7 +256,7 @@ validation. Do not silently move Windows proof to Linux or WSL2.
 
 ## Cleanup and report
 
-Stop every brokered lease created for the task unless the user explicitly asks
+Stop every cloud lease created for the task unless the user explicitly asks
 for a handoff window:
 
 ```sh
