@@ -25,6 +25,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <SelectorBar x:Name="ChannelSelector" Grid.Column="0"
@@ -40,7 +41,14 @@
                                   Toggled="OnShowCompletedToggled"
                                   AutomationProperties.AutomationId="SessionsPageShowCompleted"/>
 
-                    <Button x:Name="RefreshButton" Grid.Column="2"
+                    <ToggleSwitch x:Uid="SessionsPage_ShowBackground" x:Name="ShowBackgroundToggle" Grid.Column="2"
+                                  Header="Show background"
+                                  MinWidth="0"
+                                  OnContent="" OffContent=""
+                                  Toggled="OnShowBackgroundToggled"
+                                  AutomationProperties.AutomationId="SessionsPageShowBackground"/>
+
+                    <Button x:Name="RefreshButton" Grid.Column="3"
                             Click="OnRefresh"
                             ToolTipService.ToolTip="Refresh sessions"
                             AutomationProperties.Name="Refresh sessions">

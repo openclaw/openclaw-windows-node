@@ -4684,6 +4684,34 @@
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>顯示已完成的工作階段</value>
   </data>
+  <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
+    <value>顯示背景工作階段</value>
+  </data>
+  <data name="SessionTitle_Main" xml:space="preserve"><value>主要工作階段</value></data>
+  <data name="SessionTitle_Global" xml:space="preserve"><value>全域工作階段</value></data>
+  <data name="SessionTitle_Unknown" xml:space="preserve"><value>未知工作階段</value></data>
+  <data name="SessionTitle_Direct" xml:space="preserve"><value>{0} 私訊</value></data>
+  <data name="SessionTitle_Group" xml:space="preserve"><value>{0} 群組</value></data>
+  <data name="SessionTitle_Channel" xml:space="preserve"><value>{0} 頻道</value></data>
+  <data name="SessionTitle_Thread" xml:space="preserve"><value>{0} 討論串</value></data>
+  <data name="SessionTitle_DirectGeneric" xml:space="preserve"><value>私訊</value></data>
+  <data name="SessionTitle_GroupGeneric" xml:space="preserve"><value>群組對話</value></data>
+  <data name="SessionTitle_ChannelGeneric" xml:space="preserve"><value>頻道對話</value></data>
+  <data name="SessionTitle_ThreadGeneric" xml:space="preserve"><value>討論串</value></data>
+  <data name="SessionTitle_Cron" xml:space="preserve"><value>排程工作</value></data>
+  <data name="SessionTitle_Heartbeat" xml:space="preserve"><value>心跳</value></data>
+  <data name="SessionTitle_Subagent" xml:space="preserve"><value>子代理</value></data>
+  <data name="SessionTitle_Acp" xml:space="preserve"><value>ACP 工作階段</value></data>
+  <data name="SessionTitle_Dashboard" xml:space="preserve"><value>新工作階段</value></data>
+  <data name="SessionTitle_Tui" xml:space="preserve"><value>終端工作階段</value></data>
+  <data name="SessionTitle_Hook" xml:space="preserve"><value>掛鉤工作</value></data>
+  <data name="SessionTitle_Harness" xml:space="preserve"><value>測試工作階段</value></data>
+  <data name="SessionTitle_Voice" xml:space="preserve"><value>語音通話</value></data>
+  <data name="SessionTitle_Dreaming" xml:space="preserve"><value>夢境</value></data>
+  <data name="SessionTitle_System" xml:space="preserve"><value>背景工作</value></data>
+  <data name="SessionSubtitle_Account" xml:space="preserve"><value>帳號 {0}</value></data>
+  <data name="SessionSubtitle_Agent" xml:space="preserve"><value>代理 {0}</value></data>
+  <data name="SessionSubtitle_Node" xml:space="preserve"><value>節點 {0}</value></data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>閘道已中斷</value>
   </data>

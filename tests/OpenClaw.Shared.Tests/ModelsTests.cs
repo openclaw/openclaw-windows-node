@@ -604,14 +604,14 @@ public class SessionInfoTests
     public void ShortKey_ReturnsUnknown_ForEmptyKey()
     {
         var session = new SessionInfo { Key = "" };
-        Assert.Equal("unknown", session.ShortKey);
+        Assert.Equal("Session", session.ShortKey);
     }
 
     [Fact]
     public void ShortKey_ReturnsSecondToLast_ForColonSeparatedKey()
     {
         var session = new SessionInfo { Key = "agent:main:subagent:uuid" };
-        Assert.Equal("subagent", session.ShortKey);
+        Assert.Equal("Subagent", session.ShortKey);
     }
 
     [Fact]
@@ -625,27 +625,14 @@ public class SessionInfoTests
     public void ShortKey_ReturnsFilename_ForPathWithBackslashes()
     {
         var session = new SessionInfo { Key = @"C:\path\to\file.txt" };
-        var result = session.ShortKey;
-        // ShortKey uses Path.GetFileName which handles backslashes on Windows.
-        // On non-Windows, Path.GetFileName may not split on backslash, returning the full key
-        // which then gets truncated. Either way, the result must not be empty.
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("file.txt", result);
-        }
-        else
-        {
-            // On Linux Path.GetFileName won't split on '\', so it falls through to truncation
-            Assert.NotEmpty(result);
-            Assert.DoesNotContain("unknown", result);
-        }
+        Assert.Equal("file.txt", session.ShortKey);
     }
 
     [Fact]
     public void ShortKey_TruncatesLongKeys()
     {
         var session = new SessionInfo { Key = "this-is-a-very-long-key-that-should-be-truncated" };
-        Assert.Equal("this-is-a-very-lo...", session.ShortKey);
+        Assert.Equal("this-is-a-very-long-key-that-sh…", session.ShortKey);
     }
 
     [Fact]

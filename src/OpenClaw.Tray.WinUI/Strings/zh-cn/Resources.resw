@@ -4684,6 +4684,34 @@
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>显示已完成的会话</value>
   </data>
+  <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
+    <value>显示后台会话</value>
+  </data>
+  <data name="SessionTitle_Main" xml:space="preserve"><value>主会话</value></data>
+  <data name="SessionTitle_Global" xml:space="preserve"><value>全局会话</value></data>
+  <data name="SessionTitle_Unknown" xml:space="preserve"><value>未知会话</value></data>
+  <data name="SessionTitle_Direct" xml:space="preserve"><value>{0} 私信</value></data>
+  <data name="SessionTitle_Group" xml:space="preserve"><value>{0} 群聊</value></data>
+  <data name="SessionTitle_Channel" xml:space="preserve"><value>{0} 频道</value></data>
+  <data name="SessionTitle_Thread" xml:space="preserve"><value>{0} 话题</value></data>
+  <data name="SessionTitle_DirectGeneric" xml:space="preserve"><value>私信</value></data>
+  <data name="SessionTitle_GroupGeneric" xml:space="preserve"><value>群聊</value></data>
+  <data name="SessionTitle_ChannelGeneric" xml:space="preserve"><value>频道会话</value></data>
+  <data name="SessionTitle_ThreadGeneric" xml:space="preserve"><value>话题</value></data>
+  <data name="SessionTitle_Cron" xml:space="preserve"><value>计划任务</value></data>
+  <data name="SessionTitle_Heartbeat" xml:space="preserve"><value>心跳</value></data>
+  <data name="SessionTitle_Subagent" xml:space="preserve"><value>子代理</value></data>
+  <data name="SessionTitle_Acp" xml:space="preserve"><value>ACP 会话</value></data>
+  <data name="SessionTitle_Dashboard" xml:space="preserve"><value>新会话</value></data>
+  <data name="SessionTitle_Tui" xml:space="preserve"><value>终端会话</value></data>
+  <data name="SessionTitle_Hook" xml:space="preserve"><value>钩子任务</value></data>
+  <data name="SessionTitle_Harness" xml:space="preserve"><value>测试会话</value></data>
+  <data name="SessionTitle_Voice" xml:space="preserve"><value>语音通话</value></data>
+  <data name="SessionTitle_Dreaming" xml:space="preserve"><value>梦境</value></data>
+  <data name="SessionTitle_System" xml:space="preserve"><value>后台任务</value></data>
+  <data name="SessionSubtitle_Account" xml:space="preserve"><value>账号 {0}</value></data>
+  <data name="SessionSubtitle_Agent" xml:space="preserve"><value>代理 {0}</value></data>
+  <data name="SessionSubtitle_Node" xml:space="preserve"><value>节点 {0}</value></data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>网关已断开</value>
   </data>

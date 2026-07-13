@@ -281,6 +281,8 @@ public class OpenClawGatewayClientTests
             InvokePrivatePayloadParser("ParseSessions", payloadJson);
         }
 
+        public void SetMainSessionKey(string key) => SetPrivateField("_mainSessionKey", key);
+
         public ModelsListInfo ParseModelsListPayload(string payloadJson)
         {
             ModelsListInfo? parsed = null;
@@ -1596,6 +1598,119 @@ public class OpenClawGatewayClientTests
         Assert.Contains("main", sessions[0].Key);
         Assert.False(sessions[1].IsMain);
         Assert.False(sessions[2].IsMain);
+    }
+
+    [Fact]
+    public void ParseSessions_ProjectsGatewayPresentationContract()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:telegram:main:direct:491234567890",
+            "label": "Family chat",
+            "displayName": "Telegram:491234567890",
+            "derivedTitle": "Latest plans",
+            "modelProvider": "openai",
+            "model": "gpt-5.4",
+            "channel": "telegram",
+            "groupChannel": "family",
+            "chatType": "direct",
+            "origin": { "label": "Tony" },
+            "worktree": { "id": "wt-1", "branch": "openclaw/session-ux", "repoRoot": "C:\\src\\openclaw" },
+            "execNode": "windows-dev",
+            "parentSessionKey": "agent:main:main",
+            "spawnDepth": 1,
+            "presentation": {
+              "title": "Family chat",
+              "titleSource": "label",
+              "subtitle": "Telegram · account main · agent main",
+              "family": "direct",
+              "agentId": "main",
+              "channel": "telegram",
+              "accountId": "main",
+              "peerKind": "direct",
+              "isMain": false,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Equal("Family chat", session.Label);
+        Assert.Equal("Latest plans", session.DerivedTitle);
+        Assert.Equal("openai", session.Provider);
+        Assert.Equal("family", session.Room);
+        Assert.Equal("direct", session.ChatType);
+        Assert.Equal("Tony", session.OriginLabel);
+        Assert.Equal("openclaw/session-ux", session.Worktree?.Branch);
+        Assert.Equal("windows-dev", session.ExecNode);
+        Assert.Equal("agent:main:main", session.ParentSessionKey);
+        Assert.Equal(1, session.SpawnDepth);
+        Assert.False(session.IsMain);
+        Assert.Equal("Family chat", session.Presentation?.Title);
+        Assert.Equal("label", session.Presentation?.TitleSource);
+        Assert.Equal("direct", session.Presentation?.Family);
+        Assert.Equal("main", session.Presentation?.AccountId);
+    }
+
+    [Fact]
+    public void ParseSessions_UsesHandshakeMainSessionKeyInsteadOfKeyShapeGuessing()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.SetMainSessionKey("global");
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:main",
+            "displayName": "Named non-main session",
+            "presentation": {
+              "title": "Named non-main session",
+              "titleSource": "displayName",
+              "family": "custom",
+              "isMain": true,
+              "isBackground": false
+            }
+          },
+          {
+            "key": "global",
+            "displayName": "Global main",
+            "presentation": {
+              "title": "Global session",
+              "titleSource": "generated",
+              "family": "global",
+              "isMain": false,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+
+        var sessions = helper.GetSessionList();
+        Assert.True(Assert.Single(sessions, session => session.Key == "global").IsMain);
+        Assert.False(Assert.Single(sessions, session => session.Key == "agent:main:main").IsMain);
+    }
+
+    [Fact]
+    public void ParseSessions_RejectsPartialPresentationObjects()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:subagent:child",
+            "presentation": {
+              "title": "Subagent",
+              "family": "subagent"
+            }
+          }
+        ]
+        """);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Null(session.Presentation);
+        Assert.True(SessionPresentationResolver.IsBackground(session));
     }
 
     [Fact]

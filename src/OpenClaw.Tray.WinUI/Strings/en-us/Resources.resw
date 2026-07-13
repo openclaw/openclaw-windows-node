@@ -4731,6 +4731,34 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>Show completed</value>
   </data>
+  <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
+    <value>Show background</value>
+  </data>
+  <data name="SessionTitle_Main" xml:space="preserve"><value>Main session</value></data>
+  <data name="SessionTitle_Global" xml:space="preserve"><value>Global session</value></data>
+  <data name="SessionTitle_Unknown" xml:space="preserve"><value>Unknown session</value></data>
+  <data name="SessionTitle_Direct" xml:space="preserve"><value>{0} direct message</value></data>
+  <data name="SessionTitle_Group" xml:space="preserve"><value>{0} group</value></data>
+  <data name="SessionTitle_Channel" xml:space="preserve"><value>{0} channel</value></data>
+  <data name="SessionTitle_Thread" xml:space="preserve"><value>{0} thread</value></data>
+  <data name="SessionTitle_DirectGeneric" xml:space="preserve"><value>Direct message</value></data>
+  <data name="SessionTitle_GroupGeneric" xml:space="preserve"><value>Group conversation</value></data>
+  <data name="SessionTitle_ChannelGeneric" xml:space="preserve"><value>Channel conversation</value></data>
+  <data name="SessionTitle_ThreadGeneric" xml:space="preserve"><value>Thread</value></data>
+  <data name="SessionTitle_Cron" xml:space="preserve"><value>Scheduled task</value></data>
+  <data name="SessionTitle_Heartbeat" xml:space="preserve"><value>Heartbeat</value></data>
+  <data name="SessionTitle_Subagent" xml:space="preserve"><value>Subagent</value></data>
+  <data name="SessionTitle_Acp" xml:space="preserve"><value>ACP session</value></data>
+  <data name="SessionTitle_Dashboard" xml:space="preserve"><value>New session</value></data>
+  <data name="SessionTitle_Tui" xml:space="preserve"><value>Terminal session</value></data>
+  <data name="SessionTitle_Hook" xml:space="preserve"><value>Hook run</value></data>
+  <data name="SessionTitle_Harness" xml:space="preserve"><value>Harness session</value></data>
+  <data name="SessionTitle_Voice" xml:space="preserve"><value>Voice call</value></data>
+  <data name="SessionTitle_Dreaming" xml:space="preserve"><value>Dreaming</value></data>
+  <data name="SessionTitle_System" xml:space="preserve"><value>Background task</value></data>
+  <data name="SessionSubtitle_Account" xml:space="preserve"><value>account {0}</value></data>
+  <data name="SessionSubtitle_Agent" xml:space="preserve"><value>agent {0}</value></data>
+  <data name="SessionSubtitle_Node" xml:space="preserve"><value>node {0}</value></data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway disconnected</value>
   </data>

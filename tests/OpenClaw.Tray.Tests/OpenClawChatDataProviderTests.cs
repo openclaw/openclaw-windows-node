@@ -591,6 +591,8 @@ public class OpenClawChatDataProviderTests
             .Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal("agent:main:subagent:uuid-b", snapshot.Threads[0].Id);
         Assert.Equal("agent:main:subagent:uuid-a", snapshot.Threads[1].Id);
+        Assert.All(snapshot.Threads, thread => Assert.True(thread.IsBackground));
+        Assert.All(snapshot.Threads, thread => Assert.Equal("main", thread.AgentId));
     }
 
     [Fact]

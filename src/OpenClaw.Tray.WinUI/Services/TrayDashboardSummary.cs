@@ -208,6 +208,13 @@ internal sealed class TrayDashboardSummaryBuilder
         if (sessions == null || sessions.Count == 0)
             return null;
 
+        var foregroundSessions = sessions
+            .Where(session => !SessionPresentationResolver.IsBackground(session))
+            .ToArray();
+        if (foregroundSessions.Length == 0)
+            return null;
+        sessions = foregroundSessions;
+
         static bool IsActive(SessionInfo s) =>
             string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase);
 
@@ -235,9 +242,7 @@ internal sealed class TrayDashboardSummaryBuilder
         var isActive = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase);
         var label = isActive ? "Active" : (session.IsMain ? "Main" : "Session");
 
-        var title = !string.IsNullOrWhiteSpace(session.DisplayName)
-            ? session.DisplayName!
-            : (session.IsMain ? "Main session" : (string.IsNullOrEmpty(session.Key) ? "Session" : session.ShortKey));
+        var title = SessionTitleFormatter.Format(session);
 
         var usedTokens = SessionUsedTokens(session);
         var contextTokens = session.ContextTokens > 0 ? session.ContextTokens : 200_000;

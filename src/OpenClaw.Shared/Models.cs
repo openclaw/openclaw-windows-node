@@ -251,6 +251,27 @@ public static class ChannelHealthParser
     }
 }
 
+public sealed class SessionPresentationInfo
+{
+    public string Title { get; set; } = "";
+    public string TitleSource { get; set; } = "generated";
+    public string? Subtitle { get; set; }
+    public string Family { get; set; } = "custom";
+    public string? AgentId { get; set; }
+    public string? Channel { get; set; }
+    public string? AccountId { get; set; }
+    public string? PeerKind { get; set; }
+    public bool IsMain { get; set; }
+    public bool IsBackground { get; set; }
+}
+
+public sealed class SessionWorktreeInfo
+{
+    public string? Id { get; set; }
+    public string? Branch { get; set; }
+    public string? RepoRoot { get; set; }
+}
+
 public class SessionInfo
 {
     /// <summary>Defensive copy so a snapshot handed to a SessionsUpdated subscriber does not
@@ -259,14 +280,23 @@ public class SessionInfo
 
     public string Key { get; set; } = "";
     public bool IsMain { get; set; }
+    public string? Label { get; set; }
     public string Status { get; set; } = "unknown";
     public string? Model { get; set; }
     public string? Channel { get; set; }
     public string? DisplayName { get; set; }
+    public string? DerivedTitle { get; set; }
     public string? Provider { get; set; }
     public string? Subject { get; set; }
     public string? Room { get; set; }
     public string? Space { get; set; }
+    public string? ChatType { get; set; }
+    public string? OriginLabel { get; set; }
+    public SessionWorktreeInfo? Worktree { get; set; }
+    public string? ExecNode { get; set; }
+    public string? ParentSessionKey { get; set; }
+    public int? SpawnDepth { get; set; }
+    public SessionPresentationInfo? Presentation { get; set; }
     public string? SessionId { get; set; }
     public string? ThinkingLevel { get; set; }
     public string? VerboseLevel { get; set; }
@@ -304,9 +334,7 @@ public class SessionInfo
     {
         get
         {
-            var title = !string.IsNullOrWhiteSpace(DisplayName)
-                ? DisplayName!
-                : (IsMain ? "Main session" : "Session");
+            var title = SessionPresentationResolver.Resolve(this).Title;
 
             // Fixed-size array avoids List<string> allocation; at most 9 detail slots.
             var details = new string?[9];
@@ -349,26 +377,7 @@ public class SessionInfo
     /// <summary>Gets a shortened, user-friendly version of the session key.</summary>
     public string ShortKey
     {
-        get
-        {
-            if (string.IsNullOrEmpty(Key)) return "unknown";
-            
-            // Extract meaningful part from session keys like "agent:main:subagent:uuid"
-            var parts = Key.Split(':');
-            if (parts.Length >= 3)
-            {
-                // Return something like "subagent" or "cron" 
-                return parts[^2]; // Second to last part
-            }
-            
-            // For file paths, just return filename
-            if (Key.Contains('/') || Key.Contains('\\'))
-            {
-                return Path.GetFileName(Key);
-            }
-            
-            return Key.Length > 20 ? Key[..17] + "..." : Key;
-        }
+        get => SessionPresentationResolver.Resolve(this).Title;
     }
 
 }

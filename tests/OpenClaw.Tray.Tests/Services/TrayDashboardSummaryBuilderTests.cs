@@ -708,4 +708,24 @@ public sealed class TrayDashboardSummaryBuilderTests
     {
         Assert.Null(TrayDashboardSummaryBuilder.SelectActiveSession(Array.Empty<SessionInfo>()));
     }
+
+    [Fact]
+    public void SelectActiveSession_IgnoresBackgroundSessions()
+    {
+        var heartbeat = new SessionInfo
+        {
+            Key = "agent:main:tui-id:heartbeat",
+            Status = "active",
+            Presentation = new SessionPresentationInfo
+            {
+                Title = "Heartbeat",
+                Family = "heartbeat",
+                IsBackground = true,
+            },
+        };
+        var main = new SessionInfo { Key = "agent:main:main", IsMain = true, Status = "idle" };
+
+        Assert.Same(main, TrayDashboardSummaryBuilder.SelectActiveSession([heartbeat, main]));
+        Assert.Null(TrayDashboardSummaryBuilder.SelectActiveSession([heartbeat]));
+    }
 }
