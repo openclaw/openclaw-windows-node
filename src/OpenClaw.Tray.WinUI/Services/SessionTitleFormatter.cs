@@ -1,5 +1,4 @@
 using OpenClaw.Shared;
-using OpenClawTray.Helpers;
 
 namespace OpenClawTray.Services;
 
@@ -8,6 +7,13 @@ namespace OpenClawTray.Services;
 /// </summary>
 internal static class SessionTitleFormatter
 {
+    private static Func<string, string> s_getLocalizedString = key => key;
+
+    internal static void ConfigureLocalization(Func<string, string> getLocalizedString)
+    {
+        s_getLocalizedString = getLocalizedString ?? throw new ArgumentNullException(nameof(getLocalizedString));
+    }
+
     /// <summary>
     /// Formats a session title from the Gateway presentation contract, with a
     /// bounded fallback for older gateways.
@@ -163,13 +169,13 @@ internal static class SessionTitleFormatter
 
     private static string Localized(string key, string fallback)
     {
-        var value = LocalizationHelper.GetString(key);
+        var value = s_getLocalizedString(key);
         return value == key ? fallback : value;
     }
 
     private static string LocalizedFormat(string key, string fallback, object value)
     {
-        var format = LocalizationHelper.GetString(key);
+        var format = s_getLocalizedString(key);
         if (format == key) return fallback;
         try
         {

@@ -268,6 +268,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // The classifier defaults to identity (returns the resource key as-is) for unit-test
         // contexts that lack a WinUI runtime; in-app we point it at the real resource lookup.
         GatewayHostAccessLocalization.GetString = LocalizationHelper.GetString;
+        SessionTitleFormatter.ConfigureLocalization(LocalizationHelper.GetString);
         GatewayHostAccessLocalization.Format = (key, args) => LocalizationHelper.Format(key, args);
 
         InitializeComponent();
