@@ -159,6 +159,8 @@ public class SettingsManager
     public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => _data.SystemRunBlockHostFallbackWhenMxcUnavailable; set => _data = _data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }; }
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
     public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
+    /// <summary>Route system.run through the new exec approvals pipeline. Default false; no Settings UI yet.</summary>
+    public bool ExecApprovalsNewPathEnabled { get => _data.ExecApprovalsNewPathEnabled; set => _data = _data with { ExecApprovalsNewPathEnabled = value }; }
 
     // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
     public SandboxClipboardMode SandboxClipboard { get => _data.SandboxClipboard; set => _data = _data with { SandboxClipboard = value }; }
@@ -281,6 +283,7 @@ public class SettingsManager
         SystemRunSandboxEnabled = true,
         SystemRunBlockHostFallbackWhenMxcUnavailable = false,
         SystemRunAllowOutbound = false,
+        ExecApprovalsNewPathEnabled = false,
         SandboxClipboard = SandboxClipboardMode.None,
         SandboxDocumentsAccess = null,
         SandboxDownloadsAccess = null,

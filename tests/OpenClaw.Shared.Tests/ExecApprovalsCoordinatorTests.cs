@@ -243,19 +243,6 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Contains("promptAttempted=", msg, StringComparison.Ordinal);
     }
 
-    // ── 15. Coordinator not wired in production src ───────────────────────────
-
-    [Fact]
-    public void ProductionWiring_CoordinatorNotReferencedInSrc()
-    {
-        var violations = ProductionSourceFiles.All
-            .Where(f => !f.Path.EndsWith("ExecApprovalsCoordinator.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(f => f.Text.Contains("ExecApprovalsCoordinator", StringComparison.Ordinal))
-            .Select(f => f.Path)
-            .ToList();
-        Assert.Empty(violations);
-    }
-
     // ── 16. Rail 10 — coordinator in OpenClaw.Shared, not Tray ───────────────
 
     [Fact]

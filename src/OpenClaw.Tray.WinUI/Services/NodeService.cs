@@ -79,6 +79,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     // Capabilities
     private SystemCapability? _systemCapability;
+
+    // Created once per NodeService lifetime and reused across capability
+    // rebuilds. The coordinator serializes approvals with a per-instance
+    // semaphore, so a fresh instance per rebuild would let an in-flight
+    // approval on the old instance overlap with one on the new instance.
+    private IExecApprovalV2Handler? _execApprovalsV2Handler;
     private CanvasCapability? _canvasCapability;
     private ScreenCapability? _screenCapability;
     private CameraCapability? _cameraCapability;
@@ -299,7 +305,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     private void RegisterCapabilities()
     {
-        new ExecApprovalsStore(_dataPath, _logger).MigrateLegacyFileIfNeeded();
+        // With the new approvals path enabled the migration runs on the same
+        // store instance handed to the coordinator below; the legacy-file
+        // migration itself is independent of which path handles system.run.
+        if (_settings?.ExecApprovalsNewPathEnabled != true)
+            new ExecApprovalsStore(_dataPath, _logger).MigrateLegacyFileIfNeeded();
 
         // Hold the lock across the entire rebuild. The body is sync construction
         // (no awaits), so the lock is held briefly and an MCP tools/list arriving
@@ -329,6 +339,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         execPrompt.InlineApprovalRequested += OnLocalExecApprovalRequested;
         execPrompt.Decided += OnLocalExecApprovalDecided;
         _systemCapability.SetPromptHandler(execPrompt);
+
+        // New exec approvals path: explicit opt-in, default off.
+        if (_settings?.ExecApprovalsNewPathEnabled == true)
+        {
+            _execApprovalsV2Handler ??= BuildExecApprovalsV2Handler();
+            _systemCapability.SetV2Handler(_execApprovalsV2Handler);
+        }
+
         Register(_systemCapability);
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
@@ -571,6 +589,36 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         client.HealthReceived -= OnNodeHealthReceived;
         client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
         client.InvokeCompleted -= OnNodeInvokeCompleted;
+    }
+
+    /// <summary>
+    /// Build the handler for the new exec approvals path. Fail closed: if the
+    /// coordinator cannot be built, return the null handler (typed unavailable
+    /// deny) rather than falling back silently to the legacy path. The result
+    /// is cached for the NodeService lifetime so the coordinator stays a
+    /// singleton across capability rebuilds. The approval prompt UI is not
+    /// wired yet, so prompt-required decisions resolve through the store's
+    /// ask fallback.
+    /// </summary>
+    private IExecApprovalV2Handler BuildExecApprovalsV2Handler()
+    {
+        try
+        {
+            var store = new ExecApprovalsStore(_dataPath, _logger);
+            store.MigrateLegacyFileIfNeeded();
+            var coordinator = new ExecApprovalsCoordinator(
+                store,
+                AlwaysCannotPresentEvaluator.Instance,
+                ExecApprovalV2NullPromptHandler.Instance,
+                _logger);
+            _logger.Info("[EXEC-APPROVALS] new path enabled (prompt UI not wired; fallback-only)");
+            return coordinator;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("[EXEC-APPROVALS] new path enabled but coordinator unavailable; failing closed", ex);
+            return ExecApprovalV2NullHandler.Instance;
+        }
     }
 
     /// <summary>

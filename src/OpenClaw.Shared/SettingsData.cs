@@ -173,6 +173,14 @@ public record class SettingsData
     public bool SystemRunAllowOutbound { get; set; } = false;
 
     /// <summary>
+    /// Route system.run through the new exec approvals pipeline instead of the
+    /// legacy policy. Default <c>false</c>. When enabled, any failure inside
+    /// the new pipeline produces a typed deny — it never falls back silently
+    /// to the legacy path. No Settings UI yet; enabled by editing settings.json.
+    /// </summary>
+    public bool ExecApprovalsNewPathEnabled { get; set; } = false;
+
+    /// <summary>
     /// Clipboard access policy inside the sandbox. Default <c>None</c> — the
     /// sandboxed payload cannot see or change the user's clipboard.
     /// </summary>
