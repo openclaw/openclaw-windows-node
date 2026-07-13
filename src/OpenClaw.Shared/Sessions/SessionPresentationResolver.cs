@@ -145,7 +145,7 @@ public static partial class SessionPresentationResolver
         return Presentation(ReadableTail(rest), "custom", agentId);
     }
 
-    private static (string? AgentId, string Rest) ParseAgentWrapper(string key)
+    private static (string? AgentId, string Tail) ParseAgentWrapper(string key)
     {
         var first = key.IndexOf(':');
         var second = first >= 0 ? key.IndexOf(':', first + 1) : -1;
