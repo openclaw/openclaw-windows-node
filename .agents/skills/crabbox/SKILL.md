@@ -24,9 +24,9 @@ lanes into this repository. They do not prove the Windows node.
 | Azure is unavailable and the operator accepts the older AWS Windows path | `--provider aws --target windows --windows-mode normal` |
 
 Prefer Azure for Windows and WSL2 work when the installed Crabbox CLI advertises
-it and Azure auth is already configured. Do not use WSL2 as proof for native WinUI, MSIX, Windows App SDK,
-PowerShell, registry, or Windows process behavior. Do not use Linux Testbox for
-this repo's required closeout validation.
+it and Azure auth is already configured. Do not use WSL2 as proof for native
+WinUI, MSIX, Windows App SDK, PowerShell, registry, or Windows process behavior.
+Do not use Linux Testbox for this repo's required closeout validation.
 
 ## First checks
 
@@ -41,6 +41,7 @@ export CRABBOX="$(command -v crabbox || true)"
 if [ -x ../crabbox/bin/crabbox ]; then
   export CRABBOX=../crabbox/bin/crabbox
 fi
+export CRABBOX_PROVIDER="${CRABBOX_PROVIDER:-azure}"
 test -n "$CRABBOX"
 "$CRABBOX" --version
 "$CRABBOX" run --help 2>&1 | rg 'provider|target|windows-mode|static-host|script-stdin|timing-json'
@@ -50,9 +51,9 @@ git status --short --branch
 git rev-parse HEAD
 ```
 
-Keep `CRABBOX` exported in the shell that runs the remaining commands. If an
-automation tool starts a fresh shell for each call, replace `"$CRABBOX"` below
-with the resolved absolute binary path.
+Keep `CRABBOX` and `CRABBOX_PROVIDER` exported in the shell that runs the
+remaining commands. If an automation tool starts a fresh shell for each call,
+replace them below with the resolved binary path and selected provider.
 
 Require the CLI to list the intended provider and the `windows` target before
 starting a lease. Use explicit provider and target flags; this repository has no
@@ -67,6 +68,7 @@ through the broker if authorized:
 
 ```sh
 "$CRABBOX" login --url https://crabbox.openclaw.ai --provider aws
+export CRABBOX_PROVIDER=aws
 ```
 
 Do not ask the user for raw cloud keys for routine repository validation. Report
@@ -85,7 +87,7 @@ Warm one lease early for tasks that will need several build/test iterations:
 
 ```sh
 "$CRABBOX" warmup \
-  --provider azure \
+  --provider "$CRABBOX_PROVIDER" \
   --target windows \
   --windows-mode normal \
   --keep \
@@ -93,6 +95,11 @@ Warm one lease early for tasks that will need several build/test iterations:
   --ttl 240m \
   --timing-json
 ```
+
+For UI work, add `--desktop` to this warmup from the start and use the returned
+id as both `<lease-id>` and `<desktop-lease-id>`. Managed leases cannot gain
+desktop capability after acquisition. Do not add `--desktop` to WSL2; managed
+WSL2 has no separate VNC desktop.
 
 Save the returned raw lease id. Report the provider and id exactly as Crabbox
 returns them. Reuse the lease with `--id <lease-id>`, but let each run sync the
@@ -108,7 +115,7 @@ the later `--no-restore` test commands.
 
 ```sh
 "$CRABBOX" run \
-  --provider azure \
+  --provider "$CRABBOX_PROVIDER" \
   --target windows \
   --windows-mode normal \
   --id <lease-id> \
@@ -150,7 +157,11 @@ Add the targeted suite required by `AGENTS.md` for the touched subsystem. For
 example, changes to `winnode`, MCP output, or command docs also require:
 
 ```powershell
+dotnet build .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj --no-restore
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 ```
 
 MXC, `system.run`, approval, or Windows command-execution changes also require:
@@ -165,14 +176,28 @@ Do not treat `-AllowSkip` as merge validation for MXC-related work.
 
 Use WSL2 only when the behavior under test crosses the WSL gateway boundary.
 Keep the full native Windows closeout run above even when a targeted WSL2 proof
-passes.
+passes. Warm WSL2 separately because its VM provisioning and bootstrap differ
+from native mode:
+
+```sh
+"$CRABBOX" warmup \
+  --provider "$CRABBOX_PROVIDER" \
+  --target windows \
+  --windows-mode wsl2 \
+  --keep \
+  --idle-timeout 90m \
+  --ttl 240m \
+  --timing-json
+```
+
+Save the returned id as `<wsl2-lease-id>`, then run the focused WSL proof:
 
 ```sh
 "$CRABBOX" run \
-  --provider azure \
+  --provider "$CRABBOX_PROVIDER" \
   --target windows \
   --windows-mode wsl2 \
-  --id <lease-id> \
+  --id <wsl2-lease-id> \
   --preflight \
   --timing-json \
   --script-stdin -- <<'BASH'
@@ -198,7 +223,7 @@ contract explicit:
   --static-user <user> \
   --preflight \
   --timing-json \
-  -- pwsh -NoProfile -Command 'dotnet --info'
+  -- dotnet --info
 ```
 
 Native Windows sync requires OpenSSH, PowerShell, Git, and tar. Set
@@ -212,8 +237,17 @@ Remote build and test output proves automation, not visible WinUI behavior. For
 tray, Settings, onboarding, chat/canvas, or other UI claims, launch the isolated
 app in an interactive Windows session and capture current-head evidence:
 
-```powershell
-.\run-app-local.ps1 -Isolated
+```sh
+"$CRABBOX" desktop launch \
+  --provider "$CRABBOX_PROVIDER" \
+  --target windows \
+  --windows-mode normal \
+  --id <desktop-lease-id> \
+  --webvnc \
+  --open \
+  --take-control -- \
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\run-app-local.ps1' \
+    -NoBuild -Isolated -AllowNonMain
 ```
 
 If the leased host has no interactive desktop, state that UI proof is blocked
@@ -260,11 +294,15 @@ Stop every cloud lease created for the task unless the user explicitly asks
 for a handoff window:
 
 ```sh
-"$CRABBOX" stop --provider azure <lease-id>
-"$CRABBOX" list --provider azure
+"$CRABBOX" stop --provider "$CRABBOX_PROVIDER" <lease-id>
+"$CRABBOX" stop --provider "$CRABBOX_PROVIDER" <wsl2-lease-id>
+"$CRABBOX" stop --provider "$CRABBOX_PROVIDER" <desktop-lease-id>
+"$CRABBOX" list --provider "$CRABBOX_PROVIDER"
 ```
 
-Do not stop shared or pre-existing leases. In the handoff or PR body, record:
+Run only the unique stop commands for leases actually created. If providers
+differed, use each lease's actual provider instead of the current variable. Do
+not stop shared or pre-existing leases. In the handoff or PR body, record:
 
 - source head SHA and whether the checkout was dirty
 - actual provider, target, Windows mode, and raw lease id
