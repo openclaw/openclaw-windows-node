@@ -63,3 +63,73 @@ changes when it clarifies the result.
 Reviewers will inspect the code, tests, and CI. Use this section to make the
 validation easy to understand, not to restate the diff.
 -->
+
+## Change Type
+
+- [ ] Bug fix
+- [ ] Feature
+- [ ] Refactor
+- [ ] Docs or instructions
+- [ ] Tests or validation
+- [ ] Security hardening
+- [ ] Chore or infrastructure
+
+## Scope
+
+- [ ] Tray or WinUI UX
+- [ ] Windows node capability
+- [ ] Local MCP or `winnode`
+- [ ] Gateway, connection, or pairing
+- [ ] Setup or onboarding
+- [ ] Permissions, privacy, or security
+- [ ] Tests, CI, or docs
+
+## Validation
+
+<!--
+Include exact commands and pass/fail counts. Baseline after code changes:
+- `./build.ps1`
+- `dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --no-restore`
+- `dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore`
+
+Add focused tests when relevant. In fresh worktrees, confirm tests actually ran
+and report non-zero test counts.
+-->
+
+## Real Behavior Proof
+
+<!--
+Paste at least one current-head proof item that directly demonstrates the
+changed behavior. Use copied live output, screenshots or video, UI diagnostics,
+`winnode` output, raw MCP JSON-RPC, gateway invoke output, redacted runtime
+logs, or linked artifacts.
+-->
+
+- Environment tested:
+- PR head or commit tested:
+- Exact steps or command run:
+- Evidence after fix:
+- Observed result:
+- Screenshot or artifact links verified? (`Yes`/`No`/`N/A`)
+- Not verified or blocked:
+
+## Security Impact
+
+- New permissions or capabilities? (`Yes`/`No`)
+- Secrets or tokens handling changed? (`Yes`/`No`)
+- New or changed network calls? (`Yes`/`No`)
+- Command or tool execution surface changed? (`Yes`/`No`)
+- Data access scope changed? (`Yes`/`No`)
+- If any answer is `Yes`, explain the risk and mitigation:
+
+## Compatibility and Migration
+
+- Backward compatible? (`Yes`/`No`)
+- Config or environment changes? (`Yes`/`No`)
+- Migration needed? (`Yes`/`No`)
+- If yes, list the exact upgrade steps:
+
+## Review Conversations
+
+- [ ] I replied to or resolved every bot review conversation addressed by this PR.
+- [ ] I left unresolved only conversations that still need maintainer judgment.
