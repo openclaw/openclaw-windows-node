@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="GitVersion.MsBuild" Version="6.8.1" PrivateAssets="all" />
+    <PackageReference Include="GitVersion.MsBuild" Version="6.8.2" PrivateAssets="all" />
     <PackageReference Include="VCRuntime.CefSharp.140" Version="1.0.5" PrivateAssets="all" ExcludeAssets="build" />
   </ItemGroup>
 
