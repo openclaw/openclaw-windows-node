@@ -1,89 +1,65 @@
-## Summary
+<!--
+Optional linked context:
+Add a visible `Closes #<issue-number>` or `Related: #<issue-number>` line
+below this comment.
 
-<!-- Describe the problem and fix in 2-5 bullets. -->
+Required PR title:
+type: user-facing description
+Use a parenthesized scope only when it adds clarity:
+fix(auth): login redirect loops when session cookie is expired
 
-- Problem:
-- Why it matters:
-- What changed:
-- User impact:
-- What did NOT change (scope boundary):
-
-## Change Type (select all)
-
-<!-- Select all that apply. -->
-
-- [ ] Bug fix
-- [ ] Feature
-- [ ] Refactor
-- [ ] Docs / instructions
-- [ ] Tests / validation
-- [ ] Security hardening
-- [ ] Chore / infra
-
-## Scope (select all touched areas)
-
-- [ ] Tray / WinUI UX
-- [ ] Windows node capability
-- [ ] Local MCP / `winnode`
-- [ ] Gateway / connection / pairing
-- [ ] Setup / onboarding
-- [ ] Permissions / privacy / security
-- [ ] Tests / CI / docs
-
-## Linked Issue/PR
-
-- Closes #
-- Related #
-- [ ] Related to a bug or regression
-
-## Validation
-
-<!-- Include exact commands and pass/fail counts. Baseline after code changes:
-- .\build.ps1
-- dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --no-restore
-- dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --no-restore
-Add focused tests when relevant, for example WinNode CLI tests for command/MCP docs changes.
-In fresh worktrees, make sure tests actually ran and report non-zero test counts.
+Types: feat, fix, improve, refactor, docs, chore.
+For fixes, describe the user-visible symptom and trigger:
+fix: task list fails to load when user has no environments
+Avoid implementation details such as:
+fix: add null check to task query
 -->
 
-## Real behavior proof
+<details>
+<summary>Additional instructions</summary>
 
-<!-- Paste at least one current-head after-change proof item that directly demonstrates the changed behavior.
-Use whatever proof best matches the change: copied live output, screenshot/video,
-developer-provided screenshot, copied UI diagnostics, winnode output, raw MCP
-JSON-RPC tools/list + tools/call, gateway invoke output, redacted runtime log,
-or linked artifact. For UI changes, prefer screenshots/video of the active
-changed state, not only adjacent or empty UI. -->
+**MUST:** Keep **Allow edits from maintainers** enabled for this PR so maintainers
+can help update the branch when needed.
 
-- Environment tested:
-- PR head / commit tested:
-- Exact steps or command run:
-- Evidence after fix:
-- Observed result:
-- Screenshot/artifact links verified? (`Yes/No/N/A`)
-- Not verified / blocked:
+</details>
 
-<!-- Optional: add rubber-duck review notes in addition to runtime proof above. -->
+## What Problem This Solves
 
-## Security Impact (required)
+<!--
+Describe the concrete user, product, or operational problem.
+For fixes, begin with:
+"Fixes an issue where users <do X> would <experience Y> when <condition>."
+or:
+"Resolves a problem where..."
 
-- New permissions/capabilities? (`Yes/No`)
-- Secrets/tokens handling changed? (`Yes/No`)
-- New/changed network calls? (`Yes/No`)
-- Command/tool execution surface changed? (`Yes/No`)
-- Data access scope changed? (`Yes/No`)
-- If any `Yes`, explain risk + mitigation:
+Name the affected UI surface or workflow. Do not describe the code-level cause here.
+-->
 
-## Compatibility / Migration
+## Why This Change Was Made
 
-- Backward compatible? (`Yes/No`)
-- Config/env changes? (`Yes/No`)
-- Migration needed? (`Yes/No`)
-- If yes, exact upgrade steps:
+<!--
+In one or two sentences, explain the complete shipped solution, key design
+decisions, and relevant boundaries or non-goals. Include implementation detail
+only when it helps reviewers understand user-visible behavior or risk.
+Avoid file-by-file narration.
+-->
 
-## Review Conversations
+## User Impact
 
-- [ ] I replied to or resolved every bot review conversation I addressed in this PR.
-- [ ] I left unresolved only conversations that still need reviewer or maintainer judgment.
+<!--
+State what users, operators, or developers can now do or expect. Lead with the
+concrete benefit and use user-facing language. If there is no user-visible
+impact, say so plainly.
+-->
 
-If a bot review conversation is addressed by this PR, resolve that conversation yourself. Do not leave bot review conversation cleanup for maintainers.
+## Evidence
+
+<!--
+Show the most useful proof that this change works. Screenshots, screencasts,
+terminal output, focused tests, CI results, live observations, redacted logs,
+and artifact links are all useful. Include before/after evidence for visual
+changes when it clarifies the result.
+
+Reviewers will inspect the code, tests, and CI. Use this section to make the
+validation easy to understand, not to restate the diff.
+-->
