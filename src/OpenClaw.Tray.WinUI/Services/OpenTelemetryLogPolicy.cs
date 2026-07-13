@@ -5,6 +5,7 @@ namespace OpenClawTray.Services;
 internal static class OpenTelemetryLogPolicy
 {
     public const string TelemetryExporterCategory = "OpenClaw.Telemetry.Exporter";
+    public const string ConnectionCategory = "OpenClaw.Telemetry.Connection";
 
     public static bool ShouldExport(string? category, LogLevel level) =>
         level is >= LogLevel.Information and < LogLevel.None &&

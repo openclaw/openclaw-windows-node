@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Telemetry;
 using OpenClaw.Connection;
 
 namespace OpenClaw.Connection.Tests;
@@ -49,6 +51,7 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         SetupGateway("gw-1", "wss://test");
         _resolver.OperatorCredential = null;
+        using var activities = new ActivityCollector();
 
         GatewayConnectionSnapshot? lastSnap = null;
         _manager.StateChanged += (_, s) => lastSnap = s;
@@ -57,6 +60,17 @@ public class GatewayConnectionManagerTests : IDisposable
 
         Assert.Equal(OverallConnectionState.Error, _manager.CurrentSnapshot.OverallState);
         Assert.NotNull(lastSnap);
+        var stopped = activities.GetStopped();
+        var root = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.OperatorConnectSpanName);
+        var prepare = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.OperatorPrepareSpanName);
+        Assert.Equal(ActivityStatusCode.Error, root.Status);
+        Assert.Equal(ActivityStatusCode.Error, prepare.Status);
+        Assert.Equal("failure", root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "authfailure",
+            root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
     [Fact]
@@ -71,6 +85,39 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal("wss://test", _manager.ActiveGatewayUrl);
         Assert.Equal("gw-1", _manager.CurrentSnapshot.GatewayId);
         Assert.Equal("test", _manager.CurrentSnapshot.OperatorCredentialSource);
+    }
+
+    [Fact]
+    public async Task ConnectAndReconnect_EmitCompletedOperatorSpans()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        using var activities = new ActivityCollector();
+
+        await _manager.ConnectAsync("gw-1");
+        Assert.Single(_factory.CreatedClients).SimulateTransportConnected();
+        var connected = WaitForOperatorConnectedAsync();
+        _factory.CreatedClients[0].SimulateHandshake();
+        await connected;
+
+        await _manager.ReconnectAsync();
+        _factory.CreatedClients[1].SimulateTransportConnected();
+        connected = WaitForOperatorConnectedAsync();
+        _factory.CreatedClients[1].SimulateHandshake();
+        await connected;
+
+        var stopped = activities.GetStopped();
+        var connectRoot = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.OperatorConnectSpanName &&
+            activity.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString() == "success");
+        var reconnectRoot = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.OperatorReconnectSpanName &&
+            activity.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString() == "success");
+
+        AssertOperatorPhases(stopped, connectRoot);
+        AssertOperatorPhases(stopped, reconnectRoot);
+        Assert.Null(connectRoot.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+        Assert.Null(reconnectRoot.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
     /// <summary>
@@ -113,12 +160,21 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         SetupGateway("gw-1", "wss://test");
         _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        using var activities = new ActivityCollector();
         await _manager.ConnectAsync("gw-1");
 
         await _manager.DisconnectAsync();
 
         Assert.Equal(OverallConnectionState.Idle, _manager.CurrentSnapshot.OverallState);
         Assert.Null(_manager.OperatorClient);
+        var root = Assert.Single(
+            activities.GetStopped(),
+            activity => activity.OperationName == GatewayConnectionManager.OperatorConnectSpanName);
+        Assert.Equal(ActivityStatusCode.Unset, root.Status);
+        Assert.Equal("canceled", root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "cancelled",
+            root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
     [Fact]
@@ -971,6 +1027,22 @@ public class GatewayConnectionManagerTests : IDisposable
         _registry.SetActive(id);
     }
 
+    private Task WaitForOperatorConnectedAsync()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<GatewayConnectionSnapshot>? handler = null;
+        handler = (_, snapshot) =>
+        {
+            if (snapshot.OperatorState != RoleConnectionState.Connected)
+                return;
+
+            _manager.StateChanged -= handler;
+            completion.TrySetResult();
+        };
+        _manager.StateChanged += handler;
+        return completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
     private static async Task InvokeHandshakeSucceededAsync(GatewayConnectionManager manager)
     {
         var method = typeof(GatewayConnectionManager).GetMethod(
@@ -1578,7 +1650,58 @@ public class GatewayConnectionManagerTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
     }
 
+    private static void AssertOperatorPhases(Activity[] stopped, Activity root)
+    {
+        foreach (var phaseName in new[]
+                 {
+                     GatewayConnectionManager.OperatorPrepareSpanName,
+                     GatewayConnectionManager.OperatorTransportSpanName,
+                     GatewayConnectionManager.OperatorHandshakeSpanName
+                 })
+        {
+            var phase = Assert.Single(stopped, activity =>
+                activity.OperationName == phaseName &&
+                activity.TraceId == root.TraceId &&
+                activity.ParentSpanId == root.SpanId);
+            Assert.Equal(
+                "success",
+                phase.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString());
+        }
+    }
+
     // ─── Mocks ───
+
+    private sealed class ActivityCollector : IDisposable
+    {
+        private readonly object _gate = new();
+        private readonly ActivityListener _listener;
+        private readonly List<Activity> _stopped = [];
+
+        public ActivityCollector()
+        {
+            _listener = new ActivityListener
+            {
+                ShouldListenTo = source =>
+                    source.Name == OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                    ActivitySamplingResult.AllDataAndRecorded,
+                ActivityStopped = activity =>
+                {
+                    lock (_gate)
+                        _stopped.Add(activity);
+                }
+            };
+            ActivitySource.AddActivityListener(_listener);
+        }
+
+        public Activity[] GetStopped()
+        {
+            lock (_gate)
+                return [.. _stopped];
+        }
+
+        public void Dispose() => _listener.Dispose();
+    }
 
     private sealed class MockCredentialResolver : ICredentialResolver
     {
@@ -1648,6 +1771,9 @@ public class GatewayConnectionManagerTests : IDisposable
         public void SimulateAuthFailed(string msg) =>
             AuthenticationFailed?.Invoke(this, msg);
 
+        public void SimulateTransportConnected() =>
+            _client.SimulateTransportConnected();
+
         public void SimulateHandshake() =>
             _client.SimulateHandshakeSucceeded();
 
@@ -1664,6 +1790,9 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         public MockGatewayClient(string url)
             : base(url, "mock-token", NullLogger.Instance) { }
+
+        public void SimulateTransportConnected() =>
+            RaiseTransportConnected();
 
         /// <summary>Simulate a successful hello-ok handshake for testing.</summary>
         public void SimulateHandshakeSucceeded()

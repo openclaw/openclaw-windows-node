@@ -496,7 +496,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _settings = new SettingsManager();
         _previousSettingsSnapshot = _settings.ToSettingsData().ToConnectionSnapshot();
         _openTelemetryConnection = new OpenTelemetryEndpointConnection();
-        ApplyOpenTelemetryEndpointSettings();
+        await _openTelemetryConnection.ApplyAsync(
+            OpenTelemetryEndpointOptions.FromSettings(_settings));
         _chatCoordinator = new OpenClawTray.Chat.OpenClawChatCoordinator(
             _settings,
             () => _nodeService,
@@ -1934,6 +1935,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// </summary>
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snap)
     {
+        _openTelemetryConnection?.SendConnectionState(snap);
         var mapped = ConnectionStatusPresenter.ToLegacyStatus(snap);
         var connectedSideEffectsKey = snap.OperatorState == RoleConnectionState.Connected
             ? $"{snap.GatewayId ?? snap.GatewayUrl ?? "unknown"}|{snap.OperatorDeviceId ?? "unknown"}"
@@ -4461,12 +4463,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _chatCoordinator = null;
         });
 
-        SafeShutdownStep("OpenTelemetry endpoint", () =>
-        {
-            _openTelemetryConnection?.Dispose();
-            _openTelemetryConnection = null;
-        });
-
         // Dispose runtime services
         var connectionManager = _connectionManager;
         if (connectionManager != null)
@@ -4477,6 +4473,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             });
             _connectionManager = null;
         }
+
+        SafeShutdownStep("OpenTelemetry endpoint", () =>
+        {
+            _openTelemetryConnection?.Dispose();
+            _openTelemetryConnection = null;
+        });
 
         var nodeService = _nodeService;
         if (nodeService != null)

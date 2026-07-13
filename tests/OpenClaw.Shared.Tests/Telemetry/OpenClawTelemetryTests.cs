@@ -67,6 +67,33 @@ public sealed class OpenClawTelemetryTests
     }
 
     [Fact]
+    public void StartDetachedActivity_PreservesAmbientActivity()
+    {
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var parent = new Activity("parent").Start();
+
+        using var detached = OpenClawTelemetry.StartDetachedActivity("test.detached");
+
+        Assert.NotNull(detached);
+        Assert.Same(parent, Activity.Current);
+    }
+
+    [Fact]
+    public void StartDetachedActivity_WithExplicitParent_CreatesChildAndPreservesAmbientActivity()
+    {
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var ambient = new Activity("ambient").Start();
+        using var parent = OpenClawTelemetry.StartDetachedActivity("test.parent");
+
+        using var child = OpenClawTelemetry.StartDetachedActivity("test.child", parent!.Context);
+
+        Assert.NotNull(child);
+        Assert.Equal(parent.TraceId, child.TraceId);
+        Assert.Equal(parent.SpanId, child.ParentSpanId);
+        Assert.Same(ambient, Activity.Current);
+    }
+
+    [Fact]
     public void Trace_WithListener_RecordsSuccessAndTags()
     {
         using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());

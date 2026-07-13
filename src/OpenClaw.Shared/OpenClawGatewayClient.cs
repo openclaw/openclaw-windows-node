@@ -164,8 +164,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override Task OnConnectedAsync()
     {
         ResetUnsupportedMethodFlags();
+        RaiseTransportConnected();
         return Task.CompletedTask;
     }
+
+    protected void RaiseTransportConnected() =>
+        TransportConnected?.Invoke(this, EventArgs.Empty);
 
     protected override bool ShouldAutoReconnect()
     {
@@ -232,6 +236,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
     /// <summary>Raised when the hello-ok handshake completes successfully.</summary>
     public event EventHandler? HandshakeSucceeded;
+    /// <summary>Raised after the WebSocket transport connects, before the gateway handshake begins.</summary>
+    public event EventHandler? TransportConnected;
     /// <summary>Raised when the gateway requires pairing approval for this device.</summary>
     public event EventHandler<string?>? PairingRequired;
     /// <summary>Raised when v3 signature was rejected and client fell back to v2.</summary>

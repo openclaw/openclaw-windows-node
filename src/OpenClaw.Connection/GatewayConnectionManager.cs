@@ -1,4 +1,7 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Connection;
 
@@ -9,6 +12,33 @@ namespace OpenClaw.Connection;
 /// </summary>
 public sealed class GatewayConnectionManager : IGatewayConnectionManager
 {
+    internal const string OperatorConnectSpanName = "openclaw.connection.operator.connect";
+    internal const string OperatorReconnectSpanName = "openclaw.connection.operator.reconnect";
+    internal const string OperatorPrepareSpanName = "openclaw.connection.operator.prepare";
+    internal const string OperatorTransportSpanName = "openclaw.connection.operator.transport";
+    internal const string OperatorHandshakeSpanName = "openclaw.connection.operator.handshake";
+    internal const string AttemptsMetricName = "openclaw.connection.attempts";
+    internal const string AttemptDurationMetricName = "openclaw.connection.attempt.duration";
+    internal const string StateTransitionsMetricName = "openclaw.connection.state.transitions";
+
+    private const string RoleTag = "openclaw.connection.role";
+    private const string OperationTag = "openclaw.connection.operation";
+    private const string StateScopeTag = "openclaw.connection.state.scope";
+    private const string StateFromTag = "openclaw.connection.state.from";
+    private const string StateToTag = "openclaw.connection.state.to";
+    private static readonly Counter<long> ConnectionAttempts = OpenClawTelemetry.CreateCounter(
+        AttemptsMetricName,
+        unit: "{attempt}",
+        description: "Number of OpenClaw gateway connection attempts.");
+    private static readonly Histogram<double> ConnectionAttemptDuration = OpenClawTelemetry.CreateHistogram(
+        AttemptDurationMetricName,
+        unit: "ms",
+        description: "Duration of OpenClaw gateway connection attempts.");
+    private static readonly Counter<long> ConnectionStateTransitions = OpenClawTelemetry.CreateCounter(
+        StateTransitionsMetricName,
+        unit: "{transition}",
+        description: "Number of OpenClaw gateway connection state transitions.");
+
     private readonly ConnectionStateMachine _stateMachine = new();
     private readonly ConnectionDiagnostics _diagnostics;
     private readonly ICredentialResolver _credentialResolver;
@@ -27,6 +57,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly object _nodeOperationLock = new();
     private readonly object _devicePairReconnectLock = new();
     private readonly object _disposeLock = new();
+    private readonly object _telemetryLock = new();
 
     private long _generation;
     private CancellationTokenSource? _operationCts;
@@ -50,6 +81,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private string? _forceBootstrapForGatewayRecordId;
     private bool _activeConnectUsedBootstrapToken;
     private bool _postBootstrapOperatorReconnectScheduled;
+    private TelemetryAttempt? _operatorTelemetryAttempt;
+    private GatewayConnectionSnapshot _lastTelemetrySnapshot = GatewayConnectionSnapshot.Idle;
 
     private const string MissingNodeCredentialMessage =
         "No node credential available. Re-pair this PC or add a shared/bootstrap gateway token.";
@@ -119,7 +152,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
-            await ConnectCoreAsync(gatewayId);
+            await ConnectCoreAsync(gatewayId, "connect");
         }
         finally
         {
@@ -151,7 +184,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     }
 
     /// <summary>Core connect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
-    private async Task ConnectCoreAsync(string? gatewayId = null)
+    private async Task ConnectCoreAsync(string? gatewayId = null, string operation = "connect")
     {
             var id = gatewayId ?? _registry.ActiveGatewayId;
             if (id == null)
@@ -181,6 +214,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             // Dispose old client
             await DisposeActiveClientAsync();
+            StartOperatorTelemetryAttempt(operation, gen);
 
             // Update snapshot with gateway info
             _stateMachine.Current = _stateMachine.Current with
@@ -233,6 +267,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _stateMachine.TryTransition(
                     ConnectionTrigger.AuthenticationFailed,
                     BuildCredentialFailureMessage("operator", credentialResolution));
+                CompleteOperatorTelemetryAttempt(
+                    gen,
+                    "failure",
+                    ConnectionErrorCategory.AuthFailure);
                 EmitStateChanged();
                 return;
             }
@@ -258,6 +296,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _logger.Warn("[ConnMgr] SSH tunnel config is incomplete");
                     _diagnostics.Record("tunnel", "SSH tunnel config is incomplete");
                     _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, "SSH tunnel config is incomplete");
+                    CompleteOperatorTelemetryAttempt(
+                        gen,
+                        "failure",
+                        ConnectionErrorCategory.SshTunnelFailure);
                     EmitStateChanged();
                     return;
                 }
@@ -271,6 +313,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _logger.Error($"[ConnMgr] SSH tunnel start failed: {ex.Message}");
                     _diagnostics.Record("tunnel", "SSH tunnel start failed", ex.Message);
                     _stateMachine.TryTransition(ConnectionTrigger.WebSocketError, $"SSH tunnel failed: {ex.Message}");
+                    CompleteOperatorTelemetryAttempt(
+                        gen,
+                        "failure",
+                        ConnectionErrorCategory.SshTunnelFailure);
                     EmitStateChanged();
                     return;
                 }
@@ -300,6 +346,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 _ = HandleAuthenticationFailedAsync(msg, gen);
+            };
+            lifecycle.DataClient.TransportConnected += (s, e) =>
+            {
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
+                TransitionOperatorTelemetryPhase(gen, OperatorHandshakeSpanName);
             };
             lifecycle.DataClient.HandshakeSucceeded += (s, e) =>
             {
@@ -336,6 +387,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             // Connect (fire and forget — the event handlers will drive state transitions)
             var ct = _operationCts!.Token;
+            TransitionOperatorTelemetryPhase(gen, OperatorTransportSpanName);
             _ = Task.Run(async () =>
             {
                 try
@@ -346,6 +398,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 catch (Exception ex)
                 {
                     _logger.Error($"[ConnMgr] Connect failed: {ex.Message}");
+                    CompleteOperatorTelemetryAttempt(
+                        gen,
+                        "failure",
+                        ConnectionErrorCategory.InternalError);
                 }
             }, ct);
     }
@@ -492,6 +548,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
     private async Task DisconnectCoreAsync()
     {
+        CancelOperatorTelemetryAttempt("canceled", ConnectionErrorCategory.Cancelled);
         Interlocked.Increment(ref _generation);
         var oldCts = Interlocked.Exchange(ref _operationCts, null);
         oldCts?.Cancel();
@@ -512,7 +569,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             await DisconnectCoreAsync();
-            await ConnectCoreAsync();
+            await ConnectCoreAsync(operation: "reconnect");
         }
         finally
         {
@@ -805,11 +862,19 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     // Don't overwrite PairingRequired — gateway closes socket after pairing required
                     if (_stateMachine.Current.OperatorState != RoleConnectionState.PairingRequired)
                         _stateMachine.TryTransition(ConnectionTrigger.WebSocketDisconnected);
+                    CompleteOperatorTelemetryAttempt(
+                        gen,
+                        "failure",
+                        ConnectionErrorCategory.ServerClose);
                     break;
                 case ConnectionStatus.Error:
                     _diagnostics.RecordWebSocketEvent("WebSocket error");
                     if (_stateMachine.Current.OperatorState != RoleConnectionState.PairingRequired)
                         _stateMachine.TryTransition(ConnectionTrigger.WebSocketError, "Transport error");
+                    CompleteOperatorTelemetryAttempt(
+                        gen,
+                        "failure",
+                        ConnectionErrorCategory.NetworkUnreachable);
                     break;
                 case ConnectionStatus.Connecting:
                     _diagnostics.RecordWebSocketEvent("WebSocket connecting");
@@ -835,6 +900,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             _diagnostics.Record("error", "Authentication failed", message);
             _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, message);
+            CompleteOperatorTelemetryAttempt(
+                gen,
+                "failure",
+                ConnectionErrorCategory.AuthFailure);
             EmitStateChanged();
         }
         finally
@@ -886,6 +955,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("state", "Handshake succeeded (hello-ok)");
             _stateMachine.TryTransition(ConnectionTrigger.HandshakeSucceeded);
+            CompleteOperatorTelemetryAttempt(gen, "success");
             var nodeModeIntended = SyncNodeIntentFromSettings();
             if (_operatorTokenRecoveryAttemptedGatewayId == _activeGatewayRecordId)
                 _operatorTokenRecoveryAttemptedGatewayId = null;
@@ -1157,6 +1227,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("pairing", $"Pairing required — waiting for approval (requestId={requestId})");
             _stateMachine.TryTransition(ConnectionTrigger.PairingPending);
+            CompleteOperatorTelemetryAttempt(
+                gen,
+                "pairing_required",
+                ConnectionErrorCategory.PairingPending);
             // Store requestId in snapshot so setup flows can use it for explicit approval
             _stateMachine.SetOperatorPairingRequestId(requestId);
             _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
@@ -2034,10 +2108,226 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private void EmitStateChanged()
     {
         var snapshot = _stateMachine.Current;
+        RecordTelemetryStateTransitions(snapshot);
         // Always fire when any part of the snapshot changed — not just OverallState.
         // Node sub-state changes (e.g. Idle→PairingRequired) may not change OverallState
         // but the UI still needs to update.
         StateChanged?.Invoke(this, snapshot);
+    }
+
+    private void StartOperatorTelemetryAttempt(string operation, long generation)
+    {
+        var tags = new[]
+        {
+            OpenClawTelemetryTag.String(RoleTag, "operator"),
+            OpenClawTelemetryTag.String(OperationTag, operation),
+            OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "gateway_connection")
+        };
+        var rootActivity = OpenClawTelemetry.StartDetachedActivity(
+            operation == "connect" ? OperatorConnectSpanName : OperatorReconnectSpanName,
+            tags);
+        var attempt = new TelemetryAttempt(
+            generation,
+            operation,
+            Stopwatch.GetTimestamp(),
+            rootActivity)
+        {
+            PhaseActivity = rootActivity == null
+                ? null
+                : OpenClawTelemetry.StartDetachedActivity(
+                    OperatorPrepareSpanName,
+                    rootActivity.Context,
+                    tags)
+        };
+        TelemetryAttempt? superseded;
+
+        lock (_telemetryLock)
+        {
+            superseded = _operatorTelemetryAttempt;
+            _operatorTelemetryAttempt = attempt;
+        }
+
+        if (superseded != null)
+            FinishOperatorTelemetryAttempt(superseded, "superseded", null);
+        OpenClawTelemetry.Add(ConnectionAttempts, tags: tags);
+    }
+
+    private void TransitionOperatorTelemetryPhase(long generation, string spanName)
+    {
+        TelemetryAttempt attempt;
+        Activity? previousPhase;
+        ActivityContext parentContext;
+        string operation;
+        long phaseGeneration;
+
+        lock (_telemetryLock)
+        {
+            if (_operatorTelemetryAttempt is not { } active ||
+                active.Generation != generation ||
+                active.Activity == null)
+            {
+                return;
+            }
+
+            attempt = active;
+            previousPhase = attempt.PhaseActivity;
+            attempt.PhaseActivity = null;
+            phaseGeneration = ++attempt.PhaseGeneration;
+            parentContext = attempt.Activity.Context;
+            operation = attempt.Operation;
+        }
+
+        FinishTelemetryActivity(previousPhase, "success", null);
+        var nextPhase = OpenClawTelemetry.StartDetachedActivity(
+            spanName,
+            parentContext,
+            [
+                OpenClawTelemetryTag.String(RoleTag, "operator"),
+                OpenClawTelemetryTag.String(OperationTag, operation),
+                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "gateway_connection")
+            ]);
+
+        var accepted = false;
+        lock (_telemetryLock)
+        {
+            if (ReferenceEquals(_operatorTelemetryAttempt, attempt) &&
+                attempt.PhaseGeneration == phaseGeneration)
+            {
+                attempt.PhaseActivity = nextPhase;
+                accepted = true;
+            }
+        }
+
+        if (!accepted)
+            FinishTelemetryActivity(nextPhase, "superseded", null);
+    }
+
+    private void CompleteOperatorTelemetryAttempt(
+        long generation,
+        string outcome,
+        ConnectionErrorCategory? errorCategory = null)
+    {
+        TelemetryAttempt? attempt;
+        lock (_telemetryLock)
+        {
+            if (_operatorTelemetryAttempt is not { } active ||
+                active.Generation != generation)
+                return;
+
+            attempt = active;
+            _operatorTelemetryAttempt = null;
+        }
+
+        FinishOperatorTelemetryAttempt(attempt, outcome, errorCategory);
+    }
+
+    private void CancelOperatorTelemetryAttempt(
+        string outcome,
+        ConnectionErrorCategory? errorCategory)
+    {
+        TelemetryAttempt? attempt;
+        lock (_telemetryLock)
+        {
+            attempt = _operatorTelemetryAttempt;
+            _operatorTelemetryAttempt = null;
+        }
+
+        if (attempt != null)
+            FinishOperatorTelemetryAttempt(attempt, outcome, errorCategory);
+    }
+
+    private static void FinishOperatorTelemetryAttempt(
+        TelemetryAttempt attempt,
+        string outcome,
+        ConnectionErrorCategory? errorCategory)
+    {
+        var tags = new List<OpenClawTelemetryTag>
+        {
+            OpenClawTelemetryTag.String(RoleTag, "operator"),
+            OpenClawTelemetryTag.String(OperationTag, attempt.Operation),
+            OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, outcome)
+        };
+        if (errorCategory.HasValue)
+        {
+            tags.Add(OpenClawTelemetryTag.String(
+                OpenClawTelemetryTagKey.ErrorCategory,
+                errorCategory.Value.ToString().ToLowerInvariant()));
+        }
+        FinishTelemetryActivity(attempt.PhaseActivity, outcome, errorCategory);
+        FinishTelemetryActivity(attempt.Activity, outcome, errorCategory, tags);
+
+        OpenClawTelemetry.Record(
+            ConnectionAttemptDuration,
+            Stopwatch.GetElapsedTime(attempt.StartTimestamp).TotalMilliseconds,
+            tags);
+    }
+
+    private static void FinishTelemetryActivity(
+        Activity? activity,
+        string outcome,
+        ConnectionErrorCategory? errorCategory,
+        IEnumerable<OpenClawTelemetryTag>? tags = null)
+    {
+        if (activity == null)
+            return;
+
+        if (tags != null)
+        {
+            foreach (var tag in tags)
+                activity.SetTag(tag.Key, tag.Value);
+        }
+        else
+        {
+            activity.SetTag(OpenClawTelemetryTagKey.Outcome.ToTelemetryName(), outcome);
+            if (errorCategory.HasValue)
+            {
+                activity.SetTag(
+                    OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(),
+                    errorCategory.Value.ToString().ToLowerInvariant());
+            }
+        }
+
+        activity.SetStatus(
+            outcome is "failure" or "pairing_rejected"
+                ? ActivityStatusCode.Error
+                : outcome == "success"
+                    ? ActivityStatusCode.Ok
+                    : ActivityStatusCode.Unset);
+        activity.Stop();
+        activity.Dispose();
+    }
+
+    private void RecordTelemetryStateTransitions(GatewayConnectionSnapshot snapshot)
+    {
+        GatewayConnectionSnapshot previous;
+        lock (_telemetryLock)
+        {
+            previous = _lastTelemetrySnapshot;
+            _lastTelemetrySnapshot = snapshot;
+        }
+
+        RecordTelemetryStateTransition("operator", previous.OperatorState, snapshot.OperatorState);
+        RecordTelemetryStateTransition("node", previous.NodeState, snapshot.NodeState);
+        RecordTelemetryStateTransition("overall", previous.OverallState, snapshot.OverallState);
+    }
+
+    private static void RecordTelemetryStateTransition<TState>(
+        string scope,
+        TState from,
+        TState to)
+        where TState : struct, Enum
+    {
+        if (EqualityComparer<TState>.Default.Equals(from, to))
+            return;
+
+        OpenClawTelemetry.Add(
+            ConnectionStateTransitions,
+            tags:
+            [
+                OpenClawTelemetryTag.String(StateScopeTag, scope),
+                OpenClawTelemetryTag.String(StateFromTag, from.ToString().ToLowerInvariant()),
+                OpenClawTelemetryTag.String(StateToTag, to.ToString().ToLowerInvariant())
+            ]);
     }
 
     private async Task DisposeActiveClientAsync()
@@ -2139,6 +2429,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         if (_disposed) return;
         _disposed = true;
+        CancelOperatorTelemetryAttempt("disposed", ConnectionErrorCategory.Disposed);
         _operationCts?.Cancel();
 
         // Unsubscribe from node events before disposing the semaphore
@@ -2188,6 +2479,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             GC.SuppressFinalize(this);
         }
+    }
+
+    private sealed record TelemetryAttempt(
+        long Generation,
+        string Operation,
+        long StartTimestamp,
+        Activity? Activity)
+    {
+        public Activity? PhaseActivity { get; set; }
+        public long PhaseGeneration { get; set; }
     }
 
     private void ObserveBackgroundFault(Task task, string message)

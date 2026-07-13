@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using OpenClaw.Connection;
 using OpenClaw.Shared.Telemetry;
 
 namespace OpenClawTray.Services;
@@ -21,8 +23,15 @@ internal enum OpenTelemetryEndpointConnectionState
 internal interface IOpenTelemetryProbeSink : IDisposable
 {
     void SendProbe(OpenTelemetryEndpointOptions options);
+    void SendConnectionState(OpenTelemetryConnectionState state);
     bool ForceFlush(int timeoutMilliseconds);
 }
+
+internal sealed record OpenTelemetryConnectionState(
+    string EventName,
+    string OverallState,
+    string OperatorState,
+    string NodeState);
 
 internal sealed class OpenTelemetryEndpointConnection : IDisposable
 {
@@ -30,9 +39,13 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     private readonly Func<OpenTelemetryEndpointOptions, IOpenTelemetryProbeSink> _sinkFactory;
     private readonly Action<string> _logInfo;
     private readonly Action<string> _logWarn;
+    private readonly ConcurrentQueue<PendingConnectionState> _pendingConnectionStates = new();
     private IOpenTelemetryProbeSink? _sink;
+    private OpenTelemetryConnectionState? _lastConnectionState;
     private OpenTelemetryEndpointOptions _currentOptions = OpenTelemetryEndpointOptions.Disabled;
     private long _applyGeneration;
+    private long _sinkGeneration;
+    private int _connectionStateDrainScheduled;
     private volatile bool _disposed;
 
     public OpenTelemetryEndpointConnection()
@@ -80,6 +93,93 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
         Apply(options, generation: null, forceProbe: false);
     }
 
+    public void SendConnectionState(GatewayConnectionSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var state = CreateConnectionState(snapshot);
+        var sinkGeneration = Volatile.Read(ref _sinkGeneration);
+
+        if (TrySendConnectionState(state))
+            return;
+
+        _pendingConnectionStates.Enqueue(
+            new PendingConnectionState(state, sinkGeneration));
+        ScheduleConnectionStateDrain();
+    }
+
+    private bool TrySendConnectionState(OpenTelemetryConnectionState state)
+    {
+        if (!Monitor.TryEnter(_gate))
+            return false;
+
+        try
+        {
+            if (_disposed || _sink == null || state == _lastConnectionState)
+                return true;
+
+            SendConnectionStateCore(state);
+            return true;
+        }
+        finally
+        {
+            Monitor.Exit(_gate);
+        }
+    }
+
+    private void ScheduleConnectionStateDrain()
+    {
+        if (Interlocked.CompareExchange(ref _connectionStateDrainScheduled, 1, 0) != 0)
+            return;
+
+        ThreadPool.UnsafeQueueUserWorkItem(
+            static connection => connection.DrainConnectionStates(),
+            this,
+            preferLocal: false);
+    }
+
+    private void DrainConnectionStates()
+    {
+        try
+        {
+            while (_pendingConnectionStates.TryDequeue(out var pending))
+            {
+                lock (_gate)
+                {
+                    if (_disposed)
+                        return;
+
+                    if (pending.SinkGeneration != _sinkGeneration ||
+                        _sink == null ||
+                        pending.State == _lastConnectionState)
+                    {
+                        continue;
+                    }
+
+                    SendConnectionStateCore(pending.State);
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _connectionStateDrainScheduled, 0);
+            if (!_pendingConnectionStates.IsEmpty)
+                ScheduleConnectionStateDrain();
+        }
+    }
+
+    private void SendConnectionStateCore(OpenTelemetryConnectionState state)
+    {
+        try
+        {
+            _sink!.SendConnectionState(state);
+            _lastConnectionState = state;
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"OpenTelemetry connection state export failed: {ex.Message}");
+        }
+    }
+
     private void Apply(OpenTelemetryEndpointOptions options, long? generation, bool forceProbe)
     {
         lock (_gate)
@@ -108,7 +208,9 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
                 options == _currentOptions)
                 return;
 
+            Interlocked.Increment(ref _sinkGeneration);
             DisposeSink();
+            _lastConnectionState = null;
             IOpenTelemetryProbeSink? newSink = null;
 
             try
@@ -155,21 +257,25 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     {
         _disposed = true;
         Interlocked.Increment(ref _applyGeneration);
+        Interlocked.Increment(ref _sinkGeneration);
         lock (_gate)
         {
             DisposeSink();
             State = OpenTelemetryEndpointConnectionState.Disabled;
             LastError = null;
             _currentOptions = OpenTelemetryEndpointOptions.Disabled;
+            _lastConnectionState = null;
         }
     }
 
     private void Disable()
     {
+        Interlocked.Increment(ref _sinkGeneration);
         DisposeSink();
         State = OpenTelemetryEndpointConnectionState.Disabled;
         LastError = null;
         _currentOptions = OpenTelemetryEndpointOptions.Disabled;
+        _lastConnectionState = null;
     }
 
     private void DisposeSink()
@@ -197,6 +303,25 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     private bool IsStale(long? generation) =>
         _disposed ||
         (generation.HasValue && generation.Value != Volatile.Read(ref _applyGeneration));
+
+    private static OpenTelemetryConnectionState CreateConnectionState(
+        GatewayConnectionSnapshot snapshot) =>
+        new(
+            snapshot.OverallState switch
+            {
+                OverallConnectionState.Ready => "ready",
+                OverallConnectionState.Degraded => "degraded",
+                OverallConnectionState.PairingRequired => "pairing_required",
+                OverallConnectionState.Error => "error",
+                _ => "state_changed"
+            },
+            snapshot.OverallState.ToString().ToLowerInvariant(),
+            snapshot.OperatorState.ToString().ToLowerInvariant(),
+            snapshot.NodeState.ToString().ToLowerInvariant());
+
+    private sealed record PendingConnectionState(
+        OpenTelemetryConnectionState State,
+        long SinkGeneration);
 }
 
 internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
@@ -211,6 +336,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     private const string ExporterProtocolTagKey = "openclaw.exporter.protocol";
     private const string SignalTagKey = "openclaw.signal";
     private static readonly EventId ExporterProbeLogEvent = new(1000, "OpenTelemetryExporterProbeSent");
+    private static readonly EventId ConnectionStateLogEvent = new(1100, "GatewayConnectionStateChanged");
     private static readonly Counter<long> ExporterProbeCounter = OpenClawTelemetry.CreateCounter(
         "openclaw.telemetry.exporter.probes",
         unit: "{probe}",
@@ -227,6 +353,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     private readonly MeterProvider _meterProvider;
     private readonly OpenTelemetryLoggerPipeline _loggerPipeline;
     private readonly ILogger _probeLogger;
+    private readonly ILogger _connectionLogger;
 
     private OpenTelemetryOtlpProbeSink(
         TracerProvider tracerProvider,
@@ -237,6 +364,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         _meterProvider = meterProvider;
         _loggerPipeline = loggerPipeline;
         _probeLogger = loggerPipeline.CreateLogger(OpenTelemetryLogPolicy.TelemetryExporterCategory);
+        _connectionLogger = loggerPipeline.CreateLogger(OpenTelemetryLogPolicy.ConnectionCategory);
     }
 
     public static IOpenTelemetryProbeSink Create(OpenTelemetryEndpointOptions options)
@@ -295,6 +423,26 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             CreateProbeLogAttributes(options),
             null,
             static (_, _) => "OpenClaw telemetry exporter probe log sent.");
+    }
+
+    public void SendConnectionState(OpenTelemetryConnectionState state)
+    {
+        var level = state.EventName is "degraded" or "pairing_required" or "error"
+            ? LogLevel.Warning
+            : LogLevel.Information;
+        KeyValuePair<string, object?>[] attributes =
+        [
+            new("openclaw.connection.event", state.EventName),
+            new("openclaw.connection.state.overall", state.OverallState),
+            new("openclaw.connection.state.operator", state.OperatorState),
+            new("openclaw.connection.state.node", state.NodeState)
+        ];
+        _connectionLogger.Log(
+            level,
+            ConnectionStateLogEvent,
+            attributes,
+            null,
+            static (_, _) => "OpenClaw gateway connection state changed.");
     }
 
     public bool ForceFlush(int timeoutMilliseconds)

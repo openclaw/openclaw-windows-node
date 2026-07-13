@@ -78,6 +78,31 @@ The OpenTelemetry log pipeline should not export:
 
 If a new log category should be exported, add it deliberately and review the structured fields it can emit.
 
+## Gateway connection lifecycle
+
+The tray exports gateway lifecycle diagnostics when an endpoint is configured:
+
+- operator connect traces: `openclaw.connection.operator.connect` and
+  `openclaw.connection.operator.reconnect`
+- coarse operator phase spans:
+  `openclaw.connection.operator.prepare`,
+  `openclaw.connection.operator.transport`, and
+  `openclaw.connection.operator.handshake`
+- metrics: `openclaw.connection.attempts`,
+  `openclaw.connection.attempt.duration`, and
+  `openclaw.connection.state.transitions`
+- structured state logs in the `OpenClaw.Telemetry.Connection` category
+
+Lifecycle attributes are limited to role, operation, outcome, coarse error
+category, and finite operator/node/overall states. Gateway URLs, IDs, device
+IDs, pairing request IDs, credentials, error messages, and diagnostic-ring
+text are not exported.
+
+The phase spans distinguish local credential/client/tunnel preparation, WebSocket
+transport establishment, and the gateway challenge/hello handshake. They
+intentionally do not trace signing, serialization, response parsing, or token
+persistence as separate operations.
+
 ## Endpoint handling
 
 The endpoint setting is a collector endpoint, not a credential or request-parameter store. Accept plain `http` and `https` collector URLs with optional path prefixes. Reject URLs with embedded user info, query strings, or fragments.

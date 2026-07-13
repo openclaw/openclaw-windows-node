@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using OpenClaw.Connection;
 using OpenClawTray.Services;
 using OpenClaw.Shared.Telemetry;
 
@@ -24,6 +25,109 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal(0, created);
         Assert.Equal(OpenTelemetryEndpointConnectionState.Disabled, connection.State);
         Assert.False(connection.CurrentOptions.IsEnabled);
+    }
+
+    [Fact]
+    public void SendConnectionState_ForwardsOnlyFiniteStateAndDeduplicates()
+    {
+        var sink = new FakeProbeSink();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ => sink,
+            _ => { },
+            _ => { });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4318",
+            OpenTelemetryEndpointProtocol.HttpProtobuf));
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Ready,
+            OperatorState = RoleConnectionState.Connected,
+            NodeState = RoleConnectionState.Connected,
+            GatewayId = "sensitive-id",
+            GatewayUrl = "wss://sensitive-host",
+            OperatorError = "sensitive-error"
+        };
+
+        connection.SendConnectionState(snapshot);
+        connection.SendConnectionState(snapshot);
+
+        Assert.Equal(1, sink.SendConnectionStateCount);
+        Assert.Equal(
+            new OpenTelemetryConnectionState("ready", "ready", "connected", "connected"),
+            sink.LastConnectionState);
+    }
+
+    [Fact]
+    public async Task SendConnectionState_DuringApply_DoesNotBlockAndUsesReplacementSink()
+    {
+        var replacementFlushStarted = new ManualResetEventSlim();
+        var releaseReplacementFlush = new ManualResetEventSlim();
+        var sinks = new List<FakeProbeSink>();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ =>
+            {
+                var sink = new FakeProbeSink();
+                if (sinks.Count == 1)
+                {
+                    sink.OnForceFlush = () =>
+                    {
+                        replacementFlushStarted.Set();
+                        Assert.True(releaseReplacementFlush.Wait(TimeSpan.FromSeconds(5)));
+                    };
+                }
+
+                sinks.Add(sink);
+                return sink;
+            },
+            _ => { },
+            _ => { });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4317",
+            OpenTelemetryEndpointProtocol.Grpc));
+
+        var applyTask = connection.ApplyAsync(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4318",
+            OpenTelemetryEndpointProtocol.HttpProtobuf));
+        Assert.True(replacementFlushStarted.Wait(TimeSpan.FromSeconds(5)));
+
+        var sendTask = Task.Run(() => connection.SendConnectionState(CreateReadySnapshot()));
+        Assert.Same(sendTask, await Task.WhenAny(sendTask, Task.Delay(TimeSpan.FromSeconds(1))));
+
+        releaseReplacementFlush.Set();
+        await applyTask;
+        Assert.True(SpinWait.SpinUntil(
+            () => sinks[1].SendConnectionStateCount == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(
+            new OpenTelemetryConnectionState("ready", "ready", "connected", "connected"),
+            sinks[1].LastConnectionState);
+    }
+
+    [Fact]
+    public void Apply_NewOptions_ResetsConnectionStateDeduplication()
+    {
+        var sinks = new List<FakeProbeSink>();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ =>
+            {
+                var sink = new FakeProbeSink();
+                sinks.Add(sink);
+                return sink;
+            },
+            _ => { },
+            _ => { });
+
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4317",
+            OpenTelemetryEndpointProtocol.Grpc));
+        connection.SendConnectionState(CreateReadySnapshot());
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4318",
+            OpenTelemetryEndpointProtocol.HttpProtobuf));
+        connection.SendConnectionState(CreateReadySnapshot());
+
+        Assert.Equal(1, sinks[0].SendConnectionStateCount);
+        Assert.Equal(1, sinks[1].SendConnectionStateCount);
     }
 
     [Fact]
@@ -396,6 +500,14 @@ public sealed class OpenTelemetryEndpointConnectionTests
         }
     }
 
+    private static GatewayConnectionSnapshot CreateReadySnapshot() =>
+        new()
+        {
+            OverallState = OverallConnectionState.Ready,
+            OperatorState = RoleConnectionState.Connected,
+            NodeState = RoleConnectionState.Connected
+        };
+
     private sealed class FakeProbeSink : IOpenTelemetryProbeSink
     {
         public int SendProbeCount { get; private set; }
@@ -406,11 +518,19 @@ public sealed class OpenTelemetryEndpointConnectionTests
         public int DisposeCount { get; private set; }
         public bool ThrowOnDispose { get; set; }
         public OpenTelemetryEndpointOptions? LastProbeOptions { get; private set; }
+        public OpenTelemetryConnectionState? LastConnectionState { get; private set; }
+        public int SendConnectionStateCount { get; private set; }
 
         public void SendProbe(OpenTelemetryEndpointOptions options)
         {
             SendProbeCount++;
             LastProbeOptions = options;
+        }
+
+        public void SendConnectionState(OpenTelemetryConnectionState state)
+        {
+            SendConnectionStateCount++;
+            LastConnectionState = state;
         }
 
         public bool ForceFlush(int timeoutMilliseconds)

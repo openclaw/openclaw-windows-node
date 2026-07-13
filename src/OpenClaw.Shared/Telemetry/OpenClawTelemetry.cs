@@ -41,6 +41,56 @@ public static class OpenClawTelemetry
     }
 
     /// <summary>
+    /// Starts a manually-controlled span without leaving it as the ambient activity.
+    /// </summary>
+    /// <remarks>
+    /// Use this for operations that begin in one asynchronous callback and finish in another.
+    /// The caller owns the returned activity and must stop or dispose it.
+    /// </remarks>
+    public static Activity? StartDetachedActivity(
+        string spanName,
+        IEnumerable<OpenClawTelemetryTag>? tags = null,
+        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
+    {
+        var previous = Activity.Current;
+        try
+        {
+            return StartActivity(spanName, tags, kind, source);
+        }
+        finally
+        {
+            Activity.Current = previous;
+        }
+    }
+
+    /// <summary>
+    /// Starts a manually-controlled child span without leaving it as the ambient activity.
+    /// </summary>
+    public static Activity? StartDetachedActivity(
+        string spanName,
+        ActivityContext parentContext,
+        IEnumerable<OpenClawTelemetryTag>? tags = null,
+        System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
+    {
+        if (string.IsNullOrWhiteSpace(spanName))
+            throw new ArgumentException("Span name cannot be empty.", nameof(spanName));
+
+        var previous = Activity.Current;
+        try
+        {
+            var activity = source.ToActivitySource().StartActivity(spanName, kind, parentContext);
+            ApplyTags(activity, tags);
+            return activity;
+        }
+        finally
+        {
+            Activity.Current = previous;
+        }
+    }
+
+    /// <summary>
     /// Runs a synchronous action inside a span and automatically marks success, cancellation, or failure.
     /// </summary>
     /// <remarks>
