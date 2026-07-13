@@ -3487,7 +3487,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
                         if (item.ValueKind == JsonValueKind.Object)
                         {
-                            if (item.TryGetProperty("isMain", out var isMain) && isMain.GetBoolean())
+                            if (string.IsNullOrWhiteSpace(MainSessionKey)
+                                && item.TryGetProperty("isMain", out var isMain)
+                                && isMain.ValueKind == JsonValueKind.True)
                                 session.IsMain = true;
                             PopulateSessionFromObject(session, item);
                         }

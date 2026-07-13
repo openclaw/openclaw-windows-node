@@ -1714,6 +1714,27 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_MapPayloadUsesRowMainOnlyBeforeHandshakeAuthority()
+    {
+        var legacy = new GatewayClientTestHelper();
+        legacy.ParseSessionsPayload("""
+        { "session-custom": { "isMain": true, "displayName": "Legacy main" } }
+        """);
+        Assert.True(Assert.Single(legacy.GetSessionList()).IsMain);
+
+        var connected = new GatewayClientTestHelper();
+        connected.SetMainSessionKey("global");
+        connected.ParseSessionsPayload("""
+        {
+          "session-custom": { "isMain": true, "displayName": "Not main" },
+          "global": { "isMain": false, "displayName": "Global main" }
+        }
+        """);
+        Assert.False(Assert.Single(connected.GetSessionList(), session => session.Key == "session-custom").IsMain);
+        Assert.True(Assert.Single(connected.GetSessionList(), session => session.Key == "global").IsMain);
+    }
+
+    [Fact]
     public void ParseSessions_EmptyArray_ClearsPreviousSessions()
     {
         var helper = new GatewayClientTestHelper();
