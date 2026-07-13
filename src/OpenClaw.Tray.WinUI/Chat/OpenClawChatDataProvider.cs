@@ -5849,8 +5849,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var composeKey = _bridge.MainSessionKey;
         var composeAgentId = _sessions
             .FirstOrDefault(session => string.Equals(session.Key, composeKey, StringComparison.Ordinal)) is { } mainSession
-                ? SessionPresentationResolver.Resolve(mainSession).AgentId
-                : null;
+                ? SessionPresentationResolver.Resolve(mainSession).AgentId ?? "main"
+                : "main";
         var composeReady = _bridge.HasHandshakeSnapshot
             && !string.IsNullOrWhiteSpace(composeKey)
             && _status == ConnectionStatus.Connected

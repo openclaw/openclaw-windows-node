@@ -3483,14 +3483,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                             session = new SessionInfo { Key = sessionKey };
                         }
 
-                        session.IsMain = IsMainSessionKey(sessionKey);
+                        UpdateSessionMainStatus(session, sessionKey, item);
 
                         if (item.ValueKind == JsonValueKind.Object)
                         {
-                            if (string.IsNullOrWhiteSpace(MainSessionKey)
-                                && item.TryGetProperty("isMain", out var isMain)
-                                && isMain.ValueKind == JsonValueKind.True)
-                                session.IsMain = true;
                             PopulateSessionFromObject(session, item);
                         }
                         else if (item.ValueKind == JsonValueKind.String)
@@ -3538,12 +3534,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             session = new SessionInfo { Key = sessionKey };
         }
 
-        session.IsMain = IsMainSessionKey(sessionKey);
-
-        if (string.IsNullOrWhiteSpace(MainSessionKey)
-            && item.TryGetProperty("isMain", out var isMain)
-            && isMain.ValueKind == JsonValueKind.True)
-            session.IsMain = true;
+        UpdateSessionMainStatus(session, sessionKey, item);
 
         PopulateSessionFromObject(session, item);
 
@@ -3561,6 +3552,28 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // handshake resolves a canonical key it is the only authority.
         return sessionKey.Equals("main", StringComparison.Ordinal)
                || sessionKey.Equals("agent:main:main", StringComparison.Ordinal);
+    }
+
+    private void UpdateSessionMainStatus(SessionInfo session, string sessionKey, JsonElement item)
+    {
+        if (!string.IsNullOrWhiteSpace(MainSessionKey))
+        {
+            session.IsMain = IsMainSessionKey(sessionKey);
+            return;
+        }
+
+        if (item.ValueKind == JsonValueKind.Object
+            && item.TryGetProperty("isMain", out var isMain)
+            && isMain.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            session.IsMain = isMain.GetBoolean();
+            return;
+        }
+
+        // Sparse pre-handshake updates preserve a prior explicit row value;
+        // new sessions still get the bounded legacy key fallback.
+        if (!session.IsMain)
+            session.IsMain = IsMainSessionKey(sessionKey);
     }
 
     private void PopulateSessionFromObject(SessionInfo session, JsonElement item)

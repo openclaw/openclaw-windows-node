@@ -2847,6 +2847,7 @@ public class OpenClawChatDataProviderTests
         Assert.Empty(snap.Threads);
         Assert.True(snap.ComposeTarget.IsReady);
         Assert.Equal("agent:main:main", snap.ComposeTarget.SessionKey);
+        Assert.Equal("main", snap.ComposeTarget.AgentId);
         Assert.Equal("agent:main:main", snap.DefaultThreadId);
     }
 

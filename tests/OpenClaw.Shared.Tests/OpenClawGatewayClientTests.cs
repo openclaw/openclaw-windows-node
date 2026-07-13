@@ -1765,6 +1765,20 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_SparseUpdatesPreserveLegacyRowMainStatus()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{ "key": "session-custom", "isMain": true, "displayName": "Legacy main" }]
+        """);
+        helper.ParseSessionsPayload("""
+        [{ "key": "session-custom", "status": "active" }]
+        """);
+
+        Assert.True(Assert.Single(helper.GetSessionList()).IsMain);
+    }
+
+    [Fact]
     public void ParseSessions_EmptyArray_ClearsPreviousSessions()
     {
         var helper = new GatewayClientTestHelper();
