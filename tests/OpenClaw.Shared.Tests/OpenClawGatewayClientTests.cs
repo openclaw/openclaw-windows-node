@@ -1735,6 +1735,36 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_SparseUpdatesPreservePresentationMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:subagent:child",
+            "channel": "telegram",
+            "presentation": {
+              "title": "Research",
+              "titleSource": "label",
+              "family": "subagent",
+              "agentId": "main",
+              "isMain": false,
+              "isBackground": true
+            }
+          }
+        ]
+        """);
+        helper.ParseSessionsPayload("""
+        [{ "key": "agent:main:subagent:child", "status": "active" }]
+        """);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Equal("telegram", session.Channel);
+        Assert.Equal("Research", session.Presentation?.Title);
+        Assert.True(session.Presentation?.IsBackground == true);
+    }
+
+    [Fact]
     public void ParseSessions_EmptyArray_ClearsPreviousSessions()
     {
         var helper = new GatewayClientTestHelper();

@@ -3574,28 +3574,36 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 _logger.Info($"[SESSION] {session.Key}: model changed '{session.Model}' → '{newModel}'");
             session.Model = newModel;
         }
-        session.Label = GetString(item, "label");
-        session.Channel = GetString(item, "channel");
-        session.DisplayName = GetString(item, "displayName");
-        session.DerivedTitle = GetString(item, "derivedTitle");
-        session.Provider = GetString(item, "modelProvider") ?? GetString(item, "provider");
-        session.Subject = GetString(item, "subject");
-        session.Room = GetString(item, "groupChannel") ?? GetString(item, "room");
-        session.Space = GetString(item, "space");
-        session.ChatType = GetString(item, "chatType");
-        session.ExecNode = GetString(item, "execNode");
-        session.ParentSessionKey = GetString(item, "parentSessionKey");
-        session.SpawnDepth = item.TryGetProperty("spawnDepth", out var spawnDepth)
-            && spawnDepth.ValueKind == JsonValueKind.Number
-            && spawnDepth.TryGetInt32(out var parsedSpawnDepth)
-                ? parsedSpawnDepth
-                : null;
-        session.OriginLabel = item.TryGetProperty("origin", out var origin)
-            && origin.ValueKind == JsonValueKind.Object
+        if (item.TryGetProperty("label", out _)) session.Label = GetString(item, "label");
+        if (item.TryGetProperty("channel", out _)) session.Channel = GetString(item, "channel");
+        if (item.TryGetProperty("displayName", out _)) session.DisplayName = GetString(item, "displayName");
+        if (item.TryGetProperty("derivedTitle", out _)) session.DerivedTitle = GetString(item, "derivedTitle");
+        if (item.TryGetProperty("modelProvider", out _))
+            session.Provider = GetString(item, "modelProvider");
+        else if (item.TryGetProperty("provider", out _))
+            session.Provider = GetString(item, "provider");
+        if (item.TryGetProperty("subject", out _)) session.Subject = GetString(item, "subject");
+        if (item.TryGetProperty("groupChannel", out _))
+            session.Room = GetString(item, "groupChannel");
+        else if (item.TryGetProperty("room", out _))
+            session.Room = GetString(item, "room");
+        if (item.TryGetProperty("space", out _)) session.Space = GetString(item, "space");
+        if (item.TryGetProperty("chatType", out _)) session.ChatType = GetString(item, "chatType");
+        if (item.TryGetProperty("execNode", out _)) session.ExecNode = GetString(item, "execNode");
+        if (item.TryGetProperty("parentSessionKey", out _))
+            session.ParentSessionKey = GetString(item, "parentSessionKey");
+        if (item.TryGetProperty("spawnDepth", out var spawnDepth))
+            session.SpawnDepth = spawnDepth.ValueKind == JsonValueKind.Number
+                && spawnDepth.TryGetInt32(out var parsedSpawnDepth)
+                    ? parsedSpawnDepth
+                    : null;
+        if (item.TryGetProperty("origin", out var origin))
+            session.OriginLabel = origin.ValueKind == JsonValueKind.Object
                 ? GetString(origin, "label")
                 : null;
-        session.Worktree = ParseSessionWorktree(item);
-        session.Presentation = ParseSessionPresentation(item);
+        if (item.TryGetProperty("worktree", out _)) session.Worktree = ParseSessionWorktree(item);
+        if (item.TryGetProperty("presentation", out _))
+            session.Presentation = ParseSessionPresentation(item);
         if (session.Presentation is { } presentation)
         {
             session.Channel ??= presentation.Channel;

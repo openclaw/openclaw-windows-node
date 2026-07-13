@@ -60,6 +60,7 @@ public sealed class SessionPresentationResolverTests
     [InlineData("agent:main:subagent:child", false, "subagent", "Subagent", true)]
     [InlineData("agent:main:acp:child", false, "acp", "ACP session", true)]
     [InlineData("agent:main:cron:job:run:run-1", false, "cron", "Scheduled task", true)]
+    [InlineData("agent:main:cron:group:run:run-1", false, "cron", "Scheduled task", true)]
     [InlineData("agent:main:dreaming-narrative-rem-workspace", false, "dreaming", "Dreaming", true)]
     [InlineData("agent:main:internal-session-effects:run", false, "system", "Background task", true)]
     public void Resolve_FallsBackForOlderGateways(
@@ -132,6 +133,12 @@ public sealed class SessionPresentationResolverTests
         Assert.False(explicitSession.IsBackground);
         Assert.Equal("group", routedSession.Family);
         Assert.False(routedSession.IsBackground);
+
+        var explicitThread = SessionPresentationResolver.Resolve(new SessionInfo
+        {
+            Key = "agent:ops:explicit:thread:launch",
+        });
+        Assert.Equal("explicit", explicitThread.Family);
     }
 
     [Fact]

@@ -83,6 +83,33 @@ public static partial class SessionPresentationResolver
         if (rest.StartsWith("tui-", StringComparison.OrdinalIgnoreCase)
             && rest.EndsWith(":heartbeat", StringComparison.OrdinalIgnoreCase))
             return Presentation("Heartbeat", "heartbeat", agentId, isBackground: true);
+        if (rest.Equals("subagent", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("subagent:", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Subagent", "subagent", agentId, isBackground: true);
+        if (rest.Equals("acp", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("acp:", StringComparison.OrdinalIgnoreCase))
+            return Presentation("ACP session", "acp", agentId, isBackground: true);
+        if (rest.Equals("cron", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("cron:", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Scheduled task", "cron", agentId, isBackground: true);
+        if (rest.StartsWith("dashboard:", StringComparison.OrdinalIgnoreCase))
+            return Presentation(FormatWorktree(worktree) ?? "New session", "dashboard", agentId);
+        if (rest.StartsWith("tui-", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Terminal session", "tui", agentId);
+        if (rest.StartsWith("explicit:", StringComparison.OrdinalIgnoreCase))
+            return Presentation(ReadableTail(rest["explicit:".Length..]), "explicit", agentId);
+        if (rest.StartsWith("hook:", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Hook run", "hook", agentId, isBackground: true);
+        if (rest.StartsWith("harness:", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Harness session", "harness", agentId, isBackground: true);
+        if (rest.StartsWith("voice:", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Voice call", "voice", agentId);
+        if (rest.StartsWith("dreaming-narrative-", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Dreaming", "dreaming", agentId, isBackground: true);
+        if (rest.Equals("boot", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("commitments:", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("internal-session-effects:", StringComparison.OrdinalIgnoreCase))
+            return Presentation("Background task", "system", agentId, isBackground: true);
 
         var threadIndex = rest.LastIndexOf(":thread:", StringComparison.OrdinalIgnoreCase);
         var routeRest = threadIndex >= 0 ? rest[..threadIndex] : rest;
@@ -113,34 +140,6 @@ public static partial class SessionPresentationResolver
                 route.AccountId,
                 route.PeerKind);
         }
-
-        if (rest.Equals("subagent", StringComparison.OrdinalIgnoreCase)
-            || rest.StartsWith("subagent:", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Subagent", "subagent", agentId, isBackground: true);
-        if (rest.Equals("acp", StringComparison.OrdinalIgnoreCase)
-            || rest.StartsWith("acp:", StringComparison.OrdinalIgnoreCase))
-            return Presentation("ACP session", "acp", agentId, isBackground: true);
-        if (rest.Equals("cron", StringComparison.OrdinalIgnoreCase)
-            || rest.StartsWith("cron:", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Scheduled task", "cron", agentId, isBackground: true);
-        if (rest.StartsWith("dashboard:", StringComparison.OrdinalIgnoreCase))
-            return Presentation(FormatWorktree(worktree) ?? "New session", "dashboard", agentId);
-        if (rest.StartsWith("tui-", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Terminal session", "tui", agentId);
-        if (rest.StartsWith("explicit:", StringComparison.OrdinalIgnoreCase))
-            return Presentation(ReadableTail(rest["explicit:".Length..]), "explicit", agentId);
-        if (rest.StartsWith("hook:", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Hook run", "hook", agentId, isBackground: true);
-        if (rest.StartsWith("harness:", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Harness session", "harness", agentId, isBackground: true);
-        if (rest.StartsWith("voice:", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Voice call", "voice", agentId);
-        if (rest.StartsWith("dreaming-narrative-", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Dreaming", "dreaming", agentId, isBackground: true);
-        if (rest.Equals("boot", StringComparison.OrdinalIgnoreCase)
-            || rest.StartsWith("commitments:", StringComparison.OrdinalIgnoreCase)
-            || rest.StartsWith("internal-session-effects:", StringComparison.OrdinalIgnoreCase))
-            return Presentation("Background task", "system", agentId, isBackground: true);
 
         return Presentation(ReadableTail(rest), "custom", agentId);
     }
