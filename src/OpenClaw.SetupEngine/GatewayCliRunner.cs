@@ -42,6 +42,23 @@ internal static partial class GatewayCliRunner
     internal static string GetManagedNativeCliPrefix(string localDataDir) =>
         Path.Combine(localDataDir, "native-cli");
 
+    /// <summary>
+    /// Resolves the launcher for the app-owned native CLI under the managed prefix,
+    /// preferring the PowerShell shim. Returns null when the managed CLI is absent.
+    /// Unlike <see cref="TryResolveNativeCliPath"/> this deliberately ignores global
+    /// PATH / npm installs so setup never treats an unrelated openclaw as its own.
+    /// </summary>
+    internal static string? TryResolveManagedNativeCliPath(string localDataDir)
+    {
+        var prefix = GetManagedNativeCliPrefix(localDataDir);
+        var powerShellShim = Path.Combine(prefix, "openclaw.ps1");
+        if (File.Exists(powerShellShim))
+            return powerShellShim;
+
+        var cmdShim = Path.Combine(prefix, "openclaw.cmd");
+        return File.Exists(cmdShim) ? cmdShim : null;
+    }
+
     internal static string GetManagedNativeTaskName(SetupConfig config)
     {
         var profile = GetManagedNativeProfile(config);
@@ -144,7 +161,7 @@ internal static partial class GatewayCliRunner
                 .SelectMany(value => value!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 .Distinct(StringComparer.OrdinalIgnoreCase));
 
-    private static string GetRefreshedNativePath()
+    internal static string GetRefreshedNativePath()
     {
         var processPath = Environment.GetEnvironmentVariable("PATH");
         if (!OperatingSystem.IsWindows())

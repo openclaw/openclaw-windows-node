@@ -22,6 +22,21 @@ public sealed class InstallNativeCliStep : SetupStep
             return StepResult.Fail($"Windows installer URL must be HTTPS: {installUrl}");
         }
 
+        var requestedVersion = ctx.Config.Gateway.Version;
+
+        // Skip the reinstall when the app-owned CLI is already at the pinned version.
+        // Only trust the managed launcher on an exact version pin; any probe failure or
+        // mismatch falls through to a full install so a broken or stale CLI is repaired.
+        var skip = await TrySkipInstallWhenCurrentAsync(
+            ctx,
+            GatewayCliRunner.TryResolveManagedNativeCliPath(ctx.LocalDataDir),
+            requestedVersion,
+            static (context, token) =>
+                GatewayCliRunner.RunNativeAsync(context, ["--version"], TimeSpan.FromSeconds(30), ct: token),
+            ct);
+        if (skip is not null)
+            return skip;
+
         string script;
         try
         {
@@ -40,6 +55,7 @@ public sealed class InstallNativeCliStep : SetupStep
             [CliPrefixEnvironmentVariable] = cliPrefix,
             ["NPM_CONFIG_PREFIX"] = cliPrefix,
             ["npm_config_prefix"] = cliPrefix,
+            ["Path"] = GatewayCliRunner.GetRefreshedNativePath(),
         };
         var result = await ctx.Commands.RunAsync(
             "powershell.exe",
@@ -49,6 +65,12 @@ public sealed class InstallNativeCliStep : SetupStep
             ct: ct);
         if (result.ExitCode != 0)
             return StepResult.Fail($"Native CLI install failed (exit {result.ExitCode}): {FirstUsefulLine(result)}");
+
+        // The installer emits this on stderr when it proceeds without the PowerShell 5
+        // SQLite-probe quoting workaround. Surface it on the success path so the
+        // best-effort decision stays diagnosable.
+        if (result.Stderr.Contains("proceeding without the Windows PowerShell 5 quoting workaround", StringComparison.OrdinalIgnoreCase))
+            ctx.Logger.Warn("OpenClaw installer SQLite probe not found in the expected form; installed without the PowerShell 5 quoting workaround.");
 
         var cliPath = result.Stdout
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
@@ -62,7 +84,6 @@ public sealed class InstallNativeCliStep : SetupStep
         var verify = await GatewayCliRunner.RunNativeAsync(ctx, ["--version"], TimeSpan.FromSeconds(30), ct: ct);
         if (verify.ExitCode != 0 || string.IsNullOrWhiteSpace(verify.Stdout))
             return StepResult.Fail($"OpenClaw Windows CLI verification failed: {FirstUsefulLine(verify)}");
-        var requestedVersion = ctx.Config.Gateway.Version;
         if (IsExactVersionRequest(requestedVersion)
             && !MatchesRequestedVersion(verify.Stdout, requestedVersion!))
         {
@@ -72,6 +93,46 @@ public sealed class InstallNativeCliStep : SetupStep
         }
 
         return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
+    }
+
+    /// <summary>
+    /// Returns a successful skip result when the app-owned native CLI is already at the
+    /// requested exact version, otherwise null so the caller performs a full install.
+    /// The version probe is injected so the decision is unit-testable without spawning
+    /// PowerShell. A missing launcher, a non-exact version request, a failed probe, or a
+    /// version mismatch all return null (reinstall).
+    /// </summary>
+    internal static async Task<StepResult?> TrySkipInstallWhenCurrentAsync(
+        SetupContext ctx,
+        string? managedCliPath,
+        string? requestedVersion,
+        Func<SetupContext, CancellationToken, Task<CommandResult>> versionProbe,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(managedCliPath) || !IsExactVersionRequest(requestedVersion))
+            return null;
+
+        ctx.NativeCliPath = managedCliPath;
+        CommandResult probe;
+        try
+        {
+            probe = await versionProbe(ctx, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ctx.Logger.Debug($"App-owned native CLI version probe failed; reinstalling. {ex.GetType().Name}");
+            return null;
+        }
+
+        if (probe.ExitCode != 0
+            || string.IsNullOrWhiteSpace(probe.Stdout)
+            || !MatchesRequestedVersion(probe.Stdout, requestedVersion!))
+        {
+            return null;
+        }
+
+        ctx.Logger.Info($"App-owned native CLI already at {requestedVersion!.Trim()}; skipping reinstall");
+        return StepResult.Ok($"CLI already current: {probe.Stdout.Trim()} — skipped reinstall");
     }
 
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
@@ -111,7 +172,12 @@ public sealed class InstallNativeCliStep : SetupStep
             New-Item -ItemType Directory -Force -Path $prefix | Out-Null
             $env:NPM_CONFIG_PREFIX = $prefix
             $env:npm_config_prefix = $prefix
-            $env:Path = "$prefix;$env:Path"
+            $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+            $programFilesNode = Join-Path $env:ProgramFiles 'nodejs'
+            $wingetLinks = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+            $env:Path = (@($prefix, $programFilesNode, $wingetLinks, $machinePath, $userPath, $env:Path) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ';'
 
             # The upstream installer currently removes a git-method wrapper and may
             # persist its npm prefix on PATH. Preserve those user-owned surfaces while
@@ -125,6 +191,18 @@ public sealed class InstallNativeCliStep : SetupStep
                     [Text.Encoding]::UTF8.GetString($content)
                 } else {
                     [string]$content
+                }
+                # Windows PowerShell 5 strips embedded double quotes from single-quoted
+                # native command arguments, breaking an installer that probes SQLite via
+                # `node -e '... "node:sqlite" ...'`. Patch that probe in-memory when present;
+                # if it is absent (installer variants that don't use it), proceed unpatched
+                # -- a quote-sensitive probe that still trips PS5 surfaces as a non-zero exit.
+                $sqliteProbe = 'require("node:sqlite"); const db = new DatabaseSync(":memory:"); try { process.stdout.write(String(db.prepare("SELECT sqlite_version() AS version").get().version)); } finally { db.close(); }'
+                $escapedSqliteProbe = 'require(\"node:sqlite\"); const db = new DatabaseSync(\":memory:\"); try { process.stdout.write(String(db.prepare(\"SELECT sqlite_version() AS version\").get().version)); } finally { db.close(); }'
+                if ($installer.Contains($sqliteProbe)) {
+                    $installer = $installer.Replace($sqliteProbe, $escapedSqliteProbe)
+                } else {
+                    [Console]::Error.WriteLine('OpenClaw installer SQLite probe not found in the expected form; proceeding without the Windows PowerShell 5 quoting workaround.')
                 }
                 & ([ScriptBlock]::Create($installer)) -NoOnboard{{tagArgument}}
                 $powerShellCandidate = Join-Path $prefix 'openclaw.ps1'
@@ -573,37 +651,41 @@ public sealed class NativeGatewayServiceCleanupStep : SetupStep
 
         if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows)
         {
-            if (ctx.PreviousNativeGateway is not { ServiceInstalled: true })
-                return StepResult.Ok();
-
-            // If the old launcher was missing, the preceding installer repairs it
-            // first. Remove the captured service now, before port preflight, while
-            // keeping the old task intact if installer repair itself fails.
-            var repairedCli = ctx.NativeCliPath ?? GatewayCliRunner.TryResolveNativeCliPath(ctx.LocalDataDir);
-            if (repairedCli is null)
-                return StepResult.Fail("The repaired native gateway CLI could not be located for service cleanup.");
-
-            ctx.NativeCliPath ??= repairedCli;
-            var uninstall = await GatewayCliRunner.RunNativeAsync(
-                ctx,
-                ["gateway", "uninstall"],
-                TimeSpan.FromSeconds(30),
-                ct: ct);
-            var taskInstalled = await TryGetManagedTaskInstalledAsync(ctx, ct);
-            if ((uninstall.ExitCode != 0 && !InstallGatewayServiceStep.IsMissingWslService(uninstall))
-                || taskInstalled != false)
+            if (ctx.PreviousNativeGateway is { ServiceInstalled: true })
             {
-                try
+                // If the old launcher was missing, the preceding installer repairs it
+                // first. Remove the captured service now, before port preflight, while
+                // keeping the old task intact if installer repair itself fails.
+                var repairedCli = ctx.NativeCliPath ?? GatewayCliRunner.TryResolveNativeCliPath(ctx.LocalDataDir);
+                if (repairedCli is null)
+                    return StepResult.Fail("The repaired native gateway CLI could not be located for service cleanup.");
+
+                ctx.NativeCliPath ??= repairedCli;
+                var uninstall = await GatewayCliRunner.RunNativeAsync(
+                    ctx,
+                    ["gateway", "uninstall"],
+                    TimeSpan.FromSeconds(30),
+                    ct: ct);
+                var taskInstalled = await TryGetManagedTaskInstalledAsync(ctx, ct);
+                if ((uninstall.ExitCode != 0 && !InstallGatewayServiceStep.IsMissingWslService(uninstall))
+                    || taskInstalled != false)
                 {
-                    await RemoveManagedServiceWithoutCliAsync(ctx, ct);
-                }
-                catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
-                {
-                    return StepResult.Fail($"Could not remove the previous native gateway service: {ex.Message}");
+                    try
+                    {
+                        await RemoveManagedServiceWithoutCliAsync(ctx, ct);
+                    }
+                    catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+                    {
+                        return StepResult.Fail($"Could not remove the previous native gateway service: {ex.Message}");
+                    }
                 }
             }
 
-            return StepResult.Ok("Previous native gateway service removed before reconfiguration");
+            var profileReset = await ResetManagedNativeProfileForCleanInstallAsync(ctx, ct);
+            if (!profileReset.IsSuccess)
+                return profileReset;
+
+            return StepResult.Ok("Previous native gateway service and profile state removed before reconfiguration");
         }
 
         // When switching to WSL, remove the native Scheduled Task so it cannot
@@ -671,6 +753,32 @@ public sealed class NativeGatewayServiceCleanupStep : SetupStep
         return StepResult.Ok("Native gateway service and setup-managed configuration removed");
     }
 
+    internal static async Task<StepResult> ResetManagedNativeProfileForCleanInstallAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
+        var stateDirectory = GatewayCliRunner.GetManagedNativeStateDir(ctx.Config);
+        if (!Directory.Exists(stateDirectory))
+            return StepResult.Ok("No native profile state to reset");
+
+        if (!GatewayInstallModeDetector.IsNativeProfileOwned(ctx.LocalDataDir, ctx.Config))
+        {
+            return StepResult.Fail(
+                $"Refusing to delete native profile '{GatewayCliRunner.GetManagedNativeProfile(ctx.Config)}' at '{stateDirectory}' because setup ownership could not be verified.");
+        }
+
+        try
+        {
+            await ConfigureGatewayStep.DeleteManagedNativeProfileAsync(stateDirectory, ct);
+            ctx.Logger.Info("Deleted app-owned native gateway profile for clean reinstall");
+            return StepResult.Ok("Native profile state removed for clean reinstall");
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return StepResult.Fail($"Could not remove setup-managed native profile state: {ex.Message}");
+        }
+    }
+
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct) => Task.CompletedTask;
 
     internal static async Task<bool?> TryGetManagedTaskInstalledAsync(
@@ -729,10 +837,10 @@ public sealed class NativeGatewayServiceCleanupStep : SetupStep
                 throw new InvalidOperationException($"Could not remove native gateway Scheduled Task '{taskName}'.");
         }
 
-        foreach (var path in GetManagedServiceFiles(ctx.Config))
+        foreach (var file in GetManagedServiceFiles(ctx.Config))
         {
-            if (File.Exists(path))
-                File.Delete(path);
+            if (File.Exists(file))
+                File.Delete(file);
         }
 
         const string portVariable = "OPENCLAW_SETUP_GATEWAY_PORT";
@@ -777,6 +885,9 @@ public sealed class NativeGatewayServiceCleanupStep : SetupStep
         }
     }
 
+    internal static bool HasManagedServiceFiles(SetupConfig config) =>
+        GetManagedServiceFiles(config).Any(File.Exists);
+
     internal static IReadOnlyList<string> GetManagedServiceFiles(SetupConfig config)
     {
         var taskName = GatewayCliRunner.GetManagedNativeTaskName(config);
@@ -793,9 +904,6 @@ public sealed class NativeGatewayServiceCleanupStep : SetupStep
             Path.Combine(stateDirectory, "gateway.vbs"),
         ];
     }
-
-    internal static bool HasManagedServiceFiles(SetupConfig config) =>
-        GetManagedServiceFiles(config).Any(File.Exists);
 
     internal static bool IsServiceInstalled(string statusJson) =>
         TryGetServiceInstalled(statusJson, out var installed) && installed;

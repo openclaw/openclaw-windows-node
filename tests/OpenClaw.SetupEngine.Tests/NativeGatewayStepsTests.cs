@@ -238,6 +238,15 @@ public class NativeGatewayStepsTests
         Assert.Contains("[Text.Encoding]::UTF8.GetString($content)", script);
         Assert.Contains("-NoOnboard -Tag '2026.6.11'", script);
         Assert.Contains("$env:NPM_CONFIG_PREFIX = $prefix", script);
+        Assert.Contains("[Environment]::GetEnvironmentVariable('Path', 'Machine')", script);
+        Assert.Contains("Join-Path $env:ProgramFiles 'nodejs'", script);
+        Assert.Contains("$sqliteProbe =", script);
+        // Missing probe is best-effort: proceed unpatched rather than fail loudly,
+        // so a newer `node -v` installer that drops the probe cannot break setup.
+        Assert.Contains("proceeding without the Windows PowerShell 5 quoting workaround", script);
+        Assert.DoesNotContain("OpenClaw installer SQLite probe shape changed", script);
+        Assert.DoesNotContain("throw 'OpenClaw installer SQLite probe", script);
+        Assert.Contains(@"require(\""node:sqlite\"")", script);
         Assert.Contains("$gitWrapperBytes", script);
         Assert.Contains("[IO.File]::WriteAllBytes($gitWrapper, $gitWrapperBytes)", script);
         Assert.Contains("SetEnvironmentVariable('Path', $filteredUserPath, 'User')", script);
@@ -491,6 +500,295 @@ public class NativeGatewayStepsTests
         Assert.Equal("http://127.0.0.1:18789/healthz", StartGatewayStep.GetNativeHealthUri(18789).AbsoluteUri);
     }
 
+    [Fact]
+    public async Task NativeReadiness_WaitsForInstallLaunchedGatewayWithoutStartingAgain()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            GatewayPort = 18789,
+        };
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var runner = new RecordingCommandRunner(
+            new CommandResult(
+                0,
+                BuildOwnedNativeStatusJson(config),
+                "",
+                TimeSpan.Zero,
+                false));
+        var ctx = new SetupContext(
+            config,
+            logger,
+            new TransactionJournal(filePath: null),
+            runner,
+            CancellationToken.None);
+        ctx.NativeCliPath = @"C:\test\openclaw.ps1";
+
+        var result = await StartGatewayStep.WaitForNativeGatewayReadyAfterInstallAsync(
+            ctx,
+            (_, _) => Task.FromResult<System.Net.HttpStatusCode?>(System.Net.HttpStatusCode.OK),
+            TimeSpan.FromSeconds(1),
+            TimeSpan.Zero,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain(runner.Invocations, invocation => invocation.CommandText.Contains("'gateway' 'start'", StringComparison.Ordinal));
+        Assert.Contains(runner.Invocations, invocation => invocation.CommandText.Contains("'gateway' 'status' '--json'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task NativeReadiness_TimeoutIsTerminalAndDoesNotStartGateway()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            GatewayPort = 18789,
+        };
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var runner = new RecordingCommandRunner(
+            new CommandResult(
+                0,
+                BuildOwnedNativeStatusJson(config),
+                "",
+                TimeSpan.Zero,
+                false));
+        var ctx = new SetupContext(
+            config,
+            logger,
+            new TransactionJournal(filePath: null),
+            runner,
+            CancellationToken.None);
+        ctx.NativeCliPath = @"C:\test\openclaw.ps1";
+
+        var result = await StartGatewayStep.WaitForNativeGatewayReadyAfterInstallAsync(
+            ctx,
+            (_, _) => Task.FromResult<System.Net.HttpStatusCode?>(null),
+            TimeSpan.FromMilliseconds(1),
+            TimeSpan.Zero,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.DoesNotContain(runner.Invocations, invocation => invocation.CommandText.Contains("'gateway' 'start'", StringComparison.Ordinal));
+        Assert.Contains(runner.Invocations, invocation => invocation.CommandText.Contains("'gateway' 'status' '--json'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void IsManagedNativeGatewayStatus_RequiresManagedProfileAndPort()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            GatewayPort = 18789,
+        };
+
+        Assert.True(StartGatewayStep.IsManagedNativeGatewayStatus(BuildOwnedNativeStatusJson(config), config));
+
+        var wrongProfile = BuildOwnedNativeStatusJson(config).Replace(
+            GatewayCliRunner.GetManagedNativeProfile(config),
+            "other-profile");
+        Assert.False(StartGatewayStep.IsManagedNativeGatewayStatus(wrongProfile, config));
+
+        var wrongPort = BuildOwnedNativeStatusJson(config).Replace("\"port\":18789", "\"port\":18790");
+        Assert.False(StartGatewayStep.IsManagedNativeGatewayStatus(wrongPort, config));
+    }
+
+    [Fact]
+    public void IsManagedNativeGatewayStatus_FailsClosedOnSparseOrPortOnlyStatus()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            GatewayPort = 18789,
+        };
+
+        // A status that only reports the matching port (e.g. an unrelated gateway that
+        // happens to bind it) must not be accepted as the setup-managed gateway.
+        var portOnly = System.Text.Json.JsonSerializer.Serialize(new { gateway = new { port = 18789 } });
+        Assert.False(StartGatewayStep.IsManagedNativeGatewayStatus(portOnly, config));
+
+        // The real filtered status (task name absent from environment) must still pass
+        // on its profile + sourcePath + label + port signals — regression guard against
+        // requiring OPENCLAW_WINDOWS_TASK_NAME, which the CLI omits from environment.
+        Assert.True(StartGatewayStep.IsManagedNativeGatewayStatus(BuildOwnedNativeStatusJson(config), config));
+
+        // Missing the Scheduled Task label must fail closed.
+        var missingLabel = BuildOwnedNativeStatusJson(config).Replace("Scheduled Task", "");
+        Assert.False(StartGatewayStep.IsManagedNativeGatewayStatus(missingLabel, config));
+
+        // Missing the profile identity signal must fail closed.
+        var missingProfile = BuildOwnedNativeStatusJson(config).Replace("\"OPENCLAW_PROFILE\"", "\"OPENCLAW_PROFILE_RENAMED\"");
+        Assert.False(StartGatewayStep.IsManagedNativeGatewayStatus(missingProfile, config));
+
+        // Missing the managed state-dir sourcePath must fail closed.
+        var missingSourcePath = BuildOwnedNativeStatusJson(config).Replace("\"sourcePath\"", "\"sourcePathRenamed\"");
+        Assert.False(StartGatewayStep.IsManagedNativeGatewayStatus(missingSourcePath, config));
+    }
+
+    [Fact]
+    public async Task InstallNativeCli_SkipsReinstallWhenAppOwnedCliMatchesPinnedVersion()
+    {
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = CreateNativeSkipContext(logger);
+        var probes = 0;
+
+        var result = await InstallNativeCliStep.TrySkipInstallWhenCurrentAsync(
+            ctx,
+            @"C:\managed\native-cli\openclaw.ps1",
+            "2026.6.11",
+            (_, _) =>
+            {
+                probes++;
+                return Task.FromResult(new CommandResult(0, "openclaw 2026.6.11", "", TimeSpan.Zero, false));
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result!.IsSuccess);
+        Assert.Equal(1, probes);
+        Assert.Equal(@"C:\managed\native-cli\openclaw.ps1", ctx.NativeCliPath);
+    }
+
+    [Fact]
+    public async Task InstallNativeCli_ReinstallsWhenInstalledVersionDiffers()
+    {
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = CreateNativeSkipContext(logger);
+
+        var result = await InstallNativeCliStep.TrySkipInstallWhenCurrentAsync(
+            ctx,
+            @"C:\managed\native-cli\openclaw.ps1",
+            "2026.6.11",
+            (_, _) => Task.FromResult(new CommandResult(0, "openclaw 2026.5.9", "", TimeSpan.Zero, false)),
+            CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task InstallNativeCli_ReinstallsWhenManagedCliMissing()
+    {
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = CreateNativeSkipContext(logger);
+
+        var result = await InstallNativeCliStep.TrySkipInstallWhenCurrentAsync(
+            ctx,
+            null,
+            "2026.6.11",
+            (_, _) => throw new InvalidOperationException("probe must not run without a managed launcher"),
+            CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Null(ctx.NativeCliPath);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("latest")]
+    [InlineData("stable")]
+    public async Task InstallNativeCli_ReinstallsWhenVersionNotExactPin(string requested)
+    {
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = CreateNativeSkipContext(logger);
+
+        var result = await InstallNativeCliStep.TrySkipInstallWhenCurrentAsync(
+            ctx,
+            @"C:\managed\native-cli\openclaw.ps1",
+            requested,
+            (_, _) => throw new InvalidOperationException("probe must not run for a non-exact version"),
+            CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Null(ctx.NativeCliPath);
+    }
+
+    [Fact]
+    public async Task InstallNativeCli_ReinstallsWhenProbeFails()
+    {
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = CreateNativeSkipContext(logger);
+
+        var result = await InstallNativeCliStep.TrySkipInstallWhenCurrentAsync(
+            ctx,
+            @"C:\managed\native-cli\openclaw.ps1",
+            "2026.6.11",
+            (_, _) => Task.FromResult(new CommandResult(1, "", "not found", TimeSpan.Zero, false)),
+            CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task InstallNativeCli_ReinstallsWhenProbeThrows()
+    {
+        using var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = CreateNativeSkipContext(logger);
+
+        var result = await InstallNativeCliStep.TrySkipInstallWhenCurrentAsync(
+            ctx,
+            @"C:\managed\native-cli\openclaw.ps1",
+            "2026.6.11",
+            (_, _) => throw new TimeoutException("probe timed out"),
+            CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    private static SetupContext CreateNativeSkipContext(SetupLogger logger)
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            GatewayPort = 18789,
+        };
+        return new SetupContext(
+            config,
+            logger,
+            new TransactionJournal(filePath: null),
+            new RecordingCommandRunner(),
+            CancellationToken.None);
+    }
+
+    private static string BuildOwnedNativeStatusJson(SetupConfig config)
+    {
+        var stateLeaf = Path.GetFileName(GatewayCliRunner.GetManagedNativeStateDir(config));
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            service = new
+            {
+                label = "Scheduled Task",
+                command = new
+                {
+                    sourcePath = $@"%USERPROFILE%\{stateLeaf}\gateway.cmd",
+                    // Mirror the real `gateway status --json`: the environment object is
+                    // projected to a subset and OMITS OPENCLAW_WINDOWS_TASK_NAME (that key
+                    // surfaces only under environmentValueSources), so ownership must not
+                    // depend on the task name being present in environment.
+                    environment = new Dictionary<string, string>
+                    {
+                        ["OPENCLAW_PROFILE"] = GatewayCliRunner.GetManagedNativeProfile(config),
+                        ["OPENCLAW_STATE_DIR"] = GatewayCliRunner.GetManagedNativeStateDir(config),
+                        ["OPENCLAW_GATEWAY_PORT"] = config.GatewayPort.ToString(),
+                    },
+                    environmentValueSources = new Dictionary<string, string>
+                    {
+                        ["OPENCLAW_PROFILE"] = "inline",
+                        ["OPENCLAW_WINDOWS_TASK_NAME"] = "inline",
+                    },
+                },
+                runtime = new { status = "running" },
+            },
+            gateway = new
+            {
+                port = config.GatewayPort,
+            },
+        });
+    }
+
     private sealed class CapturingCommandRunner(CommandResult result) : ICommandRunner
     {
         public string? Executable { get; private set; }
@@ -522,5 +820,42 @@ public class NativeGatewayStepsTests
             string? user = null,
             bool inputViaStdin = false)
             => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingCommandRunner(params CommandResult[] results) : ICommandRunner
+    {
+        private readonly Queue<CommandResult> _results = new(results);
+
+        public List<Invocation> Invocations { get; } = [];
+
+        public Task<CommandResult> RunAsync(
+            string executable,
+            string[] arguments,
+            TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? environment = null,
+            string? workingDirectory = null,
+            string? stdinInput = null,
+            CancellationToken ct = default)
+        {
+            Invocations.Add(new Invocation(executable, arguments));
+            return Task.FromResult(_results.Count > 0
+                ? _results.Dequeue()
+                : new CommandResult(0, "", "", TimeSpan.Zero, false));
+        }
+
+        public Task<CommandResult> RunInWslAsync(
+            string distroName,
+            string command,
+            TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? environment = null,
+            CancellationToken ct = default,
+            string? user = null,
+            bool inputViaStdin = false)
+            => throw new NotSupportedException();
+    }
+
+    private sealed record Invocation(string Executable, string[] Arguments)
+    {
+        public string CommandText => string.Join(" ", Arguments);
     }
 }

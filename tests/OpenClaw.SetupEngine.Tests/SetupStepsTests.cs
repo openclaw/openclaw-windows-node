@@ -1157,6 +1157,7 @@ public class SetupStepsTests : IDisposable
                 {
                     ["plugins.entries.example.enabled"] = "true",
                     ["plugins.entries.example.config"] = "{\"mode\":\"x\"}",
+                    ["plugins.entries.example.config.label"] = "007",
                 },
             },
         };
@@ -2275,6 +2276,7 @@ public class SetupStepsTests : IDisposable
                 {
                     ["plugins.entries.example.enabled"] = "true",
                     ["plugins.entries.example.config"] = "{\"mode\":\"x\"}",
+                    ["plugins.entries.example.config.label"] = "007",
                 },
             },
         };
@@ -2289,30 +2291,45 @@ public class SetupStepsTests : IDisposable
         var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Contains(commands.Calls, call =>
-            call.Arguments.Any(argument =>
-                argument.Contains("'gateway.nodes.allowCommands' $env:OPENCLAW_SETUP_CONFIG_VALUE '--strict-json'", StringComparison.Ordinal)));
+        var batchCall = Assert.Single(commands.Calls, call =>
+            call.Arguments.Any(argument => argument.Contains("'--batch-file'", StringComparison.Ordinal)));
+        var batchCommand = batchCall.Arguments.First(argument => argument.Contains("'--batch-file'", StringComparison.Ordinal));
+        var batchMatch = System.Text.RegularExpressions.Regex.Match(batchCommand, "'--batch-file' '([^']+)'");
+        Assert.True(batchMatch.Success);
+        var batchFile = batchMatch.Groups[1].Value;
+        Assert.False(File.Exists(batchFile));
+        var batchJson = commands.CapturedFiles[batchFile];
+        using var document = JsonDocument.Parse(batchJson);
+        var entries = document.RootElement.EnumerateArray().ToDictionary(
+            entry => entry.GetProperty("path").GetString()!,
+            entry => entry.GetProperty("value").Clone(),
+            StringComparer.Ordinal);
+        Assert.Equal(JsonValueKind.Array, entries["gateway.nodes.allowCommands"].ValueKind);
+        Assert.Contains(
+            entries["gateway.nodes.allowCommands"].EnumerateArray(),
+            item => item.GetString() == "device.info");
+        Assert.Equal(JsonValueKind.Number, entries["gateway.port"].ValueKind);
+        Assert.Equal(18789, entries["gateway.port"].GetInt32());
+        Assert.Equal(JsonValueKind.True, entries[ConfigureGatewayStep.DevicePairEnabledKey].ValueKind);
+        Assert.Equal(JsonValueKind.String, entries["plugins.entries.example.enabled"].ValueKind);
+        Assert.Equal("true", entries["plugins.entries.example.enabled"].GetString());
+        Assert.Equal(JsonValueKind.String, entries["plugins.entries.example.config.label"].ValueKind);
+        Assert.Equal("007", entries["plugins.entries.example.config.label"].GetString());
+        Assert.Equal(JsonValueKind.Object, entries["plugins.entries.example.config"].ValueKind);
+        Assert.Equal("x", entries["plugins.entries.example.config"].GetProperty("mode").GetString());
+        Assert.Equal(GatewayInstallModeDetector.GetNativeWizardLogPath(config), entries["logging.file"].GetString());
+        Assert.Equal(ctx.SharedGatewayToken, entries["gateway.auth.token"].GetString());
+        Assert.DoesNotContain(commands.Calls, call =>
+            call.Arguments.Any(argument => argument.Contains(ctx.SharedGatewayToken!, StringComparison.Ordinal)));
         Assert.Contains(commands.Calls, call =>
             call.Arguments.Any(argument =>
                 argument.Contains("'config' 'unset' 'plugins.entries.stale.enabled'", StringComparison.Ordinal)));
-        Assert.Contains(commands.Environments, environment =>
-            environment is not null
-            && environment.TryGetValue("OPENCLAW_SETUP_CONFIG_VALUE", out var value)
-            && value.StartsWith("[\\\"", StringComparison.Ordinal)
-            && value.Contains("\\\"device.info\\\"", StringComparison.Ordinal));
-        Assert.Contains(commands.Environments, environment =>
-            environment is not null
-            && environment.TryGetValue("OPENCLAW_SETUP_CONFIG_VALUE", out var value)
-            && value == "{\\\"mode\\\":\\\"x\\\"}");
-        Assert.Contains(commands.Environments, environment =>
-            environment is not null
-            && environment.TryGetValue("OPENCLAW_SETUP_CONFIG_VALUE", out var value)
-            && value == GatewayInstallModeDetector.GetNativeWizardLogPath(config));
         var persistedPaths = ConfigureGatewayStep.ReadNativeManagedConfigPaths(_localTempDir, ctx.Config);
         Assert.Contains("gateway.auth.token", persistedPaths);
         Assert.Contains("logging.file", persistedPaths);
         Assert.Contains("plugins.entries.example.enabled", persistedPaths);
         Assert.Contains("plugins.entries.example.config", persistedPaths);
+        Assert.Contains("plugins.entries.example.config.label", persistedPaths);
     }
 
     [Fact]
@@ -3374,6 +3391,7 @@ public class SetupStepsTests : IDisposable
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
         public List<(string Executable, string[] Arguments, string? StdinInput)> DetailedCalls { get; } = [];
         public List<IReadOnlyDictionary<string, string>?> Environments { get; } = [];
+        public Dictionary<string, string> CapturedFiles { get; } = [];
         public List<TimeSpan> Timeouts { get; } = [];
         public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin)> WslCalls { get; } = [];
 
@@ -3390,6 +3408,19 @@ public class SetupStepsTests : IDisposable
             DetailedCalls.Add((executable, arguments, stdinInput));
             Environments.Add(environment is null ? null : new Dictionary<string, string>(environment));
             Timeouts.Add(timeout);
+            var batchFileIndex = Array.IndexOf(arguments, "--batch-file");
+            if (batchFileIndex >= 0 && batchFileIndex + 1 < arguments.Length && File.Exists(arguments[batchFileIndex + 1]))
+                CapturedFiles[arguments[batchFileIndex + 1]] = File.ReadAllText(arguments[batchFileIndex + 1]);
+            else
+            {
+                var command = arguments.FirstOrDefault(argument => argument.Contains("'--batch-file'", StringComparison.Ordinal));
+                if (command is not null)
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(command, "'--batch-file' '([^']+)'");
+                    if (match.Success && File.Exists(match.Groups[1].Value))
+                        CapturedFiles[match.Groups[1].Value] = File.ReadAllText(match.Groups[1].Value);
+                }
+            }
             return Task.FromResult(run(arguments));
         }
 
