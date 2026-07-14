@@ -2,17 +2,18 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace OpenClaw.WinNode.Cli.Tests;
+namespace OpenClaw.TestSupport;
 
 /// <summary>
 /// Tiny loopback HTTP server that captures the request body and returns a
-/// canned response. Lets the RunAsync tests exercise the real HttpClient code
-/// path (timeouts, connection failures, JSON-RPC envelopes) without any
-/// reliance on the running tray.
+/// canned response. Lets CLI/MCP tests exercise the real HttpClient code path
+/// (timeouts, connection failures, JSON-RPC envelopes) without any reliance on
+/// the running tray. Shared single source: see <c>docs/ARCHITECTURE.md</c>
+/// (ledger id <c>test-fake-mcp</c>).
 /// </summary>
-internal sealed class FakeMcpServer : IDisposable
+public sealed class FakeMcpServer : IDisposable
 {
-    private readonly HttpListener _listener = new();
+    private readonly HttpListener _listener;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _loop;
 
@@ -32,10 +33,35 @@ internal sealed class FakeMcpServer : IDisposable
 
     public FakeMcpServer()
     {
-        Port = FindFreePort();
-        _listener.Prefixes.Add($"http://127.0.0.1:{Port}/");
-        _listener.Start();
+        (Port, _listener) = StartListenerWithRetry();
         _loop = Task.Run(AcceptLoopAsync);
+    }
+
+    /// <summary>
+    /// Binding is a two-step "find a free port, then start an HttpListener on it"
+    /// operation with an inherent TOCTOU window: another process/test can grab the
+    /// port between steps. Retry on bind failure so this shared fixture does not
+    /// flake under parallel test runs.
+    /// </summary>
+    private static (int Port, HttpListener Listener) StartListenerWithRetry()
+    {
+        const int maxAttempts = 10;
+        for (var attempt = 1; ; attempt++)
+        {
+            var port = FindFreePort();
+            var listener = new HttpListener();
+            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            try
+            {
+                listener.Start();
+                return (port, listener);
+            }
+            catch (HttpListenerException) when (attempt < maxAttempts)
+            {
+                // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+                try { listener.Close(); } catch { }
+            }
+        }
     }
 
     private async Task AcceptLoopAsync()

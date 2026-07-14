@@ -29,6 +29,7 @@
     </Project>
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/OpenClaw.TestSupport/OpenClaw.TestSupport.csproj" />
     <Project Path="tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj" />
     <Project Path="tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj" />
     <Project Path="tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj" />

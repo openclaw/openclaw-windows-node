@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
+using OpenClaw.TestSupport;
 using OpenClaw.WinNode.Cli;
 
 namespace OpenClaw.WinNode.Cli.Tests;

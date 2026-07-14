@@ -4,6 +4,7 @@ using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClaw.WinNode.Cli;
 
 namespace OpenClaw.WinNode.Cli.Tests;

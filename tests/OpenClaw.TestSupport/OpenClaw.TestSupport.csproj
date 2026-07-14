@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Shared test-support library: reusable fixtures and builders for the test
+      projects (see docs/ARCHITECTURE.md). A plain class library — the local
+      Directory.Build.props deliberately skips the shared test-SDK props so this
+      does not become a test container.
+    -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

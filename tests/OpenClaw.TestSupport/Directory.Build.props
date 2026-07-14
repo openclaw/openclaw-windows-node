@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    OpenClaw.TestSupport is a plain class library of shared test fixtures, not a
+    test container. MSBuild imports only the *nearest* Directory.Build.props, so
+    defining this file means tests/Directory.Build.props (which references the
+    xUnit/Microsoft.NET.Test.Sdk packages and forces OutputType=Exe) is NOT
+    applied here. We import the repo-root props and re-declare only the shared
+    compiler settings the test projects use.
+  -->
+  <Import Project="..\..\Directory.Build.props" Condition="Exists('..\..\Directory.Build.props')" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NuGetAuditMode>all</NuGetAuditMode>
+  </PropertyGroup>
+
+</Project>

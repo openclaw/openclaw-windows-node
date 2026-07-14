@@ -1,24 +1,25 @@
 using OpenClaw.Shared;
 using OpenClaw.Connection;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.Connection.Tests;
 
 public class GatewayRegistryTests : IDisposable
 {
+    private readonly TempDirectory _temp;
     private readonly string _tempDir;
     private readonly GatewayRegistry _registry;
 
     public GatewayRegistryTests()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), "openclaw-test-" + Guid.NewGuid().ToString("N")[..8]);
-        Directory.CreateDirectory(_tempDir);
+        _temp = new TempDirectory();
+        _tempDir = _temp.Path;
         _registry = new GatewayRegistry(_tempDir);
     }
 
     public void Dispose()
     {
-        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-        try { Directory.Delete(_tempDir, true); } catch { }
+        _temp.Dispose();
     }
 
     [Fact]
