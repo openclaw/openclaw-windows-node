@@ -1,6 +1,6 @@
 ---
 name: crabbox
-description: Use Crabbox to run OpenClaw Windows node builds, tests, and targeted proof on remote native Windows or WSL2 hosts, including Azure or brokered AWS leases and static SSH hosts. Use when remote Windows validation is needed, the local host is not Windows, or the user asks for Crabbox validation. Always report the actual provider and lease id.
+description: Use Crabbox from macOS, Linux, or native Windows controllers to run OpenClaw Windows node builds, tests, and targeted proof on remote native Windows or WSL2 hosts, including Azure or brokered AWS leases and static SSH hosts. Use when remote Windows validation is needed or the user asks for Crabbox validation. Always report the actual provider and lease id.
 ---
 
 # Crabbox
@@ -45,7 +45,7 @@ export CRABBOX_PROVIDER="${CRABBOX_PROVIDER:-azure}"
 test -n "$CRABBOX"
 "$CRABBOX" --version
 "$CRABBOX" run --help 2>&1 | rg 'provider|target|windows-mode|static-host|script-stdin|timing-json'
-"$CRABBOX" config show
+"$CRABBOX" config path
 "$CRABBOX" whoami
 git status --short --branch
 git rev-parse HEAD
@@ -59,11 +59,96 @@ Require the CLI to list the intended provider and the `windows` target before
 starting a lease. Use explicit provider and target flags; this repository has no
 `.crabbox.yaml`, so inherited user defaults are not a validation contract.
 
+### Native Windows controller
+
+When the Crabbox CLI itself runs on Windows, use PowerShell and prefer a sibling
+development binary over a possibly stale PATH install:
+
+```powershell
+$Crabbox = if (Test-Path ..\crabbox\bin\crabbox.exe) {
+    (Resolve-Path ..\crabbox\bin\crabbox.exe).Path
+} else {
+    (Get-Command crabbox.exe -ErrorAction Stop).Source
+}
+$CrabboxProvider = "azure"
+
+Get-Command ssh, tar, git -ErrorAction Stop
+& $Crabbox --version
+& $Crabbox config path
+git status --short --branch
+git rev-parse HEAD
+```
+
+Use `& $Crabbox` and `$CrabboxProvider` in place of `"$CRABBOX"` and
+`"$CRABBOX_PROVIDER"` in later examples. PowerShell 5.1 or newer is sufficient
+for the controller commands.
+
+For direct Azure, authenticate interactively and persist the approved location
+before warming a lease:
+
+```powershell
+Get-Command az -ErrorAction Stop
+az login
+& $Crabbox azure login --location <approved-location>
+& $Crabbox doctor --provider azure --target windows
+```
+
+Do not copy `az login` output or Crabbox config contents into logs, PRs, or
+chat. `crabbox azure login` stores Azure identifiers in the user config reported
+by `crabbox config path`. Set location with `azure login`; `warmup` has no
+`--location` flag.
+
+Native Windows targets use local `tar` plus archive transfer, so a Windows
+controller does not need WSL or rsync for native-mode validation. POSIX and WSL2
+targets use rsync. When `wsl.exe` exists, Crabbox prefers its rsync, so verify it
+inside the default distribution; without WSL, verify a native rsync is on PATH:
+
+```powershell
+if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+    wsl.exe --exec sh -lc 'command -v rsync >/dev/null'
+    if ($LASTEXITCODE -ne 0) { throw "Install rsync in the default WSL distribution." }
+} else {
+    Get-Command rsync.exe -ErrorAction Stop
+}
+```
+
+Translate later POSIX here-doc examples into a PowerShell here-string when
+calling `--script-stdin` from Windows:
+
+```powershell
+$RemoteScript = @'
+# Copy the exact POWERSHELL body from the relevant example here.
+'@
+$PreviousOutputEncoding = $OutputEncoding
+try {
+    $OutputEncoding = New-Object System.Text.UTF8Encoding -ArgumentList $false
+    $RemoteScript | & $Crabbox run `
+        --provider $CrabboxProvider `
+        --target windows `
+        --windows-mode normal `
+        --id <lease-id> `
+        --preflight `
+        --timing-json `
+        --script-stdin --
+    $CrabboxExitCode = $LASTEXITCODE
+} finally {
+    $OutputEncoding = $PreviousOutputEncoding
+}
+if ($CrabboxExitCode -ne 0) { exit $CrabboxExitCode }
+```
+
+If public SSH is blocked and the operator confirms an approved VPN route to the
+Azure virtual network is already active, opt into private addressing for that
+session with `$env:CRABBOX_AZURE_NETWORK = "private"`, then rerun
+`crabbox doctor`. Do not port or automate organization-specific VPN,
+certificate, vault, subscription, tenant, resource, address, or account setup
+in this skill.
+
 Azure requires its subscription auth and usually the Azure CLI. If Azure is
 unavailable, use AWS only with an existing Crabbox broker session. If normal AWS
 validation asks for `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, an AWS profile,
 or an EC2 instance role, stop: the command fell through to raw cloud auth. Check
-`crabbox config show`, `crabbox doctor`, and `crabbox whoami`, then authenticate
+`crabbox config path`, `crabbox doctor`, and `crabbox whoami`, then authenticate
 through the broker if authorized:
 
 ```sh
@@ -287,6 +372,11 @@ On failure, distinguish provider acquisition, SSH, sync, prerequisites, and the
 test command. Retry transport or sync once with `--debug --timing-json`; rerun
 only the focused failing command until understood, then rerun the full required
 validation. Do not silently move Windows proof to Linux or WSL2.
+
+On a Windows controller, diagnose sync by target mode: native Windows should use
+archive transfer and needs local `tar`; POSIX or WSL2 uses rsync and selects WSL
+rsync whenever `wsl.exe` is installed. Do not install WSL solely for a native
+Windows target.
 
 ## Cleanup and report
 
