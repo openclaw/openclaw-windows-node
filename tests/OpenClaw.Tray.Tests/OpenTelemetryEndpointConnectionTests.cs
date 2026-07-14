@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using OpenClaw.Connection;
@@ -61,8 +62,8 @@ public sealed class OpenTelemetryEndpointConnectionTests
     [Fact]
     public async Task SendConnectionState_DuringApply_DoesNotBlockAndUsesReplacementSink()
     {
-        var replacementFlushStarted = new ManualResetEventSlim();
-        var releaseReplacementFlush = new ManualResetEventSlim();
+        using var replacementFlushStarted = new ManualResetEventSlim();
+        using var releaseReplacementFlush = new ManualResetEventSlim();
         var sinks = new List<FakeProbeSink>();
         using var connection = new OpenTelemetryEndpointConnection(
             _ =>
@@ -91,14 +92,29 @@ public sealed class OpenTelemetryEndpointConnectionTests
             OpenTelemetryEndpointProtocol.HttpProtobuf));
         Assert.True(replacementFlushStarted.Wait(TimeSpan.FromSeconds(5)));
 
-        var sendTask = Task.Run(() => connection.SendConnectionState(CreateReadySnapshot()));
-        Assert.Same(sendTask, await Task.WhenAny(sendTask, Task.Delay(TimeSpan.FromSeconds(1))));
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            connection.SendConnectionState(CreateReadySnapshot());
+            stopwatch.Stop();
+            Assert.False(
+                applyTask.IsCompleted,
+                "Replacement apply completed before its flush was released.");
+        }
+        finally
+        {
+            stopwatch.Stop();
+            releaseReplacementFlush.Set();
+            await applyTask;
+        }
 
-        releaseReplacementFlush.Set();
-        await applyTask;
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(1),
+            $"Connection state send blocked for {stopwatch.Elapsed}.");
         Assert.True(SpinWait.SpinUntil(
             () => sinks[1].SendConnectionStateCount == 1,
             TimeSpan.FromSeconds(5)));
+        Assert.Equal(0, sinks[0].SendConnectionStateCount);
         Assert.Equal(
             new OpenTelemetryConnectionState("ready", "ready", "connected", "connected"),
             sinks[1].LastConnectionState);
