@@ -94,6 +94,31 @@ public sealed class OpenClawTelemetryTests
     }
 
     [Fact]
+    public void StopDetachedActivity_PreservesNewerAmbientActivity()
+    {
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var original = new Activity("original").Start();
+        var detached = OpenClawTelemetry.StartDetachedActivity("test.detached");
+        using var newer = new Activity("newer").Start();
+
+        OpenClawTelemetry.StopDetachedActivity(detached);
+
+        Assert.NotNull(detached);
+        Assert.True(detached!.IsStopped);
+        Assert.Same(newer, Activity.Current);
+    }
+
+    [Fact]
+    public void StopDetachedActivity_WithNull_IsSafe()
+    {
+        using var ambient = new Activity("ambient").Start();
+
+        OpenClawTelemetry.StopDetachedActivity(null);
+
+        Assert.Same(ambient, Activity.Current);
+    }
+
+    [Fact]
     public void Trace_WithListener_RecordsSuccessAndTags()
     {
         using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());

@@ -45,7 +45,9 @@ public static class OpenClawTelemetry
     /// </summary>
     /// <remarks>
     /// Use this for operations that begin in one asynchronous callback and finish in another.
-    /// The caller owns the returned activity and must stop or dispose it.
+    /// The caller owns the returned activity and must finish it with
+    /// <see cref="StopDetachedActivity(Activity?)"/> so stopping it cannot replace a newer
+    /// ambient activity with the context captured when this span started.
     /// </remarks>
     public static Activity? StartDetachedActivity(
         string spanName,
@@ -87,6 +89,26 @@ public static class OpenClawTelemetry
         finally
         {
             Activity.Current = previous;
+        }
+    }
+
+    /// <summary>
+    /// Stops and disposes a detached activity without changing the caller's ambient activity.
+    /// </summary>
+    public static void StopDetachedActivity(Activity? activity)
+    {
+        if (activity == null)
+            return;
+
+        var current = Activity.Current;
+        try
+        {
+            activity.Stop();
+            activity.Dispose();
+        }
+        finally
+        {
+            Activity.Current = current;
         }
     }
 

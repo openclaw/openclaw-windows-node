@@ -2293,8 +2293,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 : outcome == "success"
                     ? ActivityStatusCode.Ok
                     : ActivityStatusCode.Unset);
-        activity.Stop();
-        activity.Dispose();
+        OpenClawTelemetry.StopDetachedActivity(activity);
     }
 
     private void RecordTelemetryStateTransitions(GatewayConnectionSnapshot snapshot)
