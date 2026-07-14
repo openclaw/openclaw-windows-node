@@ -84,10 +84,16 @@ The tray exports gateway lifecycle diagnostics when an endpoint is configured:
 
 - operator connect traces: `openclaw.connection.operator.connect` and
   `openclaw.connection.operator.reconnect`
+- Windows node connect traces: `openclaw.connection.node.connect` and
+  `openclaw.connection.node.reconnect`
 - coarse operator phase spans:
   `openclaw.connection.operator.prepare`,
   `openclaw.connection.operator.transport`, and
   `openclaw.connection.operator.handshake`
+- coarse Windows node phase spans:
+  `openclaw.connection.node.prepare`,
+  `openclaw.connection.node.transport`, and
+  `openclaw.connection.node.handshake`
 - metrics: `openclaw.connection.attempts`,
   `openclaw.connection.attempt.duration`, and
   `openclaw.connection.state.transitions`
@@ -98,10 +104,41 @@ category, and finite operator/node/overall states. Gateway URLs, IDs, device
 IDs, pairing request IDs, credentials, error messages, and diagnostic-ring
 text are not exported.
 
-The phase spans distinguish local credential/client/tunnel preparation, WebSocket
-transport establishment, and the gateway challenge/hello handshake. They
-intentionally do not trace signing, serialization, response parsing, or token
-persistence as separate operations.
+The operator phase spans distinguish local credential/client/tunnel preparation,
+WebSocket transport establishment, and the gateway challenge/hello handshake.
+The Windows node initiates its gateway connection: its prepare span includes
+credential resolution, client creation, and synchronous capability registration;
+its transport span covers the outbound WebSocket; and its handshake span covers
+the gateway's `connect.challenge`, the signed connect request, and `hello-ok`.
+
+A node attempt succeeds only after `hello-ok` yields connected and paired
+readiness. Pending approval completes the attempt as `pairing_required`; human
+approval wait time is not included in an open span. If the existing node client
+later begins automatic transport recovery, the actual retry is recorded as
+`openclaw.connection.node.reconnect` beginning with the transport phase.
+Manager-driven starts, including the fresh connection after approval, remain
+`openclaw.connection.node.connect`.
+
+An attempt with outcome `superseded` was replaced by a newer local lifecycle
+request before it completed. This is not a gateway or authentication failure.
+It exists to make overlapping connection orchestration visible instead of
+silently dropping work that had already started. A short `superseded` span
+followed by a normal connection span commonly means an automatic or previously
+queued start raced with a newer explicit start; the replacement attempt owns the
+eventual connection result.
+
+Pairing and classified gateway failures complete from their specific events
+before generic connection status handling. If an active attempt instead ends
+with an unclassified `Disconnected` status, telemetry uses `server_close` as a
+finite, reasonless fallback because that status carries no close cause.
+`Disconnected` covers both orderly remote closes and premature transport loss,
+so `server_close` does not prove that the gateway intentionally closed the
+connection. Other network failures report `Error` and use
+`network_unreachable`; this fallback can therefore be less specific without
+changing connection behavior.
+
+The phase spans intentionally do not trace signing, serialization, response
+parsing, capability details, or token persistence as separate operations.
 
 ## Endpoint handling
 

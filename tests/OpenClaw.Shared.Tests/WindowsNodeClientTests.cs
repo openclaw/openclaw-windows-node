@@ -79,6 +79,45 @@ public class WindowsNodeClientTests
         }
     }
 
+    [Theory]
+    [InlineData("rate limit exceeded", GatewayErrorKind.RateLimited)]
+    [InlineData("too many failed authentication attempts", GatewayErrorKind.RateLimited)]
+    [InlineData("device token mismatch", GatewayErrorKind.TokenDrift)]
+    [InlineData("origin not allowed", GatewayErrorKind.Auth)]
+    [InlineData("gateway internal error", GatewayErrorKind.Server)]
+    public void HandleResponse_TerminalError_EmitsFiniteFailureClassification(
+        string message,
+        GatewayErrorKind expectedKind)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            GatewayErrorKind? actualKind = null;
+            client.ConnectionFailure += (_, kind) => actualKind = kind;
+            using var document = JsonDocument.Parse(
+                $$"""
+                  {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                      "message": "{{message}}",
+                      "code": "TEST_ERROR"
+                    }
+                  }
+                  """);
+            client.HandleResponse(document.RootElement);
+
+            Assert.Equal(expectedKind, actualKind);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
     /// <summary>
     /// Regression test: when hello-ok includes auth.deviceToken, PairingStatusChanged must
     /// fire exactly once — not twice (once from the token block and again from the DeviceToken

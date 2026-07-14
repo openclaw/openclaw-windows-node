@@ -71,6 +71,10 @@ public class WindowsNodeClient : WebSocketClientBase
     public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
     /// <summary>Raised when the hello-ok handshake completes successfully.</summary>
     public event EventHandler? HandshakeSucceeded;
+    /// <summary>Raised after the WebSocket transport connects, before the gateway challenge arrives.</summary>
+    public event EventHandler? TransportConnected;
+    /// <summary>Raised with a finite classification before a terminal handshake error is published.</summary>
+    public event EventHandler<GatewayErrorKind>? ConnectionFailure;
     
     public new bool IsConnected => _isConnected;
     public string? NodeId => _nodeId;
@@ -108,6 +112,12 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override int ReceiveBufferSize => 65536;
     protected override string ClientRole => "node";
+
+    protected override Task OnConnectedAsync()
+    {
+        TransportConnected?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
     
     public WindowsNodeClient(string gatewayUrl, string token, string dataPath, IOpenClawLogger? logger = null, string? bootstrapToken = null)
         : base(gatewayUrl, ResolveRequiredCredential(token, bootstrapToken, dataPath, logger), logger)
@@ -704,7 +714,7 @@ public class WindowsNodeClient : WebSocketClientBase
         return (new Dictionary<string, string> { ["token"] = _gatewayToken }, _gatewayToken);
     }
     
-    private void HandleResponse(JsonElement root)
+    internal void HandleResponse(JsonElement root)
     {
         if (root.TryGetProperty("ok", out var okProp) &&
             okProp.ValueKind == JsonValueKind.False)
@@ -884,6 +894,7 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             _rateLimited = true;
             _logger.Warn($"[NODE] Terminal auth error; stopping reconnect. Error: {TokenSanitizer.Sanitize(error)}");
+            ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode));
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
@@ -900,7 +911,18 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         _logger.Error($"Node registration failed: {TokenSanitizer.Sanitize(error)} (code: {errorCode})");
+        ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode));
         RaiseStatusChanged(ConnectionStatus.Error);
+    }
+
+    private static GatewayErrorKind ClassifyConnectionFailure(string error, string errorCode)
+    {
+        if (error.Contains("too many failed", StringComparison.OrdinalIgnoreCase))
+            return GatewayErrorKind.RateLimited;
+        if (error.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase))
+            return GatewayErrorKind.Auth;
+
+        return GatewayErrorClassifier.Classify($"{errorCode} {error}");
     }
 
     private bool PayloadTargetsCurrentDevice(JsonElement payload)

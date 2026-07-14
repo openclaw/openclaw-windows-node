@@ -7,7 +7,7 @@ namespace OpenClaw.Connection;
 /// Capability setup (canvas, screen capture, etc.) is handled by NodeService,
 /// which has WinUI dependencies and remains in App.xaml.cs for now.
 /// </summary>
-public sealed class NodeConnector : INodeConnector
+public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvents
 {
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
@@ -21,6 +21,8 @@ public sealed class NodeConnector : INodeConnector
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
     public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
     public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
+    public event EventHandler? TransportConnected;
+    public event EventHandler<GatewayErrorKind>? ConnectionFailure;
 
     public NodeConnector(IOpenClawLogger logger, ConnectionDiagnostics? diagnostics = null)
     {
@@ -163,20 +165,15 @@ public sealed class NodeConnector : INodeConnector
         }
 
         client.StatusChanged += (s, e) =>
-        {
-            if (IsCurrentClient(s, generation))
-                StatusChanged?.Invoke(this, e);
-        };
+            ForwardIfCurrent(s, generation, e, StatusChanged);
+        client.TransportConnected += (s, _) =>
+            ForwardIfCurrent(s, generation, EventArgs.Empty, TransportConnected);
+        client.ConnectionFailure += (s, e) =>
+            ForwardIfCurrent(s, generation, e, ConnectionFailure);
         client.PairingStatusChanged += (s, e) =>
-        {
-            if (IsCurrentClient(s, generation))
-                PairingStatusChanged?.Invoke(this, e);
-        };
+            ForwardIfCurrent(s, generation, e, PairingStatusChanged);
         client.DeviceTokenReceived += (s, e) =>
-        {
-            if (IsCurrentClient(s, generation))
-                DeviceTokenReceived?.Invoke(this, e);
-        };
+            ForwardIfCurrent(s, generation, e, DeviceTokenReceived);
 
         try
         {
@@ -218,6 +215,41 @@ public sealed class NodeConnector : INodeConnector
         {
             return Interlocked.Read(ref _clientGeneration) == generation &&
                 ReferenceEquals(sender, _client);
+        }
+    }
+
+    // Validation and dispatch stay atomic so a retired client cannot publish after its
+    // replacement. Subscribers must remain synchronous and must not block on connector
+    // lifecycle work while this lock is held.
+    private void ForwardIfCurrent<T>(
+        object? sender,
+        long generation,
+        T args,
+        EventHandler<T>? handler)
+    {
+        lock (_clientLifecycleLock)
+        {
+            if (Interlocked.Read(ref _clientGeneration) == generation &&
+                ReferenceEquals(sender, _client))
+            {
+                handler?.Invoke(this, args);
+            }
+        }
+    }
+
+    private void ForwardIfCurrent(
+        object? sender,
+        long generation,
+        EventArgs args,
+        EventHandler? handler)
+    {
+        lock (_clientLifecycleLock)
+        {
+            if (Interlocked.Read(ref _clientGeneration) == generation &&
+                ReferenceEquals(sender, _client))
+            {
+                handler?.Invoke(this, args);
+            }
         }
     }
 

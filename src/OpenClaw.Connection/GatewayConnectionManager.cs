@@ -17,6 +17,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     internal const string OperatorPrepareSpanName = "openclaw.connection.operator.prepare";
     internal const string OperatorTransportSpanName = "openclaw.connection.operator.transport";
     internal const string OperatorHandshakeSpanName = "openclaw.connection.operator.handshake";
+    internal const string NodeConnectSpanName = "openclaw.connection.node.connect";
+    internal const string NodeReconnectSpanName = "openclaw.connection.node.reconnect";
+    internal const string NodePrepareSpanName = "openclaw.connection.node.prepare";
+    internal const string NodeTransportSpanName = "openclaw.connection.node.transport";
+    internal const string NodeHandshakeSpanName = "openclaw.connection.node.handshake";
     internal const string AttemptsMetricName = "openclaw.connection.attempts";
     internal const string AttemptDurationMetricName = "openclaw.connection.attempt.duration";
     internal const string StateTransitionsMetricName = "openclaw.connection.state.transitions";
@@ -82,6 +87,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private bool _activeConnectUsedBootstrapToken;
     private bool _postBootstrapOperatorReconnectScheduled;
     private TelemetryAttempt? _operatorTelemetryAttempt;
+    private TelemetryAttempt? _nodeTelemetryAttempt;
     private GatewayConnectionSnapshot _lastTelemetrySnapshot = GatewayConnectionSnapshot.Idle;
 
     private const string MissingNodeCredentialMessage =
@@ -132,6 +138,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _nodeConnector.StatusChanged += OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged += OnNodePairingStatusChanged;
             _nodeConnector.DeviceTokenReceived += OnNodeDeviceTokenReceived;
+            if (_nodeConnector is INodeConnectorTelemetryEvents telemetryEvents)
+            {
+                telemetryEvents.TransportConnected += OnNodeTransportConnected;
+                telemetryEvents.ConnectionFailure += OnNodeConnectionFailure;
+            }
         }
     }
 
@@ -475,6 +486,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 BuildCredentialFailureMessage("node", nodeCredentialResolution),
                 preserveCredentialResolution: true);
             EmitStateChanged();
+            RecordNodePreflightTelemetryFailure(ConnectionErrorCategory.AuthFailure);
             return null;
         }
 
@@ -489,6 +501,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
             _stateMachine.BlockNodeStart(NodeTunnelStartFailedMessage, preserveCredentialResolution: true);
             EmitStateChanged();
+            RecordNodePreflightTelemetryFailure(ConnectionErrorCategory.SshTunnelFailure);
             return null;
         }
 
@@ -550,6 +563,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         CancelOperatorTelemetryAttempt("canceled", ConnectionErrorCategory.Cancelled);
         Interlocked.Increment(ref _generation);
+        CancelNodeTelemetryAttempt("canceled", ConnectionErrorCategory.Cancelled);
         var oldCts = Interlocked.Exchange(ref _operationCts, null);
         oldCts?.Cancel();
         oldCts?.Dispose();
@@ -1398,6 +1412,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 oldNodeOperationCts?.Cancel();
             }
 
+            CancelNodeTelemetryAttempt("superseded", null);
+
             if (_nodeConnector != null)
             {
                 try
@@ -1433,6 +1449,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     nodeGeneration = Interlocked.Increment(ref _nodeConnectionGeneration);
                     _nodeOperationCts = nodeOperationCts;
                 }
+
+                StartNodeTelemetryAttempt(
+                    expectedLifecycleGeneration,
+                    nodeGeneration,
+                    "connect",
+                    NodePrepareSpanName);
             }
         }
         finally
@@ -1447,6 +1469,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 preStartBlockerToken,
                 expectedLifecycleGeneration,
                 expectedNodeGeneration);
+            CancelNodeTelemetryAttempt("superseded", null);
+            RecordNodePreflightTelemetryFailure(ConnectionErrorCategory.InternalError);
             return null;
         }
 
@@ -1458,6 +1482,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
         catch (OperationCanceledException) when (nodeOperationToken.IsCancellationRequested)
         {
+            CompleteNodeTelemetryAttempt(
+                nodeGeneration,
+                "canceled",
+                ConnectionErrorCategory.Cancelled);
             return null;
         }
         finally
@@ -1562,6 +1590,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (_nodeConnector == null)
         {
             await BlockNodeStartAsync(MissingNodeConnectorMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
+            CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.InternalError);
             return false;
         }
 
@@ -1573,6 +1602,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (activeGatewayRecordId == null || activeIdentityPath == null)
         {
             await BlockNodeStartAsync(MissingActiveGatewayForNodeMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
+            CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.InternalError);
             return false;
         }
 
@@ -1581,6 +1611,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _logger.Warn("[ConnMgr] Cannot start node — gateway record not found");
             await BlockNodeStartAsync(MissingGatewayRecordForNodeMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
+            CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.InternalError);
             return false;
         }
 
@@ -1627,6 +1658,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 _transitionSemaphore.Release();
             }
+            CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.AuthFailure);
             return false;
         }
 
@@ -1665,6 +1697,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            CompleteNodeTelemetryAttempt(
+                nodeGeneration,
+                "canceled",
+                ConnectionErrorCategory.Cancelled);
             return false;
         }
         catch (Exception ex)
@@ -1682,6 +1718,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 cancellationToken,
                 expectedLifecycleGeneration,
                 nodeGeneration);
+            CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.NetworkUnreachable);
             return false;
         }
 
@@ -1689,12 +1726,38 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             Interlocked.Read(ref _nodeConnectionGeneration) == nodeGeneration;
     }
 
-    private void OnNodeStatusChanged(object? sender, ConnectionStatus status) =>
+    private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
+    {
+        var lifecycleGeneration = Interlocked.Read(ref _generation);
+        var nodeGeneration = Interlocked.Read(ref _nodeConnectionGeneration);
+        ObserveNodeTelemetryStatus(status, lifecycleGeneration, nodeGeneration);
         AsyncEventHandlerGuard.Run(
             () => OnNodeStatusChangedAsync(status),
             _logger,
             nameof(OnNodeStatusChanged),
             ex => _diagnostics.Record("node", "Node status handler failed", ex.Message));
+    }
+
+    private void OnNodeTransportConnected(object? sender, EventArgs e)
+    {
+        var lifecycleGeneration = Interlocked.Read(ref _generation);
+        var nodeGeneration = Interlocked.Read(ref _nodeConnectionGeneration);
+        if (IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+            TransitionNodeTelemetryPhase(nodeGeneration, NodeHandshakeSpanName);
+    }
+
+    private void OnNodeConnectionFailure(object? sender, GatewayErrorKind errorKind)
+    {
+        var lifecycleGeneration = Interlocked.Read(ref _generation);
+        var nodeGeneration = Interlocked.Read(ref _nodeConnectionGeneration);
+        if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+            return;
+
+        CompleteNodeTelemetryAttempt(
+            nodeGeneration,
+            "failure",
+            MapNodeConnectionErrorCategory(errorKind));
+    }
 
     private void OnNodeDeviceTokenReceived(object? sender, DeviceTokenReceivedEventArgs e)
     {
@@ -1768,6 +1831,25 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         var lifecycleGeneration = Interlocked.Read(ref _generation);
         var nodeGeneration = Interlocked.Read(ref _nodeConnectionGeneration);
+        if (e.Status == PairingStatus.Pending)
+        {
+            CompleteNodeTelemetryAttempt(
+                nodeGeneration,
+                "pairing_required",
+                ConnectionErrorCategory.PairingPending);
+        }
+        else if (e.Status == PairingStatus.Rejected)
+        {
+            CompleteNodeTelemetryAttempt(
+                nodeGeneration,
+                "pairing_rejected",
+                ConnectionErrorCategory.PairingRejected);
+        }
+        else if (e.Status == PairingStatus.Paired && _nodeConnector?.IsConnected == true)
+        {
+            CompleteNodeTelemetryAttempt(nodeGeneration, "success");
+        }
+
         AsyncEventHandlerGuard.Run(
             () => OnNodePairingStatusChangedAsync(e, lifecycleGeneration, nodeGeneration),
             _logger,
@@ -2148,7 +2230,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
 
         if (superseded != null)
-            FinishOperatorTelemetryAttempt(superseded, "superseded", null);
+            FinishConnectionTelemetryAttempt(superseded, "operator", "superseded", null);
         OpenClawTelemetry.Add(ConnectionAttempts, tags: tags);
     }
 
@@ -2218,7 +2300,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _operatorTelemetryAttempt = null;
         }
 
-        FinishOperatorTelemetryAttempt(attempt, outcome, errorCategory);
+        FinishConnectionTelemetryAttempt(attempt, "operator", outcome, errorCategory);
     }
 
     private void CancelOperatorTelemetryAttempt(
@@ -2233,17 +2315,257 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
 
         if (attempt != null)
-            FinishOperatorTelemetryAttempt(attempt, outcome, errorCategory);
+            FinishConnectionTelemetryAttempt(attempt, "operator", outcome, errorCategory);
     }
 
-    private static void FinishOperatorTelemetryAttempt(
+    private void ObserveNodeTelemetryStatus(
+        ConnectionStatus status,
+        long lifecycleGeneration,
+        long nodeGeneration)
+    {
+        if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+            return;
+
+        switch (status)
+        {
+            case ConnectionStatus.Connecting:
+                if (!TransitionNodeTelemetryPhase(nodeGeneration, NodeTransportSpanName))
+                {
+                    StartNodeTelemetryAttempt(
+                        lifecycleGeneration,
+                        nodeGeneration,
+                        "reconnect",
+                        NodeTransportSpanName);
+                }
+                break;
+            case ConnectionStatus.Connected when _nodeConnector?.PairingStatus == PairingStatus.Paired:
+                CompleteNodeTelemetryAttempt(nodeGeneration, "success");
+                break;
+            case ConnectionStatus.Disconnected:
+                // Pairing and classified gateway failures complete through their richer
+                // events first. Disconnected has no reason payload and covers both orderly
+                // remote closes and premature transport loss, so server_close is the
+                // existing finite fallback rather than a claim about the underlying cause.
+                CompleteNodeTelemetryAttempt(
+                    nodeGeneration,
+                    "failure",
+                    ConnectionErrorCategory.ServerClose);
+                break;
+            case ConnectionStatus.Error:
+                CompleteNodeTelemetryAttempt(
+                    nodeGeneration,
+                    "failure",
+                    ConnectionErrorCategory.NetworkUnreachable);
+                break;
+        }
+    }
+
+    private void StartNodeTelemetryAttempt(
+        long lifecycleGeneration,
+        long nodeGeneration,
+        string operation,
+        string initialPhaseSpanName)
+    {
+        if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+            return;
+
+        var tags = new[]
+        {
+            OpenClawTelemetryTag.String(RoleTag, "node"),
+            OpenClawTelemetryTag.String(OperationTag, operation),
+            OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "gateway_connection")
+        };
+        var rootActivity = OpenClawTelemetry.StartDetachedActivity(
+            operation == "connect" ? NodeConnectSpanName : NodeReconnectSpanName,
+            tags);
+        var attempt = new TelemetryAttempt(
+            nodeGeneration,
+            operation,
+            Stopwatch.GetTimestamp(),
+            rootActivity)
+        {
+            PhaseActivity = rootActivity == null
+                ? null
+                : OpenClawTelemetry.StartDetachedActivity(
+                    initialPhaseSpanName,
+                    rootActivity.Context,
+                    tags),
+            PhaseName = initialPhaseSpanName
+        };
+        TelemetryAttempt? superseded = null;
+        var accepted = false;
+
+        lock (_telemetryLock)
+        {
+            if (IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+            {
+                superseded = _nodeTelemetryAttempt;
+                _nodeTelemetryAttempt = attempt;
+                accepted = true;
+            }
+        }
+
+        if (!accepted)
+        {
+            OpenClawTelemetry.Add(ConnectionAttempts, tags: tags);
+            FinishConnectionTelemetryAttempt(attempt, "node", "superseded", null);
+            return;
+        }
+
+        if (superseded != null)
+            FinishConnectionTelemetryAttempt(superseded, "node", "superseded", null);
+        OpenClawTelemetry.Add(ConnectionAttempts, tags: tags);
+    }
+
+    private static void RecordNodePreflightTelemetryFailure(ConnectionErrorCategory errorCategory)
+    {
+        var tags = new[]
+        {
+            OpenClawTelemetryTag.String(RoleTag, "node"),
+            OpenClawTelemetryTag.String(OperationTag, "connect"),
+            OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "gateway_connection")
+        };
+        var rootActivity = OpenClawTelemetry.StartDetachedActivity(NodeConnectSpanName, tags);
+        var attempt = new TelemetryAttempt(
+            Generation: 0,
+            Operation: "connect",
+            StartTimestamp: Stopwatch.GetTimestamp(),
+            Activity: rootActivity)
+        {
+            PhaseActivity = rootActivity == null
+                ? null
+                : OpenClawTelemetry.StartDetachedActivity(
+                    NodePrepareSpanName,
+                    rootActivity.Context,
+                    tags)
+        };
+
+        OpenClawTelemetry.Add(ConnectionAttempts, tags: tags);
+        FinishConnectionTelemetryAttempt(attempt, "node", "failure", errorCategory);
+    }
+
+    private bool TransitionNodeTelemetryPhase(long nodeGeneration, string spanName)
+    {
+        TelemetryAttempt attempt;
+        Activity? previousPhase;
+        ActivityContext parentContext;
+        string operation;
+        long phaseGeneration;
+
+        lock (_telemetryLock)
+        {
+            if (_nodeTelemetryAttempt is not { } active ||
+                active.Generation != nodeGeneration)
+            {
+                return false;
+            }
+
+            if (active.PhaseName == spanName)
+                return true;
+
+            if (active.Activity == null)
+            {
+                active.PhaseName = spanName;
+                return true;
+            }
+
+            attempt = active;
+            previousPhase = attempt.PhaseActivity;
+            attempt.PhaseActivity = null;
+            attempt.PhaseName = null;
+            phaseGeneration = ++attempt.PhaseGeneration;
+            parentContext = attempt.Activity.Context;
+            operation = attempt.Operation;
+        }
+
+        FinishTelemetryActivity(previousPhase, "success", null);
+        var nextPhase = OpenClawTelemetry.StartDetachedActivity(
+            spanName,
+            parentContext,
+            [
+                OpenClawTelemetryTag.String(RoleTag, "node"),
+                OpenClawTelemetryTag.String(OperationTag, operation),
+                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "gateway_connection")
+            ]);
+
+        var accepted = false;
+        lock (_telemetryLock)
+        {
+            if (ReferenceEquals(_nodeTelemetryAttempt, attempt) &&
+                attempt.PhaseGeneration == phaseGeneration)
+            {
+                attempt.PhaseActivity = nextPhase;
+                attempt.PhaseName = spanName;
+                accepted = true;
+            }
+        }
+
+        if (!accepted)
+            FinishTelemetryActivity(nextPhase, "superseded", null);
+        return true;
+    }
+
+    private void CompleteNodeTelemetryAttempt(
+        long nodeGeneration,
+        string outcome,
+        ConnectionErrorCategory? errorCategory = null)
+    {
+        TelemetryAttempt? attempt;
+        lock (_telemetryLock)
+        {
+            if (_nodeTelemetryAttempt is not { } active ||
+                active.Generation != nodeGeneration)
+            {
+                return;
+            }
+
+            attempt = active;
+            _nodeTelemetryAttempt = null;
+        }
+
+        FinishConnectionTelemetryAttempt(attempt, "node", outcome, errorCategory);
+    }
+
+    private void CancelNodeTelemetryAttempt(
+        string outcome,
+        ConnectionErrorCategory? errorCategory)
+    {
+        TelemetryAttempt? attempt;
+        lock (_telemetryLock)
+        {
+            attempt = _nodeTelemetryAttempt;
+            _nodeTelemetryAttempt = null;
+        }
+
+        if (attempt != null)
+            FinishConnectionTelemetryAttempt(attempt, "node", outcome, errorCategory);
+    }
+
+    private static ConnectionErrorCategory MapNodeConnectionErrorCategory(GatewayErrorKind errorKind) =>
+        errorKind switch
+        {
+            GatewayErrorKind.Auth or
+            GatewayErrorKind.TokenDrift or
+            GatewayErrorKind.ScopeMismatch => ConnectionErrorCategory.AuthFailure,
+            GatewayErrorKind.PairingRequired => ConnectionErrorCategory.PairingPending,
+            GatewayErrorKind.PairingRejected => ConnectionErrorCategory.PairingRejected,
+            GatewayErrorKind.RateLimited => ConnectionErrorCategory.RateLimited,
+            GatewayErrorKind.Tunnel => ConnectionErrorCategory.SshTunnelFailure,
+            GatewayErrorKind.Network or
+            GatewayErrorKind.Tls => ConnectionErrorCategory.NetworkUnreachable,
+            GatewayErrorKind.Server => ConnectionErrorCategory.ServerClose,
+            _ => ConnectionErrorCategory.ProtocolMismatch
+        };
+
+    private static void FinishConnectionTelemetryAttempt(
         TelemetryAttempt attempt,
+        string role,
         string outcome,
         ConnectionErrorCategory? errorCategory)
     {
         var tags = new List<OpenClawTelemetryTag>
         {
-            OpenClawTelemetryTag.String(RoleTag, "operator"),
+            OpenClawTelemetryTag.String(RoleTag, role),
             OpenClawTelemetryTag.String(OperationTag, attempt.Operation),
             OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, outcome)
         };
@@ -2347,6 +2669,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             lock (_nodeOperationLock)
                 Interlocked.Increment(ref _nodeConnectionGeneration);
+            CancelNodeTelemetryAttempt("canceled", ConnectionErrorCategory.Cancelled);
         }
         finally
         {
@@ -2429,6 +2752,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (_disposed) return;
         _disposed = true;
         CancelOperatorTelemetryAttempt("disposed", ConnectionErrorCategory.Disposed);
+        CancelNodeTelemetryAttempt("disposed", ConnectionErrorCategory.Disposed);
         _operationCts?.Cancel();
 
         // Unsubscribe from node events before disposing the semaphore
@@ -2438,6 +2762,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _nodeConnector.StatusChanged -= OnNodeStatusChanged;
             _nodeConnector.PairingStatusChanged -= OnNodePairingStatusChanged;
             _nodeConnector.DeviceTokenReceived -= OnNodeDeviceTokenReceived;
+            if (_nodeConnector is INodeConnectorTelemetryEvents telemetryEvents)
+            {
+                telemetryEvents.TransportConnected -= OnNodeTransportConnected;
+                telemetryEvents.ConnectionFailure -= OnNodeConnectionFailure;
+            }
         }
         // Acquire semaphore briefly to ensure no in-flight reconnect/switch is mid-transition.
         // Use a short timeout — if something is stuck, proceed with disposal anyway,
@@ -2487,6 +2816,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         Activity? Activity)
     {
         public Activity? PhaseActivity { get; set; }
+        public string? PhaseName { get; set; }
         public long PhaseGeneration { get; set; }
     }
 

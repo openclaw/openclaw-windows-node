@@ -781,6 +781,7 @@ public class GatewayConnectionManagerTests : IDisposable
         SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
         _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
         _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        using var activities = new ActivityCollector();
         var nodeConnector = new ScriptedNodeConnector
         {
             ConnectAction = (_, _) => throw new InvalidOperationException("connector boom")
@@ -807,6 +808,256 @@ public class GatewayConnectionManagerTests : IDisposable
             snapshot.NodeState == RoleConnectionState.Error &&
             snapshot.NodeError?.Contains("connector boom", StringComparison.OrdinalIgnoreCase) == true);
         Assert.NotEqual(RoleConnectionState.Connecting, snapshots.Last().NodeState);
+        var nodeRoot = Assert.Single(
+            activities.GetStopped(),
+            activity => activity.OperationName == GatewayConnectionManager.NodeConnectSpanName);
+        Assert.Equal("failure", nodeRoot.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "networkunreachable",
+            nodeRoot.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_NodePaired_EmitsCompletedNodePhaseTree()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        using var activities = new ActivityCollector();
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            ConnectAction = (node, _) =>
+            {
+                node.SimulateStatus(ConnectionStatus.Connecting);
+                node.SimulateTransportConnected();
+                node.SimulatePairing(PairingStatus.Paired);
+                node.SimulateStatus(ConnectionStatus.Connected);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        var stopped = activities.GetStopped();
+        var root = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.NodeConnectSpanName);
+        Assert.Equal(ActivityStatusCode.Ok, root.Status);
+        Assert.Equal("success", root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("node", root.GetTagItem("openclaw.connection.role"));
+        Assert.Null(root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+        AssertNodePhases(stopped, root, includePrepare: true);
+    }
+
+    [Fact]
+    public async Task HandshakeSucceeded_NodePairingPending_ClosesAttemptBeforeConnectedStatus()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        using var activities = new ActivityCollector();
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            ConnectAction = (node, _) =>
+            {
+                node.SimulateStatus(ConnectionStatus.Connecting);
+                node.SimulateTransportConnected();
+                node.SimulatePairing(PairingStatus.Pending);
+                node.SimulateStatus(ConnectionStatus.Connected);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        var stopped = activities.GetStopped();
+        var root = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.NodeConnectSpanName);
+        Assert.Equal(ActivityStatusCode.Unset, root.Status);
+        Assert.Equal(
+            "pairing_required",
+            root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "pairingpending",
+            root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+        AssertNodePhases(stopped, root, includePrepare: true, terminalOutcome: "pairing_required");
+    }
+
+    [Fact]
+    public async Task NodeAutomaticRecovery_EmitsReconnectTransportAndHandshakePhases()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        using var activities = new ActivityCollector();
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            ConnectAction = (node, _) =>
+            {
+                node.SimulateStatus(ConnectionStatus.Connecting);
+                node.SimulateTransportConnected();
+                node.SimulatePairing(PairingStatus.Paired);
+                node.SimulateStatus(ConnectionStatus.Connected);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        nodeConnector.SimulateStatus(ConnectionStatus.Connecting);
+        nodeConnector.SimulateStatus(ConnectionStatus.Connecting);
+        nodeConnector.SimulateTransportConnected();
+        nodeConnector.SimulatePairing(PairingStatus.Paired);
+        nodeConnector.SimulateStatus(ConnectionStatus.Connected);
+
+        var stopped = activities.GetStopped();
+        var reconnectRoot = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.NodeReconnectSpanName);
+        Assert.Equal("success", reconnectRoot.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        AssertNodePhases(stopped, reconnectRoot, includePrepare: false);
+    }
+
+    [Fact]
+    public async Task DisconnectAsync_StaleConnectingDuringRetirement_ClosesReconnectAttempt()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        using var activities = new ActivityCollector();
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            ConnectAction = (node, _) =>
+            {
+                node.SimulateStatus(ConnectionStatus.Connecting);
+                node.SimulateTransportConnected();
+                node.SimulatePairing(PairingStatus.Paired);
+                node.SimulateStatus(ConnectionStatus.Connected);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+        nodeConnector.DisconnectAction = node =>
+            node.SimulateStatus(ConnectionStatus.Connecting);
+
+        await manager.DisconnectAsync();
+
+        var reconnectRoot = Assert.Single(
+            activities.GetStopped(),
+            activity => activity.OperationName == GatewayConnectionManager.NodeReconnectSpanName);
+        Assert.Equal(
+            "canceled",
+            reconnectRoot.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+    }
+
+    [Fact]
+    public async Task NodeStart_RetirementFailureAfterConnecting_ClosesReconnectAttempt()
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        using var activities = new ActivityCollector();
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            DisconnectAction = node =>
+                node.SimulateStatus(ConnectionStatus.Connecting),
+            DisconnectException = new InvalidOperationException("retirement failed")
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        var stopped = activities.GetStopped();
+        var reconnectRoots = stopped
+            .Where(activity => activity.OperationName == GatewayConnectionManager.NodeReconnectSpanName)
+            .ToArray();
+        Assert.Equal(2, reconnectRoots.Length);
+        Assert.Single(reconnectRoots, activity =>
+            activity.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString() == "canceled");
+        Assert.Single(reconnectRoots, activity =>
+            activity.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString() == "superseded");
+        var failedConnect = Assert.Single(stopped, activity =>
+            activity.OperationName == GatewayConnectionManager.NodeConnectSpanName &&
+            activity.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString() == "failure");
+        Assert.Equal(
+            "internalerror",
+            failedConnect.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+    }
+
+    [Theory]
+    [InlineData(GatewayErrorKind.Auth, "authfailure")]
+    [InlineData(GatewayErrorKind.RateLimited, "ratelimited")]
+    [InlineData(GatewayErrorKind.Server, "serverclose")]
+    [InlineData(GatewayErrorKind.Tunnel, "sshtunnelfailure")]
+    public async Task NodeClassifiedFailure_UsesSpecificTelemetryCategory(
+        GatewayErrorKind errorKind,
+        string expectedCategory)
+    {
+        SetupGateway("gw-remote", "wss://remote.example", isLocal: false);
+        _resolver.OperatorCredential = new GatewayCredential("op-tok", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-tok", false, "test");
+        using var activities = new ActivityCollector();
+        var nodeConnector = new ScriptedNodeConnector
+        {
+            ConnectAction = (node, _) =>
+            {
+                node.SimulateStatus(ConnectionStatus.Connecting);
+                node.SimulateTransportConnected();
+                node.SimulateConnectionFailure(errorKind);
+                node.SimulateStatus(ConnectionStatus.Error);
+            }
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: nodeConnector,
+            isNodeEnabled: () => true);
+
+        await manager.ConnectAsync("gw-remote");
+        await InvokeHandshakeSucceededAsync(manager);
+
+        var root = Assert.Single(
+            activities.GetStopped(),
+            activity => activity.OperationName == GatewayConnectionManager.NodeConnectSpanName);
+        Assert.Equal(
+            expectedCategory,
+            root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
     [Fact]
@@ -1220,6 +1471,7 @@ public class GatewayConnectionManagerTests : IDisposable
         SetupGateway("gw-1", "wss://test");
         _resolver.OperatorCredential = null;
         _resolver.NodeCredential = null;
+        using var activities = new ActivityCollector();
         var node = new CountingNodeConnector();
         using var manager = new GatewayConnectionManager(
             _resolver,
@@ -1237,6 +1489,13 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(OverallConnectionState.Error, manager.CurrentSnapshot.OverallState);
         Assert.Contains("No node credential", manager.CurrentSnapshot.NodeError);
         Assert.Null(manager.CurrentSnapshot.NodeCredentialSource);
+        var root = Assert.Single(
+            activities.GetStopped(),
+            activity => activity.OperationName == GatewayConnectionManager.NodeConnectSpanName);
+        Assert.Equal("failure", root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "authfailure",
+            root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
     [Fact]
@@ -1321,6 +1580,7 @@ public class GatewayConnectionManagerTests : IDisposable
         SetupGateway("gw-1", "wss://test");
         _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
         _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        using var activities = new ActivityCollector();
         var node = new SupersedingNodeConnector();
         using var manager = new GatewayConnectionManager(
             _resolver,
@@ -1348,6 +1608,16 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.DoesNotContain(
             manager.Diagnostics.GetAll(),
             diagnostic => diagnostic.Message == "Node connect failed");
+
+        await manager.DisconnectAsync();
+        var nodeRoots = activities.GetStopped()
+            .Where(activity => activity.OperationName == GatewayConnectionManager.NodeConnectSpanName)
+            .ToArray();
+        Assert.Equal(2, nodeRoots.Length);
+        Assert.Single(nodeRoots, activity =>
+            activity.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString() == "superseded");
+        Assert.Single(nodeRoots, activity =>
+            activity.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString() == "canceled");
     }
 
     [Theory]
@@ -1580,6 +1850,7 @@ public class GatewayConnectionManagerTests : IDisposable
         SetupGateway("gw-1", "wss://test");
         _resolver.OperatorCredential = new GatewayCredential("op", false, "test");
         _resolver.NodeCredential = new GatewayCredential("nd", false, "test");
+        using var activities = new ActivityCollector();
         var node = new ScriptedNodeConnector
         {
             ConnectAction = (s, _) =>
@@ -1597,6 +1868,17 @@ public class GatewayConnectionManagerTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => manager.EnsureNodeConnectedAsync());
+
+        var root = Assert.Single(
+            activities.GetStopped(),
+            activity => activity.OperationName == GatewayConnectionManager.NodeConnectSpanName);
+        Assert.Equal(ActivityStatusCode.Error, root.Status);
+        Assert.Equal(
+            "pairing_rejected",
+            root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "pairingrejected",
+            root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
     [Fact]
@@ -1666,6 +1948,47 @@ public class GatewayConnectionManagerTests : IDisposable
             Assert.Equal(
                 "success",
                 phase.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString());
+        }
+    }
+
+    private static void AssertNodePhases(
+        Activity[] stopped,
+        Activity root,
+        bool includePrepare,
+        string terminalOutcome = "success")
+    {
+        var phaseNames = includePrepare
+            ? new[]
+            {
+                GatewayConnectionManager.NodePrepareSpanName,
+                GatewayConnectionManager.NodeTransportSpanName,
+                GatewayConnectionManager.NodeHandshakeSpanName
+            }
+            :
+            [
+                GatewayConnectionManager.NodeTransportSpanName,
+                GatewayConnectionManager.NodeHandshakeSpanName
+            ];
+
+        foreach (var phaseName in phaseNames)
+        {
+            var phase = Assert.Single(stopped, activity =>
+                activity.OperationName == phaseName &&
+                activity.TraceId == root.TraceId &&
+                activity.ParentSpanId == root.SpanId);
+            var expectedOutcome = phaseName == GatewayConnectionManager.NodeHandshakeSpanName
+                ? terminalOutcome
+                : "success";
+            Assert.Equal(
+                expectedOutcome,
+                phase.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())?.ToString());
+        }
+
+        if (!includePrepare)
+        {
+            Assert.DoesNotContain(stopped, activity =>
+                activity.OperationName == GatewayConnectionManager.NodePrepareSpanName &&
+                activity.TraceId == root.TraceId);
         }
     }
 
@@ -2290,7 +2613,7 @@ public class GatewayConnectionManagerTests : IDisposable
     /// Test connector that fires StatusChanged / PairingStatusChanged events synchronously
     /// so tests can drive the manager's state machine through realistic transitions.
     /// </summary>
-    private sealed class ScriptedNodeConnector : INodeConnector
+    private sealed class ScriptedNodeConnector : INodeConnector, INodeConnectorTelemetryEvents
     {
         public int ConnectCount { get; private set; }
         public string? LastGatewayUrl { get; private set; }
@@ -2304,10 +2627,14 @@ public class GatewayConnectionManagerTests : IDisposable
         /// gateway URL — use SimulateStatus / SimulatePairing to walk the state machine.
         /// </summary>
         public Action<ScriptedNodeConnector, string>? ConnectAction { get; set; }
+        public Action<ScriptedNodeConnector>? DisconnectAction { get; set; }
+        public Exception? DisconnectException { get; set; }
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
         public event EventHandler<DeviceTokenReceivedEventArgs>? DeviceTokenReceived;
+        public event EventHandler? TransportConnected;
+        public event EventHandler<GatewayErrorKind>? ConnectionFailure;
 #pragma warning disable CS0067 // ClientCreated unused in current tests
         public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
 #pragma warning restore CS0067
@@ -2333,6 +2660,9 @@ public class GatewayConnectionManagerTests : IDisposable
 
         public Task DisconnectAsync()
         {
+            DisconnectAction?.Invoke(this);
+            if (DisconnectException != null)
+                throw DisconnectException;
             IsConnected = false;
             PairingStatus = PairingStatus.Unknown;
             return Task.CompletedTask;
@@ -2349,6 +2679,12 @@ public class GatewayConnectionManagerTests : IDisposable
             PairingStatus = status;
             PairingStatusChanged?.Invoke(this, new PairingStatusEventArgs(status, deviceId: "scripted-node", requestId: requestId));
         }
+
+        public void SimulateTransportConnected() =>
+            TransportConnected?.Invoke(this, EventArgs.Empty);
+
+        public void SimulateConnectionFailure(GatewayErrorKind errorKind) =>
+            ConnectionFailure?.Invoke(this, errorKind);
 
         public void SimulateDeviceTokenReceived(string token, string role = "node", string[]? scopes = null) =>
             DeviceTokenReceived?.Invoke(this, new DeviceTokenReceivedEventArgs(token, scopes, role));
