@@ -36,14 +36,6 @@ Notes:
 
 Run the required validation above for every code change, then add the targeted path that matches the touched subsystem.
 
-### Parallels Windows VM setup and proof
-
-Use `.agents/skills/openclaw-parallels-windows/SKILL.md` to prepare or restore the macOS-hosted
-Parallels Windows baseline, manage snapshots, run the required suites inside the guest, or debug
-the companion-specific app layer. General VM lifecycle, `prlctl`, WSL, Git/Node, snapshot, and
-OpenClaw smoke policy is owned by sibling `openclaw`; this repo wrapper adds only .NET, Windows SDK,
-WebView2, the app checkout, app-layer snapshots, required native suites, and native proof routing.
-
 ### MXC / `system.run` / Windows node command execution
 
 When changing MXC sandboxing, `system.run`, exec approvals, Windows node command execution, gateway setup/connect E2E behavior, or files under `src\OpenClaw.Shared\Mxc`, run:

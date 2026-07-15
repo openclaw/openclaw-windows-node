@@ -1,4 +1,0 @@
-interface:
-  display_name: "OpenClaw Parallels Windows"
-  short_description: "Prepare and test OpenClaw Windows VMs"
-  default_prompt: "Use $openclaw-parallels-windows to prepare a Parallels Windows VM, manage snapshots, and run OpenClaw Windows validation."

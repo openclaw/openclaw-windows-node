@@ -7,6 +7,8 @@ description: "Plan and collect OpenClaw Windows validation/proof: tests, rubber-
 
 Use for changes that affect tray UX, Settings, onboarding, chat/canvas, Command Center, Windows node capabilities, local MCP, gateway connection/pairing, permissions, diagnostics, or agent-facing instructions.
 
+If the validation host is macOS, read [PARALLELS.md](PARALLELS.md) for the optional local Parallels Windows VM workflow.
+
 ## Rules
 
 - Required automated/focused tests are mandatory. Do not ask to skip them.
