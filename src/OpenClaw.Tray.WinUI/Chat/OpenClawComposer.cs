@@ -16,27 +16,36 @@ using System.Threading.Tasks;
 using Windows.UI;
 using static OpenClawTray.FunctionalUI.Factories;
 using static OpenClawTray.FunctionalUI.Core.Theme;
+using CoreMenuFlyoutItemBase = OpenClawTray.FunctionalUI.Core.MenuFlyoutItemBase;
 
 namespace OpenClawTray.Chat;
 
 /// <summary>
-/// Three-row composer surface that mirrors Kenny Hong's <c>ChatShell</c> XAML
-/// design (kenehong/native-chat-v2):
+/// Unified chat composer surface matching the seeded design-system
+/// <c>ChatComposer</c> pattern (see <c>.agents/design/components.jsx</c>).
 ///
-/// <list type="number">
-///   <item><description>Row 1 — three compact <see cref="Microsoft.UI.Xaml.Controls.ComboBox"/>es:
-///     <c>Channel</c> (agent identity), <c>Model</c>, and <c>Reasoning</c> mode.</description></item>
-///   <item><description>Row 2 — multi-line message <see cref="Microsoft.UI.Xaml.Controls.TextBox"/>
-///     with <c>Message Assistant (Enter to send)</c> placeholder.</description></item>
-///   <item><description>Row 3 — four right-aligned action buttons (transparent attach / mic / more,
-///     plus a filled accent <c>Send</c> button).</description></item>
+/// A single rounded (Fluent OverlayCornerRadius / 8px), 1px-line-bordered card
+/// holds a transparent auto-growing message
+/// <see cref="Microsoft.UI.Xaml.Controls.TextBox"/> ABOVE a space-between
+/// toolbar row:
+///
+/// <list type="bullet">
+///   <item><description>LEFT cluster — an Add (+) subtle icon button followed by
+///     subtle text+chevron pickers for the session/channel, model, and reasoning
+///     effort (menu-flyout dropdowns, not ComboBoxes).</description></item>
+///   <item><description>RIGHT cluster — Dictate and speaker subtle icon buttons
+///     plus one primary action slot that switches between accent <c>Send</c> and
+///     neutral <c>Stop</c>.</description></item>
 /// </list>
 ///
-/// Replaces the original <c>InputBar</c> + <c>StatusBar</c> pair from the
-/// previous native chat prototype so our chat surface no longer carries two
-/// separate footer rows. The status, working indicator, and permission
-/// banner that <c>InputBar</c> used to render are preserved here above the
-/// composer.
+/// Only <c>Send</c> carries the accent; every other control is subtle and uses
+/// Fluent theme resources (<c>SubtleFillColorSecondaryBrush</c> on hover,
+/// <c>SubtleFillColorTertiaryBrush</c> on press) so light/dark/high-contrast
+/// stay correct with no hard-coded colors. The surface border turns accent while
+/// recording. Tool-call/usage visibility now lives in the Settings page "Chat"
+/// section; speaker mute remains available inline and is mirrored by the
+/// read-aloud setting. The working indicator and permission banner render above
+/// the composer / inline in the timeline respectively.
 /// </summary>
 public record OpenClawComposerProps(
     string ConnectionState,
@@ -68,8 +77,6 @@ public record OpenClawComposerProps(
     float VoiceAudioLevel = 0f,
     Action<Action>? RegisterVoiceStarter = null,
     Action<ChatAttachment>? OnAttachmentPasted = null,
-    bool ShowToolCalls = true,
-    Action<bool>? OnShowToolCallsChanged = null,
     bool IsCompact = false,
     IReadOnlyList<ChatModelChoice>? ModelChoices = null,
     Action? OnModelCleared = null,
@@ -91,9 +98,6 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
     // model id string. Selecting it routes to OnModelCleared (tri-state clear)
     // rather than OnModelChanged.
     private static readonly object ClearModelTag = new();
-    // Reserved id used to represent the "default / clear" model row in the rich ComboBox
-    // primitive (which keys selection by string id). Cannot collide with a real SelectionId.
-    private const string ClearModelId = "\u0000__default__";
 
     // Thinking levels matching the gateway's sessions.patch thinkingLevel values.
     // "medium" is the default when the session has no explicit thinkingLevel set.
@@ -116,9 +120,12 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // command menu that mirrors the gateway/web "type / to open" UX.
         var slashMenuState = UseState<(bool Active, string Query, int Index, bool ArgsMode)>((false, "", 0, false), threadSafe: true);
 
+        // Surface uses the Fluent OverlayCornerRadius (8); the small controls
+        // inside the toolbar (icon buttons + inline pickers) use the tighter
+        // ControlCornerRadius (4) so they read as quiet Fluent controls.
         var composerCornerRadius = new CornerRadius(8);
+        var controlCornerRadius = new CornerRadius(4);
         const double composerIconSize = 16;
-        const double sendButtonSize = 40;
 
         // Version bump triggers a re-render on send so the cleared ref value
         // is pushed to the TextBox control.
@@ -246,37 +253,17 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             _ => LocalizationHelper.GetString("Chat_Composer_Placeholder_NotConnected")
         };
 
-        // ── Row 1: three compact dropdowns ─────────────────────────────
-        // Grouped session picker via the reconciled rich ComboBox primitive. The primitive is
-        // preserved by render path and only rebuilds its rows when the item set changes, so an
-        // open dropdown survives unrelated status/thinking re-renders (the #970 regression).
-        var groups = Props.AvailableChannels;
-        var multipleGroups = groups.Length > 1;
-        var sessionItems = new List<ComboItem>();
-        foreach (var group in groups)
-        {
-            if (multipleGroups)
-                sessionItems.Add(new ComboItem("", group.AgentLabel, Enabled: false, IsHeader: true));
-            foreach (var session in group.Sessions)
-                sessionItems.Add(new ComboItem(session.Id, session.Title, Indent: multipleGroups ? 8 : 0));
-        }
-
-        var onChannelChanged = Props.OnChannelChanged;
-        var channelCombo = ComboBox(sessionItems, Props.ChannelId ?? "", id => onChannelChanged(id))
-            .Set(cb =>
-            {
-                cb.MinWidth = 0;
-                cb.Width = double.NaN;
-                cb.Height = 28;
-                cb.FontSize = 11;
-                cb.Padding = new Thickness(8, 0, 4, 0);
-                cb.CornerRadius = composerCornerRadius;
-                cb.HorizontalAlignment = HorizontalAlignment.Stretch;
-                cb.VerticalAlignment = VerticalAlignment.Center;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-                    cb,
-                    LocalizationHelper.GetString("Chat_Composer_Accessibility_Session"));
-            });
+        // ── Toolbar pickers: session / model / reasoning ───────────────
+        // These replace the old ComboBoxes with quiet Fluent "text + chevron"
+        // pickers. The model and reasoning pickers are MenuFlyouts whose current
+        // selection is marked with a native checkmark (ToggleMenuItem); a
+        // disabled MenuItem renders unavailable rows. The session picker is a
+        // richer content flyout (built below, once model choices are resolved) so
+        // each session can show its associated model as a second-line subtext.
+        // All pickers carry the same SubtleButton hover/press treatment as the
+        // icon buttons — no accent, no hard-coded colors — so light/dark/
+        // high-contrast all stay correct. Menus open upward (Top) since the
+        // composer sits at the bottom of the chat surface.
 
         // ── Model picker (provider-rich) ─────────────────────────────────
         IReadOnlyList<ChatModelChoice> modelChoices = Props.ModelChoices is { Count: > 0 } mc
@@ -324,74 +311,180 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             modelEntries.Add((Props.CurrentModel ?? "model", Props.CurrentModel ?? "", false, true));
         }
 
-        // Provider-rich model picker via the same reconciled primitive. Unavailable rows stay
-        // visible but disabled; the default/clear row maps to a reserved id.
-        var modelItems = new List<ComboItem>(modelEntries.Count);
-        string? modelSelectedId = null;
+        // Model menu: selectable rows become ToggleMenuItems (the current model
+        // is checked); explicitly unavailable rows render as disabled MenuItems
+        // so they stay visible but can't be chosen. The "Default" entry clears
+        // the session's explicit override (tri-state clear).
+        var modelMenuItems = new List<CoreMenuFlyoutItemBase>(modelEntries.Count);
         foreach (var entry in modelEntries)
         {
-            var id = ReferenceEquals(entry.Tag, ClearModelTag)
-                ? ClearModelId
-                : entry.Tag as string ?? "";
-            modelItems.Add(new ComboItem(id, entry.Label, Enabled: entry.Selectable));
-            if (entry.IsCurrent) modelSelectedId ??= id;
+            if (entry.Selectable)
+            {
+                var tag = entry.Tag;
+                modelMenuItems.Add(ToggleMenuItem(
+                    entry.Label,
+                    isChecked: entry.IsCurrent,
+                    onClick: () =>
+                    {
+                        if (ReferenceEquals(tag, ClearModelTag))
+                            Props.OnModelCleared?.Invoke();
+                        else if (tag is string id && !string.IsNullOrEmpty(id))
+                            Props.OnModelChanged(id);
+                    }));
+            }
+            else
+            {
+                modelMenuItems.Add(MenuItem(entry.Label) with { IsEnabled = false });
+            }
         }
+        var modelMenu = MenuItems(FlyoutPlacementMode.Top, modelMenuItems.ToArray());
 
-        var onModelChanged = Props.OnModelChanged;
-        var onModelCleared = Props.OnModelCleared;
-        var modelCombo = ComboBox(modelItems, modelSelectedId, id =>
-            {
-                if (id == ClearModelId)
-                    onModelCleared?.Invoke();
-                else if (!string.IsNullOrEmpty(id))
-                    onModelChanged(id);
-            })
-            .Set(cb =>
-            {
-                cb.MinWidth = 0;
-                cb.Width = double.NaN;
-                cb.Height = 28;
-                cb.FontSize = 11;
-                cb.Padding = new Thickness(8, 0, 4, 0);
-                cb.CornerRadius = composerCornerRadius;
-                cb.HorizontalAlignment = HorizontalAlignment.Stretch;
-                cb.VerticalAlignment = VerticalAlignment.Center;
-                cb.IsEnabled = messageOptionControlsEnabled;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-                    cb,
-                    LocalizationHelper.GetString("Chat_Composer_Accessibility_Model"));
-            })
-            .VAlign(VerticalAlignment.Center);
+        // Compact label for the model picker button — just the model's display
+        // name (menu rows carry the provider/context/state detail).
+        string modelPickerLabel = trackingDefault
+            ? (defaultChoice?.DisplayName ?? "Default")
+            : (currentChoice?.DisplayName ?? Props.CurrentModel ?? "Model");
 
         var thinkingLevel = Props.CurrentThinkingLevel ?? "medium";
         var thinkingIndex = Array.IndexOf(ThinkingLevelIds, thinkingLevel);
         if (thinkingIndex < 0) thinkingIndex = 3; // default to "medium (default)"
 
-        var reasoningCombo = ComboBox(ThinkingLevelLabels, thinkingIndex, idx =>
+        var reasoningMenuItems = new CoreMenuFlyoutItemBase[ThinkingLevelLabels.Length];
+        for (int i = 0; i < ThinkingLevelLabels.Length; i++)
         {
-            if (idx >= 0 && idx < ThinkingLevelIds.Length)
-                Props.OnThinkingLevelChanged(ThinkingLevelIds[idx]);
-        })
-            .Set(cb =>
-            {
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-                    cb,
-                    LocalizationHelper.GetString("Chat_Composer_Accessibility_Reasoning"));
-                cb.MinWidth = 0;
-                cb.Width = double.NaN;
-                cb.Height = 28;
-                cb.FontSize = 11;
-                cb.Padding = new Thickness(8, 0, 4, 0);
-                cb.CornerRadius = composerCornerRadius;
-                cb.HorizontalAlignment = HorizontalAlignment.Stretch;
-                cb.IsEnabled = messageOptionControlsEnabled;
-            }).VAlign(VerticalAlignment.Center);
+            var levelIndex = i;
+            reasoningMenuItems[i] = ToggleMenuItem(
+                ThinkingLevelLabels[i],
+                isChecked: i == thinkingIndex,
+                onClick: () =>
+                {
+                    if (levelIndex >= 0 && levelIndex < ThinkingLevelIds.Length)
+                        Props.OnThinkingLevelChanged(ThinkingLevelIds[levelIndex]);
+                });
+        }
+        var reasoningMenu = MenuItems(FlyoutPlacementMode.Top, reasoningMenuItems);
 
-        Element dropdownsRow = Grid([GridSize.Star(1.2), GridSize.Star(), GridSize.Star(0.62)], [GridSize.Auto],
-            channelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 0),
-            modelCombo.Margin(0, 0, 6, 0).HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 1),
-            reasoningCombo.HAlign(HorizontalAlignment.Stretch).Grid(row: 0, column: 2)
-        ).HAlign(HorizontalAlignment.Stretch);
+        // ── Session picker content (two-line rows) ─────────────────────────
+        // Each session row shows its title on the first line and the model it is
+        // configured to use as a muted second-line subtext, so switching model in
+        // the model picker (which patches the current session) is reflected here.
+        // A leading checkmark column marks the active session. Rows use the same
+        // subtle hover/press theme resources as the other pickers.
+        var sessionPrimaryBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
+        var sessionMutedBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
+
+        string ResolveSessionModelCaption(string? modelId, string? provider)
+        {
+            // Mirror ChatModelLabels.BuildDefaultEntryLabel's un-localized
+            // "Default" convention so the session subtext matches the model
+            // picker without introducing new (translated) resource keys.
+            if (ChatModelLabels.IsTrackingDefault(modelId))
+                return "Default";
+            var selId = ChatModelChoice.ResolveSelectionId(modelId, provider, modelChoices);
+            foreach (var c in modelChoices)
+                if (string.Equals(c.SelectionId, selId, StringComparison.Ordinal))
+                    return ChatModelLabels.BuildMenuLabel(c);
+            return modelId!;
+        }
+
+        Element SessionRow((string Id, string Title, string? Model, string? ModelProvider) session, bool isCurrent)
+        {
+            var sessionId = session.Id;
+            var check = TextBlock(isCurrent ? "\uE73E" : "") // CheckMark
+                .Set(t =>
+                {
+                    t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
+                    t.FontSize = 12;
+                    t.Width = 16;
+                    t.Foreground = sessionPrimaryBrush;
+                    t.VerticalAlignment = VerticalAlignment.Center;
+                    t.HorizontalAlignment = HorizontalAlignment.Center;
+                });
+            var titleBlock = TextBlock(session.Title)
+                .Set(t =>
+                {
+                    t.FontSize = 14;
+                    t.Foreground = sessionPrimaryBrush;
+                    t.TextTrimming = TextTrimming.CharacterEllipsis;
+                    t.TextWrapping = TextWrapping.NoWrap;
+                });
+            var modelBlock = TextBlock(ResolveSessionModelCaption(session.Model, session.ModelProvider))
+                .Set(t =>
+                {
+                    t.FontSize = 12;
+                    t.Foreground = sessionMutedBrush;
+                    t.TextTrimming = TextTrimming.CharacterEllipsis;
+                    t.TextWrapping = TextWrapping.NoWrap;
+                });
+            return Button(
+                    HStack(8, check, VStack(2, titleBlock, modelBlock)),
+                    () => Props.OnChannelChanged(sessionId))
+                .Set(b =>
+                {
+                    b.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    b.HorizontalContentAlignment = HorizontalAlignment.Left;
+                    b.Padding = new Thickness(8, 6, 8, 6);
+                    b.MinWidth = 240;
+                    b.CornerRadius = controlCornerRadius;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(
+                        b,
+                        isCurrent
+                            ? LocalizationHelper.GetString("Chat_Composer_Accessibility_CurrentSession")
+                            : string.Empty);
+                    // Close the flyout after selecting (content flyouts do not
+                    // auto-dismiss on inner button clicks like a MenuFlyout does).
+                    // Use a named static handler with -= then += so re-renders
+                    // that reuse the button don't stack duplicate handlers.
+                    b.Click -= DismissSessionFlyoutOnClick;
+                    b.Click += DismissSessionFlyoutOnClick;
+                })
+                .Resources(r => r
+                    .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
+                    .Set("ButtonBackgroundPointerOver", Ref("SubtleFillColorSecondaryBrush"))
+                    .Set("ButtonBackgroundPressed", Ref("SubtleFillColorTertiaryBrush"))
+                    .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
+                    .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
+                    .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)));
+        }
+
+        var channelGroupsForPicker = Props.AvailableChannels;
+        var sessionRows = new List<Element?>();
+        foreach (var group in channelGroupsForPicker)
+        {
+            if (channelGroupsForPicker.Length > 1)
+                sessionRows.Add(TextBlock(group.AgentLabel)
+                    .Set(t =>
+                    {
+                        t.FontSize = 12;
+                        t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+                        t.Foreground = sessionMutedBrush;
+                        t.Margin = new Thickness(8, 6, 8, 2);
+                    }));
+            foreach (var session in group.Sessions)
+                sessionRows.Add(SessionRow(session, session.Id == (Props.ChannelId ?? "")));
+        }
+        var channelFlyout = ContentFlyout(
+            Border(ScrollView(VStack(2, sessionRows.ToArray()))
+                    .Set(sv =>
+                    {
+                        sv.MaxHeight = 320;
+                        sv.HorizontalScrollMode = ScrollMode.Disabled;
+                        sv.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                    }))
+                .Set(b =>
+                {
+                    b.MinWidth = 240;
+                    b.MaxWidth = 360;
+                }),
+            FlyoutPlacementMode.Top);
+
+
+        // Title-case the level id for the picker button (menu rows show the
+        // fuller "medium (default)" style labels).
+        var reasoningId = ThinkingLevelIds[thinkingIndex];
+        var reasoningPickerLabel = reasoningId.Length == 0
+            ? reasoningId
+            : char.ToUpperInvariant(reasoningId[0]) + reasoningId.Substring(1);
 
         // ── Row 2: multi-line composer textbox ─────────────────────────
         var recording = isRecording.Value;
@@ -1029,22 +1122,16 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 
         var queuedPanel = RenderQueuedMessages();
 
+        // Inner text content — the border + fill now live on the unified
+        // composerSurface below, so this stays transparent/chromeless. Kept as
+        // its own element (name preserved) so the attachment preview and
+        // textbox read as one input region.
         var composerInput = Border(
             VStack(0, attachmentPreview, textbox)
         ).Set(b =>
         {
-            b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextControlBackground"];
-            if (recording)
-            {
-                b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
-                b.BorderThickness = new Thickness(2);
-            }
-            else
-            {
-                b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextControlBorderBrush"];
-                b.BorderThickness = new Thickness(1);
-            }
-            b.CornerRadius = composerCornerRadius;
+            b.Background = new SolidColorBrush(Colors.Transparent);
+            b.BorderThickness = new Thickness(0);
         });
 
         // ── Voice recording indicator: compact pill with dot, label, and mini waveform ──
@@ -1132,6 +1219,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             voiceIndicator.Key = "voice-pill-hidden";
         }
 
+        // Subtle 32×32 icon button — transparent at rest, Fluent
+        // SubtleFillColorSecondary on hover / Tertiary on press (theme
+        // resources, so light/dark/high-contrast stay correct). Radius uses the
+        // tighter ControlCornerRadius. Mirrors the design-system
+        // ComposerIconButton.
         Element IconButton(string glyph, string tip, Action onClick, Brush? foreground = null)
             => Button(
                 TextBlock(glyph)
@@ -1146,9 +1238,10 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 onClick)
             .Set(b =>
             {
-                b.Padding = new Thickness(8, 4, 8, 4);
-                b.MinWidth = 32; b.MinHeight = 28;
-                b.CornerRadius = composerCornerRadius;
+                b.Padding = new Thickness(0);
+                b.MinWidth = 32; b.Width = 32;
+                b.MinHeight = 32; b.Height = 32;
+                b.CornerRadius = controlCornerRadius;
             })
             .Resources(r => r
                 .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
@@ -1159,6 +1252,79 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)))
             .AutomationName(tip)
             .SetToolTip(tip);
+
+        // Subtle inline picker — text label + chevron with the same
+        // SubtleButton hover/press treatment as the icon buttons. Reads as a
+        // quiet dropdown (no border/fill until hover), never an accent. The
+        // MenuFlyout opens upward from the toolbar. Mirrors the design-system
+        // ComposerPicker.
+        Element PickerButton(string label, string automationName, double? maxLabelWidth, FlyoutElement menu, bool enabled = true)
+        {
+            var mutedBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
+            var labelBlock = TextBlock(label)
+                .Set(t =>
+                {
+                    t.FontSize = 13;
+                    t.Foreground = mutedBrush;
+                    t.TextTrimming = TextTrimming.CharacterEllipsis;
+                    t.TextWrapping = TextWrapping.NoWrap;
+                    t.VerticalAlignment = VerticalAlignment.Center;
+                    if (maxLabelWidth is { } mw) t.MaxWidth = mw;
+                });
+            var chevron = TextBlock("\uE70D") // ChevronDown
+                .Set(t =>
+                {
+                    t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
+                    t.FontSize = 10;
+                    t.Foreground = mutedBrush;
+                    t.VerticalAlignment = VerticalAlignment.Center;
+                });
+            // Fold the current selection into the accessible name so assistive
+            // tech announces "<field>: <value>" (e.g. "Session: <title>"), the
+            // way the legacy ComboBox surfaced its selected item. The visible
+            // chevron button only shows the value, so without this the current
+            // selection would be silent to screen readers.
+            var accessibleName = string.IsNullOrWhiteSpace(label)
+                ? automationName
+                : $"{automationName}: {label}";
+            return Button(HStack(4, labelBlock, chevron))
+                .Set(b =>
+                {
+                    b.Padding = new Thickness(8, 0, 8, 0);
+                    b.MinWidth = 0;
+                    b.MinHeight = 32; b.Height = 32;
+                    b.CornerRadius = controlCornerRadius;
+                    b.IsEnabled = enabled;
+                })
+                .Resources(r => r
+                    .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
+                    .Set("ButtonBackgroundPointerOver", Ref("SubtleFillColorSecondaryBrush"))
+                    .Set("ButtonBackgroundPressed", Ref("SubtleFillColorTertiaryBrush"))
+                    .Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent))
+                    .Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent))
+                    .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)))
+                .WithFlyout(menu)
+                .AutomationName(accessibleName)
+                .SetToolTip(automationName);
+        }
+
+        var channelPicker = PickerButton(
+            Props.ChannelLabel,
+            LocalizationHelper.GetString("Chat_Composer_Accessibility_Session"),
+            160,
+            channelFlyout);
+        var modelPicker = PickerButton(
+            modelPickerLabel,
+            LocalizationHelper.GetString("Chat_Composer_Accessibility_Model"),
+            180,
+            modelMenu,
+            messageOptionControlsEnabled);
+        var reasoningPicker = PickerButton(
+            reasoningPickerLabel,
+            LocalizationHelper.GetString("Chat_Composer_Accessibility_Reasoning"),
+            null,
+            reasoningMenu,
+            messageOptionControlsEnabled);
 
         var attachBtn = IconButton("\uE723", LocalizationHelper.GetString("Chat_Composer_Tooltip_Attach"), () =>
         {
@@ -1194,21 +1360,16 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 LocalizationHelper.GetString("Chat_Composer_Tooltip_Voice"),
                 startVoiceRecording);
         }
-        var speakerBtn = Props.OnSpeakerToggle is not null
+
+        // Speaker mute — subtle icon button (never accent). Reflects TTS mute
+        // state via the glyph and toggles it through the host. Only rendered
+        // when the host wires OnSpeakerToggle (chat surfaces with TTS).
+        Element speakerBtn = Props.OnSpeakerToggle is not null
             ? IconButton(
                 Props.IsSpeakerMuted ? "\uE74F" : "\uE767",  // SpeakerMute : Speaker
                 Props.IsSpeakerMuted ? "Unmute" : "Mute",
                 () => Props.OnSpeakerToggle())
             : Empty();
-        // Toggle tool-call visibility. Same wrench icon in both states;
-        // reduced opacity when tool calls are hidden to indicate "off"
-        // without looking disabled. Tooltip clarifies the action.
-        var showTools = Props.ShowToolCalls;
-        var toolToggleBtn = IconButton(
-            "\uE90F",  // Wrench
-            showTools ? "Hide tool calls & usage" : "Show tool calls & usage",
-            () => Props.OnShowToolCallsChanged?.Invoke(!Props.ShowToolCalls))
-            .Set(b => b.Opacity = showTools ? 1.0 : 0.55);
 
         // ── Slash command menu (gateway commands.list discovery) ──
         // Hosted in a floating Popup above the composer so the input controls
@@ -1249,16 +1410,22 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             }
         }
 
-        // Send button — always present so the user can queue follow-up messages
-        // even while the assistant is responding.
+        // Primary action button — a single slot that shows Send when idle and
+        // the Stop button while the assistant is responding. Keeping one slot
+        // (identical geometry) means the toolbar never reflows between states.
+        // Follow-up messages can still be queued mid-turn via Enter.
         var sendBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
         const string sendGlyph = "\uE724";
         const string stopGlyph = "\uE71A";
 
         var hasText = hasTextState.Value || pendingAttachments.Count > 0;
         var sendTooltip = LocalizationHelper.GetString("Chat_Composer_Tooltip_Send");
+        // Send is the ONE accent affordance in the composer. Its glyph sits on
+        // the accent fill, so use the Fluent "text on accent" brush (white in
+        // both themes) rather than a hard-coded color. When empty it drops to a
+        // subtle transparent button with muted glyph.
         var glyphBrush = hasText
-            ? (Brush)new SolidColorBrush(Colors.White)
+            ? (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextOnAccentFillColorPrimaryBrush"]
             : (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
         var actionBtn = Button(
             TextBlock(sendGlyph)
@@ -1271,9 +1438,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             sendAction
         ).Set(b =>
         {
-            b.Padding = new Thickness(10, 4, 10, 4);
-            b.MinWidth = sendButtonSize + 4; b.MinHeight = sendButtonSize - 4;
-            b.CornerRadius = composerCornerRadius;
+            b.Padding = new Thickness(0);
+            b.MinWidth = 40; b.MinHeight = 32; b.Height = 32;
+            b.CornerRadius = controlCornerRadius;
             b.IsEnabled = isConnected;
             b.Background = hasText ? sendBrush : new SolidColorBrush(Colors.Transparent);
         })
@@ -1300,8 +1467,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         .AutomationName(sendTooltip)
         .SetToolTip(sendTooltip);
 
-        // Stop button — shown inline NEXT TO the send button (to its right)
-        // when the assistant is responding, matching the gateway web UI pattern.
+        // Stop button — occupies the SAME action slot as Send (identical size)
+        // while the assistant is responding, so nothing in the toolbar shifts.
+        // Uses a neutral text-primary fill (theme-adaptive black/white); red is
+        // reserved for genuine error states. The glyph uses the base surface
+        // brush so it stays legible against the inverted fill in both themes.
         Element stopBtn = Empty();
         if (Props.TurnActive)
         {
@@ -1313,19 +1483,19 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         t.FontSize = composerIconSize;
                     })
-                    .Foreground(new SolidColorBrush(Colors.White)),
+                    .Foreground((Brush)Microsoft.UI.Xaml.Application.Current.Resources["SolidBackgroundFillColorBaseBrush"]),
                 Props.OnStop
             ).Set(b =>
             {
-                b.Padding = new Thickness(10, 4, 10, 4);
-                b.MinWidth = sendButtonSize + 4; b.MinHeight = sendButtonSize - 4;
-                b.CornerRadius = composerCornerRadius;
-                b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SystemFillColorCriticalBrush"];
+                b.Padding = new Thickness(0);
+                b.MinWidth = 40; b.MinHeight = 32; b.Height = 32;
+                b.CornerRadius = controlCornerRadius;
+                b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
             })
             .Resources(r =>
             {
-                r.Set("ButtonBackgroundPointerOver", Ref("SystemFillColorCriticalBrush"));
-                r.Set("ButtonBackgroundPressed", Ref("SystemFillColorCriticalBrush"));
+                r.Set("ButtonBackgroundPointerOver", Ref("TextFillColorSecondaryBrush"));
+                r.Set("ButtonBackgroundPressed", Ref("TextFillColorTertiaryBrush"));
                 r.Set("ButtonBorderBrush", new SolidColorBrush(Colors.Transparent));
                 r.Set("ButtonBorderBrushPointerOver", new SolidColorBrush(Colors.Transparent));
                 r.Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent));
@@ -1342,21 +1512,58 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // history records every approval (and its decided/expired badge)
         // in chronological order. See OpenClawChatTimeline.RenderPermissionEntry.
 
-        var bottomToolbar = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            dropdownsRow
-                .Margin(0, 0, 12, 0)
-                .HAlign(HorizontalAlignment.Stretch)
-                .Grid(row: 0, column: 0),
-            (FlexRow(attachBtn, voiceCancelBtn, voiceBtn, speakerBtn, toolToggleBtn, actionBtn, stopBtn)
+        // ── Toolbar row (space-between) ────────────────────────────────
+        // LEFT cluster: Add(+) attach, then the session / model / reasoning
+        // pickers. RIGHT cluster: dictation (+ cancel while recording) and a
+        // single primary-action slot that is the accent Send when idle and the
+        // accent Stop while a turn is active. Mirrors the design-system
+        // ChatComposer toolbar.
+        var leftCluster = (FlexRow(attachBtn, channelPicker, modelPicker, reasoningPicker)
+                with { ColumnGap = 4 })
+            .HAlign(HorizontalAlignment.Left)
+            .VAlign(VerticalAlignment.Center);
+
+        // Send and Stop share one slot (same 40x32 geometry) so the toolbar
+        // never reflows when a turn starts or ends.
+        Element primaryActionBtn = Props.TurnActive ? stopBtn : actionBtn;
+        var rightCluster = (FlexRow(voiceCancelBtn, speakerBtn, voiceBtn, primaryActionBtn)
                 with { ColumnGap = 4 })
             .HAlign(HorizontalAlignment.Right)
-            .Grid(row: 0, column: 1)
+            .VAlign(VerticalAlignment.Center);
+
+        var bottomToolbar = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            leftCluster.Grid(row: 0, column: 0),
+            rightCluster.Grid(row: 0, column: 1)
         );
 
         // ── Optional working banner above the composer ──
         Element workingBanner2 = workingBanner;
 
-        var composerCore = VStack(8, queuedPanel, composerInput, voiceIndicator, bottomToolbar.Margin(0, -8, 0, -4));
+        // Unified composer surface: one rounded (Fluent OverlayCornerRadius),
+        // 1px-line-bordered card holding the text region above the toolbar. The
+        // border turns accent while recording. Matches the design-system
+        // ChatComposer surface (radius md / 1px line / surface fill / 8 padding).
+        var composerSurface = Border(
+            VStack(8, composerInput, voiceIndicator, bottomToolbar)
+        ).Set(b =>
+        {
+            b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextControlBackground"];
+            if (recording)
+            {
+                b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
+                b.BorderThickness = new Thickness(2);
+            }
+            else
+            {
+                b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextControlBorderBrush"];
+                b.BorderThickness = new Thickness(1);
+            }
+            b.CornerRadius = composerCornerRadius;
+            b.Padding = new Thickness(8);
+        });
+
+        // Queued messages sit above the surface (outside the input card).
+        var composerCore = VStack(8, queuedPanel, composerSurface);
 
         // Drive the floating slash-menu popup after the tree builds so it anchors
         // above the (already mounted) textbox without shifting any controls.
@@ -1369,11 +1576,25 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             Border(composerCore).Padding(16, 12, 16, 12)
              .Set(b =>
              {
-                 // Top divider only — mirrors Kenny's ChatShell ComposerBorder.
+                 // Top divider separates the composer region from the timeline.
                  b.BorderThickness = new Thickness(0, 1, 0, 0);
                  b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SurfaceStrokeColorDefaultBrush"];
              })
         );
+    }
+
+    private static void DismissSessionFlyoutOnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe)
+            DismissOpenPopups(fe.XamlRoot);
+    }
+
+    private static void DismissOpenPopups(Microsoft.UI.Xaml.XamlRoot? root)
+    {
+        if (root is null)
+            return;
+        foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
+            popup.IsOpen = false;
     }
 
     private static double ComputeQueuedMessagesMaxHeight(bool isCompact, double? availableHeight)

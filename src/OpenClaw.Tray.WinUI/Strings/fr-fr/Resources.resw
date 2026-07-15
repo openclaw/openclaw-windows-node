@@ -2955,6 +2955,9 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
     <value>Conversation</value>
   </data>
+  <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
+    <value>Conversation actuelle</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>Modèle</value>
   </data>
@@ -4779,6 +4782,21 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="SettingsPage_Notifications.Text" xml:space="preserve">
     <value>Mes notifications</value>
+  </data>
+  <data name="SettingsPage_Chat.Text" xml:space="preserve">
+    <value>Conversation</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
+    <value>Lire les réponses à voix haute</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
+    <value>Lire les réponses de l’assistant à voix haute pendant la conversation.</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
+    <value>Afficher les appels d’outils et l’utilisation</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
+    <value>Afficher les détails des appels d’outils et de l’utilisation des jetons dans la conversation.</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Confidentialité</value>

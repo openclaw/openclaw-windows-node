@@ -3002,6 +3002,9 @@ Use one of these options:
   <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
     <value>Session</value>
   </data>
+  <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
+    <value>Current session</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>Model</value>
   </data>
@@ -4826,6 +4829,21 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="SettingsPage_Notifications.Text" xml:space="preserve">
     <value>Notifications</value>
+  </data>
+  <data name="SettingsPage_Chat.Text" xml:space="preserve">
+    <value>Chat</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
+    <value>Read responses aloud</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
+    <value>Play assistant replies through text-to-speech during chat.</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
+    <value>Show tool calls and usage</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
+    <value>Show tool-call and token-usage details inline in the conversation.</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacy</value>

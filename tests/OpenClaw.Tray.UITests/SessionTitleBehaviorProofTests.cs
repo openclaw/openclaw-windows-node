@@ -122,9 +122,13 @@ public sealed class SessionTitleBehaviorProofTests
         var composerCondition = new PropertyCondition(
             AutomationElement.AutomationIdProperty,
             "ChatComposerInput");
-        var sessionSelectorCondition = new AndCondition(
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ComboBox),
-            new PropertyCondition(AutomationElement.NameProperty, "Session"));
+        // The redesigned session selector is a subtle menu-flyout Button (not a
+        // ComboBox). Its accessible name folds in the current selection as
+        // "Session: <route title>", replacing the legacy ComboBox's
+        // SelectionPattern. Match on the route title so the exact field-label
+        // prefix/separator format stays free to change.
+        var buttonCondition = new PropertyCondition(
+            AutomationElement.ControlTypeProperty, ControlType.Button);
 
         string? selectedRouteTitle = null;
         WaitUntil(() =>
@@ -133,21 +137,19 @@ public sealed class SessionTitleBehaviorProofTests
             if (hub.FindFirst(TreeScope.Descendants, composerCondition) is null)
                 return false;
 
-            var selector = hub.FindFirst(TreeScope.Descendants, sessionSelectorCondition);
-            if (selector is null
-                || !selector.TryGetCurrentPattern(SelectionPattern.Pattern, out var pattern)
-                || pattern is not SelectionPattern selection)
+            var buttons = hub.FindAll(TreeScope.Descendants, buttonCondition);
+            for (var i = 0; i < buttons.Count; i++)
             {
-                return false;
+                var name = buttons[i].Current.Name;
+                if (!string.IsNullOrEmpty(name)
+                    && name.Contains(expectedRouteTitle, StringComparison.Ordinal))
+                {
+                    selectedRouteTitle = name;
+                    return true;
+                }
             }
 
-            selectedRouteTitle = selection.Current.GetSelection()
-                .Select(item => item.Current.Name)
-                .SingleOrDefault();
-            return string.Equals(
-                selectedRouteTitle,
-                expectedRouteTitle,
-                StringComparison.Ordinal);
+            return false;
         }, $"chat Session selector to choose '{expectedRouteTitle}'");
 
         return Assert.IsType<string>(selectedRouteTitle);

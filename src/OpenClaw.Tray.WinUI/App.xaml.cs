@@ -494,6 +494,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         // Initialize settings before update check so skip selections can be remembered.
         _settings = new SettingsManager();
+        // Seed chat tool-call visibility from persisted settings so the timeline
+        // honors the Settings > Chat "Show tool calls and usage" toggle on launch.
+        OpenClawTray.Chat.OpenClawChatRoot.SetToolCallsVisible(_settings.ShowChatToolCalls);
         _previousSettingsSnapshot = _settings.ToSettingsData().ToConnectionSnapshot();
         _openTelemetryConnection = new OpenTelemetryEndpointConnection();
         await _openTelemetryConnection.ApplyAsync(

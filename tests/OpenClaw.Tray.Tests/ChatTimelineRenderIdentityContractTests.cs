@@ -97,9 +97,14 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("var messageOptionControlsEnabled = !Props.MessageOptionsDisabled;", composer);
         Assert.Contains("MessageOptionsDisabled: turnActiveOverride || hasPendingQueuedSend", root);
         Assert.Contains("message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending", root);
-        Assert.Equal(2, Regex.Matches(composer, "IsEnabled = messageOptionControlsEnabled").Count);
+        // The redesigned pickers are subtle menu-flyout buttons whose disabled
+        // state is centralized in the PickerButton helper (b.IsEnabled = enabled).
+        // The model and reasoning pickers pass the gate; the session/channel
+        // picker is intentionally left enabled while a turn is active.
+        Assert.Contains("b.IsEnabled = enabled;", composer);
+        Assert.Equal(2, Regex.Matches(composer, @"messageOptionControlsEnabled\);").Count);
         Assert.DoesNotMatch(
-            new Regex(@"var\s+channelCombo[\s\S]*?IsEnabled\s*=\s*messageOptionControlsEnabled[\s\S]*?//\s+── Model picker", RegexOptions.Multiline),
+            new Regex(@"var\s+channelPicker\s*=\s*PickerButton\([\s\S]*?messageOptionControlsEnabled[\s\S]*?var\s+modelPicker", RegexOptions.Multiline),
             composer);
     }
 

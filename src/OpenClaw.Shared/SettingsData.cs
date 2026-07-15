@@ -83,6 +83,8 @@ public record class SettingsData
     public float SttSilenceTimeout { get; set; } = 2.5f;
     /// <summary>Enable TTS playback of responses during voice sessions.</summary>
     public bool VoiceTtsEnabled { get; set; } = true;
+    /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
+    public bool ShowChatToolCalls { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;

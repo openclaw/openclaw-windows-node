@@ -127,6 +127,56 @@
                     </Grid>
                 </Border>
 
+                <!-- ═════════ Chat ═════════ -->
+                <TextBlock x:Uid="SettingsPage_Chat" Text="Chat" Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"/>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="ReadResponsesAloudLabel" x:Uid="SettingsRow_ReadAloud_Header"
+                                       Text="Read responses aloud" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_ReadAloud_Description"
+                                       Text="Play assistant replies through text-to-speech during chat."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="ReadResponsesAloudToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageReadAloud"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=ReadResponsesAloudLabel}"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="ShowToolCallsLabel" x:Uid="SettingsRow_ShowToolCalls_Header"
+                                       Text="Show tool calls and usage" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_ShowToolCalls_Description"
+                                       Text="Show tool-call and token-usage details inline in the conversation."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="ShowToolCallsToggle" MinWidth="0" OnContent="" OffContent=""
+                                      AutomationProperties.AutomationId="SettingsPageShowToolCalls"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=ShowToolCallsLabel}"/>
+                    </Grid>
+                </Border>
+
                 <!-- ═════════ Notifications ═════════ -->
                 <TextBlock x:Uid="SettingsPage_Notifications" Text="Notifications" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>

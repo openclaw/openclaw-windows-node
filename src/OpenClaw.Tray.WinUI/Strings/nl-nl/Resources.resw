@@ -2956,6 +2956,9 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
     <value>Sessie</value>
   </data>
+  <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
+    <value>Huidige sessie</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>Taalmodel</value>
   </data>
@@ -4780,6 +4783,21 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="SettingsPage_Notifications.Text" xml:space="preserve">
     <value>Meldingen</value>
+  </data>
+  <data name="SettingsPage_Chat.Text" xml:space="preserve">
+    <value>Gesprek</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
+    <value>Antwoorden hardop voorlezen</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
+    <value>Lees antwoorden van de assistent hardop voor tijdens het gesprek.</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
+    <value>Toolaanroepen en gebruik weergeven</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
+    <value>Details van toolaanroepen en tokengebruik inline in het gesprek weergeven.</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacybeheer</value>
