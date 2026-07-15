@@ -54,10 +54,21 @@ internal enum ChatTerminalEventDropReason
     MismatchedRunId,
 }
 
+internal enum ChatResponseOutputKind
+{
+    None,
+    Assistant,
+    Reasoning,
+    Tool,
+    Other,
+}
+
 internal sealed class ChatTelemetryTracker
 {
     internal const string TurnSpanName = "openclaw.chat.turn";
     internal const string SendSpanName = "openclaw.chat.send";
+    internal const string ResponseWaitSpanName = "openclaw.chat.response.wait";
+    internal const string ResponseReceiveSpanName = "openclaw.chat.response.receive";
     internal const string HistoryLoadSpanName = "openclaw.chat.history.load";
     internal const string HistoryBackfillSpanName = "openclaw.chat.history.backfill";
 
@@ -66,6 +77,8 @@ internal sealed class ChatTelemetryTracker
     internal const string QueueWaitDurationMetricName = "openclaw.chat.queue.wait.duration";
     internal const string SendAttemptsMetricName = "openclaw.chat.send.attempts";
     internal const string SendDurationMetricName = "openclaw.chat.send.duration";
+    internal const string ResponseWaitDurationMetricName = "openclaw.chat.response.wait.duration";
+    internal const string ResponseReceiveDurationMetricName = "openclaw.chat.response.receive.duration";
     internal const string HistoryLoadsMetricName = "openclaw.chat.history.loads";
     internal const string HistoryLoadDurationMetricName = "openclaw.chat.history.load.duration";
     internal const string HistoryBackfillsMetricName = "openclaw.chat.history.backfills";
@@ -77,6 +90,7 @@ internal sealed class ChatTelemetryTracker
     internal const string BackfillReasonTag = "openclaw.chat.backfill.reason";
     internal const string DroppedRemoteTurnReasonTag = "openclaw.chat.remote_turn.drop.reason";
     internal const string DroppedTerminalEventReasonTag = "openclaw.chat.terminal_event.drop.reason";
+    internal const string FirstOutputKindTag = "openclaw.chat.response.first_output";
 
     private const string SourceLocal = "local";
     private const string SourceRemote = "remote";
@@ -103,6 +117,14 @@ internal sealed class ChatTelemetryTracker
         SendDurationMetricName,
         unit: "ms",
         description: "Duration of OpenClaw chat.send RPC attempts.");
+    private static readonly Histogram<double> ResponseWaitDuration = OpenClawTelemetry.CreateHistogram(
+        ResponseWaitDurationMetricName,
+        unit: "ms",
+        description: "Duration from chat admission or lifecycle start to the first accepted inbound output.");
+    private static readonly Histogram<double> ResponseReceiveDuration = OpenClawTelemetry.CreateHistogram(
+        ResponseReceiveDurationMetricName,
+        unit: "ms",
+        description: "Duration from the first accepted inbound output to terminal chat completion.");
     private static readonly Counter<long> HistoryLoads = OpenClawTelemetry.CreateCounter(
         HistoryLoadsMetricName,
         unit: "{load}",
@@ -200,6 +222,16 @@ internal sealed class ChatTelemetryTracker
         }
     }
 
+    public void ObserveAdmissionAccepted(string messageId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+        lock (_gate)
+        {
+            if (_turnsByMessageId.TryGetValue(messageId, out var state))
+                StartResponseWaitLocked(state);
+        }
+    }
+
     public void ObserveLifecycleStart(string threadId, string? runId, bool allowRemoteTurn = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
@@ -227,8 +259,11 @@ internal sealed class ChatTelemetryTracker
 
         lock (_gate)
         {
-            if (_turnsByRunId.ContainsKey(runId))
+            if (_turnsByRunId.TryGetValue(runId, out var existing))
+            {
+                StartResponseWaitLocked(existing);
                 return;
+            }
 
             var pendingLocal = _turnsByMessageId.Values.FirstOrDefault(
                 state => state.Source == SourceLocal &&
@@ -237,6 +272,7 @@ internal sealed class ChatTelemetryTracker
             if (pendingLocal is not null)
             {
                 BindRunLocked(pendingLocal, runId);
+                StartResponseWaitLocked(pendingLocal);
                 return;
             }
             if (!allowRemoteTurn)
@@ -252,7 +288,43 @@ internal sealed class ChatTelemetryTracker
                     [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, SourceRemote)]),
                 Stopwatch.GetTimestamp());
             BindRunLocked(remote, runId);
+            StartResponseWaitLocked(remote);
         }
+    }
+
+    public bool ObserveInboundOutput(
+        string threadId,
+        string? runId,
+        ChatResponseOutputKind outputKind)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        ResponsePhaseCompletion? waitCompletion;
+        lock (_gate)
+        {
+            var state = ResolveTurnForOutputLocked(threadId, runId);
+            if (state is null || state.ReceivePhase is not null)
+                return false;
+
+            if (state.WaitPhase is not { } waitPhase)
+                return false;
+
+            var now = Stopwatch.GetTimestamp();
+            state.FirstOutputKind = outputKind;
+            state.ResponseWaitDurationMilliseconds =
+                Stopwatch.GetElapsedTime(waitPhase.StartTimestamp, now).TotalMilliseconds;
+            waitCompletion = new ResponsePhaseCompletion(
+                waitPhase.Activity,
+                state.Source,
+                outputKind,
+                ChatTelemetryOutcome.Success);
+            state.PendingWaitCompletion = waitCompletion;
+            state.WaitPhase = null;
+
+            state.ReceivePhase = StartResponsePhase(state, ResponseReceiveSpanName, now);
+        }
+
+        CompleteResponsePhase(waitCompletion);
+        return true;
     }
 
     public ChatTelemetryOperation? StartSendAttempt(string messageId)
@@ -505,6 +577,28 @@ internal sealed class ChatTelemetryTracker
     {
         var endTimestamp = Stopwatch.GetTimestamp();
         state.EndQueueSegment(endTimestamp);
+        ResponsePhaseCompletion? pendingWaitCompletion = state.PendingWaitCompletion;
+        if (state.WaitPhase is { } waitPhase)
+        {
+            state.ResponseWaitDurationMilliseconds =
+                Stopwatch.GetElapsedTime(waitPhase.StartTimestamp, endTimestamp).TotalMilliseconds;
+            pendingWaitCompletion = new ResponsePhaseCompletion(
+                waitPhase.Activity,
+                state.Source,
+                ChatResponseOutputKind.None,
+                outcome);
+        }
+        ResponsePhaseCompletion? receiveCompletion = null;
+        if (state.ReceivePhase is { } receivePhase)
+        {
+            state.ResponseReceiveDurationMilliseconds =
+                Stopwatch.GetElapsedTime(receivePhase.StartTimestamp, endTimestamp).TotalMilliseconds;
+            receiveCompletion = new ResponsePhaseCompletion(
+                receivePhase.Activity,
+                state.Source,
+                state.FirstOutputKind,
+                outcome);
+        }
         return new PreparedTurnCompletion(
             state.Activity,
             state.StartTimestamp,
@@ -512,12 +606,21 @@ internal sealed class ChatTelemetryTracker
             state.Source,
             state.WasQueued,
             state.QueuedDurationMilliseconds,
+            state.ResponseWaitStarted,
+            state.ResponseWaitDurationMilliseconds,
+            state.ReceivePhase is not null,
+            state.ResponseReceiveDurationMilliseconds,
+            state.FirstOutputKind,
+            pendingWaitCompletion,
+            receiveCompletion,
             outcome,
             reason);
     }
 
     private static void FinishTurn(PreparedTurnCompletion completion)
     {
+        CompleteResponsePhase(completion.WaitCompletion);
+        CompleteResponsePhase(completion.ReceiveCompletion);
         var tags = new[]
         {
             OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, completion.Source),
@@ -540,6 +643,42 @@ internal sealed class ChatTelemetryTracker
                 completion.QueuedDurationMilliseconds,
                 [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, ToTelemetryValue(completion.Outcome))]);
         }
+        if (completion.ResponseWaitStarted)
+        {
+            OpenClawTelemetry.Record(
+                ResponseWaitDuration,
+                completion.ResponseWaitDurationMilliseconds,
+                ResponseMetricTags(completion));
+        }
+        if (completion.ResponseReceiveStarted)
+        {
+            OpenClawTelemetry.Record(
+                ResponseReceiveDuration,
+                completion.ResponseReceiveDurationMilliseconds,
+                ResponseMetricTags(completion));
+        }
+    }
+
+    private static OpenClawTelemetryTag[] ResponseMetricTags(PreparedTurnCompletion completion) =>
+    [
+        OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, completion.Source),
+        OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, ToTelemetryValue(completion.Outcome)),
+        OpenClawTelemetryTag.String(FirstOutputKindTag, ToTelemetryValue(completion.FirstOutputKind)),
+    ];
+
+    private static void CompleteResponsePhase(ResponsePhaseCompletion? completion)
+    {
+        if (completion is null || !completion.TryComplete())
+            return;
+
+        FinishActivity(
+            completion.Activity,
+            completion.Outcome,
+            [
+                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, completion.Source),
+                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, ToTelemetryValue(completion.Outcome)),
+                OpenClawTelemetryTag.String(FirstOutputKindTag, ToTelemetryValue(completion.FirstOutputKind)),
+            ]);
     }
 
     private static void FinishActivity(
@@ -586,6 +725,47 @@ internal sealed class ChatTelemetryTracker
     {
         state.RunIds.Add(runId);
         _turnsByRunId[runId] = state;
+    }
+
+    private static void StartResponseWaitLocked(TurnState state)
+    {
+        if (state.ResponseWaitStarted)
+            return;
+
+        state.ResponseWaitStarted = true;
+        state.WaitPhase = StartResponsePhase(
+            state,
+            ResponseWaitSpanName,
+            Stopwatch.GetTimestamp());
+    }
+
+    private static ResponsePhase StartResponsePhase(
+        TurnState state,
+        string spanName,
+        long startTimestamp)
+    {
+        var tags = new[]
+        {
+            OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, state.Source),
+        };
+        var activity = state.Activity is not null
+            ? OpenClawTelemetry.StartDetachedActivity(spanName, state.Activity.Context, tags)
+            : OpenClawTelemetry.StartDetachedActivity(spanName, default(ActivityContext), tags);
+        return new ResponsePhase(activity, startTimestamp);
+    }
+
+    private TurnState? ResolveTurnForOutputLocked(string threadId, string? runId)
+    {
+        if (!string.IsNullOrWhiteSpace(runId))
+            return _turnsByRunId.GetValueOrDefault(runId);
+
+        var active = _turnsByRunId.Values
+            .Concat(_turnsByMessageId.Values)
+            .Distinct()
+            .Where(candidate => candidate.ThreadId == threadId && candidate.IsDispatched)
+            .Take(2)
+            .ToArray();
+        return active.Length == 1 ? active[0] : null;
     }
 
     private void RemoveTurnLocked(TurnState state)
@@ -667,6 +847,17 @@ internal sealed class ChatTelemetryTracker
             _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown terminal event drop reason."),
         };
 
+    internal static string ToTelemetryValue(ChatResponseOutputKind kind) =>
+        kind switch
+        {
+            ChatResponseOutputKind.None => "none",
+            ChatResponseOutputKind.Assistant => "assistant",
+            ChatResponseOutputKind.Reasoning => "reasoning",
+            ChatResponseOutputKind.Tool => "tool",
+            ChatResponseOutputKind.Other => "other",
+            _ => "other",
+        };
+
     private sealed class TurnState(
         string? messageId,
         string threadId,
@@ -685,6 +876,13 @@ internal sealed class ChatTelemetryTracker
         public bool IsDispatched { get; set; }
         public bool WasQueued { get; private set; }
         public double QueuedDurationMilliseconds { get; private set; }
+        public bool ResponseWaitStarted { get; set; }
+        public double ResponseWaitDurationMilliseconds { get; set; }
+        public double ResponseReceiveDurationMilliseconds { get; set; }
+        public ChatResponseOutputKind FirstOutputKind { get; set; }
+        public ResponsePhase? WaitPhase { get; set; }
+        public ResponsePhase? ReceivePhase { get; set; }
+        public ResponsePhaseCompletion? PendingWaitCompletion { get; set; }
 
         public void StartQueueSegment()
         {
@@ -705,6 +903,24 @@ internal sealed class ChatTelemetryTracker
         }
     }
 
+    private sealed record ResponsePhase(Activity? Activity, long StartTimestamp);
+
+    internal sealed class ResponsePhaseCompletion(
+        Activity? activity,
+        string source,
+        ChatResponseOutputKind firstOutputKind,
+        ChatTelemetryOutcome outcome)
+    {
+        private int _completed;
+
+        public Activity? Activity { get; } = activity;
+        public string Source { get; } = source;
+        public ChatResponseOutputKind FirstOutputKind { get; } = firstOutputKind;
+        public ChatTelemetryOutcome Outcome { get; } = outcome;
+
+        public bool TryComplete() => Interlocked.Exchange(ref _completed, 1) == 0;
+    }
+
     internal sealed class PreparedTurnCompletion(
         Activity? activity,
         long startTimestamp,
@@ -712,6 +928,13 @@ internal sealed class ChatTelemetryTracker
         string source,
         bool wasQueued,
         double queuedDurationMilliseconds,
+        bool responseWaitStarted,
+        double responseWaitDurationMilliseconds,
+        bool responseReceiveStarted,
+        double responseReceiveDurationMilliseconds,
+        ChatResponseOutputKind firstOutputKind,
+        ResponsePhaseCompletion? waitCompletion,
+        ResponsePhaseCompletion? receiveCompletion,
         ChatTelemetryOutcome outcome,
         ChatTurnTelemetryReason reason)
     {
@@ -723,6 +946,13 @@ internal sealed class ChatTelemetryTracker
         public string Source { get; } = source;
         public bool WasQueued { get; } = wasQueued;
         public double QueuedDurationMilliseconds { get; } = queuedDurationMilliseconds;
+        public bool ResponseWaitStarted { get; } = responseWaitStarted;
+        public double ResponseWaitDurationMilliseconds { get; } = responseWaitDurationMilliseconds;
+        public bool ResponseReceiveStarted { get; } = responseReceiveStarted;
+        public double ResponseReceiveDurationMilliseconds { get; } = responseReceiveDurationMilliseconds;
+        public ChatResponseOutputKind FirstOutputKind { get; } = firstOutputKind;
+        internal ResponsePhaseCompletion? WaitCompletion { get; } = waitCompletion;
+        internal ResponsePhaseCompletion? ReceiveCompletion { get; } = receiveCompletion;
         public ChatTelemetryOutcome Outcome { get; } = outcome;
         public ChatTurnTelemetryReason Reason { get; } = reason;
 

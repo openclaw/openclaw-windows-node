@@ -509,6 +509,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 sendOperation,
                 admissionStatus,
                 admissionOutcome);
+            if (admissionStatus == ChatAdmissionTelemetryStatus.Accepted)
+                _telemetry.ObserveAdmissionAccepted(request.Id);
             if (sendResult.IsTerminalFailure)
             {
                 ChatTelemetryTracker.PreparedTurnCompletion? rejectedCompletion;
@@ -2277,6 +2279,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (string.IsNullOrEmpty(message.Text)) return;
             var trThread = message.SessionKey;
             ChatEntryMetadata? trMeta;
+            string? trRunId;
             lock (_gate)
             {
                 trMeta = BuildLiveMetaLocked(
@@ -2284,10 +2287,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     message.Ts,
                     message.OpenClawId,
                     message.OpenClawSeq);
+                _activeRunIds.TryGetValue(trThread, out trRunId);
             }
             var capped = TruncateForChatEntry(message.Text);
             var kind = ClassifyFlattenedToolOutput(capped);
             var label = ExtractFlattenedToolSummary(capped);
+            _telemetry.ObserveInboundOutput(
+                trThread,
+                trRunId,
+                ChatResponseOutputKind.Tool);
             ApplyEventAndPublish(trThread, new ChatToolStartEvent(label, kind), trMeta);
             ApplyEventAndPublish(trThread, new ChatToolOutputEvent(capped), trMeta);
             return;
@@ -2319,6 +2327,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         PromoteOldestQueuedMessageBeforeAssistantIfNeeded(threadId);
         ChatEntryMetadata? meta;
+        string? telemetryRunId;
         var hasUsage = message.InputTokens is not null || message.OutputTokens is not null
             || message.ResponseTokens is not null || message.ContextPercent is not null;
         lock (_gate)
@@ -2328,6 +2337,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 message.Ts,
                 message.OpenClawId,
                 message.OpenClawSeq);
+            _activeRunIds.TryGetValue(threadId, out telemetryRunId);
             // If the gateway included a usage block on this chat event,
             // attach it so the assistant footer pills (↑/↓/R/ctx%) can
             // render. Mostly arrives on state="final" frames.
@@ -2351,6 +2361,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
 
+        _telemetry.ObserveInboundOutput(
+            threadId,
+            telemetryRunId,
+            ChatResponseOutputKind.Assistant);
         // Both `state: "delta"` and `state: "final"` carry the cumulative
         // assistant text (the gateway's EmbeddedBlockChunker emits completed
         // blocks, not token deltas — see spec §"Block Streaming"). Map both
@@ -2587,6 +2601,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
 
+        var outputKind = ClassifyInboundOutput(evt, mapped);
+        if (outputKind.HasValue)
+        {
+            _telemetry.ObserveInboundOutput(
+                threadId,
+                evt.RunId,
+                outputKind.Value);
+        }
+
         // Cache tool metadata from live SSE events so it survives app restarts.
         if (mapped is ChatToolStartEvent toolStart && !string.IsNullOrEmpty(toolStart.ToolName))
         {
@@ -2602,6 +2625,29 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         ApplyEventAndPublish(threadId, mapped, meta);
         if (isTerminalRunEvent)
             ScheduleQueuedSendDrain(threadId);
+    }
+
+    private static ChatResponseOutputKind? ClassifyInboundOutput(
+        AgentEventInfo evt,
+        ChatEvent mapped)
+    {
+        if (string.Equals(evt.Stream, "lifecycle", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(evt.Stream, "job", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return mapped switch
+        {
+            ChatMessageEvent or ChatMessageDeltaEvent => ChatResponseOutputKind.Assistant,
+            ChatThinkingEvent or ChatReasoningEvent or ChatReasoningDeltaEvent or
+                ChatIntentEvent => ChatResponseOutputKind.Reasoning,
+            ChatToolStartEvent or ChatToolOutputEvent or ChatToolErrorEvent or
+                ChatPermissionRequestEvent => ChatResponseOutputKind.Tool,
+            ChatStatusEvent or ChatErrorEvent or ChatReasoningEndEvent or
+                ChatTurnEndEvent or ChatUserMessageEvent => null,
+            _ => null,
+        };
     }
 
     private void RaiseKeylessEventDiagnosticOnce()

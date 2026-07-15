@@ -224,6 +224,13 @@ public class OpenClawChatDataProviderTests
 
         await provider.SendMessageAsync("main", "private prompt");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "private-run"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "private response",
+            State = "delta",
+        });
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "private-run"));
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -239,14 +246,28 @@ public class OpenClawChatDataProviderTests
         var send = Assert.Single(
             activities.Stopped,
             activity => activity.OperationName == ChatTelemetryTracker.SendSpanName);
+        var wait = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseWaitSpanName);
+        var receive = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseReceiveSpanName);
         Assert.Equal(turn.TraceId, send.TraceId);
         Assert.Equal(turn.SpanId, send.ParentSpanId);
+        Assert.Equal(turn.TraceId, wait.TraceId);
+        Assert.Equal(turn.SpanId, wait.ParentSpanId);
+        Assert.Equal(turn.TraceId, receive.TraceId);
+        Assert.Equal(turn.SpanId, receive.ParentSpanId);
         Assert.Equal("local", turn.GetTagItem(OpenClawTelemetryTagKey.Source.ToTelemetryName()));
         Assert.Equal("success", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
         Assert.Equal("lifecycle_end", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
         Assert.Equal("accepted", send.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag));
+        Assert.Equal("assistant", wait.GetTagItem(ChatTelemetryTracker.FirstOutputKindTag));
+        Assert.Equal("assistant", receive.GetTagItem(ChatTelemetryTracker.FirstOutputKindTag));
         Assert.DoesNotContain(turn.Tags, tag => tag.Value?.Contains("private", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(send.Tags, tag => tag.Value?.Contains("private", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(wait.Tags, tag => tag.Value?.Contains("private", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(receive.Tags, tag => tag.Value?.Contains("private", StringComparison.Ordinal) == true);
 
         await provider.DisposeAsync();
     }
@@ -265,6 +286,12 @@ public class OpenClawChatDataProviderTests
             activity => activity.OperationName == ChatTelemetryTracker.SendSpanName);
         Assert.Equal("other", send.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag));
         await provider.DisposeAsync();
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseWaitSpanName);
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseReceiveSpanName);
     }
 
     [Fact]
@@ -274,6 +301,7 @@ public class OpenClawChatDataProviderTests
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "remote-run"));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"response"}""", runId: "remote-run"));
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "remote-run"));
 
         var turn = Assert.Single(
@@ -281,6 +309,12 @@ public class OpenClawChatDataProviderTests
             activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
         Assert.Equal("remote", turn.GetTagItem(OpenClawTelemetryTagKey.Source.ToTelemetryName()));
         Assert.Equal("lifecycle_end", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseWaitSpanName);
+        Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseReceiveSpanName);
         await provider.DisposeAsync();
     }
 

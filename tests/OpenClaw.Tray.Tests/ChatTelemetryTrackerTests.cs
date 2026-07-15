@@ -17,9 +17,13 @@ public sealed class ChatTelemetryTrackerTests
     {
         Assert.Equal("openclaw.chat.turn", ChatTelemetryTracker.TurnSpanName);
         Assert.Equal("openclaw.chat.send", ChatTelemetryTracker.SendSpanName);
+        Assert.Equal("openclaw.chat.response.wait", ChatTelemetryTracker.ResponseWaitSpanName);
+        Assert.Equal("openclaw.chat.response.receive", ChatTelemetryTracker.ResponseReceiveSpanName);
         Assert.Equal("openclaw.chat.history.load", ChatTelemetryTracker.HistoryLoadSpanName);
         Assert.Equal("openclaw.chat.history.backfill", ChatTelemetryTracker.HistoryBackfillSpanName);
         Assert.Equal("openclaw.chat.turns", ChatTelemetryTracker.TurnsMetricName);
+        Assert.Equal("openclaw.chat.response.wait.duration", ChatTelemetryTracker.ResponseWaitDurationMetricName);
+        Assert.Equal("openclaw.chat.response.receive.duration", ChatTelemetryTracker.ResponseReceiveDurationMetricName);
         Assert.Equal("openclaw.chat.remote_turns.dropped", ChatTelemetryTracker.DroppedRemoteTurnsMetricName);
         Assert.Equal("openclaw.chat.terminal_events.dropped", ChatTelemetryTracker.DroppedTerminalEventsMetricName);
         Assert.Equal("success", ChatTelemetryTracker.ToTelemetryValue(ChatTelemetryOutcome.Success));
@@ -31,6 +35,8 @@ public sealed class ChatTelemetryTrackerTests
         Assert.Equal("reset_reconciliation", ChatTelemetryTracker.ToTelemetryValue(ChatBackfillTelemetryReason.ResetReconciliation));
         Assert.Equal("missing_run_id", ChatTelemetryTracker.ToTelemetryValue(ChatTerminalEventDropReason.MissingRunId));
         Assert.Equal("mismatched_run_id", ChatTelemetryTracker.ToTelemetryValue(ChatTerminalEventDropReason.MismatchedRunId));
+        Assert.Equal("assistant", ChatTelemetryTracker.ToTelemetryValue(ChatResponseOutputKind.Assistant));
+        Assert.Equal("other", ChatTelemetryTracker.ToTelemetryValue((ChatResponseOutputKind)999));
     }
 
     [Fact]
@@ -49,6 +55,15 @@ public sealed class ChatTelemetryTrackerTests
             ChatAdmissionTelemetryStatus.Accepted,
             ChatTelemetryOutcome.Success);
         tracker.BindAcceptedRun("private-message", "private-accepted-run");
+        tracker.ObserveAdmissionAccepted("private-message");
+        Assert.True(tracker.ObserveInboundOutput(
+            "private-thread",
+            "private-accepted-run",
+            ChatResponseOutputKind.Assistant));
+        Assert.False(tracker.ObserveInboundOutput(
+            "private-thread",
+            "private-accepted-run",
+            ChatResponseOutputKind.Tool));
 
         Assert.True(tracker.FinishByRunId(
             "private-accepted-run",
@@ -61,9 +76,21 @@ public sealed class ChatTelemetryTrackerTests
 
         var turn = Assert.Single(activities.Stopped, activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
         var sendSpan = Assert.Single(activities.Stopped, activity => activity.OperationName == ChatTelemetryTracker.SendSpanName);
+        var waitSpan = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseWaitSpanName);
+        var receiveSpan = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseReceiveSpanName);
         Assert.Equal(default, turn.ParentSpanId);
         Assert.Equal(turn.TraceId, sendSpan.TraceId);
         Assert.Equal(turn.SpanId, sendSpan.ParentSpanId);
+        Assert.Equal(turn.TraceId, waitSpan.TraceId);
+        Assert.Equal(turn.SpanId, waitSpan.ParentSpanId);
+        Assert.Equal(turn.TraceId, receiveSpan.TraceId);
+        Assert.Equal(turn.SpanId, receiveSpan.ParentSpanId);
+        Assert.Equal("assistant", waitSpan.GetTagItem(ChatTelemetryTracker.FirstOutputKindTag));
+        Assert.Equal("assistant", receiveSpan.GetTagItem(ChatTelemetryTracker.FirstOutputKindTag));
         Assert.Equal("success", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
         Assert.Equal("assistant_final", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
         Assert.DoesNotContain(turn.Tags, tag => tag.Value?.Contains("private-", StringComparison.Ordinal) == true);
@@ -72,7 +99,65 @@ public sealed class ChatTelemetryTrackerTests
         Assert.Single(metrics.For(ChatTelemetryTracker.TurnsMetricName));
         Assert.Single(metrics.For(ChatTelemetryTracker.TurnDurationMetricName));
         Assert.Single(metrics.For(ChatTelemetryTracker.SendAttemptsMetricName));
+        Assert.Single(metrics.For(ChatTelemetryTracker.ResponseWaitDurationMetricName));
+        Assert.Single(metrics.For(ChatTelemetryTracker.ResponseReceiveDurationMetricName));
         Assert.Empty(metrics.For(ChatTelemetryTracker.QueueWaitDurationMetricName));
+    }
+
+    [Fact]
+    public void TerminalBeforeOutput_RecordsWaitOnly()
+    {
+        using var activities = new ActivityCollector();
+        using var metrics = new MetricCollector();
+        var tracker = new ChatTelemetryTracker();
+        tracker.StartLocalTurn("message", "thread", queued: false);
+        tracker.DispatchLocalTurn("message", "run");
+        tracker.ObserveAdmissionAccepted("message");
+
+        tracker.FinishByRunId(
+            "run",
+            ChatTelemetryOutcome.Failure,
+            ChatTurnTelemetryReason.LifecycleError);
+
+        var wait = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseWaitSpanName);
+        Assert.Equal("none", wait.GetTagItem(ChatTelemetryTracker.FirstOutputKindTag));
+        Assert.Equal("failure", wait.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseReceiveSpanName);
+        var waitMetric = Assert.Single(metrics.For(ChatTelemetryTracker.ResponseWaitDurationMetricName));
+        Assert.Equal("none", waitMetric.Tag(ChatTelemetryTracker.FirstOutputKindTag));
+        Assert.Empty(metrics.For(ChatTelemetryTracker.ResponseReceiveDurationMetricName));
+    }
+
+    [Fact]
+    public void OutputBeforeAdmission_DoesNotStartResponsePhases()
+    {
+        using var activities = new ActivityCollector();
+        using var metrics = new MetricCollector();
+        var tracker = new ChatTelemetryTracker();
+        tracker.StartLocalTurn("message", "thread", queued: false);
+        tracker.DispatchLocalTurn("message", "run");
+
+        Assert.False(tracker.ObserveInboundOutput(
+            "thread",
+            "run",
+            ChatResponseOutputKind.Assistant));
+        Assert.True(tracker.FinishByRunId(
+            "run",
+            ChatTelemetryOutcome.Success,
+            ChatTurnTelemetryReason.AssistantFinal));
+
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseWaitSpanName);
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.ResponseReceiveSpanName);
+        Assert.Empty(metrics.For(ChatTelemetryTracker.ResponseWaitDurationMetricName));
+        Assert.Empty(metrics.For(ChatTelemetryTracker.ResponseReceiveDurationMetricName));
     }
 
     [Fact]

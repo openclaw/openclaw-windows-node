@@ -145,6 +145,7 @@ parsing, capability details, or token persistence as separate operations.
 The tray exports native chat lifecycle diagnostics when an endpoint is configured:
 
 - traces: `openclaw.chat.turn`, `openclaw.chat.send`,
+  `openclaw.chat.response.wait`, `openclaw.chat.response.receive`,
   `openclaw.chat.history.load`, and `openclaw.chat.history.backfill`
 - counters: `openclaw.chat.turns`, `openclaw.chat.send.attempts`,
   `openclaw.chat.history.loads`, `openclaw.chat.history.backfills`, and
@@ -152,6 +153,8 @@ The tray exports native chat lifecycle diagnostics when an endpoint is configure
   `openclaw.chat.terminal_events.dropped`
 - duration histograms: `openclaw.chat.turn.duration`,
   `openclaw.chat.queue.wait.duration`, `openclaw.chat.send.duration`,
+  `openclaw.chat.response.wait.duration`,
+  `openclaw.chat.response.receive.duration`,
   `openclaw.chat.history.load.duration`, and
   `openclaw.chat.history.backfill.duration`
 
@@ -186,6 +189,27 @@ separate exported admission status. Accepted responses use `accepted`; terminal
 rejection, cancellation, and exceptions use `rejected`, `canceled`, and
 `exception`. Unknown values map to `other`.
 
+Response timing is split into two sibling child spans under the turn:
+
+- `openclaw.chat.response.wait` starts at accepted local admission or observed
+  lifecycle start and ends at the first recognized assistant, reasoning, or tool
+  output.
+- `openclaw.chat.response.receive` starts at that first inbound event and ends
+  with the turn's authoritative terminal transition.
+
+If a turn terminates before visible output, the wait span closes with
+`openclaw.chat.response.first_output=none` and no receive span is emitted.
+Repeated chunks do not create additional spans. Phase duration metrics are
+recorded at turn completion so they carry the final bounded turn outcome. A wait
+span that reaches first output reports its own phase outcome as `success`; its
+duration metric still uses the enclosing turn's final outcome for aggregation.
+Output received before accepted admission or lifecycle start does not synthesize
+a wait or receive phase.
+Unknown admission statuses, routine status/error events, and unknown future
+event types do not start or transition response phases. The `other` output value
+is reserved for future event types only after they are explicitly reviewed and
+classified as visible response output.
+
 Queue wait is cumulative local queue dwell across all queue/retry segments. The
 tray captures each segment at queue insertion or requeue, adds it when dispatch
 begins, and emits the total when the turn completes so it can carry the final
@@ -210,6 +234,8 @@ Chat attributes are restricted to:
 - `openclaw.chat.remote_turn.drop.reason`: `missing_run_id`
 - `openclaw.chat.terminal_event.drop.reason`: `missing_run_id` or
   `mismatched_run_id`
+- `openclaw.chat.response.first_output`: `none`, `assistant`, `reasoning`,
+  `tool`, or `other`
 - `error.type`: exception type only, never the exception message
 
 Chat telemetry does not export prompts, responses, transcript contents, IDs,
