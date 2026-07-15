@@ -122,6 +122,24 @@ public sealed partial class SettingsPage : Page
 
         ScreenRecordingToggle.Toggled += (_, _) => Persist(s => s.ScreenRecordingConsentGiven = ScreenRecordingToggle.IsOn);
         CameraRecordingToggle.Toggled += (_, _) => Persist(s => s.CameraRecordingConsentGiven = CameraRecordingToggle.IsOn);
+
+        // "Read responses aloud" reuses App.SetChatSpeakerMuted, which persists
+        // VoiceTtsEnabled (as the inverse of mute), updates the chat coordinator,
+        // and broadcasts the change to any open chat surface.
+        ReadResponsesAloudToggle.Toggled += (_, _) =>
+        {
+            if (_loading || CurrentApp.Settings == null) return;
+            CurrentApp.SetChatSpeakerMuted(!ReadResponsesAloudToggle.IsOn);
+            ShowSavedIndicator();
+        };
+        // "Show tool calls and usage" persists the setting and pushes the new
+        // visibility into the live chat timeline via the shared static writer.
+        ShowToolCallsToggle.Toggled += (_, _) =>
+        {
+            if (_loading || CurrentApp.Settings == null) return;
+            Persist(s => s.ShowChatToolCalls = ShowToolCallsToggle.IsOn);
+            OpenClawTray.Chat.OpenClawChatRoot.SetToolCallsVisible(ShowToolCallsToggle.IsOn);
+        };
     }
 
     private void WireCheckBox(CheckBox cb, Action<bool> mutate)
@@ -225,6 +243,11 @@ public sealed partial class SettingsPage : Page
 
         ScreenRecordingToggle.IsOn = settings.ScreenRecordingConsentGiven;
         CameraRecordingToggle.IsOn = settings.CameraRecordingConsentGiven;
+
+        // Chat section: "Read responses aloud" mirrors VoiceTtsEnabled (mute is
+        // its inverse). "Show tool calls and usage" mirrors ShowChatToolCalls.
+        ReadResponsesAloudToggle.IsOn = settings.VoiceTtsEnabled;
+        ShowToolCallsToggle.IsOn = settings.ShowChatToolCalls;
         LoadGatewaySection(settings);
     }
 

@@ -2955,6 +2955,9 @@
   <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
     <value>工作階段</value>
   </data>
+  <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
+    <value>目前工作階段</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>模型</value>
   </data>
@@ -4779,6 +4782,21 @@
   </data>
   <data name="SettingsPage_Notifications.Text" xml:space="preserve">
     <value>通知</value>
+  </data>
+  <data name="SettingsPage_Chat.Text" xml:space="preserve">
+    <value>聊天</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
+    <value>朗讀回覆</value>
+  </data>
+  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
+    <value>在聊天期間透過文字轉語音播放助理回覆。</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
+    <value>顯示工具呼叫和用量</value>
+  </data>
+  <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
+    <value>在對話中內嵌顯示工具呼叫和權杖用量詳細資訊。</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>隱私</value>

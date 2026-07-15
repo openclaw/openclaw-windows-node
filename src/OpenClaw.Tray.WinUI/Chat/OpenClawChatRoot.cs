@@ -28,6 +28,22 @@ public sealed class OpenClawChatRoot : Component
     private static int s_toolCallsCollapseVersion;
     private static event EventHandler? ToolCallsVisibilityChanged;
 
+    /// <summary>
+    /// Sets whether tool-call / usage chips are shown in the chat timeline. This
+    /// is the single writer for the tool-call visibility state now that the
+    /// toggle lives in the Settings "Chat" section (previously a composer
+    /// toggle). Bumps the collapse version when hiding so already-expanded tool
+    /// chips collapse, updates the shared static, and notifies any mounted
+    /// <see cref="OpenClawChatRoot"/> so its timeline re-renders.
+    /// </summary>
+    public static void SetToolCallsVisible(bool visible)
+    {
+        if (!visible && s_showToolCalls)
+            s_toolCallsCollapseVersion++;
+        s_showToolCalls = visible;
+        ToolCallsVisibilityChanged?.Invoke(null, EventArgs.Empty);
+    }
+
     private readonly IChatDataProvider _provider;
     private readonly string? _initialThreadId;
     private readonly Func<string, Task>? _onReadAloud;
@@ -530,7 +546,7 @@ public sealed class OpenClawChatRoot : Component
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .Select(g => new ChannelGroup(
                 AgentLabel: g.Key.Length > 0 ? char.ToUpperInvariant(g.Key[0]) + g.Key[1..] : "Unknown",
-                Sessions: g.Select(t => (Id: t.Id, Title: t.Title!)).ToArray()))
+                Sessions: g.Select(t => (Id: t.Id, Title: t.Title!, Model: t.Model, ModelProvider: t.ModelProvider)).ToArray()))
             .ToArray();
 
         // If the compose-only synthetic thread isn't represented in any group
@@ -551,7 +567,7 @@ public sealed class OpenClawChatRoot : Component
             var agentLabel = agentId.Length > 0 ? char.ToUpperInvariant(agentId[0]) + agentId[1..] : "Main";
             var syntheticGroup = new ChannelGroup(
                 AgentLabel: agentLabel,
-                Sessions: new[] { (Id: effectiveThread.Id!, Title: effectiveThread.Title ?? "OpenClaw Windows Tray") });
+                Sessions: new[] { (Id: effectiveThread.Id!, Title: effectiveThread.Title ?? "OpenClaw Windows Tray", Model: effectiveThread.Model, ModelProvider: effectiveThread.ModelProvider) });
 
             var augmented = new ChannelGroup[channelGroups.Length + 1];
             augmented[0] = syntheticGroup;
@@ -607,14 +623,6 @@ public sealed class OpenClawChatRoot : Component
                 VoiceAudioLevel: voiceAudioLevel.Value,
                 RegisterVoiceStarter: starter => TriggerVoiceRecording = starter,
                 OnAttachmentPasted: att => SetPendingAttachments(pendingAttachmentsRef.Current.Concat(new[] { att }).ToArray()),
-                ShowToolCalls: showToolCalls.Value,
-                OnShowToolCallsChanged: visible =>
-                {
-                    if (!visible && s_showToolCalls)
-                        s_toolCallsCollapseVersion++;
-                    s_showToolCalls = visible;
-                    ToolCallsVisibilityChanged?.Invoke(null, EventArgs.Empty);
-                },
                 IsCompact: _isCompact,
                 AvailableCommands: snapshot.AvailableCommands,
                 CommandsSupported: snapshot.CommandsSupported,

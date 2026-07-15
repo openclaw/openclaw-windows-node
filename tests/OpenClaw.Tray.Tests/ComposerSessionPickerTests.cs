@@ -1,10 +1,10 @@
 namespace OpenClaw.Tray.Tests;
 
 /// <summary>
-/// Source-contract guards for the composer pickers. These assert the composer builds its session
-/// and model dropdowns through the reconciled FunctionalUI ComboBox primitive rather than
-/// hand-rolling a native <c>ComboBox</c> inside a setter — the imperative escape hatch that caused
-/// the #970 "dropdown slams shut on status render" regression.
+/// Source-contract guards for the composer pickers. These assert the redesigned composer uses
+/// declarative FunctionalUI flyouts rather than hand-rolling a native <c>ComboBox</c> inside a
+/// setter — the imperative escape hatch that caused the #970 "dropdown slams shut on status
+/// render" regression.
 /// </summary>
 public sealed class ComposerSessionPickerTests
 {
@@ -16,21 +16,23 @@ public sealed class ComposerSessionPickerTests
         "OpenClawComposer.cs"));
 
     [Fact]
-    public void SessionPicker_UsesReconciledItemComboBoxPrimitive()
+    public void SessionPicker_UsesDeclarativeContentFlyout()
     {
         var composer = ComposerSource();
 
-        Assert.Contains("var sessionItems = new List<ComboItem>();", composer);
-        Assert.Contains("ComboBox(sessionItems, Props.ChannelId ?? \"\"", composer);
+        Assert.Contains("var sessionRows = new List<Element?>();", composer);
+        Assert.Contains("var channelFlyout = ContentFlyout(", composer);
+        Assert.Contains("var channelPicker = PickerButton(", composer);
     }
 
     [Fact]
-    public void ModelPicker_UsesReconciledItemComboBoxPrimitive()
+    public void ModelPicker_UsesDeclarativeMenuFlyout()
     {
         var composer = ComposerSource();
 
-        Assert.Contains("ComboBox(modelItems, modelSelectedId", composer);
-        Assert.Contains("if (id == ClearModelId)", composer);
+        Assert.Contains("var modelMenu = MenuItems(", composer);
+        Assert.Contains("var modelPicker = PickerButton(", composer);
+        Assert.Contains("ToggleMenuItem(", composer);
     }
 
     [Fact]
@@ -42,5 +44,6 @@ public sealed class ComposerSessionPickerTests
         Assert.DoesNotContain("border.Child = cb;", composer);
         Assert.DoesNotContain("SessionPickerSnapshot", composer);
         Assert.DoesNotContain("Native(", composer);
+        Assert.DoesNotContain("ComboBox(sessionItems", composer);
     }
 }

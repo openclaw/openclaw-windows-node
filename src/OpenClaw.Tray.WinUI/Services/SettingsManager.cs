@@ -123,6 +123,8 @@ public class SettingsManager
     public float SttSilenceTimeout { get => _data.SttSilenceTimeout > 0 ? _data.SttSilenceTimeout : 1.5f; set => _data = _data with { SttSilenceTimeout = value }; }
     /// <summary>Enable TTS playback of responses during voice sessions.</summary>
     public bool VoiceTtsEnabled { get => _data.VoiceTtsEnabled; set => _data = _data with { VoiceTtsEnabled = value }; }
+    /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
+    public bool ShowChatToolCalls { get => _data.ShowChatToolCalls; set => _data = _data with { ShowChatToolCalls = value }; }
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
     public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }
