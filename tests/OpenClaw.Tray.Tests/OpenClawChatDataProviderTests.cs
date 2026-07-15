@@ -1,12 +1,67 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Telemetry;
 using OpenClawTray.Chat;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
 
+[Collection("Chat telemetry")]
 public class OpenClawChatDataProviderTests
 {
+    private sealed class ChatActivityCollector : IDisposable
+    {
+        private readonly ActivityListener _listener;
+
+        public ChatActivityCollector()
+        {
+            _listener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name == OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+                ActivityStopped = activity => Stopped.Enqueue(activity),
+            };
+            ActivitySource.AddActivityListener(_listener);
+        }
+
+        public ConcurrentQueue<Activity> Stopped { get; } = [];
+
+        public void Dispose() => _listener.Dispose();
+    }
+
+    private sealed class ChatMetricCollector : IDisposable
+    {
+        private readonly MeterListener _listener = new();
+        private readonly ConcurrentQueue<(string Name, KeyValuePair<string, object?>[] Tags)> _measurements = [];
+
+        public ChatMetricCollector()
+        {
+            _listener.InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Meter.Name == OpenClawMeterName.OpenClaw.ToTelemetryName() &&
+                    instrument.Name.StartsWith("openclaw.chat.", StringComparison.Ordinal))
+                {
+                    listener.EnableMeasurementEvents(instrument);
+                }
+            };
+            _listener.SetMeasurementEventCallback<long>((instrument, _, tags, _) =>
+                _measurements.Enqueue((instrument.Name, tags.ToArray())));
+            _listener.Start();
+        }
+
+        public string[] TagsFor(string metricName, string tagName) =>
+            _measurements
+                .Where(measurement => measurement.Name == metricName)
+                .Select(measurement =>
+                    measurement.Tags.First(tag => tag.Key == tagName).Value?.ToString() ?? string.Empty)
+                .ToArray();
+
+        public void Dispose() => _listener.Dispose();
+    }
+
     private sealed class FakeBridge : IChatGatewayBridge
     {
         public bool IsConnected { get; set; }
@@ -158,6 +213,242 @@ public class OpenClawChatDataProviderTests
             SessionKey = sessionKey,
             RunId = runId ?? string.Empty
         };
+    }
+
+    [Fact]
+    public async Task Telemetry_LocalSendAndLifecycle_EmitCorrelatedAllowlistedSpans()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "private-run", Status = "started" });
+
+        await provider.SendMessageAsync("main", "private prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "private-run"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "private-run"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "private response",
+            State = "final",
+        });
+
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        var send = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.SendSpanName);
+        Assert.Equal(turn.TraceId, send.TraceId);
+        Assert.Equal(turn.SpanId, send.ParentSpanId);
+        Assert.Equal("local", turn.GetTagItem(OpenClawTelemetryTagKey.Source.ToTelemetryName()));
+        Assert.Equal("success", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("lifecycle_end", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        Assert.Equal("accepted", send.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag));
+        Assert.DoesNotContain(turn.Tags, tag => tag.Value?.Contains("private", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(send.Tags, tag => tag.Value?.Contains("private", StringComparison.Ordinal) == true);
+
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_UnknownAdmissionStatus_MapsToOther()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "future_status" });
+
+        await provider.SendMessageAsync("main", "prompt");
+
+        var send = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.SendSpanName);
+        Assert.Equal("other", send.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_RemoteLifecycle_EmitsRemoteTurn()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "remote-run"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "remote-run"));
+
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("remote", turn.GetTagItem(OpenClawTelemetryTagKey.Source.ToTelemetryName()));
+        Assert.Equal("lifecycle_end", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_LoadHistory_EmitsBoundedHistorySpan()
+    {
+        using var activities = new ChatActivityCollector();
+        var (_, provider, _, _) = CreateProvider(new[] { MainSession() });
+
+        await provider.LoadHistoryAsync("main", force: true);
+
+        var history = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.HistoryLoadSpanName);
+        Assert.Equal("forced", history.GetTagItem(OpenClawTelemetryTagKey.Source.ToTelemetryName()));
+        Assert.Equal("success", history.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            ["openclaw.outcome", "openclaw.source"],
+            history.Tags.Select(tag => tag.Key).Order().ToArray());
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_AbortIntent_CompletesTurnAsCanceled()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
+
+        await provider.SendMessageAsync("main", "prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        await provider.StopResponseAsync("main");
+
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("canceled", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("abort_requested", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_AbortBeforeLifecycleStart_DoesNotCreateRemoteTurn()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "started" });
+
+        await provider.SendMessageAsync("main", "prompt");
+        await provider.StopResponseAsync("main");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run"));
+
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("local", turn.GetTagItem(OpenClawTelemetryTagKey.Source.ToTelemetryName()));
+        Assert.Equal("canceled", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("abort_requested", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_Disconnect_CompletesOutstandingTurn()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("canceled", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("disconnected", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_UncorrelatedTerminalEvents_AreDiagnosedWithoutGuessing()
+    {
+        using var activities = new ChatActivityCollector();
+        using var metrics = new ChatMetricCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "different-run"));
+
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal(
+            ["mismatched_run_id"],
+            metrics.TagsFor(
+                ChatTelemetryTracker.DroppedTerminalEventsMetricName,
+                ChatTelemetryTracker.DroppedTerminalEventReasonTag));
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run"));
+        Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_TerminalWithoutRunId_IsDiagnosedAndClosedBySafeCleanup()
+    {
+        using var activities = new ChatActivityCollector();
+        using var metrics = new ChatMetricCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: null));
+
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal(
+            ["missing_run_id"],
+            metrics.TagsFor(
+                ChatTelemetryTracker.DroppedTerminalEventsMetricName,
+                ChatTelemetryTracker.DroppedTerminalEventReasonTag));
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("disconnected", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_Reset_CompletesQueuedAndActiveTurns()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
+
+        await provider.SendMessageAsync("main", "active");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        await provider.SendMessageAsync("main", "queued");
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main",
+        });
+
+        var turns = activities.Stopped
+            .Where(activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName)
+            .ToArray();
+        Assert.Equal(2, turns.Length);
+        Assert.All(turns, turn =>
+        {
+            Assert.Equal("canceled", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+            Assert.Equal("reset", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        });
+        await provider.DisposeAsync();
     }
 
     [Fact]
@@ -3023,6 +3314,7 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task QueuedSend_InFlightAckWithoutLifecycle_RequeuesAndRetriesSameIdempotencyKey()
     {
+        using var activities = new ChatActivityCollector();
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
@@ -3076,6 +3368,16 @@ public class OpenClawChatDataProviderTests
         Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
         Assert.Single(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.User && e.Text == "Hello");
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-2"));
+
+        var admissionStatuses = activities.Stopped
+            .Where(activity => activity.OperationName == ChatTelemetryTracker.SendSpanName)
+            .Select(activity => activity.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag))
+            .ToArray();
+        Assert.Equal(new object?[] { "accepted", "deferred", "accepted" }, admissionStatuses);
+        await provider.DisposeAsync();
     }
 
     [Fact]

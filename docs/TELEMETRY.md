@@ -140,6 +140,83 @@ changing connection behavior.
 The phase spans intentionally do not trace signing, serialization, response
 parsing, capability details, or token persistence as separate operations.
 
+## Chat lifecycle
+
+The tray exports native chat lifecycle diagnostics when an endpoint is configured:
+
+- traces: `openclaw.chat.turn`, `openclaw.chat.send`,
+  `openclaw.chat.history.load`, and `openclaw.chat.history.backfill`
+- counters: `openclaw.chat.turns`, `openclaw.chat.send.attempts`,
+  `openclaw.chat.history.loads`, `openclaw.chat.history.backfills`, and
+  `openclaw.chat.remote_turns.dropped`, and
+  `openclaw.chat.terminal_events.dropped`
+- duration histograms: `openclaw.chat.turn.duration`,
+  `openclaw.chat.queue.wait.duration`, `openclaw.chat.send.duration`,
+  `openclaw.chat.history.load.duration`, and
+  `openclaw.chat.history.backfill.duration`
+
+A local turn starts when the tray admits a valid request to direct dispatch or its
+local queue. An observed remote turn starts at a gateway lifecycle start carrying
+a run ID. Turn correlation uses message, run, and thread identifiers only inside
+the process; those identifiers are never attached to exported signals. Each turn
+span is explicitly created as a root, while each sampled local send attempt is
+explicitly parented to its turn.
+
+Turn completion is exactly once. Assistant final, lifecycle end, lifecycle error,
+send rejection, queue cancellation, explicit abort, reset/supersession,
+disconnect, and disposal race through an atomic tracker; the first applicable
+terminal transition removes correlation state, and later duplicate signals are
+ignored. Assistant-final events do not contain a run ID, so the provider captures
+the active run under its existing state lock before completing telemetry. A remote
+lifecycle start without a run ID is not traced using an unsafe thread fallback;
+it increments `openclaw.chat.remote_turns.dropped` with the finite reason
+`missing_run_id`. A missing-run start for an already-dispatched local turn is not
+misclassified as a dropped remote turn.
+
+Terminal lifecycle events are never matched by thread alone. If a terminal event
+has no run ID or conflicts with the active run, it cannot complete a potentially
+newer turn. The provider logs a content-free warning and increments
+`openclaw.chat.terminal_events.dropped`; unresolved turns remain eligible for
+safe reset, disconnect, or disposal cleanup.
+
+Each `openclaw.chat.send` span represents one `chat.send` RPC attempt. A valid
+retryable deferral is `outcome=success` with admission status `deferred`, because
+the RPC completed and returned a recognized decision. Local requeue is not a
+separate exported admission status. Accepted responses use `accepted`; terminal
+rejection, cancellation, and exceptions use `rejected`, `canceled`, and
+`exception`. Unknown values map to `other`.
+
+Queue wait is cumulative local queue dwell across all queue/retry segments. The
+tray captures each segment at queue insertion or requeue, adds it when dispatch
+begins, and emits the total when the turn completes so it can carry the final
+outcome. Direct sends accepted on their first attempt do not emit queue-wait
+measurements. Consequently, the metric timestamp is the turn completion time, not
+the instant queue congestion occurred.
+
+Full transcript loads and targeted remote-message backfills are separate
+operations. Full loads use source `initial` or `forced`. Backfills use the finite
+reason `remote_turn` or `reset_reconciliation`.
+
+Chat attributes are restricted to:
+
+- `openclaw.source`: `local`, `remote`, `initial`, or `forced`, as applicable
+- `openclaw.outcome`: `success`, `failure`, or `canceled`
+- `openclaw.reason`: `assistant_final`, `lifecycle_end`, `lifecycle_error`,
+  `send_rejected`, `queued_canceled`, `abort_requested`, `reset`, `superseded`,
+  `disconnected`, `disposed`, or `other`
+- `openclaw.chat.admission.status`: `accepted`, `deferred`, `rejected`,
+  `canceled`, `exception`, or `other`
+- `openclaw.chat.backfill.reason`: `remote_turn` or `reset_reconciliation`
+- `openclaw.chat.remote_turn.drop.reason`: `missing_run_id`
+- `openclaw.chat.terminal_event.drop.reason`: `missing_run_id` or
+  `mismatched_run_id`
+- `error.type`: exception type only, never the exception message
+
+Chat telemetry does not export prompts, responses, transcript contents, IDs,
+model/provider names, attachment metadata, filenames, tool names, token usage,
+URLs, error messages, or local chat log text. No chat log category is added to
+the OpenTelemetry log allowlist.
+
 ## Endpoint handling
 
 The endpoint setting is a collector endpoint, not a credential or request-parameter store. Accept plain `http` and `https` collector URLs with optional path prefixes. Reject URLs with embedded user info, query strings, or fragments.

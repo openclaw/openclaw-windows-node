@@ -88,6 +88,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     public static readonly ConcurrentDictionary<string, byte[]> ImagePreviewCache = new();
 
     private readonly IChatGatewayBridge _bridge;
+    private readonly ChatTelemetryTracker _telemetry = new();
     private readonly Action<Action>? _post;
     private readonly object _gate = new();
     private readonly object _toolMetaSaveGate = new();
@@ -414,7 +415,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 nonce,
                 attachments?.ToArray());
 
-            if (CanSendDirectlyLocked(threadId))
+            var sendDirectly = CanSendDirectlyLocked(threadId);
+            _telemetry.StartLocalTurn(request.Id, threadId, queued: !sendDirectly);
+            if (sendDirectly)
             {
                 dispatch = StartDirectSendLocked(request);
             }
@@ -446,15 +449,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             throw new ArgumentException("Queued message id is required.", nameof(queuedMessageId));
 
         ChatDataSnapshot? snapshot = null;
+        ChatTelemetryTracker.PreparedTurnCompletion? telemetryCompletion = null;
         var canceled = false;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             canceled = CancelQueuedMessageLocked(threadId, queuedMessageId);
             if (canceled)
+            {
+                telemetryCompletion = _telemetry.PrepareFinishByMessageId(
+                    queuedMessageId,
+                    ChatTelemetryOutcome.Canceled,
+                    ChatTurnTelemetryReason.QueuedCanceled);
                 snapshot = BuildSnapshotLocked();
+            }
         }
 
+        _telemetry.CompletePreparedTurn(telemetryCompletion);
         if (snapshot is not null)
             Publish(snapshot);
 
@@ -469,6 +480,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var request = dispatch.Request;
         var threadId = request.ThreadId;
         var hasAttachments = request.Attachments is { Count: > 0 };
+        ChatTelemetryOperation? sendOperation = null;
 
         try
         {
@@ -480,14 +492,34 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (GetResetVersionLocked(threadId) == dispatch.ResetVersion)
                     TrackQueuedMessageRunLocked(threadId, request.SendRunId, request.Id);
             }
+            sendOperation = _telemetry.StartSendAttempt(request.Id);
             var sendResult = await _bridge.SendChatMessageForRunAsync(
                 request.Text,
                 threadId,
                 dispatch.SessionId,
                 request.Attachments,
                 idempotencyKey: request.SendRunId);
+            var admissionStatus = MapAdmissionTelemetryStatus(sendResult);
+            var admissionOutcome = admissionStatus == ChatAdmissionTelemetryStatus.Canceled
+                ? ChatTelemetryOutcome.Canceled
+                : sendResult.IsTerminalFailure
+                    ? ChatTelemetryOutcome.Failure
+                    : ChatTelemetryOutcome.Success;
+            _telemetry.FinishSendAttempt(
+                sendOperation,
+                admissionStatus,
+                admissionOutcome);
             if (sendResult.IsTerminalFailure)
             {
+                ChatTelemetryTracker.PreparedTurnCompletion? rejectedCompletion;
+                lock (_gate)
+                {
+                    rejectedCompletion = _telemetry.PrepareFinishByMessageId(
+                        request.Id,
+                        admissionOutcome,
+                        ChatTurnTelemetryReason.SendRejected);
+                }
+                _telemetry.CompletePreparedTurn(rejectedCompletion);
                 var failure = !string.IsNullOrWhiteSpace(sendResult.Error)
                     ? sendResult.Error!
                     : string.Format(
@@ -499,6 +531,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             bool sendStillCurrent;
             string? staleRunIdToAbort = null;
+            ChatTelemetryTracker.PreparedTurnCompletion? staleCompletion = null;
             ChatDataSnapshot? acceptedSnapshot = null;
             ChatDataSnapshot? requeuedSnapshot = null;
             var retryDeferredSend = false;
@@ -512,6 +545,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (!sendStillCurrent)
                 {
                     staleRunIdToAbort = acceptedRunId ?? request.SendRunId;
+                    staleCompletion = _telemetry.PrepareFinishByMessageId(
+                        request.Id,
+                        ChatTelemetryOutcome.Canceled,
+                        ChatTurnTelemetryReason.Superseded);
                     AddResetIgnoredRunIdLocked(threadId, staleRunIdToAbort);
                 }
                 else if (IsDeferredAdmissionStatus(sendResult.Status))
@@ -523,6 +560,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         && activeStartSequence > dispatch.StartedRunStartSequence;
                     if (runAlreadyStarted)
                     {
+                        _telemetry.BindAcceptedRun(request.Id, acceptedRunId);
                         TrackQueuedMessageRunLocked(threadId, acceptedRunId!, request.Id);
                         AddResetAcceptedRunIdLocked(threadId, acceptedRunId!);
                         if (PromoteQueuedMessageLocked(threadId, request.Id))
@@ -536,6 +574,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     }
                     else if (RequeueDeferredAdmissionLocked(threadId, request.Id, out deferredRetryDelay))
                     {
+                        _telemetry.RequeueLocalTurn(request.Id);
                         if (!string.IsNullOrEmpty(acceptedRunId))
                         {
                             TrackQueuedMessageRunLocked(threadId, acceptedRunId, request.Id);
@@ -552,6 +591,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 }
                 else if (!string.IsNullOrEmpty(acceptedRunId))
                 {
+                    _telemetry.BindAcceptedRun(request.Id, acceptedRunId);
                     TrackQueuedMessageRunLocked(threadId, acceptedRunId, request.Id);
                     AddResetAcceptedRunIdLocked(threadId, acceptedRunId);
                     var runAlreadyStarted = _activeRunIds.TryGetValue(threadId, out var activeRunId)
@@ -600,6 +640,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             if (staleRunIdToAbort is not null)
             {
+                _telemetry.CompletePreparedTurn(staleCompletion);
                 try
                 {
                     Logger.Info($"[Reset] Aborting late pre-reset send runId='{staleRunIdToAbort}' threadId='{threadId}'");
@@ -616,13 +657,27 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         catch (Exception ex)
         {
+            _telemetry.FinishSendAttempt(
+                sendOperation,
+                ChatAdmissionTelemetryStatus.Exception,
+                ex is OperationCanceledException
+                    ? ChatTelemetryOutcome.Canceled
+                    : ChatTelemetryOutcome.Failure,
+                ex);
             bool sendStillCurrent;
+            ChatTelemetryTracker.PreparedTurnCompletion? rejectedCompletion = null;
             ChatDataSnapshot? failureSnapshot = null;
             lock (_gate)
             {
                 sendStillCurrent = GetResetVersionLocked(threadId) == dispatch.ResetVersion;
                 if (sendStillCurrent)
                 {
+                    rejectedCompletion = _telemetry.PrepareFinishByMessageId(
+                        request.Id,
+                        ex is OperationCanceledException
+                            ? ChatTelemetryOutcome.Canceled
+                            : ChatTelemetryOutcome.Failure,
+                        ChatTurnTelemetryReason.SendRejected);
                     RemovePendingLocalEchoLocked(threadId, request.Id);
                     MarkQueuedMessageFailedLocked(threadId, request.Id, ex.Message);
                     RemoveQueuedSendRequestLocked(threadId, request.Id);
@@ -643,6 +698,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (!sendStillCurrent)
                 return;
 
+            _telemetry.CompletePreparedTurn(rejectedCompletion);
             Logger.Warn($"[Queue] chat.send failed threadId='{threadId}' queuedMessageId='{request.Id}' sendRunId='{request.SendRunId}': {ex.Message}");
             // Surface as an error in the timeline + notification, while the
             // failed queue card keeps the attempted text visible for retry/edit.
@@ -676,6 +732,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 _pendingAbortCounts.TryGetValue(threadId, out var count);
                 _pendingAbortCounts[threadId] = count + 1;
             }
+
+            _telemetry.FinishActiveTurn(
+                threadId,
+                ChatTelemetryOutcome.Canceled,
+                ChatTurnTelemetryReason.AbortRequested);
         }
 
         Logger.Info($"[ABORT] StopResponseAsync threadId='{threadId}' runId='{runId ?? "(null)"}' hadActiveTurn={hadActiveTurn} deferred={string.IsNullOrEmpty(runId)}");
@@ -761,6 +822,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             requestResetVersion = GetResetVersionLocked(threadId);
         }
 
+        var historyOperation = _telemetry.StartHistoryLoad(
+            force ? ChatHistoryTelemetrySource.Forced : ChatHistoryTelemetrySource.Initial);
+        var historyOutcome = ChatTelemetryOutcome.Success;
+        Exception? historyException = null;
         try
         {
             var history = await _bridge.RequestChatHistoryAsync(threadId);
@@ -1190,6 +1255,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         catch (Exception ex)
         {
+            historyOutcome = ex is OperationCanceledException
+                ? ChatTelemetryOutcome.Canceled
+                : ChatTelemetryOutcome.Failure;
+            historyException = ex;
             RaiseNotification(new ChatProviderNotification(
                 ChatProviderNotificationKind.Error, threadId, LocalizationHelper.GetString("Chat_Notification_LoadHistoryFailed"), ex.Message));
 
@@ -1218,6 +1287,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         finally
         {
             lock (_gate) { _historyInFlight.Remove(threadId); }
+            _telemetry.FinishHistoryLoad(historyOperation, historyOutcome, historyException);
         }
     }
 
@@ -1679,6 +1749,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         List<LocalInlineApproval> pendingLocalApprovals;
         lock (_gate)
         {
+            _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disposed);
             timerToDispose = _toolMetaSaveTimer;
             _toolMetaSaveTimer = null;
             _toolMetaSaveVersion++;
@@ -1778,6 +1849,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // still pending (the request ID is stale after reconnect).
             if (justReconnected)
             {
+                _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disconnected);
                 var reload = new HashSet<string>(_historyLoaded);
                 foreach (var key in _timelines.Keys)
                     reload.Add(key);
@@ -1809,6 +1881,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             if (justDisconnected)
             {
+                _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disconnected);
                 var list = new List<string>();
                 foreach (var (key, tl) in _timelines)
                 {
@@ -2305,6 +2378,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             {
                 if (_activeRunIds.Remove(threadId, out var completedRunId))
                 {
+                    _telemetry.FinishByRunId(
+                        completedRunId,
+                        ChatTelemetryOutcome.Success,
+                        ChatTurnTelemetryReason.AssistantFinal);
                     RememberTerminalRunIdLocked(threadId, completedRunId);
                     _abortedRunIds.Remove(completedRunId);
                 }
@@ -2360,13 +2437,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         var reloadHistoryAfterResetDrop = false;
         var shouldProcessEvent = false;
+        ChatTerminalEventDropReason? droppedTerminalReason = null;
         lock (_gate)
         {
             if (ShouldDropAgentEventAfterResetLocked(evt, threadId, out reloadHistoryAfterResetDrop))
             {
                 Logger.Debug($"[Reset] Dropping stale agent event after reset for threadId='{threadId}' stream='{evt.Stream}' runId='{evt.RunId}'");
             }
-            else if (ShouldDropTerminalAgentEventLocked(evt, threadId))
+            else if (ShouldDropTerminalAgentEventLocked(evt, threadId, out droppedTerminalReason))
             {
                 Logger.Debug($"[Queue] Dropping stale terminal agent event for threadId='{threadId}' stream='{evt.Stream}' runId='{evt.RunId}'");
             }
@@ -2377,18 +2455,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         if (!shouldProcessEvent)
         {
+            if (droppedTerminalReason.HasValue)
+                RecordDroppedTerminalEvent(droppedTerminalReason.Value);
             if (reloadHistoryAfterResetDrop)
                 _ = LoadHistoryAsync(threadId, force: true);
             return;
         }
 
         // Always update run tracking first (state maintenance must not be skipped).
-        UpdateActiveRunId(evt, threadId);
+        var deferredAbort = UpdateActiveRunId(evt, threadId);
+        if (deferredAbort.DroppedTerminalReason.HasValue)
+            RecordDroppedTerminalEvent(deferredAbort.DroppedTerminalReason.Value);
         ClearQueuedMessageOnLocalTurnStart(evt, threadId);
 
         // Fire deferred chat.abort and persist if pending aborts were queued.
-        var deferredRunId = _deferredAbortRunId;
-        var shouldPersist = _deferredAbortCount > 0;
+        var deferredRunId = deferredAbort.RunId;
+        var shouldPersist = deferredAbort.Count > 0;
         if (deferredRunId is not null || shouldPersist)
         {
             _ = Task.Run(async () =>
@@ -2550,13 +2632,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
     }
 
-    private string? _deferredAbortRunId; // set inside lock when pending abort fires; read outside lock to send RPC
-    private int _deferredAbortCount;     // how many user messages to force-persist as aborted
-
-    private void UpdateActiveRunId(AgentEventInfo evt, string threadId)
+    private (string? RunId, int Count, ChatTerminalEventDropReason? DroppedTerminalReason) UpdateActiveRunId(
+        AgentEventInfo evt,
+        string threadId)
     {
-        _deferredAbortRunId = null;
-        _deferredAbortCount = 0;
+        string? deferredAbortRunId = null;
+        var deferredAbortCount = 0;
+        ChatTerminalEventDropReason? droppedTerminalReason = null;
 
         if (string.Equals(evt.Stream, "lifecycle", StringComparison.OrdinalIgnoreCase) &&
             evt.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
@@ -2565,33 +2647,56 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var phase = phaseProp.GetString()?.ToLowerInvariant();
             lock (_gate)
             {
-                if (phase == "start" && !string.IsNullOrEmpty(evt.RunId))
+                if (phase == "start")
                 {
-                    _activeRunIds[threadId] = evt.RunId;
-                    _activeRunStartSequences[threadId] = ++_lifecycleStartSequence;
-
-                    // Detect remote turn: if the turn was NOT locally initiated,
-                    // a remote client (e.g. gateway web UI) sent the message.
-                    // Fetch the last user message from history so it appears in
-                    // the timeline before the assistant response.
-                    if (!_locallyInitiatedThreads.Contains(threadId))
+                    _telemetry.ObserveLifecycleStart(
+                        threadId,
+                        evt.RunId,
+                        allowRemoteTurn: !_locallyInitiatedThreads.Contains(threadId) &&
+                            !_abortedThreads.Contains(threadId) &&
+                            !_pendingAbortCounts.ContainsKey(threadId));
+                    if (!string.IsNullOrEmpty(evt.RunId))
                     {
-                        _ = FetchRemoteUserMessageAsync(threadId);
-                    }
+                        _activeRunIds[threadId] = evt.RunId;
+                        _activeRunStartSequences[threadId] = ++_lifecycleStartSequence;
 
-                    // Deferred abort: if user clicked stop before lifecycle.start,
-                    // fire chat.abort now that we have the runId.
-                    if (_pendingAbortCounts.TryGetValue(threadId, out var pendingCount) && pendingCount > 0)
-                    {
-                        _pendingAbortCounts.Remove(threadId);
-                        _abortedRunIds.Add(evt.RunId);
-                        _deferredAbortRunId = evt.RunId;
-                        _deferredAbortCount = pendingCount;
-                        Logger.Info($"[ABORT] Deferred abort fired — lifecycle.start arrived with runId='{evt.RunId}' for threadId='{threadId}' (pendingCount={pendingCount})");
+                        // Detect remote turn: if the turn was NOT locally initiated,
+                        // a remote client (e.g. gateway web UI) sent the message.
+                        // Fetch the last user message from history so it appears in
+                        // the timeline before the assistant response.
+                        if (!_locallyInitiatedThreads.Contains(threadId))
+                        {
+                            _ = FetchRemoteUserMessageAsync(threadId);
+                        }
+
+                        // Deferred abort: if user clicked stop before lifecycle.start,
+                        // fire chat.abort now that we have the runId.
+                        if (_pendingAbortCounts.TryGetValue(threadId, out var pendingCount) && pendingCount > 0)
+                        {
+                            _pendingAbortCounts.Remove(threadId);
+                            _abortedRunIds.Add(evt.RunId);
+                            deferredAbortRunId = evt.RunId;
+                            deferredAbortCount = pendingCount;
+                            Logger.Info($"[ABORT] Deferred abort fired — lifecycle.start arrived with runId='{evt.RunId}' for threadId='{threadId}' (pendingCount={pendingCount})");
+                        }
                     }
                 }
                 else if (phase == "end" || phase == "error")
                 {
+                    var wasAborted = !string.IsNullOrWhiteSpace(evt.RunId) &&
+                        _abortedRunIds.Contains(evt.RunId);
+                    var completed = _telemetry.FinishByRunId(
+                        evt.RunId,
+                        phase == "error" ? ChatTelemetryOutcome.Failure : ChatTelemetryOutcome.Success,
+                        phase == "error"
+                            ? ChatTurnTelemetryReason.LifecycleError
+                            : ChatTurnTelemetryReason.LifecycleEnd);
+                    if (!completed && !wasAborted)
+                    {
+                        droppedTerminalReason = string.IsNullOrWhiteSpace(evt.RunId)
+                            ? ChatTerminalEventDropReason.MissingRunId
+                            : ChatTerminalEventDropReason.MismatchedRunId;
+                    }
                     // Clean up: remove aborted runId tracking on terminal events.
                     if (!string.IsNullOrEmpty(evt.RunId))
                         _abortedRunIds.Remove(evt.RunId);
@@ -2616,8 +2721,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     if (_pendingAbortCounts.TryGetValue(threadId, out var lateCount) && lateCount > 0)
                     {
                         _pendingAbortCounts.Remove(threadId);
-                        _deferredAbortRunId = evt.RunId; // may be null, that's ok — persist doesn't need it
-                        _deferredAbortCount = lateCount;
+                        deferredAbortRunId = evt.RunId; // may be null, that's ok — persist doesn't need it
+                        deferredAbortCount = lateCount;
                         Logger.Info($"[ABORT] Late deferred abort — lifecycle.end arrived with pending aborts for threadId='{threadId}' (pendingCount={lateCount})");
                     }
                 }
@@ -2631,19 +2736,42 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var state = stateProp.GetString()?.ToLowerInvariant();
             lock (_gate)
             {
-                if ((state == "done" || state == "error") && !string.IsNullOrEmpty(evt.RunId))
+                if (state == "done" || state == "error")
                 {
-                    _abortedRunIds.Remove(evt.RunId);
+                    var wasAborted = !string.IsNullOrWhiteSpace(evt.RunId) &&
+                        _abortedRunIds.Contains(evt.RunId);
+                    var completed = _telemetry.FinishByRunId(
+                        evt.RunId,
+                        state == "error" ? ChatTelemetryOutcome.Failure : ChatTelemetryOutcome.Success,
+                        state == "error"
+                            ? ChatTurnTelemetryReason.LifecycleError
+                            : ChatTurnTelemetryReason.LifecycleEnd);
+                    if (!completed && !wasAborted)
+                    {
+                        droppedTerminalReason = string.IsNullOrWhiteSpace(evt.RunId)
+                            ? ChatTerminalEventDropReason.MissingRunId
+                            : ChatTerminalEventDropReason.MismatchedRunId;
+                    }
+                    if (!string.IsNullOrWhiteSpace(evt.RunId))
+                    {
+                        _abortedRunIds.Remove(evt.RunId);
+                        RemoveQueuedRunMappingByRunIdLocked(threadId, evt.RunId);
+                    }
                     _activeRunIds.Remove(threadId);
                     _activeRunStartSequences.Remove(threadId);
-                    RemoveQueuedRunMappingByRunIdLocked(threadId, evt.RunId);
                 }
             }
         }
+
+        return (deferredAbortRunId, deferredAbortCount, droppedTerminalReason);
     }
 
-    private bool ShouldDropTerminalAgentEventLocked(AgentEventInfo evt, string threadId)
+    private bool ShouldDropTerminalAgentEventLocked(
+        AgentEventInfo evt,
+        string threadId,
+        out ChatTerminalEventDropReason? droppedTerminalReason)
     {
+        droppedTerminalReason = null;
         if (!TryGetTerminalAgentRunId(evt, out var runId) || string.IsNullOrWhiteSpace(runId))
             return false;
 
@@ -2656,6 +2784,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (_activeRunIds.TryGetValue(threadId, out var activeRunId) &&
             !string.Equals(activeRunId, runId, StringComparison.Ordinal))
         {
+            droppedTerminalReason = ChatTerminalEventDropReason.MismatchedRunId;
             return true;
         }
 
@@ -2666,11 +2795,20 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _timelines.TryGetValue(threadId, out var timeline) &&
             timeline.TurnActive)
         {
+            droppedTerminalReason = ChatTerminalEventDropReason.MismatchedRunId;
             return true;
         }
 
         RememberTerminalRunIdLocked(threadId, runId);
         return false;
+    }
+
+    private void RecordDroppedTerminalEvent(ChatTerminalEventDropReason reason)
+    {
+        _telemetry.RecordDroppedTerminalEvent(reason);
+        Logger.Warn(
+            $"[ChatTelemetry] Dropped terminal chat event because safe run correlation was unavailable " +
+            $"(reason='{ChatTelemetryTracker.ToTelemetryValue(reason)}').");
     }
 
     private void RememberTerminalRunIdLocked(string threadId, string runId)
@@ -2894,6 +3032,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
         _locallyInitiatedThreads.Add(threadId);
         _assistantFallbackPromotedThreads.Add(threadId);
+        _telemetry.DispatchLocalTurn(request.Id, request.SendRunId);
         return new QueuedSendDispatch(
             request,
             sessionId,
@@ -2952,6 +3091,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
             _locallyInitiatedThreads.Add(threadId);
+            _telemetry.DispatchLocalTurn(request.Id, request.SendRunId);
             return new QueuedSendDispatch(
                 request,
                 sessionId,
@@ -3040,6 +3180,29 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private static bool IsDeferredAdmissionStatus(string? status) =>
         string.Equals(status, "in_flight", StringComparison.OrdinalIgnoreCase);
+
+    private static ChatAdmissionTelemetryStatus MapAdmissionTelemetryStatus(ChatSendResult result)
+    {
+        if (IsDeferredAdmissionStatus(result.Status))
+            return ChatAdmissionTelemetryStatus.Deferred;
+        if (result.IsTerminalFailure)
+        {
+            return IsCanceledAdmissionStatus(result.Status)
+                ? ChatAdmissionTelemetryStatus.Canceled
+                : ChatAdmissionTelemetryStatus.Rejected;
+        }
+        if (string.IsNullOrWhiteSpace(result.Status) ||
+            string.Equals(result.Status, "started", StringComparison.OrdinalIgnoreCase))
+        {
+            return ChatAdmissionTelemetryStatus.Accepted;
+        }
+        return ChatAdmissionTelemetryStatus.Other;
+    }
+
+    private static bool IsCanceledAdmissionStatus(string? status) =>
+        string.Equals(status, "aborted", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "canceled", StringComparison.OrdinalIgnoreCase);
 
     private static TimeSpan DeferredAdmissionRetryDelay(int retryCount)
     {
@@ -3379,6 +3542,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// </summary>
     private async Task FetchRemoteUserMessageAsync(string threadId, bool openResetGateOnSuccess = false)
     {
+        var telemetryReason = openResetGateOnSuccess
+            ? ChatBackfillTelemetryReason.ResetReconciliation
+            : ChatBackfillTelemetryReason.RemoteTurn;
+        var historyOperation = _telemetry.StartHistoryBackfill(telemetryReason);
+        var historyOutcome = ChatTelemetryOutcome.Success;
+        Exception? historyException = null;
         long requestResetVersion;
         long resetCutoffUtcMs;
         lock (_gate)
@@ -3456,6 +3625,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         catch (Exception ex)
         {
+            historyOutcome = ex is OperationCanceledException
+                ? ChatTelemetryOutcome.Canceled
+                : ChatTelemetryOutcome.Failure;
+            historyException = ex;
             Logger.Warn($"[REMOTE] Failed to fetch remote user message for threadId='{threadId}': {ex.Message}");
         }
         finally
@@ -3464,6 +3637,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             {
                 lock (_gate) { _resetRemoteBackfillInFlight.Remove(threadId); }
             }
+            _telemetry.FinishHistoryBackfill(historyOperation, historyOutcome, historyException);
         }
     }
 
@@ -4683,6 +4857,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private ResetClearPersistence ClearThreadHistoryAfterResetLocked(string threadId)
     {
+        _telemetry.FinishThread(threadId, ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Reset);
         var oldSessionId = _sessionIds.TryGetValue(threadId, out var sid) ? sid : null;
         var saveToolMeta = false;
         var saveAttachmentMeta = false;
