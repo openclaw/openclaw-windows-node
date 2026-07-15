@@ -40,8 +40,9 @@ Run the required validation above for every code change, then add the targeted p
 
 Use `.agents/skills/openclaw-parallels-windows/SKILL.md` to prepare or restore the macOS-hosted
 Parallels Windows baseline, manage snapshots, run the required suites inside the guest, or debug
-`prlctl`, WSL, winget, and guest transport failures. Keep the provisioning implementation in
-`scripts/parallels-windows-vm.sh`; do not duplicate it in ad hoc setup notes.
+the companion-specific app layer. General VM lifecycle, `prlctl`, WSL, Git/Node, snapshot, and
+OpenClaw smoke policy is owned by sibling `openclaw`; this repo wrapper adds only .NET, Windows SDK,
+WebView2, the app checkout, app-layer snapshots, required native suites, and native proof routing.
 
 ### MXC / `system.run` / Windows node command execution
 
