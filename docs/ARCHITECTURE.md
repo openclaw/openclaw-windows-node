@@ -52,8 +52,8 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
 | Gateway record test data | `OpenClaw.Connection.Tests.GatewayRecordBuilder` | authoritative |
 | Settings test data | `OpenClaw.TestSupport.SettingsDataBuilder` | authoritative |
-| JSON `JsonElement` coercion | `JsonReadHelpers` (planned) | planned |
-| WSL/POSIX shell quoting | dedicated POSIX quote APIs (planned) | planned |
+| JSON `JsonElement` coercion (non-nullable fallback family) | `JsonReadHelpers` | authoritative |
+| WSL/POSIX shell quoting | `WslShellQuoting` | authoritative |
 | Capability UI metadata | `NodeCapabilityUiCatalog` (planned) | planned |
 | Capability registration/gating | `NodeCapabilityRegistrationPolicy` (planned) | planned |
 | Local MCP exposure policy | `McpCapabilityPolicy` (planned) | planned |
@@ -74,7 +74,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | `src/OpenClaw.Shared/Models.cs` | per-domain model files + `*Mapper` classes |
 | `src/OpenClaw.Shared/Capabilities/SystemCapability.cs` | `ExecApprovalService` |
 | `src/OpenClaw.Connection/GatewayConnectionManager.cs` | `NodeConnectionCoordinator`, `BootstrapTokenLifecycle`, `DevicePairApprovalCoordinator` |
-| `src/OpenClaw.SetupEngine/SetupSteps.cs` | one file per step; `WslShellClient`, `GatewayConfigScriptBuilder`, `KeepaliveProcessManager` |
+| `src/OpenClaw.SetupEngine/SetupSteps.cs` | one file per step; `WslShellClient`, `WslShellQuoting`, `GatewayConfigScriptBuilder`, `KeepaliveProcessManager` |
 | Any test hand-rolling a temp dir / env save-restore / CLI capture | `OpenClaw.TestSupport` fixtures |
 
 ## Ledger
@@ -107,8 +107,8 @@ leading and trailing pipe. Columns, in order:
 | test-fake-mcp | authoritative | OpenClaw.WinNode.Cli.Tests | private internal FakeMcpServer copy | OpenClaw.TestSupport.FakeMcpServer | - | one loopback MCP server captures method/body/auth and returns canned/timeout responses | TestSupportFixtureTests.FakeMcpServer_CapturesRequest | behavioral | when all MCP-round-trip tests share it |
 | test-gateway-builder | authoritative | OpenClaw.Connection.Tests | per-file MakeRecord(id,url) helpers | OpenClaw.Connection.Tests.GatewayRecordBuilder | pre-existing MakeRecord until migrated | gateway record test data has one builder | TestSupportFixtureTests.GatewayRecordBuilder_BuildsRecord | behavioral | when MakeRecord helpers are removed |
 | test-settings-builder | authoritative | scattered test files | ad hoc SettingsData construction in migrated tests | OpenClaw.TestSupport.SettingsDataBuilder | pre-existing un-migrated tests until adopted | settings test data starts from production defaults | TestSupportFixtureTests.SettingsDataBuilder_StartsFromDefaults | behavioral | when settings tests adopt the builder |
-| json-read-helpers | planned | OpenClaw.Shared (multiple files) | duplicate private GetString/TryGetString/FirstNonEmpty helpers | JsonReadHelpers | - | one JSON coercion helper with defined null/wrong-kind behavior | none | review-only | extracted in PR 2 |
-| wsl-posix-quoting | planned | OpenClaw.SetupEngine/SetupSteps.cs | ad hoc ShellEscape with divergent wrap semantics | dedicated POSIX quote APIs | - | WSL scripts use POSIX quoting, never cmd/PowerShell quoting | none | review-only | extracted in PR 2-3 |
+| json-read-helpers | authoritative | OpenClaw.Shared (multiple files) | duplicate non-nullable fallback-returning JsonElement getters | JsonReadHelpers | null-sentinel / non-negative / whitespace-absent / trimming variants stay separate | canonical non-nullable fallback JSON coercion; divergent-contract helpers are not blindly routed here | JsonReadHelpersTests.GetString_ReturnsNull_WhenPropertyMissing | behavioral | when the non-nullable fallback getters are all routed here |
+| wsl-posix-quoting | authoritative | OpenClaw.SetupEngine/SetupSteps.cs | ad hoc ShellEscape with divergent wrap semantics | WslShellQuoting | SetupSteps ShellEscape until PR 3 migration | WSL scripts use POSIX quoting not cmd/PowerShell quoting | WslShellQuotingTests.QuotePosixSingleQuote_WrapsAndEscapesEmbeddedQuote | behavioral | when SetupSteps call sites use WslShellQuoting |
 | app-window-manager | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | window creation/show/hide/shutdown | IWindowManager | composition/delegation only | startup/shutdown ordering deterministic; disposed once | none | review-only | extracted in Phase 3 |
 | app-tray-controller | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | tray icon/menu/action routing | ITrayController | composition/delegation only | tray actions route unchanged | none | review-only | extracted in Phase 3 |
 | app-activation-router | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | deep-link/toast/single-instance activation | IActivationRouter | composition/delegation only | activation routes land on the same UI/actions; current-user pipe security preserved | none | review-only | extracted in Phase 3 |

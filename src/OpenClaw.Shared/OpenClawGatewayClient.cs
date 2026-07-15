@@ -3837,7 +3837,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var summary = new GatewayCostUsageInfo
             {
                 UpdatedAt = ParseUnixTimestampMs(payload, "updatedAt") ?? DateTime.UtcNow,
-                Days = GetInt(payload, "days")
+                Days = JsonReadHelpers.GetInt(payload, "days")
             };
 
             if (payload.TryGetProperty("totals", out var totals) && totals.ValueKind == JsonValueKind.Object)
@@ -3850,7 +3850,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     CacheWrite = GetLong(totals, "cacheWrite"),
                     TotalTokens = GetLong(totals, "totalTokens"),
                     TotalCost = GetDouble(totals, "totalCost"),
-                    MissingCostEntries = GetInt(totals, "missingCostEntries")
+                    MissingCostEntries = JsonReadHelpers.GetInt(totals, "missingCostEntries")
                 };
             }
 
@@ -3867,7 +3867,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         CacheWrite = GetLong(day, "cacheWrite"),
                         TotalTokens = GetLong(day, "totalTokens"),
                         TotalCost = GetDouble(day, "totalCost"),
-                        MissingCostEntries = GetInt(day, "missingCostEntries")
+                        MissingCostEntries = JsonReadHelpers.GetInt(day, "missingCostEntries")
                     });
                 }
             }
@@ -4036,15 +4036,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             JsonValueKind.False => false,
             _ => null
         };
-    }
-
-    private static int GetInt(JsonElement parent, string property)
-    {
-        if (!parent.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Number)
-            return 0;
-        if (value.TryGetInt32(out var intVal)) return intVal;
-        if (value.TryGetInt64(out var longVal)) return (int)Math.Clamp(longVal, int.MinValue, int.MaxValue);
-        return 0;
     }
 
     private static long GetLong(JsonElement parent, string property)
