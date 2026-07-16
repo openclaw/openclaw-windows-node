@@ -411,19 +411,27 @@ internal sealed class ChatTelemetryTracker
         ChatTelemetryOutcome outcome,
         ChatTurnTelemetryReason reason)
     {
-        if (string.IsNullOrWhiteSpace(runId))
-            return false;
+        var completion = PrepareFinishByRunId(runId, outcome, reason);
+        return CompletePreparedTurn(completion);
+    }
 
-        TurnState? state;
+    public PreparedTurnCompletion? PrepareFinishByRunId(
+        string? runId,
+        ChatTelemetryOutcome outcome,
+        ChatTurnTelemetryReason reason)
+    {
+        if (string.IsNullOrWhiteSpace(runId))
+            return null;
+
         lock (_gate)
         {
-            if (!_turnsByRunId.TryGetValue(runId, out state))
-                return false;
-            RemoveTurnLocked(state);
-        }
+            if (!_turnsByRunId.TryGetValue(runId, out var state))
+                return null;
 
-        FinishTurn(state, outcome, reason);
-        return true;
+            var completion = PrepareTurnCompletion(state, outcome, reason);
+            RemoveTurnLocked(state);
+            return completion;
+        }
     }
 
     public bool FinishActiveTurn(
@@ -474,7 +482,10 @@ internal sealed class ChatTelemetryTracker
             OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, ToTelemetryValue(source)),
         };
         return new ChatTelemetryOperation(
-            OpenClawTelemetry.StartDetachedActivity(HistoryLoadSpanName, tags),
+            OpenClawTelemetry.StartDetachedActivity(
+                HistoryLoadSpanName,
+                default(ActivityContext),
+                tags),
             Stopwatch.GetTimestamp(),
             tags);
     }
@@ -504,7 +515,10 @@ internal sealed class ChatTelemetryTracker
             OpenClawTelemetryTag.String(BackfillReasonTag, ToTelemetryValue(reason)),
         };
         return new ChatTelemetryOperation(
-            OpenClawTelemetry.StartDetachedActivity(HistoryBackfillSpanName, tags),
+            OpenClawTelemetry.StartDetachedActivity(
+                HistoryBackfillSpanName,
+                default(ActivityContext),
+                tags),
             Stopwatch.GetTimestamp(),
             tags);
     }

@@ -2388,11 +2388,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         if (message.IsFinal)
         {
+            ChatTelemetryTracker.PreparedTurnCompletion? turnCompletion = null;
             lock (_gate)
             {
                 if (_activeRunIds.Remove(threadId, out var completedRunId))
                 {
-                    _telemetry.FinishByRunId(
+                    turnCompletion = _telemetry.PrepareFinishByRunId(
                         completedRunId,
                         ChatTelemetryOutcome.Success,
                         ChatTurnTelemetryReason.AssistantFinal);
@@ -2404,6 +2405,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (!HasSendingQueuedMessagesLocked(threadId))
                     _locallyInitiatedThreads.Remove(threadId);
             }
+            _telemetry.CompletePreparedTurn(turnCompletion);
             SnapshotLatestAssistantUsage(threadId);
             ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
             RaiseNotification(new ChatProviderNotification(
@@ -2685,6 +2687,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string? deferredAbortRunId = null;
         var deferredAbortCount = 0;
         ChatTerminalEventDropReason? droppedTerminalReason = null;
+        ChatTelemetryTracker.PreparedTurnCompletion? turnCompletion = null;
 
         if (string.Equals(evt.Stream, "lifecycle", StringComparison.OrdinalIgnoreCase) &&
             evt.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
@@ -2731,13 +2734,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 {
                     var wasAborted = !string.IsNullOrWhiteSpace(evt.RunId) &&
                         _abortedRunIds.Contains(evt.RunId);
-                    var completed = _telemetry.FinishByRunId(
+                    turnCompletion = _telemetry.PrepareFinishByRunId(
                         evt.RunId,
                         phase == "error" ? ChatTelemetryOutcome.Failure : ChatTelemetryOutcome.Success,
                         phase == "error"
                             ? ChatTurnTelemetryReason.LifecycleError
                             : ChatTurnTelemetryReason.LifecycleEnd);
-                    if (!completed && !wasAborted)
+                    if (turnCompletion is null && !wasAborted)
                     {
                         droppedTerminalReason = string.IsNullOrWhiteSpace(evt.RunId)
                             ? ChatTerminalEventDropReason.MissingRunId
@@ -2786,13 +2789,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 {
                     var wasAborted = !string.IsNullOrWhiteSpace(evt.RunId) &&
                         _abortedRunIds.Contains(evt.RunId);
-                    var completed = _telemetry.FinishByRunId(
+                    turnCompletion = _telemetry.PrepareFinishByRunId(
                         evt.RunId,
                         state == "error" ? ChatTelemetryOutcome.Failure : ChatTelemetryOutcome.Success,
                         state == "error"
                             ? ChatTurnTelemetryReason.LifecycleError
                             : ChatTurnTelemetryReason.LifecycleEnd);
-                    if (!completed && !wasAborted)
+                    if (turnCompletion is null && !wasAborted)
                     {
                         droppedTerminalReason = string.IsNullOrWhiteSpace(evt.RunId)
                             ? ChatTerminalEventDropReason.MissingRunId
@@ -2809,6 +2812,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
         }
 
+        _telemetry.CompletePreparedTurn(turnCompletion);
         return (deferredAbortRunId, deferredAbortCount, droppedTerminalReason);
     }
 

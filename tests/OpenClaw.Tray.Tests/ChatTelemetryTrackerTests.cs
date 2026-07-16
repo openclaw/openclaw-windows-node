@@ -287,6 +287,7 @@ public sealed class ChatTelemetryTrackerTests
         using var activities = new ActivityCollector();
         using var metrics = new MetricCollector();
         var tracker = new ChatTelemetryTracker();
+        using var ambient = new Activity("ambient").Start();
 
         var load = tracker.StartHistoryLoad(ChatHistoryTelemetrySource.Forced);
         tracker.FinishHistoryLoad(load, ChatTelemetryOutcome.Success);
@@ -294,8 +295,12 @@ public sealed class ChatTelemetryTrackerTests
         tracker.FinishHistoryBackfill(backfill, ChatTelemetryOutcome.Failure, new InvalidOperationException("private-error"));
 
         var loadSpan = Assert.Single(activities.Stopped, activity => activity.OperationName == ChatTelemetryTracker.HistoryLoadSpanName);
+        Assert.Equal(default, loadSpan.ParentSpanId);
+        Assert.NotEqual(ambient.TraceId, loadSpan.TraceId);
         Assert.Equal(["openclaw.outcome", "openclaw.source"], loadSpan.Tags.Select(tag => tag.Key).Order().ToArray());
         var backfillSpan = Assert.Single(activities.Stopped, activity => activity.OperationName == ChatTelemetryTracker.HistoryBackfillSpanName);
+        Assert.Equal(default, backfillSpan.ParentSpanId);
+        Assert.NotEqual(ambient.TraceId, backfillSpan.TraceId);
         Assert.Equal(
             ["error.type", "openclaw.chat.backfill.reason", "openclaw.outcome", "openclaw.source"],
             backfillSpan.Tags.Select(tag => tag.Key).Order().ToArray());
