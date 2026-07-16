@@ -16,6 +16,7 @@ public sealed class ChatTelemetryTrackerTests
     public void ConstantsAndFiniteValues_AreStable()
     {
         Assert.Equal("openclaw.chat.turn", ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("openclaw.chat.queue.wait", ChatTelemetryTracker.QueueWaitSpanName);
         Assert.Equal("openclaw.chat.send", ChatTelemetryTracker.SendSpanName);
         Assert.Equal("openclaw.chat.response.wait", ChatTelemetryTracker.ResponseWaitSpanName);
         Assert.Equal("openclaw.chat.response.receive", ChatTelemetryTracker.ResponseReceiveSpanName);
@@ -163,6 +164,7 @@ public sealed class ChatTelemetryTrackerTests
     [Fact]
     public void DeferredSend_AccumulatesQueueSegmentsAndRecordsEachAttempt()
     {
+        using var activities = new ActivityCollector();
         using var metrics = new MetricCollector();
         var tracker = new ChatTelemetryTracker();
 
@@ -184,6 +186,46 @@ public sealed class ChatTelemetryTrackerTests
         Assert.All(attempts, measurement =>
             Assert.Equal("success", measurement.Tag(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())));
         Assert.Single(metrics.For(ChatTelemetryTracker.QueueWaitDurationMetricName));
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        var queueWaits = activities.Stopped
+            .Where(activity => activity.OperationName == ChatTelemetryTracker.QueueWaitSpanName)
+            .ToArray();
+        Assert.Equal(2, queueWaits.Length);
+        Assert.All(queueWaits, queueWait =>
+        {
+            Assert.Equal(turn.TraceId, queueWait.TraceId);
+            Assert.Equal(turn.SpanId, queueWait.ParentSpanId);
+            Assert.Equal("local", queueWait.GetTagItem(OpenClawTelemetryTagKey.Source.ToTelemetryName()));
+            Assert.Equal("success", queueWait.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        });
+    }
+
+    [Fact]
+    public void QueuedTurnCanceledBeforeDispatch_ClosesQueueWaitWithTurnOutcome()
+    {
+        using var activities = new ActivityCollector();
+        using var metrics = new MetricCollector();
+        var tracker = new ChatTelemetryTracker();
+        tracker.StartLocalTurn("message", "thread", queued: true);
+
+        Assert.True(tracker.FinishByMessageId(
+            "message",
+            ChatTelemetryOutcome.Canceled,
+            ChatTurnTelemetryReason.QueuedCanceled));
+
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        var queueWait = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.QueueWaitSpanName);
+        Assert.Equal(turn.TraceId, queueWait.TraceId);
+        Assert.Equal(turn.SpanId, queueWait.ParentSpanId);
+        Assert.Equal("canceled", queueWait.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        var queueMetric = Assert.Single(metrics.For(ChatTelemetryTracker.QueueWaitDurationMetricName));
+        Assert.Equal("canceled", queueMetric.Tag(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
     }
 
     [Fact]
@@ -206,6 +248,44 @@ public sealed class ChatTelemetryTrackerTests
 
         Assert.Single(metrics.For(ChatTelemetryTracker.TurnsMetricName));
         Assert.Single(metrics.For(ChatTelemetryTracker.TurnDurationMetricName));
+    }
+
+    [Fact]
+    public async Task DispatchAndTerminalRace_StopsQueueWaitBeforeTurn()
+    {
+        using var queueStopEntered = new ManualResetEventSlim();
+        using var releaseQueueStop = new ManualResetEventSlim();
+        using var terminalStarted = new ManualResetEventSlim();
+        using var activities = new ActivityCollector(activity =>
+        {
+            if (activity.OperationName != ChatTelemetryTracker.QueueWaitSpanName)
+                return;
+            queueStopEntered.Set();
+            Assert.True(releaseQueueStop.Wait(TimeSpan.FromSeconds(5)));
+        });
+        var tracker = new ChatTelemetryTracker();
+        tracker.StartLocalTurn("message", "thread", queued: true);
+
+        var dispatch = Task.Run(() => tracker.DispatchLocalTurn("message", "run"));
+        Assert.True(queueStopEntered.Wait(TimeSpan.FromSeconds(5)));
+        var terminal = Task.Run(() =>
+        {
+            terminalStarted.Set();
+            return tracker.FinishByRunId(
+                "run",
+                ChatTelemetryOutcome.Success,
+                ChatTurnTelemetryReason.LifecycleEnd);
+        });
+        Assert.True(terminalStarted.Wait(TimeSpan.FromSeconds(5)));
+        Assert.NotSame(terminal, await Task.WhenAny(terminal, Task.Delay(TimeSpan.FromMilliseconds(100))));
+
+        releaseQueueStop.Set();
+        await Task.WhenAll(dispatch, terminal);
+
+        var stoppedNames = activities.Stopped.Select(activity => activity.OperationName).ToArray();
+        Assert.True(
+            Array.IndexOf(stoppedNames, ChatTelemetryTracker.QueueWaitSpanName) <
+            Array.IndexOf(stoppedNames, ChatTelemetryTracker.TurnSpanName));
     }
 
     [Fact]
@@ -313,13 +393,17 @@ public sealed class ChatTelemetryTrackerTests
     {
         private readonly ActivityListener _listener;
 
-        public ActivityCollector()
+        public ActivityCollector(Action<Activity>? activityStopped = null)
         {
             _listener = new ActivityListener
             {
                 ShouldListenTo = source => source.Name == OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
                 Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-                ActivityStopped = activity => Stopped.Enqueue(activity),
+                ActivityStopped = activity =>
+                {
+                    activityStopped?.Invoke(activity);
+                    Stopped.Enqueue(activity);
+                },
             };
             ActivitySource.AddActivityListener(_listener);
         }

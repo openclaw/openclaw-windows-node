@@ -144,7 +144,7 @@ parsing, capability details, or token persistence as separate operations.
 
 The tray exports native chat lifecycle diagnostics when an endpoint is configured:
 
-- traces: `openclaw.chat.turn`, `openclaw.chat.send`,
+- traces: `openclaw.chat.turn`, `openclaw.chat.queue.wait`, `openclaw.chat.send`,
   `openclaw.chat.response.wait`, `openclaw.chat.response.receive`,
   `openclaw.chat.history.load`, and `openclaw.chat.history.backfill`
 - counters: `openclaw.chat.turns`, `openclaw.chat.send.attempts`,
@@ -210,12 +210,19 @@ event types do not start or transition response phases. The `other` output value
 is reserved for future event types only after they are explicitly reviewed and
 classified as visible response output.
 
-Queue wait is cumulative local queue dwell across all queue/retry segments. The
-tray captures each segment at queue insertion or requeue, adds it when dispatch
-begins, and emits the total when the turn completes so it can carry the final
-outcome. Direct sends accepted on their first attempt do not emit queue-wait
-measurements. Consequently, the metric timestamp is the turn completion time, not
-the instant queue congestion occurred.
+Each contiguous local queue or requeue period emits an
+`openclaw.chat.queue.wait` sibling span under the turn. A segment that reaches
+dispatch completes with `outcome=success`; a segment still queued when the turn
+terminates uses the turn's final outcome. Deferred sends therefore show multiple
+queue-wait spans rather than one span that incorrectly includes intervening send
+attempts.
+
+The queue-wait duration metric remains cumulative across all queue/retry segments.
+The tray adds each segment when dispatch begins and emits the total when the turn
+completes so it can carry the final outcome. Direct sends accepted on their first
+attempt emit neither queue-wait spans nor queue-wait measurements. Consequently,
+the metric timestamp is the turn completion time, not the instant queue congestion
+occurred.
 
 Full transcript loads and targeted remote-message backfills are separate
 operations. Full loads use source `initial` or `forced`. Backfills use the finite

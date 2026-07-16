@@ -66,6 +66,7 @@ internal enum ChatResponseOutputKind
 internal sealed class ChatTelemetryTracker
 {
     internal const string TurnSpanName = "openclaw.chat.turn";
+    internal const string QueueWaitSpanName = "openclaw.chat.queue.wait";
     internal const string SendSpanName = "openclaw.chat.send";
     internal const string ResponseWaitSpanName = "openclaw.chat.response.wait";
     internal const string ResponseReceiveSpanName = "openclaw.chat.response.receive";
@@ -173,7 +174,7 @@ internal sealed class ChatTelemetryTracker
                     [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, SourceLocal)]),
                 Stopwatch.GetTimestamp());
             if (queued)
-                state.StartQueueSegment();
+                StartQueueSegmentLocked(state);
 
             _turnsByMessageId.Add(messageId, state);
         }
@@ -181,19 +182,34 @@ internal sealed class ChatTelemetryTracker
 
     public void DispatchLocalTurn(string messageId, string provisionalRunId)
     {
+        CompleteQueueDispatch(PrepareDispatchLocalTurn(messageId, provisionalRunId));
+    }
+
+    public QueuePhaseCompletion? PrepareDispatchLocalTurn(
+        string messageId,
+        string provisionalRunId)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(provisionalRunId);
 
         lock (_gate)
         {
             if (!_turnsByMessageId.TryGetValue(messageId, out var state))
-                return;
+                return null;
 
-            state.EndQueueSegment();
+            var queueCompletion = EndQueueSegmentLocked(
+                state,
+                Stopwatch.GetTimestamp(),
+                ChatTelemetryOutcome.Success);
+            state.PendingQueueCompletion = queueCompletion;
             state.IsDispatched = true;
             BindRunLocked(state, provisionalRunId);
+            return queueCompletion;
         }
     }
+
+    public void CompleteQueueDispatch(QueuePhaseCompletion? completion) =>
+        CompleteQueuePhase(completion);
 
     public void RequeueLocalTurn(string messageId)
     {
@@ -206,7 +222,7 @@ internal sealed class ChatTelemetryTracker
 
             RemoveRunMappingsLocked(state);
             state.IsDispatched = false;
-            state.StartQueueSegment();
+            StartQueueSegmentLocked(state);
         }
     }
 
@@ -316,11 +332,12 @@ internal sealed class ChatTelemetryTracker
                 waitPhase.Activity,
                 state.Source,
                 outputKind,
-                ChatTelemetryOutcome.Success);
+                ChatTelemetryOutcome.Success,
+                Stopwatch.GetElapsedTime(waitPhase.StartTimestamp, now));
             state.PendingWaitCompletion = waitCompletion;
             state.WaitPhase = null;
 
-            state.ReceivePhase = StartResponsePhase(state, ResponseReceiveSpanName, now);
+            state.ReceivePhase = StartPhase(state, ResponseReceiveSpanName, now);
         }
 
         CompleteResponsePhase(waitCompletion);
@@ -590,7 +607,12 @@ internal sealed class ChatTelemetryTracker
         ChatTurnTelemetryReason reason)
     {
         var endTimestamp = Stopwatch.GetTimestamp();
-        state.EndQueueSegment(endTimestamp);
+        var queueCompletion = state.PendingQueueCompletion;
+        if (state.QueuePhase is not null)
+        {
+            queueCompletion = EndQueueSegmentLocked(state, endTimestamp, outcome);
+            state.PendingQueueCompletion = queueCompletion;
+        }
         ResponsePhaseCompletion? pendingWaitCompletion = state.PendingWaitCompletion;
         if (state.WaitPhase is { } waitPhase)
         {
@@ -600,7 +622,8 @@ internal sealed class ChatTelemetryTracker
                 waitPhase.Activity,
                 state.Source,
                 ChatResponseOutputKind.None,
-                outcome);
+                outcome,
+                Stopwatch.GetElapsedTime(waitPhase.StartTimestamp, endTimestamp));
         }
         ResponsePhaseCompletion? receiveCompletion = null;
         if (state.ReceivePhase is { } receivePhase)
@@ -611,7 +634,8 @@ internal sealed class ChatTelemetryTracker
                 receivePhase.Activity,
                 state.Source,
                 state.FirstOutputKind,
-                outcome);
+                outcome,
+                Stopwatch.GetElapsedTime(receivePhase.StartTimestamp, endTimestamp));
         }
         return new PreparedTurnCompletion(
             state.Activity,
@@ -625,6 +649,7 @@ internal sealed class ChatTelemetryTracker
             state.ReceivePhase is not null,
             state.ResponseReceiveDurationMilliseconds,
             state.FirstOutputKind,
+            queueCompletion,
             pendingWaitCompletion,
             receiveCompletion,
             outcome,
@@ -633,6 +658,7 @@ internal sealed class ChatTelemetryTracker
 
     private static void FinishTurn(PreparedTurnCompletion completion)
     {
+        CompleteQueuePhase(completion.QueueCompletion);
         CompleteResponsePhase(completion.WaitCompletion);
         CompleteResponsePhase(completion.ReceiveCompletion);
         var tags = new[]
@@ -680,19 +706,75 @@ internal sealed class ChatTelemetryTracker
         OpenClawTelemetryTag.String(FirstOutputKindTag, ToTelemetryValue(completion.FirstOutputKind)),
     ];
 
-    private static void CompleteResponsePhase(ResponsePhaseCompletion? completion)
+    private static void StartQueueSegmentLocked(TurnState state)
     {
-        if (completion is null || !completion.TryComplete())
+        if (state.QueuePhase is not null)
             return;
 
-        FinishActivity(
-            completion.Activity,
-            completion.Outcome,
-            [
-                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, completion.Source),
-                OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, ToTelemetryValue(completion.Outcome)),
-                OpenClawTelemetryTag.String(FirstOutputKindTag, ToTelemetryValue(completion.FirstOutputKind)),
-            ]);
+        var startTimestamp = Stopwatch.GetTimestamp();
+        state.StartQueueSegment(
+            StartPhase(state, QueueWaitSpanName, startTimestamp),
+            startTimestamp);
+    }
+
+    private static QueuePhaseCompletion? EndQueueSegmentLocked(
+        TurnState state,
+        long endTimestamp,
+        ChatTelemetryOutcome outcome)
+    {
+        var phase = state.EndQueueSegment(endTimestamp);
+        return phase is null
+            ? null
+            : new QueuePhaseCompletion(
+                phase.Activity,
+                state.Source,
+                outcome,
+                Stopwatch.GetElapsedTime(phase.StartTimestamp, endTimestamp));
+    }
+
+    private static void CompleteQueuePhase(QueuePhaseCompletion? completion)
+    {
+        if (completion is null)
+            return;
+
+        completion.Complete(() =>
+        {
+            SetActivityDuration(completion.Activity, completion.Duration);
+            FinishActivity(
+                completion.Activity,
+                completion.Outcome,
+                [
+                    OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, completion.Source),
+                    OpenClawTelemetryTag.String(
+                        OpenClawTelemetryTagKey.Outcome,
+                        ToTelemetryValue(completion.Outcome)),
+                ]);
+        });
+    }
+
+    private static void CompleteResponsePhase(ResponsePhaseCompletion? completion)
+    {
+        if (completion is null)
+            return;
+
+        completion.Complete(() =>
+        {
+            SetActivityDuration(completion.Activity, completion.Duration);
+            FinishActivity(
+                completion.Activity,
+                completion.Outcome,
+                [
+                    OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, completion.Source),
+                    OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, ToTelemetryValue(completion.Outcome)),
+                    OpenClawTelemetryTag.String(FirstOutputKindTag, ToTelemetryValue(completion.FirstOutputKind)),
+                ]);
+        });
+    }
+
+    private static void SetActivityDuration(Activity? activity, TimeSpan duration)
+    {
+        if (activity is not null)
+            activity.SetEndTime(activity.StartTimeUtc + duration);
     }
 
     private static void FinishActivity(
@@ -747,13 +829,13 @@ internal sealed class ChatTelemetryTracker
             return;
 
         state.ResponseWaitStarted = true;
-        state.WaitPhase = StartResponsePhase(
+        state.WaitPhase = StartPhase(
             state,
             ResponseWaitSpanName,
             Stopwatch.GetTimestamp());
     }
 
-    private static ResponsePhase StartResponsePhase(
+    private static TimedPhase StartPhase(
         TurnState state,
         string spanName,
         long startTimestamp)
@@ -765,7 +847,7 @@ internal sealed class ChatTelemetryTracker
         var activity = state.Activity is not null
             ? OpenClawTelemetry.StartDetachedActivity(spanName, state.Activity.Context, tags)
             : OpenClawTelemetry.StartDetachedActivity(spanName, default(ActivityContext), tags);
-        return new ResponsePhase(activity, startTimestamp);
+        return new TimedPhase(activity, startTimestamp);
     }
 
     private TurnState? ResolveTurnForOutputLocked(string threadId, string? runId)
@@ -894,45 +976,101 @@ internal sealed class ChatTelemetryTracker
         public double ResponseWaitDurationMilliseconds { get; set; }
         public double ResponseReceiveDurationMilliseconds { get; set; }
         public ChatResponseOutputKind FirstOutputKind { get; set; }
-        public ResponsePhase? WaitPhase { get; set; }
-        public ResponsePhase? ReceivePhase { get; set; }
+        public TimedPhase? QueuePhase { get; private set; }
+        public TimedPhase? WaitPhase { get; set; }
+        public TimedPhase? ReceivePhase { get; set; }
+        public QueuePhaseCompletion? PendingQueueCompletion { get; set; }
         public ResponsePhaseCompletion? PendingWaitCompletion { get; set; }
 
-        public void StartQueueSegment()
+        public void StartQueueSegment(TimedPhase phase, long startTimestamp)
         {
             if (_queueSegmentStart.HasValue)
                 return;
             WasQueued = true;
-            _queueSegmentStart = Stopwatch.GetTimestamp();
+            _queueSegmentStart = startTimestamp;
+            QueuePhase = phase;
         }
 
-        public void EndQueueSegment(long? endTimestamp = null)
+        public TimedPhase? EndQueueSegment(long endTimestamp)
         {
             if (_queueSegmentStart is not { } started)
-                return;
-            QueuedDurationMilliseconds += endTimestamp is { } ended
-                ? Stopwatch.GetElapsedTime(started, ended).TotalMilliseconds
-                : Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                return null;
+            QueuedDurationMilliseconds +=
+                Stopwatch.GetElapsedTime(started, endTimestamp).TotalMilliseconds;
             _queueSegmentStart = null;
+            var phase = QueuePhase;
+            QueuePhase = null;
+            return phase;
         }
     }
 
-    private sealed record ResponsePhase(Activity? Activity, long StartTimestamp);
+    private sealed record TimedPhase(Activity? Activity, long StartTimestamp);
+
+    internal sealed class QueuePhaseCompletion(
+        Activity? activity,
+        string source,
+        ChatTelemetryOutcome outcome,
+        TimeSpan duration) : PhaseCompletion
+    {
+        public Activity? Activity { get; } = activity;
+        public string Source { get; } = source;
+        public ChatTelemetryOutcome Outcome { get; } = outcome;
+        public TimeSpan Duration { get; } = duration;
+    }
 
     internal sealed class ResponsePhaseCompletion(
         Activity? activity,
         string source,
         ChatResponseOutputKind firstOutputKind,
-        ChatTelemetryOutcome outcome)
+        ChatTelemetryOutcome outcome,
+        TimeSpan duration) : PhaseCompletion
     {
-        private int _completed;
-
         public Activity? Activity { get; } = activity;
         public string Source { get; } = source;
         public ChatResponseOutputKind FirstOutputKind { get; } = firstOutputKind;
         public ChatTelemetryOutcome Outcome { get; } = outcome;
+        public TimeSpan Duration { get; } = duration;
+    }
 
-        public bool TryComplete() => Interlocked.Exchange(ref _completed, 1) == 0;
+    internal abstract class PhaseCompletion
+    {
+        private readonly object _completionGate = new();
+        private int _completionState;
+        private int _completingThreadId;
+
+        public void Complete(Action complete)
+        {
+            lock (_completionGate)
+            {
+                if (_completionState == 2)
+                    return;
+                if (_completionState == 1)
+                {
+                    if (_completingThreadId == Environment.CurrentManagedThreadId)
+                        return;
+                    while (_completionState != 2)
+                        Monitor.Wait(_completionGate);
+                    return;
+                }
+
+                _completionState = 1;
+                _completingThreadId = Environment.CurrentManagedThreadId;
+            }
+
+            try
+            {
+                complete();
+            }
+            finally
+            {
+                lock (_completionGate)
+                {
+                    _completionState = 2;
+                    _completingThreadId = 0;
+                    Monitor.PulseAll(_completionGate);
+                }
+            }
+        }
     }
 
     internal sealed class PreparedTurnCompletion(
@@ -947,6 +1085,7 @@ internal sealed class ChatTelemetryTracker
         bool responseReceiveStarted,
         double responseReceiveDurationMilliseconds,
         ChatResponseOutputKind firstOutputKind,
+        QueuePhaseCompletion? queueCompletion,
         ResponsePhaseCompletion? waitCompletion,
         ResponsePhaseCompletion? receiveCompletion,
         ChatTelemetryOutcome outcome,
@@ -965,6 +1104,7 @@ internal sealed class ChatTelemetryTracker
         public bool ResponseReceiveStarted { get; } = responseReceiveStarted;
         public double ResponseReceiveDurationMilliseconds { get; } = responseReceiveDurationMilliseconds;
         public ChatResponseOutputKind FirstOutputKind { get; } = firstOutputKind;
+        internal QueuePhaseCompletion? QueueCompletion { get; } = queueCompletion;
         internal ResponsePhaseCompletion? WaitCompletion { get; } = waitCompletion;
         internal ResponsePhaseCompletion? ReceiveCompletion { get; } = receiveCompletion;
         public ChatTelemetryOutcome Outcome { get; } = outcome;

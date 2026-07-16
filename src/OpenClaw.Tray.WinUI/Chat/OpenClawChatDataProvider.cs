@@ -176,6 +176,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         long ResetVersion,
         long StartedLifecycleSequence,
         long StartedRunStartSequence,
+        ChatTelemetryTracker.QueuePhaseCompletion? QueueCompletion,
         bool StartedDirectly);
     private enum AssistantQueueFrameDisposition
     {
@@ -477,6 +478,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         bool rethrow,
         CancellationToken cancellationToken = default)
     {
+        _telemetry.CompleteQueueDispatch(dispatch.QueueCompletion);
         var request = dispatch.Request;
         var threadId = request.ThreadId;
         var hasAttachments = request.Attachments is { Count: > 0 };
@@ -3082,13 +3084,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
         _locallyInitiatedThreads.Add(threadId);
         _assistantFallbackPromotedThreads.Add(threadId);
-        _telemetry.DispatchLocalTurn(request.Id, request.SendRunId);
+        var queueCompletion = _telemetry.PrepareDispatchLocalTurn(request.Id, request.SendRunId);
         return new QueuedSendDispatch(
             request,
             sessionId,
             resetVersion,
             startedLifecycleSequence,
             startedRunStartSequence,
+            queueCompletion,
             StartedDirectly: true);
     }
 
@@ -3141,13 +3144,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
             _locallyInitiatedThreads.Add(threadId);
-            _telemetry.DispatchLocalTurn(request.Id, request.SendRunId);
+            var queueCompletion = _telemetry.PrepareDispatchLocalTurn(request.Id, request.SendRunId);
             return new QueuedSendDispatch(
                 request,
                 sessionId,
                 resetVersion,
                 startedLifecycleSequence,
                 startedRunStartSequence,
+                queueCompletion,
                 StartedDirectly: false);
         }
 
