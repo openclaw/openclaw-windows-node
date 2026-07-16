@@ -3615,7 +3615,6 @@ public sealed class StartKeepaliveStep : SetupStep
         try
         {
             // Use WMI to get the command line
-            var result = new System.Diagnostics.Process();
             var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
                 $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
             {
