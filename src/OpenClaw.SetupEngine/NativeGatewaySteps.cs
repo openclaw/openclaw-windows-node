@@ -197,10 +197,10 @@ public sealed class InstallNativeCliStep : SetupStep
                 # `node -e '... "node:sqlite" ...'`. Patch that probe in-memory when present;
                 # if it is absent (installer variants that don't use it), proceed unpatched
                 # -- a quote-sensitive probe that still trips PS5 surfaces as a non-zero exit.
-                $sqliteProbe = 'require("node:sqlite"); const db = new DatabaseSync(":memory:"); try { process.stdout.write(String(db.prepare("SELECT sqlite_version() AS version").get().version)); } finally { db.close(); }'
-                $escapedSqliteProbe = 'require(\"node:sqlite\"); const db = new DatabaseSync(\":memory:\"); try { process.stdout.write(String(db.prepare(\"SELECT sqlite_version() AS version\").get().version)); } finally { db.close(); }'
-                if ($installer.Contains($sqliteProbe)) {
-                    $installer = $installer.Replace($sqliteProbe, $escapedSqliteProbe)
+                $oldSqliteProbeAssignment = '$sqliteProbe = ''require("node:sqlite"); const db = new DatabaseSync(":memory:"); try { process.stdout.write(String(db.prepare("SELECT sqlite_version() AS version").get().version)); } finally { db.close(); }'''
+                $escapedOldSqliteProbeAssignment = '$sqliteProbe = ''require(\"node:sqlite\"); const db = new DatabaseSync(\":memory:\"); try { process.stdout.write(String(db.prepare(\"SELECT sqlite_version() AS version\").get().version)); } finally { db.close(); }'''
+                if ($installer.Contains($oldSqliteProbeAssignment)) {
+                    $installer = $installer.Replace($oldSqliteProbeAssignment, $escapedOldSqliteProbeAssignment)
                 } else {
                     [Console]::Error.WriteLine('OpenClaw installer SQLite probe not found in the expected form; proceeding without the Windows PowerShell 5 quoting workaround.')
                 }

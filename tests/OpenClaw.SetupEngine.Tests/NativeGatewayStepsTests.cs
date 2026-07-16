@@ -240,7 +240,7 @@ public class NativeGatewayStepsTests
         Assert.Contains("$env:NPM_CONFIG_PREFIX = $prefix", script);
         Assert.Contains("[Environment]::GetEnvironmentVariable('Path', 'Machine')", script);
         Assert.Contains("Join-Path $env:ProgramFiles 'nodejs'", script);
-        Assert.Contains("$sqliteProbe =", script);
+        Assert.Contains("$oldSqliteProbeAssignment =", script);
         // Missing probe is best-effort: proceed unpatched rather than fail loudly,
         // so a newer `node -v` installer that drops the probe cannot break setup.
         Assert.Contains("proceeding without the Windows PowerShell 5 quoting workaround", script);
@@ -253,6 +253,17 @@ public class NativeGatewayStepsTests
         Assert.DoesNotContain("Get-Command openclaw", script);
         Assert.Contains("OPENCLAW_CLI_PATH=", script);
         Assert.DoesNotContain("iwr -useb", script);
+    }
+
+    [Fact]
+    public void BuildInstallScript_DoesNotPatchStdinBasedSqliteProbe()
+    {
+        var script = InstallNativeCliStep.BuildInstallScript(
+            "https://openclaw.ai/install.ps1",
+            "2026.6.11");
+
+        Assert.Contains("$installer.Contains($oldSqliteProbeAssignment)", script);
+        Assert.DoesNotContain("$installer.Contains($sqliteProbe)", script);
     }
 
     [Theory]
