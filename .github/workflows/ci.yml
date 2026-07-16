@@ -525,6 +525,57 @@ jobs:
         name: openclaw-tray-${{ matrix.rid }}
         path: publish/
 
+  build-winnode:
+    needs: [test]
+    runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-arm64]
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      continue-on-error: true
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore WinNode CLI
+      run: dotnet restore src/OpenClaw.WinNode.Cli -r ${{ matrix.rid }}
+
+    - name: Publish Trimmed WinNode CLI
+      run: dotnet publish src/OpenClaw.WinNode.Cli -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish-winnode
+
+    - name: Verify Shared Assembly Was Not Trimmed
+      shell: pwsh
+      run: |
+        $buildAssembly = "src\OpenClaw.Shared\bin\Release\net10.0\OpenClaw.Shared.dll"
+        $publishAssembly = "publish-winnode\OpenClaw.Shared.dll"
+        $buildHash = (Get-FileHash $buildAssembly -Algorithm SHA256).Hash
+        $publishHash = (Get-FileHash $publishAssembly -Algorithm SHA256).Hash
+        if ($buildHash -ne $publishHash) {
+          throw "OpenClaw.Shared.dll changed during trimmed winnode publish."
+        }
+
+    - name: Smoke Test Trimmed WinNode CLI
+      shell: pwsh
+      run: |
+        & .\publish-winnode\winnode.exe --help
+        if ($LASTEXITCODE -ne 0) {
+          throw "Trimmed winnode --help failed with exit code $LASTEXITCODE."
+        }
+
   build-msix:
     needs: [test, e2etests]
     if: false # Paused for alpha.4; ship Inno setup and portable ZIP artifacts only.

@@ -459,7 +459,15 @@ internal static class CliRunner
         RegexOptions.Compiled);
 
     internal static string PrettyPrint(JsonElement element)
-        => JsonSerializer.Serialize(element, new JsonSerializerOptions { WriteIndented = true });
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+        {
+            element.WriteTo(writer);
+        }
+
+        return Encoding.UTF8.GetString(stream.GetBuffer(), 0, checked((int)stream.Length));
+    }
 
     /// <summary>
     /// Build the tools/call JSON-RPC envelope. Returns the buffer + length so
