@@ -1269,7 +1269,7 @@ public sealed class InstallCliStep : SetupStep
 
     internal static string BuildInstallCommand(string installUrl, string? requestedVersion)
     {
-        var escapedUrl = ShellEscape(installUrl);
+        var escapedUrl = WslShellQuoting.EscapePosixSingleQuoteInner(installUrl);
         if (string.IsNullOrWhiteSpace(requestedVersion))
             return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
 
@@ -1277,7 +1277,7 @@ public sealed class InstallCliStep : SetupStep
         if (trimmedVersion.Contains('\n') || trimmedVersion.Contains('\r'))
             throw new ArgumentException("Gateway version cannot contain newlines.");
 
-        var escapedVersion = ShellEscape(trimmedVersion);
+        var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
         return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
     }
 
@@ -1328,8 +1328,6 @@ public sealed class InstallCliStep : SetupStep
         return StepResult.Ok();
     }
 
-    private static string ShellEscape(string value) => value.Replace("'", "'\\''");
-
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         var user = ctx.Config.Wsl.User;
@@ -1369,7 +1367,7 @@ public sealed class ConfigureGatewayStep : SetupStep
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
 
         var allowedCommandsJson = JsonSerializer.Serialize(ctx.Config.Capabilities.GetEnabledCommandIds());
-        var escapedAllowedCommands = ShellEscape(allowedCommandsJson);
+        var escapedAllowedCommands = WslShellQuoting.QuotePosixSingleQuote(allowedCommandsJson);
         var extraConfigOverridesAllowCommands = gw.ExtraConfig?.ContainsKey("gateway.nodes.allowCommands") == true;
         if (gw.ExtraConfig is { Count: > 0 })
         {
@@ -1432,7 +1430,7 @@ public sealed class ConfigureGatewayStep : SetupStep
         if (GetDefaultDevicePairPublicUrl(gw, port) is { } defaultPublicUrl &&
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
-            configCommands += $"\n            openclaw config set {DevicePairPublicUrlKey} {ShellEscape(defaultPublicUrl)}";
+            configCommands += $"\n            openclaw config set {DevicePairPublicUrlKey} {WslShellQuoting.QuotePosixSingleQuote(defaultPublicUrl)}";
         }
 
         // The gateway ships the `device-pair` plugin bundled but DISABLED by default.
@@ -1460,7 +1458,7 @@ public sealed class ConfigureGatewayStep : SetupStep
                 if (!IsSafeExtraConfigKey(key))
                     throw new ArgumentException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.", nameof(gw));
 
-                var escapedValue = ShellEscape(value);
+                var escapedValue = WslShellQuoting.QuotePosixSingleQuote(value);
                 configCommands += $"\n            openclaw config set {key} {escapedValue}";
             }
         }
@@ -1491,8 +1489,6 @@ public sealed class ConfigureGatewayStep : SetupStep
 
     internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port) =>
         gw.Bind == "loopback" ? $"http://127.0.0.1:{port}" : null;
-
-    private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
 
     internal static bool IsSafeExtraConfigKey(string value)
         => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
@@ -2813,7 +2809,7 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
 
     internal static async Task<StepResult> RunOpenclawSetupAsync(SetupContext ctx, string distro, string user, string workspaceAbsolute, CancellationToken ct)
     {
-        var workspaceArg = ShellEscape(workspaceAbsolute);
+        var workspaceArg = WslShellQuoting.QuotePosixSingleQuote(workspaceAbsolute);
 
         // The pinned 2026.6.11 CLI uses plain `setup` for baseline initialization;
         // newer/custom CLIs require `--baseline`. Detect the installed contract.
@@ -3032,11 +3028,11 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         => $$"""
             set -e
             set -o pipefail
-            workspace={{ShellEscape(absoluteWorkspacePath)}}
+            workspace={{WslShellQuoting.QuotePosixSingleQuote(absoluteWorkspacePath)}}
             agents="$workspace/AGENTS.md"
-            block_b64={{ShellEscape(ManagedBlockBase64())}}
-            begin_marker={{ShellEscape(WindowsNodeContextSection.BeginMarker)}}
-            end_marker={{ShellEscape(WindowsNodeContextSection.EndMarker)}}
+            block_b64={{WslShellQuoting.QuotePosixSingleQuote(ManagedBlockBase64())}}
+            begin_marker={{WslShellQuoting.QuotePosixSingleQuote(WindowsNodeContextSection.BeginMarker)}}
+            end_marker={{WslShellQuoting.QuotePosixSingleQuote(WindowsNodeContextSection.EndMarker)}}
             if [ -L "$agents" ]; then
                 echo "AGENTS_SYMLINK:$agents" >&2
                 exit 2
@@ -3087,10 +3083,10 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         => $$"""
             set -e
             set -o pipefail
-            workspace={{ShellEscape(absoluteWorkspacePath)}}
+            workspace={{WslShellQuoting.QuotePosixSingleQuote(absoluteWorkspacePath)}}
             agents="$workspace/AGENTS.md"
-            begin_marker={{ShellEscape(WindowsNodeContextSection.BeginMarker)}}
-            end_marker={{ShellEscape(WindowsNodeContextSection.EndMarker)}}
+            begin_marker={{WslShellQuoting.QuotePosixSingleQuote(WindowsNodeContextSection.BeginMarker)}}
+            end_marker={{WslShellQuoting.QuotePosixSingleQuote(WindowsNodeContextSection.EndMarker)}}
             if [ ! -e "$agents" ]; then
                 echo "WINDOWS_NODE_CONTEXT_ABSENT"
                 exit 0
@@ -3133,8 +3129,6 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
 
     private static string ManagedBlockBase64()
         => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(WindowsNodeContextSection.ManagedBlock));
-
-    private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
 
     private static string FirstNonEmpty(params string[] values)
         => values.Select(v => v.Trim()).FirstOrDefault(v => v.Length > 0) ?? "no output";
@@ -3642,7 +3636,6 @@ public sealed class StartKeepaliveStep : SetupStep
         try
         {
             // Use WMI to get the command line
-            var result = new System.Diagnostics.Process();
             var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
                 $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
             {
