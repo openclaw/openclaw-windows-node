@@ -94,6 +94,22 @@ public sealed class OpenClawTelemetryTests
     }
 
     [Fact]
+    public void StartDetachedActivity_WithEmptyExplicitParent_CreatesRootAndPreservesAmbientActivity()
+    {
+        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var ambient = new Activity("ambient").Start();
+
+        using var root = OpenClawTelemetry.StartDetachedActivity(
+            "test.root",
+            default(ActivityContext));
+
+        Assert.NotNull(root);
+        Assert.Equal(default, root.ParentSpanId);
+        Assert.NotEqual(ambient.TraceId, root.TraceId);
+        Assert.Same(ambient, Activity.Current);
+    }
+
+    [Fact]
     public void StopDetachedActivity_PreservesNewerAmbientActivity()
     {
         using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
