@@ -46,6 +46,277 @@ public class SetupStepsTests : IDisposable
         return new SetupContext(cfg, logger, journal, commands ?? new CommandRunner(logger), CancellationToken.None);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("\t")]
+    public void DistroInstallPathPolicy_RejectsMissingNames(string? distroName)
+    {
+        var resolved = DistroInstallPathPolicy.TryGetInstallPath(
+            _localTempDir,
+            distroName,
+            out _,
+            out var error);
+
+        Assert.False(resolved);
+        Assert.Equal("WSL distro name is required.", error);
+    }
+
+    [Theory]
+    [InlineData(@"..\..")]
+    [InlineData(@"name\child")]
+    [InlineData(@"name/child")]
+    [InlineData(@"C:\outside")]
+    [InlineData(".")]
+    [InlineData(" name")]
+    [InlineData("name ")]
+    [InlineData("name:stream")]
+    public void DistroInstallPathPolicy_RejectsUnsafeNames(string distroName)
+    {
+        var resolved = DistroInstallPathPolicy.TryGetInstallPath(
+            _localTempDir,
+            distroName,
+            out _,
+            out var error);
+
+        Assert.False(resolved);
+        Assert.Contains("Invalid WSL distro name", error);
+    }
+
+    [Fact]
+    public void DistroInstallPathPolicy_ResolvesImmediateChild()
+    {
+        var resolved = DistroInstallPathPolicy.TryGetInstallPath(
+            _localTempDir,
+            "OpenClawGateway-Dev",
+            out var installPath,
+            out var error);
+
+        Assert.True(resolved, error);
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(_localTempDir, "wsl", "OpenClawGateway-Dev")),
+            installPath);
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(_localTempDir, "wsl")),
+            Path.GetDirectoryName(installPath));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_RejectsTraversalWithoutDeletingTarget()
+    {
+        var target = Path.Combine(_localTempDir, "sentinel");
+        Directory.CreateDirectory(target);
+        var sentinel = Path.Combine(target, "keep.txt");
+        File.WriteAllText(sentinel, "keep");
+        var commands = new FakeCommandRunner(_ => Ok(""));
+        var ctx = CreateContext(
+            new SetupConfig { CleanBeforeRun = true, DistroName = @"..\.." },
+            commands);
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Invalid WSL distro name", result.Message);
+        Assert.True(File.Exists(sentinel));
+        Assert.Empty(commands.Calls);
+    }
+
+    [Fact]
+    public async Task DeleteDistroDirectory_RejectsPathOutsideExpectedImmediateChild()
+    {
+        var target = Path.Combine(_localTempDir, "sentinel");
+        Directory.CreateDirectory(target);
+        var sentinel = Path.Combine(target, "keep.txt");
+        File.WriteAllText(sentinel, "keep");
+        var ctx = CreateContext();
+
+        var result = await CleanupStaleDistroStep.DeleteDistroDirectoryWithRetries(
+            ctx,
+            "OpenClawGateway",
+            target,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Refusing to delete WSL path", result.Message);
+        Assert.True(File.Exists(sentinel));
+    }
+
+    [Fact]
+    public async Task DeleteDistroDirectory_RevalidatesAncestorsBeforeRetry()
+    {
+        var wslRoot = Path.Combine(_localTempDir, "wsl");
+        var target = Path.Combine(wslRoot, "OpenClawGateway");
+        var lockedPath = Path.Combine(target, "locked.txt");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(lockedPath, "locked");
+
+        var outsideRoot = Path.Combine(Path.GetTempPath(), $"outside-{Guid.NewGuid():N}");
+        var redirectedTarget = Path.Combine(outsideRoot, "OpenClawGateway");
+        Directory.CreateDirectory(redirectedTarget);
+        var sentinel = Path.Combine(redirectedTarget, "keep.txt");
+        File.WriteAllText(sentinel, "keep");
+
+        var ctx = CreateContext();
+        var retryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ctx.Logger.LogEmitted += (_, entry) =>
+        {
+            if (entry.Message.Contains("retrying", StringComparison.Ordinal))
+                retryStarted.TrySetResult();
+        };
+
+        try
+        {
+            using var lockedFile = new FileStream(lockedPath, FileMode.Open, FileAccess.Read, FileShare.None);
+            var deleteTask = CleanupStaleDistroStep.DeleteDistroDirectoryWithRetries(
+                ctx,
+                "OpenClawGateway",
+                target,
+                CancellationToken.None);
+
+            await retryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            lockedFile.Dispose();
+            Directory.Delete(wslRoot, recursive: true);
+            CreateJunction(wslRoot, outsideRoot);
+
+            var result = await deleteTask;
+
+            Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+            Assert.Contains("reparse point", result.Message);
+            Assert.True(File.Exists(sentinel));
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(wslRoot); } catch { }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(outsideRoot, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_RejectsTraversalBeforeRunningWsl()
+    {
+        var commands = new FakeCommandRunner(_ => Ok(""));
+        var ctx = CreateContext(
+            new SetupConfig { DistroName = @"..\.." },
+            commands);
+
+        var result = await new CreateWslInstanceStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Invalid WSL distro name", result.Message);
+        Assert.Empty(commands.Calls);
+    }
+
+    [Fact]
+    public void DistroInstallPathPolicy_RejectsWhenWslRootIsJunction()
+    {
+        var outsideDir = Path.Combine(Path.GetTempPath(), $"outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outsideDir);
+        var sentinel = Path.Combine(outsideDir, "keep.txt");
+        File.WriteAllText(sentinel, "keep");
+        var wslRoot = Path.Combine(_localTempDir, "wsl");
+
+        try
+        {
+            CreateJunction(wslRoot, outsideDir);
+
+            var candidate = Path.Combine(wslRoot, "OpenClawGateway");
+            var allowed = DistroInstallPathPolicy.TryValidateDeleteTarget(
+                _localTempDir,
+                "OpenClawGateway",
+                candidate,
+                out _,
+                out var error);
+
+            Assert.False(allowed);
+            Assert.Contains("reparse point", error);
+            Assert.True(File.Exists(sentinel));
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(wslRoot); } catch { }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(outsideDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DistroInstallPathPolicy_RejectsJunctionAncestorForInstall()
+    {
+        var outsideDir = Path.Combine(Path.GetTempPath(), $"outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outsideDir);
+        var wslRoot = Path.Combine(_localTempDir, "wsl");
+
+        try
+        {
+            CreateJunction(wslRoot, outsideDir);
+
+            var resolved = DistroInstallPathPolicy.TryGetInstallPath(
+                _localTempDir,
+                "OpenClawGateway",
+                out _,
+                out var error);
+
+            Assert.False(resolved);
+            Assert.Contains("reparse point", error);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(wslRoot); } catch { }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(outsideDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DistroInstallPathPolicy_RejectsJunctionAtLocalDataDirWithTrailingSeparator()
+    {
+        var outsideDir = Path.Combine(Path.GetTempPath(), $"outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outsideDir);
+        var lddJunction = Path.Combine(Path.GetTempPath(), $"ldd-{Guid.NewGuid():N}");
+
+        try
+        {
+            CreateJunction(lddJunction, outsideDir);
+
+            var resolved = DistroInstallPathPolicy.TryGetInstallPath(
+                lddJunction + Path.DirectorySeparatorChar,
+                "OpenClawGateway",
+                out _,
+                out var error);
+
+            Assert.False(resolved);
+            Assert.Contains("reparse point", error);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(lddJunction); } catch { }
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(outsideDir, recursive: true); } catch { }
+        }
+    }
+
+    private static void CreateJunction(string link, string target)
+    {
+        // Junction (mklink /J) does not require elevation, unlike symbolic links.
+        using var mklink = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c mklink /J \"{link}\" \"{target}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            }) ?? throw new InvalidOperationException("Failed to start mklink.");
+
+        mklink.WaitForExit();
+        Assert.Equal(0, mklink.ExitCode);
+    }
+
     [Fact]
     public void WriteSettingsJson_AppliesConfiguredCapabilitiesBeforePersisting()
     {

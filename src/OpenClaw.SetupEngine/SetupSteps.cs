@@ -241,7 +241,9 @@ public sealed class CleanupStaleDistroStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var wslDir = Path.Combine(ctx.LocalDataDir, "wsl", distro);
+        if (!DistroInstallPathPolicy.TryGetInstallPath(ctx.LocalDataDir, distro, out var wslDir, out var pathError))
+            return StepResult.Terminal(pathError);
+
         var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
         if (list.ExitCode != 0)
             return StepResult.Ok("WSL not available or no distros - nothing to clean");
@@ -256,7 +258,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
             if (Directory.Exists(wslDir))
             {
                 ctx.Logger.Info($"Removing orphaned WSL directory: {wslDir}");
-                var delete = await DeleteDistroDirectoryWithRetries(ctx, wslDir, ct);
+                var delete = await DeleteDistroDirectoryWithRetries(ctx, distro, wslDir, ct);
                 if (!delete.IsSuccess)
                     return delete;
             }
@@ -282,7 +284,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
         if (unregister.ExitCode == 0)
         {
             // Also remove the on-disk WSL vhdx directory (--import fails if it exists)
-            var delete = await DeleteDistroDirectoryWithRetries(ctx, wslDir, ct);
+            var delete = await DeleteDistroDirectoryWithRetries(ctx, distro, wslDir, ct);
             if (!delete.IsSuccess)
                 return delete;
 
@@ -295,34 +297,50 @@ public sealed class CleanupStaleDistroStep : SetupStep
         return StepResult.Fail($"Failed to unregister distro: {unregister.Stderr}");
     }
 
-    internal static async Task<StepResult> DeleteDistroDirectoryWithRetries(SetupContext ctx, string wslDir, CancellationToken ct)
+    internal static async Task<StepResult> DeleteDistroDirectoryWithRetries(
+        SetupContext ctx,
+        string distroName,
+        string wslDir,
+        CancellationToken ct)
     {
+        var deletePath = wslDir;
         Exception? lastError = null;
 
         for (var attempt = 0; attempt < 4; attempt++)
         {
+            if (!DistroInstallPathPolicy.TryValidateDeleteTarget(
+                    ctx.LocalDataDir,
+                    distroName,
+                    wslDir,
+                    out deletePath,
+                    out var pathError))
+            {
+                return StepResult.Terminal(pathError);
+            }
+
             try
             {
-                if (File.Exists(wslDir))
+                if (File.Exists(deletePath))
                 {
-                    if (File.GetAttributes(wslDir).HasFlag(FileAttributes.ReparsePoint))
-                        return StepResult.Fail($"App-owned WSL path '{wslDir}' is a reparse point; remove it manually and retry setup.");
+                    if (File.GetAttributes(deletePath).HasFlag(FileAttributes.ReparsePoint))
+                        return StepResult.Fail($"App-owned WSL path '{deletePath}' is a reparse point; remove it manually and retry setup.");
 
-                    ctx.Logger.Info($"Removing app-owned WSL file at install path: {wslDir}");
-                    File.Delete(wslDir);
+                    ctx.Logger.Info($"Removing app-owned WSL file at install path: {deletePath}");
+                    File.Delete(deletePath);
                 }
-                else if (Directory.Exists(wslDir))
+                else if (Directory.Exists(deletePath))
                 {
-                    if (new DirectoryInfo(wslDir).Attributes.HasFlag(FileAttributes.ReparsePoint))
-                        return StepResult.Fail($"App-owned WSL directory '{wslDir}' is a reparse point; remove it manually and retry setup.");
+                    if (new DirectoryInfo(deletePath).Attributes.HasFlag(FileAttributes.ReparsePoint))
+                        return StepResult.Fail($"App-owned WSL directory '{deletePath}' is a reparse point; remove it manually and retry setup.");
 
-                    ctx.Logger.Info($"Removing app-owned WSL directory: {wslDir}");
-                    Directory.Delete(wslDir, recursive: true);
+                    ctx.Logger.Info($"Removing app-owned WSL directory: {deletePath}");
+                    Directory.Delete(deletePath, recursive: true);
                 }
 
-                var parent = Path.GetDirectoryName(wslDir);
+                var parent = Path.GetDirectoryName(deletePath);
                 if (!string.IsNullOrWhiteSpace(parent) &&
                     Directory.Exists(parent) &&
+                    !new DirectoryInfo(parent).Attributes.HasFlag(FileAttributes.ReparsePoint) &&
                     !Directory.EnumerateFileSystemEntries(parent).Any())
                 {
                     Directory.Delete(parent);
@@ -356,7 +374,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
         }
 
         return StepResult.Fail(
-            $"Failed to remove app-owned WSL directory '{wslDir}'. Close any process using the OpenClaw WSL distro and retry setup."
+            $"Failed to remove app-owned WSL directory '{deletePath}'. Close any process using the OpenClaw WSL distro and retry setup."
             + (lastError is null ? "" : $" Last error: {lastError.Message}"));
     }
 }
@@ -710,7 +728,9 @@ public sealed class CreateWslInstanceStep : SetupStep
         if (string.IsNullOrWhiteSpace(baseDistro))
             return StepResult.Terminal("BaseDistro is required for fresh WSL gateway setup.");
 
-        var installPath = Path.Combine(ctx.LocalDataDir, "wsl", distro);
+        if (!DistroInstallPathPolicy.TryGetInstallPath(ctx.LocalDataDir, distro, out var installPath, out var pathError))
+            return StepResult.Terminal(pathError);
+
         ctx.Logger.Info($"Creating clean app-owned WSL distro '{distro}' from '{baseDistro}' at '{installPath}'");
 
         var existing = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
@@ -842,7 +862,7 @@ public sealed class CreateWslInstanceStep : SetupStep
         }
         else if (installPathExists)
         {
-            var delete = await CleanupStaleDistroStep.DeleteDistroDirectoryWithRetries(ctx, installPath, ct);
+            var delete = await CleanupStaleDistroStep.DeleteDistroDirectoryWithRetries(ctx, distro, installPath, ct);
             if (!delete.IsSuccess)
                 cleanupErrors.Add(delete.Message ?? "install directory cleanup failed");
         }
@@ -891,22 +911,29 @@ public sealed class CreateWslInstanceStep : SetupStep
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
+
+        // Name-based cleanup can still run when filesystem cleanup is unsafe.
         await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let port/VHD locks release
         await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
 
+        if (!DistroInstallPathPolicy.TryGetInstallPath(ctx.LocalDataDir, distro, out var vhdDir, out var pathError))
+            throw new IOException($"[Uninstall] Refusing WSL rollback filesystem cleanup: {pathError}");
+
         // VHD parent dir cleanup (mirrors old uninstall step 5a)
         var localDataPath = ctx.LocalDataDir;
-        var vhdDir = Path.Combine(localDataPath, "wsl", distro);
         if (Directory.Exists(vhdDir))
         {
-            Directory.Delete(vhdDir, recursive: true);
-            ctx.Logger.Info($"[Uninstall] Deleted VHD parent directory: {vhdDir}");
+            var delete = await CleanupStaleDistroStep.DeleteDistroDirectoryWithRetries(ctx, distro, vhdDir, ct);
+            if (!delete.IsSuccess)
+                throw new IOException($"[Uninstall] Failed to delete VHD parent directory: {delete.Message}");
         }
 
         // WSL parent dir cleanup — remove empty wsl\ directory (mirrors old step 5b)
         var wslDir = Path.Combine(localDataPath, "wsl");
-        if (Directory.Exists(wslDir) && !Directory.EnumerateFileSystemEntries(wslDir).Any())
+        if (Directory.Exists(wslDir) &&
+            !new DirectoryInfo(wslDir).Attributes.HasFlag(FileAttributes.ReparsePoint) &&
+            !Directory.EnumerateFileSystemEntries(wslDir).Any())
         {
             Directory.Delete(wslDir);
             ctx.Logger.Info("[Uninstall] Deleted empty wsl\\ parent directory");
