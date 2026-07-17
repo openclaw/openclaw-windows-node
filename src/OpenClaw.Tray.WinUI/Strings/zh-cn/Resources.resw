@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -5967,7 +5967,7 @@
     <value>正在等待网关确认频道已运行…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
-    <value>WSL 网关</value>
+    <value>Local gateway</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsDescription.Text" xml:space="preserve">
     <value>打开 shell，或在 WSL 中管理本地网关服务。</value>
@@ -6009,22 +6009,22 @@
     <value>打开终端</value>
   </data>
   <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>在 WSL 中运行 openclaw gateway start</value>
+    <value>Run openclaw gateway start</value>
   </data>
   <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>启动 WSL 网关</value>
+    <value>Start local gateway</value>
   </data>
   <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>在 WSL 中运行 openclaw gateway stop</value>
+    <value>Run openclaw gateway stop</value>
   </data>
   <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>停止 WSL 网关</value>
+    <value>Stop local gateway</value>
   </data>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>在 WSL 中运行 openclaw gateway restart</value>
+    <value>Run openclaw gateway restart</value>
   </data>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>重启 WSL 网关</value>
+    <value>Restart local gateway</value>
   </data>
   <data name="AgentEventsPage_Status_Live" xml:space="preserve">
     <value>实时</value>
@@ -6566,6 +6566,9 @@
   <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
     <value>Open a shell or manage the local gateway service in {0}.</value>
   </data>
+  <data name="ConnectionPage_GatewayHostControlsNativeDescription_Format" xml:space="preserve">
+    <value>Open a shell or manage the native Windows gateway task {0}.</value>
+  </data>
   <data name="CronPage_JobCompleted" xml:space="preserve">
     <value>Job completed</value>
   </data>
@@ -6595,6 +6598,9 @@
   </data>
   <data name="GatewayHostAccess_OpenTerminalInWslTooltip_Format" xml:space="preserve">
     <value>Open a terminal in the {0} WSL gateway.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalNativeTooltip_Format" xml:space="preserve">
+    <value>Open a Windows terminal for the native gateway task {0}.</value>
   </data>
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>

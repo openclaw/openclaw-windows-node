@@ -2,13 +2,13 @@
 
 ## Overview
 
-The Setup Engine is a **config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two setup projects plus the tray host:
+The Setup Engine is a **config-driven system** for provisioning an OpenClaw gateway natively on Windows or in an isolated WSL 2 distro. It consists of two setup projects plus the tray host:
 
-1. **`OpenClaw.SetupEngine`** — Headless pipeline library. Runs 19 steps sequentially with full JSONL logging, transaction journal, and rollback support.
+1. **`OpenClaw.SetupEngine`** — Headless pipeline library. Builds the selected runtime pipeline with full JSONL logging, transaction journal, and rollback support.
 2. **`OpenClaw.SetupEngine.UI`** — WinUI3 setup window/pages that wrap the same pipeline with a fluent wizard UI.
 3. **`OpenClaw.Tray.WinUI`** — The only shipped WinUI executable. It hosts `SetupWindow` directly and self-restarts after successful setup.
 
-The bundled `default-config.json` ships with the tray executable and provides secure defaults (loopback bind, WSL isolation, systemd enabled). Defaults can be overridden via config file or environment variables.
+The bundled `default-config.json` ships with the tray executable and provides secure defaults (loopback bind, pinned gateway version, WSL isolation). The UI recommends WSL 2 for the safest local boundary while still offering native Windows as the simpler setup path. Headless callers retain the explicit `InstallMode` config default. Values can be overridden via config file or environment variables.
 
 > **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
 
@@ -57,6 +57,8 @@ src/OpenClaw.SetupEngine/
 ├── TransactionJournal.cs          # Append-only JSONL journal (77 lines)
 ├── SetupLogger.cs                 # Structured JSONL logger (112 lines)
 ├── CommandRunner.cs               # Concrete WSL/process command runner
+├── GatewayCliRunner.cs            # Routes gateway CLI calls to Windows or WSL
+├── NativeGatewaySteps.cs          # Windows installer and service mode-switch steps
 ├── RetryExecutor.cs               # Exponential backoff retry
 ├── StubNodeCapability.cs          # Minimal capability stubs for pairing
 └── default-config.json            # THE source of truth for all config values
@@ -66,16 +68,12 @@ src/OpenClaw.SetupEngine.UI/
 ├── SetupWindow.xaml / .xaml.cs    # 720×820 window, Mica, title bar, navigation, setup events
 └── Pages/
     ├── SecurityNoticePage.xaml / .cs # Device-trust warning
-    ├── WelcomePage.xaml / .cs        # Install WSL gateway vs connect existing
+    ├── WelcomePage.xaml / .cs        # Choose native Windows, WSL, or existing gateway
     ├── CapabilitiesPage.xaml / .cs   # Profile, inline permissions, install review
     ├── ProgressPage.xaml / .cs       # Live step rows + gateway-installed handoff
     ├── WizardPage.xaml / .cs         # OpenClaw onboard transcript
     └── CompletePage.xaml / .cs       # Mascot status badge, summary, startup toggle
 ```
-
-**Total engine code: ~1,882 lines across 8 files.** UI adds ~10 more files.
-
----
 
 ## Config File (`default-config.json`)
 
@@ -83,6 +81,7 @@ src/OpenClaw.SetupEngine.UI/
 
 ```json
 {
+  "InstallMode": "Wsl",
   "DistroName": "OpenClawGateway",
   "GatewayPort": 18789,
   "BaseDistro": "Ubuntu-24.04",
@@ -126,6 +125,7 @@ src/OpenClaw.SetupEngine.UI/
   "Gateway": {
     "Bind": "loopback",
     "InstallUrl": null,
+    "WindowsInstallUrl": null,
     "Version": null,
     "HealthTimeoutSeconds": 90,
     "ReloadMode": "hot",
@@ -166,9 +166,16 @@ src/OpenClaw.SetupEngine.UI/
 
 ---
 
-## Pipeline Steps (19 total)
+## Pipeline Steps
 
-Executed sequentially. Each step is a small class (30–120 lines) in `SetupSteps.cs`.
+Executed sequentially. The native and WSL pipelines share configuration, pairing, verification, and onboard steps; runtime-specific provisioning is selected by `InstallMode`.
+
+| Runtime | Runtime-specific work |
+|---|---|
+| Native Windows | Official HTTPS PowerShell installer with app-owned npm prefix, native CLI routing, per-user gateway Scheduled Task, native health check |
+| WSL 2 | WSL preflight, isolated distro creation/lockdown, Linux CLI install, systemd gateway service, WSL keepalive |
+
+The WSL pipeline includes these stages:
 
 | # | Step Class | What It Does |
 |---|-----------|-------------|
@@ -271,13 +278,13 @@ The WinUI app is a **thin shell** — no business logic, just rendering pipeline
 
 **WelcomePage**
 - OpenClaw icon + "OpenClaw Setup" title bar
-- Install app-owned WSL gateway (recommended) or connect to existing gateway
-- Replacement prompt when an app-owned WSL gateway already exists
+- Install the recommended app-owned WSL gateway, install natively on Windows, or connect to an existing gateway
+- Local install choices continue directly to the capabilities review
 
 **CapabilitiesPage**
 - Capability profile defaults to Standard
 - Inline Windows permission status for selected capabilities
-- Install review showing WSL distro, OpenClaw CLI, local gateway service, and possible UAC
+- Install review showing the selected runtime, OpenClaw CLI, local gateway service, and possible UAC
 
 **ProgressPage**
 - Step rows with spinning ProgressRing → ✓/✗ badges

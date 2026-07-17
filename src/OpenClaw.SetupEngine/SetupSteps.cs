@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 
@@ -363,6 +364,8 @@ public sealed class CleanupStaleDistroStep : SetupStep
 
 public sealed class CleanupStaleGatewayStep : SetupStep
 {
+    private IReadOnlyList<SetupStateSnapshot>? _setupStateSnapshots;
+
     public override string Id => "cleanup-gateway";
     public override string DisplayName => "Clean up stale gateway state";
     public override bool CanRetry => false;
@@ -371,6 +374,13 @@ public sealed class CleanupStaleGatewayStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
+        _setupStateSnapshots = GetSetupStatePaths(ctx)
+            .Select(path => new SetupStateSnapshot(
+                path,
+                File.Exists(path),
+                File.Exists(path) ? File.ReadAllBytes(path) : null))
+            .ToArray();
+
         // Remove stale setup-state.json from AppData (legacy location)
         var stateFile = Path.Combine(ctx.DataDir, "setup-state.json");
         if (File.Exists(stateFile))
@@ -387,31 +397,56 @@ public sealed class CleanupStaleGatewayStep : SetupStep
             ctx.Logger.Info("Deleted stale setup-state.json (LocalAppData)");
         }
 
-        // Remove stale gateway record for our local URL if it exists
+        // Remove the prior SetupEngine-managed local record even when this run
+        // changes its endpoint. Preserve unrelated local forwards at the target URL.
         var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
         registry.Load();
-        var existing = registry.FindByUrl(ctx.GatewayUrl!);
-        if (existing != null)
+        var targetRecord = registry.FindByUrl(ctx.GatewayUrl!);
+        var targetIsManaged = targetRecord is not null
+            && PairOperatorStep.IsSetupManagedLocalRecord(
+                targetRecord,
+                ctx,
+                includeOtherModeForMigration: true);
+        if (targetRecord is not null && !targetIsManaged)
         {
-            // Preserve non-local records and SSH-tunneled gateways — they may be
-            // remote gateways that happen to use localhost as a forwarded port.
-            if (!PairOperatorStep.IsSetupManagedLocalRecord(existing, ctx))
+            ctx.Logger.Warn($"Preserving gateway record {targetRecord.Id}: " +
+                "not a SetupEngine-managed local gateway");
+        }
+
+        var managedRecords = registry.GetAll()
+            .Where(record => PairOperatorStep.IsSetupManagedLocalRecord(
+                record,
+                ctx,
+                includeOtherModeForMigration: true))
+            .ToArray();
+        if (managedRecords.Length > 0)
+        {
+            ctx.ReplacedGateways = new ReplacedGatewaysSnapshot(
+                managedRecords
+                    .Select(record => new ReplacedGatewayRecordSnapshot(
+                        record,
+                        CaptureIdentityFiles(registry.GetIdentityDirectory(record.Id))))
+                    .ToArray(),
+                registry.ActiveGatewayId);
+            try
             {
-                ctx.Logger.Warn($"Skipping cleanup of gateway record {existing.Id}: " +
-                    "not a SetupEngine-managed local gateway");
-            }
-            else
-            {
-                // Clean identity directory
-                var identityDir = registry.GetIdentityDirectory(existing.Id);
-                if (Directory.Exists(identityDir))
+                foreach (var record in managedRecords)
                 {
-                    Directory.Delete(identityDir, recursive: true);
-                    ctx.Logger.Info($"Deleted stale identity directory: {identityDir}");
+                    var identityDir = registry.GetIdentityDirectory(record.Id);
+                    if (Directory.Exists(identityDir))
+                    {
+                        Directory.Delete(identityDir, recursive: true);
+                        ctx.Logger.Info($"Deleted stale identity directory: {identityDir}");
+                    }
+                    registry.Remove(record.Id);
+                    ctx.Logger.Info($"Removed stale gateway record {record.Id} ({record.Url})");
                 }
-                registry.Remove(existing.Id);
                 registry.Save();
-                ctx.Logger.Info($"Removed stale gateway record for {ctx.GatewayUrl}");
+            }
+            catch
+            {
+                RestoreReplacedGateway(ctx);
+                throw;
             }
         }
 
@@ -419,23 +454,84 @@ public sealed class CleanupStaleGatewayStep : SetupStep
         return StepResult.Ok("Gateway state cleaned");
     }
 
-    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        // Delete setup-state.json (written by VerifyEndToEndStep)
-        var localDataPath = ctx.LocalDataDir;
+        RestoreReplacedGateway(ctx);
 
-        var stateFile = Path.Combine(localDataPath, "setup-state.json");
-        if (File.Exists(stateFile))
+        var snapshots = _setupStateSnapshots
+            ?? GetSetupStatePaths(ctx)
+                .Select(path => new SetupStateSnapshot(path, Existed: false, Contents: null))
+                .ToArray();
+        foreach (var snapshot in snapshots)
         {
-            File.Delete(stateFile);
-            ctx.Logger.Info("[Uninstall] Deleted setup-state.json");
-        }
-        else
-        {
-            ctx.Logger.Info("[Uninstall] setup-state.json already absent");
+            if (snapshot.Existed)
+            {
+                await AtomicFile.WriteAllBytesAsync(snapshot.Path, snapshot.Contents!, ct);
+                ctx.Logger.Info($"[Rollback] Restored setup state: {snapshot.Path}");
+            }
+            else if (File.Exists(snapshot.Path))
+            {
+                File.Delete(snapshot.Path);
+                ctx.Logger.Info($"[Uninstall] Deleted setup state: {snapshot.Path}");
+            }
         }
 
-        return Task.CompletedTask;
+        _setupStateSnapshots = null;
+    }
+
+    private static IReadOnlyList<string> GetSetupStatePaths(SetupContext ctx) =>
+        new[]
+        {
+            Path.Combine(ctx.DataDir, "setup-state.json"),
+            Path.Combine(ctx.LocalDataDir, "setup-state.json"),
+        }
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private sealed record SetupStateSnapshot(string Path, bool Existed, byte[]? Contents);
+
+    internal static IReadOnlyList<GatewayIdentityFileSnapshot> CaptureIdentityFiles(string identityDir)
+    {
+        if (!Directory.Exists(identityDir))
+            return [];
+
+        return Directory.EnumerateFiles(identityDir, "*", SearchOption.AllDirectories)
+            .Select(path => new GatewayIdentityFileSnapshot(
+                Path.GetRelativePath(identityDir, path),
+                File.ReadAllBytes(path)))
+            .ToArray();
+    }
+
+    internal static void RestoreReplacedGateway(SetupContext ctx)
+    {
+        if (ctx.ReplacedGateways is not { } snapshot)
+            return;
+
+        var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
+        registry.Load();
+        foreach (var recordSnapshot in snapshot.Records)
+        {
+            var identityDir = registry.GetIdentityDirectory(recordSnapshot.Record.Id);
+            if (Directory.Exists(identityDir))
+                Directory.Delete(identityDir, recursive: true);
+            foreach (var file in recordSnapshot.IdentityFiles)
+            {
+                var path = Path.Combine(identityDir, file.RelativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path, file.Contents);
+            }
+
+            registry.AddOrUpdate(recordSnapshot.Record);
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.PreviousActiveGatewayId)
+            && registry.GetById(snapshot.PreviousActiveGatewayId) is not null)
+        {
+            registry.SetActive(snapshot.PreviousActiveGatewayId);
+        }
+        registry.Save();
+        ctx.ReplacedGateways = null;
+        ctx.Logger.Info($"[Rollback] Restored {snapshot.Records.Count} previous gateway record(s)");
     }
 }
 
@@ -1320,13 +1416,25 @@ public sealed class ConfigureGatewayStep : SetupStep
     internal static readonly TimeSpan ConfigBaseBudget = TimeSpan.FromSeconds(45);
     internal static readonly TimeSpan PerConfigCommandBudget = TimeSpan.FromSeconds(15);
     internal static readonly TimeSpan MinConfigurationTimeout = TimeSpan.FromSeconds(180);
+    internal static readonly string[] NativeManagedConfigPaths =
+    [
+        "gateway.mode",
+        "gateway.port",
+        "gateway.bind",
+        "gateway.auth.mode",
+        "gateway.auth.token",
+        "gateway.reload.mode",
+        "gateway.nodes.allowCommands",
+        "logging.file",
+        DevicePairEnabledKey,
+        DevicePairPublicUrlKey,
+    ];
 
     public override string Id => "configure-gateway";
     public override string DisplayName => "Configure gateway";
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var distro = ctx.DistroName!;
         var port = ctx.Config.GatewayPort;
         var gw = ctx.Config.Gateway;
 
@@ -1362,6 +1470,14 @@ public sealed class ConfigureGatewayStep : SetupStep
             ctx.Logger.Info($"Configured device-pair public URL for loopback gateway: {defaultPublicUrl}");
         }
 
+        if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows)
+        {
+            await WriteNativeOwnershipMarkerAsync(ctx, ct);
+            return await ConfigureNativeAsync(ctx, gw, port, allowedCommandsJson, env, ct);
+        }
+
+        var distro = ctx.DistroName!;
+
         var pathPrefix = ctx.WslPathPrefix;
         var script = $"""
             set -e
@@ -1386,6 +1502,457 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         ctx.Logger.StateChange("shared_gateway_token", null, "[SET]");
         return StepResult.Ok("Gateway configured");
+    }
+
+    private static async Task<StepResult> ConfigureNativeAsync(
+        SetupContext ctx,
+        GatewayConfig gw,
+        int port,
+        string allowedCommandsJson,
+        IReadOnlyDictionary<string, string> tokenEnvironment,
+        CancellationToken ct)
+    {
+        var values = new List<(string Key, object? Value)>
+        {
+            ("gateway.mode", "local"),
+            ("gateway.port", port),
+            ("gateway.bind", gw.Bind),
+            ("gateway.auth.mode", gw.AuthMode),
+            ("gateway.auth.token", tokenEnvironment["OPENCLAW_GATEWAY_TOKEN"]),
+            ("gateway.reload.mode", gw.ReloadMode),
+            ("gateway.nodes.allowCommands", JsonSerializer.Deserialize<string[]>(allowedCommandsJson) ?? []),
+        };
+
+        if (GetDefaultDevicePairPublicUrl(gw, port) is { } publicUrl
+            && gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
+        {
+            values.Add((DevicePairPublicUrlKey, publicUrl));
+        }
+
+        var hasDevicePairPublicUrl = GetDefaultDevicePairPublicUrl(gw, port) is not null
+            || gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) == true;
+        if (hasDevicePairPublicUrl && gw.ExtraConfig?.ContainsKey(DevicePairEnabledKey) != true)
+            values.Add((DevicePairEnabledKey, true));
+
+        if (gw.ExtraConfig is { Count: > 0 })
+            values.AddRange(gw.ExtraConfig.Select(pair => (pair.Key, ParseNativeBatchValue(pair.Value))));
+
+        // Keep wizard console output isolated from other OpenClaw profiles even
+        // when advanced config supplies a different global log destination.
+        values.RemoveAll(value => string.Equals(value.Key, "logging.file", StringComparison.Ordinal));
+        values.Add(("logging.file", GatewayInstallModeDetector.GetNativeWizardLogPath(ctx.Config)));
+
+        var currentPaths = values.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+        var stalePaths = ReadNativeManagedConfigPaths(ctx.LocalDataDir, ctx.Config)
+            .Where(path => !currentPaths.Contains(path))
+            .ToArray();
+        if (stalePaths.Length > 0
+            && !await TryRemoveNativeManagedConfigWithCliAsync(ctx, stalePaths, ct))
+        {
+            return StepResult.Fail(
+                $"Gateway configuration failed while removing {stalePaths.Length} obsolete setup-managed setting(s).");
+        }
+
+        string? batchFile = null;
+        try
+        {
+            // Remove any batch file left behind by a prior hard-killed run so a
+            // token-bearing temp file cannot linger, then write to a path the
+            // finally can always see (assigned before the write can throw/cancel).
+            SweepStaleNativeConfigBatchFiles(ctx);
+            batchFile = CreateNativeConfigBatchFilePath(ctx);
+            await WriteNativeConfigBatchFileAsync(batchFile, values, ct);
+            var result = await GatewayCliRunner.RunAsync(
+                ctx,
+                ["config", "set", "--batch-file", batchFile],
+                TimeSpan.FromSeconds(60),
+                ct: ct);
+            if (result.ExitCode != 0)
+            {
+                return StepResult.Fail(
+                    $"Gateway batch configuration failed (exit {result.ExitCode}): " +
+                    StartGatewayStep.RedactTokens(FirstNonEmpty(result.Stderr, result.Stdout)));
+            }
+        }
+        finally
+        {
+            TryDeleteNativeConfigBatchFile(batchFile, ctx.Logger);
+        }
+
+        ctx.Logger.StateChange("shared_gateway_token", null, "[SET]");
+        return StepResult.Ok("Gateway configured");
+    }
+
+    internal static object? ParseNativeBatchValue(string value)
+    {
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0)
+            return value;
+        try
+        {
+            using var document = JsonDocument.Parse(trimmed);
+            return document.RootElement.ValueKind is JsonValueKind.Object or JsonValueKind.Array
+                ? document.RootElement.Clone()
+                : value;
+        }
+        catch (JsonException)
+        {
+            return value;
+        }
+    }
+
+    internal static async Task WriteNativeConfigBatchFileAsync(
+        string path,
+        IEnumerable<(string Key, object? Value)> values,
+        CancellationToken ct)
+    {
+        var batch = values
+            .Select(value => new Dictionary<string, object?>
+            {
+                ["path"] = value.Key,
+                ["value"] = value.Value,
+            })
+            .ToArray();
+        var json = JsonSerializer.Serialize(batch, SetupConfig.JsonWriteOptions);
+        await File.WriteAllTextAsync(path, json, ct);
+    }
+
+    private static string CreateNativeConfigBatchFilePath(SetupContext ctx)
+    {
+        var directory = Path.Combine(ctx.LocalDataDir, "setup-temp");
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, $"native-config-{Guid.NewGuid():N}.json");
+    }
+
+    private static void SweepStaleNativeConfigBatchFiles(SetupContext ctx)
+    {
+        var directory = Path.Combine(ctx.LocalDataDir, "setup-temp");
+        if (!Directory.Exists(directory))
+            return;
+        foreach (var file in Directory.EnumerateFiles(directory, "native-config-*.json"))
+        {
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ctx.Logger.Warn($"Could not sweep stale native config batch file '{file}': {ex.Message}");
+            }
+        }
+    }
+
+    private static void TryDeleteNativeConfigBatchFile(string? path, SetupLogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.Warn($"Could not delete native config batch file '{path}': {ex.Message}");
+        }
+    }
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (ctx.Config.InstallMode != GatewayInstallMode.NativeWindows)
+            return;
+
+        var configPath = GatewayCliRunner.GetManagedNativeConfigPath(ctx.Config);
+        if (ctx.IsUninstalling
+            && GatewayInstallModeDetector.IsNativeProfileOwnershipMarkerOwned(ctx.LocalDataDir, ctx.Config))
+        {
+            var stateDirectory = GatewayCliRunner.GetManagedNativeStateDir(ctx.Config);
+            if (Directory.Exists(stateDirectory))
+            {
+                await DeleteManagedNativeProfileAsync(stateDirectory, ct);
+                ctx.Logger.Info("[Uninstall] Deleted app-owned native gateway profile");
+            }
+
+            foreach (var markerPath in new[]
+                     {
+                         GatewayInstallModeDetector.GetNativeOwnershipPath(ctx.LocalDataDir),
+                         GatewayInstallModeDetector.GetNativeProfileOwnershipPath(ctx.LocalDataDir),
+                     })
+            {
+                if (File.Exists(markerPath))
+                    File.Delete(markerPath);
+            }
+            ctx.Logger.Info("[Uninstall] Deleted native gateway ownership markers");
+            return;
+        }
+
+        var markerExists = GatewayInstallModeDetector.HasNativeOwnershipMarker(ctx.LocalDataDir);
+        var persistedPaths = ReadNativeManagedConfigPaths(ctx.LocalDataDir, ctx.Config);
+        var managedPaths = (markerExists ? persistedPaths : GetNativeManagedConfigPaths(ctx.Config))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (await TryRemoveNativeManagedConfigWithCliAsync(ctx, managedPaths, ct))
+            ctx.Logger.Info("[Uninstall] Removed setup-managed native gateway configuration and credential");
+        else if (GatewayInstallModeDetector.IsNativeProfileOwned(ctx.LocalDataDir, ctx.Config)
+                 && File.Exists(configPath))
+        {
+            File.Delete(configPath);
+            ctx.Logger.Info("[Uninstall] Removed app-owned native JSON5 configuration and credential");
+        }
+        else
+            ctx.Logger.Info("[Uninstall] Native gateway configuration already absent");
+
+        var ownershipPath = GatewayInstallModeDetector.GetNativeOwnershipPath(ctx.LocalDataDir);
+        if (File.Exists(ownershipPath))
+        {
+            File.Delete(ownershipPath);
+            ctx.Logger.Info("[Uninstall] Deleted native gateway ownership marker");
+        }
+    }
+
+    internal static async Task DeleteManagedNativeProfileAsync(string stateDirectory, CancellationToken ct)
+    {
+        if (!Directory.Exists(stateDirectory))
+            return;
+
+        if (new DirectoryInfo(stateDirectory).Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new InvalidOperationException($"Refusing to remove app-owned native profile reparse point '{stateDirectory}'.");
+
+        // The gateway may have just stopped an app-owned browser process. Windows can
+        // retain its directory handles briefly, so retry only the known transient
+        // filesystem failures before reporting an incomplete uninstall.
+        var delays = new[]
+        {
+            TimeSpan.FromMilliseconds(200),
+            TimeSpan.FromMilliseconds(500),
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(2),
+        };
+        for (var attempt = 0; ; attempt++)
+        {
+            if (!Directory.Exists(stateDirectory))
+                return;
+
+            try
+            {
+                Directory.Delete(stateDirectory, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (
+                ex is IOException or UnauthorizedAccessException
+                && attempt < delays.Length)
+            {
+                await Task.Delay(delays[attempt], ct);
+            }
+        }
+    }
+
+    internal static async Task<bool> RemoveNativeManagedConfigAsync(string configPath, CancellationToken ct)
+        => await RemoveNativeManagedConfigAsync(configPath, NativeManagedConfigPaths, ct);
+
+    internal static async Task<bool> TryRemoveNativeManagedConfigWithCliAsync(
+        SetupContext ctx,
+        IEnumerable<string> managedPaths,
+        CancellationToken ct)
+    {
+        var nativeCli = ctx.NativeCliPath ?? GatewayCliRunner.TryResolveNativeCliPath(ctx.LocalDataDir);
+        if (nativeCli is null)
+            return false;
+
+        ctx.NativeCliPath = nativeCli;
+        foreach (var path in managedPaths.Distinct(StringComparer.Ordinal))
+        {
+            var result = await GatewayCliRunner.RunNativeAsync(
+                ctx,
+                ["config", "unset", path],
+                TimeSpan.FromSeconds(30),
+                ct: ct);
+            if (result.ExitCode != 0 && !IsMissingConfigPath(result))
+                return false;
+        }
+
+        return true;
+    }
+
+    internal static bool IsMissingConfigPath(CommandResult result)
+    {
+        var output = $"{result.Stderr}\n{result.Stdout}";
+        return output.Contains("Config path not found", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("Nothing was changed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static async Task<bool> RemoveNativeManagedConfigAsync(
+        string configPath,
+        IEnumerable<string> managedPaths,
+        CancellationToken ct)
+    {
+        if (!File.Exists(configPath))
+            return false;
+
+        var json = await File.ReadAllTextAsync(configPath, ct);
+        if (JsonNode.Parse(json) is not JsonObject root)
+            throw new InvalidDataException($"Native OpenClaw config is not a JSON object: {configPath}");
+
+        var changed = false;
+        foreach (var path in managedPaths.Distinct(StringComparer.Ordinal))
+            changed |= RemoveJsonPath(root, path.Split('.'), 0);
+
+        if (!changed)
+            return false;
+
+        await AtomicFile.WriteAllTextAsync(
+            configPath,
+            root.ToJsonString(SetupConfig.JsonWriteOptions),
+            ct);
+        return true;
+    }
+
+    internal static IReadOnlyList<string> GetNativeManagedConfigPaths(SetupConfig config) =>
+        NativeManagedConfigPaths
+            .Concat(config.Gateway.ExtraConfig?.Select(pair => pair.Key) ?? Enumerable.Empty<string>())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+    internal static IReadOnlyList<string> ReadNativeManagedConfigPaths(
+        string localDataDir,
+        SetupConfig config)
+    {
+        var markerPaths = new[]
+        {
+            GatewayInstallModeDetector.GetNativeOwnershipPath(localDataDir),
+            GatewayInstallModeDetector.GetNativeProfileOwnershipPath(localDataDir),
+        };
+        var result = new List<string>();
+        foreach (var markerPath in markerPaths.Where(path =>
+                     GatewayInstallModeDetector.IsNativeOwnershipFileOwned(path, config)))
+            result.AddRange(ReadNativeManagedConfigPathsFromMarker(markerPath));
+        return result.Distinct(StringComparer.Ordinal).ToArray();
+    }
+
+    private static IReadOnlyList<string> ReadNativeManagedConfigPathsFromMarker(string markerPath)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("ManagedConfigPaths", out var paths)
+                || paths.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidDataException($"Native gateway ownership marker is invalid: {markerPath}");
+            }
+
+            var result = new List<string>();
+            foreach (var item in paths.EnumerateArray())
+            {
+                var path = item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+                if (string.IsNullOrWhiteSpace(path) || !IsSafeExtraConfigKey(path))
+                    throw new InvalidDataException($"Native gateway ownership marker contains an invalid config path: {markerPath}");
+                result.Add(path);
+            }
+
+            return result;
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($"Native gateway ownership marker is invalid: {markerPath}", ex);
+        }
+    }
+
+    internal static string? ReadNativeGatewayRecordId(string localDataDir, SetupConfig config)
+    {
+        foreach (var markerPath in new[]
+                 {
+                     GatewayInstallModeDetector.GetNativeOwnershipPath(localDataDir),
+                     GatewayInstallModeDetector.GetNativeProfileOwnershipPath(localDataDir),
+                 })
+        {
+            if (!GatewayInstallModeDetector.IsNativeOwnershipFileOwned(markerPath, config))
+                continue;
+
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+                if (document.RootElement.ValueKind != JsonValueKind.Object
+                    || !document.RootElement.TryGetProperty("GatewayRecordId", out var recordId)
+                    || recordId.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var value = recordId.GetString();
+                if (!string.IsNullOrWhiteSpace(value)
+                    && System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9_-]{1,128}$"))
+                {
+                    return value;
+                }
+            }
+            catch (JsonException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    internal static async Task WriteNativeOwnershipMarkerAsync(
+        SetupContext ctx,
+        CancellationToken ct,
+        bool includeCurrentConfigPaths = true)
+    {
+        if (ctx.Config.Gateway.ExtraConfig is { Count: > 0 })
+        {
+            foreach (var key in ctx.Config.Gateway.ExtraConfig.Keys)
+            {
+                if (!IsSafeExtraConfigKey(key))
+                    throw new InvalidDataException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.");
+            }
+        }
+
+        Directory.CreateDirectory(ctx.LocalDataDir);
+        IEnumerable<string> currentPaths = includeCurrentConfigPaths
+            ? GetNativeManagedConfigPaths(ctx.Config)
+            : Enumerable.Empty<string>();
+        var managedPaths = currentPaths
+            .Concat(ReadNativeManagedConfigPaths(ctx.LocalDataDir, ctx.Config))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var marker = new
+        {
+            SchemaVersion = 2,
+            InstallMode = GatewayInstallMode.NativeWindows.ToString(),
+            ProfileName = GatewayCliRunner.GetManagedNativeProfile(ctx.Config),
+            TaskName = GatewayCliRunner.GetManagedNativeTaskName(ctx.Config),
+            GatewayPort = ctx.Config.GatewayPort,
+            GatewayRecordId = ctx.GatewayRecordId ?? ReadNativeGatewayRecordId(ctx.LocalDataDir, ctx.Config),
+            ManagedConfigPaths = managedPaths,
+        };
+        var markerJson = JsonSerializer.Serialize(marker, SetupConfig.JsonWriteOptions);
+        await AtomicFile.WriteAllTextAsync(
+            GatewayInstallModeDetector.GetNativeProfileOwnershipPath(ctx.LocalDataDir),
+            markerJson,
+            ct);
+        await AtomicFile.WriteAllTextAsync(
+            GatewayInstallModeDetector.GetNativeOwnershipPath(ctx.LocalDataDir),
+            markerJson,
+            ct);
+        ctx.Logger.Info("Recorded setup ownership before configuring the native gateway");
+    }
+
+    private static bool RemoveJsonPath(JsonObject current, string[] segments, int index)
+    {
+        var key = segments[index];
+        if (index == segments.Length - 1)
+            return current.Remove(key);
+
+        if (current[key] is not JsonObject child || !RemoveJsonPath(child, segments, index + 1))
+            return false;
+
+        if (child.Count == 0)
+            current.Remove(key);
+        return true;
     }
 
     internal static string BuildConfigCommands(GatewayConfig gw, int port, string escapedAllowedCommands)
@@ -1460,6 +2027,10 @@ public sealed class ConfigureGatewayStep : SetupStep
         return count;
     }
 
+    private static string FirstNonEmpty(params string[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim()
+        ?? "No diagnostic output was produced.";
+
     internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port) =>
         gw.Bind == "loopback" ? $"http://127.0.0.1:{port}" : null;
 
@@ -1474,10 +2045,11 @@ public sealed class InstallGatewayServiceStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var distro = ctx.DistroName!;
-
-        var result = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw gateway install --force", TimeSpan.FromSeconds(60), ct: ct);
+        var result = await GatewayCliRunner.RunAsync(
+            ctx,
+            ["gateway", "install", "--force"],
+            TimeSpan.FromSeconds(60),
+            ct: ct);
 
         if (result.ExitCode != 0)
             return StepResult.Fail($"Service install failed (exit {result.ExitCode}): {result.Stderr}");
@@ -1487,18 +2059,75 @@ public sealed class InstallGatewayServiceStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{ctx.WslPathPrefix} && openclaw gateway uninstall", TimeSpan.FromSeconds(30), ct: ct);
+        var status = await GatewayCliRunner.RunAsync(
+            ctx,
+            ["gateway", "status", "--json"],
+            TimeSpan.FromSeconds(30),
+            ct: ct);
+        if (ctx.Config.InstallMode == GatewayInstallMode.Wsl)
+        {
+            if (IsMissingWslService(status)
+                || (status.ExitCode == 0 && !NativeGatewayServiceCleanupStep.IsServiceInstalled(status.Stdout)))
+            {
+                ctx.Logger.Info("[Uninstall] WSL gateway service already absent");
+                return;
+            }
+        }
+        else if (IsMissingWslService(status)
+            || (status.ExitCode == 0 && !NativeGatewayServiceCleanupStep.IsServiceInstalled(status.Stdout))
+            || (status.ExitCode != 0
+                && await NativeGatewayServiceCleanupStep.TryGetManagedTaskInstalledAsync(ctx, ct) == false))
+        {
+            await NativeGatewayServiceCleanupStep.RemoveManagedServiceWithoutCliAsync(ctx, ct);
+            ctx.Logger.Info("[Uninstall] Native gateway service already absent");
+            return;
+        }
+
+        var result = await GatewayCliRunner.RunAsync(
+            ctx,
+            ["gateway", "uninstall"],
+            TimeSpan.FromSeconds(30),
+            ct: ct);
+        if (result.ExitCode != 0
+            && (ctx.Config.InstallMode != GatewayInstallMode.Wsl || !IsMissingWslService(result)))
+        {
+            if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows)
+            {
+                await NativeGatewayServiceCleanupStep.RemoveManagedServiceWithoutCliAsync(ctx, ct);
+                return;
+            }
+            throw new InvalidOperationException($"Gateway service uninstall failed (exit {result.ExitCode}).");
+        }
+    }
+
+    internal static bool IsMissingWslService(CommandResult result)
+    {
+        if (result.ExitCode == 0)
+            return false;
+
+        var output = $"{result.Stderr}\n{result.Stdout}";
+        return output.Contains("There is no distribution with the supplied name", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("WSL_E_DISTRO_NOT_FOUND", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("service not installed", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("service is not installed", StringComparison.OrdinalIgnoreCase);
     }
 }
 
 public sealed class StartGatewayStep : SetupStep
 {
+    private static readonly TimeSpan NativeGatewayReadinessTimeout = TimeSpan.FromSeconds(180);
+    private static readonly TimeSpan NativeGatewayPollDelay = TimeSpan.FromSeconds(2);
+    private const int NativeOwnershipStatusAttempts = 3;
+
     public override string Id => "start-gateway";
     public override string DisplayName => "Start gateway";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
+        if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows)
+            return await StartNativeGatewayAsync(ctx, ct);
+
         var distro = ctx.DistroName!;
         var pathCmd = ctx.WslPathPrefix;
 
@@ -1589,6 +2218,255 @@ public sealed class StartGatewayStep : SetupStep
         return StepResult.Fail($"Gateway did not become healthy within {ctx.Config.Gateway.HealthTimeoutSeconds}s");
     }
 
+    private static async Task<StepResult> StartNativeGatewayAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var timeout = GetNativeGatewayReadinessTimeout(ctx.Config);
+        return await WaitForNativeGatewayReadyAfterInstallAsync(
+            ctx,
+            ProbeNativeGatewayHealthAsync,
+            timeout,
+            NativeGatewayPollDelay,
+            ct);
+    }
+
+    internal static TimeSpan GetNativeGatewayReadinessTimeout(SetupConfig config) =>
+        TimeSpan.FromSeconds(Math.Max(
+            config.Gateway.HealthTimeoutSeconds,
+            (int)NativeGatewayReadinessTimeout.TotalSeconds));
+
+    internal static async Task<StepResult> WaitForNativeGatewayReadyAfterInstallAsync(
+        SetupContext ctx,
+        Func<Uri, CancellationToken, Task<HttpStatusCode?>> healthProbe,
+        TimeSpan timeout,
+        TimeSpan pollDelay,
+        CancellationToken ct)
+    {
+        ctx.Logger.Info("Waiting for native Windows gateway launched by Scheduled Task...");
+        var deadline = DateTimeOffset.UtcNow.Add(timeout);
+        var healthUri = GetNativeHealthUri(ctx.Config.GatewayPort);
+        Exception? lastError = null;
+        HttpStatusCode? lastStatus = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                lastStatus = await healthProbe(healthUri, ct);
+                lastError = null;
+                if (lastStatus is { } status && IsHealthyHttpStatus(status))
+                {
+                    ctx.Logger.Info($"Native gateway is accepting connections (HTTP {(int)status})");
+                    var ownership = await VerifyManagedNativeGatewayOwnershipAsync(ctx, ct);
+                    if (!ownership.IsSuccess)
+                        return ownership;
+                    return StepResult.Ok("Gateway running");
+                }
+
+                if (lastStatus is { } nonHealthy)
+                    ctx.Logger.Debug($"Native gateway returned HTTP {(int)nonHealthy} while starting");
+                else
+                    ctx.Logger.Debug("Native gateway not ready yet: no HTTP response");
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                ctx.Logger.Debug($"Native gateway not ready yet: {ex.GetType().Name}");
+            }
+
+            if (pollDelay > TimeSpan.Zero)
+                await Task.Delay(pollDelay, ct);
+        }
+
+        await LogNativeGatewayFailureDiagnosticsAsync(ctx, ct);
+        var detail = lastStatus is { } statusDetail
+            ? $" Last HTTP status: {(int)statusDetail}."
+            : lastError is not null
+                ? $" Last error: {lastError.GetType().Name}."
+                : "";
+        return StepResult.Terminal(
+            $"Gateway did not become healthy within {timeout.TotalSeconds:0}s after Scheduled Task launch.{detail}");
+    }
+
+    private static async Task<HttpStatusCode?> ProbeNativeGatewayHealthAsync(Uri healthUri, CancellationToken ct)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        using var response = await http.GetAsync(healthUri, ct);
+        return response.StatusCode;
+    }
+
+    private static async Task<StepResult> VerifyManagedNativeGatewayOwnershipAsync(SetupContext ctx, CancellationToken ct)
+    {
+        CommandResult? status = null;
+        for (var attempt = 1; attempt <= NativeOwnershipStatusAttempts; attempt++)
+        {
+            status = await ReadNativeGatewayStatusAsync(ctx, ct);
+            if (status.ExitCode == 0)
+                break;
+
+            if (attempt < NativeOwnershipStatusAttempts)
+            {
+                ctx.Logger.Warn(
+                    $"Native gateway ownership status read failed (attempt {attempt}/{NativeOwnershipStatusAttempts}); retrying.");
+                await Task.Delay(NativeGatewayPollDelay, ct);
+            }
+        }
+
+        var finalStatus = status ?? new CommandResult(-1, "", "Native gateway status was not read.", TimeSpan.Zero, false);
+        if (finalStatus.ExitCode != 0)
+        {
+            ctx.Logger.Error("Native gateway health check succeeded, but ownership verification failed. Status: "
+                + RedactTokens(FirstNonEmpty(finalStatus.Stdout, finalStatus.Stderr)));
+            return StepResult.Terminal("Gateway responded on the expected port, but setup could not verify native gateway ownership.");
+        }
+
+        if (!IsManagedNativeGatewayStatus(finalStatus.Stdout, ctx.Config))
+        {
+            ctx.Logger.Error("Native gateway health check succeeded, but the responding gateway does not match setup ownership. Status: "
+                + RedactTokens(finalStatus.Stdout));
+            return StepResult.Terminal("Gateway responded on the expected port, but it is not the setup-managed native gateway.");
+        }
+
+        return StepResult.Ok();
+    }
+
+    private static Task<CommandResult> ReadNativeGatewayStatusAsync(SetupContext ctx, CancellationToken ct) =>
+        GatewayCliRunner.RunAsync(
+            ctx,
+            ["gateway", "status", "--json"],
+            TimeSpan.FromSeconds(30),
+            ct: ct);
+
+    private static async Task LogNativeGatewayFailureDiagnosticsAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var status = await ReadNativeGatewayStatusAsync(ctx, ct);
+        var tail = TryReadNativeGatewayLogTail(ctx.Config, maxLines: 40);
+        ctx.Logger.Error(
+            "Native gateway health timeout. Status: "
+            + RedactTokens(FirstNonEmpty(status.Stdout, status.Stderr))
+            + (string.IsNullOrWhiteSpace(tail) ? "" : "\nNative gateway log tail:\n" + RedactTokens(tail)));
+    }
+
+    private static string? TryReadNativeGatewayLogTail(SetupConfig config, int maxLines)
+    {
+        var path = GatewayInstallModeDetector.GetNativeWizardLogPath(config);
+        try
+        {
+            if (!File.Exists(path))
+                return null;
+            var lines = File.ReadLines(path).TakeLast(maxLines);
+            return string.Join(Environment.NewLine, lines);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Could not read native gateway log '{path}': {ex.Message}";
+        }
+    }
+
+    internal static bool IsManagedNativeGatewayStatus(string statusJson, SetupConfig config)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(statusJson);
+            var root = document.RootElement;
+            var expectedProfile = GatewayCliRunner.GetManagedNativeProfile(config);
+            var expectedTask = GatewayCliRunner.GetManagedNativeTaskName(config);
+            var expectedStateLeaf = Path.GetFileName(GatewayCliRunner.GetManagedNativeStateDir(config));
+
+            if (!TryGetInt(root, out var gatewayPort, "gateway", "port")
+                || gatewayPort != config.GatewayPort)
+                return false;
+
+            // Fail closed on the strong managed-identity signals that the real
+            // `gateway status --json` reliably reports for a setup-managed Scheduled
+            // Task: the Scheduled Task label, the OPENCLAW_PROFILE it runs under, and a
+            // sourcePath inside our profile-specific state directory. Requiring these
+            // positively stops a sparse or port-only status (e.g. an unrelated gateway
+            // that happens to bind the same port) from being accepted as setup-managed.
+            // NOTE: the status projects service.command.environment down to a subset and
+            // omits OPENCLAW_WINDOWS_TASK_NAME (it only appears in environmentValueSources),
+            // so the task name is a corroborating signal, not a required one.
+            if (!TryGetString(root, out var serviceLabel, "service", "label")
+                || !string.Equals(serviceLabel, "Scheduled Task", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (!TryGetString(root, out var profile, "service", "command", "environment", "OPENCLAW_PROFILE")
+                || !string.Equals(profile, expectedProfile, StringComparison.Ordinal))
+                return false;
+
+            if (!TryGetString(root, out var sourcePath, "service", "command", "sourcePath")
+                || !ContainsPathSegment(sourcePath, expectedStateLeaf))
+                return false;
+
+            // Corroborating signals: reject when present-and-mismatched, tolerate absence.
+            if (TryGetString(root, out var taskName, "service", "command", "environment", "OPENCLAW_WINDOWS_TASK_NAME")
+                && !string.Equals(taskName, expectedTask, StringComparison.Ordinal))
+                return false;
+
+            if (TryGetString(root, out var runtimeStatus, "service", "runtime", "status")
+                && string.Equals(runtimeStatus, "stopped", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    internal static Uri GetNativeHealthUri(int port) =>
+        new($"http://127.0.0.1:{port}/healthz");
+
+    internal static bool IsHealthyHttpStatus(HttpStatusCode statusCode) =>
+        statusCode == HttpStatusCode.OK;
+
+    private static bool TryGetString(JsonElement root, out string value, params string[] path)
+    {
+        value = "";
+        if (!TryGetElement(root, out var element, path) || element.ValueKind != JsonValueKind.String)
+            return false;
+        value = element.GetString() ?? "";
+        return value.Length > 0;
+    }
+
+    private static bool TryGetInt(JsonElement root, out int value, params string[] path)
+    {
+        value = default;
+        if (!TryGetElement(root, out var element, path))
+            return false;
+        if (element.ValueKind == JsonValueKind.Number)
+            return element.TryGetInt32(out value);
+        if (element.ValueKind == JsonValueKind.String)
+            return int.TryParse(element.GetString(), out value);
+        return false;
+    }
+
+    private static bool TryGetElement(JsonElement root, out JsonElement element, params string[] path)
+    {
+        element = root;
+        foreach (var segment in path)
+        {
+            if (element.ValueKind != JsonValueKind.Object
+                || !element.TryGetProperty(segment, out element))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool ContainsPathSegment(string path, string segment) =>
+        path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)
+            .Any(part => string.Equals(part, segment, StringComparison.OrdinalIgnoreCase));
+
+    private static string FirstNonEmpty(params string[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim()
+        ?? "No diagnostic output was produced.";
+
     internal static string RedactTokens(string text)
     {
         if (string.IsNullOrEmpty(text))
@@ -1602,6 +2480,12 @@ public sealed class StartGatewayStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
+        if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows)
+        {
+            await GatewayCliRunner.RunAsync(ctx, ["gateway", "stop"], TimeSpan.FromSeconds(15), ct: ct);
+            return;
+        }
+
         var distro = ctx.DistroName!;
 
         // Check if distro is running before trying systemctl stop
@@ -1653,8 +2537,6 @@ public sealed class MintBootstrapTokenStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var distro = ctx.DistroName!;
-
         // Token was already set by ConfigureGatewayStep
         if (string.IsNullOrWhiteSpace(ctx.SharedGatewayToken))
             return StepResult.Fail("No shared gateway token set by previous step");
@@ -1665,8 +2547,12 @@ public sealed class MintBootstrapTokenStep : SetupStep
             ["OPENCLAW_GATEWAY_TOKEN"] = ctx.SharedGatewayToken
         };
 
-        var mint = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw qr --json", TimeSpan.FromSeconds(30), env, ct);
+        var mint = await GatewayCliRunner.RunAsync(
+            ctx,
+            ["qr", "--json"],
+            TimeSpan.FromSeconds(30),
+            env,
+            ct: ct);
 
         if (mint.ExitCode == 0 && !string.IsNullOrWhiteSpace(mint.Stdout))
         {
@@ -1743,6 +2629,8 @@ public sealed class PairOperatorStep : SetupStep
     {
         var gatewayUrl = ctx.GatewayUrl!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        var sharedCredential = ctx.SharedGatewayToken;
+        var bootstrapCredential = ctx.BootstrapToken;
 
         if (string.IsNullOrEmpty(token))
             return StepResult.Terminal("No credential available for operator pairing");
@@ -1750,37 +2638,86 @@ public sealed class PairOperatorStep : SetupStep
         // Register gateway in registry (only once — reuse across retries)
         var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
         registry.Load();
+        ctx.ActiveGatewayBeforePairing ??= new ActiveGatewayRollbackState(registry.ActiveGatewayId);
+        if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+            && string.IsNullOrWhiteSpace(ctx.GatewayRecordId))
+        {
+            ctx.GatewayRecordId = ConfigureGatewayStep.ReadNativeGatewayRecordId(ctx.LocalDataDir, ctx.Config);
+        }
 
         string identityPath;
-        if (!string.IsNullOrEmpty(ctx.GatewayRecordId))
+        var existing = string.IsNullOrEmpty(ctx.GatewayRecordId)
+            ? null
+            : registry.GetById(ctx.GatewayRecordId);
+        if (existing is not null)
         {
-            var existing = registry.GetById(ctx.GatewayRecordId);
-            if (existing == null)
-                return StepResult.Fail($"Gateway record {ctx.GatewayRecordId} not found");
             identityPath = registry.GetIdentityDirectory(existing.Id);
+            if (!ctx.GatewayRecordCreatedThisRun && ctx.ReplacedGateways is null)
+            {
+                ctx.ReplacedGateways = new ReplacedGatewaysSnapshot(
+                    [new ReplacedGatewayRecordSnapshot(
+                        existing,
+                        CleanupStaleGatewayStep.CaptureIdentityFiles(identityPath))],
+                    registry.ActiveGatewayId);
+            }
+            existing = registry.AddOrUpdate(existing with
+            {
+                Url = gatewayUrl,
+                FriendlyName = ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+                    ? "Local (Windows)"
+                    : $"Local ({ctx.DistroName})",
+                SharedGatewayToken = sharedCredential,
+                BootstrapToken = bootstrapCredential,
+                LastConnected = DateTime.UtcNow,
+                IsLocal = true,
+                SetupManagedDistroName = ctx.Config.InstallMode == GatewayInstallMode.Wsl
+                    ? ctx.DistroName
+                    : null,
+                SetupManagedNativeTaskName = ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+                    ? GatewayCliRunner.GetManagedNativeTaskName(ctx.Config)
+                    : null,
+                SshTunnel = null,
+            });
+            registry.SetActive(existing.Id);
+            registry.Save();
             ctx.Logger.Info($"Reusing existing gateway record: id={existing.Id}");
         }
         else
         {
             var record = new GatewayRecord
             {
-                Id = Guid.NewGuid().ToString("N")[..16],
+                Id = ctx.GatewayRecordId ?? Guid.NewGuid().ToString("N")[..16],
                 Url = gatewayUrl,
-                FriendlyName = $"Local ({ctx.DistroName})",
+                FriendlyName = ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+                    ? "Local (Windows)"
+                    : $"Local ({ctx.DistroName})",
                 SharedGatewayToken = ctx.SharedGatewayToken,
                 BootstrapToken = ctx.BootstrapToken,
                 IsLocal = true,
-                SetupManagedDistroName = ctx.DistroName,
+                SetupManagedDistroName = ctx.Config.InstallMode == GatewayInstallMode.Wsl
+                    ? ctx.DistroName
+                    : null,
+                SetupManagedNativeTaskName = ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+                    ? GatewayCliRunner.GetManagedNativeTaskName(ctx.Config)
+                    : null,
                 LastConnected = DateTime.UtcNow
             };
+
+            ctx.GatewayRecordCreatedThisRun = true;
+            ctx.GatewayRecordId = record.Id;
+            if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows)
+                await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, ct);
 
             record = registry.AddOrUpdate(record);
             registry.SetActive(record.Id);
             registry.Save();
-            ctx.GatewayRecordId = record.Id;
             identityPath = registry.GetIdentityDirectory(record.Id);
             ctx.Logger.Info($"Gateway record created: id={record.Id}");
         }
+
+        if (ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+            && existing is not null)
+            await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, ct);
 
         // Initialize device identity
         Directory.CreateDirectory(identityPath);
@@ -1873,99 +2810,24 @@ public sealed class PairOperatorStep : SetupStep
     /// The tray will connect using auth.deviceToken (the token we just received).
     /// This "finalizes" the transition so the gateway doesn't flag it as metadata-upgrade.
     /// </summary>
-    private static async Task<StepResult> FinalizeWithDeviceToken(
-        SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
-    {
-        ctx.Logger.Info("Finalizing: reconnect with device token (like tray will)");
-
-        // Read the device token we just stored
-        var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
-        var deviceToken = identity.DeviceToken;
-
-        if (string.IsNullOrEmpty(deviceToken))
-        {
-            ctx.Logger.Warn("No device token stored after pairing — skipping finalization");
-            return StepResult.Ok("Operator paired (no finalization needed)");
-        }
-
-        // Wait for the gateway's internal session grace period to expire.
-        // Without this delay, the gateway accepts the deviceToken connect within grace
-        // but would later reject the tray's identical connect as "metadata-upgrade".
-        ctx.Logger.Info("Waiting for gateway grace period to expire before finalization...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
-
-        // Connect exactly as the tray would: pass deviceToken as the credential
-        var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
-        finalClient.UseV2Signature = true;
-
-        try
-        {
-            var result = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-            if (result == ConnectionOutcome.Connected)
-            {
-                ctx.Logger.Info("Finalization connected — tray will connect seamlessly");
-                return StepResult.Ok("Operator paired and finalized for tray");
-            }
-
-            if (result == ConnectionOutcome.PairingRequired)
-            {
-                ctx.Logger.Info("Metadata-upgrade detected during finalization — auto-approving");
-                var requestId = finalClient.PairingRequiredRequestId;
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-                finalClient = null;
-
-                // Approve the metadata-upgrade
-                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
-                if (!approveResult.IsSuccess)
-                    return StepResult.Fail($"Finalization approval failed: {approveResult.Message}");
-
-                await Task.Delay(2000, ct);
-
-                // One more connect to confirm
-                finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
-                finalClient.UseV2Signature = true;
-                var finalResult = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-                if (finalResult == ConnectionOutcome.Connected)
-                {
-                    ctx.Logger.Info("Finalization approved — tray will connect seamlessly");
-                    return StepResult.Ok("Operator paired and finalized for tray");
-                }
-
-                return StepResult.Fail($"Finalization failed after approval: {finalResult}");
-            }
-
-            return StepResult.Fail($"Finalization connect failed: {result}");
-        }
-        finally
-        {
-            if (finalClient != null)
-            {
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-            }
-        }
-    }
 
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
         => await AutoApprovePairing(ctx, requestId: null, ct);
 
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, string? requestId, CancellationToken ct)
     {
-        var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
-            var preview = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
-                TimeSpan.FromSeconds(30), env, ct);
+            var preview = await GatewayCliRunner.RunAsync(
+                ctx,
+                ["devices", "approve", "--latest", "--json"],
+                TimeSpan.FromSeconds(30),
+                env,
+                ct: ct);
 
             ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
 
@@ -1986,12 +2848,12 @@ public sealed class PairOperatorStep : SetupStep
         }
 
         ctx.Logger.Info($"Approving pairing request: {requestId}");
-        var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId!);
-
-        var approve = await ctx.Commands.RunInWslAsync(
-            distro,
-            $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct);
+        var approve = await GatewayCliRunner.RunAsync(
+            ctx,
+            ["devices", "approve", requestId!, "--json"],
+            TimeSpan.FromSeconds(30),
+            env,
+            ct: ct);
 
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
 
@@ -2066,10 +2928,13 @@ public sealed class PairOperatorStep : SetupStep
         var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
         registry.Load();
 
-        // Find all local gateway records to remove (mirrors old uninstall step 6a)
-        var localRecords = registry.GetAll()
-            .Where(r => IsSetupManagedLocalRecord(r, ctx))
-            .ToList();
+        // Full uninstall removes every owned record. Setup rollback removes only
+        // the record created by this run; reused records are restored below.
+        var localRecords = ctx.IsUninstalling
+            ? registry.GetAll().Where(r => IsSetupManagedLocalRecord(r, ctx)).ToList()
+            : ctx.GatewayRecordCreatedThisRun && ctx.GatewayRecordId is { } createdId
+                ? registry.GetAll().Where(r => string.Equals(r.Id, createdId, StringComparison.Ordinal)).ToList()
+                : [];
 
         if (localRecords.Count > 0)
         {
@@ -2089,15 +2954,33 @@ public sealed class PairOperatorStep : SetupStep
         }
         else
         {
-            ctx.Logger.Info("[Uninstall] No local gateway records found");
+            ctx.Logger.Info("[Rollback] No run-created local gateway records found");
         }
+
+        CleanupStaleGatewayStep.RestoreReplacedGateway(ctx);
+        // RestoreReplacedGateway persists through its own registry instance.
+        // Reload before changing active state so saving cannot drop restored records.
+        registry.Load();
+
+        if (ctx.ActiveGatewayBeforePairing is { GatewayId: { } previousActiveId }
+            && registry.GetById(previousActiveId) is not null)
+        {
+            registry.SetActive(previousActiveId);
+            registry.Save();
+            ctx.Logger.Info($"[Rollback] Restored active gateway selection: {previousActiveId}");
+        }
+        ctx.ActiveGatewayBeforePairing = null;
 
         // Null operator device token (mirrors old uninstall step 7)
         // Check if external gateways remain — if so, preserve root device tokens
         var hasExternalGateways = registry.GetAll().Any(r =>
             !r.IsLocal && !(r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)));
 
-        if (hasExternalGateways)
+        if (!ctx.IsUninstalling && !ctx.GatewayRecordCreatedThisRun)
+        {
+            ctx.Logger.Info("[Rollback] Preserving operator device token for reused gateway record");
+        }
+        else if (hasExternalGateways)
         {
             ctx.Logger.Info("[Uninstall] Preserving root device tokens — external gateway records remain");
         }
@@ -2109,21 +2992,35 @@ public sealed class PairOperatorStep : SetupStep
                 : "[Uninstall] Operator device token already absent");
         }
 
-        // Best-effort revoke operator token via gateway HTTP endpoint (mirrors old step 4)
-        await TryRevokeOperatorTokenAsync(ctx, ct);
+        // A reused record predates this run; revoking through its gateway would
+        // invalidate credentials that rollback is required to preserve.
+        if (ctx.IsUninstalling || ctx.GatewayRecordCreatedThisRun)
+            await TryRevokeOperatorTokenAsync(ctx, ct);
+        ctx.GatewayRecordCreatedThisRun = false;
     }
 
-    internal static bool IsSetupManagedLocalRecord(GatewayRecord record, SetupContext ctx)
+    internal static bool IsSetupManagedLocalRecord(
+        GatewayRecord record,
+        SetupContext ctx,
+        bool includeOtherModeForMigration = false)
     {
         if (!record.IsLocal || record.SshTunnel != null)
             return false;
 
-        if (string.Equals(record.SetupManagedDistroName, ctx.DistroName, StringComparison.Ordinal))
-            return true;
+        var isManagedWsl = string.Equals(record.SetupManagedDistroName, ctx.DistroName, StringComparison.Ordinal)
+            || (string.IsNullOrWhiteSpace(record.SetupManagedDistroName)
+                && string.Equals(record.FriendlyName, $"Local ({ctx.DistroName})", StringComparison.Ordinal)
+                && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url));
+        var nativeRecordId = ctx.GatewayRecordId
+            ?? ConfigureGatewayStep.ReadNativeGatewayRecordId(ctx.LocalDataDir, ctx.Config);
+        var isManagedNative = !string.IsNullOrWhiteSpace(nativeRecordId)
+            && string.Equals(record.Id, nativeRecordId, StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(record.SetupManagedDistroName)
+            && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url);
 
-        return string.IsNullOrWhiteSpace(record.SetupManagedDistroName)
-            && string.Equals(record.Url, ctx.GatewayUrl, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(record.FriendlyName, $"Local ({ctx.DistroName})", StringComparison.Ordinal);
+        return ctx.Config.InstallMode == GatewayInstallMode.NativeWindows
+            ? isManagedNative || (includeOtherModeForMigration && isManagedWsl)
+            : isManagedWsl || (includeOtherModeForMigration && isManagedNative);
     }
 
     private static async Task TryRevokeOperatorTokenAsync(SetupContext ctx, CancellationToken ct)
@@ -2199,6 +3096,8 @@ public sealed class PairNodeStep : SetupStep
 
         try
         {
+            ClearStoredNodeDeviceTokenBeforeSetupPairing(identityPath, wsLogger);
+
             // Phase 1: Connect (may get PAIRING_REQUIRED)
             client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
             client.UseV2Signature = true;
@@ -2275,79 +3174,15 @@ public sealed class PairNodeStep : SetupStep
     /// After node pairing, finalize by connecting with the node device token to avoid
     /// metadata-upgrade when the tray reconnects.
     /// </summary>
-    private static async Task<StepResult> FinalizeNodeWithDeviceToken(
-        SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
-    {
-        ctx.Logger.Info("Finalizing node: reconnect with node device token");
-
-        var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
-        var nodeToken = identity.NodeDeviceToken;
-
-        if (string.IsNullOrEmpty(nodeToken))
-        {
-            ctx.Logger.Warn("No node device token stored after pairing — skipping node finalization");
-            return StepResult.Ok("Node paired (no finalization needed)");
-        }
-
-        // Wait for grace period (same as operator finalization)
-        ctx.Logger.Info("Waiting for gateway grace period before node finalization...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
-
-        var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
-        finalClient.UseV2Signature = true;
-
-        try
-        {
-            var result = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-            if (result.Outcome == NodeConnectionOutcome.Connected)
-            {
-                ctx.Logger.Info("Node finalization connected — tray will connect seamlessly");
-                return StepResult.Ok("Node paired and finalized for tray");
-            }
-
-            if (result.Outcome == NodeConnectionOutcome.PairingRequired)
-            {
-                ctx.Logger.Info("Node metadata-upgrade detected — auto-approving");
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-                finalClient = null;
-
-                var approveResult = await AutoApproveNodePairing(ctx, result.RequestId, ct);
-                if (!approveResult.IsSuccess)
-                    return StepResult.Fail($"Node finalization approval failed: {approveResult.Message}");
-
-                await Task.Delay(2000, ct);
-
-                finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
-                finalClient.UseV2Signature = true;
-                var finalResult = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-                if (finalResult.Outcome == NodeConnectionOutcome.Connected)
-                {
-                    ctx.Logger.Info("Node finalization approved — tray will connect seamlessly");
-                    return StepResult.Ok("Node paired and finalized for tray");
-                }
-
-                return StepResult.Fail($"Node finalization failed after approval: {finalResult.Outcome}");
-            }
-
-            return StepResult.Fail($"Node finalization failed: {result.Outcome}");
-        }
-        finally
-        {
-            if (finalClient != null)
-            {
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-            }
-        }
-    }
 
     private enum NodeConnectionOutcome { Connected, PairingRequired, Error, Timeout }
 
     private sealed record NodeConnectionResult(NodeConnectionOutcome Outcome, string? RequestId = null);
+
+    internal static bool ClearStoredNodeDeviceTokenBeforeSetupPairing(
+        string identityPath,
+        IOpenClawLogger? logger = null)
+        => DeviceIdentity.TryClearDeviceTokenForRole(identityPath, "node", logger);
 
     private static async Task<NodeConnectionResult> WaitForNodeConnection(
         WindowsNodeClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
@@ -2400,7 +3235,6 @@ public sealed class PairNodeStep : SetupStep
 
     internal static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, string? requestId, CancellationToken ct)
     {
-        var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
 
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
@@ -2409,10 +3243,12 @@ public sealed class PairNodeStep : SetupStep
         if (string.IsNullOrWhiteSpace(requestId))
         {
             approvalKind = ApprovalRequestKind.Node;
-            var pending = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{ctx.WslPathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(30), env, ct);
+            var pending = await GatewayCliRunner.RunAsync(
+                ctx,
+                ["nodes", "list", "--json"],
+                TimeSpan.FromSeconds(30),
+                env,
+                ct: ct);
 
             ctx.Logger.Info($"Node pending list: exit={pending.ExitCode}");
 
@@ -2438,12 +3274,13 @@ public sealed class PairNodeStep : SetupStep
             return StepResult.Fail("Node pairing request ID contained unsafe characters");
 
         ctx.Logger.Info($"Approving node pairing request: {requestId}");
-        var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId!);
-
-        var approve = await ctx.Commands.RunInWslAsync(
-            distro,
-            $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(approvalKind)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct);
+        var noun = approvalKind == ApprovalRequestKind.Device ? "devices" : "nodes";
+        var approve = await GatewayCliRunner.RunAsync(
+            ctx,
+            [noun, "approve", requestId!, "--json"],
+            TimeSpan.FromSeconds(30),
+            env,
+            ct: ct);
 
         ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
 
@@ -2478,7 +3315,11 @@ public sealed class PairNodeStep : SetupStep
         var hasExternalGateways = registry.GetAll().Any(r =>
             !r.IsLocal && !(r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)));
 
-        if (hasExternalGateways)
+        if (!ctx.IsUninstalling && !ctx.GatewayRecordCreatedThisRun)
+        {
+            ctx.Logger.Info("[Rollback] Preserving node device token for reused gateway record");
+        }
+        else if (hasExternalGateways)
         {
             ctx.Logger.Info("[Uninstall] Preserving node device token — external gateway records remain");
         }
@@ -2511,7 +3352,9 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
     public override string Id => "windows-node-context";
     public override string DisplayName => "Inject Windows node context";
 
-    public override bool CanSkip(SetupContext ctx) => !ctx.Config.WindowsNodeContext.Enabled;
+    public override bool CanSkip(SetupContext ctx) =>
+        !ctx.Config.WindowsNodeContext.Enabled
+        || ctx.Config.InstallMode == GatewayInstallMode.NativeWindows;
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
@@ -3105,13 +3948,6 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
 
     private static string FirstNonEmpty(params string[] values)
         => values.Select(v => v.Trim()).FirstOrDefault(v => v.Length > 0) ?? "no output";
-
-    private static string? ReadMarkerValue(string output, string marker)
-        => output
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.Trim())
-            .FirstOrDefault(line => line.StartsWith(marker, StringComparison.Ordinal))
-            ?[marker.Length..];
 }
 
 public sealed class VerifyEndToEndStep : SetupStep
@@ -3123,11 +3959,13 @@ public sealed class VerifyEndToEndStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         // Verify gateway is still healthy
-        var distro = ctx.DistroName!;
-        var status = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct);
+        var status = await GatewayCliRunner.RunAsync(
+            ctx,
+            ["gateway", "status", "--json"],
+            TimeSpan.FromSeconds(15),
+            ct: ct);
 
-        if (status.ExitCode != 0 || !status.Stdout.Contains("running", StringComparison.OrdinalIgnoreCase))
+        if (status.ExitCode != 0 || !IsGatewayRpcHealthy(status.Stdout))
             return StepResult.Fail("Gateway is not running");
 
         // Verify registry state
@@ -3172,23 +4010,39 @@ public sealed class VerifyEndToEndStep : SetupStep
         return StepResult.Ok("Gateway running; operator finalized; settings written for tray.");
     }
 
+    internal static bool IsGatewayRpcHealthy(string statusJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(statusJson);
+            return document.RootElement.TryGetProperty("rpc", out var rpc)
+                && rpc.ValueKind == JsonValueKind.Object
+                && rpc.TryGetProperty("ok", out var ok)
+                && ok.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     internal static async Task<StepResult> DrainPendingDeviceApprovalsAsync(SetupContext ctx, CancellationToken ct)
     {
-        var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
         if (string.IsNullOrWhiteSpace(token))
             return StepResult.Fail("No gateway token available to drain pending device approvals");
 
-        var pathPrefix = ctx.WslPathPrefix;
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
         const int maxDrainIterations = 10;
 
         for (var i = 0; i < maxDrainIterations; i++)
         {
-            var preview = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && openclaw devices approve --latest --json""",
-                TimeSpan.FromSeconds(15), env, ct);
+            var preview = await GatewayCliRunner.RunAsync(
+                ctx,
+                ["devices", "approve", "--latest", "--json"],
+                TimeSpan.FromSeconds(15),
+                env,
+                ct: ct);
 
             if (preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase) ||
                 preview.Stderr.Contains("No pending", StringComparison.OrdinalIgnoreCase))
@@ -3200,11 +4054,12 @@ public sealed class VerifyEndToEndStep : SetupStep
             if (parsed.Success)
             {
                 ctx.Logger.Info($"Draining pending device approval: {parsed.RequestId}");
-                var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, parsed.RequestId!);
-                var approve = await ctx.Commands.RunInWslAsync(
-                    distro,
-                    $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+                var approve = await GatewayCliRunner.RunAsync(
+                    ctx,
+                    ["devices", "approve", parsed.RequestId!, "--json"],
+                    TimeSpan.FromSeconds(15),
+                    env,
+                    ct: ct);
 
                 if (approve.ExitCode != 0)
                     return StepResult.Fail($"Device approval drain failed for {parsed.RequestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
@@ -3240,21 +4095,21 @@ public sealed class VerifyEndToEndStep : SetupStep
         if (!deviceDrainResult.IsSuccess)
             return deviceDrainResult;
 
-        var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
         if (string.IsNullOrWhiteSpace(token))
             return StepResult.Fail("No gateway token available to drain pending approvals");
 
-        var pathPrefix = ctx.WslPathPrefix;
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
         const int maxDrainIterations = 10;
 
         for (var i = 0; i < maxDrainIterations; i++)
         {
-            var nodeList = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(15), env, ct);
+            var nodeList = await GatewayCliRunner.RunAsync(
+                ctx,
+                ["nodes", "list", "--json"],
+                TimeSpan.FromSeconds(15),
+                env,
+                ct: ct);
 
             var parsed = ApprovalRequestHelper.TryReadPendingRequestIds(nodeList.Stdout.Trim());
             if (!parsed.Success)
@@ -3271,11 +4126,12 @@ public sealed class VerifyEndToEndStep : SetupStep
             foreach (var requestId in parsed.RequestIds)
             {
                 ctx.Logger.Info($"Draining pending node approval: {requestId}");
-                var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId);
-                var approve = await ctx.Commands.RunInWslAsync(
-                    distro,
-                    $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
-                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+                var approve = await GatewayCliRunner.RunAsync(
+                    ctx,
+                    ["nodes", "approve", requestId, "--json"],
+                    TimeSpan.FromSeconds(15),
+                    env,
+                    ct: ct);
 
                 if (approve.ExitCode != 0)
                     return StepResult.Fail($"Node approval drain failed for {requestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
@@ -3412,7 +4268,8 @@ public sealed class VerifyEndToEndStep : SetupStep
             InstallId = GetStableInstallId(ctx),
             Phase = 13,
             Status = 7,
-            DistroName = ctx.DistroName,
+            DistroName = ctx.Config.InstallMode == GatewayInstallMode.Wsl ? ctx.DistroName : null,
+            InstallMode = ctx.Config.InstallMode.ToString(),
             GatewayUrl = ctx.GatewayUrl,
             IsLocalOnly = true,
             FailureCode = (string?)null,
@@ -3425,7 +4282,7 @@ public sealed class VerifyEndToEndStep : SetupStep
 
         var json = System.Text.Json.JsonSerializer.Serialize(state, SetupConfig.JsonWriteOptions);
         await AtomicFile.WriteAllTextAsync(statePath, json, ct);
-        ctx.Logger.Info($"Wrote setup-state.json: DistroName={ctx.DistroName}");
+        ctx.Logger.Info($"Wrote setup-state.json: InstallMode={ctx.Config.InstallMode}, DistroName={state.DistroName ?? "none"}");
     }
 
     private static string GetStableInstallId(SetupContext ctx)
@@ -3440,6 +4297,8 @@ public sealed class StartKeepaliveStep : SetupStep
 {
     public override string Id => "start-keepalive";
     public override string DisplayName => "Start WSL keepalive";
+
+    public override bool CanSkip(SetupContext ctx) => ctx.Config.InstallMode != GatewayInstallMode.Wsl;
 
     public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {

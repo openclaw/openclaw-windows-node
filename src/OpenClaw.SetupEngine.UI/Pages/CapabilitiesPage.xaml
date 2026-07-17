@@ -11,7 +11,7 @@
             <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
                    Width="44" Height="44" HorizontalAlignment="Center"
                    AutomationProperties.AccessibilityView="Raw" />
-            <TextBlock Text="Set up the WSL gateway"
+            <TextBlock x:Name="SetupTitleText" Text="Set up the WSL gateway"
                        Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
         </StackPanel>
 
@@ -106,7 +106,7 @@
                                             <TextBlock x:Name="InstallDistroTitleText" Text="Install an isolated Ubuntu 24.04 instance" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                             <TextBlock x:Name="InstallDistroDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL distro &quot;OpenClawGateway&quot; in your AppData. Separate from any Ubuntu you already have." />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="~200 MB" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="InstallRuntimeBadgeText" Grid.Column="2" Text="~200 MB" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
                                     </Grid>
                                 </Border>
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
@@ -129,7 +129,7 @@
                                         <TextBlock x:Name="GatewayEndpointText" Grid.Column="2" Text="127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
                                     </Grid>
                                 </Border>
-                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                                <Border x:Name="InstallAdminBorder" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                                         <FontIcon Grid.Column="0" Glyph="&#xE7BA;" FontSize="18" VerticalAlignment="Center" IsTextScaleFactorEnabled="False" />
                                         <StackPanel Grid.Column="1" Spacing="2">

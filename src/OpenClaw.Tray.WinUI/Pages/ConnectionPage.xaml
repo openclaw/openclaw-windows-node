@@ -198,7 +198,7 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- Host access controls — only for setup-managed WSL gateways.
+                    <!-- Host access controls — only for setup-managed local gateways.
                          SSH gateways keep the top-right terminal affordance but
                          do not expose lifecycle buttons. -->
                     <StackPanel x:Name="GatewayHostControlsSection" Spacing="8" Visibility="Collapsed">
@@ -217,7 +217,7 @@
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                 <TextBlock x:Uid="ConnectionPage_GatewayHostControlsTitle"
                                            x:Name="GatewayHostControlsTitleText"
-                                           Text="WSL gateway"
+                                           Text="Local gateway"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            AutomationProperties.HeadingLevel="Level2"/>
                                 <TextBlock x:Uid="ConnectionPage_GatewayHostControlsDescription"
@@ -266,22 +266,22 @@
                                         x:Name="GatewayHostStartButton"
                                         Content="Start"
                                         Click="OnStartGatewayClicked"
-                                        ToolTipService.ToolTip="Run openclaw gateway start in WSL"
-                                        AutomationProperties.Name="Start WSL gateway"
+                                        ToolTipService.ToolTip="Run openclaw gateway start"
+                                        AutomationProperties.Name="Start local gateway"
                                         AutomationProperties.AutomationId="GatewayHostStartAction"/>
                                 <Button x:Uid="ConnectionPage_GatewayHostStopButton"
                                         x:Name="GatewayHostStopButton"
                                         Content="Stop"
                                         Click="OnStopGatewayClicked"
-                                        ToolTipService.ToolTip="Run openclaw gateway stop in WSL"
-                                        AutomationProperties.Name="Stop WSL gateway"
+                                        ToolTipService.ToolTip="Run openclaw gateway stop"
+                                        AutomationProperties.Name="Stop local gateway"
                                         AutomationProperties.AutomationId="GatewayHostStopAction"/>
                                 <Button x:Uid="ConnectionPage_GatewayHostRestartButton"
                                         x:Name="GatewayHostRestartButton"
                                         Content="Restart"
                                         Click="OnRestartGatewayClicked"
-                                        ToolTipService.ToolTip="Run openclaw gateway restart in WSL"
-                                        AutomationProperties.Name="Restart WSL gateway"
+                                        ToolTipService.ToolTip="Run openclaw gateway restart"
+                                        AutomationProperties.Name="Restart local gateway"
                                         AutomationProperties.AutomationId="GatewayHostRestartAction"/>
                             </StackPanel>
                         </Grid>

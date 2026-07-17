@@ -248,6 +248,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 ["select-channel-quickstart"] = "__skip__",
                 ["search-provider"] = "__skip__",
                 ["configure-skills-now-recommended"] = "false",
+                ["how-do-you-want-to-hatch-your-agent"] = "later",
+                ["how-do-you-want-to-hatch-your-bot"] = "later",
             },
             Settings = new
             {

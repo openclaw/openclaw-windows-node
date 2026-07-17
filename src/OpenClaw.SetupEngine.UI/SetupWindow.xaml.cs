@@ -98,6 +98,12 @@ public sealed partial class SetupWindow : Window
 
         _config = SetupConfig.LoadFromFile(configPath);
         _config.UsesBundledDefaultConfig = explicitConfigPath == null;
+        if (startAtGatewayInstalledMilestone)
+        {
+            _config.InstallMode = GatewayInstallModeDetector.Detect(
+                _dataDir,
+                _config.InstallMode);
+        }
         _config = SetupConfig.FromEnvironment(_config);
         if (!string.IsNullOrWhiteSpace(distroNameOverride))
             _config.DistroName = distroNameOverride;

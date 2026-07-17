@@ -1,5 +1,7 @@
 {
   // ─── Core Setup ───
+  // Headless/default compatibility mode. The desktop wizard recommends native Windows.
+  "InstallMode": "Wsl",
   // WSL distro name to create (use distinct name to avoid conflicts)
   "DistroName": "OpenClawGateway",
   // Gateway WebSocket port (tray connects here)
@@ -30,7 +32,9 @@
     "default-model": "__keep__",
     "select-channel-quickstart": "__skip__",
     "search-provider": "__skip__",
-    "configure-skills-now-recommended": "false"
+    "configure-skills-now-recommended": "false",
+    "how-do-you-want-to-hatch-your-agent": "later",
+    "how-do-you-want-to-hatch-your-bot": "later"
   },
   // Log verbosity: "trace", "debug", "info", "warn", "error"
   "LogLevel": "trace",
@@ -73,6 +77,8 @@
     "Bind": "loopback",
     // Override CLI install script URL (null = https://openclaw.ai/install-cli.sh)
     "InstallUrl": null,
+    // Native Windows PowerShell installer URL (null = official HTTPS installer)
+    "WindowsInstallUrl": null,
     // Pin gateway version (null = use GatewayLkgVersion.cs embedded LKG)
     "Version": null,
     // Seconds to wait for gateway health endpoint before failing

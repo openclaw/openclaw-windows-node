@@ -54,6 +54,14 @@ public static class Program
         }
 
         // Apply CLI overrides
+        var modeEnvironmentOverride = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_MODE");
+        if (!string.IsNullOrWhiteSpace(modeEnvironmentOverride)
+            && !SetupConfig.TryParseInstallMode(modeEnvironmentOverride, out _))
+        {
+            Console.Error.WriteLine(
+                $"ERROR: Invalid OPENCLAW_SETUP_MODE value '{modeEnvironmentOverride}'. Use 'native' or 'wsl'.");
+            return 2;
+        }
         config = SetupConfig.FromEnvironment(config);
         if (!string.IsNullOrWhiteSpace(distroName))
             config.DistroName = distroName;
@@ -67,6 +75,15 @@ public static class Program
             config.GatewayPort = gatewayPort;
             config.GatewayUrl = null;
         }
+        var effectiveDataDir = dataDir ?? SetupContext.ResolveDataDir();
+        var effectiveLocalDataDir = localDataDir ?? SetupContext.ResolveLocalDataDir();
+        if (ShouldDetectInstalledMode(uninstall, wizardOnly, configPath, modeEnvironmentOverride))
+        {
+            config.InstallMode = GatewayInstallModeDetector.DetectInstalled(
+                effectiveDataDir,
+                effectiveLocalDataDir,
+                config.InstallMode);
+        }
         GatewayLkgVersion.ApplyToConfig(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
@@ -79,7 +96,7 @@ public static class Program
         // Default log path if not specified
         var logLabel = uninstall ? "uninstall" : "setup";
         config.LogPath ??= Path.Combine(
-            dataDir ?? SetupContext.ResolveDataDir(),
+            effectiveDataDir,
             "Logs", "Setup", $"{logLabel}-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
 
         Console.WriteLine($"Log file: {config.LogPath}");
@@ -106,7 +123,7 @@ public static class Program
             return 2;
         }
 
-        if (!SetupRunLock.TryAcquire(dataDir ?? SetupContext.ResolveDataDir(), out var setupLock, out var lockMessage))
+        if (!SetupRunLock.TryAcquire(effectiveDataDir, out var setupLock, out var lockMessage))
         {
             Console.Error.WriteLine($"ERROR: {lockMessage}");
             return 2;
@@ -136,14 +153,14 @@ public static class Program
             journal,
             commands,
             cts.Token,
-            dataDir,
-            localDataDir);
+            effectiveDataDir,
+            effectiveLocalDataDir);
 
         // Build step pipeline
         List<SetupStep> steps;
         if (uninstall)
         {
-            steps = SetupStepFactory.BuildDefaultSteps();
+            steps = SetupStepFactory.BuildUninstallSteps(ctx);
         }
         else if (wizardOnly)
         {
@@ -221,7 +238,7 @@ public static class Program
                 logPath = config.LogPath,
                 journalPath
             };
-        var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, SetupConfig.JsonWriteOptions);
+            var json = System.Text.Json.JsonSerializer.Serialize(jsonResult, SetupConfig.JsonWriteOptions);
             await AtomicFile.WriteAllTextAsync(jsonOutput, json);
         }
 
@@ -229,7 +246,19 @@ public static class Program
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)
-        => SetupStepFactory.BuildDefaultSteps();
+        => SetupStepFactory.BuildDefaultSteps(config);
+
+    internal static bool ShouldDetectInstalledMode(
+        bool uninstall,
+        bool wizardOnly,
+        string? configPath,
+        string? modeEnvironmentOverride)
+    {
+        if (SetupConfig.TryParseInstallMode(modeEnvironmentOverride, out _))
+            return false;
+
+        return uninstall || (wizardOnly && string.IsNullOrWhiteSpace(configPath));
+    }
 
     private static string? GetArg(string[] args, string name)
     {

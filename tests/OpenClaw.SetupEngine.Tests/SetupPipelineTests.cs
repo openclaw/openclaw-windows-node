@@ -4,13 +4,17 @@ public class SetupPipelineTests
 {
     private SetupLogger CreateLogger() => new(filePath: null, LogLevel.Trace);
 
-    private SetupContext CreateContext(SetupConfig? config = null, CancellationToken ct = default)
+    private SetupContext CreateContext(
+        SetupConfig? config = null,
+        CancellationToken ct = default,
+        string? dataDir = null,
+        string? localDataDir = null)
     {
         var cfg = config ?? new SetupConfig();
         var logger = CreateLogger();
         var journal = new TransactionJournal(filePath: null);
         var commands = new CommandRunner(logger);
-        return new SetupContext(cfg, logger, journal, commands, ct);
+        return new SetupContext(cfg, logger, journal, commands, ct, dataDir, localDataDir);
     }
 
     // A mock step for testing
@@ -60,11 +64,13 @@ public class SetupPipelineTests
     {
         var steps = SetupStepFactory.BuildDefaultSteps();
 
-        Assert.Equal(19, steps.Count);
+        Assert.Equal(21, steps.Count);
         Assert.IsType<PreflightOsStep>(steps[0]);
         Assert.IsType<PreflightWslStep>(steps[1]);
-        Assert.IsType<CleanupStaleDistroStep>(steps[2]);
-        Assert.IsType<CleanupStaleGatewayStep>(steps[3]);
+        Assert.IsType<StopConflictingLocalGatewaysStep>(steps[2]);
+        Assert.IsType<NativeGatewayServiceCleanupStep>(steps[3]);
+        Assert.IsType<CleanupStaleDistroStep>(steps[4]);
+        Assert.IsType<CleanupStaleGatewayStep>(steps[5]);
         Assert.Contains(steps, s => s is ValidateWslLockdownStep);
         var lockdownIndex = steps.FindIndex(s => s is ValidateWslLockdownStep);
         var cliInstallIndex = steps.FindIndex(s => s is InstallCliStep);
@@ -75,6 +81,122 @@ public class SetupPipelineTests
         var wizardIndex = steps.FindIndex(s => s is RunGatewayWizardStep);
         Assert.IsType<WindowsNodeBootstrapContextStep>(steps[wizardIndex + 1]);
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
+    }
+
+    [Fact]
+    public void BuildDefaultSteps_NativeWindows_UsesNativeInstallerWithoutWslProvisioning()
+    {
+        var config = new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows };
+
+        var steps = SetupStepFactory.BuildDefaultSteps(config);
+
+        Assert.IsType<PreflightOsStep>(steps[0]);
+        Assert.Contains(steps, step => step is InstallNativeCliStep);
+        var intentIndex = steps.FindIndex(step => step is BeginNativeGatewayInstallStep);
+        var stopIndex = steps.FindIndex(step => step is StopConflictingLocalGatewaysStep);
+        var installIndex = steps.FindIndex(step => step is InstallNativeCliStep);
+        var cleanupIndex = steps.FindIndex(step => step is CleanupStaleGatewayStep);
+        Assert.True(intentIndex >= 0);
+        Assert.True(intentIndex < stopIndex);
+        Assert.True(stopIndex < installIndex);
+        Assert.True(intentIndex < cleanupIndex);
+        Assert.Contains(steps, step => step is StopConflictingLocalGatewaysStep);
+        Assert.Contains(steps, step => step is NativeGatewayServiceCleanupStep);
+        Assert.Contains(steps, step => step is RunGatewayWizardStep);
+        Assert.DoesNotContain(steps, step => step is WindowsNodeBootstrapContextStep);
+        Assert.DoesNotContain(steps, step => step is PreflightWslStep);
+        Assert.DoesNotContain(steps, step => step is CreateWslInstanceStep);
+        Assert.DoesNotContain(steps, step => step is StartKeepaliveStep);
+    }
+
+    [Fact]
+    public void BuildUninstallSteps_CoversWslAndNativeWindowsInstallations()
+    {
+        var config = new SetupConfig();
+        var dataDir = Path.Combine(Path.GetTempPath(), $"uninstall-data-{Guid.NewGuid():N}");
+        var localDataDir = Path.Combine(Path.GetTempPath(), $"uninstall-local-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(localDataDir, "wsl", "OpenClawGateway"));
+        File.WriteAllText(
+            GatewayInstallModeDetector.GetNativeOwnershipPath(localDataDir),
+            $$"""{"ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(config)}}"}""");
+        var ctx = CreateContext(config, dataDir: dataDir, localDataDir: localDataDir);
+
+        var steps = SetupStepFactory.BuildUninstallSteps(ctx)
+            .Cast<InstallModeUninstallStep>()
+            .ToArray();
+
+        Assert.Contains(steps, step =>
+            step.InstallMode == GatewayInstallMode.Wsl
+            && step.InnerStep is CreateWslInstanceStep);
+        Assert.Contains(steps, step =>
+            step.InstallMode == GatewayInstallMode.NativeWindows
+            && step.InnerStep is InstallNativeCliStep);
+        Assert.Contains(steps, step =>
+            step.InstallMode == GatewayInstallMode.Wsl
+            && step.InnerStep is InstallGatewayServiceStep);
+        Assert.Contains(steps, step =>
+            step.InstallMode == GatewayInstallMode.NativeWindows
+            && step.InnerStep is InstallGatewayServiceStep);
+    }
+
+    [Fact]
+    public void BuildUninstallSteps_NativeOnlyDoesNotScheduleWslRollback()
+    {
+        var config = new SetupConfig();
+        var dataDir = Path.Combine(Path.GetTempPath(), $"uninstall-data-{Guid.NewGuid():N}");
+        var localDataDir = Path.Combine(Path.GetTempPath(), $"uninstall-local-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(localDataDir);
+        File.WriteAllText(
+            GatewayInstallModeDetector.GetNativeOwnershipPath(localDataDir),
+            $$"""{"ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(config)}}"}""");
+        var ctx = CreateContext(config, dataDir: dataDir, localDataDir: localDataDir);
+
+        var steps = SetupStepFactory.BuildUninstallSteps(ctx)
+            .Cast<InstallModeUninstallStep>()
+            .ToArray();
+
+        Assert.NotEmpty(steps);
+        Assert.All(steps, step => Assert.Equal(GatewayInstallMode.NativeWindows, step.InstallMode));
+    }
+
+    [Fact]
+    public void BuildUninstallSteps_WslOnlyDoesNotScheduleNativeRollback()
+    {
+        var dataDir = Path.Combine(Path.GetTempPath(), $"uninstall-data-{Guid.NewGuid():N}");
+        var localDataDir = Path.Combine(Path.GetTempPath(), $"uninstall-local-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(localDataDir, "wsl", "OpenClawGateway"));
+        var ctx = CreateContext(dataDir: dataDir, localDataDir: localDataDir);
+
+        var steps = SetupStepFactory.BuildUninstallSteps(ctx)
+            .Cast<InstallModeUninstallStep>()
+            .ToArray();
+
+        Assert.NotEmpty(steps);
+        Assert.All(steps, step => Assert.Equal(GatewayInstallMode.Wsl, step.InstallMode));
+    }
+
+    [Fact]
+    public async Task InstallModeUninstallStep_ScopesRollbackAndRestoresSelectedMode()
+    {
+        GatewayInstallMode? observedMode = null;
+        var ctx = CreateContext(new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+        });
+        var inner = new MockStep(
+            "mode-aware",
+            (_, _) => Task.FromResult(StepResult.Ok()),
+            (rollbackContext, _) =>
+            {
+                observedMode = rollbackContext.Config.InstallMode;
+                return Task.CompletedTask;
+            });
+        var step = new InstallModeUninstallStep(inner, GatewayInstallMode.Wsl);
+
+        await step.RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(GatewayInstallMode.Wsl, observedMode);
+        Assert.Equal(GatewayInstallMode.NativeWindows, ctx.Config.InstallMode);
     }
 
     [Fact]
@@ -286,6 +408,84 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public async Task RunAsync_Cancellation_WithRollback_CleansCurrentAndCompletedSteps()
+    {
+        using var cts = new CancellationTokenSource();
+        var config = new SetupConfig { RollbackOnFailure = true };
+        var ctx = CreateContext(config, cts.Token);
+        var currentStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rollbacks = new List<(string Step, bool TokenCancelled)>();
+        var pipeline = new SetupPipeline([
+            new MockStep(
+                "completed",
+                (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, ct) =>
+                {
+                    rollbacks.Add(("completed", ct.IsCancellationRequested));
+                    return Task.CompletedTask;
+                }),
+            new MockStep(
+                "current",
+                async (_, ct) =>
+                {
+                    currentStarted.SetResult();
+                    // slopwatch-ignore: SW004 Test deliberately blocks until cancellation to exercise cancellation behavior deterministically.
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                    return StepResult.Ok();
+                },
+                (_, ct) =>
+                {
+                    rollbacks.Add(("current", ct.IsCancellationRequested));
+                    return Task.CompletedTask;
+                }),
+        ]);
+
+        var run = pipeline.RunAsync(ctx);
+        await currentStarted.Task;
+        cts.Cancel();
+        var result = await run;
+
+        Assert.Equal(PipelineOutcome.Cancelled, result.Outcome);
+        Assert.Equal([("current", false), ("completed", false)], rollbacks);
+    }
+
+    [Fact]
+    public async Task RunAsync_FailureRacingWithCancellation_UsesIndependentRollbackToken()
+    {
+        using var cts = new CancellationTokenSource();
+        var config = new SetupConfig { RollbackOnFailure = true };
+        var ctx = CreateContext(config, cts.Token);
+        var rollbacks = new List<(string Step, bool TokenCancelled)>();
+        var pipeline = new SetupPipeline([
+            new MockStep(
+                "completed",
+                (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, ct) =>
+                {
+                    rollbacks.Add(("completed", ct.IsCancellationRequested));
+                    return Task.CompletedTask;
+                }),
+            new MockStep(
+                "current",
+                (_, _) =>
+                {
+                    cts.Cancel();
+                    return Task.FromResult(StepResult.Fail("failed as cancellation arrived"));
+                },
+                (_, ct) =>
+                {
+                    rollbacks.Add(("current", ct.IsCancellationRequested));
+                    return Task.CompletedTask;
+                }),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal([("current", false), ("completed", false)], rollbacks);
+    }
+
+    [Fact]
     public async Task RunAsync_StepThrowsException_ReturnsFail()
     {
         var ctx = CreateContext();
@@ -367,16 +567,17 @@ public class SetupPipelineTests
 
         var pipeline = new SetupPipeline([
             new MockStep("s1", (_, _) => Task.FromResult(StepResult.Ok()),
-                (_, _) => { order.Add("s1"); return Task.CompletedTask; }),
+                (_, _) => { Assert.True(ctx.IsUninstalling); order.Add("s1"); return Task.CompletedTask; }),
             new MockStep("s2", (_, _) => Task.FromResult(StepResult.Ok()),
-                (_, _) => { order.Add("s2"); return Task.CompletedTask; }),
+                (_, _) => { Assert.True(ctx.IsUninstalling); order.Add("s2"); return Task.CompletedTask; }),
             new MockStep("s3", (_, _) => Task.FromResult(StepResult.Ok()),
-                (_, _) => { order.Add("s3"); return Task.CompletedTask; }),
+                (_, _) => { Assert.True(ctx.IsUninstalling); order.Add("s3"); return Task.CompletedTask; }),
         ]);
 
         var result = await pipeline.UninstallAsync(ctx);
         Assert.Equal(PipelineOutcome.Success, result.Outcome);
         Assert.Equal(["s3", "s2", "s1"], order);
+        Assert.False(ctx.IsUninstalling);
     }
 
     [Fact]

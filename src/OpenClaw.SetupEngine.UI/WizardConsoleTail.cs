@@ -7,16 +7,15 @@ using OpenClaw.Shared;
 namespace OpenClaw.SetupEngine.UI;
 
 /// <summary>
-/// Tails the OpenClaw gateway log running inside WSL and emits a callback for
+/// Tails the OpenClaw gateway log running natively or inside WSL and emits a callback for
 /// every line that the upstream openclaw wizard plugins wrote via
 /// <c>console.log</c>. Workaround for an upstream bug: plugins emit
 /// user-critical content (OAuth URLs, install fallback messages) to gateway
 /// stdout instead of as a <c>wizard.payload</c> WS frame, leaving the tray UI
 /// blank.
 ///
-/// Spawns <c>wsl.exe -- tail -F /tmp/openclaw/openclaw-*.log</c> and parses
-/// its stdout (the <c>\\wsl$\</c> 9P share is unreliable). Silently no-ops if
-/// wsl.exe or the distro is unavailable (remote/Tailscale gateway case).
+/// Native mode tails the Companion profile's configured log. WSL mode
+/// uses <c>wsl.exe -- tail -F</c> because the <c>\\wsl$\</c> 9P share is unreliable.
 /// </summary>
 internal sealed class WizardConsoleTail : IDisposable
 {
@@ -27,14 +26,22 @@ internal sealed class WizardConsoleTail : IDisposable
         RegexOptions.Compiled | RegexOptions.Singleline);
 
     private readonly string _distroName;
+    private readonly bool _nativeWindows;
+    private readonly string? _nativeLogPath;
     private readonly IOpenClawLogger _logger;
     private readonly object _stateLock = new();
     private Process? _process;
 
-    public WizardConsoleTail(IOpenClawLogger? logger = null, string? distroNameOverride = null)
+    public WizardConsoleTail(
+        IOpenClawLogger? logger = null,
+        string? distroNameOverride = null,
+        bool nativeWindows = false,
+        string? nativeLogPath = null)
     {
         _logger = logger ?? NullLogger.Instance;
         _distroName = distroNameOverride ?? DefaultDistroName;
+        _nativeWindows = nativeWindows;
+        _nativeLogPath = nativeLogPath;
     }
 
     /// <summary>
@@ -51,30 +58,12 @@ internal sealed class WizardConsoleTail : IDisposable
         Process? process;
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "wsl.exe",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("-d");
-            psi.ArgumentList.Add(_distroName);
-            psi.ArgumentList.Add("--");
-            psi.ArgumentList.Add("bash");
-            psi.ArgumentList.Add("-c");
-            // -n 0 = start at end of file (don't replay history).
-            // 2>/dev/null = drop "cannot open" if the file doesn't exist yet; -F will pick it up on creation.
-            psi.ArgumentList.Add($"tail -F -n 0 {LogGlob} 2>/dev/null");
-
+            var psi = BuildStartInfo(_nativeWindows, _distroName, _nativeLogPath);
             process = Process.Start(psi);
         }
         catch (Exception ex)
         {
-            _logger.Warn($"WizardConsoleTail: failed to launch wsl.exe ({ex.GetType().Name}: {ex.Message}); console banner will be empty");
+            _logger.Warn($"WizardConsoleTail: failed to launch log tail ({ex.GetType().Name}: {ex.Message}); console banner will be empty");
             return;
         }
 
@@ -107,7 +96,10 @@ internal sealed class WizardConsoleTail : IDisposable
         {
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            _logger.Debug($"WizardConsoleTail: attached to {_distroName}:{LogGlob} (pid {process.Id})");
+            var source = _nativeWindows
+                ? _nativeLogPath
+                : $"{_distroName}:{LogGlob}";
+            _logger.Debug($"WizardConsoleTail: attached to {source} (pid {process.Id})");
         }
         catch (Exception ex)
         {
@@ -139,6 +131,99 @@ internal sealed class WizardConsoleTail : IDisposable
     }
 
     public void Dispose() => Stop();
+
+    internal static ProcessStartInfo BuildStartInfo(
+        bool nativeWindows,
+        string distroName,
+        string? nativeLogPath = null)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = nativeWindows ? "powershell.exe" : "wsl.exe",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        if (nativeWindows)
+        {
+            if (string.IsNullOrWhiteSpace(nativeLogPath))
+                throw new ArgumentException("A managed native gateway log path is required.", nameof(nativeLogPath));
+
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-NonInteractive");
+            psi.ArgumentList.Add("-Command");
+            psi.ArgumentList.Add(BuildNativeTailCommand());
+            psi.Environment["OPENCLAW_SETUP_WIZARD_LOG"] = nativeLogPath;
+            return psi;
+        }
+
+        psi.ArgumentList.Add("-d");
+        psi.ArgumentList.Add(distroName);
+        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add("bash");
+        psi.ArgumentList.Add("-c");
+        // -n 0 = start at end of file (don't replay history).
+        // 2>/dev/null = drop "cannot open" if the file doesn't exist yet; -F will pick it up on creation.
+        psi.ArgumentList.Add($"tail -F -n 0 {LogGlob} 2>/dev/null");
+        return psi;
+    }
+
+    internal static string BuildNativeTailCommand() =>
+        """
+        try {
+            [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+            $OutputEncoding = [Console]::OutputEncoding
+        } catch {
+        }
+        $logPath = $env:OPENCLAW_SETUP_WIZARD_LOG
+        $startedUtc = [DateTime]::UtcNow
+        $currentIdentity = $null
+        [long]$position = 0
+        $pending = ''
+        while ($true) {
+            $latest = Get-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
+            if ($null -ne $latest) {
+                $identity = $latest.FullName + '|' + $latest.CreationTimeUtc.Ticks
+                if ($identity -ne $currentIdentity) {
+                    $currentIdentity = $identity
+                    $position = if ($latest.CreationTimeUtc -ge $startedUtc) { 0 } else { $latest.Length }
+                    $pending = ''
+                } elseif ($latest.Length -lt $position) {
+                    $position = 0
+                    $pending = ''
+                }
+
+                $stream = $null
+                $reader = $null
+                try {
+                    $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+                    $stream = [IO.File]::Open($latest.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+                    [void]$stream.Seek($position, [IO.SeekOrigin]::Begin)
+                    $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 4096, $true)
+                    $chunk = $reader.ReadToEnd()
+                    $position = $stream.Position
+                    if ($chunk.Length -gt 0) {
+                        $pending += $chunk
+                        $parts = $pending.Split([char]10)
+                        for ($i = 0; $i -lt ($parts.Count - 1); $i++) {
+                            Write-Output $parts[$i].TrimEnd([char[]]@([char]13))
+                        }
+                        $pending = $parts[$parts.Count - 1]
+                    }
+                } catch {
+                    # The writer may rotate between discovery and open; retry on the next poll.
+                } finally {
+                    if ($null -ne $reader) { $reader.Dispose() }
+                    if ($null -ne $stream) { $stream.Dispose() }
+                }
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        """;
 
     /// <summary>
     /// Extracts the human-readable <c>message</c> field from a single openclaw

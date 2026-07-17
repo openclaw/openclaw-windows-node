@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Connection;
@@ -29,6 +30,7 @@ public static class GatewayTerminalLaunchCommandBuilder
         {
             GatewayTerminalTarget.Wsl => BuildWslCommand(accessPlan, windowsTerminalPath),
             GatewayTerminalTarget.Ssh => BuildSshCommand(accessPlan, windowsTerminalPath),
+            GatewayTerminalTarget.Native => BuildNativeCommand(accessPlan, windowsTerminalPath),
             _ => throw new InvalidOperationException("Gateway terminal access is not available.")
         };
     }
@@ -137,6 +139,70 @@ public static class GatewayTerminalLaunchCommandBuilder
             new ReadOnlyCollection<string>([endpoint]),
             false);
     }
+
+    private static GatewayTerminalLaunchCommand BuildNativeCommand(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
+    {
+        var taskName = RequireValue(accessPlan.NativeTaskName, "Native gateway task name is required.");
+        var profile = TryGetProfileFromTaskName(taskName) ?? "default";
+        const string shell = "powershell.exe";
+        var title = taskName;
+        var encodedScript = Convert.ToBase64String(Encoding.Unicode.GetBytes(BuildNativeTerminalScript(profile, taskName)));
+        var arguments = new ReadOnlyCollection<string>([
+            "-NoExit",
+            "-EncodedCommand",
+            encodedScript
+        ]);
+
+        if (!string.IsNullOrWhiteSpace(windowsTerminalPath))
+        {
+            return new GatewayTerminalLaunchCommand(
+                windowsTerminalPath,
+                new ReadOnlyCollection<string>([
+                    "new-tab",
+                    "--title",
+                    title,
+                    shell,
+                    .. arguments
+                ]),
+                true);
+        }
+
+        return new GatewayTerminalLaunchCommand(shell, arguments, false);
+    }
+
+    private static string BuildNativeTerminalScript(string profile, string taskName)
+    {
+        var quotedProfile = PowerShellQuote(profile);
+        var quotedTaskName = PowerShellQuote(taskName);
+        return
+            "$profile = " + quotedProfile + "; " +
+            "$stateDir = if ($profile -ieq 'default') { Join-Path $env:USERPROFILE '.openclaw' } else { Join-Path $env:USERPROFILE ('.openclaw-' + $profile) }; " +
+            "$managedCli = Join-Path $env:LOCALAPPDATA 'OpenClawTray\\native-cli'; " +
+            "$env:OPENCLAW_PROFILE = $profile; " +
+            "$env:OPENCLAW_STATE_DIR = $stateDir; " +
+            "$env:OPENCLAW_CONFIG_PATH = Join-Path $stateDir 'openclaw.json'; " +
+            "$env:OPENCLAW_HOME = $env:USERPROFILE; " +
+            "$env:OPENCLAW_WINDOWS_TASK_NAME = " + quotedTaskName + "; " +
+            "$env:OPENCLAW_GATEWAY_PORT = ''; " +
+            "$env:OPENCLAW_GATEWAY_URL = ''; " +
+            "$env:OPENCLAW_WRAPPER = ''; " +
+            "if (Test-Path -LiteralPath $managedCli) { $env:PATH = $managedCli + [IO.Path]::PathSeparator + $env:PATH }; " +
+            "New-Item -ItemType Directory -Force -Path $stateDir | Out-Null; " +
+            "Set-Location -LiteralPath $stateDir; " +
+            "Write-Host 'OpenClaw native gateway terminal'; " +
+            "Write-Host ('Profile: ' + $env:OPENCLAW_PROFILE); " +
+            "Write-Host 'Use: openclaw gateway status --json'";
+    }
+
+    private static string? TryGetProfileFromTaskName(string taskName)
+    {
+        const string prefix = "OpenClaw Gateway (";
+        return taskName.StartsWith(prefix, StringComparison.Ordinal) && taskName.EndsWith(')')
+            ? taskName[prefix.Length..^1]
+            : null;
+    }
+
+    private static string PowerShellQuote(string value) => "'" + value.Replace("'", "''") + "'";
 
     private static string RequireValue(string? value, string message)
     {

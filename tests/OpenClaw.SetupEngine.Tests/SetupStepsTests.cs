@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -112,6 +113,33 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task CleanupStaleGateway_RemovesManagedRecordWhenPortChanges()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            CleanBeforeRun = true,
+            InstallMode = GatewayInstallMode.NativeWindows,
+            GatewayPort = 19876,
+        });
+        var registry = new GatewayRegistry(_tempDir);
+        ctx.GatewayRecordId = "native-old-port";
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "native-old-port",
+            Url = "ws://127.0.0.1:18789",
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+        });
+        registry.Save();
+
+        var result = await new CleanupStaleGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        registry.Load();
+        Assert.Null(registry.GetById("native-old-port"));
+    }
+
+    [Fact]
     public async Task CleanupStaleGateway_PreservesSshTunneledRecord()
     {
         var ctx = CreateContext();
@@ -195,6 +223,1144 @@ public class SetupStepsTests : IDisposable
         await step.ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.False(Directory.Exists(identityDir));
+    }
+
+    [Fact]
+    public async Task CleanupStaleGateway_RollbackRestoresRecordAndIdentity()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            CleanBeforeRun = true,
+            InstallMode = GatewayInstallMode.Wsl,
+        });
+        var registry = new GatewayRegistry(_tempDir);
+        var record = new GatewayRecord
+        {
+            Id = "native-before-wsl",
+            Url = ctx.GatewayUrl!,
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+        };
+        registry.AddOrUpdate(record);
+        registry.SetActive(record.Id);
+        registry.Save();
+        await File.WriteAllTextAsync(
+            GatewayInstallModeDetector.GetNativeOwnershipPath(ctx.LocalDataDir),
+            $$"""{"ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(ctx.Config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(ctx.Config)}}","GatewayRecordId":"native-before-wsl","ManagedConfigPaths":[]}""");
+        var identityFile = Path.Combine(registry.GetIdentityDirectory(record.Id), "nested", "device-key.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(identityFile)!);
+        await File.WriteAllBytesAsync(identityFile, [1, 2, 3, 4]);
+
+        var step = new CleanupStaleGatewayStep();
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(File.Exists(identityFile));
+        await step.RollbackAsync(ctx, CancellationToken.None);
+
+        var restored = new GatewayRegistry(_tempDir);
+        restored.Load();
+        Assert.Equal(record, restored.GetById(record.Id));
+        Assert.Equal(record.Id, restored.ActiveGatewayId);
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, await File.ReadAllBytesAsync(identityFile));
+    }
+
+    [Fact]
+    public async Task CleanupStaleGateway_RemovesAndRestoresAllManagedRecords()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            CleanBeforeRun = true,
+            InstallMode = GatewayInstallMode.Wsl,
+        });
+        var registry = new GatewayRegistry(_tempDir);
+        var records = new[]
+        {
+            new GatewayRecord
+            {
+                Id = "managed-one",
+                Url = "ws://127.0.0.1:18789",
+                IsLocal = true,
+                SetupManagedDistroName = ctx.DistroName,
+            },
+            new GatewayRecord
+            {
+                Id = "managed-two",
+                Url = "ws://127.0.0.1:19876",
+                IsLocal = true,
+                SetupManagedDistroName = ctx.DistroName,
+            },
+        };
+        foreach (var record in records)
+        {
+            registry.AddOrUpdate(record);
+            var identityFile = Path.Combine(registry.GetIdentityDirectory(record.Id), "device-key.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(identityFile)!);
+            await File.WriteAllTextAsync(identityFile, record.Id);
+        }
+        registry.SetActive(records[1].Id);
+        registry.Save();
+
+        var step = new CleanupStaleGatewayStep();
+        Assert.True((await step.ExecuteAsync(ctx, CancellationToken.None)).IsSuccess);
+
+        registry.Load();
+        Assert.All(records, record => Assert.Null(registry.GetById(record.Id)));
+        Assert.All(records, record =>
+            Assert.False(Directory.Exists(registry.GetIdentityDirectory(record.Id))));
+
+        await step.RollbackAsync(ctx, CancellationToken.None);
+
+        registry.Load();
+        Assert.All(records, record => Assert.Equal(record, registry.GetById(record.Id)));
+        Assert.Equal(records[1].Id, registry.ActiveGatewayId);
+        foreach (var record in records)
+        {
+            var identityFile = Path.Combine(registry.GetIdentityDirectory(record.Id), "device-key.json");
+            Assert.Equal(record.Id, await File.ReadAllTextAsync(identityFile));
+        }
+    }
+
+    [Fact]
+    public async Task CleanupStaleGateway_RollbackRestoresBothPriorSetupStateLocations()
+    {
+        var ctx = CreateContext(new SetupConfig { CleanBeforeRun = true });
+        var legacyStatePath = Path.Combine(ctx.DataDir, "setup-state.json");
+        var currentStatePath = Path.Combine(ctx.LocalDataDir, "setup-state.json");
+        await File.WriteAllBytesAsync(legacyStatePath, [1, 2, 3]);
+        await File.WriteAllBytesAsync(currentStatePath, [4, 5, 6]);
+        var step = new CleanupStaleGatewayStep();
+
+        Assert.True((await step.ExecuteAsync(ctx, CancellationToken.None)).IsSuccess);
+        Assert.False(File.Exists(legacyStatePath));
+        Assert.False(File.Exists(currentStatePath));
+        await File.WriteAllBytesAsync(currentStatePath, [9, 9, 9]);
+
+        await step.RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(legacyStatePath));
+        Assert.Equal(new byte[] { 4, 5, 6 }, await File.ReadAllBytesAsync(currentStatePath));
+    }
+
+    [Fact]
+    public async Task CleanupStaleGateway_UninstallWithoutExecuteDeletesSetupState()
+    {
+        var ctx = CreateContext();
+        var legacyStatePath = Path.Combine(ctx.DataDir, "setup-state.json");
+        var currentStatePath = Path.Combine(ctx.LocalDataDir, "setup-state.json");
+        await File.WriteAllTextAsync(legacyStatePath, "{}");
+        await File.WriteAllTextAsync(currentStatePath, "{}");
+
+        await new CleanupStaleGatewayStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.False(File.Exists(legacyStatePath));
+        Assert.False(File.Exists(currentStatePath));
+    }
+
+    [Fact]
+    public async Task CleanupStaleGateway_RollbackRestoresPreviouslyActiveExternalGateway()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            CleanBeforeRun = true,
+            InstallMode = GatewayInstallMode.NativeWindows,
+        });
+        var registry = new GatewayRegistry(_tempDir);
+        var local = new GatewayRecord
+        {
+            Id = "old-local",
+            Url = ctx.GatewayUrl!,
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+        };
+        var external = new GatewayRecord
+        {
+            Id = "external",
+            Url = "wss://gateway.example.test",
+            FriendlyName = "External",
+            IsLocal = false,
+        };
+        registry.AddOrUpdate(local);
+        registry.AddOrUpdate(external);
+        registry.SetActive(external.Id);
+        registry.Save();
+        ctx.GatewayRecordId = local.Id;
+
+        var step = new CleanupStaleGatewayStep();
+        Assert.True((await step.ExecuteAsync(ctx, CancellationToken.None)).IsSuccess);
+
+        registry.Load();
+        var replacement = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "replacement-local",
+            Url = ctx.GatewayUrl!,
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+        });
+        registry.SetActive(replacement.Id);
+        registry.Save();
+        registry.Remove(replacement.Id);
+        registry.Save();
+
+        await step.RollbackAsync(ctx, CancellationToken.None);
+
+        var restored = new GatewayRegistry(_tempDir);
+        restored.Load();
+        Assert.Equal(external.Id, restored.ActiveGatewayId);
+        Assert.NotNull(restored.GetById(local.Id));
+    }
+
+    [Fact]
+    public void IsSetupManagedLocalRecord_AcceptsCustomPortNativeAndMatchingLegacyWsl()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = "OpenClawGateway",
+        });
+        var legacy = new GatewayRecord
+        {
+            Id = "legacy-wsl",
+            Url = ctx.GatewayUrl!,
+            FriendlyName = "Local (OpenClawGateway)",
+            IsLocal = true,
+        };
+
+        Assert.True(PairOperatorStep.IsSetupManagedLocalRecord(
+            legacy,
+            ctx,
+            includeOtherModeForMigration: true));
+        Assert.False(PairOperatorStep.IsSetupManagedLocalRecord(legacy, ctx));
+        Assert.True(PairOperatorStep.IsSetupManagedLocalRecord(
+            legacy with { Url = "ws://127.0.0.1:19999" },
+            ctx,
+            includeOtherModeForMigration: true));
+        Assert.False(PairOperatorStep.IsSetupManagedLocalRecord(
+            legacy with { SshTunnel = new SshTunnelConfig("user", "host", 18789, 18789) },
+            ctx));
+        ctx.GatewayRecordId = "native-custom-port";
+        Assert.True(PairOperatorStep.IsSetupManagedLocalRecord(new GatewayRecord
+        {
+            Id = "native-custom-port",
+            Url = "ws://127.0.0.1:19876",
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+        }, ctx));
+        Assert.False(PairOperatorStep.IsSetupManagedLocalRecord(new GatewayRecord
+        {
+            Id = "manual-custom-port",
+            Url = "ws://127.0.0.1:19876",
+            FriendlyName = "Manual local",
+            IsLocal = true,
+        }, ctx));
+    }
+
+    [Fact]
+    public async Task PairOperator_RollbackRestoresPreviouslyActiveExternalGateway()
+    {
+        var ctx = CreateContext(new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows });
+        var registry = new GatewayRegistry(ctx.DataDir);
+        var external = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "external-active",
+            Url = "wss://gateway.example.test",
+            FriendlyName = "External",
+        });
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "new-local",
+            Url = ctx.GatewayUrl!,
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+        });
+        registry.SetActive("new-local");
+        registry.Save();
+        ctx.GatewayRecordId = "new-local";
+        ctx.GatewayRecordCreatedThisRun = true;
+        ctx.ActiveGatewayBeforePairing = new ActiveGatewayRollbackState(external.Id);
+
+        await new PairOperatorStep().RollbackAsync(ctx, CancellationToken.None);
+
+        registry.Load();
+        Assert.Equal(external.Id, registry.ActiveGatewayId);
+        Assert.Null(registry.GetById("new-local"));
+        Assert.Null(ctx.ActiveGatewayBeforePairing);
+    }
+
+    [Fact]
+    public async Task PairOperator_RollbackKeepsRestoredRecordWithExternalActiveGateway()
+    {
+        var ctx = CreateContext(new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows });
+        var registry = new GatewayRegistry(ctx.DataDir);
+        var external = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "external-active",
+            Url = "wss://gateway.example.test",
+            FriendlyName = "External",
+        });
+        var replaced = new GatewayRecord
+        {
+            Id = "replaced-native",
+            Url = ctx.GatewayUrl!,
+            FriendlyName = "Local (Windows)",
+            SharedGatewayToken = "old-token",
+            IsLocal = true,
+        };
+        registry.AddOrUpdate(replaced with { SharedGatewayToken = "new-token" });
+        registry.SetActive(replaced.Id);
+        registry.Save();
+        ctx.GatewayRecordId = replaced.Id;
+        ctx.GatewayRecordCreatedThisRun = true;
+        ctx.ActiveGatewayBeforePairing = new ActiveGatewayRollbackState(external.Id);
+        ctx.ReplacedGateways = new ReplacedGatewaysSnapshot(
+            [new ReplacedGatewayRecordSnapshot(replaced, [])],
+            external.Id);
+
+        await new PairOperatorStep().RollbackAsync(ctx, CancellationToken.None);
+
+        registry.Load();
+        Assert.Equal(replaced, registry.GetById(replaced.Id));
+        Assert.Equal(external.Id, registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public async Task PairOperator_DoesNotAdoptForeignNativeOwnershipRecordId()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = "owned-profile",
+            GatewayPort = GetFreeTcpPort(),
+        };
+        var ctx = CreateContext(config);
+        ctx.SharedGatewayToken = "x";
+        await File.WriteAllTextAsync(
+            GatewayInstallModeDetector.GetNativeOwnershipPath(ctx.LocalDataDir),
+            """{"ProfileName":"foreign-profile","TaskName":"OpenClaw Gateway (foreign-profile)","GatewayRecordId":"foreign-record"}""");
+
+        var result = await new PairOperatorStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.NotEqual("foreign-record", ctx.GatewayRecordId);
+        var registry = new GatewayRegistry(ctx.DataDir);
+        registry.Load();
+        Assert.Null(registry.GetById("foreign-record"));
+        Assert.NotNull(registry.GetById(ctx.GatewayRecordId!));
+    }
+
+    [Fact]
+    public async Task PairOperator_RollbackRestoresReusedNativeRecordIdentity()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            GatewayPort = GetFreeTcpPort(),
+        };
+        var ctx = CreateContext(config);
+        ctx.SharedGatewayToken = "x";
+        ctx.GatewayRecordId = "reused-native";
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        var registry = new GatewayRegistry(_tempDir);
+        var record = new GatewayRecord
+        {
+            Id = ctx.GatewayRecordId,
+            Url = ctx.GatewayUrl!,
+            FriendlyName = "Local (Windows)",
+            SharedGatewayToken = "original",
+            IsLocal = true,
+        };
+        registry.AddOrUpdate(record);
+        registry.SetActive(record.Id);
+        registry.Save();
+        var identityDir = registry.GetIdentityDirectory(record.Id);
+        Directory.CreateDirectory(identityDir);
+        var preservedPath = Path.Combine(identityDir, "preserved.bin");
+        await File.WriteAllBytesAsync(preservedPath, [1, 2, 3]);
+
+        var result = await new PairOperatorStep().ExecuteAsync(ctx, CancellationToken.None);
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        await File.WriteAllBytesAsync(preservedPath, [9, 9]);
+        await File.WriteAllTextAsync(Path.Combine(identityDir, "new-token.json"), "new");
+
+        await new PairOperatorStep().RollbackAsync(ctx, CancellationToken.None);
+
+        registry.Load();
+        Assert.Equal(record, registry.GetById(record.Id));
+        Assert.Equal(record.Id, registry.ActiveGatewayId);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(preservedPath));
+        Assert.False(File.Exists(Path.Combine(identityDir, "new-token.json")));
+    }
+
+    [Fact]
+    public async Task PairOperator_RefreshesAndActivatesReusedNativeRecordThenRollsBack()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            GatewayPort = GetFreeTcpPort(),
+        };
+        var ctx = CreateContext(config);
+        ctx.SharedGatewayToken = "fixture-new";
+        ctx.BootstrapToken = "fixture-new";
+        ctx.GatewayRecordId = "reused-native";
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        var registry = new GatewayRegistry(ctx.DataDir);
+        var external = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "external-active",
+            Url = "wss://gateway.example.test",
+            FriendlyName = "External",
+        });
+        var original = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = ctx.GatewayRecordId,
+            Url = "ws://127.0.0.1:19999",
+            FriendlyName = "Old local",
+            SharedGatewayToken = "fixture-old",
+            BootstrapToken = "fixture-old",
+            IsLocal = true,
+            BrowserControlPort = 19001,
+        });
+        registry.SetActive(external.Id);
+        registry.Save();
+
+        var result = await new PairOperatorStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        registry.Load();
+        var refreshed = registry.GetById(original.Id);
+        Assert.NotNull(refreshed);
+        Assert.Equal(ctx.GatewayUrl, refreshed.Url);
+        Assert.Equal("Local (Windows)", refreshed.FriendlyName);
+        Assert.Equal("fixture-new", refreshed.SharedGatewayToken);
+        Assert.Equal("fixture-new", refreshed.BootstrapToken);
+        Assert.Equal(19001, refreshed.BrowserControlPort);
+        Assert.Equal(original.Id, registry.ActiveGatewayId);
+
+        await new PairOperatorStep().RollbackAsync(ctx, CancellationToken.None);
+
+        registry.Load();
+        Assert.Equal(original, registry.GetById(original.Id));
+        Assert.Equal(external.Id, registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public async Task PairOperator_RetryCreatesRecordFromDurableNativeOwnership()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            GatewayPort = GetFreeTcpPort(),
+        };
+        var ctx = CreateContext(config);
+        ctx.SharedGatewayToken = "x";
+        ctx.GatewayRecordId = "pending-native-record";
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        ctx.GatewayRecordId = null;
+
+        var result = await new PairOperatorStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.DoesNotContain("not found", result.Message, StringComparison.OrdinalIgnoreCase);
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        var record = registry.GetById("pending-native-record");
+        Assert.NotNull(record);
+        Assert.Equal("x", record.SharedGatewayToken);
+        Assert.Equal(
+            "pending-native-record",
+            ConfigureGatewayStep.ReadNativeGatewayRecordId(ctx.LocalDataDir, ctx.Config));
+    }
+
+    [Fact]
+    public async Task NativeServiceCleanup_RollbackDoesNotRemoveNativeService()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(
+            new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows },
+            commands);
+
+        await new NativeGatewayServiceCleanupStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Empty(commands.Calls);
+        Assert.Empty(commands.WslCalls);
+    }
+
+    [Fact]
+    public async Task NativeServiceCleanup_TreatsAlreadyAbsentServiceAsCleaned()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args.Any(argument => argument.Contains("'gateway' 'uninstall'", StringComparison.Ordinal))
+                ? Fail("service not installed")
+                : Ok());
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                CleanBeforeRun = true,
+                InstallMode = GatewayInstallMode.Wsl,
+                DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            },
+            commands);
+        ctx.NativeCliPath = @"C:\fake\openclaw.ps1";
+        ctx.PreviousNativeGateway = new NativeGatewayRollbackState(
+            ConfigPath: "",
+            ConfigExisted: false,
+            ConfigContents: null,
+            ServiceInstalled: true,
+            WasRunning: false);
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+
+        var result = await new NativeGatewayServiceCleanupStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(commands.Calls, call =>
+            call.Arguments.Any(argument => argument.Contains("'gateway' 'uninstall'", StringComparison.Ordinal)));
+        Assert.Contains(commands.Calls, call =>
+            call.Arguments.Any(argument => argument.Contains("'config' 'unset'", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task NativeServiceCleanup_AfterCliRepairRemovesCapturedService()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args.Contains("/Query")
+                ? Fail("ERROR: The system cannot find the file specified.")
+                : Ok());
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                CleanBeforeRun = true,
+                InstallMode = GatewayInstallMode.NativeWindows,
+                DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            },
+            commands);
+        ctx.NativeCliPath = @"C:\fake\openclaw.ps1";
+        ctx.PreviousNativeGateway = new NativeGatewayRollbackState(
+            ConfigPath: "",
+            ConfigExisted: false,
+            ConfigContents: null,
+            ServiceInstalled: true,
+            WasRunning: false);
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+
+        var result = await new NativeGatewayServiceCleanupStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(commands.Calls, call => call.Arguments[^1].Contains("'gateway' 'uninstall'", StringComparison.Ordinal));
+        Assert.Contains(commands.Calls, call => call.Arguments.Contains("/Query"));
+    }
+
+    [Fact]
+    public async Task NativeServiceCleanup_MissingCliRejectsStartupFallbackWithoutDeletingState()
+    {
+        var previousCli = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_NATIVE_CLI");
+        Environment.SetEnvironmentVariable(
+            "OPENCLAW_SETUP_NATIVE_CLI",
+            Path.Combine(_tempDir, "missing-openclaw.ps1"));
+        var config = new SetupConfig
+        {
+            CleanBeforeRun = true,
+            InstallMode = GatewayInstallMode.Wsl,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            GatewayPort = GetFreeTcpPort(),
+        };
+        var stateDirectory = GatewayCliRunner.GetManagedNativeStateDir(config);
+        var configPath = GatewayCliRunner.GetManagedNativeConfigPath(config);
+        var fallbackPath = Path.Combine(stateDirectory, "gateway.cmd");
+        Directory.CreateDirectory(stateDirectory);
+        await File.WriteAllTextAsync(configPath, "{ gateway: { port: 18789, }, }");
+        await File.WriteAllTextAsync(fallbackPath, "@echo off");
+        var commands = new FakeCommandRunner(args =>
+            args.Contains("/Query")
+                ? Fail("ERROR: The system cannot find the file specified.")
+                : Fail("unexpected command"));
+        var ctx = CreateContext(config, commands);
+        ctx.PreviousNativeGateway = new NativeGatewayRollbackState(
+            configPath,
+            ConfigExisted: true,
+            ConfigContents: await File.ReadAllBytesAsync(configPath),
+            ServiceInstalled: true,
+            WasRunning: false);
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        var ownershipPath = GatewayInstallModeDetector.GetNativeOwnershipPath(ctx.LocalDataDir);
+
+        try
+        {
+            var result = await new NativeGatewayServiceCleanupStep().ExecuteAsync(ctx, CancellationToken.None);
+
+            Assert.Equal(StepOutcome.Failed, result.Outcome);
+            Assert.Contains("Startup fallback", result.Message);
+            Assert.True(File.Exists(fallbackPath));
+            Assert.True(File.Exists(configPath));
+            Assert.True(File.Exists(ownershipPath));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_SETUP_NATIVE_CLI", previousCli);
+            Directory.Delete(stateDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task NativeServiceCleanup_MissingCliPreservesInactiveProfileWhileWslOwnsPort()
+    {
+        var previousCli = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_NATIVE_CLI");
+        Environment.SetEnvironmentVariable(
+            "OPENCLAW_SETUP_NATIVE_CLI",
+            Path.Combine(_tempDir, "missing-openclaw.ps1"));
+        var config = new SetupConfig
+        {
+            CleanBeforeRun = true,
+            InstallMode = GatewayInstallMode.Wsl,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            GatewayPort = GetFreeTcpPort(),
+        };
+        var configPath = GatewayCliRunner.GetManagedNativeConfigPath(config);
+        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        await File.WriteAllTextAsync(configPath, "{ providers: { preserve: true } }");
+        var commands = new FakeCommandRunner(args =>
+            args.Contains("/Query")
+                ? Fail("ERROR: The system cannot find the file specified.")
+                : Fail("unexpected command"));
+        var ctx = CreateContext(config, commands);
+        ctx.PreviousNativeGateway = new NativeGatewayRollbackState(
+            configPath,
+            ConfigExisted: true,
+            ConfigContents: await File.ReadAllBytesAsync(configPath),
+            ServiceInstalled: false,
+            WasRunning: false);
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        using var wslListener = new TcpListener(IPAddress.Loopback, config.GatewayPort);
+        wslListener.Start();
+
+        try
+        {
+            var result = await new NativeGatewayServiceCleanupStep().ExecuteAsync(ctx, CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal("{ providers: { preserve: true } }", await File.ReadAllTextAsync(configPath));
+            Assert.False(GatewayInstallModeDetector.HasNativeOwnershipMarker(ctx.LocalDataDir));
+            Assert.True(GatewayInstallModeDetector.HasNativeProfileOwnershipMarker(ctx.LocalDataDir));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_SETUP_NATIVE_CLI", previousCli);
+            Directory.Delete(Path.GetDirectoryName(configPath)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task NativeServiceCleanup_NonCleanRunDoesNotMutateService()
+    {
+        var commands = new FakeCommandRunner(_ => Fail("must not run"));
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                CleanBeforeRun = false,
+                InstallMode = GatewayInstallMode.NativeWindows,
+            },
+            commands);
+        ctx.PreviousNativeGateway = new NativeGatewayRollbackState(
+            ConfigPath: "owned.json",
+            ConfigExisted: true,
+            ConfigContents: [],
+            ServiceInstalled: true,
+            WasRunning: true);
+        var step = new NativeGatewayServiceCleanupStep();
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Skipped, result.Outcome);
+        Assert.True(step.CanSkip(ctx));
+        Assert.Empty(commands.Calls);
+    }
+
+    [Fact]
+    public async Task InstallGatewayService_RollbackPropagatesUninstallFailure()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args.Contains("/Query") ? Ok() : Fail());
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                InstallMode = GatewayInstallMode.NativeWindows,
+                DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            },
+            commands);
+        ctx.NativeCliPath = "C:\\fake\\openclaw.ps1";
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new InstallGatewayServiceStep().RollbackAsync(ctx, CancellationToken.None));
+
+        Assert.Contains("remove native gateway Scheduled Task", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task InstallGatewayService_RollbackTreatsMissingCliAndTaskAsAlreadyRemoved()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args.Contains("/Query")
+                ? Fail("ERROR: The system cannot find the file specified.")
+                : args.Contains("-EncodedCommand")
+                    ? Ok()
+                : Fail("OpenClaw CLI was not found"));
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                InstallMode = GatewayInstallMode.NativeWindows,
+                DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            },
+            commands);
+        ctx.NativeCliPath = @"C:\missing\openclaw.ps1";
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+
+        await new InstallGatewayServiceStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Contains(commands.Calls, call => call.Arguments.Contains("/Query"));
+        var encodedCall = Assert.Single(commands.Calls, call => call.Arguments.Contains("-EncodedCommand"));
+        var encoded = encodedCall.Arguments[Array.IndexOf(encodedCall.Arguments, "-EncodedCommand") + 1];
+        var cleanupScript = System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
+        Assert.Contains("process ownership cannot be proven", cleanupScript);
+        Assert.DoesNotContain("Stop-Process", cleanupScript);
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Any(arg => arg.Contains("gateway' 'uninstall", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task InstallGatewayService_RollbackTreatsMissingWslDistroAsAlreadyUninstalled()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("unexpected Windows command"),
+            (_, _, _) => new CommandResult(
+                1,
+                "",
+                "WSL_E_DISTRO_NOT_FOUND",
+                TimeSpan.Zero,
+                TimedOut: false));
+        var ctx = CreateContext(new SetupConfig { InstallMode = GatewayInstallMode.Wsl }, commands);
+
+        await new InstallGatewayServiceStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Fact]
+    public async Task InstallGatewayService_RollbackSkipsAbsentWslService()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("unexpected Windows command"),
+            (_, _, _) => Ok("""{"service":{"loaded":false,"command":null}}"""));
+        var ctx = CreateContext(new SetupConfig { InstallMode = GatewayInstallMode.Wsl }, commands);
+
+        await new InstallGatewayServiceStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Fact]
+    public async Task InstallGatewayService_RollbackSkipsAbsentNativeServiceAfterInterruptedSetup()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args.Contains("/Query")
+                ? Fail("ERROR: The system cannot find the file specified.")
+                : Ok("""{"service":{"loaded":false,"command":null}}"""));
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                InstallMode = GatewayInstallMode.NativeWindows,
+                DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+            },
+            commands);
+        ctx.NativeCliPath = @"C:\fake\openclaw.ps1";
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+
+        await new InstallGatewayServiceStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Contains(commands.Calls, call => call.Arguments[^1].Contains("'gateway' 'status' '--json'", StringComparison.Ordinal));
+        Assert.Contains(commands.Calls, call => call.Arguments.Contains("-EncodedCommand"));
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Any(arg => arg.Contains("gateway' 'uninstall", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_NativeCleanupRemovesManagedKeysAndPreservesOtherConfig()
+    {
+        var configPath = Path.Combine(_tempDir, "native-openclaw.json");
+        await File.WriteAllTextAsync(
+            configPath,
+            """
+            {
+              "gateway": {
+                "mode": "local",
+                "port": 18789,
+                "bind": "loopback",
+                "auth": { "mode": "token", "token": "token" },
+                "reload": { "mode": "hot" },
+                "nodes": { "allowCommands": ["device.info"] },
+                "custom": "preserve"
+              },
+              "plugins": {
+                "entries": {
+                  "device-pair": { "enabled": true, "config": { "publicUrl": "http://127.0.0.1:18789" } },
+                  "other": { "enabled": true }
+                }
+              },
+              "unrelated": true
+            }
+            """);
+
+        Assert.True(await ConfigureGatewayStep.RemoveNativeManagedConfigAsync(configPath, CancellationToken.None));
+        Assert.False(await ConfigureGatewayStep.RemoveNativeManagedConfigAsync(configPath, CancellationToken.None));
+
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(configPath));
+        var root = document.RootElement;
+        var gateway = root.GetProperty("gateway");
+        Assert.Equal("preserve", gateway.GetProperty("custom").GetString());
+        Assert.False(gateway.TryGetProperty("auth", out _));
+        Assert.False(gateway.TryGetProperty("port", out _));
+        Assert.True(root.GetProperty("unrelated").GetBoolean());
+        var entries = root.GetProperty("plugins").GetProperty("entries");
+        Assert.False(entries.TryGetProperty("device-pair", out _));
+        Assert.True(entries.GetProperty("other").GetProperty("enabled").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_NativeCleanupRemovesPersistedExtraConfigPaths()
+    {
+        var configPath = Path.Combine(_tempDir, "native-extra-config.json");
+        await File.WriteAllTextAsync(
+            configPath,
+            """{"gateway":{"custom":"remove","preserve":"keep"},"unrelated":true}""");
+
+        Assert.True(await ConfigureGatewayStep.RemoveNativeManagedConfigAsync(
+            configPath,
+            ["gateway.custom"],
+            CancellationToken.None));
+
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(configPath));
+        Assert.False(document.RootElement.GetProperty("gateway").TryGetProperty("custom", out _));
+        Assert.Equal("keep", document.RootElement.GetProperty("gateway").GetProperty("preserve").GetString());
+        Assert.True(document.RootElement.GetProperty("unrelated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_NativeCleanupUsesCliForJson5Config()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(
+            new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows },
+            commands);
+        ctx.NativeCliPath = @"C:\fake\openclaw.ps1";
+
+        var removed = await ConfigureGatewayStep.TryRemoveNativeManagedConfigWithCliAsync(
+            ctx,
+            ["gateway.auth.token", "gateway.port"],
+            CancellationToken.None);
+
+        Assert.True(removed);
+        Assert.Equal(2, commands.Calls.Count);
+        Assert.All(commands.Calls, call => Assert.Contains("'config' 'unset'", call.Arguments[^1]));
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_ConfirmedUninstallDeletesOwnedNativeProfile()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+        };
+        var ctx = CreateContext(config, new FakeCommandRunner(_ => Ok()));
+        ctx.IsUninstalling = true;
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        var stateDirectory = GatewayCliRunner.GetManagedNativeStateDir(config);
+        Directory.CreateDirectory(Path.Combine(stateDirectory, "credentials"));
+        await File.WriteAllTextAsync(Path.Combine(stateDirectory, "credentials", "provider.json"), "secret-state");
+
+        try
+        {
+            await new ConfigureGatewayStep().RollbackAsync(ctx, CancellationToken.None);
+
+            Assert.False(Directory.Exists(stateDirectory));
+            Assert.False(GatewayInstallModeDetector.HasNativeOwnershipMarker(ctx.LocalDataDir));
+            Assert.False(GatewayInstallModeDetector.HasNativeProfileOwnershipMarker(ctx.LocalDataDir));
+        }
+        finally
+        {
+            if (Directory.Exists(stateDirectory))
+                Directory.Delete(stateDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_NativeProfileCleanupRetriesTransientFileLocks()
+    {
+        var stateDirectory = Path.Combine(_tempDir, "native-profile-transient-lock");
+        Directory.CreateDirectory(stateDirectory);
+        var lockedPath = Path.Combine(stateDirectory, "browser-automation.lock");
+        await File.WriteAllTextAsync(lockedPath, "locked");
+        using var lockedFile = new FileStream(
+            lockedPath,
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.None);
+        var releaseLock = Task.Run(async () =>
+        {
+            await Task.Delay(150);
+            lockedFile.Dispose();
+        });
+
+        await ConfigureGatewayStep.DeleteManagedNativeProfileAsync(
+            stateDirectory,
+            CancellationToken.None);
+        await releaseLock;
+
+        Assert.False(Directory.Exists(stateDirectory));
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_FailedSetupRollbackPreservesOwnedNativeProfile()
+    {
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+        };
+        var ctx = CreateContext(config, new FakeCommandRunner(_ => Ok()));
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        var stateDirectory = GatewayCliRunner.GetManagedNativeStateDir(config);
+        Directory.CreateDirectory(stateDirectory);
+        var providerPath = Path.Combine(stateDirectory, "provider-state.json");
+        await File.WriteAllTextAsync(providerPath, "preserve");
+
+        try
+        {
+            await new ConfigureGatewayStep().RollbackAsync(ctx, CancellationToken.None);
+
+            Assert.True(File.Exists(providerPath));
+            Assert.True(GatewayInstallModeDetector.HasNativeProfileOwnershipMarker(ctx.LocalDataDir));
+            Assert.False(GatewayInstallModeDetector.HasNativeOwnershipMarker(ctx.LocalDataDir));
+        }
+        finally
+        {
+            Directory.Delete(stateDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ConfigureGateway_NativeOwnershipIncludesExtraConfigPaths()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["plugins.entries.example.enabled"] = "true",
+                    ["plugins.entries.example.config"] = "{\"mode\":\"x\"}",
+                    ["plugins.entries.example.config.label"] = "007",
+                },
+            },
+        };
+
+        var paths = ConfigureGatewayStep.GetNativeManagedConfigPaths(config);
+
+        Assert.Contains("gateway.auth.token", paths);
+        Assert.Contains("plugins.entries.example.enabled", paths);
+    }
+
+    [Fact]
+    public async Task NativeProfileOwnership_PreservesRecordIdAfterActiveMarkerRemoval()
+    {
+        var ctx = CreateContext(new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows });
+        ctx.GatewayRecordId = "owned-native-record";
+
+        await ConfigureGatewayStep.WriteNativeOwnershipMarkerAsync(ctx, CancellationToken.None);
+        File.Delete(GatewayInstallModeDetector.GetNativeOwnershipPath(ctx.LocalDataDir));
+
+        Assert.Equal(
+            "owned-native-record",
+            ConfigureGatewayStep.ReadNativeGatewayRecordId(ctx.LocalDataDir, ctx.Config));
+        Assert.True(GatewayInstallModeDetector.HasNativeProfileOwnershipMarker(ctx.LocalDataDir));
+    }
+
+    [Fact]
+    public async Task StopConflictingGateways_RollbackRestoresNativeConfigAndRunningService()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(
+            new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows },
+            commands);
+        var configPath = Path.Combine(_tempDir, "native-openclaw.json");
+        await File.WriteAllBytesAsync(configPath, [9, 9, 9]);
+        var ownershipMarkerPath = GatewayInstallModeDetector.GetNativeOwnershipPath(_localTempDir);
+        var ownershipMarkerContents = System.Text.Encoding.UTF8.GetBytes(
+            """{"ManagedConfigPaths":["plugins.entries.example.enabled"]}""");
+        ctx.NativeCliPath = "C:\\fake\\openclaw.ps1";
+        ctx.PreviousNativeGateway = new NativeGatewayRollbackState(
+            configPath,
+            ConfigExisted: true,
+            ConfigContents: [1, 2, 3],
+            ServiceInstalled: true,
+            WasRunning: true,
+            OwnershipMarkerPath: ownershipMarkerPath,
+            OwnershipMarkerExisted: true,
+            OwnershipMarkerContents: ownershipMarkerContents);
+
+        await new StopConflictingLocalGatewaysStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(configPath));
+        Assert.Equal(ownershipMarkerContents, await File.ReadAllBytesAsync(ownershipMarkerPath));
+        Assert.Equal(2, commands.Calls.Count);
+        Assert.Contains("gateway' 'install' '--force", commands.Calls[0].Arguments[^1]);
+        Assert.Contains("gateway' 'start", commands.Calls[1].Arguments[^1]);
+        Assert.Null(ctx.PreviousNativeGateway);
+    }
+
+    [Fact]
+    public async Task StopConflictingGateways_RollbackKeepsPreviouslyStoppedNativeServiceStopped()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(
+            new SetupConfig { InstallMode = GatewayInstallMode.Wsl },
+            commands);
+        ctx.NativeCliPath = "C:\\fake\\openclaw.ps1";
+        ctx.PreviousNativeGateway = new NativeGatewayRollbackState(
+            Path.Combine(_tempDir, "missing-native-openclaw.json"),
+            ConfigExisted: false,
+            ConfigContents: null,
+            ServiceInstalled: true,
+            WasRunning: false);
+
+        await new StopConflictingLocalGatewaysStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(2, commands.Calls.Count);
+        Assert.Contains("gateway' 'install' '--force", commands.Calls[0].Arguments[^1]);
+        Assert.Contains("gateway' 'stop", commands.Calls[1].Arguments[^1]);
+    }
+
+    [Fact]
+    public async Task StopConflictingGateways_RollbackRestartsPreviouslyRunningWslGateway()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok());
+        var ctx = CreateContext(
+            new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows },
+            commands);
+        ctx.PreviousWslGateway = new WslGatewayRollbackState(
+            "OpenClawGateway",
+            WasRunning: true,
+            HadManagedKeepalive: false);
+
+        await new StopConflictingLocalGatewaysStep().RollbackAsync(ctx, CancellationToken.None);
+
+        var call = Assert.Single(commands.WslCalls);
+        Assert.Equal("OpenClawGateway", call.DistroName);
+        Assert.Contains("openclaw gateway start", call.Command);
+        Assert.Null(ctx.PreviousWslGateway);
+    }
+
+    [Fact]
+    public async Task StopConflictingGateways_CapturesManagedWslKeepaliveForRollback()
+    {
+        var commands = new FakeCommandRunner(
+            args =>
+            {
+                if (args.SequenceEqual(["--list", "--quiet"]))
+                    return Ok("OpenClawGateway\n");
+                if (args.SequenceEqual(["--terminate", "OpenClawGateway"]))
+                    return Ok();
+                if (args.LastOrDefault()?.Contains("gateway' 'status' '--json", StringComparison.Ordinal) == true)
+                    return Ok("""{"service":{"loaded":false,"command":null}}""");
+                if (args.LastOrDefault()?.Contains("gateway' 'stop", StringComparison.Ordinal) == true)
+                    return Ok();
+                return Fail($"unexpected Windows command: {string.Join(' ', args)}");
+            },
+            (_, command, _) => command.Contains("gateway status --json", StringComparison.Ordinal)
+                ? Ok("""{"service":{"loaded":true,"runtime":{"status":"running"}}}""")
+                : Ok());
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                CleanBeforeRun = true,
+                InstallMode = GatewayInstallMode.NativeWindows,
+                DistroName = "OpenClawGateway",
+            },
+            commands);
+        var markerPath = StartKeepaliveStep.GetKeepaliveMarkerPath(ctx);
+        Directory.CreateDirectory(Path.GetDirectoryName(markerPath)!);
+        await File.WriteAllTextAsync(markerPath, "{}");
+
+        var result = await new StopConflictingLocalGatewaysStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            new WslGatewayRollbackState("OpenClawGateway", WasRunning: true, HadManagedKeepalive: true),
+            ctx.PreviousWslGateway);
+    }
+
+    [Fact]
+    public async Task StopConflictingGateways_WslModeLeavesPortWaitForDistroCleanup()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var ctx = CreateContext(new SetupConfig
+        {
+            CleanBeforeRun = true,
+            InstallMode = GatewayInstallMode.Wsl,
+            GatewayPort = port,
+        });
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var result = await new StopConflictingLocalGatewaysStep().ExecuteAsync(ctx, cts.Token);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task StopConflictingGateways_CapturesNativeConfigWhenCleanupIsDisabled()
+    {
+        var previousCli = Environment.GetEnvironmentVariable("OPENCLAW_SETUP_NATIVE_CLI");
+        var cliPath = Path.Combine(_tempDir, "openclaw.ps1");
+        await File.WriteAllTextAsync(cliPath, "& node @args");
+        Environment.SetEnvironmentVariable("OPENCLAW_SETUP_NATIVE_CLI", cliPath);
+        var config = new SetupConfig
+        {
+            CleanBeforeRun = false,
+            InstallMode = GatewayInstallMode.NativeWindows,
+            DistroName = $"OpenClawGateway-Test-{Guid.NewGuid():N}",
+        };
+        var configPath = GatewayCliRunner.GetManagedNativeConfigPath(config);
+        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        var original = System.Text.Encoding.UTF8.GetBytes("{ gateway: { port: 18789, }, }");
+        await File.WriteAllBytesAsync(configPath, original);
+        var commands = new FakeCommandRunner(_ => Ok("""{"service":{"loaded":false,"command":null}}"""));
+        var ctx = CreateContext(config, commands);
+
+        try
+        {
+            var step = new StopConflictingLocalGatewaysStep();
+
+            var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal(StepOutcome.Skipped, result.Outcome);
+            Assert.NotNull(ctx.PreviousNativeGateway);
+            Assert.Single(commands.Calls);
+            Assert.Contains("'gateway' 'status' '--json'", commands.Calls[0].Arguments[^1]);
+
+            await File.WriteAllTextAsync(configPath, "changed");
+            await step.RollbackAsync(ctx, CancellationToken.None);
+
+            Assert.Equal(original, await File.ReadAllBytesAsync(configPath));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_SETUP_NATIVE_CLI", previousCli);
+            Directory.Delete(Path.GetDirectoryName(configPath)!, recursive: true);
+        }
     }
 
     [Fact]
@@ -1121,6 +2287,129 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task ConfigureGateway_NativeWindows_ParsesAllowCommandsAsJsonArray()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var config = new SetupConfig
+        {
+            InstallMode = GatewayInstallMode.NativeWindows,
+            Gateway = new GatewayConfig
+            {
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["plugins.entries.example.enabled"] = "true",
+                    ["plugins.entries.example.config"] = "{\"mode\":\"x\"}",
+                    ["plugins.entries.example.config.label"] = "007",
+                },
+            },
+        };
+        var ctx = CreateContext(config, commands);
+        var cliPath = Path.Combine(_tempDir, "openclaw.cmd");
+        File.WriteAllText(cliPath, "@echo off");
+        ctx.NativeCliPath = cliPath;
+        await File.WriteAllTextAsync(
+            GatewayInstallModeDetector.GetNativeProfileOwnershipPath(ctx.LocalDataDir),
+            $$"""{"ProfileName":"{{GatewayCliRunner.GetManagedNativeProfile(ctx.Config)}}","TaskName":"{{GatewayCliRunner.GetManagedNativeTaskName(ctx.Config)}}","ManagedConfigPaths":["plugins.entries.stale.enabled"]}""");
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var batchCall = Assert.Single(commands.Calls, call =>
+            call.Arguments.Any(argument => argument.Contains("'--batch-file'", StringComparison.Ordinal)));
+        var batchCommand = batchCall.Arguments.First(argument => argument.Contains("'--batch-file'", StringComparison.Ordinal));
+        var batchMatch = System.Text.RegularExpressions.Regex.Match(batchCommand, "'--batch-file' '([^']+)'");
+        Assert.True(batchMatch.Success);
+        var batchFile = batchMatch.Groups[1].Value;
+        Assert.False(File.Exists(batchFile));
+        var batchJson = commands.CapturedFiles[batchFile];
+        using var document = JsonDocument.Parse(batchJson);
+        var entries = document.RootElement.EnumerateArray().ToDictionary(
+            entry => entry.GetProperty("path").GetString()!,
+            entry => entry.GetProperty("value").Clone(),
+            StringComparer.Ordinal);
+        Assert.Equal(JsonValueKind.Array, entries["gateway.nodes.allowCommands"].ValueKind);
+        Assert.Contains(
+            entries["gateway.nodes.allowCommands"].EnumerateArray(),
+            item => item.GetString() == "device.info");
+        Assert.Equal(JsonValueKind.Number, entries["gateway.port"].ValueKind);
+        Assert.Equal(18789, entries["gateway.port"].GetInt32());
+        Assert.Equal(JsonValueKind.True, entries[ConfigureGatewayStep.DevicePairEnabledKey].ValueKind);
+        Assert.Equal(JsonValueKind.String, entries["plugins.entries.example.enabled"].ValueKind);
+        Assert.Equal("true", entries["plugins.entries.example.enabled"].GetString());
+        Assert.Equal(JsonValueKind.String, entries["plugins.entries.example.config.label"].ValueKind);
+        Assert.Equal("007", entries["plugins.entries.example.config.label"].GetString());
+        Assert.Equal(JsonValueKind.Object, entries["plugins.entries.example.config"].ValueKind);
+        Assert.Equal("x", entries["plugins.entries.example.config"].GetProperty("mode").GetString());
+        Assert.Equal(GatewayInstallModeDetector.GetNativeWizardLogPath(config), entries["logging.file"].GetString());
+        Assert.Equal(ctx.SharedGatewayToken, entries["gateway.auth.token"].GetString());
+        Assert.DoesNotContain(commands.Calls, call =>
+            call.Arguments.Any(argument => argument.Contains(ctx.SharedGatewayToken!, StringComparison.Ordinal)));
+        Assert.Contains(commands.Calls, call =>
+            call.Arguments.Any(argument =>
+                argument.Contains("'config' 'unset' 'plugins.entries.stale.enabled'", StringComparison.Ordinal)));
+        var persistedPaths = ConfigureGatewayStep.ReadNativeManagedConfigPaths(_localTempDir, ctx.Config);
+        Assert.Contains("gateway.auth.token", persistedPaths);
+        Assert.Contains("logging.file", persistedPaths);
+        Assert.Contains("plugins.entries.example.enabled", persistedPaths);
+        Assert.Contains("plugins.entries.example.config", persistedPaths);
+        Assert.Contains("plugins.entries.example.config.label", persistedPaths);
+    }
+
+    [Fact]
+    public async Task GatewayCliRunner_NativeWindows_AllowsForNodeColdStart()
+    {
+        var commands = new FakeCommandRunner(_ => Ok("2026.6.11"));
+        var config = new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows };
+        var ctx = CreateContext(config, commands);
+        var cliPath = Path.Combine(_tempDir, "openclaw.cmd");
+        File.WriteAllText(cliPath, "@echo off");
+        ctx.NativeCliPath = cliPath;
+
+        await GatewayCliRunner.RunNativeAsync(
+            ctx,
+            ["--version"],
+            TimeSpan.FromSeconds(15),
+            ct: CancellationToken.None);
+
+        Assert.Equal(GatewayCliRunner.NativeMinimumCommandTimeout, Assert.Single(commands.Timeouts));
+    }
+
+    [Fact]
+    public async Task GatewayCliRunner_NativeWindows_ClearsAmbientProfileSelectors()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var config = new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows };
+        var ctx = CreateContext(config, commands);
+        var cliPath = Path.Combine(_tempDir, "openclaw.ps1");
+        File.WriteAllText(cliPath, "& node @args");
+        ctx.NativeCliPath = cliPath;
+
+        await GatewayCliRunner.RunNativeAsync(
+            ctx,
+            ["gateway", "status", "--json"],
+            TimeSpan.FromSeconds(30),
+            ct: CancellationToken.None);
+
+        var environment = Assert.Single(commands.Environments)!;
+        var defaults = GatewayCliRunner.GetManagedNativeEnvironmentDefaults(config);
+        foreach (var (selector, defaultValue) in defaults)
+            Assert.Equal(defaultValue, environment[selector]);
+        Assert.Equal("OpenClawGateway", environment["OPENCLAW_PROFILE"]);
+        Assert.Equal("OpenClaw Gateway (OpenClawGateway)", environment["OPENCLAW_WINDOWS_TASK_NAME"]);
+        Assert.EndsWith(Path.Combine(".openclaw-OpenClawGateway", "openclaw.json"), environment["OPENCLAW_CONFIG_PATH"]);
+    }
+
+    [Theory]
+    [InlineData("{\"service\":{\"runtime\":{\"status\":\"unknown\"}},\"rpc\":{\"ok\":true}}", true)]
+    [InlineData("{\"service\":{\"runtime\":{\"status\":\"running\"}},\"rpc\":{\"ok\":false}}", false)]
+    [InlineData("{\"message\":\"gateway is not running\"}", false)]
+    [InlineData("not json", false)]
+    public void VerifyEndToEnd_UsesStructuredRpcHealth(string json, bool expected)
+    {
+        Assert.Equal(expected, VerifyEndToEndStep.IsGatewayRpcHealthy(json));
+    }
+
+    [Fact]
     public async Task ConfigureGateway_ReturnsTimeoutSpecificFailure()
     {
         var commands = new FakeCommandRunner(
@@ -1214,81 +2503,6 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("HTTPS", result.Message);
-    }
-
-    [Fact]
-    public void BuildReplacementSummary_NoExistingConfig_StatesNothingAffected()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: false,
-            LocalGatewayId: null,
-            LocalGatewayUrl: null,
-            HasDistro: false,
-            DistroName: null,
-            HasIdentityFiles: false,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: []);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("No existing configuration will be affected", summary);
-    }
-
-    [Fact]
-    public void BuildReplacementSummary_LocalGatewayAndDistro_MentionsReplacement()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local-gw",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: true,
-            DistroName: "OpenClaw",
-            HasIdentityFiles: false,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: []);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("WSL distro 'OpenClaw' will be deleted and recreated", summary);
-        Assert.Contains("Local gateway record will be replaced", summary);
-    }
-
-    [Fact]
-    public void BuildReplacementSummary_PreservedGateways_MentionsPreservation()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local-gw",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: false,
-            DistroName: null,
-            HasIdentityFiles: false,
-            PreservedGatewayCount: 2,
-            PreservedGatewayNames: ["Remote Gateway", "SSH Tunnel"]);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("will NOT be affected", summary);
-        Assert.Contains("Remote Gateway", summary);
-        Assert.Contains("SSH Tunnel", summary);
-    }
-
-    [Fact]
-    public void BuildReplacementSummary_IdentityFiles_MentionsRegeneration()
-    {
-        var config = new ExistingConfigDetector.ExistingConfig(
-            HasLocalGateway: true,
-            LocalGatewayId: "local-gw",
-            LocalGatewayUrl: "ws://localhost:18789",
-            HasDistro: false,
-            DistroName: null,
-            HasIdentityFiles: true,
-            PreservedGatewayCount: 0,
-            PreservedGatewayNames: []);
-
-        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
-
-        Assert.Contains("Device identity files for the local gateway will be regenerated", summary);
     }
 
     [Fact]
@@ -1430,6 +2644,23 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("Node approval failed", result.Message);
         Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public void PairNode_ClearStoredNodeDeviceTokenBeforeSetupPairing_PreservesOperatorToken()
+    {
+        var identityPath = Path.Combine(_tempDir, "gateway-identity");
+        var identity = new DeviceIdentity(identityPath);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "operator-token");
+        identity.StoreDeviceTokenForRole("node", "stale-node-token");
+
+        Assert.True(PairNodeStep.ClearStoredNodeDeviceTokenBeforeSetupPairing(identityPath));
+
+        var reloaded = new DeviceIdentity(identityPath);
+        reloaded.Initialize();
+        Assert.Equal("operator-token", reloaded.DeviceToken);
+        Assert.Null(reloaded.NodeDeviceToken);
     }
 
     // ─── Bind validation ───
@@ -2201,6 +3432,9 @@ public class SetupStepsTests : IDisposable
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
         public List<(string Executable, string[] Arguments, string? StdinInput)> DetailedCalls { get; } = [];
+        public List<IReadOnlyDictionary<string, string>?> Environments { get; } = [];
+        public Dictionary<string, string> CapturedFiles { get; } = [];
+        public List<TimeSpan> Timeouts { get; } = [];
         public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin)> WslCalls { get; } = [];
 
         public Task<CommandResult> RunAsync(
@@ -2214,6 +3448,21 @@ public class SetupStepsTests : IDisposable
         {
             Calls.Add((executable, arguments));
             DetailedCalls.Add((executable, arguments, stdinInput));
+            Environments.Add(environment is null ? null : new Dictionary<string, string>(environment));
+            Timeouts.Add(timeout);
+            var batchFileIndex = Array.IndexOf(arguments, "--batch-file");
+            if (batchFileIndex >= 0 && batchFileIndex + 1 < arguments.Length && File.Exists(arguments[batchFileIndex + 1]))
+                CapturedFiles[arguments[batchFileIndex + 1]] = File.ReadAllText(arguments[batchFileIndex + 1]);
+            else
+            {
+                var command = arguments.FirstOrDefault(argument => argument.Contains("'--batch-file'", StringComparison.Ordinal));
+                if (command is not null)
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(command, "'--batch-file' '([^']+)'");
+                    if (match.Success && File.Exists(match.Groups[1].Value))
+                        CapturedFiles[match.Groups[1].Value] = File.ReadAllText(match.Groups[1].Value);
+                }
+            }
             return Task.FromResult(run(arguments));
         }
 

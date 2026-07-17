@@ -353,6 +353,14 @@ public sealed partial class WizardPage : Page
             if (!BuildOptions(step, initial))
                 return;
 
+            if (_stepType == "select" &&
+                WizardSelection.DesktopAutoSelectAnswer(_options, title, message, _stepId) is { } desktopAnswer)
+            {
+                SelectOption(desktopAnswer);
+                await SendCurrentAnswerAsync(skip: false);
+                return;
+            }
+
             if (_stepType == "text")
             {
                 if (_sensitive)
@@ -493,10 +501,14 @@ public sealed partial class WizardPage : Page
                 }
             }
 
-            var initialValue = WizardAnswerBuilder.ValueKeys(initial).FirstOrDefault();
-            var index = WizardSelection.SelectedIndex(initialValue, visibleOptions.Select(o => o.Value).ToArray());
-            if (index >= 0 && index < SelectOptions.Items.Count)
-                SelectOptions.SelectedIndex = index;
+            var initialValue = WizardSelection.PreferredDesktopSelectAnswer(
+                _options,
+                WizardAnswerBuilder.ValueKeys(initial).FirstOrDefault(),
+                _currentTitle,
+                _currentMessage,
+                _stepId);
+            if (initialValue is not null)
+                SelectOption(initialValue);
             else if (SelectOptions.Items.Count > 0)
                 SelectOptions.SelectedIndex = 0;
 
@@ -596,6 +608,22 @@ public sealed partial class WizardPage : Page
     private static bool IsBackOption(WizardOptionValue option) =>
         string.Equals(option.Value, "__back", StringComparison.OrdinalIgnoreCase)
         || string.Equals(option.Value, "back", StringComparison.OrdinalIgnoreCase);
+
+    private void SelectOption(string value)
+    {
+        for (var i = 0; i < SelectOptions.Items.Count; i++)
+        {
+            if (SelectOptions.Items[i] is ListViewItem { Tag: WizardOptionValue option } &&
+                string.Equals(option.Value, value, StringComparison.Ordinal))
+            {
+                SelectOptions.SelectedIndex = i;
+                return;
+            }
+        }
+
+        if (SelectOptions.Items.Count > 0)
+            SelectOptions.SelectedIndex = 0;
+    }
 
     private static Brush ResourceBrush(string key)
     {
@@ -1075,7 +1103,11 @@ public sealed partial class WizardPage : Page
         StopConsoleTail();
         var tail = new WizardConsoleTail(
             logger: NullLogger.Instance,
-            distroNameOverride: _config.DistroName);
+            distroNameOverride: _config.DistroName,
+            nativeWindows: _config.InstallMode == GatewayInstallMode.NativeWindows,
+            nativeLogPath: _config.InstallMode == GatewayInstallMode.NativeWindows
+                ? GatewayInstallModeDetector.GetNativeWizardLogPath(_config)
+                : null);
         _consoleTail = tail;
         var dispatcher = DispatcherQueue;
         tail.Start(message =>

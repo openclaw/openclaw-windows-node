@@ -92,11 +92,83 @@ public sealed class InstallerIssAssertionTests
     }
 
     [Fact]
-    public void UninstallLocalGatewayScript_DirectlyUnregistersWslDistro()
+    public void UninstallLocalGatewayScript_RemovesNativeOrWslGateway()
     {
         var script = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "scripts", "Uninstall-LocalGateway.ps1"));
 
         Assert.Contains("$DistroName = 'OpenClawGateway'", script);
+        Assert.Contains("$GatewayTaskName = 'OpenClaw Gateway (OpenClawGateway)'", script);
+        Assert.Contains("$GatewayPort = 18789", script);
+        Assert.Contains("Get-InstalledGatewayMode", script);
+        Assert.Contains("Remove-SetupManagedGatewayRecords `", script);
+        Assert.Contains("-OwnedNativeRecordId $ownedNativeRecordId", script);
+        Assert.Contains("Test-SetupManagedLocalRecord -Record $record -InstallMode $InstallMode", script);
+        Assert.Contains("-OwnedNativeRecordId $OwnedNativeRecordId", script);
+        Assert.Contains("Get-NativeGatewayRecordId", script);
+        Assert.Contains("native-gateway-profile-owner.json", script);
+        Assert.Contains("app-owned native gateway profile", script);
+        Assert.Contains("Test-NativeOwnershipMatches", script);
+        Assert.Contains("ProfileName", script);
+        Assert.Contains("TaskName", script);
+        Assert.Contains("native-gateway-install.json", script);
+        Assert.Contains("ManagedConfigPaths", script);
+        Assert.Contains("'NativeWindows'", script);
+        Assert.Contains("Remove-NativeGatewayService", script);
+        Assert.Contains("OPENCLAW_WINDOWS_TASK_NAME = $GatewayTaskName", script);
+        Assert.Contains("OPENCLAW_GATEWAY_PORT = ''", script);
+        Assert.Contains("OPENCLAW_WRAPPER = ''", script);
+        Assert.Contains("OPENCLAW_PROFILE = $managedProfile", script);
+        Assert.Contains("OPENCLAW_CONFIG_PATH = Join-Path $managedStateDir 'openclaw.json'", script);
+        Assert.Contains("function Get-NativeGatewayStateDir", script);
+        Assert.Contains("$uriHost = $uri.Host.ToLowerInvariant()", script);
+        Assert.Contains("$userHome = [Environment]::GetFolderPath", script);
+        Assert.DoesNotContain("$host =", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("$home =", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Native OpenClaw CLI invocation failed", script);
+        Assert.Contains("$managedPrefix = Join-Path (Resolve-LocalDataDir) 'native-cli'", script);
+        Assert.True(
+            script.IndexOf("$managedCandidate = Join-Path $managedPrefix $name", StringComparison.Ordinal)
+            < script.IndexOf("$command = Get-Command $name", StringComparison.Ordinal));
+        Assert.Contains("@('gateway', 'uninstall')", script);
+        Assert.Contains(@"Microsoft\Windows\Start Menu\Programs\Startup", script);
+        Assert.Contains("gateway.cmd", script);
+        Assert.Contains("gateway.vbs", script);
+        Assert.Contains("Get-NetTCPConnection", script);
+        Assert.Contains("process ownership cannot be proven", script);
+        Assert.DoesNotContain("Stop-Process -Id $processId", script);
+        Assert.Contains("verified direct cleanup completed", script);
+        Assert.Contains("Remove-NativeGatewayConfig", script);
+        Assert.Contains("@('config', 'unset', $path)", script);
+        Assert.Contains("OpenClaw JSON5 writer", script);
+        Assert.Contains("Native config cleanup deferred to app-owned profile removal.", script);
+        Assert.Contains("function Remove-OwnedDirectoryStrict", script);
+        Assert.Contains("Refusing to recursively delete $Label reparse point", script);
+        Assert.Contains("Remove-OwnedDirectoryStrict -Path (Get-NativeGatewayStateDir)", script);
+        Assert.Contains("Remove-OwnedDirectoryStrict -Path (Join-Path $localDataDir 'native-cli')", script);
+        Assert.Contains("gateway.auth.token", script);
+        Assert.Contains("Remove-NativeGatewayConfig -LocalDataDir $localDataDir", script);
+        Assert.Contains("$script:installedGatewayMode = 'All'", script);
+        Assert.Contains("checking for preserved app-owned WSL data", script);
+        Assert.Contains(@"$gatewayDirectory = Join-Path $LocalDataDir ""wsl\$DistroName""", script);
+        Assert.DoesNotContain(@"Join-Path $AppRoot ""wsl\$DistroName""", script);
+        Assert.Contains("Remove-GatewayDirectory -LocalDataDir $localDataDir", script);
+        var nativeCleanupBranch = script[
+            script.LastIndexOf("if ($installMode -eq 'NativeWindows') {", StringComparison.Ordinal)..
+            script.LastIndexOf("$script:WslPath = Get-WslExePath", StringComparison.Ordinal)];
+        Assert.DoesNotContain("Complete-GatewayCleanup", nativeCleanupBranch);
+        Assert.Contains("Complete-GatewayCleanup -Message 'Local native Windows gateway removed.'", script);
+        var modeDetection = script[
+            script.IndexOf("function Get-InstalledGatewayMode", StringComparison.Ordinal)..
+            script.IndexOf("function Get-NativeGatewayRecordId", StringComparison.Ordinal)];
+        Assert.True(
+            modeDetection.IndexOf("native-gateway-profile-owner.json", StringComparison.Ordinal)
+            < modeDetection.IndexOf("setup-state.json", StringComparison.Ordinal));
+        var portFunction = script[
+            script.IndexOf("function Get-NativeGatewayPort", StringComparison.Ordinal)..
+            script.IndexOf("function Get-NativeGatewayServiceFiles", StringComparison.Ordinal)];
+        Assert.True(
+            portFunction.IndexOf("$ownership = Read-JsonFile", StringComparison.Ordinal)
+            < portFunction.IndexOf("$state = Read-JsonFile", StringComparison.Ordinal));
         Assert.Contains("'--list', '--quiet'", script);
         Assert.Contains("'--terminate', $DistroName", script);
         Assert.DoesNotContain("'--shutdown'", script);
@@ -111,6 +183,8 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("wsl-keepalive", script);
         Assert.Contains("Test-DistroListed", script);
         Assert.Contains("Test-DistroNotFound", script);
+        Assert.Contains("Test-WslUnavailable", script);
+        Assert.Contains("WSL is unavailable; no preserved app-owned distro can be registered.", script);
         Assert.Contains("FileAttributes]::ReparsePoint", script);
         Assert.Contains("Refusing to recursively delete reparse point", script);
         Assert.Contains("for ($attempt = 1; $attempt -le 6; $attempt++)", script);
@@ -147,10 +221,15 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"#define MyMutex ""OpenClawTray-Dev""", iss);
         Assert.Contains(@"#define MyProtocol ""openclaw-dev""", iss);
         Assert.Contains(@"#define MyDistroName ""OpenClawGateway-Dev""", iss);
+        Assert.Contains(@"#define MyGatewayPort ""18790""", iss);
+        Assert.Contains(@"#define MyGatewayTaskName ""OpenClaw Gateway (OpenClawGateway-Dev)""", iss);
+        Assert.Contains(@"#define MyGatewayTaskName ""OpenClaw Gateway (OpenClawGateway)""", iss);
         Assert.Contains(@"#define MyAppPublisher ""OpenClaw Foundation""", iss);
         Assert.Contains("-DataDirectoryName ' + AddQuotes('{#MyInstallDir}')", iss);
         Assert.Contains("-AutoStartName ' + AddQuotes('{#MyAutoStartName}')", iss);
         Assert.Contains("-StartupTaskName ' + AddQuotes('{#MyStartupTaskName}')", iss);
+        Assert.Contains("-GatewayTaskName ' + AddQuotes('{#MyGatewayTaskName}')", iss);
+        Assert.Contains("-GatewayPort {#MyGatewayPort}", iss);
         Assert.Contains("-DistroName ' + AddQuotes('{#MyDistroName}')", iss);
 
         var uninstallScript = File.ReadAllText(Path.Combine(

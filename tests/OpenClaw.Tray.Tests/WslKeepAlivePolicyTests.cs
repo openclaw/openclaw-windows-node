@@ -47,6 +47,20 @@ public class WslKeepAlivePolicyTests
     }
 
     [Fact]
+    public void ShouldStart_DoesNotTreatNativeWindowsGatewayAsWslGateway()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://127.0.0.1:18789",
+            FriendlyName = "Local (Windows)",
+            IsLocal = true,
+        };
+
+        Assert.False(WslKeepAlivePolicy.ShouldStart(record, legacyGatewayUrl: null));
+    }
+
+    [Fact]
     public void ShouldStart_FallsBackToLegacyLocalUrl_WhenNoActiveRecordExists()
     {
         Assert.True(WslKeepAlivePolicy.ShouldStart(activeRecord: null, "ws://127.0.0.1:18789"));

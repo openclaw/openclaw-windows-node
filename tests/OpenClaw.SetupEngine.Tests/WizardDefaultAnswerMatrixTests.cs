@@ -32,9 +32,43 @@ public class WizardDefaultAnswerMatrixTests
         AssertConfiguredSelect(answers, "default-model", ["__keep__", "gpt-5.5", "gpt-5.4", "claude-sonnet-4.6"]);
         AssertConfiguredMultiselect(answers, "select-channel-quickstart", ChannelOptions);
         AssertConfiguredSelect(answers, "search-provider", ["__skip__", "tavily", "brave", "bing"]);
+        AssertConfiguredSelect(answers, "how-do-you-want-to-hatch-your-agent", ["tui", "web", "later"]);
+        AssertConfiguredSelect(answers, "how-do-you-want-to-hatch-your-bot", ["tui", "web", "later"]);
 
         Assert.True(answers.TryGetValue("configure-skills-now-recommended", out var configureSkills));
         Assert.False((bool)WizardAnswerBuilder.BuildWireValue("confirm", configureSkills, []));
+    }
+
+    [Fact]
+    public void DesktopWizard_HatchChoiceDefersInsteadOfLaunchingTerminalUi()
+    {
+        var options = Options(["tui", "web", "later"]);
+
+        Assert.Equal("later", SetupWizardRunner.InferOptionAnswer(options, "tui"));
+        Assert.Equal("later", WizardSelection.PreferredDesktopSelectAnswer(options, "tui"));
+        Assert.Equal("later", WizardSelection.DesktopAutoSelectAnswer(options));
+    }
+
+    [Fact]
+    public void DesktopWizard_ServiceRuntimeChoiceSkipsAlreadyInstalledPrompt()
+    {
+        var options = Options(["restart", "reinstall", "skip"]);
+
+        Assert.Equal(
+            "skip",
+            WizardSelection.PreferredDesktopSelectAnswer(
+                options,
+                initialValue: "restart",
+                title: "Choose an option",
+                message: "Gateway service already installed",
+                stepId: "gateway-service-runtime"));
+        Assert.Equal(
+            "skip",
+            WizardSelection.DesktopAutoSelectAnswer(
+                options,
+                title: "Choose an option",
+                message: "Gateway service already installed",
+                stepId: "gateway-service-runtime"));
     }
 
     [Theory]

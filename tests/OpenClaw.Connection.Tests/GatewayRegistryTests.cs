@@ -421,6 +421,27 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void PreserveAdvancedFields_KeepsManagedGatewayMetadata_AcrossSavedGatewayEdit()
+    {
+        var existing = MakeRecord("gw-1", "ws://127.0.0.1:18789") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            SetupManagedNativeTaskName = "OpenClaw Gateway (OpenClawGateway)",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+        }.PreserveAdvancedFields(existing);
+
+        Assert.Equal("OpenClawGateway", rebuilt.SetupManagedDistroName);
+        Assert.Equal("OpenClaw Gateway (OpenClawGateway)", rebuilt.SetupManagedNativeTaskName);
+    }
+
+    [Fact]
     public void PreserveAdvancedFields_FormValueWins_AndNullExistingIsNoOp()
     {
         var existing = MakeRecord("gw-1", "wss://old") with { BrowserControlPort = 19000 };

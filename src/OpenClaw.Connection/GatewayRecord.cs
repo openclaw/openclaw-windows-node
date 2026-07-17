@@ -33,6 +33,9 @@ public sealed record GatewayRecord
     /// <summary>WSL distro name for gateway records provisioned by SetupEngine.</summary>
     public string? SetupManagedDistroName { get; init; }
 
+    /// <summary>Windows Scheduled Task name for native gateway records provisioned by SetupEngine.</summary>
+    public string? SetupManagedNativeTaskName { get; init; }
+
     /// <summary>Per-gateway SSH tunnel configuration. Null if no tunnel needed.</summary>
     public SshTunnelConfig? SshTunnel { get; init; }
 
@@ -66,7 +69,12 @@ public static class GatewayRecordEditing
     public static GatewayRecord PreserveAdvancedFields(this GatewayRecord rebuilt, GatewayRecord? existing)
         => existing is null
             ? rebuilt
-            : rebuilt with { BrowserControlPort = rebuilt.BrowserControlPort ?? existing.BrowserControlPort };
+            : rebuilt with
+            {
+                BrowserControlPort = rebuilt.BrowserControlPort ?? existing.BrowserControlPort,
+                SetupManagedDistroName = rebuilt.SetupManagedDistroName ?? existing.SetupManagedDistroName,
+                SetupManagedNativeTaskName = rebuilt.SetupManagedNativeTaskName ?? existing.SetupManagedNativeTaskName,
+            };
 }
 
 /// <summary>Per-gateway SSH tunnel configuration.</summary>

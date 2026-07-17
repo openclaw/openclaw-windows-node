@@ -351,7 +351,7 @@
                                       Text="Set up or reconfigure Local Gateway"
                                       Style="{StaticResource BodyTextBlockStyle}"/>
                            <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Description" x:Name="LocalGatewaySetupDescriptionText"
-                                      Text="Launches setup to install an app-owned WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation."
+                                      Text="Launches setup to install or reconfigure a native Windows or WSL local gateway. Existing local gateways are only replaced after confirmation."
                                       Style="{StaticResource CaptionTextBlockStyle}"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       TextWrapping="Wrap"/>
@@ -381,7 +381,7 @@
                                       Text="OpenClaw Onboard"
                                       Style="{StaticResource BodyTextBlockStyle}"/>
                            <TextBlock x:Uid="SettingsPage_OnboardWizard_Description"
-                                      Text="Open the OpenClaw onboarding on an installed Local Gateway. Skips WSL installation and jumps straight to configuration."
+                                      Text="Open the OpenClaw onboarding on an installed Local Gateway and jump straight to gateway configuration."
                                       Style="{StaticResource CaptionTextBlockStyle}"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       TextWrapping="Wrap"/>
@@ -407,10 +407,10 @@
                                  IsOpen="False"
                                  IsClosable="False"
                                  Title="MSIX installation detected"
-                                 Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
+                                 Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the managed Local Gateway runtime or data. Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
 
                         <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
-                                   Text="Removes the app-owned WSL distro, its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
+                                   Text="Removes the managed native Windows or WSL local gateway, its startup files, and gateway credentials. Your MCP token is preserved. Onboarding will reset."
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"/>
 

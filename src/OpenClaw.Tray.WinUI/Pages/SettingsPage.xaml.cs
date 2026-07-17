@@ -2,6 +2,7 @@ using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -37,15 +38,14 @@ public sealed partial class SettingsPage : Page
 
     private enum UninstallUiState { Idle, InProgress, Success, Failure }
 
-    private static string GatewayIdleBodyText =>
-        $"Removes the WSL distro ({AppIdentity.SetupDistroName}), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.";
+    private string GatewayIdleBodyText => GetGatewayIdleBodyText(DetectInstalledGatewayMode());
 
 
     public SettingsPage()
     {
         InitializeComponent();
         LocalGatewaySetupDescriptionText.Text =
-            $"Launches setup to install the app-owned {AppIdentity.SetupDistroName} WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation.";
+            "Launches setup to install or reconfigure a native Windows or WSL local gateway. Existing local gateways are only replaced after confirmation.";
         GatewayBodyText.Text = GatewayIdleBodyText;
         _gatewayUptimeRefreshTimer.Tick += OnGatewayUptimeRefreshTimerTick;
         Loaded += OnLoaded;
@@ -385,12 +385,12 @@ public sealed partial class SettingsPage : Page
     private void LoadGatewaySection(SettingsManager settings)
     {
         var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
-        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive());
+        var activeGateway = CurrentApp.Registry?.GetActive();
 
         _localGatewayInstalled = File.Exists(setupStatePath)
             || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);
 
-        OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
+        OpenClawOnboardCard.Visibility = SetupExistingGatewayClassifier.IsSetupManagedLocalGateway(activeGateway)
             ? Visibility.Visible : Visibility.Collapsed;
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
@@ -597,6 +597,7 @@ public sealed partial class SettingsPage : Page
 
     private async Task OnRemoveGatewayAsync()
     {
+        var installedMode = DetectInstalledGatewayMode();
         var dialogContent = new StackPanel { Spacing = 8 };
         dialogContent.Children.Add(new TextBlock
         {
@@ -605,10 +606,7 @@ public sealed partial class SettingsPage : Page
         });
         dialogContent.Children.Add(new TextBlock
         {
-            Text = $"• WSL distro: {AppIdentity.SetupDistroName} (and its disk image)\n" +
-                   "• Autostart registry entry\n" +
-                   "• Gateway credentials (token and bootstrap token cleared)\n" +
-                   "• Setup state (onboarding will reset)",
+            Text = GetGatewayRemovalDetails(installedMode),
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.7
         });
@@ -742,6 +740,50 @@ public sealed partial class SettingsPage : Page
             _uninstallCts = null;
         }
     }
+
+    private GatewayInstallMode? DetectInstalledGatewayMode()
+    {
+        try
+        {
+            return GatewayInstallModeDetector.DetectInstalled(
+                AppIdentity.ResolveRoamingDataDirectory(),
+                AppIdentity.ResolveSetupLocalDataDirectory(),
+                GatewayInstallMode.Wsl);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"SettingsPage: Could not detect installed gateway mode: {ex.Message}");
+            return null;
+        }
+    }
+
+    internal static string GetGatewayIdleBodyText(GatewayInstallMode? mode) => mode switch
+    {
+        GatewayInstallMode.NativeWindows =>
+            "Removes the native Windows gateway service, its managed startup files, and gateway credentials. Your MCP token is preserved. Onboarding will reset.",
+        GatewayInstallMode.Wsl =>
+            $"Removes the WSL distro ({AppIdentity.SetupDistroName}), its disk image, autostart entry, and gateway credentials. Your MCP token is preserved. Onboarding will reset.",
+        _ =>
+            "Removes the managed local gateway runtime, startup files, and gateway credentials. Your MCP token is preserved. Onboarding will reset.",
+    };
+
+    internal static string GetGatewayRemovalDetails(GatewayInstallMode? mode) => mode switch
+    {
+        GatewayInstallMode.NativeWindows =>
+            "• Native Windows gateway service and managed startup files\n" +
+            "• Setup-managed gateway configuration and credential\n" +
+            "• Local gateway identity credentials and registry records\n" +
+            "• Setup state (onboarding will reset)",
+        GatewayInstallMode.Wsl =>
+            $"• WSL distro: {AppIdentity.SetupDistroName} (and its disk image)\n" +
+            "• Autostart registry entry\n" +
+            "• Gateway credentials (token and bootstrap token cleared)\n" +
+            "• Setup state (onboarding will reset)",
+        _ =>
+            "• Managed local gateway runtime and startup files\n" +
+            "• Gateway credentials and local identity records\n" +
+            "• Setup state (onboarding will reset)",
+    };
 
     private static string? ResolveCurrentExecutablePath()
     {

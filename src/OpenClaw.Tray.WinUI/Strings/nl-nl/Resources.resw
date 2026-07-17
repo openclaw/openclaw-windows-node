@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -5968,7 +5968,7 @@ Controleer of de gateway actief is.</value>
     <value>Wachten tot de gateway bevestigt dat het kanaal actief is…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
-    <value>WSL-gateway</value>
+    <value>Local gateway</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsDescription.Text" xml:space="preserve">
     <value>Open een shell of beheer de lokale gatewayservice in WSL.</value>
@@ -6010,22 +6010,22 @@ Controleer of de gateway actief is.</value>
     <value>Terminal openen</value>
   </data>
   <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>openclaw gateway start uitvoeren in WSL</value>
+    <value>Run openclaw gateway start</value>
   </data>
   <data name="ConnectionPage_GatewayHostStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>WSL-gateway starten</value>
+    <value>Start local gateway</value>
   </data>
   <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>openclaw gateway stop uitvoeren in WSL</value>
+    <value>Run openclaw gateway stop</value>
   </data>
   <data name="ConnectionPage_GatewayHostStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>WSL-gateway stoppen</value>
+    <value>Stop local gateway</value>
   </data>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>openclaw gateway restart uitvoeren in WSL</value>
+    <value>Run openclaw gateway restart</value>
   </data>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>WSL-gateway opnieuw starten</value>
+    <value>Restart local gateway</value>
   </data>
   <data name="AgentEventsPage_Status_Live" xml:space="preserve">
     <value>Actueel</value>
@@ -6567,6 +6567,9 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
     <value>Open a shell or manage the local gateway service in {0}.</value>
   </data>
+  <data name="ConnectionPage_GatewayHostControlsNativeDescription_Format" xml:space="preserve">
+    <value>Open a shell or manage the native Windows gateway task {0}.</value>
+  </data>
   <data name="CronPage_JobCompleted" xml:space="preserve">
     <value>Job completed</value>
   </data>
@@ -6596,6 +6599,9 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="GatewayHostAccess_OpenTerminalInWslTooltip_Format" xml:space="preserve">
     <value>Open a terminal in the {0} WSL gateway.</value>
+  </data>
+  <data name="GatewayHostAccess_OpenTerminalNativeTooltip_Format" xml:space="preserve">
+    <value>Open a Windows terminal for the native gateway task {0}.</value>
   </data>
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>

@@ -9,9 +9,9 @@ Before installing, make sure you have:
 - **Windows 10 (20H2 or later)** or **Windows 11**
 - **WebView2 Runtime** — pre-installed on Windows 11 and most up-to-date Windows 10 systems. If missing, download from [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the install-new-WSL and connect-existing handoff flow.
+You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway (recommended for the safest local boundary), install OpenClaw natively on Windows, or connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the install-new and connect-existing handoff flow.
 
-New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local WSL gateway, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
+New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local gateway modes, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
 
 ## Step-by-Step Installation
 
@@ -46,21 +46,24 @@ After the installer finishes, OpenClaw Companion starts automatically. Look for 
 
 If you don't see it, check the **hidden icons** area (the `^` arrow next to the tray).
 
-The installer also creates a Start Menu group with shortcuts for **OpenClaw Companion**, **OpenClaw Gateway Setup**, **OpenClaw Companion Settings**, **OpenClaw Chat**, **Check for Updates**, and uninstall. The Gateway Setup shortcut launches the bundled local WSL/onboarding setup app.
+The installer also creates a Start Menu group with shortcuts for **OpenClaw Companion**, **OpenClaw Gateway Setup**, **OpenClaw Companion Settings**, **OpenClaw Chat**, **Check for Updates**, and uninstall. The Gateway Setup shortcut launches the bundled native Windows/WSL onboarding app.
 
 ### 5. Onboarding Wizard
 
-On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The default flow installs and configures a dedicated app-owned local WSL gateway:
+On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The wizard offers two managed local gateway modes:
+
+- **WSL 2 (recommended)** — creates a locked-down app-owned `OpenClawGateway` Ubuntu instance for the safest local boundary and maximum Linux compatibility. Requires WSL 2 and virtualization.
+- **Native Windows** — installs the pinned OpenClaw CLI into an app-owned LocalAppData prefix with the official PowerShell installer and runs an isolated gateway profile as a per-user Windows Scheduled Task. Existing global OpenClaw installs and the default profile are preserved; it runs directly in the Windows user context.
 
 1. **Security notice** — Confirms this is a trusted PC before local setup starts.
 
-2. **Welcome** — Choose **Install a local gateway (WSL)** to install the app-owned WSL gateway, or **Connect to an existing gateway** to open the tray app's Connections tab.
+2. **Welcome** — Choose **Install on Windows (native)**, **Install in WSL**, or **Connect to an existing gateway** to open the tray app's Connections tab.
 
    For the role split behind these choices, see [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md).
 
 3. **Capabilities** — Choose a capability profile, review matching Windows permission status, and see exactly what setup will install before anything runs.
 
-4. **Local setup progress** — Installs a fresh app-owned `OpenClawGateway` WSL instance and connects Molty to it. This does not modify an existing user Ubuntu distro.
+4. **Local setup progress** — Installs the selected local runtime and connects Molty to it. Native mode uses Windows directly; WSL mode creates a fresh app-owned distro without modifying an existing user Ubuntu distro.
 
 5. **Gateway installed** — Confirms the private gateway is running and offers **Start OpenClaw onboard**.
 

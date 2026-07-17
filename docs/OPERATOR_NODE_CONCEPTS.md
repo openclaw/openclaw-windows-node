@@ -9,7 +9,8 @@ different approval paths.
 | Term | Meaning |
 | --- | --- |
 | Gateway | The OpenClaw service that coordinates agents, channels, sessions, devices, and nodes. The Windows app talks to it over WebSocket. |
-| Local WSL gateway | A dedicated `OpenClawGateway` WSL distro installed by the Windows onboarding flow. It is app-owned and locked down rather than a general-purpose Ubuntu profile. |
+| Local WSL gateway | A dedicated `OpenClawGateway` WSL distro installed by the Windows onboarding flow. It is the recommended local mode for the safest isolation boundary and is app-owned and locked down rather than a general-purpose Ubuntu profile. |
+| Local native gateway | OpenClaw installed directly in the Windows user profile and started through a per-user Windows Scheduled Task. This is the simpler setup mode, but it runs directly in the Windows user context. |
 | Operator | The user-facing control role. The tray app uses the operator connection for Quick Send, chat, diagnostics, channel controls, setup, and approving pairing requests. |
 | Node | The controllable Windows machine role. When Node Mode is enabled, the tray app advertises Windows capabilities such as screenshots, canvas, camera, notifications, and approved command execution. |
 | Pairing | The gateway approval flow that turns a new device or node request into a trusted identity with a stored device token. |
@@ -37,10 +38,11 @@ A typical local setup uses this sequence:
 5. After approval, the gateway can invoke only the node capabilities that are
    enabled locally and allowlisted by gateway policy.
 
-## Local WSL Gateway Versus Existing Gateway
+## Local Gateway Modes Versus Existing Gateway
 
-The default onboarding path installs a local WSL gateway for users who do not
-already have one. That gateway runs on the same Windows PC and is managed by the
+The recommended onboarding path installs an isolated WSL 2 gateway for the
+safest local boundary. Users who prefer the simpler setup path can instead
+choose the native Windows gateway. Both run on the same PC and are managed by the
 OpenClaw Companion setup flow.
 
 Advanced setup is for users who already have a local, remote, or manually

@@ -78,6 +78,19 @@ public static class SetupExistingGatewayClassifier
             || DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", NullLogger.Instance);
     }
 
+    public static bool IsSetupManagedLocalGateway(GatewayRecord? record)
+    {
+        if (record is null || record.SshTunnel is not null)
+            return false;
+
+        if (WslKeepAlivePolicy.IsSetupManagedLocalRecord(record))
+            return true;
+
+        return record.IsLocal
+            && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url)
+            && string.Equals(record.FriendlyName, "Local (Windows)", StringComparison.Ordinal);
+    }
+
     private static async Task<bool> HasAppOwnedLocalWslGatewayAsync(
         GatewayRegistry? registry,
         string localDataPath,
@@ -106,10 +119,7 @@ public static class SetupExistingGatewayClassifier
     private static bool HasLocalSetupEvidence(GatewayRegistry? registry, string localDataPath)
     {
         if (registry is not null
-            && registry.GetAll().Any(record =>
-                record.IsLocal
-                && record.SshTunnel is null
-                && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url)))
+            && registry.GetAll().Any(WslKeepAlivePolicy.IsSetupManagedLocalRecord))
         {
             return true;
         }
