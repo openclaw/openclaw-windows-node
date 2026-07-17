@@ -177,6 +177,21 @@ public record class SettingsData
     /// legacy policy. Default <c>false</c>. When enabled, any failure inside
     /// the new pipeline produces a typed deny — it never falls back silently
     /// to the legacy path. No Settings UI yet; enabled by editing settings.json.
+    /// <para>
+    /// Interaction with <see cref="SystemRunSandboxEnabled"/> (intentional, not
+    /// a misconfiguration): the pipeline executes approved commands as a direct
+    /// argv, and the sandbox transport cannot carry that form yet, so
+    /// system.run behaves as follows while this setting is on:
+    /// <list type="bullet">
+    /// <item>sandbox enabled and available — every request returns a typed
+    /// unavailable error before evaluation; the sandbox is never bypassed.</item>
+    /// <item>sandbox enabled, unavailable, host fallback allowed — the approved
+    /// argv executes uncontained on the host.</item>
+    /// <item>sandbox enabled, unavailable, strict fallback blocking — the
+    /// sandbox settings deny execution, as they do for the legacy path.</item>
+    /// <item>sandbox disabled — the approved argv executes on the host.</item>
+    /// </list>
+    /// </para>
     /// </summary>
     public bool ExecApprovalsNewPathEnabled { get; set; } = false;
 

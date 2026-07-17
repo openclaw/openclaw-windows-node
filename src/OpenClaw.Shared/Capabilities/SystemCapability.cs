@@ -324,15 +324,29 @@ public class SystemCapability : NodeCapabilityBase
         {
             Logger.Info($"[system.run] corr={correlationId} path=v2");
             ExecApprovalV2Result v2Result;
-            try
+            if (_commandRunner is IDirectArgvSupportAwareCommandRunner argvAware
+                && !argvAware.CanExecuteDirectArgv())
             {
-                v2Result = await _v2Handler.HandleAsync(request, correlationId);
+                // Approved commands execute as a direct argv, which the active
+                // sandbox transport cannot carry yet. Fail closed before any
+                // evaluation or prompt so nothing gets approved that cannot
+                // execute. The sandbox is never bypassed or disabled from here.
+                v2Result = ExecApprovalV2Result.Unavailable(
+                    "sandboxed system.run cannot execute the approved command form yet; " +
+                    "keep the sandbox on and disable the new approvals path, or turn the sandbox off, to run commands");
             }
-            catch (Exception ex)
+            else
             {
-                // Rail 1: no silent fallback — handler exceptions become typed denies.
-                Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
-                v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
+                try
+                {
+                    v2Result = await _v2Handler.HandleAsync(request, correlationId);
+                }
+                catch (Exception ex)
+                {
+                    // Rail 1: no silent fallback — handler exceptions become typed denies.
+                    Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
+                    v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
+                }
             }
 
             Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");

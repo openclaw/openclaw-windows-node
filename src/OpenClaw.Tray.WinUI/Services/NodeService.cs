@@ -343,8 +343,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // New exec approvals path: explicit opt-in, default off.
         if (_settings?.ExecApprovalsNewPathEnabled == true)
         {
-            _execApprovalsV2Handler ??= BuildExecApprovalsV2Handler();
-            _systemCapability.SetV2Handler(_execApprovalsV2Handler);
+            // One coordinator per service lifetime (it serializes approvals with
+            // a per-instance semaphore), but a failed construction must not be
+            // sticky: only a real coordinator is cached, so the next capability
+            // rebuild retries a transient initialization fault instead of
+            // pinning the fail-closed handler until restart.
+            _execApprovalsV2Handler ??= TryBuildExecApprovalsV2Coordinator();
+            _systemCapability.SetV2Handler(_execApprovalsV2Handler ?? ExecApprovalV2NullHandler.Instance);
         }
 
         Register(_systemCapability);
@@ -600,7 +605,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// wired yet, so prompt-required decisions resolve through the store's
     /// ask fallback.
     /// </summary>
-    private IExecApprovalV2Handler BuildExecApprovalsV2Handler()
+    private IExecApprovalV2Handler? TryBuildExecApprovalsV2Coordinator()
     {
         try
         {
@@ -616,8 +621,10 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error("[EXEC-APPROVALS] new path enabled but coordinator unavailable; failing closed", ex);
-            return ExecApprovalV2NullHandler.Instance;
+            _logger.Error(
+                "[EXEC-APPROVALS] new path enabled but coordinator unavailable; " +
+                "failing closed until the next capability rebuild retries", ex);
+            return null;
         }
     }
 
