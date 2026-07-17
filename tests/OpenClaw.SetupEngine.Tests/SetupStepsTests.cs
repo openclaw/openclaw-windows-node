@@ -1,8 +1,10 @@
 using OpenClaw.Connection;
+using OpenClaw.TestSupport;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Xunit.Abstractions;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -13,11 +15,13 @@ public class SetupStepsTests : IDisposable
     private readonly string _localTempDir;
     private readonly string? _prevDataDir;
     private readonly string? _prevLocalDataDir;
+    private readonly ITestOutputHelper _output;
     private const string DevicePairPluginNotFoundOutput = "plugins.entries.device-pair: plugin not found: device-pair";
     private const string OtherPluginNotFoundOutput = "plugins.entries.other-plugin: plugin not found: other-plugin";
 
-    public SetupStepsTests()
+    public SetupStepsTests(ITestOutputHelper output)
     {
+        _output = output;
         _tempDir = Path.Combine(Path.GetTempPath(), $"steps-test-{Guid.NewGuid():N}");
         _localTempDir = Path.Combine(Path.GetTempPath(), $"steps-local-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
@@ -2193,6 +2197,112 @@ public class SetupStepsTests : IDisposable
         ctx.DistroName = "test-distro";
         ctx.SharedGatewayToken = "shared-token";
         return ctx;
+    }
+
+    // Shared scenario for the node-pairing cancellation tests: a reachable gateway HTTP endpoint (so
+    // WindowsGatewayReachability.VerifyAsync passes), a silent WebSocket the node client parks against,
+    // a fake WSL runner whose approval drain is empty, and a seeded gateway registry record — enough to
+    // drive the REAL PairNodeStep to its node-connection wait. `ctxToken` becomes the SetupContext's
+    // CancellationToken (used by the pipeline); pass CancellationToken.None when cancelling the step call
+    // directly. The caller disposes the returned `ws`/`http`.
+    private (SetupContext ctx, SilentWebSocketServer ws, HttpListener http, SetupLogger logger)
+        BuildNodePairingScenario(CancellationToken ctxToken)
+    {
+        var httpPort = GetFreeTcpPort();
+        var http = new HttpListener();
+        http.Prefixes.Add($"http://localhost:{httpPort}/");
+        http.Start();
+        _ = Task.Run(async () =>
+        {
+            while (http.IsListening)
+            {
+                HttpListenerContext c;
+                try { c = await http.GetContextAsync(); }
+                catch { return; }
+                c.Response.StatusCode = 200;
+                c.Response.Close();
+            }
+        });
+
+        var ws = new SilentWebSocketServer();
+        var commands = new FakeCommandRunner(_ => Ok(), (_, _, _) => Ok(stdout: "No pending device approvals"));
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = new SetupContext(
+            new SetupConfig { GatewayPort = httpPort }, logger,
+            new TransactionJournal(filePath: null), commands, ctxToken);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-token-placeholder";
+        ctx.GatewayUrl = $"ws://127.0.0.1:{ws.Port}";
+        ctx.GatewayRecordId = "test-gw";
+
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "test-gw",
+            Url = ctx.GatewayUrl,
+            IsLocal = true,
+            SetupManagedDistroName = ctx.DistroName,
+            SshTunnel = null,
+        });
+        registry.Save();
+        return (ctx, ws, http, logger);
+    }
+
+    // The step itself must rethrow a caller cancel rather than swallow it into StepResult.Fail.
+    [Fact]
+    public async Task PairNodeStep_CallerCancellation_PropagatesInsteadOfFailing()
+    {
+        var (ctx, ws, http, _) = BuildNodePairingScenario(CancellationToken.None);
+        using (ws)
+        using (http)
+        {
+            using var callerCts = new CancellationTokenSource();
+            var task = new PairNodeStep().ExecuteAsync(ctx, callerCts.Token);
+            await ws.UpgradeCompleted;   // deterministic barrier: the client is in its node-connection wait
+            callerCts.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        }
+    }
+
+    // Durable end-to-end contract (the user-visible behavior the PR promises): driving the REAL
+    // SetupPipeline with the real PairNodeStep and a caller cancel, the pipeline reports Cancelled/exit 3,
+    // emits NO "connection failed"/retry warning, and journals the abort as a cancellation — not a
+    // failed-step narrative. On base the step's retry masks the *outcome* to Cancelled too, so the
+    // log/journal assertions are what actually pin this fix.
+    [Fact]
+    public async Task SetupPipeline_CallerCancel_CancelsCleanlyWithoutFailureNarrative()
+    {
+        using var callerCts = new CancellationTokenSource();
+        var (ctx, ws, http, logger) = BuildNodePairingScenario(callerCts.Token);
+        using (ws)
+        using (http)
+        {
+            var logs = new List<LogEntry>();
+            logger.LogEmitted += (_, e) => { lock (logs) { logs.Add(e); } };
+
+            var pipeline = new SetupPipeline(new SetupStep[] { new PairNodeStep() }, rollbackOnFailureOverride: false);
+            var run = pipeline.RunAsync(ctx);
+            await ws.UpgradeCompleted;
+            callerCts.Cancel();
+            var result = await run;
+
+            _output.WriteLine($"SetupPipeline on caller-cancel → Outcome={result.Outcome}, ExitCode={result.ExitCode}");
+
+            // 1. user-observable outcome
+            Assert.Equal(PipelineOutcome.Cancelled, result.Outcome);
+            Assert.Equal(3, result.ExitCode);
+
+            // 2. no misleading connection-failure / retry warning for a user abort
+            List<LogEntry> snapshot;
+            lock (logs) { snapshot = logs.ToList(); }
+            Assert.DoesNotContain(snapshot, e => e.Message.Contains("Node connection failed", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(snapshot, e => e.Level == LogLevel.Warn && e.Message.Contains("retrying", StringComparison.OrdinalIgnoreCase));
+
+            // 3. journal records the cancellation, not a failed-step narrative
+            Assert.Contains(ctx.Journal.Entries, en => en.Event == "pipeline_cancelled");
+            Assert.DoesNotContain(ctx.Journal.Entries, en => en.Event == "pipeline_failed");
+        }
     }
 
     private sealed class FakeCommandRunner(

@@ -2257,6 +2257,13 @@ public sealed class PairNodeStep : SetupStep
 
             return StepResult.Fail($"Node connection failed: {outcome.Outcome}");
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Let a caller-driven cancel propagate so the pipeline reports Cancelled,
+            // not a Failed step — the catch-all below would otherwise convert it back
+            // into StepResult.Fail (same idiom as the other steps' cancel rethrow).
+            throw;
+        }
         catch (Exception ex)
         {
             return StepResult.Fail($"Node pairing failed: {ex.Message}", ex);
@@ -2387,8 +2394,11 @@ public sealed class PairNodeStep : SetupStep
             cts.CancelAfter(timeout);
             return await tcs.Task.WaitAsync(cts.Token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            // Only the internal CancelAfter(timeout) firing is a Timeout; a caller
+            // (user aborting setup) cancelling `ct` must propagate so the pipeline
+            // reports Cancelled, rather than being misreported as a node timeout.
             return new NodeConnectionResult(NodeConnectionOutcome.Timeout);
         }
         finally
