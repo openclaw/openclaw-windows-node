@@ -3397,6 +3397,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // Avoids the intermediate List<T> that new List(collection).ToArray() would produce.
         var arr = new SessionInfo[_sessions.Count];
         _sessions.Values.CopyTo(arr, 0);
+        // Defensive copy: subscribers read the snapshot with no lock, and the tracked
+        // instances keep being mutated in place under _sessionsLock — hand out clones.
+        for (var i = 0; i < arr.Length; i++) arr[i] = arr[i].Clone();
         Array.Sort(arr, static (a, b) =>
         {
             // Main session first, then by last seen
