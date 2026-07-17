@@ -402,14 +402,16 @@ public class OpenClawChatDataProviderTests
     {
         using var activities = new ChatActivityCollector();
         using var metrics = new ChatMetricCollector();
-        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
         await provider.SendMessageAsync("main", "prompt");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        var snapshotsBeforeMismatchedTerminal = snapshots.Count;
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "different-run"));
 
+        Assert.Equal(snapshotsBeforeMismatchedTerminal, snapshots.Count);
         Assert.DoesNotContain(
             activities.Stopped,
             activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
@@ -427,7 +429,80 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task Telemetry_TerminalWithoutRunId_IsDiagnosedAndClosedBySafeCleanup()
+    public async Task Telemetry_LifecycleTerminalWithoutRunId_PreservesActiveRunUntilExactTerminal()
+    {
+        using var activities = new ChatActivityCollector();
+        using var metrics = new ChatMetricCollector();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "next-run", Status = "started" });
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        await provider.SendMessageAsync("main", "queued");
+        var snapshotsBeforeMalformedTerminal = snapshots.Count;
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: null));
+
+        Assert.Equal(snapshotsBeforeMalformedTerminal, snapshots.Count);
+        Assert.Equal(["prompt"], bridge.SentMessages);
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal(
+            ["missing_run_id"],
+            metrics.TagsFor(
+                ChatTelemetryTracker.DroppedTerminalEventsMetricName,
+                ChatTelemetryTracker.DroppedTerminalEventReasonTag));
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run"));
+        Assert.True(SpinWait.SpinUntil(
+            () => bridge.SentMessages.Count == 2,
+            TimeSpan.FromSeconds(5)));
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("success", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("lifecycle_end", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        Assert.Equal(["prompt", "queued"], bridge.SentMessages);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_LegacyJobTerminalWithoutRunId_PreservesActiveRunUntilExactTerminal()
+    {
+        using var activities = new ChatActivityCollector();
+        using var metrics = new ChatMetricCollector();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        var snapshotsBeforeMalformedTerminal = snapshots.Count;
+        bridge.RaiseAgent(MakeAgentEvent("job", """{"state":"done"}""", runId: null));
+
+        Assert.Equal(snapshotsBeforeMalformedTerminal, snapshots.Count);
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal(
+            ["missing_run_id"],
+            metrics.TagsFor(
+                ChatTelemetryTracker.DroppedTerminalEventsMetricName,
+                ChatTelemetryTracker.DroppedTerminalEventReasonTag));
+
+        bridge.RaiseAgent(MakeAgentEvent("job", """{"state":"done"}""", runId: "run"));
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("success", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("lifecycle_end", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Telemetry_LifecycleTerminalWithoutRunId_RemainsEligibleForDisconnectCleanup()
     {
         using var activities = new ChatActivityCollector();
         using var metrics = new ChatMetricCollector();
@@ -442,17 +517,18 @@ public class OpenClawChatDataProviderTests
         Assert.DoesNotContain(
             activities.Stopped,
             activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal("canceled", turn.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("disconnected", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
         Assert.Equal(
             ["missing_run_id"],
             metrics.TagsFor(
                 ChatTelemetryTracker.DroppedTerminalEventsMetricName,
                 ChatTelemetryTracker.DroppedTerminalEventReasonTag));
-
-        bridge.RaiseStatus(ConnectionStatus.Disconnected);
-        var turn = Assert.Single(
-            activities.Stopped,
-            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
-        Assert.Equal("disconnected", turn.GetTagItem(OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
         await provider.DisposeAsync();
     }
 
@@ -1489,10 +1565,14 @@ public class OpenClawChatDataProviderTests
     public async Task AgentEvent_JobError_EmitsErrorEntry()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
         await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.SendMessageAsync("main", "prompt");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
         snapshots.Clear();
 
-        var evt = MakeAgentEvent("job", """{"state":"error"}""");
+        var evt = MakeAgentEvent("job", """{"state":"error"}""", runId: "run");
         evt.Summary = "kaboom";
         bridge.RaiseAgent(evt);
 
@@ -1536,11 +1616,13 @@ public class OpenClawChatDataProviderTests
     public async Task AgentEvent_JobDone_ClearsTurnActive()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "started" });
         await provider.LoadAsync();
-        // Kick off a turn
-        _ = provider.SendMessageAsync("main", "hi");
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.SendMessageAsync("main", "hi");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
 
-        bridge.RaiseAgent(MakeAgentEvent("job", """{"state":"done"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("job", """{"state":"done"}""", runId: "run"));
 
         // Snapshot the timeline directly.
         var snap = await provider.LoadAsync();
@@ -5951,7 +6033,10 @@ public class OpenClawChatDataProviderTests
         await provider.LoadAsync();
 
         // A live event the history will NOT carry — must survive the rebuild.
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", "{\"phase\":\"error\",\"message\":\"net glitch\"}"));
+        bridge.RaiseAgent(MakeAgentEvent(
+            "lifecycle",
+            "{\"phase\":\"error\",\"message\":\"net glitch\"}",
+            runId: "run"));
 
         await provider.LoadHistoryAsync("main");
 

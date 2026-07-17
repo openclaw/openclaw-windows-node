@@ -178,9 +178,14 @@ misclassified as a dropped remote turn.
 
 Terminal lifecycle events are never matched by thread alone. If a terminal event
 has no run ID or conflicts with the active run, it cannot complete a potentially
-newer turn. The provider logs a content-free warning and increments
-`openclaw.chat.terminal_events.dropped`; unresolved turns remain eligible for
-safe reset, disconnect, or disposal cleanup.
+newer turn. The provider drops malformed lifecycle and legacy job terminals
+before they can clear active-run, timeline, queue, or telemetry state, logs a
+content-free warning, and increments `openclaw.chat.terminal_events.dropped`.
+A later terminal carrying the exact active run ID can still complete the turn;
+otherwise unresolved turns remain eligible for safe reset, disconnect, or
+disposal cleanup. Assistant-final chat events are separate: their protocol shape
+does not carry a run ID, so the provider captures the authoritative active run
+under its state lock rather than accepting a thread-only agent terminal.
 
 Each `openclaw.chat.send` span represents one `chat.send` RPC attempt. A valid
 retryable deferral is `outcome=success` with admission status `deferred`, because

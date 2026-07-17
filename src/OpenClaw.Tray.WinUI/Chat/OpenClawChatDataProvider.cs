@@ -2824,8 +2824,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         out ChatTerminalEventDropReason? droppedTerminalReason)
     {
         droppedTerminalReason = null;
-        if (!TryGetTerminalAgentRunId(evt, out var runId) || string.IsNullOrWhiteSpace(runId))
+        if (!TryGetTerminalAgentRunId(evt, out var runId))
             return false;
+        if (string.IsNullOrWhiteSpace(runId))
+        {
+            droppedTerminalReason = ChatTerminalEventDropReason.MissingRunId;
+            return true;
+        }
 
         if (_terminalRunIdsByThread.TryGetValue(threadId, out var terminalRunIds) &&
             terminalRunIds.Contains(runId, StringComparer.Ordinal))
