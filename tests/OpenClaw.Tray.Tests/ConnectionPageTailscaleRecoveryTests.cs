@@ -34,4 +34,34 @@ public sealed class ConnectionPageTailscaleRecoveryTests
         Assert.Contains("Funnel is unsupported", source);
         Assert.Contains("never falls back to localhost", source);
     }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, "")]
+    [InlineData(true, " ")]
+    public void NetworkFailure_ForUnmanagedTailscaleGateway_UsesOrdinaryNetworkRecovery(
+        bool isLocal,
+        string? managedDistroName)
+    {
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Error,
+            OperatorState = RoleConnectionState.Error,
+            OperatorError = "connection timed out",
+            GatewayUrl = "wss://manual.tailnet.ts.net",
+        };
+        var record = new GatewayRecord
+        {
+            Id = "manual-tailscale",
+            Url = "wss://manual.tailnet.ts.net",
+            FriendlyName = "Manual Tailscale gateway",
+            IsLocal = isLocal,
+            SetupManagedDistroName = managedDistroName,
+        };
+
+        var plan = ConnectionPagePlan.Build(snapshot, record, self: null, settings: null, savedGatewayCount: 1);
+
+        Assert.Equal(RecoveryCategory.Network, plan.Recovery);
+        Assert.NotEqual("Tailscale gateway unavailable", plan.StripHeadline);
+    }
 }

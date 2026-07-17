@@ -445,7 +445,8 @@ internal sealed record ConnectionPagePlan
         var category = ClassifyError(err);
         var url = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(rec?.Url ?? snap.GatewayUrl);
 
-        if (category == RecoveryCategory.Network && IsTailscaleEndpoint(rec?.Url ?? snap.GatewayUrl))
+        if (category == RecoveryCategory.Network &&
+            IsManagedTailscaleGateway(rec, rec?.Url ?? snap.GatewayUrl))
         {
             return new ConnectionPagePlan
             {
@@ -896,6 +897,11 @@ internal sealed record ConnectionPagePlan
                int.TryParse(parts[0], out var first) && first == 100 &&
                int.TryParse(parts[1], out var second) && second is >= 64 and <= 127;
     }
+
+    private static bool IsManagedTailscaleGateway(GatewayRecord? rec, string? endpoint) =>
+        rec?.IsLocal == true &&
+        !string.IsNullOrWhiteSpace(rec.SetupManagedDistroName) &&
+        IsTailscaleEndpoint(endpoint);
 
     private static string FormatUptime(long uptimeMs)
     {
