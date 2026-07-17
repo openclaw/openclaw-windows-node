@@ -24,6 +24,7 @@ internal interface IOpenTelemetryProbeSink : IDisposable
 {
     void SendProbe(OpenTelemetryEndpointOptions options);
     void SendConnectionState(OpenTelemetryConnectionState state);
+    void SendNodeToolCompletion(NodeToolTelemetryCompletion completion);
     bool ForceFlush(int timeoutMilliseconds);
 }
 
@@ -35,11 +36,14 @@ internal sealed record OpenTelemetryConnectionState(
 
 internal sealed class OpenTelemetryEndpointConnection : IDisposable
 {
+    internal const int NodeToolLogQueueCapacity = 256;
+
     private readonly object _gate = new();
     private readonly Func<OpenTelemetryEndpointOptions, IOpenTelemetryProbeSink> _sinkFactory;
     private readonly Action<string> _logInfo;
     private readonly Action<string> _logWarn;
     private readonly ConcurrentQueue<PendingConnectionState> _pendingConnectionStates = new();
+    private readonly ConcurrentQueue<PendingNodeToolCompletion> _pendingNodeToolCompletions = new();
     private IOpenTelemetryProbeSink? _sink;
     private OpenTelemetryConnectionState? _lastConnectionState;
     private OpenTelemetryEndpointOptions _currentOptions = OpenTelemetryEndpointOptions.Disabled;
@@ -48,6 +52,9 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     private long _connectionStateSequence;
     private long _lastProcessedConnectionStateSequence;
     private int _connectionStateDrainScheduled;
+    private int _nodeToolCompletionCount;
+    private int _nodeToolCompletionDrainScheduled;
+    private volatile bool _sinkAvailable;
     private volatile bool _disposed;
 
     public OpenTelemetryEndpointConnection()
@@ -110,6 +117,24 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
         ScheduleConnectionStateDrain();
     }
 
+    public void SendNodeToolCompletion(NodeToolTelemetryCompletion completion)
+    {
+        ArgumentNullException.ThrowIfNull(completion);
+        if (_disposed || !_sinkAvailable || completion.Outcome == NodeToolOutcome.Success)
+            return;
+
+        if (!TryReserveNodeToolCompletionSlot())
+        {
+            NodeToolInvocation.RecordLogDroppedQueueFull();
+            return;
+        }
+
+        _pendingNodeToolCompletions.Enqueue(new PendingNodeToolCompletion(
+            completion,
+            Volatile.Read(ref _sinkGeneration)));
+        ScheduleNodeToolCompletionDrain();
+    }
+
     private bool TrySendConnectionState(PendingConnectionState pending)
     {
         if (!Monitor.TryEnter(_gate))
@@ -149,6 +174,64 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
             static connection => connection.DrainConnectionStates(),
             this,
             preferLocal: false);
+    }
+
+    private bool TryReserveNodeToolCompletionSlot()
+    {
+        while (true)
+        {
+            var count = Volatile.Read(ref _nodeToolCompletionCount);
+            if (count >= NodeToolLogQueueCapacity)
+                return false;
+            if (Interlocked.CompareExchange(ref _nodeToolCompletionCount, count + 1, count) == count)
+                return true;
+        }
+    }
+
+    private void ScheduleNodeToolCompletionDrain()
+    {
+        if (Interlocked.CompareExchange(ref _nodeToolCompletionDrainScheduled, 1, 0) != 0)
+            return;
+
+        ThreadPool.UnsafeQueueUserWorkItem(
+            static connection => connection.DrainNodeToolCompletions(),
+            this,
+            preferLocal: false);
+    }
+
+    private void DrainNodeToolCompletions()
+    {
+        try
+        {
+            while (_pendingNodeToolCompletions.TryDequeue(out var pending))
+            {
+                Interlocked.Decrement(ref _nodeToolCompletionCount);
+                lock (_gate)
+                {
+                    if (_disposed ||
+                        pending.SinkGeneration != _sinkGeneration ||
+                        _sink == null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        _sink.SendNodeToolCompletion(pending.Completion);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logWarn($"OpenTelemetry node tool log export failed: {ex.Message}");
+                    }
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _nodeToolCompletionDrainScheduled, 0);
+            if (!_pendingNodeToolCompletions.IsEmpty)
+                ScheduleNodeToolCompletionDrain();
+        }
     }
 
     private void DrainConnectionStates()
@@ -233,6 +316,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
                 return;
 
             Interlocked.Increment(ref _sinkGeneration);
+            _sinkAvailable = false;
             DisposeSink();
             _lastConnectionState = null;
             IOpenTelemetryProbeSink? newSink = null;
@@ -260,6 +344,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
                 // ForceFlush confirms the SDK processed queued batches; OTLP does not provide
                 // a collector acknowledgment round-trip for this probe.
                 _sink = newSink;
+                _sinkAvailable = true;
                 newSink = null;
                 _currentOptions = options;
                 State = OpenTelemetryEndpointConnectionState.ProbeFlushed;
@@ -280,6 +365,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _sinkAvailable = false;
         Interlocked.Increment(ref _applyGeneration);
         Interlocked.Increment(ref _sinkGeneration);
         lock (_gate)
@@ -294,6 +380,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
 
     private void Disable()
     {
+        _sinkAvailable = false;
         Interlocked.Increment(ref _sinkGeneration);
         DisposeSink();
         State = OpenTelemetryEndpointConnectionState.Disabled;
@@ -347,6 +434,10 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
         OpenTelemetryConnectionState State,
         long SinkGeneration,
         long Sequence);
+
+    private sealed record PendingNodeToolCompletion(
+        NodeToolTelemetryCompletion Completion,
+        long SinkGeneration);
 }
 
 internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
@@ -362,6 +453,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     private const string SignalTagKey = "openclaw.signal";
     private static readonly EventId ExporterProbeLogEvent = new(1000, "OpenTelemetryExporterProbeSent");
     private static readonly EventId ConnectionStateLogEvent = new(1100, "GatewayConnectionStateChanged");
+    private static readonly EventId NodeToolCompletionLogEvent = new(1200, "NodeToolInvocationFailed");
     private static readonly Counter<long> ExporterProbeCounter = OpenClawTelemetry.CreateCounter(
         "openclaw.telemetry.exporter.probes",
         unit: "{probe}",
@@ -379,6 +471,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
     private readonly OpenTelemetryLoggerPipeline _loggerPipeline;
     private readonly ILogger _probeLogger;
     private readonly ILogger _connectionLogger;
+    private readonly ILogger _nodeToolLogger;
 
     private OpenTelemetryOtlpProbeSink(
         TracerProvider tracerProvider,
@@ -390,6 +483,7 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         _loggerPipeline = loggerPipeline;
         _probeLogger = loggerPipeline.CreateLogger(OpenTelemetryLogPolicy.TelemetryExporterCategory);
         _connectionLogger = loggerPipeline.CreateLogger(OpenTelemetryLogPolicy.ConnectionCategory);
+        _nodeToolLogger = loggerPipeline.CreateLogger(OpenTelemetryLogPolicy.NodeToolCategory);
     }
 
     public static IOpenTelemetryProbeSink Create(OpenTelemetryEndpointOptions options)
@@ -468,6 +562,19 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             attributes,
             null,
             static (_, _) => "OpenClaw gateway connection state changed.");
+    }
+
+    public void SendNodeToolCompletion(NodeToolTelemetryCompletion completion)
+    {
+        if (completion.Outcome == NodeToolOutcome.Success)
+            return;
+
+        _nodeToolLogger.Log(
+            LogLevel.Warning,
+            NodeToolCompletionLogEvent,
+            CreateNodeToolLogAttributes(completion),
+            null,
+            static (_, _) => "OpenClaw node tool invocation did not succeed.");
     }
 
     public bool ForceFlush(int timeoutMilliseconds)
@@ -622,6 +729,32 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
         new(SignalTagKey, "logs"),
         new(ExporterProtocolTagKey, OpenTelemetryEndpointProtocol.ToTelemetryValue(options.Protocol))
     ];
+
+    internal static KeyValuePair<string, object?>[] CreateNodeToolLogAttributes(
+        NodeToolTelemetryCompletion completion)
+    {
+        var attributes = new List<KeyValuePair<string, object?>>
+        {
+            new(NodeToolInvocation.CommandTag, completion.Command),
+            new(NodeToolInvocation.TransportTag, completion.Transport.ToTelemetryValue()),
+            new(OpenClawTelemetryTagKey.Outcome.ToTelemetryName(), completion.Outcome.ToTelemetryValue()),
+            new(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(), completion.ErrorCategory.ToTelemetryValue()),
+            new("openclaw.node.tool.duration_ms", completion.DurationMilliseconds),
+        };
+        if (completion.ExecutionMode.HasValue)
+        {
+            attributes.Add(new(
+                NodeToolInvocation.ExecutionModeTag,
+                completion.ExecutionMode.Value.ToTelemetryValue()));
+        }
+        if (completion.ErrorType != null)
+        {
+            attributes.Add(new(
+                OpenClawTelemetryTagKey.ErrorType.ToTelemetryName(),
+                completion.ErrorType));
+        }
+        return [.. attributes];
+    }
 
     private static void TryDisposeStep(Action step, ref List<Exception>? errors)
     {

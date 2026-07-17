@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Capabilities;
 
@@ -136,7 +137,9 @@ public class SystemCapability : NodeCapabilityBase
             (request.Command == "system.run" || request.Command == "system.run.prepare"))
         {
             Logger.Info($"[system.run] rejected: 'Run system tools' is disabled (command={request.Command})");
-            return Error("system.run is disabled by user setting (Permissions → Run system tools).");
+            return ErrorWithDiagnostic(
+                "system.run is disabled by user setting (Permissions → Run system tools).",
+                NodeToolErrorCategory.PermissionDenied);
         }
 
         return request.Command switch
@@ -323,23 +326,46 @@ public class SystemCapability : NodeCapabilityBase
         if (_v2Handler != null)
         {
             Logger.Info($"[system.run] corr={correlationId} path=v2");
+            var approvalSpan = request.Telemetry?.StartChild(NodeToolInvocation.SystemRunApprovalSpanName);
             ExecApprovalV2Result v2Result;
+            var approvalCategory = NodeToolErrorCategory.None;
+            var approvalSpanCompleted = false;
             try
             {
                 v2Result = await _v2Handler.HandleAsync(request, correlationId);
+                approvalCategory = MapV2ErrorCategory(v2Result.Code);
             }
             catch (Exception ex)
             {
                 // Rail 1: no silent fallback — handler exceptions become typed denies.
                 Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
                 v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
+                approvalCategory = NodeToolErrorCategory.InternalFailure;
+                NodeToolInvocation.CompleteChild(
+                    approvalSpan,
+                    NodeToolOutcome.Failure,
+                    approvalCategory,
+                    errorType: ex.GetType());
+                approvalSpanCompleted = true;
             }
 
             Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
+            if (!approvalSpanCompleted)
+            {
+                NodeToolInvocation.CompleteChild(
+                    approvalSpan,
+                    approvalCategory == NodeToolErrorCategory.None
+                        ? NodeToolOutcome.Success
+                        : NodeToolOutcome.Failure,
+                    approvalCategory);
+            }
             // Rail 1: no silent fallback to legacy regardless of result code.
             // In PR1 only ExecApprovalV2NullHandler exists (always unavailable); the real
             // coordinator that can produce an allow decision is wired in PR7/PR8.
-            return Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
+            var response = Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
+            if (approvalCategory != NodeToolErrorCategory.None)
+                response.Diagnostic = new NodeToolDiagnostic(approvalCategory);
+            return response;
         }
 
         // Legacy path — untouched (rail 3).
@@ -347,7 +373,9 @@ public class SystemCapability : NodeCapabilityBase
 
         if (_commandRunner == null)
         {
-            return Error("Command execution not available");
+            return ErrorWithDiagnostic(
+                "Command execution not available",
+                NodeToolErrorCategory.CapabilityUnavailable);
         }
         
         // Per OpenClaw spec, "command" is an argv array (e.g. ["echo","Hello"]).
@@ -372,7 +400,7 @@ public class SystemCapability : NodeCapabilityBase
         
         if (string.IsNullOrWhiteSpace(command))
         {
-            return Error("Missing command parameter");
+            return ErrorWithDiagnostic("Missing command parameter", NodeToolErrorCategory.InvalidRequest);
         }
         
         var shell = GetStringArg(request.Args, "shell");
@@ -409,7 +437,9 @@ public class SystemCapability : NodeCapabilityBase
             Array.Sort(blockedNames, StringComparer.OrdinalIgnoreCase);
             var blockedList = string.Join(", ", blockedNames);
             Logger.Warn($"system.run DENIED: blocked environment overrides [{blockedList}]");
-            return Error($"Unsafe environment variable override blocked: {blockedList}");
+            return ErrorWithDiagnostic(
+                $"Unsafe environment variable override blocked: {blockedList}",
+                NodeToolErrorCategory.InvalidRequest);
         }
         env = envResult.Allowed;
         
@@ -431,27 +461,57 @@ public class SystemCapability : NodeCapabilityBase
         // Check exec approval policy
         if (_approvalPolicy != null)
         {
-            var approvalError = await EnsureCommandAndNestedTargetsApprovedAsync(
-                fullCommand,
-                effectiveShell,
-                sessionKey,
-                correlationId);
-            if (approvalError != null)
-                return approvalError;
-
-            if (!string.IsNullOrWhiteSpace(approvedHostFallbackShell)
-                && !string.Equals(approvedHostFallbackShell, effectiveShell, StringComparison.OrdinalIgnoreCase))
+            var approvalSpan = request.Telemetry?.StartChild(NodeToolInvocation.SystemRunApprovalSpanName);
+            try
             {
-                approvalError = await EnsureCommandAndNestedTargetsApprovedAsync(
+                var approvalError = await EnsureCommandAndNestedTargetsApprovedAsync(
                     fullCommand,
-                    approvedHostFallbackShell,
+                    effectiveShell,
                     sessionKey,
                     correlationId);
                 if (approvalError != null)
+                {
+                    approvalError.Diagnostic = new NodeToolDiagnostic(NodeToolErrorCategory.ExecPolicyDenied);
+                    NodeToolInvocation.CompleteChild(
+                        approvalSpan,
+                        NodeToolOutcome.Failure,
+                        NodeToolErrorCategory.ExecPolicyDenied);
                     return approvalError;
+                }
+
+                if (!string.IsNullOrWhiteSpace(approvedHostFallbackShell)
+                    && !string.Equals(approvedHostFallbackShell, effectiveShell, StringComparison.OrdinalIgnoreCase))
+                {
+                    approvalError = await EnsureCommandAndNestedTargetsApprovedAsync(
+                        fullCommand,
+                        approvedHostFallbackShell,
+                        sessionKey,
+                        correlationId);
+                    if (approvalError != null)
+                    {
+                        approvalError.Diagnostic = new NodeToolDiagnostic(NodeToolErrorCategory.ExecPolicyDenied);
+                        NodeToolInvocation.CompleteChild(
+                            approvalSpan,
+                            NodeToolOutcome.Failure,
+                            NodeToolErrorCategory.ExecPolicyDenied);
+                        return approvalError;
+                    }
+                }
+
+                NodeToolInvocation.CompleteChild(approvalSpan, NodeToolOutcome.Success);
+            }
+            catch (Exception ex)
+            {
+                NodeToolInvocation.CompleteChild(
+                    approvalSpan,
+                    NodeToolOutcome.Failure,
+                    NodeToolErrorCategory.InternalFailure,
+                    errorType: ex.GetType());
+                throw;
             }
         }
         
+        var processSpan = request.Telemetry?.StartChild(NodeToolInvocation.SystemRunProcessSpanName);
         try
         {
             var result = await _commandRunner.RunAsync(new CommandRequest
@@ -463,10 +523,22 @@ public class SystemCapability : NodeCapabilityBase
                 TimeoutMs = timeoutMs,
                 Env = env,
                 ApprovedEffectiveShell = effectiveShell,
-                ApprovedHostFallbackShell = approvedHostFallbackShell
+                ApprovedHostFallbackShell = approvedHostFallbackShell,
+                Telemetry = request.Telemetry,
+                TelemetryParentContext = processSpan?.Context ?? request.Telemetry?.Context ?? default
             });
-            
-            return Success(new
+
+            var executionMode = result.ExecutionMode ?? NodeToolExecutionMode.Host;
+            var errorCategory = ClassifyCommandResult(result);
+            NodeToolInvocation.CompleteChild(
+                processSpan,
+                errorCategory == NodeToolErrorCategory.None
+                    ? NodeToolOutcome.Success
+                    : NodeToolOutcome.Failure,
+                errorCategory,
+                executionMode);
+
+            var response = Success(new
             {
                 stdout = result.Stdout,
                 stderr = result.Stderr,
@@ -475,13 +547,58 @@ public class SystemCapability : NodeCapabilityBase
                 success = result.ExitCode == 0 && !result.TimedOut,
                 durationMs = result.DurationMs
             });
+            if (errorCategory != NodeToolErrorCategory.None)
+                response.Diagnostic = new NodeToolDiagnostic(errorCategory, executionMode);
+            return response;
         }
         catch (Exception ex)
         {
             Logger.Error("system.run failed", ex);
-            return Error("Execution failed");
+            NodeToolInvocation.CompleteChild(
+                processSpan,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.InternalFailure,
+                errorType: ex.GetType());
+            var response = ErrorWithDiagnostic("Execution failed", NodeToolErrorCategory.InternalFailure);
+            return response;
         }
     }
+
+    private NodeInvokeResponse ErrorWithDiagnostic(
+        string message,
+        NodeToolErrorCategory errorCategory,
+        NodeToolExecutionMode? executionMode = null)
+    {
+        var response = Error(message);
+        response.Diagnostic = new NodeToolDiagnostic(errorCategory, executionMode);
+        return response;
+    }
+
+    private static NodeToolErrorCategory ClassifyCommandResult(CommandResult result)
+    {
+        if (result.ErrorCategory != NodeToolErrorCategory.None)
+            return result.ErrorCategory;
+        if (result.TimedOut)
+            return NodeToolErrorCategory.Timeout;
+        return result.ExitCode == 0
+            ? NodeToolErrorCategory.None
+            : NodeToolErrorCategory.CommandFailed;
+    }
+
+    private static NodeToolErrorCategory MapV2ErrorCategory(ExecApprovalV2Code code) =>
+        code switch
+        {
+            ExecApprovalV2Code.SecurityDeny
+                or ExecApprovalV2Code.AskDeny
+                or ExecApprovalV2Code.AllowlistMiss
+                or ExecApprovalV2Code.UserDenied => NodeToolErrorCategory.ExecPolicyDenied,
+            ExecApprovalV2Code.ValidationFailed => NodeToolErrorCategory.InvalidRequest,
+            ExecApprovalV2Code.ResolutionFailed => NodeToolErrorCategory.CommandUnavailable,
+            ExecApprovalV2Code.Unavailable => NodeToolErrorCategory.CapabilityUnavailable,
+            ExecApprovalV2Code.InternalError => NodeToolErrorCategory.InternalFailure,
+            ExecApprovalV2Code.Allow => NodeToolErrorCategory.None,
+            _ => NodeToolErrorCategory.InternalFailure
+        };
 
     private async Task<ExecApprovalCheckResult> EnsureApprovedAsync(
         string command,

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared;
 
@@ -49,6 +51,9 @@ public class CommandRequest
     /// a different host shell than the sandbox effective shell.
     /// </summary>
     public string? ApprovedHostFallbackShell { get; set; }
+
+    internal NodeToolInvocation? Telemetry { get; set; }
+    internal ActivityContext TelemetryParentContext { get; set; }
 }
 
 /// <summary>
@@ -61,6 +66,8 @@ public class CommandResult
     public int ExitCode { get; set; }
     public bool TimedOut { get; set; }
     public long DurationMs { get; set; }
+    public NodeToolExecutionMode? ExecutionMode { get; set; }
+    public NodeToolErrorCategory ErrorCategory { get; set; }
 }
 
 /// <summary>

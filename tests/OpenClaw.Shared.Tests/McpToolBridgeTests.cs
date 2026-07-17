@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mcp;
+using OpenClaw.Shared.Telemetry;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests;
@@ -17,6 +18,7 @@ public class McpToolBridgeTests
         public string Category { get; }
         public IReadOnlyList<string> Commands { get; }
         public Func<NodeInvokeRequest, Task<NodeInvokeResponse>>? OnExecute;
+        public Func<string, bool>? OnCanHandle;
 
         public FakeCapability(string category, params string[] commands)
         {
@@ -24,7 +26,8 @@ public class McpToolBridgeTests
             Commands = commands;
         }
 
-        public bool CanHandle(string command) => System.Linq.Enumerable.Contains(Commands, command);
+        public bool CanHandle(string command) =>
+            OnCanHandle?.Invoke(command) ?? System.Linq.Enumerable.Contains(Commands, command);
 
         public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
             => OnExecute?.Invoke(request)
@@ -182,6 +185,106 @@ public class McpToolBridgeTests
     }
 
     [Fact]
+    public async Task ToolsCall_CapabilityFailure_EmitsTypedCompletion()
+    {
+        var fake = new FakeCapability("alpha", "alpha.fail")
+        {
+            OnExecute = _ => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = false,
+                Error = "private failure detail",
+                Diagnostic = new NodeToolDiagnostic(NodeToolErrorCategory.PermissionDenied),
+            }),
+        };
+        var bridge = CreateBridge(new List<INodeCapability> { fake });
+        NodeToolTelemetryCompletion? completion = null;
+        bridge.ToolTelemetryCompleted += (_, value) => completion = value;
+
+        await bridge.HandleRequestAsync(
+            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""alpha.fail""}}");
+
+        Assert.NotNull(completion);
+        Assert.Equal("alpha.fail", completion!.Command);
+        Assert.Equal(NodeToolTransport.Mcp, completion.Transport);
+        Assert.Equal(NodeToolOutcome.Failure, completion.Outcome);
+        Assert.Equal(NodeToolErrorCategory.PermissionDenied, completion.ErrorCategory);
+        Assert.DoesNotContain("private", completion.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ToolsCall_CaseInsensitiveCapability_EmitsCanonicalCommandName()
+    {
+        var fake = new FakeCapability("alpha", "alpha.echo")
+        {
+            OnCanHandle = command => string.Equals(
+                command,
+                "alpha.echo",
+                StringComparison.OrdinalIgnoreCase),
+        };
+        var bridge = CreateBridge(new List<INodeCapability> { fake });
+        NodeToolTelemetryCompletion? completion = null;
+        bridge.ToolTelemetryCompleted += (_, value) => completion = value;
+
+        await bridge.HandleRequestAsync(
+            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""ALPHA.ECHO""}}");
+
+        Assert.Equal("alpha.echo", completion!.Command);
+    }
+
+    [Fact]
+    public async Task ToolsCall_Notification_DefersCompletionUntilTransportDelivery()
+    {
+        var fake = new FakeCapability("alpha", "alpha.echo");
+        var bridge = CreateBridge(new List<INodeCapability> { fake });
+        NodeToolTelemetryCompletion? completion = null;
+        bridge.ToolTelemetryCompleted += (_, value) => completion = value;
+
+        var response = await bridge.HandleTransportRequestAsync(
+            @"{""jsonrpc"":""2.0"",""method"":""tools/call"",""params"":{""name"":""alpha.echo""}}",
+            CancellationToken.None);
+
+        Assert.Null(response.Body);
+        Assert.Null(completion);
+
+        response.CompleteDelivery(typeof(IOException));
+
+        Assert.Equal(NodeToolOutcome.Failure, completion!.Outcome);
+        Assert.Equal(NodeToolErrorCategory.TransportFailure, completion.ErrorCategory);
+        Assert.Equal(typeof(IOException).FullName, completion.ErrorType);
+    }
+
+    [Fact]
+    public async Task ToolsCall_SemanticCommandFailure_PreservesMcpWireSuccess()
+    {
+        var fake = new FakeCapability("system", "system.run")
+        {
+            OnExecute = _ => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = true,
+                Payload = new { success = false, exitCode = 42, timedOut = false },
+                Diagnostic = new NodeToolDiagnostic(
+                    NodeToolErrorCategory.CommandFailed,
+                    NodeToolExecutionMode.Sandbox),
+            }),
+        };
+        var bridge = CreateBridge(new List<INodeCapability> { fake });
+        NodeToolTelemetryCompletion? completion = null;
+        bridge.ToolTelemetryCompleted += (_, value) => completion = value;
+
+        var response = await bridge.HandleRequestAsync(
+            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""system.run""}}");
+
+        using var document = JsonDocument.Parse(response!);
+        var result = document.RootElement.GetProperty("result");
+        Assert.False(result.GetProperty("isError").GetBoolean());
+        using var payload = JsonDocument.Parse(result.GetProperty("content")[0].GetProperty("text").GetString()!);
+        Assert.False(payload.RootElement.GetProperty("success").GetBoolean());
+        Assert.Equal(42, payload.RootElement.GetProperty("exitCode").GetInt32());
+        Assert.Equal(NodeToolErrorCategory.CommandFailed, completion!.ErrorCategory);
+        Assert.Equal(NodeToolExecutionMode.Sandbox, completion.ExecutionMode);
+    }
+
+    [Fact]
     public async Task UnknownMethod_ReturnsJsonRpcMethodNotFound()
     {
         var bridge = CreateBridge(new List<INodeCapability>());
@@ -320,6 +423,8 @@ public class McpToolBridgeTests
             OnExecute = _ => tcs.Task,
         };
         var bridge = CreateBridge(new List<INodeCapability> { fake });
+        NodeToolTelemetryCompletion? completion = null;
+        bridge.ToolTelemetryCompleted += (_, value) => completion = value;
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         var resp = await bridge.HandleRequestAsync(
@@ -333,6 +438,8 @@ public class McpToolBridgeTests
         var result = doc.RootElement.GetProperty("result");
         Assert.True(result.GetProperty("isError").GetBoolean());
         Assert.Contains("timed out", result.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(NodeToolOutcome.Canceled, completion!.Outcome);
+        Assert.Equal(NodeToolErrorCategory.Timeout, completion.ErrorCategory);
     }
 
     [Fact]

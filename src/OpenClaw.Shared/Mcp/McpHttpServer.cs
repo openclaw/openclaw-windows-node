@@ -207,6 +207,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         // values (e.g. enter the auth branch with the old token, then compare
         // against the new one — or vice versa).
         var authToken = Volatile.Read(ref _authToken);
+        McpToolBridge.McpTransportResponse? transportResponse = null;
         try
         {
             // CSRF/browser gate — reject anything carrying a browser Origin.
@@ -302,10 +303,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 return;
             }
 
-            string? responseBody;
             try
             {
-                responseBody = await _bridge.HandleRequestAsync(body, ct).ConfigureAwait(false);
+                transportResponse = await _bridge
+                    .HandleTransportRequestAsync(body, ct)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -313,18 +315,21 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 return;
             }
 
-            if (responseBody == null)
+            if (transportResponse.Body == null)
             {
                 // Notification — JSON-RPC says no body. 204 is the most honest signal.
                 ctx.Response.StatusCode = (int)HttpStatusCode.NoContent;
                 ctx.Response.Close();
+                transportResponse.CompleteDelivery();
                 return;
             }
 
-            WriteText(ctx.Response, HttpStatusCode.OK, responseBody, "application/json");
+            WriteText(ctx.Response, HttpStatusCode.OK, transportResponse.Body, "application/json");
+            transportResponse.CompleteDelivery();
         }
         catch (Exception ex)
         {
+            transportResponse?.CompleteDelivery(ex.GetType());
             _logger.Error("[MCP] Request failed", ex);
             // Response may already be partially written or closed; swallow.
             try { Reject(ctx, HttpStatusCode.InternalServerError, "internal error"); }

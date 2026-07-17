@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -89,7 +90,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
         if (!settings.SystemRunSandboxEnabled)
         {
             _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
-            return await RunHostFallbackAsync(request, effectiveShell, ct);
+            return await RunHostFallbackAsync(request, effectiveShell, NodeToolExecutionMode.Host, ct);
         }
 
         // Custom env changes the execution boundary. Until MXC can enforce it
@@ -111,7 +112,11 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             _logger.Warn(
                 "[mxc] system.run UNCONTAINED: sandbox unavailable on this host; " +
                 "routing through host runner for compatibility.");
-            return await RunHostFallbackAsync(request, effectiveShell, ct);
+            return await RunHostFallbackAsync(
+                request,
+                effectiveShell,
+                NodeToolExecutionMode.HostFallback,
+                ct);
         }
 
         // A direct-argv request reaching the sandbox cannot be honored: the sandbox
@@ -130,6 +135,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
                 ExitCode = -1,
                 TimedOut = false,
                 DurationMs = 0,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
+                ErrorCategory = NodeToolErrorCategory.SandboxDenied,
             };
         }
 
@@ -153,22 +160,41 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
                 ? settings.SandboxMaxOutputBytes
                 : null);
 
+        var sandboxSpan = request.Telemetry?.StartChild(
+            NodeToolInvocation.SystemRunSandboxSpanName,
+            request.TelemetryParentContext);
         try
         {
             LogSandboxRequest(sandboxRequest, request, effectiveShell, settings, settingsDirectoryPath, policy);
             var sandboxed = await _executor.ExecuteAsync(sandboxRequest, ct);
             LogSandboxResult(sandboxed);
-            return new CommandResult
+            var result = new CommandResult
             {
                 Stdout = sandboxed.Stdout,
                 Stderr = sandboxed.Stderr,
                 ExitCode = sandboxed.ExitCode,
                 TimedOut = sandboxed.TimedOut,
                 DurationMs = sandboxed.DurationMs,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
             };
+            result.ErrorCategory = ClassifyProcessResult(result);
+            NodeToolInvocation.CompleteChild(
+                sandboxSpan,
+                result.ErrorCategory == NodeToolErrorCategory.None
+                    ? NodeToolOutcome.Success
+                    : NodeToolOutcome.Failure,
+                result.ErrorCategory,
+                NodeToolExecutionMode.Sandbox);
+            return result;
         }
         catch (SandboxUnavailableException ex)
         {
+            NodeToolInvocation.CompleteChild(
+                sandboxSpan,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.SandboxUnavailable,
+                NodeToolExecutionMode.Sandbox,
+                ex.GetType());
             // Invalidate any cached availability — what we thought was available
             // turned out not to be at runtime. Next command re-probes and the
             // top-level !_isSandboxAvailable() branch will use the compatibility
@@ -187,10 +213,19 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             if (!TryResolveApprovedHostFallbackShell(request, effectiveShell, out var hostShell, out var deny))
                 return deny!;
 
-            return await RunHostFallbackAsync(request, hostShell, ct);
+            return await RunHostFallbackAsync(
+                request,
+                hostShell,
+                NodeToolExecutionMode.HostFallback,
+                ct);
         }
         catch (OperationCanceledException)
         {
+            NodeToolInvocation.CompleteChild(
+                sandboxSpan,
+                NodeToolOutcome.Canceled,
+                NodeToolErrorCategory.Other,
+                NodeToolExecutionMode.Sandbox);
             // Caller cancelled (gateway disconnect, agent abort). Propagate so the
             // caller sees the cancellation rather than a fake "exited 0" response.
             throw;
@@ -199,6 +234,12 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
         {
             if (IsPowerShellUiUnsupported(ex))
             {
+                NodeToolInvocation.CompleteChild(
+                    sandboxSpan,
+                    NodeToolOutcome.Failure,
+                    NodeToolErrorCategory.SandboxUnavailable,
+                    NodeToolExecutionMode.Sandbox,
+                    ex.GetType());
                 return DenySandboxUnavailable(
                     "Sandboxed system.run cannot execute PowerShell-family shells with the current MXC UI-deny policy. " +
                     "Retry with shell='cmd' or explicitly disable sandboxing if uncontained host execution is acceptable.",
@@ -206,6 +247,12 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             }
 
             _logger.Warn($"[mxc] system.run denied: unsupported sandbox request: {ex.Message}");
+            NodeToolInvocation.CompleteChild(
+                sandboxSpan,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.SandboxDenied,
+                NodeToolExecutionMode.Sandbox,
+                ex.GetType());
             return new CommandResult
             {
                 Stdout = string.Empty,
@@ -213,6 +260,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
                 ExitCode = -1,
                 TimedOut = false,
                 DurationMs = 0,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
+                ErrorCategory = NodeToolErrorCategory.SandboxDenied,
             };
         }
         catch (Exception ex)
@@ -222,6 +271,12 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             // pipeline understands — letting the exception escape here can crash
             // the node loop and ultimately the tray.
             _logger.Warn($"[mxc] system.run sandbox execution failed: {ex.GetType().Name}: {ex.Message}");
+            NodeToolInvocation.CompleteChild(
+                sandboxSpan,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.SandboxFailure,
+                NodeToolExecutionMode.Sandbox,
+                ex.GetType());
             return new CommandResult
             {
                 Stdout = string.Empty,
@@ -231,6 +286,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
                 ExitCode = -1,
                 TimedOut = false,
                 DurationMs = 0,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
+                ErrorCategory = NodeToolErrorCategory.SandboxFailure,
             };
         }
     }
@@ -245,10 +302,16 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxUnavailable,
         };
     }
 
-    private Task<CommandResult> RunHostFallbackAsync(CommandRequest request, string effectiveShell, CancellationToken ct)
+    private async Task<CommandResult> RunHostFallbackAsync(
+        CommandRequest request,
+        string effectiveShell,
+        NodeToolExecutionMode executionMode,
+        CancellationToken ct)
     {
         var fallbackRequest = new CommandRequest
         {
@@ -261,8 +324,13 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             Env = request.Env,
             ApprovedEffectiveShell = request.ApprovedEffectiveShell,
             ApprovedHostFallbackShell = request.ApprovedHostFallbackShell,
+            Telemetry = request.Telemetry,
+            TelemetryParentContext = request.TelemetryParentContext,
         };
-        return _hostFallback.RunAsync(fallbackRequest, ct);
+        var result = await _hostFallback.RunAsync(fallbackRequest, ct);
+        result.ExecutionMode = executionMode;
+        result.ErrorCategory = ClassifyProcessResult(result);
+        return result;
     }
 
     private static string ResolveSandboxShell(string requestedShell) =>
@@ -331,6 +399,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
         };
     }
 
@@ -348,6 +418,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
         };
     }
 
@@ -366,7 +438,20 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
         };
+    }
+
+    private static NodeToolErrorCategory ClassifyProcessResult(CommandResult result)
+    {
+        if (result.ErrorCategory != NodeToolErrorCategory.None)
+            return result.ErrorCategory;
+        if (result.TimedOut)
+            return NodeToolErrorCategory.Timeout;
+        return result.ExitCode == 0
+            ? NodeToolErrorCategory.None
+            : NodeToolErrorCategory.CommandFailed;
     }
 
     private static JsonElement SerializeArgs(CommandRequest request, string effectiveShell)

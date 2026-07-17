@@ -11,6 +11,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Mxc;
+using OpenClaw.Shared.Telemetry;
 using OpenClawTray.Chat;
 using OpenClawTray.A2UI.Actions;
 using OpenClawTray.A2UI.Rendering;
@@ -154,6 +155,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "mcp-token.txt");
     private volatile bool _enableMcpServer;
     private McpHttpServer? _mcpServer;
+    private McpToolBridge? _mcpToolBridge;
     private string? _mcpStartupError;
     public bool IsMcpRunning => _mcpServer != null;
     public VoiceService? VoiceService => _voiceService;
@@ -169,6 +171,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
     public event EventHandler<ChannelHealth[]>? ChannelHealthUpdated;
     public event EventHandler<NodeInvokeCompletedEventArgs>? InvokeCompleted;
+    public event EventHandler<NodeToolTelemetryCompletion>? ToolTelemetryCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
     public event EventHandler<NodeToastRequestedEventArgs>? ToastRequested;
@@ -533,11 +536,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             client.HealthReceived -= OnNodeHealthReceived;
             client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
             client.InvokeCompleted -= OnNodeInvokeCompleted;
+            client.ToolTelemetryCompleted -= OnToolTelemetryCompleted;
             client.StatusChanged += OnNodeStatusChanged;
             client.PairingStatusChanged += OnPairingStatusChanged;
             client.HealthReceived += OnNodeHealthReceived;
             client.GatewaySelfUpdated += OnGatewaySelfUpdated;
             client.InvokeCompleted += OnNodeInvokeCompleted;
+            client.ToolTelemetryCompleted += OnToolTelemetryCompleted;
         }
 
         bool capabilitiesBuilt;
@@ -571,6 +576,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         client.HealthReceived -= OnNodeHealthReceived;
         client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
         client.InvokeCompleted -= OnNodeInvokeCompleted;
+        client.ToolTelemetryCompleted -= OnToolTelemetryCompleted;
     }
 
     /// <summary>
@@ -798,6 +804,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 _logger,
                 serverName: "openclaw-tray-mcp",
                 serverVersion: AppVersionInfo.Version);
+            bridge.ToolTelemetryCompleted += OnToolTelemetryCompleted;
             // Bearer-token auth. Token is created on first start and persists
             // alongside other build-specific app data (so OPENCLAW_TRAY_DATA_DIR
             // isolation in tests scopes the token too); CLI/agent registration
@@ -815,6 +822,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             attempt = new McpHttpServer(bridge, McpPort, _logger, authToken);
             attempt.Start();
             _mcpServer = attempt;
+            _mcpToolBridge = bridge;
             _mcpStartupError = null;
             return true;
         }
@@ -869,7 +877,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // Awaited shutdown callers depend on this drain finishing before
         // capability-backing services are torn down.
         var server = _mcpServer;
+        var bridge = _mcpToolBridge;
         _mcpServer = null;
+        _mcpToolBridge = null;
         _mcpStartupError = null;
 
         if (server == null)
@@ -882,6 +892,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         catch (Exception ex)
         {
             _logger.Warn($"[MCP] Dispose error: {ex.Message}");
+        }
+        finally
+        {
+            if (bridge != null)
+                bridge.ToolTelemetryCompleted -= OnToolTelemetryCompleted;
         }
     }
 
@@ -1048,6 +1063,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
     {
         InvokeCompleted?.Invoke(this, args);
+    }
+
+    private void OnToolTelemetryCompleted(object? sender, NodeToolTelemetryCompletion completion)
+    {
+        ToolTelemetryCompleted?.Invoke(this, completion);
     }
     
     #region System Capability Handlers

@@ -202,6 +202,7 @@ public sealed class OpenTelemetryEndpointConnectionTests
     [Theory]
     [InlineData("OpenClaw.Telemetry.Exporter", LogLevel.Information, true)]
     [InlineData("OpenClaw.Telemetry.Connection", LogLevel.Warning, true)]
+    [InlineData("OpenClaw.Telemetry.NodeTool", LogLevel.Warning, true)]
     [InlineData("OpenClaw.Telemetry.Exporter", LogLevel.Debug, false)]
     [InlineData("OpenClaw.Telemetry.Exporter", LogLevel.None, false)]
     [InlineData("OpenClawTray.Services.GatewayService", LogLevel.Warning, false)]
@@ -212,6 +213,161 @@ public sealed class OpenTelemetryEndpointConnectionTests
         bool expected)
     {
         Assert.Equal(expected, OpenTelemetryLogPolicy.ShouldExport(category, level));
+    }
+
+    [Fact]
+    public void SendNodeToolCompletion_ForwardsOnlyFailuresAndCancellations()
+    {
+        var sink = new FakeProbeSink();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ => sink,
+            _ => { },
+            _ => { });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4318",
+            OpenTelemetryEndpointProtocol.HttpProtobuf));
+
+        connection.SendNodeToolCompletion(FailureCompletion() with
+        {
+            Outcome = NodeToolOutcome.Success,
+            ErrorCategory = NodeToolErrorCategory.None,
+        });
+        connection.SendNodeToolCompletion(FailureCompletion());
+
+        Assert.True(SpinWait.SpinUntil(
+            () => sink.SendNodeToolCompletionCount == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(NodeToolErrorCategory.CommandFailed, sink.LastNodeToolCompletion?.ErrorCategory);
+    }
+
+    [Fact]
+    public void SendNodeToolCompletion_AfterDisable_DoesNotEnqueue()
+    {
+        var sink = new FakeProbeSink();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ => sink,
+            _ => { },
+            _ => { });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4318",
+            OpenTelemetryEndpointProtocol.HttpProtobuf));
+        connection.Apply(OpenTelemetryEndpointOptions.Disabled);
+
+        for (var i = 0; i < OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity + 1; i++)
+            connection.SendNodeToolCompletion(FailureCompletion());
+
+        var queuedCount = (int)typeof(OpenTelemetryEndpointConnection)
+            .GetField("_nodeToolCompletionCount", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(connection)!;
+        Assert.Equal(0, queuedCount);
+        Assert.Equal(0, sink.SendNodeToolCompletionCount);
+    }
+
+    [Fact]
+    public void SendNodeToolCompletion_QueueIsBoundedAndNonblocking()
+    {
+        var sink = new FakeProbeSink();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ => sink,
+            _ => { },
+            _ => { });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4317",
+            OpenTelemetryEndpointProtocol.Grpc));
+        var gate = typeof(OpenTelemetryEndpointConnection)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(connection)!;
+        var stopwatch = Stopwatch.StartNew();
+
+        Monitor.Enter(gate);
+        try
+        {
+            for (var i = 0; i < OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity + 1; i++)
+                connection.SendNodeToolCompletion(FailureCompletion());
+        }
+        finally
+        {
+            stopwatch.Stop();
+            Monitor.Exit(gate);
+        }
+
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(1),
+            $"Node tool completion producers blocked for {stopwatch.Elapsed}.");
+        Assert.True(SpinWait.SpinUntil(
+            () => sink.SendNodeToolCompletionCount == OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity,
+            TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void SendNodeToolCompletion_DropsEntriesFromReplacedSinkGeneration()
+    {
+        var sinks = new List<FakeProbeSink>();
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ =>
+            {
+                var sink = new FakeProbeSink();
+                sinks.Add(sink);
+                return sink;
+            },
+            _ => { },
+            _ => { });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4317",
+            OpenTelemetryEndpointProtocol.Grpc));
+        var gate = typeof(OpenTelemetryEndpointConnection)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(connection)!;
+
+        Monitor.Enter(gate);
+        try
+        {
+            connection.SendNodeToolCompletion(FailureCompletion());
+            connection.Apply(OpenTelemetryEndpointOptions.Create(
+                "http://localhost:4318",
+                OpenTelemetryEndpointProtocol.HttpProtobuf));
+        }
+        finally
+        {
+            Monitor.Exit(gate);
+        }
+
+        connection.SendNodeToolCompletion(FailureCompletion() with
+        {
+            ErrorCategory = NodeToolErrorCategory.Timeout,
+        });
+
+        Assert.True(SpinWait.SpinUntil(
+            () => sinks[1].SendNodeToolCompletionCount == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(0, sinks[0].SendNodeToolCompletionCount);
+        Assert.Equal(NodeToolErrorCategory.Timeout, sinks[1].LastNodeToolCompletion?.ErrorCategory);
+    }
+
+    [Fact]
+    public void NodeToolLogAttributes_ContainOnlyReviewedFields()
+    {
+        var completion = FailureCompletion() with
+        {
+            ErrorType = typeof(InvalidOperationException).FullName,
+        };
+
+        var attributes = OpenTelemetryOtlpProbeSink.CreateNodeToolLogAttributes(completion);
+        var keys = attributes.Select(attribute => attribute.Key).ToArray();
+        var values = string.Join("|", attributes.Select(attribute => attribute.Value));
+
+        Assert.Equal(
+            [
+                NodeToolInvocation.CommandTag,
+                NodeToolInvocation.TransportTag,
+                OpenClawTelemetryTagKey.Outcome.ToTelemetryName(),
+                OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(),
+                "openclaw.node.tool.duration_ms",
+                NodeToolInvocation.ExecutionModeTag,
+                OpenClawTelemetryTagKey.ErrorType.ToTelemetryName(),
+            ],
+            keys);
+        Assert.DoesNotContain("sensitive", values, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -574,10 +730,22 @@ public sealed class OpenTelemetryEndpointConnectionTests
             NodeState = RoleConnectionState.Idle
         };
 
+    private static NodeToolTelemetryCompletion FailureCompletion() =>
+        new(
+            "system.run",
+            NodeToolTransport.Mcp,
+            NodeToolOutcome.Failure,
+            NodeToolErrorCategory.CommandFailed,
+            NodeToolExecutionMode.Sandbox,
+            null,
+            12.5);
+
     private sealed class FakeProbeSink : IOpenTelemetryProbeSink
     {
         private readonly List<OpenTelemetryConnectionState> _connectionStates = [];
         private readonly object _connectionStateGate = new();
+        private readonly List<NodeToolTelemetryCompletion> _nodeToolCompletions = [];
+        private readonly object _nodeToolCompletionGate = new();
 
         public int SendProbeCount { get; private set; }
         public int ForceFlushCount { get; private set; }
@@ -612,6 +780,24 @@ public sealed class OpenTelemetryEndpointConnectionTests
             }
         }
 
+        public int SendNodeToolCompletionCount
+        {
+            get
+            {
+                lock (_nodeToolCompletionGate)
+                    return _nodeToolCompletions.Count;
+            }
+        }
+
+        public NodeToolTelemetryCompletion? LastNodeToolCompletion
+        {
+            get
+            {
+                lock (_nodeToolCompletionGate)
+                    return _nodeToolCompletions.LastOrDefault();
+            }
+        }
+
         public void SendProbe(OpenTelemetryEndpointOptions options)
         {
             SendProbeCount++;
@@ -622,6 +808,12 @@ public sealed class OpenTelemetryEndpointConnectionTests
         {
             lock (_connectionStateGate)
                 _connectionStates.Add(state);
+        }
+
+        public void SendNodeToolCompletion(NodeToolTelemetryCompletion completion)
+        {
+            lock (_nodeToolCompletionGate)
+                _nodeToolCompletions.Add(completion);
         }
 
         public bool ForceFlush(int timeoutMilliseconds)
