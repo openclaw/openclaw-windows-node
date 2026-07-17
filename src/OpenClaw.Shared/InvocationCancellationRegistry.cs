@@ -1,16 +1,74 @@
 namespace OpenClaw.Shared;
 
+internal enum InvocationCancellationResult
+{
+    NotFound,
+    Cancelled,
+    Pending,
+    Ambiguous,
+}
+
 internal sealed class InvocationCancellationRegistry
 {
     private readonly Dictionary<string, List<InvocationCancellation>> _active =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<CancellationProbe>> _cancellationProbes =
+    private readonly Dictionary<string, ExpiringEntry> _pendingCancellations =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ExpiringEntry> _recentCompletions =
         new(StringComparer.Ordinal);
     private readonly object _registrationGate = new();
     private readonly bool _allowDuplicateIds;
+    private readonly TimeSpan _pendingCancellationTtl;
+    private readonly int _maxPendingCancellations;
+    private readonly int _maxRecentCompletions;
+    private readonly TimeProvider _timeProvider;
+    private long _nextSequence;
 
-    public InvocationCancellationRegistry(bool allowDuplicateIds = false)
-        => _allowDuplicateIds = allowDuplicateIds;
+    public InvocationCancellationRegistry(
+        bool allowDuplicateIds = false,
+        TimeSpan? pendingCancellationTtl = null,
+        int maxPendingCancellations = 1_024,
+        int maxRecentCompletions = 1_024,
+        TimeProvider? timeProvider = null)
+    {
+        if (pendingCancellationTtl < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(pendingCancellationTtl));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPendingCancellations);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRecentCompletions);
+
+        _allowDuplicateIds = allowDuplicateIds;
+        _pendingCancellationTtl = pendingCancellationTtl ?? TimeSpan.Zero;
+        _maxPendingCancellations = maxPendingCancellations;
+        _maxRecentCompletions = maxRecentCompletions;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    internal int PendingCancellationCount
+    {
+        get
+        {
+            lock (_registrationGate)
+            {
+                PruneExpired(_timeProvider.GetUtcNow());
+                return _pendingCancellations.Count;
+            }
+        }
+    }
+
+    internal int RecentCompletionCount
+    {
+        get
+        {
+            lock (_registrationGate)
+            {
+                PruneExpired(_timeProvider.GetUtcNow());
+                return _recentCompletions.Count;
+            }
+        }
+    }
 
     public bool TryRegister(
         string requestId,
@@ -20,8 +78,10 @@ internal sealed class InvocationCancellationRegistry
         ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
 
         var candidate = new InvocationCancellation(this, requestId, transportToken);
+        var cancelAfterRegistration = false;
         lock (_registrationGate)
         {
+            PruneExpired(_timeProvider.GetUtcNow());
             if (_active.TryGetValue(requestId, out var active))
             {
                 if (!_allowDuplicateIds)
@@ -40,110 +100,80 @@ internal sealed class InvocationCancellationRegistry
                 invocation = candidate;
             }
 
-            if (invocation != null &&
-                _cancellationProbes.TryGetValue(requestId, out var probes))
+            if (invocation != null)
             {
-                foreach (var probe in probes)
-                {
-                    probe.RegistrationCount++;
-                    probe.Candidate ??= candidate;
-                }
+                _recentCompletions.Remove(requestId);
+                cancelAfterRegistration = _pendingCancellations.Remove(requestId);
             }
         }
 
-        if (invocation != null)
+        if (invocation == null)
         {
-            return true;
-        }
-
-        candidate.DisposeDetached();
-        return false;
-    }
-
-    public bool TryCancel(string requestId) =>
-        TryCancel(requestId, out _);
-
-    public bool TryCancel(string requestId, out bool ambiguous)
-    {
-        ambiguous = false;
-        if (string.IsNullOrWhiteSpace(requestId))
-        {
+            candidate.DisposeDetached();
             return false;
         }
 
-        InvocationCancellation? invocation;
-        lock (_registrationGate)
+        if (cancelAfterRegistration)
         {
-            invocation = GetCancellationTarget(requestId, out ambiguous);
+            candidate.ApplyPendingCallerCancellation();
         }
 
-        return invocation?.CancelByCaller() == true;
+        return true;
     }
 
-    public async Task<(bool Cancelled, bool Ambiguous)> TryCancelAfterRegistrationWindowAsync(
-        string requestId,
-        TimeSpan registrationWindow,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
-        ArgumentOutOfRangeException.ThrowIfLessThan(registrationWindow, TimeSpan.Zero);
+    public bool TryCancel(string requestId) =>
+        TryCancelOrRemember(requestId) == InvocationCancellationResult.Cancelled;
 
-        CancellationProbe? probe = null;
+    public bool TryCancel(string requestId, out bool ambiguous)
+    {
+        var result = TryCancelOrRemember(requestId);
+        ambiguous = result == InvocationCancellationResult.Ambiguous;
+        return result == InvocationCancellationResult.Cancelled;
+    }
+
+    public InvocationCancellationResult TryCancelOrRemember(string requestId)
+    {
+        if (string.IsNullOrWhiteSpace(requestId))
+        {
+            return InvocationCancellationResult.NotFound;
+        }
+
         InvocationCancellation? invocation;
-        bool ambiguous;
         lock (_registrationGate)
         {
-            invocation = GetCancellationTarget(requestId, out ambiguous);
-            if (invocation == null && !ambiguous)
+            var now = _timeProvider.GetUtcNow();
+            PruneExpired(now);
+            invocation = GetCancellationTarget(requestId, out var ambiguous);
+            if (ambiguous)
             {
-                probe = new CancellationProbe();
-                if (!_cancellationProbes.TryGetValue(requestId, out var probes))
+                return InvocationCancellationResult.Ambiguous;
+            }
+
+            if (invocation == null)
+            {
+                if (_pendingCancellationTtl == TimeSpan.Zero ||
+                    _recentCompletions.ContainsKey(requestId))
                 {
-                    probes = [];
-                    _cancellationProbes.Add(requestId, probes);
+                    return InvocationCancellationResult.NotFound;
                 }
 
-                probes.Add(probe);
+                if (_pendingCancellations.ContainsKey(requestId))
+                {
+                    return InvocationCancellationResult.Pending;
+                }
+
+                AddBoundedEntry(
+                    _pendingCancellations,
+                    requestId,
+                    now + _pendingCancellationTtl,
+                    _maxPendingCancellations);
+                return InvocationCancellationResult.Pending;
             }
         }
 
-        if (invocation != null)
-        {
-            return (invocation.CancelByCaller(), false);
-        }
-
-        if (ambiguous)
-        {
-            return (false, true);
-        }
-
-        try
-        {
-            await Task.Delay(registrationWindow, cancellationToken);
-        }
-        finally
-        {
-            lock (_registrationGate)
-            {
-                if (_cancellationProbes.TryGetValue(requestId, out var probes))
-                {
-                    probes.Remove(probe!);
-                    if (probes.Count == 0)
-                    {
-                        _cancellationProbes.Remove(requestId);
-                    }
-                }
-            }
-        }
-
-        if (probe!.RegistrationCount > 1)
-        {
-            return (false, true);
-        }
-
-        return probe.Candidate == null
-            ? (false, false)
-            : (probe.Candidate.CancelByCaller(), false);
+        return invocation.CancelByCaller()
+            ? InvocationCancellationResult.Cancelled
+            : InvocationCancellationResult.NotFound;
     }
 
     public void CancelAll()
@@ -164,15 +194,28 @@ internal sealed class InvocationCancellationRegistry
     {
         lock (_registrationGate)
         {
+            var now = _timeProvider.GetUtcNow();
+            PruneExpired(now);
             if (!_active.TryGetValue(requestId, out var active))
             {
                 return;
             }
 
             active.Remove(invocation);
-            if (active.Count == 0)
+            if (active.Count > 0)
             {
-                _active.Remove(requestId);
+                return;
+            }
+
+            _active.Remove(requestId);
+            _pendingCancellations.Remove(requestId);
+            if (_pendingCancellationTtl > TimeSpan.Zero)
+            {
+                AddBoundedEntry(
+                    _recentCompletions,
+                    requestId,
+                    now + _pendingCancellationTtl,
+                    _maxRecentCompletions);
             }
         }
     }
@@ -199,11 +242,45 @@ internal sealed class InvocationCancellationRegistry
         return active[0];
     }
 
-    private sealed class CancellationProbe
+    private void AddBoundedEntry(
+        Dictionary<string, ExpiringEntry> entries,
+        string requestId,
+        DateTimeOffset expiresAt,
+        int maxEntries)
     {
-        public int RegistrationCount { get; set; }
-        public InvocationCancellation? Candidate { get; set; }
+        if (!entries.ContainsKey(requestId) && entries.Count >= maxEntries)
+        {
+            var oldest = entries
+                .OrderBy(entry => entry.Value.ExpiresAt)
+                .ThenBy(entry => entry.Value.Sequence)
+                .ThenBy(entry => entry.Key, StringComparer.Ordinal)
+                .First();
+            entries.Remove(oldest.Key);
+        }
+
+        entries[requestId] = new ExpiringEntry(expiresAt, _nextSequence++);
     }
+
+    private void PruneExpired(DateTimeOffset now)
+    {
+        PruneExpired(_pendingCancellations, now);
+        PruneExpired(_recentCompletions, now);
+    }
+
+    private static void PruneExpired(
+        Dictionary<string, ExpiringEntry> entries,
+        DateTimeOffset now)
+    {
+        foreach (var requestId in entries
+                     .Where(entry => entry.Value.ExpiresAt <= now)
+                     .Select(entry => entry.Key)
+                     .ToArray())
+        {
+            entries.Remove(requestId);
+        }
+    }
+
+    private sealed record ExpiringEntry(DateTimeOffset ExpiresAt, long Sequence);
 
     internal sealed class InvocationCancellation : IDisposable
     {
@@ -250,6 +327,23 @@ internal sealed class InvocationCancellationRegistry
                 _cancelledByCaller = true;
                 _cts.Cancel();
                 return true;
+            }
+        }
+
+        internal void ApplyPendingCallerCancellation()
+        {
+            lock (_gate)
+            {
+                if (_disposed || _completed)
+                {
+                    return;
+                }
+
+                _cancelledByCaller = true;
+                if (!_cts.IsCancellationRequested)
+                {
+                    _cts.Cancel();
+                }
             }
         }
 

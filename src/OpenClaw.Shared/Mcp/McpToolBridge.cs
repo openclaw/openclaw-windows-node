@@ -15,13 +15,15 @@ namespace OpenClaw.Shared.Mcp;
 public class McpToolBridge
 {
     private const string ProtocolVersion = "2024-11-05";
+    private static readonly TimeSpan PendingCancellationTtl = TimeSpan.FromSeconds(5);
+    private const int MaxPendingCancellations = 1_024;
+    private const int MaxRecentCompletions = 1_024;
 
     private readonly Func<IReadOnlyList<INodeCapability>> _capabilityProvider;
     private readonly IOpenClawLogger _logger;
     private readonly string _serverName;
     private readonly string _serverVersion;
-    private readonly InvocationCancellationRegistry _activeRequests =
-        new(allowDuplicateIds: true);
+    private readonly InvocationCancellationRegistry _activeRequests;
 
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -33,11 +35,32 @@ public class McpToolBridge
         IOpenClawLogger? logger = null,
         string serverName = "openclaw-tray-mcp",
         string serverVersion = "0.0.0")
+        : this(
+            capabilityProvider,
+            logger,
+            serverName,
+            serverVersion,
+            new InvocationCancellationRegistry(
+                allowDuplicateIds: true,
+                pendingCancellationTtl: PendingCancellationTtl,
+                maxPendingCancellations: MaxPendingCancellations,
+                maxRecentCompletions: MaxRecentCompletions,
+                timeProvider: TimeProvider.System))
+    {
+    }
+
+    internal McpToolBridge(
+        Func<IReadOnlyList<INodeCapability>> capabilityProvider,
+        IOpenClawLogger? logger,
+        string serverName,
+        string serverVersion,
+        InvocationCancellationRegistry activeRequests)
     {
         _capabilityProvider = capabilityProvider ?? throw new ArgumentNullException(nameof(capabilityProvider));
         _logger = logger ?? NullLogger.Instance;
         _serverName = serverName;
         _serverVersion = serverVersion;
+        _activeRequests = activeRequests ?? throw new ArgumentNullException(nameof(activeRequests));
     }
 
     /// <summary>
@@ -93,9 +116,7 @@ public class McpToolBridge
                     "initialize" => HandleInitialize(),
                     "ping" => new { },
                     "notifications/initialized" => null,
-                    "notifications/cancelled" => await HandleCancelledNotificationAsync(
-                        paramsElement,
-                        cancellationToken),
+                    "notifications/cancelled" => HandleCancelledNotification(paramsElement),
                     "tools/list" => HandleToolsList(),
                     "tools/call" => await HandleToolsCallAsync(
                         paramsElement,
@@ -123,13 +144,6 @@ public class McpToolBridge
                 return hasId
                     ? WriteToolError(idElement, ex.Message)
                     : null;
-            }
-            catch (OperationCanceledException) when (
-                method == "notifications/cancelled" &&
-                cancellationToken.IsCancellationRequested)
-            {
-                _logger.Debug("[MCP] Cancellation notification handling stopped");
-                return null;
             }
             catch (Exception ex)
             {
@@ -338,9 +352,7 @@ public class McpToolBridge
             "Proxy an HTTP request to the local OpenClaw browser control host (CDP server) running on gateway port + 2. Args: path (string, required — a local control path like '/json/list' or '/json/activate/<id>'), method ('GET'|'POST'|'DELETE', default 'GET'), body (JSON object, POST/DELETE only), query (object, appended as query params), profile (string, optional browser profile), timeoutMs (int, default 20000, max 120000). Returns { result, files? } where files is present if the response included local file paths. Requires the gateway URL to have an explicit port and the browser control host to be running.",
     };
 
-    private async Task<object?> HandleCancelledNotificationAsync(
-        JsonElement parameters,
-        CancellationToken cancellationToken)
+    private object? HandleCancelledNotification(JsonElement parameters)
     {
         if (parameters.ValueKind != JsonValueKind.Object ||
             !parameters.TryGetProperty("requestId", out var requestId) ||
@@ -351,17 +363,14 @@ public class McpToolBridge
         }
 
         var requestKey = GetRequestKey(requestId);
-        var (cancelled, ambiguous) =
-            await _activeRequests.TryCancelAfterRegistrationWindowAsync(
-                requestKey,
-                TimeSpan.FromMilliseconds(100),
-                cancellationToken);
-
-        _logger.Debug(cancelled
-            ? $"[MCP] Cancelled request {requestKey}"
-            : ambiguous
-                ? $"[MCP] Cancellation target is ambiguous: {requestKey}"
-                : $"[MCP] Cancellation target is not active: {requestKey}");
+        var result = _activeRequests.TryCancelOrRemember(requestKey);
+        _logger.Debug(result switch
+        {
+            InvocationCancellationResult.Cancelled => $"[MCP] Cancelled request {requestKey}",
+            InvocationCancellationResult.Pending => $"[MCP] Queued cancellation for request {requestKey}",
+            InvocationCancellationResult.Ambiguous => $"[MCP] Cancellation target is ambiguous: {requestKey}",
+            _ => $"[MCP] Cancellation target is not active: {requestKey}",
+        });
         return null;
     }
 
@@ -423,6 +432,11 @@ public class McpToolBridge
         NodeInvokeResponse response;
         try
         {
+            if (invocation?.CancelledByCaller == true)
+            {
+                throw new McpToolException("cancelled");
+            }
+
             response = await capability.ExecuteAsync(request, executionToken).WaitAsync(executionToken);
             if (invocation != null && !invocation.TryComplete())
             {

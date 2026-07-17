@@ -5,6 +5,15 @@ namespace OpenClaw.Shared.Tests;
 
 public sealed class InvocationCancellationRegistryTests
 {
+    private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _utcNow = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan duration) => _utcNow += duration;
+    }
+
     [Fact]
     public void TryCancel_CancelsOnlyMatchingInvocation()
     {
@@ -172,14 +181,125 @@ public sealed class InvocationCancellationRegistryTests
     }
 
     [Fact]
-    public async Task RegistrationWindow_RemainsAmbiguousWhenFirstDuplicateCompletes()
+    public void PendingCancellation_IsConsumedBeforeRegistrationReturns()
     {
-        var registry = new InvocationCancellationRegistry(allowDuplicateIds: true);
-        var cancellationTask = registry.TryCancelAfterRegistrationWindowAsync(
-            "request",
-            TimeSpan.FromMilliseconds(50),
-            CancellationToken.None);
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var registry = new InvocationCancellationRegistry(
+            allowDuplicateIds: true,
+            pendingCancellationTtl: TimeSpan.FromSeconds(5),
+            timeProvider: timeProvider);
 
+        Assert.Equal(
+            InvocationCancellationResult.Pending,
+            registry.TryCancelOrRemember("request"));
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.True(registry.TryRegister("request", CancellationToken.None, out var invocationCandidate));
+        var invocation = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(invocationCandidate);
+        using (invocation)
+        {
+            Assert.True(invocation.CancelledByCaller);
+            Assert.True(invocation.Token.IsCancellationRequested);
+            Assert.False(invocation.TryComplete());
+        }
+    }
+
+    [Fact]
+    public void PendingCancellation_TakesPrecedenceOverAlreadyCancelledTransport()
+    {
+        using var transportCts = new CancellationTokenSource();
+        transportCts.Cancel();
+        var registry = new InvocationCancellationRegistry(
+            pendingCancellationTtl: TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            InvocationCancellationResult.Pending,
+            registry.TryCancelOrRemember("request"));
+
+        Assert.True(registry.TryRegister("request", transportCts.Token, out var invocationCandidate));
+        var invocation = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(
+            invocationCandidate);
+        using (invocation)
+        {
+            Assert.True(invocation.CancelledByCaller);
+            Assert.True(invocation.Token.IsCancellationRequested);
+        }
+    }
+
+    [Fact]
+    public void PendingCancellation_WithDuplicateIdsCancelsFirstRegistrationOnly()
+    {
+        var registry = new InvocationCancellationRegistry(
+            allowDuplicateIds: true,
+            pendingCancellationTtl: TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            InvocationCancellationResult.Pending,
+            registry.TryCancelOrRemember("request"));
+
+        Assert.True(registry.TryRegister("request", CancellationToken.None, out var firstCandidate));
+        Assert.True(registry.TryRegister("request", CancellationToken.None, out var secondCandidate));
+        using var first = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(
+            firstCandidate);
+        using var second = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(
+            secondCandidate);
+
+        Assert.True(first.CancelledByCaller);
+        Assert.False(second.CancelledByCaller);
+    }
+
+    [Fact]
+    public void PendingCancellation_ExpiresAfterTtl()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var registry = new InvocationCancellationRegistry(
+            pendingCancellationTtl: TimeSpan.FromSeconds(5),
+            timeProvider: timeProvider);
+
+        Assert.Equal(
+            InvocationCancellationResult.Pending,
+            registry.TryCancelOrRemember("request"));
+        timeProvider.Advance(TimeSpan.FromSeconds(5));
+
+        Assert.True(registry.TryRegister("request", CancellationToken.None, out var invocationCandidate));
+        var invocation = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(invocationCandidate);
+        using (invocation)
+        {
+            Assert.False(invocation.CancelledByCaller);
+            Assert.False(invocation.Token.IsCancellationRequested);
+        }
+    }
+
+    [Fact]
+    public void RepeatedPendingCancellation_DoesNotRefreshTtl()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var registry = new InvocationCancellationRegistry(
+            pendingCancellationTtl: TimeSpan.FromSeconds(5),
+            timeProvider: timeProvider);
+
+        Assert.Equal(
+            InvocationCancellationResult.Pending,
+            registry.TryCancelOrRemember("request"));
+        timeProvider.Advance(TimeSpan.FromSeconds(4));
+        Assert.Equal(
+            InvocationCancellationResult.Pending,
+            registry.TryCancelOrRemember("request"));
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.True(registry.TryRegister("request", CancellationToken.None, out var invocationCandidate));
+        using var invocation = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(
+            invocationCandidate);
+        Assert.False(invocation.CancelledByCaller);
+    }
+
+    [Fact]
+    public void LateCancellation_AfterCompletionDoesNotPoisonReuse()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var registry = new InvocationCancellationRegistry(
+            pendingCancellationTtl: TimeSpan.FromSeconds(5),
+            timeProvider: timeProvider);
         Assert.True(registry.TryRegister("request", CancellationToken.None, out var firstCandidate));
         var first = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(firstCandidate);
         using (first)
@@ -187,14 +307,71 @@ public sealed class InvocationCancellationRegistryTests
             Assert.True(first.TryComplete());
         }
 
-        Assert.True(registry.TryRegister("request", CancellationToken.None, out var secondCandidate));
-        var second = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(secondCandidate);
-        using (second)
+        Assert.Equal(
+            InvocationCancellationResult.NotFound,
+            registry.TryCancelOrRemember("request"));
+        Assert.Equal(0, registry.PendingCancellationCount);
+
+        Assert.True(registry.TryRegister("request", CancellationToken.None, out var replacementCandidate));
+        var replacement = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(replacementCandidate);
+        using (replacement)
         {
-            var result = await cancellationTask;
-            Assert.False(result.Cancelled);
-            Assert.True(result.Ambiguous);
-            Assert.False(second.Token.IsCancellationRequested);
+            Assert.False(replacement.CancelledByCaller);
+        }
+    }
+
+    [Fact]
+    public void PendingCancellationCap_EvictsOldestEntryDeterministically()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var registry = new InvocationCancellationRegistry(
+            pendingCancellationTtl: TimeSpan.FromSeconds(5),
+            maxPendingCancellations: 2,
+            timeProvider: timeProvider);
+
+        Assert.Equal(InvocationCancellationResult.Pending, registry.TryCancelOrRemember("first"));
+        Assert.Equal(InvocationCancellationResult.Pending, registry.TryCancelOrRemember("second"));
+        Assert.Equal(InvocationCancellationResult.Pending, registry.TryCancelOrRemember("third"));
+        Assert.Equal(2, registry.PendingCancellationCount);
+
+        Assert.True(registry.TryRegister("first", CancellationToken.None, out var firstCandidate));
+        Assert.True(registry.TryRegister("second", CancellationToken.None, out var secondCandidate));
+        Assert.True(registry.TryRegister("third", CancellationToken.None, out var thirdCandidate));
+        using var first = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(firstCandidate);
+        using var second = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(secondCandidate);
+        using var third = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(thirdCandidate);
+
+        Assert.False(first.CancelledByCaller);
+        Assert.True(second.CancelledByCaller);
+        Assert.True(third.CancelledByCaller);
+    }
+
+    [Fact]
+    public void RecentCompletionCap_EvictsOldestEntryDeterministically()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var registry = new InvocationCancellationRegistry(
+            pendingCancellationTtl: TimeSpan.FromSeconds(5),
+            maxRecentCompletions: 2,
+            timeProvider: timeProvider);
+
+        Complete("first");
+        Complete("second");
+        Complete("third");
+        Assert.Equal(2, registry.RecentCompletionCount);
+
+        Assert.Equal(InvocationCancellationResult.Pending, registry.TryCancelOrRemember("first"));
+        Assert.Equal(InvocationCancellationResult.NotFound, registry.TryCancelOrRemember("second"));
+        Assert.Equal(InvocationCancellationResult.NotFound, registry.TryCancelOrRemember("third"));
+
+        void Complete(string requestId)
+        {
+            Assert.True(registry.TryRegister(requestId, CancellationToken.None, out var candidate));
+            var invocation = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(candidate);
+            using (invocation)
+            {
+                Assert.True(invocation.TryComplete());
+            }
         }
     }
 }

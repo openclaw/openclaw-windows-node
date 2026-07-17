@@ -12,6 +12,15 @@ namespace OpenClaw.Shared.Tests;
 
 public class McpToolBridgeTests
 {
+    private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _utcNow = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan duration) => _utcNow += duration;
+    }
+
     private sealed class FakeCapability : INodeCapability
     {
         public string Category { get; }
@@ -43,6 +52,7 @@ public class McpToolBridgeTests
         public IReadOnlyList<string> Commands => ["slow.wait"];
         public Task Entered => _entered.Task;
         public Task TwoEntered => _twoEntered.Task;
+        public int ExecuteCount => Volatile.Read(ref _enteredCount);
         public bool CanHandle(string command) => command == "slow.wait";
 
         public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
@@ -80,6 +90,11 @@ public class McpToolBridgeTests
 
     private static McpToolBridge CreateBridge(IReadOnlyList<INodeCapability> caps)
         => new(() => caps);
+
+    private static McpToolBridge CreateBridge(
+        IReadOnlyList<INodeCapability> caps,
+        InvocationCancellationRegistry registry)
+        => new(() => caps, null, "test-mcp", "1.0.0", registry);
 
     [Fact]
     public async Task Initialize_ReturnsProtocolAndServerInfo()
@@ -278,23 +293,51 @@ public class McpToolBridgeTests
     [Fact]
     public async Task CancellationNotification_BeforeRegistrationCancelsToolsCall()
     {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var registry = new InvocationCancellationRegistry(
+            allowDuplicateIds: true,
+            pendingCancellationTtl: TimeSpan.FromSeconds(5),
+            timeProvider: timeProvider);
         var capability = new CancellableCapability();
-        var bridge = CreateBridge([capability]);
+        var bridge = CreateBridge([capability], registry);
 
-        var notificationTask = bridge.HandleRequestAsync(
+        var notificationResponse = await bridge.HandleRequestAsync(
             """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"pre-cancelled"}}""");
-        await Task.Delay(10);
-
-        var callTask = bridge.HandleRequestAsync(
-            """{"jsonrpc":"2.0","id":"pre-cancelled","method":"tools/call","params":{"name":"slow.wait","arguments":{}}}""");
-        var notificationResponse = await notificationTask;
         Assert.Null(notificationResponse);
+        Assert.Equal(1, registry.PendingCancellationCount);
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
 
-        var response = await callTask;
+        var response = await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":"pre-cancelled","method":"tools/call","params":{"name":"slow.wait","arguments":{}}}""");
         using var doc = JsonDocument.Parse(response!);
         Assert.Equal(
             "cancelled",
             doc.RootElement.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(0, capability.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task PendingCancellation_IsReportedWhenTransportIsAlreadyCancelled()
+    {
+        var registry = new InvocationCancellationRegistry(
+            allowDuplicateIds: true,
+            pendingCancellationTtl: TimeSpan.FromSeconds(5));
+        var capability = new CancellableCapability();
+        var bridge = CreateBridge([capability], registry);
+        using var transportCts = new CancellationTokenSource();
+
+        await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"pre-cancelled"}}""");
+        transportCts.Cancel();
+
+        var response = await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":"pre-cancelled","method":"tools/call","params":{"name":"slow.wait","arguments":{}}}""",
+            transportCts.Token);
+        using var doc = JsonDocument.Parse(response!);
+        Assert.Equal(
+            "cancelled",
+            doc.RootElement.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(0, capability.ExecuteCount);
     }
 
     [Fact]

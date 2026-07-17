@@ -70,10 +70,21 @@ The capability list lives on `NodeService`, *not* on `WindowsNodeClient`. That s
   supplied as `params.requestId`. A cancelled `tools/call` completes with an MCP
   tool error containing `cancelled`. If concurrent HTTP scheduling processes
   cancellation just before an already-sent call registers, the notification
-  waits briefly and retries. Because JSON-RPC IDs are client-scoped but this
-  stateless HTTP transport has no client identity, duplicate active IDs are
-  allowed and cancellation is ignored when more than one active call matches;
-  this prevents one local client from cancelling another client's call.
+  records a pending cancellation for five seconds. The first matching
+  registration atomically consumes that tombstone and returns `cancelled` before
+  capability execution begins, so correctness does not depend on scheduler
+  timing. Repeated notifications for the same pending ID do not extend its
+  original five-second lifetime. Pending cancellations and recent-completion
+  guards are each capped at 1,024 entries;
+  expired entries are pruned first and the oldest remaining entry is evicted at
+  capacity. Because JSON-RPC IDs are client-scoped but this stateless HTTP
+  transport has no client identity, duplicate active IDs are allowed and
+  cancellation is ignored when more than one active call matches; this prevents
+  one local client from cancelling another client when the collision is already
+  observable. A tombstone cannot predict a later cross-client ID collision, so
+  it cancels the first matching registration; complete isolation would require
+  client identity in the transport. A recent completion guard also prevents a
+  late notification from poisoning immediate ID reuse.
 
 The bridge takes a `Func<IReadOnlyList<INodeCapability>>` rather than a snapshot. Every `tools/list` re-reads the live list. This is what guarantees zero-cost capability addition — register a new capability after server start and it appears on the next `tools/list`.
 
