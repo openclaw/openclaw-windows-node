@@ -253,6 +253,10 @@ public static class ChannelHealthParser
 
 public class SessionInfo
 {
+    /// <summary>Defensive copy so a snapshot handed to a SessionsUpdated subscriber does not
+    /// alias the live tracked instance (whose fields are mutated in place under _sessionsLock).</summary>
+    public SessionInfo Clone() => (SessionInfo)MemberwiseClone();
+
     public string Key { get; set; } = "";
     public bool IsMain { get; set; }
     public string Status { get; set; } = "unknown";

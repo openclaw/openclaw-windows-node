@@ -82,6 +82,7 @@ public static class OpenClawTelemetry
         var previous = Activity.Current;
         try
         {
+            Activity.Current = null;
             var activity = source.ToActivitySource().StartActivity(spanName, kind, parentContext);
             ApplyTags(activity, tags);
             return activity;

@@ -1079,6 +1079,29 @@ public class SetupStepsTests : IDisposable
             commands);
     }
 
+    // Characterization (PR 3 WslShellQuoting migration): the ExtraConfig value is emitted
+    // as a fully-wrapped POSIX token, so an embedded single quote must close-escape-reopen
+    // ('\'') and remain single-quoted. Pins the generated command byte-for-byte.
+    [Fact]
+    public void ConfigureGateway_QuotesExtraConfigValueWithEmbeddedSingleQuote()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Bind = "lan",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.custom.note"] = "a'b",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.custom.note 'a'\\''b'",
+            commands);
+    }
+
     [Fact]
     public async Task ConfigureGateway_UsesExtendedTimeoutForWslConfig()
     {
@@ -1588,6 +1611,25 @@ public class SetupStepsTests : IDisposable
         Assert.DoesNotContain("$HOME", script);
         Assert.DoesNotContain("case \"$candidate\"", script);
         Assert.DoesNotContain("<<'NODE'", script);
+    }
+
+    // Characterization (PR 3 WslShellQuoting migration): the workspace path is emitted as a
+    // fully-wrapped POSIX token, so an embedded single quote must close-escape-reopen ('\'')
+    // and remain single-quoted. Pins the generated script byte-for-byte.
+    [Fact]
+    public void WindowsNodeContext_BuildApplyScript_QuotesWorkspacePathWithEmbeddedSingleQuote()
+    {
+        var script = WindowsNodeBootstrapContextStep.BuildApplyScript("/home/o'brien/.openclaw/workspace");
+
+        Assert.Contains("workspace='/home/o'\\''brien/.openclaw/workspace'", script);
+    }
+
+    [Fact]
+    public void WindowsNodeContext_BuildRollbackScript_QuotesWorkspacePathWithEmbeddedSingleQuote()
+    {
+        var script = WindowsNodeBootstrapContextStep.BuildRollbackScript("/home/o'brien/.openclaw/workspace");
+
+        Assert.Contains("workspace='/home/o'\\''brien/.openclaw/workspace'", script);
     }
 
     [Theory]
