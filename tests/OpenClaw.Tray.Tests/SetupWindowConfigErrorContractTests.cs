@@ -9,6 +9,7 @@ public sealed class SetupWindowConfigErrorContractTests
         var source = File.ReadAllText(
             Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
+        Assert.Contains("SetupWindowCommandLine.TryParse(", source);
         Assert.Contains("SetupConfig.TryLoadFromFile(configPath", source);
         Assert.Contains("could not be loaded", source);
         Assert.Contains("new CompletePageArgs(", source);
@@ -16,9 +17,12 @@ public sealed class SetupWindowConfigErrorContractTests
         Assert.Contains("ShowStartupPreference: false", source);
         Assert.DoesNotContain("throw new FileNotFoundException(", source);
         Assert.DoesNotContain("File.Exists(configPath)", source);
+        Assert.DoesNotContain("GetArg(args", source);
+        Assert.DoesNotContain("HasFlag(args", source);
         AssertInOrder(
             source,
             "Closed += async",
+            "SetupWindowCommandLine.TryParse(",
             "if (configPath == null)",
             "SetupConfig.TryLoadFromFile(configPath",
             "SetupRunLock.TryAcquire(_dataDir");

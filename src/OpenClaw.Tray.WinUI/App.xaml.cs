@@ -3789,7 +3789,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 dataDir: AppIdentity.ResolveRoamingDataDirectory(),
                 localDataDir: AppIdentity.ResolveSetupLocalDataDirectory(),
                 distroNameOverride: AppIdentity.SetupDistroName,
-                gatewayPortOverride: AppIdentity.SetupGatewayPort);
+                gatewayPortOverride: AppIdentity.SetupGatewayPort,
+                commandLineArgs: SetupWindowArgumentProjection.Project(
+                    _startupArgs,
+                    IsDeepLinkArg,
+                    Environment.ProcessId));
             setupWindow.Title = AppIdentity.DecorateWindowTitle("OpenClaw Setup");
             _setupWindow = setupWindow;
             setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;

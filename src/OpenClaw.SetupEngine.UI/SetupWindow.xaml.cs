@@ -52,7 +52,8 @@ public sealed partial class SetupWindow : Window
         string? dataDir = null,
         string? localDataDir = null,
         string? distroNameOverride = null,
-        int? gatewayPortOverride = null)
+        int? gatewayPortOverride = null,
+        string[]? commandLineArgs = null)
     {
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = localDataDir ?? SetupContext.ResolveLocalDataDir();
@@ -101,8 +102,17 @@ public sealed partial class SetupWindow : Window
         SystemBackdrop = new MicaBackdrop();
 
         // Load config: explicit --config arg, or bundled default-config.json (required)
-        var args = Environment.GetCommandLineArgs();
-        var explicitConfigPath = configPath ?? GetArg(args, "--config");
+        commandLineArgs ??= Environment.GetCommandLineArgs().Skip(1).ToArray();
+        if (!SetupWindowCommandLine.TryParse(
+                commandLineArgs,
+                out var setupArguments,
+                out var argumentError))
+        {
+            ShowConfigurationError($"Invalid setup arguments: {argumentError}");
+            return;
+        }
+
+        var explicitConfigPath = configPath ?? setupArguments.ConfigPath;
         configPath = explicitConfigPath;
         if (configPath == null)
         {
@@ -144,7 +154,7 @@ public sealed partial class SetupWindow : Window
             _config.GatewayUrl = null;
         }
         GatewayLkgVersion.ApplyToConfig(_config);
-        _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
+        _config.ApplyUiDefaults(rollbackOnFailure: setupArguments.RollbackOnFailure);
         if (startAtGatewayInstalledMilestone)
         {
             _persistStartupPreferenceOnComplete = false;
@@ -404,16 +414,6 @@ public sealed partial class SetupWindow : Window
             () => _initialContentReady.TrySetResult(true));
     }
 
-    private static string? GetArg(string[] args, string name)
-    {
-        for (int i = 0; i < args.Length - 1; i++)
-            if (args[i].Equals(name, StringComparison.OrdinalIgnoreCase))
-                return args[i + 1];
-        return null;
-    }
-
-    private static bool HasFlag(string[] args, string name)
-        => args.Any(a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed record CompletePageArgs(

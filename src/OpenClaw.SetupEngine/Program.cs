@@ -272,87 +272,14 @@ public static class Program
 
     internal static bool TryParseArguments(
         string[] args,
-        out ParsedArguments parsedArguments,
+        out SetupArgumentParser.ParsedArguments parsedArguments,
         out string? error)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var flags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var valueOptionNames = new HashSet<string>(ValueOptionNames, StringComparer.OrdinalIgnoreCase);
-        var flagOptionNames = new HashSet<string>(FlagOptionNames, StringComparer.OrdinalIgnoreCase);
-
-        for (var i = 0; i < args.Length; i++)
-        {
-            var token = args[i];
-            if (!token.StartsWith("--", StringComparison.Ordinal))
-            {
-                parsedArguments = new(values, flags);
-                error = $"Unexpected argument '{token}'.";
-                return false;
-            }
-
-            var equalsIndex = token.IndexOf('=');
-            var name = equalsIndex >= 0 ? token[..equalsIndex] : token;
-            var hasInlineValue = equalsIndex >= 0;
-
-            if (valueOptionNames.Contains(name))
-            {
-                if (values.ContainsKey(name))
-                {
-                    parsedArguments = new(values, flags);
-                    error = $"{name} may only be specified once.";
-                    return false;
-                }
-
-                var value = hasInlineValue
-                    ? token[(equalsIndex + 1)..]
-                    : i < args.Length - 1 ? args[i + 1] : null;
-                if (string.IsNullOrWhiteSpace(value) ||
-                    (!hasInlineValue && value.StartsWith("--", StringComparison.Ordinal)))
-                {
-                    parsedArguments = new(values, flags);
-                    error = $"{name} requires a value.";
-                    return false;
-                }
-
-                values[name] = value;
-                if (!hasInlineValue)
-                    i++;
-                continue;
-            }
-
-            if (flagOptionNames.Contains(name))
-            {
-                if (hasInlineValue)
-                {
-                    parsedArguments = new(values, flags);
-                    error = $"{name} does not accept a value.";
-                    return false;
-                }
-
-                flags.Add(name);
-                continue;
-            }
-
-            parsedArguments = new(values, flags);
-            error = $"Unknown option '{token}'.";
-            return false;
-        }
-
-        parsedArguments = new(values, flags);
-        error = null;
-        return true;
-    }
-
-    internal sealed class ParsedArguments(
-        IReadOnlyDictionary<string, string> values,
-        IReadOnlySet<string> flags)
-    {
-        public string? GetValue(string name)
-            => values.TryGetValue(name, out var value) ? value : null;
-
-        public bool HasFlag(string name)
-            => flags.Contains(name);
-    }
+        => SetupArgumentParser.TryParse(
+            args,
+            ValueOptionNames,
+            FlagOptionNames,
+            out parsedArguments,
+            out error);
 
     private static bool TryLoadConfig(string path, out SetupConfig config, out string? error)
     {

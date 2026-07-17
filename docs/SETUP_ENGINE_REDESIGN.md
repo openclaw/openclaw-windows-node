@@ -327,9 +327,19 @@ options, bare `--`, and positional arguments are rejected with exit code 2.
 Boolean flags do not accept values, and duplicate value options are rejected;
 duplicate bare flags remain idempotent.
 
-This contract applies to `OpenClaw.SetupEngine.Program.Main`. The tray executable's
-uninstall arguments are parsed by `CliUninstallHandler` and currently use separated
-syntax for values such as `--json-output <path>`.
+Duplicate value rejection is an intentional compatibility break from the legacy
+first-value-wins behavior. Scripts that repeat a value option must remove the
+duplicate before upgrading.
+
+The same parser enforces the tray-hosted setup window's narrower command-line
+contract: `--config` and `--no-rollback-on-failure`. The tray projects recognized
+restart and deep-link host arguments out first. A restart PID must be a positive
+integer other than the current process, and the post-setup launch target must be
+`chat`; malformed host values remain for strict rejection. All remaining unknown options,
+positionals, missing values, and duplicates render the setup failure page before
+the setup lock is acquired. The tray executable's uninstall arguments are parsed
+by `CliUninstallHandler` and currently use separated syntax for values such as
+`--json-output <path>`.
 
 Exit codes: 0 = success, 1 = pipeline failure, 2 = bad arguments or setup lock/safety failure, 3 = cancelled
 
