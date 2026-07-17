@@ -80,6 +80,8 @@ src/OpenClaw.SetupEngine.UI/
 ## Config File (`default-config.json`)
 
 **Config is required.** Neither the headless exe nor the UI will run without one. The bundled `default-config.json` is auto-loaded from `AppContext.BaseDirectory` if no `--config` is specified.
+If the setup UI cannot find, read, or deserialize the selected configuration,
+it opens on the setup failure page with the load error and does not start setup.
 
 ```json
 {

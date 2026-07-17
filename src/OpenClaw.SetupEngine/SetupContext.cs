@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -42,6 +43,30 @@ public sealed class SetupConfig
         var json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<SetupConfig>(json, JsonOptions)
             ?? throw new JsonException("Config file must contain a JSON object.");
+    }
+
+    public static bool TryLoadFromFile(
+        string path,
+        [NotNullWhen(true)] out SetupConfig? config,
+        out string? error)
+    {
+        try
+        {
+            config = LoadFromFile(path);
+            error = null;
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or UnauthorizedAccessException
+            or JsonException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            config = null;
+            error = ex.Message;
+            return false;
+        }
     }
 
     public static SetupConfig FromEnvironment(SetupConfig? baseConfig = null)

@@ -59,6 +59,34 @@ public sealed partial class SetupWindow : Window
         InitializeComponent();
         Active = this;
 
+        Closed += async (_, _) =>
+        {
+            _isClosed = true;
+            _initialContentReady.TrySetResult(true);
+            try
+            {
+                _lifetimeCts.Cancel();
+                if (_contextApplyTask is { } contextApplyTask)
+                    await contextApplyTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Window teardown owns this cancellation; cleanup still must finish.
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Setup cleanup failed: {ex}");
+            }
+            finally
+            {
+                _setupLock?.Dispose();
+                _setupLock = null;
+                if (ReferenceEquals(Active, this))
+                    Active = null;
+                _cleanupCompleted.TrySetResult(true);
+            }
+        };
+
         // Size window accounting for DPI
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetDpiForWindow(hwnd);
@@ -89,14 +117,23 @@ public sealed partial class SetupWindow : Window
             }
         }
 
-        if (configPath == null || !File.Exists(configPath))
+        if (configPath == null)
         {
-            throw new FileNotFoundException(
-                "No config file found. Place default-config.json next to the executable or pass --config <path>.",
-                configPath ?? Path.Combine(AppContext.BaseDirectory, "default-config.json"));
+            var missingPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
+            ShowConfigurationError(
+                $"No setup configuration file was found at '{missingPath}'. " +
+                "Place default-config.json next to the executable or pass --config <path>.");
+            return;
         }
 
-        _config = SetupConfig.LoadFromFile(configPath);
+        if (!SetupConfig.TryLoadFromFile(configPath, out var loadedConfig, out var configError))
+        {
+            ShowConfigurationError(
+                $"The setup configuration file '{configPath}' could not be loaded. {configError}");
+            return;
+        }
+
+        _config = loadedConfig;
         _config.UsesBundledDefaultConfig = explicitConfigPath == null;
         _config = SetupConfig.FromEnvironment(_config);
         if (!string.IsNullOrWhiteSpace(distroNameOverride))
@@ -113,34 +150,6 @@ public sealed partial class SetupWindow : Window
             _persistStartupPreferenceOnComplete = false;
             _showStartupPreferenceOnComplete = false;
         }
-
-        Closed += async (_, _) =>
-        {
-            _isClosed = true;
-            _initialContentReady.TrySetResult(true);
-            try
-            {
-                _lifetimeCts.Cancel();
-                if (_contextApplyTask is { } contextApplyTask)
-                    await contextApplyTask;
-            }
-            catch (OperationCanceledException)
-            {
-                // Window teardown owns this cancellation; cleanup still must finish.
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Setup cleanup failed: {ex}");
-            }
-            finally
-            {
-                _setupLock?.Dispose();
-                _setupLock = null;
-                if (ReferenceEquals(Active, this))
-                    Active = null;
-                _cleanupCompleted.TrySetResult(true);
-            }
-        };
 
         var previewPage = SetupPreview.RequestedPage;
         if (previewPage != null)
@@ -249,6 +258,20 @@ public sealed partial class SetupWindow : Window
                 DefaultAutoStart: true,
                 ShowStartupPreference: _showStartupPreferenceOnComplete,
                 ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir)));
+
+    private void ShowConfigurationError(string errorMessage)
+    {
+        _persistStartupPreferenceOnComplete = false;
+        _showStartupPreferenceOnComplete = false;
+        NavigateTo(
+            typeof(CompletePage),
+            new CompletePageArgs(
+                Success: false,
+                Elapsed: TimeSpan.Zero,
+                LogPath: null,
+                ErrorMessage: errorMessage,
+                ShowStartupPreference: false));
+    }
 
     // Directional page transition: forward steps slide in from the right, Back from the left.
     private void NavigateTo(Type page, object? parameter, bool back = false) =>

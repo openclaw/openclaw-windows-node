@@ -356,41 +356,13 @@ public static class Program
 
     private static bool TryLoadConfig(string path, out SetupConfig config, out string? error)
     {
-        try
+        if (SetupConfig.TryLoadFromFile(path, out var loadedConfig, out error))
         {
-            config = SetupConfig.LoadFromFile(path);
-            error = null;
+            config = loadedConfig;
             return true;
         }
-        catch (IOException ex)
-        {
-            config = null!;
-            error = ex.Message;
-            return false;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            config = null!;
-            error = ex.Message;
-            return false;
-        }
-        catch (JsonException ex)
-        {
-            config = null!;
-            error = ex.Message;
-            return false;
-        }
-        catch (ArgumentException ex)
-        {
-            config = null!;
-            error = ex.Message;
-            return false;
-        }
-        catch (NotSupportedException ex)
-        {
-            config = null!;
-            error = ex.Message;
-            return false;
-        }
+
+        config = null!;
+        return false;
     }
 }
