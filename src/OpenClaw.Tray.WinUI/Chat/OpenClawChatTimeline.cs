@@ -77,6 +77,15 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     const double FollowThreshold = 60;
     const int FollowToBottomMaxStabilizationPasses = 4;
     const double FollowToBottomExtentEpsilon = 0.5;
+    // Follow-to-bottom during in-place streaming growth is handled by WinUI ScrollViewer scroll
+    // anchoring (sv.VerticalAnchorRatio = 1.0), NOT by a reactive post-layout re-pin. With the
+    // bottom row pinned as an anchor, the ScrollViewer keeps it glued to the viewport bottom
+    // BEFORE each frame is painted as the ItemsRepeater's extent estimate climbs during
+    // realization — so there is no intermediate short frame (no jitter) and no programmatic
+    // ChangeView fighting the user's own scrolling. Discrete events (new entry, session switch,
+    // initial load, ScrollToBottom token) still use QueueScrollToBottom; anchoring only covers
+    // the in-place growth case that fires no reliable SizeChanged. See issue #996 for the
+    // upstream (Reactor) port context.
 
     /// <summary>
     /// Static scroll-offset store shared across all timeline instances so that
@@ -667,17 +676,48 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         void QueuePreservePrependOffset(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, double oldOffset, double oldScrollableHeight)
         {
             suppressAutoFollowRef.Current = true;
-            sv.DispatcherQueue.TryEnqueue(() =>
+            // Anchoring (VerticalAnchorRatio=1.0) also compensates for content inserted ABOVE,
+            // which would double-correct alongside this manual delta adjust. Disable anchoring
+            // for the prepend correction and restore it once the offset is applied.
+            sv.VerticalAnchorRatio = double.NaN;
+
+            // Fail-safe restore: anchoring must always come back on, even if a dispatcher
+            // enqueue is rejected (e.g. during teardown) or the correction throws. Leaving
+            // VerticalAnchorRatio at NaN would silently disable bottom-follow for the rest of
+            // the ScrollViewer's life.
+            void RestoreAnchoring()
             {
-                var delta = sv.ScrollableHeight - oldScrollableHeight;
-                var target = ClampOffset(oldOffset + delta, sv.ScrollableHeight);
-                sv.ChangeView(null, target, null, disableAnimation: true);
-                lastVerticalOffsetRef.Current = target;
-                lastScrollableHeightRef.Current = sv.ScrollableHeight;
-                isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
-                StoreSessionOffset(sessionId, target);
-                sv.DispatcherQueue.TryEnqueue(() => suppressAutoFollowRef.Current = false);
-            });
+                suppressAutoFollowRef.Current = false;
+                sv.VerticalAnchorRatio = 1.0;
+            }
+
+            if (!sv.DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    var delta = sv.ScrollableHeight - oldScrollableHeight;
+                    var target = ClampOffset(oldOffset + delta, sv.ScrollableHeight);
+                    sv.ChangeView(null, target, null, disableAnimation: true);
+                    lastVerticalOffsetRef.Current = target;
+                    lastScrollableHeightRef.Current = sv.ScrollableHeight;
+                    isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
+                    StoreSessionOffset(sessionId, target);
+                    // Restore on a later tick so the ChangeView above lands before anchoring
+                    // re-engages; fall back to a synchronous restore if the enqueue is rejected.
+                    if (!sv.DispatcherQueue.TryEnqueue(RestoreAnchoring))
+                    {
+                        RestoreAnchoring();
+                    }
+                }
+                catch
+                {
+                    RestoreAnchoring();
+                    throw;
+                }
+            }))
+            {
+                RestoreAnchoring();
+            }
         }
 
         // Load more button — outside the repeated items
@@ -2551,8 +2591,17 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (scrollViewRef.Current != sv)
                 {
                     scrollViewRef.Current = sv;
+                    // Option B: WinUI scroll anchoring pins the bottom row to the viewport bottom
+                    // pre-paint as the ItemsRepeater extent grows during streaming (see the
+                    // constants note above). This replaces the old reactive ViewChanged re-pin.
+                    sv.VerticalAnchorRatio = 1.0;
                     sv.ViewChanged += (_, _) =>
                     {
+                        // Follow-to-bottom during in-place streaming growth is handled by scroll
+                        // anchoring (VerticalAnchorRatio = 1.0), so there is NO reactive re-pin
+                        // here. The old re-pin produced an intermediate short frame (jitter) and
+                        // fought the user's own scrolling. We just refresh follow/offset metrics
+                        // and drive the load-earlier trigger.
                         UpdateScrollMetrics(sv);
 
                         if (sv.ScrollableHeight > 0

@@ -162,6 +162,96 @@ public sealed class ChatTimelineVirtualizationProofTests
         await _ui.RunOnUIAsync(() => host!.Dispose());
     }
 
+    // Regression proof for the "scrollbar doesn't reach the bottom while the agent is
+    // thinking" bug. The thinking indicator and streamed assistant text grow the last row IN
+    // PLACE: no new Props.Entries, no ScrollToBottomToken bump, so the timeline's token/append
+    // follow branches never fire and there is no reliable SizeChanged to drive
+    // QueueScrollToBottom. Root cause: as ItemsRepeater re-realizes the grown row its extent
+    // estimate climbs a few px per frame, leaving the offset short of the new bottom with
+    // nothing to re-pin it. Fix (Option B): sv.VerticalAnchorRatio = 1.0 keeps the bottom-most
+    // realized row glued to the viewport bottom BEFORE each frame is painted as the extent
+    // grows, so the view stays pinned without a reactive post-layout ChangeView.
+    [Fact]
+    public async Task ThinkingAndStreamingGrowth_KeepsViewPinnedToBottom()
+    {
+        await _ui.ResetContainerAsync();
+
+        const int rows = 60;
+        FunctionalHostControl? host = null;
+
+        // 1. Mount a scrollable timeline. First mount is an initial load -> scrolls to bottom.
+        var props = BuildProps(rows, scrollToBottomToken: 0);
+        await _ui.RunOnUIAsync(() =>
+        {
+            TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+            _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 960, 720));
+            _ui.Container.Width = 900;
+            _ui.Container.Height = 640;
+
+            host = new FunctionalHostControl { Width = 860, Height = 560, SuppressAutoDispose = true };
+            _ui.Container.Children.Add(host);
+            host.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
+        });
+
+        await DrainRenderQueueAsync();
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            _ui.Container.UpdateLayout();
+            Assert.True(scrollViewer.ScrollableHeight > 0, "timeline should overflow and be scrollable");
+            Assert.True(
+                scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 4,
+                $"precondition: view should start pinned to bottom; offset={scrollViewer.VerticalOffset:0.0}, height={scrollViewer.ScrollableHeight:0.0}");
+        });
+
+        // 2. Agent starts thinking: a synthetic indicator row appears. No new Props.Entry,
+        //    no ScrollToBottomToken bump. The view must stay pinned to the bottom.
+        props = props with { ShowThinkingIndicator = true };
+        await _ui.RunOnUIAsync(() => host!.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props)));
+        await DrainRenderQueueAsync();
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            _ui.Container.UpdateLayout();
+            Assert.True(
+                scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 4,
+                $"thinking indicator must not break bottom-follow; gap={scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset:0.0}, height={scrollViewer.ScrollableHeight:0.0}");
+        });
+
+        // 3. Assistant streams: the last entry's text grows over several re-renders while the
+        //    thinking indicator is still present. No token bump, no entry-count change, so the
+        //    timeline's token/append follow branches never fire — follow relies on the frame-spaced
+        //    landing correction. Regression: ItemsRepeater virtualization briefly reports
+        //    ScrollableHeight a few px past the realized reachable offset after an in-place row
+        //    growth, leaving the scrollbar short of the bottom while the agent is thinking/streaming.
+        for (var revision = 1; revision <= 4; revision++)
+        {
+            var streamed = BuildStreamingEntries(rows, revision);
+            props = props with { Entries = streamed };
+            await _ui.RunOnUIAsync(() => host!.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props)));
+            await DrainRenderQueueAsync();
+            await DrainRenderQueueAsync();
+            await DrainRenderQueueAsync();
+
+            await _ui.RunOnUIAsync(() =>
+            {
+                var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+                _ui.Container.UpdateLayout();
+                Assert.True(
+                    scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 4,
+                    $"streaming revision {revision} must keep view pinned to the bottom; " +
+                    $"gap={scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset:0.0}, " +
+                    $"offset={scrollViewer.VerticalOffset:0.0}, scrollable={scrollViewer.ScrollableHeight:0.0}");
+            });
+        }
+
+        await _ui.RunOnUIAsync(() => host!.Dispose());
+    }
+
     [Fact]
     public async Task RealizedComponentRow_ReplacesRootAndPrunesRemovedEffects()
     {
@@ -245,6 +335,21 @@ public sealed class ChatTimelineVirtualizationProofTests
                 Text: FormatVariableHeightText(isUser ? "User" : "Assistant", i, textRevision)));
         }
 
+        return entries;
+    }
+
+    // Same entry ids as BuildEntries (so counts/keys are stable, mirroring a streaming
+    // update), but the final assistant row's text grows with each revision to emulate the
+    // assistant reply streaming in while the thinking indicator is still shown.
+    private static IReadOnlyList<ChatTimelineItem> BuildStreamingEntries(int rows, int streamRevision)
+    {
+        var entries = new List<ChatTimelineItem>(BuildEntries(rows, textRevision: 0));
+        var lastIndex = entries.Count - 1;
+        var last = entries[lastIndex];
+        var streamedBody = string.Join(
+            Environment.NewLine,
+            Enumerable.Range(0, streamRevision * 3).Select(line => $"streamed line {line} of assistant reply"));
+        entries[lastIndex] = last with { Text = last.Text + Environment.NewLine + streamedBody };
         return entries;
     }
 
