@@ -83,6 +83,42 @@ public class SetupPipelineTests
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TailscaleDisabled_FreshAndReplacementPipelinesSkipOnlyTailscaleSteps(bool replacement)
+    {
+        var executed = new List<string>();
+        var config = new SetupConfig
+        {
+            CleanBeforeRun = replacement,
+            Tailscale = new TailscaleConfig { Enabled = false }
+        };
+        var ctx = CreateContext(config);
+        var baselineStepId = replacement ? "replace-gateway" : "create-gateway";
+        var pipeline = new SetupPipeline([
+            new MockStep(baselineStepId, (_, _) =>
+            {
+                executed.Add(baselineStepId);
+                return Task.FromResult(StepResult.Ok());
+            }),
+            new PreflightWindowsTailscaleStep(),
+            new InstallTailscaleStep(),
+            new AuthorizeTailscaleStep(),
+            new FinalizeTailscaleServeStep(),
+            new MockStep("pair", (_, _) =>
+            {
+                executed.Add("pair");
+                return Task.FromResult(StepResult.Ok());
+            }),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        Assert.Equal([baselineStepId, "pair"], executed);
+    }
+
     [Fact]
     public void BuildWizardOnlySteps_FinalizesWindowsNodeContextAfterWizard()
     {

@@ -1662,6 +1662,15 @@ public sealed class StartGatewayStep : SetupStep
 // PAIRING STEPS
 // ═══════════════════════════════════════════════════════════════════
 
+internal static class SetupPairingCredentialPolicy
+{
+    // A durable device token does not exist until pairing completes. Initial
+    // operator and node pairing must therefore use the shared token first,
+    // with the one-time bootstrap credential as the fallback.
+    public static string? ResolveInitialPairingToken(SetupContext ctx) =>
+        ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+}
+
 public sealed class MintBootstrapTokenStep : SetupStep
 {
     public override string Id => "mint-token";
@@ -1763,7 +1772,7 @@ public sealed class PairOperatorStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var gatewayUrl = ctx.GatewayUrl!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        var token = SetupPairingCredentialPolicy.ResolveInitialPairingToken(ctx);
 
         if (string.IsNullOrEmpty(token))
             return StepResult.Terminal("No credential available for operator pairing");
@@ -2196,7 +2205,7 @@ public sealed class PairNodeStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var gatewayUrl = ctx.GatewayUrl!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        var token = SetupPairingCredentialPolicy.ResolveInitialPairingToken(ctx);
 
         if (string.IsNullOrEmpty(token))
             return StepResult.Terminal("No credential available for node pairing");
