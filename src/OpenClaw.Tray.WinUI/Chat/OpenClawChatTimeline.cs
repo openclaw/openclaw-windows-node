@@ -679,6 +679,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // Anchoring (VerticalAnchorRatio=1.0) also compensates for content inserted ABOVE,
             // which would double-correct alongside this manual delta adjust. Disable anchoring
             // for the prepend correction and restore it once the offset is applied.
+            //
+            // double.NaN is the DOCUMENTED WinUI sentinel that turns scroll anchoring OFF: NaN
+            // is the default value of ScrollViewer.VerticalAnchorRatio, and any value in the
+            // [0,1] range enables anchoring at that fraction of the viewport (1.0 = bottom edge,
+            // which is what we use to follow streaming growth). Assigning NaN — NOT 0.0 — is how
+            // you disable it; 0.0 would instead anchor to the TOP edge and reintroduce a fight
+            // with QueuePreservePrependOffset. See the ScrollViewer.VerticalAnchorRatio remarks
+            // (learn.microsoft.com/windows/winui) for the NaN-disables-anchoring contract.
             sv.VerticalAnchorRatio = double.NaN;
 
             // Fail-safe restore: anchoring must always come back on, even if a dispatcher

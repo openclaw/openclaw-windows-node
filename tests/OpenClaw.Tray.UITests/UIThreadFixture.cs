@@ -150,6 +150,25 @@ public sealed class UIThreadFixture : IDisposable
     /// <summary>Run an async void lambda on the UI thread, awaiting its completion.</summary>
     public Task RunOnUIAsync(Func<Task> work) => RunOnUIAsync(async () => { await work().ConfigureAwait(true); return 0; });
 
+    /// <summary>
+    /// Await a single LOW-priority dispatcher callback. WinUI schedules layout/render and the
+    /// realization callbacks they queue at higher priority, so by the time a Low-priority
+    /// continuation runs, all currently-queued render/layout/realization work has already run.
+    /// This is a deterministic drain primitive — a bounded alternative to sleeping a fixed
+    /// interval — used by tests that need the render queue to settle. If the dispatcher is
+    /// shutting down and rejects the enqueue, the task completes immediately so callers can
+    /// never block indefinitely.
+    /// </summary>
+    public Task YieldToRenderAsync()
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!Dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () => tcs.TrySetResult()))
+        {
+            tcs.TrySetResult();
+        }
+        return tcs.Task;
+    }
+
     /// <summary>Clear the container so each test starts from an empty surface.</summary>
     public Task ResetContainerAsync() => RunOnUIAsync(() => Container.Children.Clear());
 
