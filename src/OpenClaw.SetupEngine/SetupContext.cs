@@ -40,7 +40,8 @@ public sealed class SetupConfig
     public static SetupConfig LoadFromFile(string path)
     {
         var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<SetupConfig>(json, JsonOptions) ?? new SetupConfig();
+        return JsonSerializer.Deserialize<SetupConfig>(json, JsonOptions)
+            ?? throw new JsonException("Config file must contain a JSON object.");
     }
 
     public static SetupConfig FromEnvironment(SetupConfig? baseConfig = null)

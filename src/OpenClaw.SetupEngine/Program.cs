@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using System.Text.Json;
 using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
@@ -11,9 +12,14 @@ public static class Program
         Console.WriteLine("OpenClaw Setup Engine v0.1");
         Console.WriteLine("─────────────────────────────");
 
-        // Parse CLI arguments
-        var configPath = GetArg(args, "--config");
-        var logPath = GetArg(args, "--log-path");
+        if (!TryParseValueArguments(args, out var valueArguments, out var argumentError))
+        {
+            Console.Error.WriteLine($"ERROR: {argumentError}");
+            return 2;
+        }
+
+        var configPath = GetValue(valueArguments, "--config");
+        var logPath = GetValue(valueArguments, "--log-path");
         var headless = HasFlag(args, "--headless");
         var rollback = HasFlag(args, "--rollback-on-failure");
         var noRollback = HasFlag(args, "--no-rollback-on-failure");
@@ -21,21 +27,25 @@ public static class Program
         var wizardOnly = HasFlag(args, "--wizard-only");
         var uninstall = HasFlag(args, "--uninstall");
         var confirmDestructive = HasFlag(args, "--confirm-destructive");
-        var jsonOutput = GetArg(args, "--json-output");
+        var jsonOutput = GetValue(valueArguments, "--json-output");
         var preserveLogs = HasFlag(args, "--preserve-logs");
-        var dataDir = GetArg(args, "--data-dir");
-        var localDataDir = GetArg(args, "--local-data-dir");
-        var distroName = GetArg(args, "--distro-name");
-        var gatewayPortText = GetArg(args, "--gateway-port");
-        var autoStartName = GetArg(args, "--autostart-name") ?? "OpenClawTray";
-        var startupTaskName = GetArg(args, "--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
+        var dataDir = GetValue(valueArguments, "--data-dir");
+        var localDataDir = GetValue(valueArguments, "--local-data-dir");
+        var distroName = GetValue(valueArguments, "--distro-name");
+        var gatewayPortText = GetValue(valueArguments, "--gateway-port");
+        var autoStartName = GetValue(valueArguments, "--autostart-name") ?? "OpenClawTray";
+        var startupTaskName = GetValue(valueArguments, "--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
 
         // Load config
         SetupConfig config;
-        if (configPath != null && File.Exists(configPath))
+        if (configPath != null)
         {
             Console.WriteLine($"Loading config from: {configPath}");
-            config = SetupConfig.LoadFromFile(configPath);
+            if (!TryLoadConfig(configPath, out config, out var configError))
+            {
+                Console.Error.WriteLine($"ERROR: Cannot load config '{configPath}': {configError}");
+                return 2;
+            }
         }
         else
         {
@@ -44,7 +54,11 @@ public static class Program
             if (File.Exists(defaultPath))
             {
                 Console.WriteLine($"Loading config from: {defaultPath}");
-                config = SetupConfig.LoadFromFile(defaultPath);
+                if (!TryLoadConfig(defaultPath, out config, out var configError))
+                {
+                    Console.Error.WriteLine($"ERROR: Cannot load bundled config '{defaultPath}': {configError}");
+                    return 1;
+                }
             }
             else
             {
@@ -231,14 +245,96 @@ public static class Program
     private static List<SetupStep> BuildSteps(SetupConfig config)
         => SetupStepFactory.BuildDefaultSteps();
 
-    private static string? GetArg(string[] args, string name)
+    internal static bool TryParseValueArguments(
+        string[] args,
+        out IReadOnlyDictionary<string, string> values,
+        out string? error)
     {
-        for (int i = 0; i < args.Length - 1; i++)
+        var parsed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var valueOptionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            if (args[i].Equals(name, StringComparison.OrdinalIgnoreCase))
-                return args[i + 1];
+            "--config",
+            "--log-path",
+            "--json-output",
+            "--data-dir",
+            "--local-data-dir",
+            "--distro-name",
+            "--gateway-port",
+            "--autostart-name",
+            "--startup-task-name",
+        };
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var name = args[i];
+            if (!valueOptionNames.Contains(name))
+                continue;
+
+            if (parsed.ContainsKey(name))
+            {
+                values = parsed;
+                error = $"{name} may only be specified once.";
+                return false;
+            }
+
+            if (i == args.Length - 1 ||
+                string.IsNullOrWhiteSpace(args[i + 1]) ||
+                args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                values = parsed;
+                error = $"{name} requires a value.";
+                return false;
+            }
+
+            parsed[name] = args[++i];
         }
-        return null;
+
+        values = parsed;
+        error = null;
+        return true;
+    }
+
+    private static string? GetValue(IReadOnlyDictionary<string, string> values, string name)
+        => values.TryGetValue(name, out var value) ? value : null;
+
+    private static bool TryLoadConfig(string path, out SetupConfig config, out string? error)
+    {
+        try
+        {
+            config = SetupConfig.LoadFromFile(path);
+            error = null;
+            return true;
+        }
+        catch (IOException ex)
+        {
+            config = null!;
+            error = ex.Message;
+            return false;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            config = null!;
+            error = ex.Message;
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            config = null!;
+            error = ex.Message;
+            return false;
+        }
+        catch (ArgumentException ex)
+        {
+            config = null!;
+            error = ex.Message;
+            return false;
+        }
+        catch (NotSupportedException ex)
+        {
+            config = null!;
+            error = ex.Message;
+            return false;
+        }
     }
 
     private static bool HasFlag(string[] args, string name)
