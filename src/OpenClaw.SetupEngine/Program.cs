@@ -7,34 +7,59 @@ namespace OpenClaw.SetupEngine;
 [SupportedOSPlatform("windows")]
 public static class Program
 {
+    internal static IReadOnlyList<string> ValueOptionNames { get; } = Array.AsReadOnly(
+    [
+        "--config",
+        "--log-path",
+        "--json-output",
+        "--data-dir",
+        "--local-data-dir",
+        "--distro-name",
+        "--gateway-port",
+        "--autostart-name",
+        "--startup-task-name",
+    ]);
+
+    internal static IReadOnlyList<string> FlagOptionNames { get; } = Array.AsReadOnly(
+    [
+        "--headless",
+        "--rollback-on-failure",
+        "--no-rollback-on-failure",
+        "--dry-run",
+        "--wizard-only",
+        "--uninstall",
+        "--confirm-destructive",
+        "--preserve-logs",
+    ]);
+
     public static async Task<int> Main(string[] args)
     {
         Console.WriteLine("OpenClaw Setup Engine v0.1");
         Console.WriteLine("─────────────────────────────");
 
-        if (!TryParseValueArguments(args, out var valueArguments, out var argumentError))
+        if (!TryParseArguments(args, out var parsedArguments, out var argumentError))
         {
             Console.Error.WriteLine($"ERROR: {argumentError}");
             return 2;
         }
 
-        var configPath = GetValue(valueArguments, "--config");
-        var logPath = GetValue(valueArguments, "--log-path");
-        var headless = HasFlag(args, "--headless");
-        var rollback = HasFlag(args, "--rollback-on-failure");
-        var noRollback = HasFlag(args, "--no-rollback-on-failure");
-        var dryRun = HasFlag(args, "--dry-run");
-        var wizardOnly = HasFlag(args, "--wizard-only");
-        var uninstall = HasFlag(args, "--uninstall");
-        var confirmDestructive = HasFlag(args, "--confirm-destructive");
-        var jsonOutput = GetValue(valueArguments, "--json-output");
-        var preserveLogs = HasFlag(args, "--preserve-logs");
-        var dataDir = GetValue(valueArguments, "--data-dir");
-        var localDataDir = GetValue(valueArguments, "--local-data-dir");
-        var distroName = GetValue(valueArguments, "--distro-name");
-        var gatewayPortText = GetValue(valueArguments, "--gateway-port");
-        var autoStartName = GetValue(valueArguments, "--autostart-name") ?? "OpenClawTray";
-        var startupTaskName = GetValue(valueArguments, "--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
+        var configPath = parsedArguments.GetValue("--config");
+        var logPath = parsedArguments.GetValue("--log-path");
+        var headless = parsedArguments.HasFlag("--headless");
+        var rollback = parsedArguments.HasFlag("--rollback-on-failure");
+        var noRollback = parsedArguments.HasFlag("--no-rollback-on-failure");
+        var dryRun = parsedArguments.HasFlag("--dry-run");
+        var wizardOnly = parsedArguments.HasFlag("--wizard-only");
+        var uninstall = parsedArguments.HasFlag("--uninstall");
+        var confirmDestructive = parsedArguments.HasFlag("--confirm-destructive");
+        var jsonOutput = parsedArguments.GetValue("--json-output");
+        var preserveLogs = parsedArguments.HasFlag("--preserve-logs");
+        var dataDir = parsedArguments.GetValue("--data-dir");
+        var localDataDir = parsedArguments.GetValue("--local-data-dir");
+        var distroName = parsedArguments.GetValue("--distro-name");
+        var gatewayPortText = parsedArguments.GetValue("--gateway-port");
+        var autoStartName = parsedArguments.GetValue("--autostart-name") ?? "OpenClawTray";
+        var startupTaskName = parsedArguments.GetValue("--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
 
         // Load config
         SetupConfig config;
@@ -245,57 +270,89 @@ public static class Program
     private static List<SetupStep> BuildSteps(SetupConfig config)
         => SetupStepFactory.BuildDefaultSteps();
 
-    internal static bool TryParseValueArguments(
+    internal static bool TryParseArguments(
         string[] args,
-        out IReadOnlyDictionary<string, string> values,
+        out ParsedArguments parsedArguments,
         out string? error)
     {
-        var parsed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var valueOptionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "--config",
-            "--log-path",
-            "--json-output",
-            "--data-dir",
-            "--local-data-dir",
-            "--distro-name",
-            "--gateway-port",
-            "--autostart-name",
-            "--startup-task-name",
-        };
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var flags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var valueOptionNames = new HashSet<string>(ValueOptionNames, StringComparer.OrdinalIgnoreCase);
+        var flagOptionNames = new HashSet<string>(FlagOptionNames, StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < args.Length; i++)
         {
-            var name = args[i];
-            if (!valueOptionNames.Contains(name))
+            var token = args[i];
+            if (!token.StartsWith("--", StringComparison.Ordinal))
+            {
+                parsedArguments = new(values, flags);
+                error = $"Unexpected argument '{token}'.";
+                return false;
+            }
+
+            var equalsIndex = token.IndexOf('=');
+            var name = equalsIndex >= 0 ? token[..equalsIndex] : token;
+            var hasInlineValue = equalsIndex >= 0;
+
+            if (valueOptionNames.Contains(name))
+            {
+                if (values.ContainsKey(name))
+                {
+                    parsedArguments = new(values, flags);
+                    error = $"{name} may only be specified once.";
+                    return false;
+                }
+
+                var value = hasInlineValue
+                    ? token[(equalsIndex + 1)..]
+                    : i < args.Length - 1 ? args[i + 1] : null;
+                if (string.IsNullOrWhiteSpace(value) ||
+                    (!hasInlineValue && value.StartsWith("--", StringComparison.Ordinal)))
+                {
+                    parsedArguments = new(values, flags);
+                    error = $"{name} requires a value.";
+                    return false;
+                }
+
+                values[name] = value;
+                if (!hasInlineValue)
+                    i++;
                 continue;
-
-            if (parsed.ContainsKey(name))
-            {
-                values = parsed;
-                error = $"{name} may only be specified once.";
-                return false;
             }
 
-            if (i == args.Length - 1 ||
-                string.IsNullOrWhiteSpace(args[i + 1]) ||
-                args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            if (flagOptionNames.Contains(name))
             {
-                values = parsed;
-                error = $"{name} requires a value.";
-                return false;
+                if (hasInlineValue)
+                {
+                    parsedArguments = new(values, flags);
+                    error = $"{name} does not accept a value.";
+                    return false;
+                }
+
+                flags.Add(name);
+                continue;
             }
 
-            parsed[name] = args[++i];
+            parsedArguments = new(values, flags);
+            error = $"Unknown option '{token}'.";
+            return false;
         }
 
-        values = parsed;
+        parsedArguments = new(values, flags);
         error = null;
         return true;
     }
 
-    private static string? GetValue(IReadOnlyDictionary<string, string> values, string name)
-        => values.TryGetValue(name, out var value) ? value : null;
+    internal sealed class ParsedArguments(
+        IReadOnlyDictionary<string, string> values,
+        IReadOnlySet<string> flags)
+    {
+        public string? GetValue(string name)
+            => values.TryGetValue(name, out var value) ? value : null;
+
+        public bool HasFlag(string name)
+            => flags.Contains(name);
+    }
 
     private static bool TryLoadConfig(string path, out SetupConfig config, out string? error)
     {
@@ -336,7 +393,4 @@ public static class Program
             return false;
         }
     }
-
-    private static bool HasFlag(string[] args, string name)
-        => args.Any(a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
 }

@@ -319,6 +319,16 @@ OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 
 Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and uninstall safety flags such as `--uninstall` plus `--confirm-destructive`.
 
+SetupEngine option names are case-insensitive. Value options accept either separated
+syntax (`--config custom.json`) or equals syntax (`--config=custom.json`). Unknown
+options, bare `--`, and positional arguments are rejected with exit code 2.
+Boolean flags do not accept values, and duplicate value options are rejected;
+duplicate bare flags remain idempotent.
+
+This contract applies to `OpenClaw.SetupEngine.Program.Main`. The tray executable's
+uninstall arguments are parsed by `CliUninstallHandler` and currently use separated
+syntax for values such as `--json-output <path>`.
+
 Exit codes: 0 = success, 1 = pipeline failure, 2 = bad arguments or setup lock/safety failure, 3 = cancelled
 
 ### UI (hosted by tray)

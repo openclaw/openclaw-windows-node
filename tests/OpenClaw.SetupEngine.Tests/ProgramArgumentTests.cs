@@ -5,7 +5,7 @@ namespace OpenClaw.SetupEngine.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class ProgramArgumentTests : IDisposable
 {
-    private static readonly string[] s_valueOptionNames =
+    private static readonly string[] s_expectedValueOptionNames =
     [
         "--config",
         "--log-path",
@@ -16,6 +16,18 @@ public sealed class ProgramArgumentTests : IDisposable
         "--gateway-port",
         "--autostart-name",
         "--startup-task-name",
+    ];
+
+    private static readonly string[] s_expectedFlagOptionNames =
+    [
+        "--headless",
+        "--rollback-on-failure",
+        "--no-rollback-on-failure",
+        "--dry-run",
+        "--wizard-only",
+        "--uninstall",
+        "--confirm-destructive",
+        "--preserve-logs",
     ];
 
     private readonly string _tempDir;
@@ -33,7 +45,10 @@ public sealed class ProgramArgumentTests : IDisposable
     }
 
     public static TheoryData<string> ValueOptionNames
-        => new(s_valueOptionNames);
+        => new(Program.ValueOptionNames);
+
+    public static TheoryData<string> FlagOptionNames
+        => new(Program.FlagOptionNames);
 
     public static TheoryData<string> EmptyConfigContents
         => new("", " \t\r\n");
@@ -43,7 +58,7 @@ public sealed class ProgramArgumentTests : IDisposable
         get
         {
             var cases = new TheoryData<string, string>();
-            foreach (var optionName in s_valueOptionNames)
+            foreach (var optionName in Program.ValueOptionNames)
             {
                 foreach (var value in new[] { " ", "\t", "\r\n" })
                     cases.Add(optionName, value);
@@ -55,9 +70,9 @@ public sealed class ProgramArgumentTests : IDisposable
 
     [Theory]
     [MemberData(nameof(ValueOptionNames))]
-    public void TryParseValueArguments_RejectsMissingValue(string optionName)
+    public void TryParseArguments_RejectsMissingValue(string optionName)
     {
-        var parsed = Program.TryParseValueArguments([optionName], out _, out var error);
+        var parsed = Program.TryParseArguments([optionName], out _, out var error);
 
         Assert.False(parsed);
         Assert.Equal($"{optionName} requires a value.", error);
@@ -65,9 +80,9 @@ public sealed class ProgramArgumentTests : IDisposable
 
     [Theory]
     [MemberData(nameof(ValueOptionNames))]
-    public void TryParseValueArguments_RejectsAnotherOptionAsValue(string optionName)
+    public void TryParseArguments_RejectsAnotherOptionAsValue(string optionName)
     {
-        var parsed = Program.TryParseValueArguments(
+        var parsed = Program.TryParseArguments(
             [optionName, "--headless"],
             out _,
             out var error);
@@ -78,9 +93,9 @@ public sealed class ProgramArgumentTests : IDisposable
 
     [Theory]
     [MemberData(nameof(ValueOptionNames))]
-    public void TryParseValueArguments_RejectsEmptyValue(string optionName)
+    public void TryParseArguments_RejectsEmptyValue(string optionName)
     {
-        var parsed = Program.TryParseValueArguments([optionName, ""], out _, out var error);
+        var parsed = Program.TryParseArguments([optionName, ""], out _, out var error);
 
         Assert.False(parsed);
         Assert.Equal($"{optionName} requires a value.", error);
@@ -88,18 +103,18 @@ public sealed class ProgramArgumentTests : IDisposable
 
     [Theory]
     [MemberData(nameof(WhitespaceValueCases))]
-    public void TryParseValueArguments_RejectsWhitespaceValue(string optionName, string value)
+    public void TryParseArguments_RejectsWhitespaceValue(string optionName, string value)
     {
-        var parsed = Program.TryParseValueArguments([optionName, value], out _, out var error);
+        var parsed = Program.TryParseArguments([optionName, value], out _, out var error);
 
         Assert.False(parsed);
         Assert.Equal($"{optionName} requires a value.", error);
     }
 
     [Fact]
-    public void TryParseValueArguments_RejectsDuplicateOption()
+    public void TryParseArguments_RejectsDuplicateValueOption()
     {
-        var parsed = Program.TryParseValueArguments(
+        var parsed = Program.TryParseArguments(
             ["--data-dir", "first", "--data-dir", "second"],
             out _,
             out var error);
@@ -109,25 +124,184 @@ public sealed class ProgramArgumentTests : IDisposable
     }
 
     [Fact]
-    public void TryParseValueArguments_ParsesEveryValueOption()
+    public void OptionContract_MatchesExpectedOptions()
     {
-        var args = s_valueOptionNames
+        Assert.Equal(s_expectedValueOptionNames, Program.ValueOptionNames);
+        Assert.Equal(s_expectedFlagOptionNames, Program.FlagOptionNames);
+    }
+
+    [Fact]
+    public void TryParseArguments_ParsesEverySeparatedValueOption()
+    {
+        var args = Program.ValueOptionNames
             .SelectMany((option, index) => new[] { option, $"value-{index}" })
             .ToArray();
 
-        var parsed = Program.TryParseValueArguments(args, out var values, out var error);
+        var parsed = Program.TryParseArguments(args, out var result, out var error);
 
         Assert.True(parsed);
         Assert.Null(error);
-        Assert.Equal(s_valueOptionNames.Length, values.Count);
-        for (var i = 0; i < s_valueOptionNames.Length; i++)
-            Assert.Equal($"value-{i}", values[s_valueOptionNames[i]]);
+        for (var i = 0; i < Program.ValueOptionNames.Count; i++)
+            Assert.Equal($"value-{i}", result.GetValue(Program.ValueOptionNames[i]));
+    }
+
+    [Theory]
+    [MemberData(nameof(ValueOptionNames))]
+    public void TryParseArguments_ParsesEqualsValue(string optionName)
+    {
+        var parsed = Program.TryParseArguments(
+            [$"{optionName}=value=with=equals"],
+            out var result,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("value=with=equals", result.GetValue(optionName));
+    }
+
+    [Theory]
+    [MemberData(nameof(ValueOptionNames))]
+    public void TryParseArguments_AcceptsValueOptionCaseInsensitively(string optionName)
+    {
+        var parsed = Program.TryParseArguments(
+            [$"{optionName.ToUpperInvariant()}=value"],
+            out var result,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("value", result.GetValue(optionName));
+    }
+
+    [Theory]
+    [MemberData(nameof(ValueOptionNames))]
+    public void TryParseArguments_RejectsEmptyEqualsValue(string optionName)
+    {
+        var parsed = Program.TryParseArguments([$"{optionName}="], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal($"{optionName} requires a value.", error);
+    }
+
+    [Theory]
+    [MemberData(nameof(WhitespaceValueCases))]
+    public void TryParseArguments_RejectsWhitespaceEqualsValue(string optionName, string value)
+    {
+        var parsed = Program.TryParseArguments([$"{optionName}={value}"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal($"{optionName} requires a value.", error);
+    }
+
+    [Theory]
+    [MemberData(nameof(FlagOptionNames))]
+    public void TryParseArguments_AcceptsBareFlagCaseInsensitively(string optionName)
+    {
+        var mixedCaseName = optionName.ToUpperInvariant();
+
+        var parsed = Program.TryParseArguments([mixedCaseName], out var result, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.True(result.HasFlag(optionName));
+    }
+
+    [Theory]
+    [MemberData(nameof(FlagOptionNames))]
+    public void TryParseArguments_RejectsFlagValue(string optionName)
+    {
+        var parsed = Program.TryParseArguments([$"{optionName}=true"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal($"{optionName} does not accept a value.", error);
+    }
+
+    [Fact]
+    public void TryParseArguments_AcceptsDuplicateFlags()
+    {
+        var parsed = Program.TryParseArguments(
+            ["--dry-run", "--DRY-RUN"],
+            out var result,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.True(result.HasFlag("--dry-run"));
+    }
+
+    [Theory]
+    [InlineData("--confg", "Unknown option '--confg'.")]
+    [InlineData("--confg=missing.json", "Unknown option '--confg=missing.json'.")]
+    [InlineData("--", "Unknown option '--'.")]
+    public void TryParseArguments_RejectsUnknownOption(string token, string expectedError)
+    {
+        var parsed = Program.TryParseArguments([token], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal(expectedError, error);
+    }
+
+    [Theory]
+    [InlineData("config.json")]
+    [InlineData("-x")]
+    [InlineData("")]
+    public void TryParseArguments_RejectsUnexpectedPositionalArgument(string token)
+    {
+        var parsed = Program.TryParseArguments([token], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal($"Unexpected argument '{token}'.", error);
+    }
+
+    [Fact]
+    public void TryParseArguments_ReportsFirstInvalidToken()
+    {
+        var parsed = Program.TryParseArguments(
+            ["--dry-run", "--confg", "missing.json", "--unknown"],
+            out _,
+            out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("Unknown option '--confg'.", error);
+    }
+
+    [Fact]
+    public void TryParseArguments_RejectsPositionalBeforeKnownOption()
+    {
+        var parsed = Program.TryParseArguments(
+            ["unexpected", "--dry-run"],
+            out _,
+            out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("Unexpected argument 'unexpected'.", error);
     }
 
     [Fact]
     public async Task Main_RejectsConfigFollowedByFlagBeforeLoadingBundledDefault()
     {
         var exitCode = await Program.Main(["--config", "--headless"]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_RejectsMissingEqualsConfigBeforeLoadingBundledDefault()
+    {
+        var configPath = Path.Combine(_tempDir, "equals-missing.json");
+
+        var exitCode = await Program.Main([$"--config={configPath}", "--dry-run"]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_RejectsMisspelledConfigBeforeLoadingBundledDefault()
+    {
+        var configPath = Path.Combine(_tempDir, "valid.json");
+        await File.WriteAllTextAsync(configPath, "{}");
+
+        var exitCode = await Program.Main(["--confg", configPath, "--dry-run"]);
 
         Assert.Equal(2, exitCode);
     }
@@ -207,6 +381,17 @@ public sealed class ProgramArgumentTests : IDisposable
         await File.WriteAllTextAsync(configPath, "{}");
 
         var exitCode = await Program.Main(["--config", configPath, "--dry-run"]);
+
+        Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_AcceptsExplicitValidEqualsConfig()
+    {
+        var configPath = Path.Combine(_tempDir, "valid-equals.json");
+        await File.WriteAllTextAsync(configPath, "{}");
+
+        var exitCode = await Program.Main([$"--config={configPath}", "--dry-run"]);
 
         Assert.Equal(0, exitCode);
     }
