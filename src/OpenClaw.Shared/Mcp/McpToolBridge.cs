@@ -20,6 +20,8 @@ public class McpToolBridge
     private readonly IOpenClawLogger _logger;
     private readonly string _serverName;
     private readonly string _serverVersion;
+    private readonly InvocationCancellationRegistry _activeRequests =
+        new(allowDuplicateIds: true);
 
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -49,8 +51,8 @@ public class McpToolBridge
     /// Dispatch a JSON-RPC request body, observing a cancellation token (used
     /// by the HTTP transport to enforce a per-request deadline). When the
     /// token fires during a tool dispatch, the call surfaces as a tool error
-    /// ("request timed out") so the slot is freed even if the underlying
-    /// capability work continues to run.
+    /// ("request timed out"). MCP <c>notifications/cancelled</c> messages
+    /// cancel the matching active request and surface as "cancelled".
     /// </summary>
     public async Task<string?> HandleRequestAsync(string requestBody, CancellationToken cancellationToken)
     {
@@ -82,6 +84,7 @@ public class McpToolBridge
 
             var method = methodProp.GetString()!;
             var paramsElement = root.TryGetProperty("params", out var p) ? p : default;
+            var requestKey = hasId ? GetRequestKey(idElement!.Value) : null;
 
             try
             {
@@ -90,8 +93,14 @@ public class McpToolBridge
                     "initialize" => HandleInitialize(),
                     "ping" => new { },
                     "notifications/initialized" => null,
+                    "notifications/cancelled" => await HandleCancelledNotificationAsync(
+                        paramsElement,
+                        cancellationToken),
                     "tools/list" => HandleToolsList(),
-                    "tools/call" => await HandleToolsCallAsync(paramsElement, cancellationToken),
+                    "tools/call" => await HandleToolsCallAsync(
+                        paramsElement,
+                        requestKey,
+                        cancellationToken),
                     // Some clients (notably Cursor) probe these on startup. Returning
                     // empty lists is friendlier than MethodNotFound — both feature sets
                     // are deferred but compatible by being absent rather than failing.
@@ -114,6 +123,13 @@ public class McpToolBridge
                 return hasId
                     ? WriteToolError(idElement, ex.Message)
                     : null;
+            }
+            catch (OperationCanceledException) when (
+                method == "notifications/cancelled" &&
+                cancellationToken.IsCancellationRequested)
+            {
+                _logger.Debug("[MCP] Cancellation notification handling stopped");
+                return null;
             }
             catch (Exception ex)
             {
@@ -322,7 +338,37 @@ public class McpToolBridge
             "Proxy an HTTP request to the local OpenClaw browser control host (CDP server) running on gateway port + 2. Args: path (string, required — a local control path like '/json/list' or '/json/activate/<id>'), method ('GET'|'POST'|'DELETE', default 'GET'), body (JSON object, POST/DELETE only), query (object, appended as query params), profile (string, optional browser profile), timeoutMs (int, default 20000, max 120000). Returns { result, files? } where files is present if the response included local file paths. Requires the gateway URL to have an explicit port and the browser control host to be running.",
     };
 
-    private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)
+    private async Task<object?> HandleCancelledNotificationAsync(
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("requestId", out var requestId) ||
+            requestId.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            _logger.Warn("[MCP] notifications/cancelled has no requestId");
+            return null;
+        }
+
+        var requestKey = GetRequestKey(requestId);
+        var (cancelled, ambiguous) =
+            await _activeRequests.TryCancelAfterRegistrationWindowAsync(
+                requestKey,
+                TimeSpan.FromMilliseconds(100),
+                cancellationToken);
+
+        _logger.Debug(cancelled
+            ? $"[MCP] Cancelled request {requestKey}"
+            : ambiguous
+                ? $"[MCP] Cancellation target is ambiguous: {requestKey}"
+                : $"[MCP] Cancellation target is not active: {requestKey}");
+        return null;
+    }
+
+    private async Task<object> HandleToolsCallAsync(
+        JsonElement parameters,
+        string? requestKey,
+        CancellationToken cancellationToken)
     {
         if (parameters.ValueKind != JsonValueKind.Object)
             throw new McpToolException("Invalid params: expected object");
@@ -366,19 +412,51 @@ public class McpToolBridge
         // their underlying pipeline on timeout; legacy capabilities fall back
         // to the no-CT signature and still benefit from WaitAsync freeing the
         // bridge's handler slot.
+        InvocationCancellationRegistry.InvocationCancellation? invocation = null;
+        if (requestKey != null &&
+            !_activeRequests.TryRegister(requestKey, cancellationToken, out invocation))
+        {
+            throw new McpToolException("duplicate active request id");
+        }
+
+        var executionToken = invocation?.Token ?? cancellationToken;
         NodeInvokeResponse response;
         try
         {
-            response = await capability.ExecuteAsync(request, cancellationToken).WaitAsync(cancellationToken);
+            response = await capability.ExecuteAsync(request, executionToken).WaitAsync(executionToken);
+            if (invocation != null && !invocation.TryComplete())
+            {
+                throw new McpToolException(
+                    invocation.CancelledByCaller ? "cancelled" : "request timed out");
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (invocation?.CancelledByCaller == true)
+        {
+            _logger.Info($"[MCP] tools/call {name} cancelled");
+            throw new McpToolException("cancelled");
+        }
+        catch (OperationCanceledException) when (executionToken.IsCancellationRequested)
         {
             _logger.Warn($"[MCP] tools/call {name} timed out");
             throw new McpToolException("request timed out");
         }
+        finally
+        {
+            invocation?.Dispose();
+        }
 
         if (!response.Ok)
-            throw new McpToolException(response.Error ?? "tool execution failed");
+        {
+            var error = response.Error ?? "tool execution failed";
+            if (error == "cancelled" &&
+                executionToken.IsCancellationRequested &&
+                invocation?.CancelledByCaller != true)
+            {
+                error = "request timed out";
+            }
+
+            throw new McpToolException(error);
+        }
 
         var payloadJson = response.Payload is null
             ? "null"
@@ -393,6 +471,9 @@ public class McpToolBridge
             isError = false,
         };
     }
+
+    private static string GetRequestKey(JsonElement requestId)
+        => requestId.GetRawText();
 
     private static string WriteResult(JsonElement? id, object result)
     {

@@ -1769,13 +1769,16 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 appNotification));
     }
     
-    private async Task<ScreenCaptureResult> OnScreenCapture(ScreenCaptureArgs args)
+    private async Task<ScreenCaptureResult> OnScreenCapture(
+        ScreenCaptureArgs args,
+        CancellationToken cancellationToken)
     {
         if (_screenCaptureService == null)
         {
             throw new InvalidOperationException("Screen capture service not available");
         }
         
+        cancellationToken.ThrowIfCancellationRequested();
         // Notify user that screen capture is happening (throttled to avoid spam)
         var now = DateTime.Now;
         if ((now - _lastScreenCaptureNotification).TotalSeconds > 10)
@@ -1787,18 +1790,21 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 "node:screen-captured");
         }
         
-        return await _screenCaptureService.CaptureAsync(args);
+        return await _screenCaptureService.CaptureAsync(args, cancellationToken);
     }
 
-    private async Task<ScreenRecordResult> OnScreenRecord(ScreenRecordArgs args)
+    private async Task<ScreenRecordResult> OnScreenRecord(
+        ScreenRecordArgs args,
+        CancellationToken cancellationToken)
     {
         if (_screenRecordingService == null)
         {
             throw new InvalidOperationException("Screen recording service not available");
         }
 
-        await EnsureRecordingConsentAsync(RecordingType.Screen);
-        await ShowRecordingCountdownAsync();
+        await EnsureRecordingConsentAsync(RecordingType.Screen, cancellationToken);
+        await ShowRecordingCountdownAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         SetRecordingState(RecordingType.Screen, true, args.DurationMs);
         try
@@ -1807,13 +1813,18 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 LocalizationHelper.GetString("Toast_ScreenRecordingStarted"),
                 LocalizationHelper.GetString("Toast_ScreenRecordingStartedDetail"),
                 "node:screen-recording-started");
-            var result = await _screenRecordingService.RecordAsync(args);
+            var result = await _screenRecordingService.RecordAsync(args, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             RequestNodeToast(
                 LocalizationHelper.GetString("Toast_ScreenRecordingComplete"),
                 LocalizationHelper.GetString("Toast_ScreenRecordingCompleteDetail"),
                 "node:screen-recording-complete",
                 AppNotificationSeverity.Success);
             return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
@@ -1835,17 +1846,19 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     #region Camera Capability Handlers
     
-    private Task<CameraInfo[]> OnCameraList()
+    private Task<CameraInfo[]> OnCameraList(CancellationToken cancellationToken)
     {
         if (_cameraCaptureService == null)
         {
             throw new InvalidOperationException("Camera capture service not available");
         }
         
-        return _cameraCaptureService.ListCamerasAsync();
+        return _cameraCaptureService.ListCamerasAsync(cancellationToken);
     }
     
-    private async Task<CameraSnapResult> OnCameraSnap(CameraSnapArgs args)
+    private async Task<CameraSnapResult> OnCameraSnap(
+        CameraSnapArgs args,
+        CancellationToken cancellationToken)
     {
         if (_cameraCaptureService == null)
         {
@@ -1854,7 +1867,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         
         try
         {
-            return await _cameraCaptureService.SnapAsync(args);
+            return await _cameraCaptureService.SnapAsync(args, cancellationToken);
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -1870,15 +1883,18 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
     }
 
-    private async Task<CameraClipResult> OnCameraClip(CameraClipArgs args)
+    private async Task<CameraClipResult> OnCameraClip(
+        CameraClipArgs args,
+        CancellationToken cancellationToken)
     {
         if (_cameraCaptureService == null)
         {
             throw new InvalidOperationException("Camera capture service not available");
         }
 
-        await EnsureRecordingConsentAsync(RecordingType.Camera);
-        await ShowRecordingCountdownAsync();
+        await EnsureRecordingConsentAsync(RecordingType.Camera, cancellationToken);
+        await ShowRecordingCountdownAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         SetRecordingState(RecordingType.Camera, true, args.DurationMs);
         try
@@ -1887,7 +1903,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 LocalizationHelper.GetString("Toast_CameraRecordingStarted"),
                 LocalizationHelper.GetString("Toast_CameraRecordingStartedDetail"),
                 "node:camera-recording-started");
-            var result = await _cameraCaptureService.ClipAsync(args);
+            var result = await _cameraCaptureService.ClipAsync(args, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             RequestNodeToast(
                 LocalizationHelper.GetString("Toast_CameraRecordingComplete"),
                 LocalizationHelper.GetString("Toast_CameraRecordingCompleteDetail"),
@@ -2074,14 +2091,16 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         });
     }
 
-    private async Task EnsureRecordingConsentAsync(RecordingType type)
+    private async Task EnsureRecordingConsentAsync(
+        RecordingType type,
+        CancellationToken cancellationToken)
     {
         if (HasRecordingConsent(type)) return;
 
         Task<bool>? existingConsentPrompt = null;
         TaskCompletionSource<bool>? ownedConsentPrompt = null;
 
-        await _consentLock.WaitAsync();
+        await _consentLock.WaitAsync(cancellationToken);
         try
         {
             // Re-check after acquiring lock: a prior caller may have resolved consent.
@@ -2105,18 +2124,35 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         if (existingConsentPrompt != null)
         {
-            if (!await existingConsentPrompt)
+            if (!await existingConsentPrompt.WaitAsync(cancellationToken))
                 throw new InvalidOperationException("Recording denied: user has not given consent");
             return;
         }
 
+        var clearPrompt = true;
         try
         {
-            var consented = await ShowRecordingConsentDialogAsync(type);
+            var dialogTask = ShowRecordingConsentDialogAsync(type);
+            bool consented;
+            try
+            {
+                consented = await dialogTask.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                clearPrompt = false;
+                ObserveAbandonedConsentPrompt(dialogTask, type, ownedConsentPrompt!);
+                throw;
+            }
+
             ownedConsentPrompt!.TrySetResult(consented);
 
             if (!consented)
                 throw new InvalidOperationException("Recording denied: user has not given consent");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -2125,16 +2161,54 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
         finally
         {
-            await _consentLock.WaitAsync();
-            try
+            if (clearPrompt)
             {
-                if (ReferenceEquals(GetConsentPrompt(type), ownedConsentPrompt))
-                    SetConsentPrompt(type, null);
+                await ClearConsentPromptAsync(type, ownedConsentPrompt!);
             }
-            finally
-            {
-                _consentLock.Release();
-            }
+        }
+    }
+
+    private void ObserveAbandonedConsentPrompt(
+        Task<bool> dialogTask,
+        RecordingType type,
+        TaskCompletionSource<bool> consentPrompt)
+    {
+        _ = CompleteAbandonedConsentPromptAsync(dialogTask, type, consentPrompt);
+    }
+
+    private async Task CompleteAbandonedConsentPromptAsync(
+        Task<bool> dialogTask,
+        RecordingType type,
+        TaskCompletionSource<bool> consentPrompt)
+    {
+        try
+        {
+            consentPrompt.TrySetResult(await dialogTask);
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug($"[RecordingConsent] Abandoned prompt completion failed: {ex.Message}");
+            consentPrompt.TrySetResult(false);
+        }
+        finally
+        {
+            await ClearConsentPromptAsync(type, consentPrompt);
+        }
+    }
+
+    private async Task ClearConsentPromptAsync(
+        RecordingType type,
+        TaskCompletionSource<bool> consentPrompt)
+    {
+        await _consentLock.WaitAsync();
+        try
+        {
+            if (ReferenceEquals(GetConsentPrompt(type), consentPrompt))
+                SetConsentPrompt(type, null);
+        }
+        finally
+        {
+            _consentLock.Release();
         }
     }
 
@@ -2195,7 +2269,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         return dialogTcs.Task;
     }
 
-    private async Task ShowRecordingCountdownAsync()
+    private async Task ShowRecordingCountdownAsync(CancellationToken cancellationToken)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -2204,8 +2278,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             try
             {
                 var countdown = new Dialogs.RecordingCountdownWindow(3);
-                await countdown.ShowCountdownAsync();
+                await countdown.ShowCountdownAsync(cancellationToken);
                 tcs.TrySetResult();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                tcs.TrySetCanceled(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -2218,7 +2296,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             return;
         }
 
-        await tcs.Task;
+        await tcs.Task.WaitAsync(cancellationToken);
     }
 
     #endregion

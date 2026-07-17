@@ -66,8 +66,22 @@ The capability list lives on `NodeService`, *not* on `WindowsNodeClient`. That s
 - `tools/list` — flattens `_capabilities` into MCP tools. Tool name = command name (`"screen.snapshot"`); known commands get curated descriptions from `McpToolBridge.CommandDescriptions`; unknown commands fall back to `"{category} capability: {command}"`. `inputSchema` is permissive.
 - `tools/call` — finds the capability via `INodeCapability.CanHandle(name)`, builds a `NodeInvokeRequest` (the same struct the gateway path uses), calls `ExecuteAsync`, wraps the result as MCP `content[].text`. Tool failures come back as `result.isError = true`, not JSON-RPC errors (per MCP spec — JSON-RPC errors are reserved for protocol issues).
 - `ping`, `notifications/initialized` — protocol housekeeping.
+- `notifications/cancelled` — cancels the active request whose JSON-RPC ID is
+  supplied as `params.requestId`. A cancelled `tools/call` completes with an MCP
+  tool error containing `cancelled`. If concurrent HTTP scheduling processes
+  cancellation just before an already-sent call registers, the notification
+  waits briefly and retries. Because JSON-RPC IDs are client-scoped but this
+  stateless HTTP transport has no client identity, duplicate active IDs are
+  allowed and cancellation is ignored when more than one active call matches;
+  this prevents one local client from cancelling another client's call.
 
 The bridge takes a `Func<IReadOnlyList<INodeCapability>>` rather than a snapshot. Every `tools/list` re-reads the live list. This is what guarantees zero-cost capability addition — register a new capability after server start and it appears on the next `tools/list`.
+
+Cancellation is cooperative and uses the same `CancellationToken` capability
+contract as the gateway transport. Screen and camera operations propagate the
+token through recording consent/countdown, camera admission, capture waits, and
+recording shutdown. The HTTP request deadline remains a separate safety bound;
+no command-specific transport deadlines are applied.
 
 ### HTTP transport
 

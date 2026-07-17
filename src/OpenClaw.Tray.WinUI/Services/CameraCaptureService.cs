@@ -22,7 +22,7 @@ namespace OpenClawTray.Services;
 public class CameraCaptureService : IDisposable
 {
     private readonly IOpenClawLogger _logger;
-    private readonly SemaphoreSlim _captureLock = new(1, 1);
+    private readonly CaptureOperationGate _captureGate = new();
     
     public CameraCaptureService(IOpenClawLogger logger)
     {
@@ -31,12 +31,14 @@ public class CameraCaptureService : IDisposable
     
     public void Dispose()
     {
-        _captureLock.Dispose();
+        _captureGate.Dispose();
     }
     
-    public async Task<CameraInfo[]> ListCamerasAsync()
+    public async Task<CameraInfo[]> ListCamerasAsync(CancellationToken cancellationToken)
     {
-        var devices = await DeviceInformation.FindAllAsync(DeviceClass.VideoCapture);
+        var devices = await DeviceInformation
+            .FindAllAsync(DeviceClass.VideoCapture)
+            .AsTask(cancellationToken);
         var result = new List<CameraInfo>();
         
         for (var i = 0; i < devices.Count; i++)
@@ -53,10 +55,12 @@ public class CameraCaptureService : IDisposable
         return result.ToArray();
     }
     
-    public async Task<CameraSnapResult> SnapAsync(CameraSnapArgs args)
+    public async Task<CameraSnapResult> SnapAsync(
+        CameraSnapArgs args,
+        CancellationToken cancellationToken)
     {
         _logger.Info($"camera.snap start: deviceId={args.DeviceId ?? "(default)"}, format={args.Format}, maxWidth={args.MaxWidth}, quality={args.Quality}");
-        await _captureLock.WaitAsync();
+        using var captureLease = await _captureGate.EnterAsync(cancellationToken);
         
         try
         {
@@ -73,41 +77,46 @@ public class CameraCaptureService : IDisposable
             };
             
             var initStart = DateTime.UtcNow;
-            await capture.InitializeAsync(settings);
+            await capture.InitializeAsync(settings).AsTask(cancellationToken);
             _logger.Info($"camera.snap: MediaCapture initialized in {(DateTime.UtcNow - initStart).TotalMilliseconds:0}ms");
             
             var photoCandidates = SelectPhotoEncodings(capture, format, args.MaxWidth);
             if (photoCandidates.Count == 0)
             {
                 _logger.Warn("camera.snap: no photo stream properties available; falling back to video frame");
-                return await CaptureVideoFallbackAsync(capture, format, args.MaxWidth, args.Quality);
+                return await CaptureVideoFallbackAsync(
+                    capture, format, args.MaxWidth, args.Quality, cancellationToken);
             }
             
             using var stream = new InMemoryRandomAccessStream();
             _logger.Info($"camera.snap: preferred encoding {photoCandidates[0].Subtype} {photoCandidates[0].Width}x{photoCandidates[0].Height}");
             
             var captureStart = DateTime.UtcNow;
-            var encoding = await CaptureWithFallbackAsync(capture, photoCandidates);
+            var encoding = await CaptureWithFallbackAsync(
+                capture, photoCandidates, cancellationToken);
             if (encoding == null)
             {
                 _logger.Warn("camera.snap: no supported photo encodings; falling back to video frame");
-                return await CaptureVideoFallbackAsync(capture, format, args.MaxWidth, args.Quality);
+                return await CaptureVideoFallbackAsync(
+                    capture, format, args.MaxWidth, args.Quality, cancellationToken);
             }
             
             try
             {
-                await capture.CapturePhotoToStreamAsync(encoding, stream);
+                await capture.CapturePhotoToStreamAsync(encoding, stream).AsTask(cancellationToken);
             }
             catch (Exception ex) when (IsInvalidMediaType(ex))
             {
                 _logger.Warn("camera.snap: photo capture unsupported; falling back to video frame");
-                return await CaptureVideoFallbackAsync(capture, format, args.MaxWidth, args.Quality);
+                return await CaptureVideoFallbackAsync(
+                    capture, format, args.MaxWidth, args.Quality, cancellationToken);
             }
             _logger.Info($"camera.snap: CapturePhotoToStreamAsync completed in {(DateTime.UtcNow - captureStart).TotalMilliseconds:0}ms");
             
             stream.Seek(0);
             var encodeStart = DateTime.UtcNow;
-            var result = await EncodeAsync(stream, format, args.MaxWidth, args.Quality);
+            var result = await EncodeAsync(
+                stream, format, args.MaxWidth, args.Quality, cancellationToken);
             _logger.Info($"camera.snap: encoded {result.Width}x{result.Height} ({result.Base64.Length} chars) in {(DateTime.UtcNow - encodeStart).TotalMilliseconds:0}ms");
             return result;
         }
@@ -116,25 +125,30 @@ public class CameraCaptureService : IDisposable
             _logger.Error("Camera access denied. Check Windows privacy settings.", ex);
             throw;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.Error($"camera.snap failed (0x{ex.HResult:X8})", ex);
             throw;
         }
-        finally
-        {
-            _captureLock.Release();
-        }
     }
     
-    public async Task<CameraClipResult> ClipAsync(CameraClipArgs args)
+    public async Task<CameraClipResult> ClipAsync(
+        CameraClipArgs args,
+        CancellationToken cancellationToken)
     {
         _logger.Info($"camera.clip start: deviceId={args.DeviceId ?? "(default)"}, durationMs={args.DurationMs}, includeAudio={args.IncludeAudio}, format={args.Format}");
-        await _captureLock.WaitAsync();
+        using var captureLease = await _captureGate.EnterAsync(cancellationToken);
+        MediaCapture? capture = null;
+        var recordStartRequested = false;
+        var recordingStopped = false;
         
         try
         {
-            using var capture = new MediaCapture();
+            capture = new MediaCapture();
             
             var settings = new MediaCaptureInitializationSettings
             {
@@ -146,26 +160,29 @@ public class CameraCaptureService : IDisposable
             };
             
             var initStart = DateTime.UtcNow;
-            await capture.InitializeAsync(settings);
+            await capture.InitializeAsync(settings).AsTask(cancellationToken);
             _logger.Info($"camera.clip: MediaCapture initialized in {(DateTime.UtcNow - initStart).TotalMilliseconds:0}ms");
 
-            var recordProperties = await TryConfigureVideoRecordStreamAsync(capture);
+            var recordProperties = await TryConfigureVideoRecordStreamAsync(
+                capture, cancellationToken);
             using var stream = new InMemoryRandomAccessStream();
             var profile = CreateClipProfile(args.IncludeAudio, recordProperties);
             
             var recordStart = DateTime.UtcNow;
-            await capture.StartRecordToStreamAsync(profile, stream);
+            recordStartRequested = true;
+            await capture.StartRecordToStreamAsync(profile, stream).AsTask(cancellationToken);
             _logger.Info($"camera.clip: recording started");
             
-            await Task.Delay(args.DurationMs);
+            await Task.Delay(args.DurationMs, cancellationToken);
             
             await capture.StopRecordAsync();
+            recordingStopped = true;
             var elapsed = (DateTime.UtcNow - recordStart).TotalMilliseconds;
             _logger.Info($"camera.clip: recording stopped after {elapsed:0}ms");
             
             stream.Seek(0);
             using var reader = new DataReader(stream);
-            await reader.LoadAsync((uint)stream.Size);
+            await reader.LoadAsync((uint)stream.Size).AsTask(cancellationToken);
             var buffer = new byte[stream.Size];
             reader.ReadBytes(buffer);
             var base64 = Convert.ToBase64String(buffer);
@@ -185,6 +202,10 @@ public class CameraCaptureService : IDisposable
             _logger.Error("Camera access denied. Check Windows privacy settings.", ex);
             throw;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.Error($"camera.clip failed (0x{ex.HResult:X8})", ex);
@@ -192,19 +213,34 @@ public class CameraCaptureService : IDisposable
         }
         finally
         {
-            _captureLock.Release();
+            if (capture != null && recordStartRequested && !recordingStopped)
+            {
+                try
+                {
+                    await capture.StopRecordAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug($"camera.clip cancellation cleanup failed: {ex.Message}");
+                }
+            }
+
+            capture?.Dispose();
         }
     }
     
     private async Task<ImageEncodingProperties?> CaptureWithFallbackAsync(
         MediaCapture capture,
-        List<ImageEncodingProperties> candidates)
+        List<ImageEncodingProperties> candidates,
+        CancellationToken cancellationToken)
     {
         foreach (var candidate in candidates)
         {
             try
             {
-                await capture.VideoDeviceController.SetMediaStreamPropertiesAsync(MediaStreamType.Photo, candidate);
+                await capture.VideoDeviceController
+                    .SetMediaStreamPropertiesAsync(MediaStreamType.Photo, candidate)
+                    .AsTask(cancellationToken);
                 _logger.Info($"camera.snap: using photo encoding {candidate.Subtype} {candidate.Width}x{candidate.Height}");
                 return candidate;
             }
@@ -223,7 +259,9 @@ public class CameraCaptureService : IDisposable
         return ex.HResult == MfEInvalidMediaType;
     }
 
-    private async Task<VideoEncodingProperties?> TryConfigureVideoRecordStreamAsync(MediaCapture capture)
+    private async Task<VideoEncodingProperties?> TryConfigureVideoRecordStreamAsync(
+        MediaCapture capture,
+        CancellationToken cancellationToken)
     {
         var props = capture.VideoDeviceController
             .GetAvailableMediaStreamProperties(MediaStreamType.VideoRecord)
@@ -248,7 +286,9 @@ public class CameraCaptureService : IDisposable
         {
             try
             {
-                await capture.VideoDeviceController.SetMediaStreamPropertiesAsync(MediaStreamType.VideoRecord, candidate);
+                await capture.VideoDeviceController
+                    .SetMediaStreamPropertiesAsync(MediaStreamType.VideoRecord, candidate)
+                    .AsTask(cancellationToken);
                 _logger.Info($"camera.clip: using record stream {candidate.Subtype} {candidate.Width}x{candidate.Height}");
                 return candidate;
             }
@@ -352,11 +392,17 @@ public class CameraCaptureService : IDisposable
         MediaCapture capture,
         string format,
         int maxWidth,
-        int quality)
+        int quality,
+        CancellationToken cancellationToken)
     {
         try
         {
-            return await CaptureFrameReaderAsync(capture, format, maxWidth, quality);
+            return await CaptureFrameReaderAsync(
+                capture, format, maxWidth, quality, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -364,14 +410,16 @@ public class CameraCaptureService : IDisposable
         }
         
         _logger.Warn("camera.snap: frame reader unavailable; falling back to preview frame");
-        return await CapturePreviewFrameAsync(capture, format, maxWidth, quality);
+        return await CapturePreviewFrameAsync(
+            capture, format, maxWidth, quality, cancellationToken);
     }
     
     private async Task<CameraSnapResult> CaptureFrameReaderAsync(
         MediaCapture capture,
         string format,
         int maxWidth,
-        int quality)
+        int quality,
+        CancellationToken cancellationToken)
     {
         _logger.Info($"camera.snap: frame sources={capture.FrameSources.Count}");
         var sources = capture.FrameSources.Values
@@ -385,24 +433,29 @@ public class CameraCaptureService : IDisposable
         }
         
         MediaFrameReader? frameReader = null;
+        var frameReaderStarted = false;
         try
         {
             var selectedFormat = SelectFrameReaderFormat(source, maxWidth);
             if (selectedFormat != null)
             {
                 _logger.Info($"camera.snap: frame format {selectedFormat.Subtype} {selectedFormat.VideoFormat.Width}x{selectedFormat.VideoFormat.Height}");
-                await source.SetFormatAsync(selectedFormat);
+                await source.SetFormatAsync(selectedFormat).AsTask(cancellationToken);
             }
             
             try
             {
                 frameReader = selectedFormat != null
-                    ? await capture.CreateFrameReaderAsync(source, selectedFormat.Subtype)
-                    : await capture.CreateFrameReaderAsync(source);
+                    ? await capture.CreateFrameReaderAsync(source, selectedFormat.Subtype).AsTask(cancellationToken)
+                    : await capture.CreateFrameReaderAsync(source).AsTask(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch
             {
-                frameReader = await capture.CreateFrameReaderAsync(source);
+                frameReader = await capture.CreateFrameReaderAsync(source).AsTask(cancellationToken);
             }
             
             var tcs = new TaskCompletionSource<SoftwareBitmap>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -426,23 +479,40 @@ public class CameraCaptureService : IDisposable
             
             frameReader.FrameArrived += OnFrameArrived;
             
-            var status = await frameReader.StartAsync();
+            var status = await frameReader.StartAsync().AsTask(cancellationToken);
             if (status != MediaFrameReaderStartStatus.Success)
             {
                 throw new InvalidOperationException($"Frame reader start failed: {status}");
             }
+            frameReaderStarted = true;
             
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await using var reg = timeoutCts.Token.Register(() => tcs.TrySetCanceled());
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
+            await using var reg = timeoutCts.Token.Register(
+                () => tcs.TrySetCanceled(timeoutCts.Token));
             
             var bitmap = await tcs.Task;
             frameReader.FrameArrived -= OnFrameArrived;
             await frameReader.StopAsync();
+            frameReaderStarted = false;
             
-            return await EncodeSoftwareBitmapAsync(bitmap, format, maxWidth, quality);
+            return await EncodeSoftwareBitmapAsync(
+                bitmap, format, maxWidth, quality, cancellationToken);
         }
         finally
         {
+            if (frameReader != null && frameReaderStarted)
+            {
+                try
+                {
+                    await frameReader.StopAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug($"camera.snap frame reader cleanup failed: {ex.Message}");
+                }
+            }
+
             frameReader?.Dispose();
         }
     }
@@ -487,12 +557,15 @@ public class CameraCaptureService : IDisposable
         MediaCapture capture,
         string format,
         int maxWidth,
-        int quality)
+        int quality,
+        CancellationToken cancellationToken)
     {
         var previewEncoding = SelectPreviewEncoding(capture, maxWidth);
         if (previewEncoding != null)
         {
-            await capture.VideoDeviceController.SetMediaStreamPropertiesAsync(MediaStreamType.VideoPreview, previewEncoding);
+            await capture.VideoDeviceController
+                .SetMediaStreamPropertiesAsync(MediaStreamType.VideoPreview, previewEncoding)
+                .AsTask(cancellationToken);
             _logger.Info($"camera.snap: preview encoding {previewEncoding.Subtype} {previewEncoding.Width}x{previewEncoding.Height}");
         }
         else
@@ -500,11 +573,15 @@ public class CameraCaptureService : IDisposable
             _logger.Warn("camera.snap: no preview stream properties; using default preview settings");
         }
         
-        _logger.Info("camera.snap: starting preview");
-        await capture.StartPreviewAsync();
-        _logger.Info("camera.snap: preview started");
+        var previewStartRequested = false;
+        Exception? captureError = null;
         try
         {
+            _logger.Info("camera.snap: starting preview");
+            previewStartRequested = true;
+            await capture.StartPreviewAsync().AsTask(cancellationToken);
+            _logger.Info("camera.snap: preview started");
+
             var activePreview = capture.VideoDeviceController.GetMediaStreamProperties(MediaStreamType.VideoPreview) as VideoEncodingProperties;
             var width = (int)(activePreview?.Width ?? previewEncoding?.Width ?? 1280);
             var height = (int)(activePreview?.Height ?? previewEncoding?.Height ?? 720);
@@ -518,7 +595,7 @@ public class CameraCaptureService : IDisposable
             var pixelFormat = GetPreviewPixelFormat(subtype);
             _logger.Info($"camera.snap: grabbing preview frame {width}x{height} ({subtype ?? "default"})");
             using var frame = new VideoFrame(pixelFormat, width, height);
-            await capture.GetPreviewFrameAsync(frame);
+            await capture.GetPreviewFrameAsync(frame).AsTask(cancellationToken);
             var bitmap = frame.SoftwareBitmap ?? throw new InvalidOperationException("Preview frame missing bitmap");
             SoftwareBitmap? converted = null;
             if (bitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8)
@@ -528,17 +605,38 @@ public class CameraCaptureService : IDisposable
             }
             
             using var previewStream = new InMemoryRandomAccessStream();
-            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, previewStream);
+            var encoder = await BitmapEncoder
+                .CreateAsync(BitmapEncoder.PngEncoderId, previewStream)
+                .AsTask(cancellationToken);
             encoder.SetSoftwareBitmap(bitmap);
-            await encoder.FlushAsync();
+            await encoder.FlushAsync().AsTask(cancellationToken);
             previewStream.Seek(0);
             
-            return await EncodeAsync(previewStream, format, maxWidth, quality);
+            return await EncodeAsync(
+                previewStream, format, maxWidth, quality, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            captureError = ex;
+            throw;
         }
         finally
         {
-            _logger.Info("camera.snap: stopping preview");
-            await capture.StopPreviewAsync();
+            if (previewStartRequested)
+            {
+                _logger.Info("camera.snap: stopping preview");
+                try
+                {
+                    await capture.StopPreviewAsync();
+                }
+                catch (Exception ex) when (
+                    captureError != null || cancellationToken.IsCancellationRequested)
+                {
+                    _logger.Debug($"camera.snap: preview stop cleanup failed: {ex.Message}");
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
     
@@ -546,7 +644,8 @@ public class CameraCaptureService : IDisposable
         SoftwareBitmap bitmap,
         string format,
         int maxWidth,
-        int quality)
+        int quality,
+        CancellationToken cancellationToken)
     {
         SoftwareBitmap? converted = null;
         if (bitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8)
@@ -556,12 +655,14 @@ public class CameraCaptureService : IDisposable
         }
         
         using var stream = new InMemoryRandomAccessStream();
-        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+        var encoder = await BitmapEncoder
+            .CreateAsync(BitmapEncoder.PngEncoderId, stream)
+            .AsTask(cancellationToken);
         encoder.SetSoftwareBitmap(bitmap);
-        await encoder.FlushAsync();
+        await encoder.FlushAsync().AsTask(cancellationToken);
         stream.Seek(0);
         
-        return await EncodeAsync(stream, format, maxWidth, quality);
+        return await EncodeAsync(stream, format, maxWidth, quality, cancellationToken);
     }
     
     private static BitmapPixelFormat GetPreviewPixelFormat(string? subtype)
@@ -591,9 +692,10 @@ public class CameraCaptureService : IDisposable
         IRandomAccessStream input,
         string format,
         int maxWidth,
-        int quality)
+        int quality,
+        CancellationToken cancellationToken)
     {
-        var decoder = await BitmapDecoder.CreateAsync(input);
+        var decoder = await BitmapDecoder.CreateAsync(input).AsTask(cancellationToken);
         var width = decoder.PixelWidth;
         var height = decoder.PixelHeight;
         
@@ -617,11 +719,11 @@ public class CameraCaptureService : IDisposable
             BitmapAlphaMode.Ignore,
             transform,
             ExifOrientationMode.IgnoreExifOrientation,
-            ColorManagementMode.DoNotColorManage);
+            ColorManagementMode.DoNotColorManage).AsTask(cancellationToken);
         
         using var output = new InMemoryRandomAccessStream();
         var encoderId = format == "png" ? BitmapEncoder.PngEncoderId : BitmapEncoder.JpegEncoderId;
-        var encoder = await BitmapEncoder.CreateAsync(encoderId, output);
+        var encoder = await BitmapEncoder.CreateAsync(encoderId, output).AsTask(cancellationToken);
         
         encoder.SetPixelData(
             BitmapPixelFormat.Bgra8,
@@ -639,15 +741,15 @@ public class CameraCaptureService : IDisposable
             {
                 { "ImageQuality", new BitmapTypedValue(qualityValue, PropertyType.Single) }
             };
-            await encoder.BitmapProperties.SetPropertiesAsync(props);
+            await encoder.BitmapProperties.SetPropertiesAsync(props).AsTask(cancellationToken);
         }
         
-        await encoder.FlushAsync();
+        await encoder.FlushAsync().AsTask(cancellationToken);
         output.Seek(0);
         
         var bytes = new byte[output.Size];
         using var reader = new DataReader(output);
-        await reader.LoadAsync((uint)output.Size);
+        await reader.LoadAsync((uint)output.Size).AsTask(cancellationToken);
         reader.ReadBytes(bytes);
         
         return new CameraSnapResult

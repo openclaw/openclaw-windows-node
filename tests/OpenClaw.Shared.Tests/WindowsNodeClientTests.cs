@@ -1956,6 +1956,161 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public async Task CommandDispatch_RequestCancel_CancelsMatchingInvoke()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        var blocking = new BlockingCapability("mock", "mock.slow");
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            client.RegisterCapability(blocking);
+            var completedTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "inv-cancel")
+                {
+                    completedTcs.TrySetResult(args);
+                }
+            };
+
+            await InvokeProcessMessageAsync(client, BuildNodeInvokeRequest("inv-cancel", "mock.slow"));
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "req",
+                  "id": "cancel-request",
+                  "method": "node.invoke.cancel",
+                  "params": {
+                    "requestId": "inv-cancel"
+                  }
+                }
+                """);
+
+            await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            var completed = await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(completed.Ok);
+            Assert.Equal("cancelled", completed.Error);
+        }
+        finally
+        {
+            blocking.Release();
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_EventCancel_CancelsMatchingEventInvoke()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        var blocking = new BlockingCapability("mock", "mock.slow");
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            client.RegisterCapability(blocking);
+            var completedTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "event-cancel")
+                {
+                    completedTcs.TrySetResult(args);
+                }
+            };
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "event-cancel",
+                    "command": "mock.slow",
+                    "args": {}
+                  }
+                }
+
+                """);
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.cancel",
+                  "payload": {
+                    "invokeId": "event-cancel"
+                  }
+                }
+                """);
+
+            await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            var completed = await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(completed.Ok);
+            Assert.Equal("cancelled", completed.Error);
+        }
+        finally
+        {
+            blocking.Release();
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_RequestNotificationCancel_ReadsParamsWithoutResponseId()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        var blocking = new BlockingCapability("mock", "mock.slow");
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            client.RegisterCapability(blocking);
+            var completedTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "notification-cancel")
+                {
+                    completedTcs.TrySetResult(args);
+                }
+            };
+
+            await InvokeProcessMessageAsync(
+                client,
+                BuildNodeInvokeRequest("notification-cancel", "mock.slow"));
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "req",
+                  "method": "node.invoke.cancel",
+                  "params": {
+                    "invokeId": "notification-cancel"
+                  }
+                }
+                """);
+
+            await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            var completed = await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(completed.Ok);
+            Assert.Equal("cancelled", completed.Error);
+        }
+        finally
+        {
+            blocking.Release();
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public async Task CommandDispatch_ArgsSurviveAfterProcessMessageReturns()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
