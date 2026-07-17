@@ -17,6 +17,7 @@
   <ItemGroup>
     <PackageReference Include="OpenTelemetry" Version="1.16.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <!-- Compile only the model-layer files directly so the tests can remain
@@ -120,6 +121,24 @@
     <!-- Pulled in for console-log tail tests. Pure logic, no WinUI deps. -->
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardConsoleTail.cs" Link="WizardConsoleTail.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardPayloadHelpers.cs" Link="WizardPayloadHelpers.cs" />
+  </ItemGroup>
+
+  <!-- Phase 2 presentation seam: WinUI-free DI + navigation core, hand-linked so it
+       is unit-tested in this pure net10 project. WinUI-bound adapters
+       (Presentation/Adapters/*) are intentionally NOT linked; they are covered by
+       source-contract tests instead. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\IAppCommands.cs" Link="Services\IAppCommands.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\IUiDispatcher.cs" Link="Presentation\IUiDispatcher.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\INavigationAware.cs" Link="Presentation\INavigationAware.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\INavigationService.cs" Link="Presentation\INavigationService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\IPageActivator.cs" Link="Presentation\IPageActivator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\NavigationScopeManager.cs" Link="Presentation\NavigationScopeManager.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNavigationService.cs" Link="Presentation\AppNavigationService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPageViewModel.cs" Link="Presentation\SettingsPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageViewModel.cs" Link="Presentation\PermissionsPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>
 
 </Project>
