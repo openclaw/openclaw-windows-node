@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -15,6 +16,20 @@ namespace OpenClaw.Shared.Tests;
 [Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
+    private sealed class CapturingWindowsNodeClient(
+        string gatewayUrl,
+        string token,
+        string dataPath) : WindowsNodeClient(gatewayUrl, token, dataPath)
+    {
+        public ConcurrentQueue<string> SentMessages { get; } = new();
+
+        protected override Task SendRawAsync(string message)
+        {
+            SentMessages.Enqueue(message);
+            return Task.CompletedTask;
+        }
+    }
+
     [Theory]
     [InlineData("http://localhost:18789", "ws://localhost:18789")]
     [InlineData("https://host.tailnet.ts.net", "wss://host.tailnet.ts.net")]
@@ -1964,7 +1979,10 @@ public class WindowsNodeClientTests
 
         try
         {
-            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "test-token",
+                dataPath);
             client.RegisterCapability(blocking);
             var completedTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1989,6 +2007,18 @@ public class WindowsNodeClientTests
                   }
                 }
                 """);
+
+            var cancelResponseJson = Assert.Single(
+                client.SentMessages,
+                message => message.Contains("\"id\":\"cancel-request\"", StringComparison.Ordinal));
+            using var cancelResponse = JsonDocument.Parse(cancelResponseJson);
+            Assert.Equal("res", cancelResponse.RootElement.GetProperty("type").GetString());
+            Assert.True(cancelResponse.RootElement.GetProperty("ok").GetBoolean());
+            Assert.True(
+                cancelResponse.RootElement
+                    .GetProperty("payload")
+                    .GetProperty("cancelled")
+                    .GetBoolean());
 
             await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
             var completed = await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
