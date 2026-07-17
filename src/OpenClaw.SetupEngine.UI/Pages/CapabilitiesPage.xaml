@@ -115,7 +115,7 @@
                                             <FontIcon Grid.Column="0" Glyph="&#xE701;" FontSize="18" VerticalAlignment="Center" />
                                             <StackPanel Grid.Column="1" Spacing="2">
                                                 <TextBlock Text="Tailnet access with Tailscale Serve" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                                <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Publish this private gateway as HTTPS/WSS to your Tailscale tailnet. Windows Tailscale must already be signed in." />
+                                                <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Publish this private gateway as HTTPS/WSS to your Tailscale tailnet. Windows Tailscale must already be signed in; setup root owns Serve." />
                                             </StackPanel>
                                             <ToggleSwitch x:Name="TailscaleToggle" Grid.Column="2" OnContent="" OffContent="" Toggled="TailscaleToggle_Toggled" VerticalAlignment="Center" />
                                         </Grid>
@@ -127,7 +127,7 @@
                                             </RadioButtons>
                                             <PasswordBox x:Name="TailscaleAuthKeyBox" Visibility="Collapsed" PlaceholderText="Tailscale auth key (not saved)" />
                                             <ToggleSwitch x:Name="TailscaleTrustAuthToggle" Header="Trust Tailscale identities for gateway authentication" OnContent="Enabled" OffContent="Disabled" Toggled="TailscaleTrustAuthToggle_Toggled" />
-                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Off by default. Enable only when your Tailscale ACLs should be part of the gateway access-control boundary." />
+                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Off by default. Enable only when your Tailscale ACLs should be part of the gateway access-control boundary; OpenClaw receives only a restricted identity lookup, not Tailscale operator control." />
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>

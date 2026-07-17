@@ -43,7 +43,7 @@ public sealed partial class ProgressPage : Page
         ("wsl-configure", "Configuring instance", ["wsl-configure", "validate-wsl-lockdown"]),
         ("install-cli", "Installing OpenClaw", ["install-cli"]),
         ("tailscale-auth", "Connecting Tailscale", ["install-tailscale", "authorize-tailscale"]),
-        ("configure", "Preparing gateway", ["configure-gateway", "install-service"]),
+        ("configure", "Preparing gateway", ["configure-gateway", "install-service", "configure-tailscale-whois-access"]),
         ("start", "Starting gateway", ["start-gateway", "mint-token"]),
         ("tailscale-serve", "Publishing on Tailscale", ["finalize-tailscale-serve"]),
         ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e"]),

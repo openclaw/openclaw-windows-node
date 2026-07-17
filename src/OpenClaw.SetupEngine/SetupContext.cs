@@ -334,6 +334,12 @@ public sealed class TailscaleConfig
     public TailscaleAuthMode AuthMode { get; set; } = TailscaleAuthMode.Browser;
     public string? Hostname { get; set; }
     public int AuthTimeoutSeconds { get; set; } = 300;
+    /// <summary>
+    /// Maximum time to wait for a tailnet HTTPS approval and its Serve route.
+    /// This is separate from node authorization because an administrator may
+    /// approve tailnet HTTPS after the device has already joined.
+    /// </summary>
+    public int ServeApprovalTimeoutSeconds { get; set; } = 300;
 
     [JsonIgnore]
     public string? AuthKey { get; set; }

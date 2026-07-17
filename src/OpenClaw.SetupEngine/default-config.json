@@ -45,7 +45,8 @@
     "TrustTailscaleAuth": false,
     "AuthMode": "Browser",
     "Hostname": null,
-    "AuthTimeoutSeconds": 300
+    "AuthTimeoutSeconds": 300,
+    "ServeApprovalTimeoutSeconds": 300
   },
   // Pre-shared bootstrap token (null = auto-mint during setup)
   "BootstrapToken": null,

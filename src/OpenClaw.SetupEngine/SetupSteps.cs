@@ -1411,8 +1411,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             var trustTailscaleAuth = tailscale.TrustTailscaleAuth ? "true" : "false";
             configCommands += $"""
 
-                openclaw config set gateway.tailscale.mode serve
-                openclaw config set gateway.tailscale.resetOnExit false
+                openclaw config set gateway.tailscale.mode off
                 openclaw config set gateway.auth.allowTailscale {trustTailscaleAuth}
                 """;
         }

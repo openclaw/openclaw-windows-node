@@ -41,6 +41,7 @@ public class SetupConfigTests : IDisposable
         Assert.False(config.Tailscale.TrustTailscaleAuth);
         Assert.Equal(TailscaleAuthMode.Browser, config.Tailscale.AuthMode);
         Assert.Equal(300, config.Tailscale.AuthTimeoutSeconds);
+        Assert.Equal(300, config.Tailscale.ServeApprovalTimeoutSeconds);
     }
 
     [Fact]
@@ -115,6 +116,9 @@ public class SetupConfigTests : IDisposable
         Assert.True(status.IsRunning);
         Assert.Equal("tailnet.ts.net", TailscaleSetupPolicy.GetTailnetDnsSuffix(status.DnsName));
         Assert.Equal("openclaw-gateway", TailscaleSetupPolicy.NormalizeHostname("openclaw_gateway", "ignored"));
+
+        Assert.True(TailscaleSetupPolicy.TryParseStatus("""{"BackendState":"NeedsLogin","Health":["register request: http 410: auth path not found"]}""", out var staleAuthorization));
+        Assert.True(staleAuthorization.HasExpiredAuthorizationPath);
     }
 
     [Fact]

@@ -61,7 +61,11 @@ public static class SetupReviewSummaryBuilder
                     wslCommand,
                     installCommand,
                     $"openclaw config set gateway.bind {gatewayBind} · port {gatewayPort}",
-                    tailscaleEnabled ? "install tailscale · tailscale up · openclaw Tailscale Serve" : null,
+                    tailscaleEnabled
+                        ? config.Tailscale.TrustTailscaleAuth
+                            ? "install signed Tailscale package · root owns tailscale up/serve · restricted identity whois"
+                            : "install signed Tailscale package · root owns tailscale up/serve"
+                        : null,
                     "openclaw gateway install --force   (systemd --user service)",
                     $"writes -> {installPath}",
                     $"writes -> {gatewayDataPath} + identity"

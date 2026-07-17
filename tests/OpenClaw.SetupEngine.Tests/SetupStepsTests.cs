@@ -1003,7 +1003,7 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void ConfigureGateway_TailscaleUsesNativeServeAndKeepsTailscaleAuthOptIn()
+    public void ConfigureGateway_TailscaleServeIsRootOwnedAndKeepsTailscaleAuthOptIn()
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
             new GatewayConfig { Bind = "loopback" },
@@ -1011,8 +1011,9 @@ public class SetupStepsTests : IDisposable
             "'[]'",
             new TailscaleConfig { Enabled = true });
 
-        Assert.Contains("openclaw config set gateway.tailscale.mode serve", commands);
-        Assert.Contains("openclaw config set gateway.tailscale.resetOnExit false", commands);
+        Assert.Contains("openclaw config set gateway.tailscale.mode off", commands);
+        Assert.DoesNotContain("gateway.tailscale.mode serve", commands);
+        Assert.DoesNotContain("gateway.tailscale.resetOnExit", commands);
         Assert.Contains("openclaw config set gateway.auth.allowTailscale false", commands);
         Assert.DoesNotContain("http://127.0.0.1:18789", commands);
     }
@@ -1068,11 +1069,25 @@ public class SetupStepsTests : IDisposable
               }
             }
             """;
+        const string funnelStatus = """
+            {
+              "AllowFunnel": { "openclaw.example.ts.net:443": true },
+              "Web": {
+                "openclaw.example.ts.net:443": {
+                  "Handlers": {
+                    "/": { "Proxy": "http://127.0.0.1:18789" }
+                  }
+                }
+              }
+            }
+            """;
 
         Assert.Equal("https://login.tailscale.com/a/abc_123-now", url!.AbsoluteUri);
         Assert.True(TailscaleSetupPolicy.ServeStatusRoutesToPort(expectedServeStatus, 18789));
         Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort(wrongBackendStatus, 18789));
         Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort(unrelatedPortStatus, 18789));
+        Assert.False(TailscaleSetupPolicy.ServeStatusEnablesFunnel(expectedServeStatus, 18789));
+        Assert.True(TailscaleSetupPolicy.ServeStatusEnablesFunnel(funnelStatus, 18789));
     }
 
     [Fact]
@@ -2444,6 +2459,8 @@ public class SetupStepsTests : IDisposable
         Assert.Null(config.Tailscale.AuthKey);
         Assert.Contains(commands.WslCalls, call => call.Command.Contains("--auth-key=\"$TS_AUTHKEY\""));
         Assert.Contains(commands.WslEnvironments, environment => environment?["TS_AUTHKEY"] == "tskey-auth-only-in-memory");
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("--operator=", StringComparison.Ordinal));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("tailscale up", StringComparison.Ordinal) && call.User == "root");
     }
 
     [Fact]
@@ -2470,6 +2487,226 @@ public class SetupStepsTests : IDisposable
         Assert.True(result.IsSuccess);
         Assert.Equal("Tailscale", presenter.Request!.Provider);
         Assert.Equal("https://login.tailscale.com/a/browser-only-token", presenter.Request.AuthorizationUri.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task AuthorizeTailscale_BrowserReissuesOneStaleAuthorizationPath()
+    {
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, AuthTimeoutSeconds = 30 }
+        };
+        var upCalls = 0;
+        var statusCalls = 0;
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("tailscale up", StringComparison.Ordinal)
+                ? ++upCalls == 1
+                    ? FailWithStdout("https://login.tailscale.com/a/first-token")
+                    : FailWithStdout("https://login.tailscale.com/a/second-token")
+                : command.Contains("tailscale status --json", StringComparison.Ordinal)
+                    ? ++statusCalls == 1
+                        ? Ok("""{"BackendState":"NeedsLogin","Health":["register request: http 410: auth path not found"]}""")
+                        : Ok("""{"BackendState":"Running","Self":{"DNSName":"openclaw.tailnet.ts.net"}}""")
+                    : Ok());
+        var presenter = new RecordingAuthorizationPresenter();
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+        ctx.WindowsTailnetDnsSuffix = "tailnet.ts.net";
+        ctx.ExternalAuthorizationPresenter = presenter;
+
+        var result = await new AuthorizeTailscaleStep(new AdvancingTailscaleClock()).ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, presenter.Requests.Count);
+        Assert.Equal("https://login.tailscale.com/a/second-token", presenter.Request!.AuthorizationUri.AbsoluteUri);
+        Assert.Equal(2, upCalls);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("tailscale up", StringComparison.Ordinal) && call.Command.Contains("--force-reauth", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AuthorizeTailscale_BrowserReadsAuthorizationUrlFromStatusWhenUpDoesNotPrintIt()
+    {
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, AuthTimeoutSeconds = 30 }
+        };
+        var statusCalls = 0;
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("tailscale up", StringComparison.Ordinal)
+                ? Fail()
+                : command.Contains("tailscale status --json", StringComparison.Ordinal)
+                    ? ++statusCalls == 1
+                        ? Ok("""{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/status-only-token"}""")
+                        : Ok("""{"BackendState":"Running","Self":{"DNSName":"openclaw.tailnet.ts.net"}}""")
+                    : Ok());
+        var presenter = new RecordingAuthorizationPresenter();
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+        ctx.WindowsTailnetDnsSuffix = "tailnet.ts.net";
+        ctx.ExternalAuthorizationPresenter = presenter;
+
+        var result = await new AuthorizeTailscaleStep(new AdvancingTailscaleClock()).ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal("https://login.tailscale.com/a/status-only-token", presenter.Request!.AuthorizationUri.AbsoluteUri);
+        Assert.Equal(2, statusCalls);
+    }
+
+    [Fact]
+    public void ConfigureTailscaleWhoisAccess_IsSkippedUnlessIdentityTrustIsExplicit()
+    {
+        var disabled = CreateContext(new SetupConfig { Tailscale = new TailscaleConfig { Enabled = true } });
+        var enabled = CreateContext(new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, TrustTailscaleAuth = true }
+        });
+
+        Assert.True(new ConfigureTailscaleWhoisAccessStep().CanSkip(disabled));
+        Assert.False(new ConfigureTailscaleWhoisAccessStep().CanSkip(enabled));
+    }
+
+    [Fact]
+    public async Task ConfigureTailscaleWhoisAccess_InstallsOnlyTheConstrainedRootOwnedWhoisPath()
+    {
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, TrustTailscaleAuth = true }
+        };
+        var servicePathReadCount = 0;
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("systemctl --user show", StringComparison.Ordinal)
+                ? ++servicePathReadCount == 1
+                    ? Ok("HOME=/home/openclaw PATH=/home/openclaw/.local/bin:/usr/bin")
+                    : Ok("HOME=/home/openclaw PATH=/opt/openclaw/bin:/home/openclaw/.local/bin:/usr/bin")
+                : command.Contains("systemctl --user daemon-reload", StringComparison.Ordinal)
+                    ? Ok()
+                : command.Contains("openclaw-tailscale-whois", StringComparison.Ordinal)
+                    ? Ok()
+                    : Fail($"unexpected wsl command: {command}"));
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new ConfigureTailscaleWhoisAccessStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        var install = Assert.Single(commands.WslCalls, call => call.Command.Contains("openclaw-tailscale-whois", StringComparison.Ordinal));
+        Assert.Equal("root", install.User);
+        Assert.True(install.InputViaStdin);
+        Assert.Contains("/usr/bin/tailscale\", [\"/usr/bin/tailscale\", \"whois\", \"--json\"", install.Command);
+        Assert.Contains("NOPASSWD: /usr/local/libexec/openclaw-tailscale-whois *", install.Command);
+        Assert.Contains("OpenClaw may use Tailscale only for whois --json <IP>", install.Command);
+        Assert.Contains("visudo -cf", install.Command);
+        Assert.Contains("/etc/systemd/user/openclaw-gateway.service.d/20-openclaw-tailscale-whois.conf", install.Command);
+        Assert.Contains("Environment=\"PATH=/opt/openclaw/bin:/home/openclaw/.local/bin:/usr/bin\"", install.Command);
+        Assert.Contains(commands.WslCalls, call => call.Command == "systemctl --user daemon-reload" && call.User == "openclaw");
+        Assert.Contains("chmod 0750 /usr/bin/tailscale", install.Command);
+        Assert.DoesNotContain("--operator", install.Command, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FinalizeTailscaleServe_RootOwnsServeAndPublishesOnlyWssAfterHealthCheck()
+    {
+        const string expectedStatus = """
+            { "Web": { "openclaw.tailnet.ts.net:443": { "Handlers": { "/": { "Proxy": "http://127.0.0.1:18789" } } } } }
+            """;
+        var routeConfigured = false;
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) =>
+            {
+                if (command.Contains("tailscale serve status --json", StringComparison.Ordinal))
+                    return routeConfigured ? Ok(expectedStatus) : Ok("{}");
+                if (command.Contains("tailscale serve --bg --yes", StringComparison.Ordinal))
+                {
+                    routeConfigured = true;
+                    return Ok();
+                }
+                if (command.Contains("plugins.entries.device-pair.config.publicUrl", StringComparison.Ordinal))
+                    return Ok();
+                return Fail($"unexpected wsl command: {command}");
+            });
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, ServeApprovalTimeoutSeconds = 30 }
+        };
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+        ctx.TailscaleDnsName = "openclaw.tailnet.ts.net";
+        var probe = new FakeTailscaleEndpointProbe(TailscaleEndpointProbeResult.Reachable(401));
+
+        var result = await new FinalizeTailscaleServeStep(new AdvancingTailscaleClock(), probe)
+            .ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal("wss://openclaw.tailnet.ts.net", ctx.GatewayUrl);
+        Assert.Equal("https://openclaw.tailnet.ts.net", probe.Endpoint!.AbsoluteUri.TrimEnd('/'));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("tailscale serve --bg --yes", StringComparison.Ordinal) && call.User == "root");
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("device-pair.config.publicUrl", StringComparison.Ordinal));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("tailscale serve", StringComparison.Ordinal) && call.User == "openclaw");
+    }
+
+    [Fact]
+    public async Task FinalizeTailscaleServe_PollsBrowserApprovalWithoutFixedDelayAndTimesOutBoundedly()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("tailscale serve status --json", StringComparison.Ordinal)
+                ? Ok("{}")
+                : command.Contains("tailscale serve --bg --yes", StringComparison.Ordinal)
+                    ? FailWithStdout("https://login.tailscale.com/a/serve-approval")
+                    : Fail($"unexpected wsl command: {command}"));
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, ServeApprovalTimeoutSeconds = 30 }
+        };
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+        ctx.TailscaleDnsName = "openclaw.tailnet.ts.net";
+        var presenter = new RecordingAuthorizationPresenter();
+        ctx.ExternalAuthorizationPresenter = presenter;
+
+        var result = await new FinalizeTailscaleServeStep(new AdvancingTailscaleClock(), new FakeTailscaleEndpointProbe(TailscaleEndpointProbeResult.Reachable(200)))
+            .ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("within 30 seconds", result.Message);
+        Assert.NotNull(presenter.Request);
+        Assert.Equal("https://login.tailscale.com/a/serve-approval", presenter.Request!.AuthorizationUri.AbsoluteUri);
+        Assert.True(commands.WslCalls.Count(call => call.Command.Contains("tailscale serve --bg --yes", StringComparison.Ordinal)) > 1);
+    }
+
+    [Fact]
+    public async Task FinalizeTailscaleServe_RejectsFunnelAndRollbackResetsServeBeforeDistroCleanup()
+    {
+        const string funnelStatus = """
+            {
+              "AllowFunnel": { "openclaw.tailnet.ts.net:443": true },
+              "Web": { "openclaw.tailnet.ts.net:443": { "Handlers": { "/": { "Proxy": "http://127.0.0.1:18789" } } } }
+            }
+            """;
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("tailscale serve status --json", StringComparison.Ordinal)
+                ? Ok(funnelStatus)
+                : Ok());
+        var config = new SetupConfig { Tailscale = new TailscaleConfig { Enabled = true } };
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+        ctx.TailscaleDnsName = "openclaw.tailnet.ts.net";
+        var step = new FinalizeTailscaleServeStep(new AdvancingTailscaleClock(), new FakeTailscaleEndpointProbe(TailscaleEndpointProbeResult.Reachable(200)));
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+        await step.RollbackAsync(ctx, CancellationToken.None);
+        await new InstallTailscaleStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Funnel is configured", result.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("tailscale funnel reset", StringComparison.Ordinal) && call.User == "root");
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("tailscale serve reset", StringComparison.Ordinal) && call.User == "root");
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("tailscale logout", StringComparison.Ordinal) && call.Command.Contains("disable --now tailscaled", StringComparison.Ordinal));
     }
 
     private sealed class FakeCommandRunner(
@@ -2516,11 +2753,36 @@ public class SetupStepsTests : IDisposable
     private sealed class RecordingAuthorizationPresenter : IExternalAuthorizationPresenter
     {
         public ExternalAuthorizationRequest? Request { get; private set; }
+        public List<ExternalAuthorizationRequest> Requests { get; } = [];
 
         public Task PresentAsync(ExternalAuthorizationRequest request, CancellationToken cancellationToken)
         {
             Request = request;
+            Requests.Add(request);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class AdvancingTailscaleClock : ITailscalePollingClock
+    {
+        public DateTimeOffset UtcNow { get; private set; } = DateTimeOffset.UnixEpoch;
+
+        public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            UtcNow = UtcNow.Add(delay);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeTailscaleEndpointProbe(TailscaleEndpointProbeResult result) : ITailscaleEndpointProbe
+    {
+        public Uri? Endpoint { get; private set; }
+
+        public Task<TailscaleEndpointProbeResult> ProbeAsync(Uri endpoint, CancellationToken cancellationToken)
+        {
+            Endpoint = endpoint;
+            return Task.FromResult(result);
         }
     }
 }

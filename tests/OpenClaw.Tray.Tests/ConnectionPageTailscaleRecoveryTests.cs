@@ -29,5 +29,9 @@ public sealed class ConnectionPageTailscaleRecoveryTests
         Assert.Equal(RecoveryCategory.Tailscale, plan.Recovery);
         Assert.Equal("Tailscale gateway unavailable", plan.StripHeadline);
         Assert.Equal(ConnectionPrimaryAction.Retry, plan.StripPrimaryAction);
+
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs"));
+        Assert.Contains("Funnel is unsupported", source);
+        Assert.Contains("never falls back to localhost", source);
     }
 }

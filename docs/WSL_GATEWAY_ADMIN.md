@@ -108,7 +108,11 @@ Windows must also have Tailscale installed and signed in to the same tailnet. Th
 wsl.exe -d OpenClawGateway --user root -- tailscale status --json
 
 # Confirm Serve routes tailnet HTTPS to the loopback OpenClaw gateway port.
-wsl.exe -d OpenClawGateway --user openclaw -- tailscale serve status --json
+# Tailscale lifecycle and Serve are intentionally owned by root, not openclaw.
+wsl.exe -d OpenClawGateway --user root -- /usr/bin/tailscale serve status --json
+
+# Funnel is unsupported. This must show no public route.
+wsl.exe -d OpenClawGateway --user root -- /usr/bin/tailscale funnel status --json
 
 # Check the OpenClaw gateway itself; it remains loopback-bound inside WSL.
 wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "systemctl --user status openclaw-gateway.service --no-pager || true"
@@ -116,7 +120,7 @@ wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "systemctl --user status 
 
 The generated WSL distro is Ubuntu 24.04 (noble). Setup installs Tailscale from its signed stable APT repository rather than executing the mutable `install.sh` bootstrap script as root.
 
-Tailscale Serve preserves Companion token and device authentication by default (`gateway.auth.allowTailscale=false`). In the setup review, **Trust Tailscale identities for gateway authentication** is an explicit opt-in; when enabled, verified Tailscale identity headers and tailnet ACLs become part of the gateway access-control boundary. Token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
+Tailscale Serve preserves Companion token and device authentication by default (`gateway.auth.allowTailscale=false`). Setup runs `tailscale up`, Serve, reset, logout, and daemon management as root; the `openclaw` account is never made a Tailscale operator. In the setup review, **Trust Tailscale identities for gateway authentication** is an explicit opt-in; when enabled, setup makes the packaged `/usr/bin/tailscale` CLI root-only and adds a root-owned systemd drop-in that puts a root-owned, IP-validating `tailscale whois --json <IP>` helper ahead of the service's normal PATH. Verified Tailscale identity headers and tailnet ACLs then become part of the gateway access-control boundary. Token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
 
 ## Use root instead of sudo
 

@@ -1127,7 +1127,7 @@ public sealed partial class ConnectionPage : Page
             {
                 "Confirm Tailscale is running and signed in on this Windows PC.",
                 "Confirm this PC and the generated WSL gateway belong to the same tailnet.",
-                "Open the managed WSL gateway terminal and check tailscaled, Tailscale Serve, and the OpenClaw gateway service.",
+                "Open the managed WSL gateway terminal as root and check tailscaled, Tailscale Serve, and the OpenClaw gateway service. Funnel is unsupported; remove any Funnel route. Companion keeps using WSS and never falls back to localhost.",
             },
             _ => new[]
             {
