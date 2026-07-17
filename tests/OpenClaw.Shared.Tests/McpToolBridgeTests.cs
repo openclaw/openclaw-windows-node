@@ -387,6 +387,44 @@ public class McpToolBridgeTests
     }
 
     [Fact]
+    public async Task CancellationNotification_MatchesEquivalentEscapedStringRequestId()
+    {
+        var capability = new CancellableCapability();
+        var bridge = CreateBridge([capability]);
+        var callTask = bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":"request","method":"tools/call","params":{"name":"slow.wait","arguments":{}}}""");
+        await capability.Entered.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"\u0072equest"}}""");
+        var response = await callTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var doc = JsonDocument.Parse(response!);
+        Assert.Equal(
+            "cancelled",
+            doc.RootElement.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task CancellationNotification_MatchesEquivalentNumericRequestId()
+    {
+        var capability = new CancellableCapability();
+        var bridge = CreateBridge([capability]);
+        var callTask = bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":1.0e2,"method":"tools/call","params":{"name":"slow.wait","arguments":{}}}""");
+        await capability.Entered.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":100}}""");
+        var response = await callTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var doc = JsonDocument.Parse(response!);
+        Assert.Equal(
+            "cancelled",
+            doc.RootElement.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task UnknownMethod_ReturnsJsonRpcMethodNotFound()
     {
         var bridge = CreateBridge(new List<INodeCapability>());

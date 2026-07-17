@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Numerics;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -429,6 +431,7 @@ public class McpToolBridge
         }
 
         var executionToken = invocation?.Token ?? cancellationToken;
+        var cancelledByCaller = false;
         NodeInvokeResponse response;
         try
         {
@@ -456,6 +459,7 @@ public class McpToolBridge
         }
         finally
         {
+            cancelledByCaller = invocation?.CancelledByCaller == true;
             invocation?.Dispose();
         }
 
@@ -464,7 +468,7 @@ public class McpToolBridge
             var error = response.Error ?? "tool execution failed";
             if (error == "cancelled" &&
                 executionToken.IsCancellationRequested &&
-                invocation?.CancelledByCaller != true)
+                !cancelledByCaller)
             {
                 error = "request timed out";
             }
@@ -486,8 +490,56 @@ public class McpToolBridge
         };
     }
 
-    private static string GetRequestKey(JsonElement requestId)
-        => requestId.GetRawText();
+    private static string GetRequestKey(JsonElement requestId) =>
+        requestId.ValueKind switch
+        {
+            JsonValueKind.String => $"string:{requestId.GetString()}",
+            JsonValueKind.Number => $"number:{NormalizeJsonNumber(requestId.GetRawText())}",
+            _ => $"{requestId.ValueKind}:{requestId.GetRawText()}",
+        };
+
+    private static string NormalizeJsonNumber(string rawNumber)
+    {
+        var exponentIndex = rawNumber.IndexOfAny('e', 'E');
+        var mantissa = exponentIndex >= 0 ? rawNumber[..exponentIndex] : rawNumber;
+        var exponent = exponentIndex >= 0
+            ? BigInteger.Parse(
+                rawNumber.AsSpan(exponentIndex + 1),
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture)
+            : BigInteger.Zero;
+
+        var negative = mantissa[0] == '-';
+        if (negative)
+        {
+            mantissa = mantissa[1..];
+        }
+
+        var decimalIndex = mantissa.IndexOf('.');
+        var fractionalDigits = decimalIndex >= 0 ? mantissa.Length - decimalIndex - 1 : 0;
+        var digits = decimalIndex >= 0 ? mantissa.Remove(decimalIndex, 1) : mantissa;
+        exponent -= fractionalDigits;
+
+        digits = digits.TrimStart('0');
+        if (digits.Length == 0)
+        {
+            return "0";
+        }
+
+        var trailingZeros = 0;
+        while (digits.Length - trailingZeros > 1 && digits[^(trailingZeros + 1)] == '0')
+        {
+            trailingZeros++;
+        }
+
+        if (trailingZeros > 0)
+        {
+            digits = digits[..^trailingZeros];
+            exponent += trailingZeros;
+        }
+
+        return $"{(negative ? "-" : string.Empty)}{digits}e{exponent}";
+    }
 
     private static string WriteResult(JsonElement? id, object result)
     {

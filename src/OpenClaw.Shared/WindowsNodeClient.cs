@@ -1316,7 +1316,11 @@ public class WindowsNodeClient : WebSocketClientBase
 
     private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)
     {
-        InvokeCompleted?.Invoke(this, new NodeInvokeCompletedEventArgs
+        var handlers = InvokeCompleted;
+        if (handlers is null)
+            return;
+
+        var args = new NodeInvokeCompletedEventArgs
         {
             RequestId = requestId,
             Command = command,
@@ -1324,7 +1328,21 @@ public class WindowsNodeClient : WebSocketClientBase
             Error = error,
             Duration = duration,
             NodeId = _nodeId ?? _deviceIdentity.DeviceId
-        });
+        };
+
+        foreach (var handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler<NodeInvokeCompletedEventArgs>)handler)(this, args);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(
+                    $"[NODE] InvokeCompleted subscriber " +
+                    $"{handler.Method.DeclaringType?.Name}.{handler.Method.Name} threw: {ex.Message}");
+            }
+        }
     }
     
     private async Task SendInvokeResponseAsync(NodeInvokeResponse response)

@@ -81,10 +81,13 @@ The capability list lives on `NodeService`, *not* on `WindowsNodeClient`. That s
   transport has no client identity, duplicate active IDs are allowed and
   cancellation is ignored when more than one active call matches; this prevents
   one local client from cancelling another client when the collision is already
-  observable. A tombstone cannot predict a later cross-client ID collision, so
-  it cancels the first matching registration; complete isolation would require
-  client identity in the transport. A recent completion guard also prevents a
-  late notification from poisoning immediate ID reuse.
+  observable. Request matching uses the decoded JSON string value or normalized
+  arbitrary-precision JSON number value, while preserving the distinction
+  between string and numeric IDs. A tombstone cannot predict a later
+  cross-client ID collision, so it cancels the first matching registration;
+  complete isolation would require client identity in the transport. A recent
+  completion guard also prevents a late notification from poisoning immediate
+  ID reuse.
 
 The bridge takes a `Func<IReadOnlyList<INodeCapability>>` rather than a snapshot. Every `tools/list` re-reads the live list. This is what guarantees zero-cost capability addition — register a new capability after server start and it appears on the next `tools/list`.
 
