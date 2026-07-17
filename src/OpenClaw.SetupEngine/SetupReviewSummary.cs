@@ -63,7 +63,7 @@ public static class SetupReviewSummaryBuilder
                     $"openclaw config set gateway.bind {gatewayBind} · port {gatewayPort}",
                     tailscaleEnabled
                         ? config.Tailscale.TrustTailscaleAuth
-                            ? "install signed Tailscale package · root owns tailscale up/serve · restricted identity whois"
+                            ? "install signed Tailscale package · root owns tailscale up/serve · identity auth enabled"
                             : "install signed Tailscale package · root owns tailscale up/serve"
                         : null,
                     "openclaw gateway install --force   (systemd --user service)",

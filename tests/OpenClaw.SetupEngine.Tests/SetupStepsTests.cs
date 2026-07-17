@@ -2429,6 +2429,26 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg", install.Command);
         Assert.Contains("apt-get install -y tailscale", install.Command);
         Assert.DoesNotContain("tailscale.com/install.sh", install.Command);
+        Assert.DoesNotContain("gpg --show-keys", install.Command);
+        Assert.DoesNotContain("dpkg-statoverride", install.Command);
+    }
+
+    [Fact]
+    public async Task PreflightWindowsTailscale_RejectsUnsupportedBaseDistroBeforeRunningCommands()
+    {
+        var config = new SetupConfig
+        {
+            BaseDistro = "Debian",
+            Tailscale = new TailscaleConfig { Enabled = true }
+        };
+        var commands = new FakeCommandRunner(_ => Fail("Windows commands are not expected"));
+        var ctx = CreateContext(config, commands);
+
+        var result = await new PreflightWindowsTailscaleStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Ubuntu-24.04", result.Message);
+        Assert.Empty(commands.Calls);
     }
 
     [Fact]
@@ -2461,6 +2481,15 @@ public class SetupStepsTests : IDisposable
         Assert.Contains(commands.WslEnvironments, environment => environment?["TS_AUTHKEY"] == "tskey-auth-only-in-memory");
         Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("--operator=", StringComparison.Ordinal));
         Assert.Contains(commands.WslCalls, call => call.Command.Contains("tailscale up", StringComparison.Ordinal) && call.User == "root");
+    }
+
+    [Fact]
+    public void AuthorizeTailscale_DoesNotUsePipelineRetriesForOneShotAuthorization()
+    {
+        var step = new AuthorizeTailscaleStep();
+
+        Assert.False(step.CanRetry);
+        Assert.Equal(1, step.Retry.MaxAttempts);
     }
 
     [Fact]
@@ -2525,6 +2554,40 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task AuthorizeTailscale_BrowserPresentsOneReplacementStatusUrlWithoutReissuingUp()
+    {
+        var config = new SetupConfig
+        {
+            Tailscale = new TailscaleConfig { Enabled = true, AuthTimeoutSeconds = 30 }
+        };
+        var upCalls = 0;
+        var statusCalls = 0;
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("tailscale up", StringComparison.Ordinal)
+                ? ++upCalls == 1
+                    ? FailWithStdout("https://login.tailscale.com/a/first-token")
+                    : Fail("a replacement status URL must not rerun tailscale up")
+                : command.Contains("tailscale status --json", StringComparison.Ordinal)
+                    ? ++statusCalls == 1
+                        ? Ok("""{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/replacement-token"}""")
+                        : Ok("""{"BackendState":"Running","Self":{"DNSName":"openclaw.tailnet.ts.net"}}""")
+                    : Ok());
+        var presenter = new RecordingAuthorizationPresenter();
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+        ctx.WindowsTailnetDnsSuffix = "tailnet.ts.net";
+        ctx.ExternalAuthorizationPresenter = presenter;
+
+        var result = await new AuthorizeTailscaleStep(new AdvancingTailscaleClock()).ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(1, upCalls);
+        Assert.Equal(2, presenter.Requests.Count);
+        Assert.Equal("https://login.tailscale.com/a/replacement-token", presenter.Request!.AuthorizationUri.AbsoluteUri);
+    }
+
+    [Fact]
     public async Task AuthorizeTailscale_BrowserReadsAuthorizationUrlFromStatusWhenUpDoesNotPrintIt()
     {
         var config = new SetupConfig
@@ -2552,58 +2615,6 @@ public class SetupStepsTests : IDisposable
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal("https://login.tailscale.com/a/status-only-token", presenter.Request!.AuthorizationUri.AbsoluteUri);
         Assert.Equal(2, statusCalls);
-    }
-
-    [Fact]
-    public void ConfigureTailscaleWhoisAccess_IsSkippedUnlessIdentityTrustIsExplicit()
-    {
-        var disabled = CreateContext(new SetupConfig { Tailscale = new TailscaleConfig { Enabled = true } });
-        var enabled = CreateContext(new SetupConfig
-        {
-            Tailscale = new TailscaleConfig { Enabled = true, TrustTailscaleAuth = true }
-        });
-
-        Assert.True(new ConfigureTailscaleWhoisAccessStep().CanSkip(disabled));
-        Assert.False(new ConfigureTailscaleWhoisAccessStep().CanSkip(enabled));
-    }
-
-    [Fact]
-    public async Task ConfigureTailscaleWhoisAccess_InstallsOnlyTheConstrainedRootOwnedWhoisPath()
-    {
-        var config = new SetupConfig
-        {
-            Tailscale = new TailscaleConfig { Enabled = true, TrustTailscaleAuth = true }
-        };
-        var servicePathReadCount = 0;
-        var commands = new FakeCommandRunner(
-            _ => Fail("Windows commands are not expected"),
-            (_, command, _) => command.Contains("systemctl --user show", StringComparison.Ordinal)
-                ? ++servicePathReadCount == 1
-                    ? Ok("HOME=/home/openclaw PATH=/home/openclaw/.local/bin:/usr/bin")
-                    : Ok("HOME=/home/openclaw PATH=/opt/openclaw/bin:/home/openclaw/.local/bin:/usr/bin")
-                : command.Contains("systemctl --user daemon-reload", StringComparison.Ordinal)
-                    ? Ok()
-                : command.Contains("openclaw-tailscale-whois", StringComparison.Ordinal)
-                    ? Ok()
-                    : Fail($"unexpected wsl command: {command}"));
-        var ctx = CreateContext(config, commands);
-        ctx.DistroName = "test-distro";
-
-        var result = await new ConfigureTailscaleWhoisAccessStep().ExecuteAsync(ctx, CancellationToken.None);
-
-        Assert.True(result.IsSuccess, result.Message);
-        var install = Assert.Single(commands.WslCalls, call => call.Command.Contains("openclaw-tailscale-whois", StringComparison.Ordinal));
-        Assert.Equal("root", install.User);
-        Assert.True(install.InputViaStdin);
-        Assert.Contains("/usr/bin/tailscale\", [\"/usr/bin/tailscale\", \"whois\", \"--json\"", install.Command);
-        Assert.Contains("NOPASSWD: /usr/local/libexec/openclaw-tailscale-whois *", install.Command);
-        Assert.Contains("OpenClaw may use Tailscale only for whois --json <IP>", install.Command);
-        Assert.Contains("visudo -cf", install.Command);
-        Assert.Contains("/etc/systemd/user/openclaw-gateway.service.d/20-openclaw-tailscale-whois.conf", install.Command);
-        Assert.Contains("Environment=\"PATH=/opt/openclaw/bin:/home/openclaw/.local/bin:/usr/bin\"", install.Command);
-        Assert.Contains(commands.WslCalls, call => call.Command == "systemctl --user daemon-reload" && call.User == "openclaw");
-        Assert.Contains("chmod 0750 /usr/bin/tailscale", install.Command);
-        Assert.DoesNotContain("--operator", install.Command, StringComparison.Ordinal);
     }
 
     [Fact]

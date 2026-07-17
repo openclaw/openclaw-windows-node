@@ -62,7 +62,6 @@ public static class SetupStepFactory
             new AuthorizeTailscaleStep(),
             new ConfigureGatewayStep(),
             new InstallGatewayServiceStep(),
-            new ConfigureTailscaleWhoisAccessStep(),
             new StartGatewayStep(),
             new FinalizeTailscaleServeStep(),
             new MintBootstrapTokenStep(),

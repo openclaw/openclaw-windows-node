@@ -99,6 +99,10 @@ public class SetupConfigTests : IDisposable
         config.GatewayUrl = null;
         config.Gateway.Bind = "lan";
         Assert.Contains("loopback", TailscaleSetupPolicy.ValidateConfig(config));
+
+        config.Gateway.Bind = "loopback";
+        config.BaseDistro = "Debian";
+        Assert.Contains("Ubuntu-24.04", TailscaleSetupPolicy.ValidateConfig(config));
     }
 
     [Fact]
@@ -117,8 +121,9 @@ public class SetupConfigTests : IDisposable
         Assert.Equal("tailnet.ts.net", TailscaleSetupPolicy.GetTailnetDnsSuffix(status.DnsName));
         Assert.Equal("openclaw-gateway", TailscaleSetupPolicy.NormalizeHostname("openclaw_gateway", "ignored"));
 
-        Assert.True(TailscaleSetupPolicy.TryParseStatus("""{"BackendState":"NeedsLogin","Health":["register request: http 410: auth path not found"]}""", out var staleAuthorization));
+        Assert.True(TailscaleSetupPolicy.TryParseStatus("""{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/next-token","Health":["register request: http 410: auth path not found"]}""", out var staleAuthorization));
         Assert.True(staleAuthorization.HasExpiredAuthorizationPath);
+        Assert.Equal("https://login.tailscale.com/a/next-token", staleAuthorization.AuthorizationUri?.AbsoluteUri);
     }
 
     [Fact]

@@ -8,6 +8,7 @@ namespace OpenClaw.SetupEngine;
 public static partial class TailscaleSetupPolicy
 {
     private const string DefaultHostnamePrefix = "openclaw-";
+    private const string SupportedBaseDistro = "Ubuntu-24.04";
 
     public static string? ValidateConfig(SetupConfig config)
     {
@@ -16,6 +17,8 @@ public static partial class TailscaleSetupPolicy
         if (!tailscale.Enabled)
             return null;
 
+        if (!string.Equals(config.BaseDistro?.Trim(), SupportedBaseDistro, StringComparison.OrdinalIgnoreCase))
+            return $"Tailscale setup currently requires BaseDistro '{SupportedBaseDistro}'. Choose that distro before replacing the generated gateway.";
         if (!string.IsNullOrWhiteSpace(config.GatewayUrl))
             return "Tailscale setup derives the gateway URL automatically; GatewayUrl must be null.";
         if (!string.Equals(config.Gateway.Bind, "loopback", StringComparison.OrdinalIgnoreCase))
@@ -58,12 +61,16 @@ public static partial class TailscaleSetupPolicy
                           self.TryGetProperty("DNSName", out var dns)
                 ? dns.GetString()
                 : null;
+            var authorizationUri = root.TryGetProperty("AuthURL", out var authUrl) &&
+                                   authUrl.ValueKind == JsonValueKind.String
+                ? TryReadAuthorizationUrl(authUrl.GetString() ?? string.Empty)
+                : null;
             var hasExpiredAuthorizationPath = root.TryGetProperty("Health", out var health) &&
                                               health.ValueKind == JsonValueKind.Array &&
                                               health.EnumerateArray().Any(message =>
                                                   message.ValueKind == JsonValueKind.String &&
                                                   message.GetString()?.Contains("auth path not found", StringComparison.OrdinalIgnoreCase) == true);
-            status = new TailscaleStatus(backendState, dnsName?.Trim().TrimEnd('.'), hasExpiredAuthorizationPath);
+            status = new TailscaleStatus(backendState, dnsName?.Trim().TrimEnd('.'), hasExpiredAuthorizationPath, authorizationUri);
             return true;
         }
         catch (JsonException)
@@ -192,7 +199,11 @@ public static partial class TailscaleSetupPolicy
     private static partial Regex TailscaleAuthorizationUrl();
 }
 
-public sealed record TailscaleStatus(string BackendState, string? DnsName, bool HasExpiredAuthorizationPath = false)
+public sealed record TailscaleStatus(
+    string BackendState,
+    string? DnsName,
+    bool HasExpiredAuthorizationPath = false,
+    Uri? AuthorizationUri = null)
 {
     public bool IsRunning => BackendState.Equals("Running", StringComparison.OrdinalIgnoreCase) &&
                              !string.IsNullOrWhiteSpace(DnsName);
@@ -331,7 +342,7 @@ public sealed class InstallTailscaleStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        var script = "chmod 0755 /usr/bin/tailscale 2>/dev/null || true; rm -f /etc/sudoers.d/openclaw-tailscale-whois /usr/local/libexec/openclaw-tailscale-whois /opt/openclaw/bin/tailscale /etc/systemd/user/openclaw-gateway.service.d/20-openclaw-tailscale-whois.conf; rmdir /opt/openclaw/bin /opt/openclaw /etc/systemd/user/openclaw-gateway.service.d 2>/dev/null || true; /usr/bin/tailscale funnel reset 2>/dev/null || true; /usr/bin/tailscale serve reset 2>/dev/null || true; /usr/bin/tailscale logout 2>/dev/null || true; systemctl disable --now tailscaled 2>/dev/null || true";
+        var script = "/usr/bin/tailscale funnel reset 2>/dev/null || true; /usr/bin/tailscale serve reset 2>/dev/null || true; /usr/bin/tailscale logout 2>/dev/null || true; systemctl disable --now tailscaled 2>/dev/null || true";
         await ctx.Commands.RunInWslAsync(ctx.DistroName!, script, TimeSpan.FromSeconds(30), ct: ct, user: "root");
     }
 }
@@ -347,6 +358,11 @@ public sealed class AuthorizeTailscaleStep : SetupStep
 
     public override string Id => "authorize-tailscale";
     public override string DisplayName => "Authorize Tailscale gateway";
+    // Browser approval and auth keys are deliberately one-shot. This step owns
+    // the bounded reauthorization flow so the pipeline cannot create extra
+    // approval prompts or retry after the auth key has been cleared.
+    public override bool CanRetry => false;
+    public override RetryPolicy Retry => RetryPolicy.None;
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.Tailscale.Enabled;
 
@@ -357,9 +373,9 @@ public sealed class AuthorizeTailscaleStep : SetupStep
             return StepResult.Terminal(configError);
 
         var hostname = config.EffectiveHostname;
-        // Root owns tailscaled and Serve. Do not delegate the Tailscale operator
-        // socket to the gateway account; optional identity trust receives a
-        // narrowly constrained whois helper later in the pipeline.
+        // Root owns tailscaled and Serve. Do not make the gateway account a
+        // Tailscale operator; tailscaled's LocalAPI applies its own read/write
+        // authorization to local callers.
         var upCommand = $"/usr/bin/tailscale up --hostname={ShellEscape(hostname)}";
         var deadline = _clock.UtcNow.AddSeconds(config.AuthTimeoutSeconds);
         try
@@ -378,28 +394,47 @@ public sealed class AuthorizeTailscaleStep : SetupStep
                 if (up.ExitCode != 0)
                     return StepResult.Fail($"Tailscale auth-key authorization failed (exit {up.ExitCode}).");
 
-                status = (await WaitForRunningAsync(ctx, deadline, ct)).Status;
+                status = (await WaitForRunningAsync(ctx, deadline, activeAuthorizationUri: null, ct: ct)).Status;
             }
             else
             {
                 status = null;
-                for (var attempt = 0; attempt < 2 && _clock.UtcNow < deadline; attempt++)
-                {
-                    if (!await PresentBrowserAuthorizationAsync(ctx, upCommand, forceReauthentication: attempt > 0, ct: ct))
-                        return StepResult.Fail("Tailscale did not provide a browser authorization URL.");
+                var authorizationUri = await RequestBrowserAuthorizationAsync(ctx, upCommand, forceReauthentication: false, ct);
+                if (authorizationUri is null)
+                    return StepResult.Fail("Tailscale did not provide a browser authorization URL.");
 
-                    var wait = await WaitForRunningAsync(ctx, deadline, ct);
+                await PresentBrowserAuthorizationAsync(ctx, authorizationUri, ct);
+                var refreshedAuthorization = false;
+                while (_clock.UtcNow < deadline)
+                {
+                    var wait = await WaitForRunningAsync(ctx, deadline, authorizationUri, ct);
                     if (wait.Status is not null)
                     {
                         status = wait.Status;
                         break;
                     }
 
+                    if (refreshedAuthorization)
+                        break;
+
+                    if (wait.ReplacementAuthorizationUri is { } replacementUri)
+                    {
+                        ctx.Logger.Warn("Tailscale provided a replacement browser authorization link; presenting it once.");
+                        authorizationUri = replacementUri;
+                        await PresentBrowserAuthorizationAsync(ctx, authorizationUri, ct);
+                        refreshedAuthorization = true;
+                        continue;
+                    }
+
                     if (!wait.ExpiredAuthorizationPath)
                         break;
 
-                    if (attempt == 0)
-                        ctx.Logger.Warn("Tailscale browser authorization became unavailable; requesting one fresh authorization link.");
+                    ctx.Logger.Warn("Tailscale browser authorization became unavailable; requesting one fresh authorization link.");
+                    authorizationUri = await RequestBrowserAuthorizationAsync(ctx, upCommand, forceReauthentication: true, ct);
+                    if (authorizationUri is null)
+                        return StepResult.Fail("Tailscale did not provide a fresh browser authorization URL.");
+                    await PresentBrowserAuthorizationAsync(ctx, authorizationUri, ct);
+                    refreshedAuthorization = true;
                 }
             }
 
@@ -423,7 +458,7 @@ public sealed class AuthorizeTailscaleStep : SetupStep
         }
     }
 
-    private async Task<bool> PresentBrowserAuthorizationAsync(
+    private async Task<Uri?> RequestBrowserAuthorizationAsync(
         SetupContext ctx,
         string upCommand,
         bool forceReauthentication,
@@ -445,16 +480,27 @@ public sealed class AuthorizeTailscaleStep : SetupStep
                 : null;
         }
         if (authorizationUrl is null)
-            return false;
+            return null;
 
+        return authorizationUrl;
+    }
+
+    private static async Task PresentBrowserAuthorizationAsync(
+        SetupContext ctx,
+        Uri authorizationUrl,
+        CancellationToken ct)
+    {
         var presenter = ctx.ExternalAuthorizationPresenter ?? new ConsoleExternalAuthorizationPresenter();
         await presenter.PresentAsync(
             new ExternalAuthorizationRequest("Tailscale", authorizationUrl, "Authorize the generated OpenClaw gateway in your Tailscale tailnet:"),
             ct);
-        return true;
     }
 
-    private async Task<AuthorizationWaitResult> WaitForRunningAsync(SetupContext ctx, DateTimeOffset deadline, CancellationToken ct)
+    private async Task<AuthorizationWaitResult> WaitForRunningAsync(
+        SetupContext ctx,
+        DateTimeOffset deadline,
+        Uri? activeAuthorizationUri,
+        CancellationToken ct)
     {
         while (_clock.UtcNow < deadline)
         {
@@ -463,177 +509,29 @@ public sealed class AuthorizeTailscaleStep : SetupStep
             if (result.ExitCode == 0 && TailscaleSetupPolicy.TryParseStatus(result.Stdout, out var status))
             {
                 if (status.IsRunning)
-                    return new AuthorizationWaitResult(status, false);
+                    return new AuthorizationWaitResult(status, false, null);
+                if (activeAuthorizationUri is not null &&
+                    status.AuthorizationUri is { } replacementAuthorizationUri &&
+                    Uri.Compare(activeAuthorizationUri, replacementAuthorizationUri, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) != 0)
+                {
+                    return new AuthorizationWaitResult(null, false, replacementAuthorizationUri);
+                }
                 if (status.HasExpiredAuthorizationPath)
-                    return new AuthorizationWaitResult(null, true);
+                    return new AuthorizationWaitResult(null, true, null);
             }
 
             await _clock.DelayAsync(TimeSpan.FromSeconds(2), ct);
         }
 
-        return new AuthorizationWaitResult(null, false);
+        return new AuthorizationWaitResult(null, false, null);
     }
 
-    private sealed record AuthorizationWaitResult(TailscaleStatus? Status, bool ExpiredAuthorizationPath);
+    private sealed record AuthorizationWaitResult(
+        TailscaleStatus? Status,
+        bool ExpiredAuthorizationPath,
+        Uri? ReplacementAuthorizationUri);
 
     private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
-}
-
-/// <summary>
-/// Grants the gateway service only the capability OpenClaw needs when tailnet
-/// identity authentication is explicitly enabled. The service cannot use the
-/// tailscaled operator socket or administer Serve, Funnel, routes, or logout.
-/// </summary>
-public sealed class ConfigureTailscaleWhoisAccessStep : SetupStep
-{
-    private const string ShimPath = "/opt/openclaw/bin/tailscale";
-    private const string HelperPath = "/usr/local/libexec/openclaw-tailscale-whois";
-    private const string SudoersPath = "/etc/sudoers.d/openclaw-tailscale-whois";
-    private const string SystemdDropInDirectory = "/etc/systemd/user/openclaw-gateway.service.d";
-    private const string SystemdDropInPath = SystemdDropInDirectory + "/20-openclaw-tailscale-whois.conf";
-
-    public override string Id => "configure-tailscale-whois-access";
-    public override string DisplayName => "Restrict Tailscale identity lookup";
-
-    public override bool CanSkip(SetupContext ctx) =>
-        !ctx.Config.Tailscale.Enabled || !ctx.Config.Tailscale.TrustTailscaleAuth;
-
-    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
-    {
-        var user = ctx.Config.Wsl.User;
-        if (!IsSafeLinuxUser(user))
-            return StepResult.Terminal("The generated gateway user is not a safe Linux account name for Tailscale identity trust.");
-
-        // The generated gateway unit owns its normal runtime PATH. Add a
-        // root-owned system-wide drop-in that prepends the constrained shim
-        // before /usr/bin; do not assume a particular OpenClaw/node version.
-        var serviceEnvironment = await ctx.Commands.RunInWslAsync(
-            ctx.DistroName!,
-            "systemctl --user show -p Environment --value openclaw-gateway.service",
-            TimeSpan.FromSeconds(15),
-            ct: ct,
-            user: user);
-        if (serviceEnvironment.ExitCode != 0 || !TryReadServicePath(serviceEnvironment.Stdout, out var servicePath))
-        {
-            return StepResult.Terminal(
-                "Could not read the generated OpenClaw service PATH needed for the restricted Tailscale identity helper. " +
-                "Turn off Tailscale identity trust or update OpenClaw before continuing.");
-        }
-        if (servicePath.StartsWith("/opt/openclaw/bin:", StringComparison.Ordinal))
-            servicePath = servicePath["/opt/openclaw/bin:".Length..];
-        if (string.IsNullOrWhiteSpace(servicePath))
-            return StepResult.Terminal("The generated OpenClaw service PATH cannot be safely extended for Tailscale identity trust.");
-
-        var install = await ctx.Commands.RunInWslAsync(
-            ctx.DistroName!,
-            BuildInstallScript(user, servicePath),
-            TimeSpan.FromSeconds(30),
-            ct: ct,
-            user: "root",
-            inputViaStdin: true);
-        if (install.ExitCode != 0)
-            return StepResult.Fail("Could not install the restricted Tailscale identity helper.");
-
-        var reload = await ctx.Commands.RunInWslAsync(
-            ctx.DistroName!,
-            "systemctl --user daemon-reload",
-            TimeSpan.FromSeconds(15),
-            ct: ct,
-            user: user);
-        if (reload.ExitCode != 0)
-            return StepResult.Fail("Could not reload the generated OpenClaw service after installing Tailscale identity trust.");
-
-        var updatedEnvironment = await ctx.Commands.RunInWslAsync(
-            ctx.DistroName!,
-            "systemctl --user show -p Environment --value openclaw-gateway.service",
-            TimeSpan.FromSeconds(15),
-            ct: ct,
-            user: user);
-        if (updatedEnvironment.ExitCode != 0 ||
-            !TryReadServicePath(updatedEnvironment.Stdout, out var updatedPath) ||
-            !updatedPath.StartsWith("/opt/openclaw/bin:", StringComparison.Ordinal))
-        {
-            return StepResult.Fail("The generated OpenClaw service did not load the restricted Tailscale identity helper path.");
-        }
-
-        return StepResult.Ok("Tailscale identity lookup restricted to whois");
-    }
-
-    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
-    {
-        const string remove =
-            "chmod 0755 /usr/bin/tailscale 2>/dev/null || true; rm -f /etc/sudoers.d/openclaw-tailscale-whois /usr/local/libexec/openclaw-tailscale-whois /opt/openclaw/bin/tailscale " +
-            SystemdDropInPath + "; rmdir /opt/openclaw/bin /opt/openclaw " + SystemdDropInDirectory + " 2>/dev/null || true";
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, remove, TimeSpan.FromSeconds(15), ct: ct, user: "root");
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, "systemctl --user daemon-reload", TimeSpan.FromSeconds(15), ct: ct, user: ctx.Config.Wsl.User);
-    }
-
-    internal static string BuildInstallScript(string user, string servicePath) => $"""
-        set -eu
-        test -x /usr/bin/python3
-        chown root:root /usr/bin/tailscale
-        chmod 0750 /usr/bin/tailscale
-        install -d -m 0755 /usr/local/libexec /opt/openclaw/bin {SystemdDropInDirectory}
-        cat > {SystemdDropInPath} <<'SYSTEMD'
-        [Service]
-        Environment="PATH=/opt/openclaw/bin:{servicePath}"
-        SYSTEMD
-        chmod 0644 {SystemdDropInPath}
-        chown root:root {SystemdDropInPath}
-        cat > {HelperPath} <<'PY'
-        #!/usr/bin/python3 -I
-        import ipaddress
-        import os
-        import sys
-
-        if len(sys.argv) != 2:
-            sys.exit(64)
-        try:
-            address = str(ipaddress.ip_address(sys.argv[1]))
-        except ValueError:
-            sys.exit(64)
-        os.execv("/usr/bin/tailscale", ["/usr/bin/tailscale", "whois", "--json", address])
-        PY
-        chmod 0755 {HelperPath}
-        chown root:root {HelperPath}
-        cat > {ShimPath} <<'SH'
-        #!/bin/sh
-        set -eu
-        if [ "$#" -eq 3 ] && [ "$1" = "whois" ] && [ "$2" = "--json" ]; then
-            exec /usr/bin/sudo -n {HelperPath} "$3"
-        fi
-        echo "OpenClaw may use Tailscale only for whois --json <IP>." >&2
-        exit 126
-        SH
-        chmod 0755 {ShimPath}
-        chown root:root {ShimPath}
-        cat > {SudoersPath} <<'SUDOERS'
-        {user} ALL=(root) NOPASSWD: {HelperPath} *
-        SUDOERS
-        chmod 0440 {SudoersPath}
-        chown root:root {SudoersPath}
-        if ! visudo -cf {SudoersPath}; then
-            rm -f {SudoersPath} {HelperPath} {ShimPath} {SystemdDropInPath}
-            exit 1
-        fi
-        """;
-
-    private static bool TryReadServicePath(string environment, out string servicePath)
-    {
-        var match = System.Text.RegularExpressions.Regex.Match(environment, @"(?:^|\s)PATH=([^\s]+)");
-        if (match.Success &&
-            System.Text.RegularExpressions.Regex.IsMatch(match.Groups[1].Value, @"^[A-Za-z0-9_./:+-]+$"))
-        {
-            servicePath = match.Groups[1].Value;
-            return true;
-        }
-
-        servicePath = string.Empty;
-        return false;
-    }
-
-    private static bool IsSafeLinuxUser(string user) =>
-        System.Text.RegularExpressions.Regex.IsMatch(user, "^[a-z_][a-z0-9_-]*$");
 }
 
 public sealed class FinalizeTailscaleServeStep : SetupStep
