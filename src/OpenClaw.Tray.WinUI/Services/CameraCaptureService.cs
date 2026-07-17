@@ -636,7 +636,9 @@ public class CameraCaptureService : IDisposable
                 }
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
+            CaptureCancellationPolicy.ThrowIfCancellationRequested(
+                captureError,
+                cancellationToken);
         }
     }
     
