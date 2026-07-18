@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenClaw.TestSupport;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests;
@@ -24,8 +24,9 @@ public sealed class GatewayRequestShutdownClassificationTests
     public async Task SendChatMessage_ShutdownDuringWait_SurfacesCancellationNotTimeout()
     {
         using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("gateway-shutdown-");
         await server.StartAsync();
-        using var client = CreateClient(server);
+        using var client = CreateClient(server, identity.Path);
         await ConnectAsync(client, server);
 
         // Start the request, then cancel the lifetime token only after the server has
@@ -46,8 +47,9 @@ public sealed class GatewayRequestShutdownClassificationTests
     public async Task ResolveExecApproval_ShutdownDuringWait_SurfacesCancellationNotTimeout()
     {
         using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("gateway-shutdown-");
         await server.StartAsync();
-        using var client = CreateClient(server);
+        using var client = CreateClient(server, identity.Path);
         await ConnectAsync(client, server);
 
         var requestTask = client.ResolveExecApprovalAsync("approval-1", "allow-once");
@@ -60,15 +62,32 @@ public sealed class GatewayRequestShutdownClassificationTests
             "shutdown must classify immediately instead of waiting out the 15s approval budget");
     }
 
-    private static OpenClawGatewayClient CreateClient(LoopbackWebSocketServer server)
+    // Guards the actual shutdown entry point: Dispose faults the pending completion
+    // via ClearPendingRequests before cancelling the lifetime token, and that path
+    // must never fabricate a gateway timeout either. The two tests above pin the
+    // residual register-after-clear window, which a real Dispose cannot reach
+    // deterministically precisely because of that ordering.
+    [Fact]
+    public async Task ResolveExecApproval_RealDisposeDuringWait_SurfacesCancellationNotTimeout()
     {
-        var identityPath = Path.Combine(
-            Path.GetTempPath(),
-            "GatewayRequestShutdownClassificationTests",
-            Guid.NewGuid().ToString("N"));
-        return new OpenClawGatewayClient(
-            server.WebSocketUrl, "test-token", new TestLogger(), identityPath: identityPath);
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("gateway-shutdown-");
+        await server.StartAsync();
+        using var client = CreateClient(server, identity.Path);
+        await ConnectAsync(client, server);
+
+        var requestTask = client.ResolveExecApprovalAsync("approval-1", "allow-once");
+        await WaitForFrameContainingAsync(server, "exec.approval.resolve", TimeSpan.FromSeconds(2));
+        client.Dispose();
+
+        var elapsed = Stopwatch.StartNew();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => requestTask);
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(10),
+            "disposal must surface as cancellation instead of waiting out the 15s approval budget");
     }
+
+    private static OpenClawGatewayClient CreateClient(LoopbackWebSocketServer server, string identityPath)
+        => new(server.WebSocketUrl, "test-token", new TestLogger(), identityPath: identityPath);
 
     private static async Task ConnectAsync(OpenClawGatewayClient client, LoopbackWebSocketServer server)
     {
