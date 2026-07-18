@@ -535,9 +535,11 @@ public class OpenClawGatewayClientTests
             }));
 
         var payload = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
-        client.Dispose();
 
         Assert.Equal("welcome", payload.GetProperty("stepId").GetString());
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+
+        client.Dispose();
         Assert.Equal((0, 0), helper.GetPendingRequestCounts());
     }
 
@@ -588,7 +590,55 @@ public class OpenClawGatewayClientTests
         var responseTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 250);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        await Assert.ThrowsAsync<TimeoutException>(async () => await responseTask);
+        var exception = await Assert.ThrowsAsync<TimeoutException>(async () => await responseTask);
+
+        Assert.Equal("Timed out waiting for wizard.status response", exception.Message);
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_LateResponseAfterTimeout_DoesNotChangeOutcomeOrTracking()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        var timedOutTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 250);
+        var timedOutRequest = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var timedOutRequestId = ReadRequestId(timedOutRequest);
+        var firstTimeout = await Assert.ThrowsAsync<TimeoutException>(async () => await timedOutTask);
+
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = timedOutRequestId,
+                ok = true,
+                payload = new { stepId = "too-late" }
+            }));
+
+        var probeTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 10_000);
+        var probeRequest = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var probeRequestId = ReadRequestId(probeRequest);
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = probeRequestId,
+                ok = true,
+                payload = new { stepId = "probe" }
+            }));
+
+        var probePayload = await probeTask.WaitAsync(TimeSpan.FromSeconds(2));
+        var repeatedTimeout = await Assert.ThrowsAsync<TimeoutException>(async () => await timedOutTask);
+
+        Assert.Equal("probe", probePayload.GetProperty("stepId").GetString());
+        Assert.Same(firstTimeout, repeatedTimeout);
         Assert.Equal((0, 0), helper.GetPendingRequestCounts());
     }
 
