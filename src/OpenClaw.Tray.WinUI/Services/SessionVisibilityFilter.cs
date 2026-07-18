@@ -1,3 +1,4 @@
+using OpenClaw.Chat;
 using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
@@ -19,6 +20,15 @@ public static class SessionVisibilityFilter
         return string.Equals(status, "done", StringComparison.OrdinalIgnoreCase)
             || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
     }
+
+    public static ChatThreadStatus ToChatThreadStatus(SessionInfo session)
+        => IsCleanCompleted(session) ? ChatThreadStatus.Completed : ChatThreadStatus.Running;
+
+    public static IEnumerable<ChatThread> VisibleChatPickerThreads(IEnumerable<ChatThread> threads)
+        => threads.Where(IsVisibleInChatPicker);
+
+    public static bool IsVisibleInChatPicker(ChatThread thread)
+        => thread.Status != ChatThreadStatus.Completed;
 
     public static string ResolveActiveChannel(string activeChannel, IEnumerable<string> visibleChannels)
     {

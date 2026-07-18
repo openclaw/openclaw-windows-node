@@ -532,7 +532,7 @@ public sealed class OpenClawChatRoot : Component
         // Session list for the composer dropdown — grouped by agent, keyed by
         // ID so every session gets its own entry regardless of display name.
         // Exclude cron sessions which are automated/background.
-        var channelGroups = snapshot.Threads
+        var channelGroups = SessionVisibilityFilter.VisibleChatPickerThreads(snapshot.Threads)
             .Where(t => !string.IsNullOrEmpty(t.Title)
                      && !t.Id.Contains(":cron:", StringComparison.Ordinal))
             .GroupBy(t =>
@@ -560,7 +560,9 @@ public sealed class OpenClawChatRoot : Component
         // the slot/session-instance within that agent. When the key
         // doesn't match this layout we fall back to a generic "Main"
         // label rather than mis-parsing some other id shape.
-        if (effectiveThread is not null && !ChannelGroupsContain(channelGroups, effectiveThread.Id))
+        if (effectiveThread is not null
+            && SessionVisibilityFilter.IsVisibleInChatPicker(effectiveThread)
+            && !ChannelGroupsContain(channelGroups, effectiveThread.Id))
         {
             var parts = (effectiveThread.Id ?? "").Split(':');
             var agentId = parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "main";

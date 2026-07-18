@@ -576,6 +576,36 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadAsync_MapsOnlyCleanCompletedSessionsToCompletedThreads()
+    {
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "done", DisplayName = "Done", Status = "done" },
+            new SessionInfo
+            {
+                Key = "aborted",
+                DisplayName = "Aborted",
+                Status = "done",
+                AbortedLastRun = true,
+            },
+            new SessionInfo { Key = "unknown", DisplayName = "Unknown", Status = "unknown" },
+        };
+        var (_, provider, _, _) = CreateProvider(sessions);
+
+        var snapshot = await provider.LoadAsync();
+
+        Assert.Equal(
+            ChatThreadStatus.Completed,
+            Assert.Single(snapshot.Threads, thread => thread.Id == "done").Status);
+        Assert.Equal(
+            ChatThreadStatus.Running,
+            Assert.Single(snapshot.Threads, thread => thread.Id == "aborted").Status);
+        Assert.Equal(
+            ChatThreadStatus.Running,
+            Assert.Single(snapshot.Threads, thread => thread.Id == "unknown").Status);
+    }
+
+    [Fact]
     public async Task LoadAsync_DistinguishesDuplicateMultiSegmentSessionTitles()
     {
         var sessions = new[]

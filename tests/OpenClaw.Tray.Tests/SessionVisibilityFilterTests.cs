@@ -1,3 +1,4 @@
+using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 
@@ -78,6 +79,42 @@ public class SessionVisibilityFilterTests
             .ToArray();
 
         Assert.Equal(new[] { "done", "failed" }, visible);
+    }
+
+    [Theory]
+    [InlineData("done", false, ChatThreadStatus.Completed)]
+    [InlineData("completed", false, ChatThreadStatus.Completed)]
+    [InlineData("done", true, ChatThreadStatus.Running)]
+    [InlineData("unknown", false, ChatThreadStatus.Running)]
+    public void ToChatThreadStatus_ReusesCleanCompletionSemantics(
+        string status,
+        bool abortedLastRun,
+        ChatThreadStatus expected)
+    {
+        var session = new SessionInfo
+        {
+            Status = status,
+            AbortedLastRun = abortedLastRun,
+        };
+
+        Assert.Equal(expected, SessionVisibilityFilter.ToChatThreadStatus(session));
+    }
+
+    [Fact]
+    public void VisibleChatPickerThreads_HidesCompletedThreads()
+    {
+        var threads = new[]
+        {
+            new ChatThread { Id = "running", Title = "Running", Status = ChatThreadStatus.Running },
+            new ChatThread { Id = "completed", Title = "Completed", Status = ChatThreadStatus.Completed },
+            new ChatThread { Id = "suspended", Title = "Suspended", Status = ChatThreadStatus.Suspended },
+        };
+
+        var visible = SessionVisibilityFilter.VisibleChatPickerThreads(threads)
+            .Select(thread => thread.Id)
+            .ToArray();
+
+        Assert.Equal(new[] { "running", "suspended" }, visible);
     }
 
     [Theory]
