@@ -4682,7 +4682,7 @@
     <value>全部</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>顯示已完成的工作階段</value>
+    <value>顯示已結束的工作階段</value>
   </data>
   <data name="SessionsPage_GatewayDisconnected.Title" xml:space="preserve">
     <value>閘道已中斷</value>
