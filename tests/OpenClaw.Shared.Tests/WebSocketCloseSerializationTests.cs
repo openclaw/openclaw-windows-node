@@ -47,7 +47,7 @@ public sealed class WebSocketCloseSerializationTests
     }
 
     [Fact]
-    public async Task CloseWebSocketAsync_DisposeCancelsWaitBehindInFlightSend()
+    public async Task CloseWebSocketAsync_DisposeCompletesQueuedCloseWithoutException()
     {
         using var server = new LoopbackWebSocketServer();
         await server.StartAsync();
@@ -68,7 +68,8 @@ public sealed class WebSocketCloseSerializationTests
             client.Dispose();
 
             await sendTask.WaitAsync(TimeSpan.FromSeconds(2));
-            await WaitForCloseCompletionAsync(closeTask);
+            await closeTask.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.True(closeTask.IsCompletedSuccessfully);
         }
         finally
         {
@@ -97,14 +98,6 @@ public sealed class WebSocketCloseSerializationTests
                 CancellationToken.None);
             return receivedText;
         }
-    }
-
-    private static async Task WaitForCloseCompletionAsync(Task closeTask)
-    {
-        var closeCompletion = await Task.WhenAny(closeTask, Task.Delay(TimeSpan.FromSeconds(2)));
-        Assert.Same(closeTask, closeCompletion);
-        if (closeTask.IsFaulted)
-            Assert.IsAssignableFrom<OperationCanceledException>(closeTask.Exception!.GetBaseException());
     }
 
     private static SemaphoreSlim GetSendLock(WebSocketClientBase client) =>
