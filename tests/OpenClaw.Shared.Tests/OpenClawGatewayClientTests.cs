@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -487,10 +488,138 @@ public class OpenClawGatewayClientTests
             _client.AuthenticationFailed += (_, msg) => events.Add(msg);
             return events;
         }
+
+        public (int WizardResponses, int RequestMethods) GetPendingRequestCounts()
+        {
+            var wizardField = typeof(OpenClawGatewayClient).GetField(
+                "_pendingWizardResponses",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var wizardResponses =
+                (System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>>)wizardField!.GetValue(_client)!;
+
+            var methodsField = typeof(OpenClawGatewayClient).GetField(
+                "_pendingRequestMethods",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var requestMethods = (Dictionary<string, string>)methodsField!.GetValue(_client)!;
+
+            return (wizardResponses.Count, requestMethods.Count);
+        }
     }
 
     private static string CreateTempIdentityPath() =>
         Path.Combine(Path.GetTempPath(), "OpenClawGatewayClientTests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public async Task SendWizardRequestAsync_ResponseBeforeDispose_ReturnsPayloadAndCleansTracking()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        var responseTask = client.SendWizardRequestAsync("wizard.start", timeoutMs: 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var requestId = ReadRequestId(request);
+
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = requestId,
+                ok = true,
+                payload = new { stepId = "welcome" }
+            }));
+
+        var payload = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        client.Dispose();
+
+        Assert.Equal("welcome", payload.GetProperty("stepId").GetString());
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_GatewayError_PropagatesUnchangedAndCleansTracking()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var requestId = ReadRequestId(request);
+
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = requestId,
+                ok = false,
+                error = new { message = "wizard rejected" }
+            }));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        Assert.Equal("wizard rejected", exception.Message);
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_DeadlineExpires_ThrowsTimeoutAndCleansTracking()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        var responseTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 250);
+        await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        await Assert.ThrowsAsync<TimeoutException>(async () => await responseTask);
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_DisposeBeforeResponse_ThrowsCancellationAndCleansTracking()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        var responseTask = client.SendWizardRequestAsync("wizard.cancel", timeoutMs: 10_000);
+        await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        client.Dispose();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    private static string ReadRequestId(string request)
+    {
+        using var document = JsonDocument.Parse(request);
+        return document.RootElement.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("Gateway request did not include an id.");
+    }
 
     [Fact]
     public void ExtractChatTimestampMs_FallsBackFromInvalidTimestampToTs()

@@ -621,22 +621,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         try
         {
             await SendRawAsync(SerializeRequest(requestId, method, parameters));
+            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
         }
-        catch
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException($"Timed out waiting for {method} response", ex);
+        }
+        finally
         {
             _pendingWizardResponses.TryRemove(requestId, out _);
             RemovePendingRequest(requestId);
-            throw;
         }
-
-        var completedTask = await Task.WhenAny(completion.Task, Task.Delay(timeoutMs, CancellationToken));
-        if (completedTask != completion.Task)
-        {
-            _pendingWizardResponses.TryRemove(requestId, out _);
-            throw new TimeoutException($"Timed out waiting for {method} response");
-        }
-
-        return await completion.Task;
     }
 
     /// <summary>Request session list from gateway.</summary>
