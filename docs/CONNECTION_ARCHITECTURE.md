@@ -16,6 +16,14 @@ OpenClaw.Tray.WinUI (net10.0-windows) — UI app, tray icon, pages, windows
 
 **OpenClaw.Shared** owns the low-level gateway clients (`OpenClawGatewayClient`, `WindowsNodeClient`, `WebSocketClientBase`), device identity/signing (`DeviceIdentity`), protocol models, and the `IOperatorGatewayClient` interface.
 
+`WindowsNodeClient` also owns gateway invocation lifetime at the transport
+boundary. Active invokes are registered by invoke ID in a focused cancellation
+registry, linked to the node connection lifetime, and cancelled individually by
+the gateway `node.invoke.cancel` event. Active invocations atomically transition
+to cancelled or completed when capability execution returns; whichever
+transition wins determines the protocol outcome. Capability implementations
+remain responsible for cooperative cancellation of their own underlying work.
+
 **OpenClaw.Connection** owns all connection management: `GatewayConnectionManager`, `GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`, `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and all connection interfaces/DTOs/enums. This project has zero WinUI dependencies and is independently testable.
 
 **OpenClaw.Tray.WinUI** consumes the connection layer through interfaces. It never creates gateway clients directly — `GatewayConnectionManager` owns that entirely.

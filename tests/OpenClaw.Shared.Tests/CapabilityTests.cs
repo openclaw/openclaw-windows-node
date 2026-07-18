@@ -2613,7 +2613,7 @@ public class ScreenCapabilityTests
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         ScreenCaptureArgs? receivedArgs = null;
-        cap.CaptureRequested += (args) =>
+        cap.CaptureRequested += (args, _) =>
         {
             receivedArgs = args;
             return Task.FromResult(new ScreenCaptureResult { Format = "png", Width = 1920, Height = 1080, Base64 = "abc" });
@@ -2639,7 +2639,7 @@ public class ScreenCapabilityTests
     public async Task Capture_ReturnsError_WhenHandlerThrows()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        cap.CaptureRequested += (args) => throw new InvalidOperationException("Display access denied");
+        cap.CaptureRequested += (args, _) => throw new InvalidOperationException("Display access denied");
 
         var req = new NodeInvokeRequest { Id = "s5", Command = "screen.snapshot", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
@@ -2651,7 +2651,7 @@ public class ScreenCapabilityTests
     public async Task Capture_ResponseIncludesDataUri()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        cap.CaptureRequested += (args) => Task.FromResult(new ScreenCaptureResult
+        cap.CaptureRequested += (args, _) => Task.FromResult(new ScreenCaptureResult
         {
             Format = "png",
             Width = 1920,
@@ -2678,7 +2678,7 @@ public class ScreenCapabilityTests
         // downstream allocation (back-buffer sizes, image encoder buffers).
         var cap = new ScreenCapability(NullLogger.Instance);
         ScreenCaptureArgs? received = null;
-        cap.CaptureRequested += args =>
+        cap.CaptureRequested += (args, _) =>
         {
             received = args;
             return Task.FromResult(new ScreenCaptureResult { Format = "png", Width = 0, Height = 0, Base64 = "" });
@@ -2703,7 +2703,7 @@ public class ScreenCapabilityTests
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         ScreenCaptureArgs? receivedArgs = null;
-        cap.CaptureRequested += (args) =>
+        cap.CaptureRequested += (args, _) =>
         {
             receivedArgs = args;
             return Task.FromResult(new ScreenCaptureResult { Format = "png", Width = 1920, Height = 1080, Base64 = "" });
@@ -2729,7 +2729,7 @@ public class ScreenCapabilityTests
         // cannot reach the data URI MIME type.
         var cap = new ScreenCapability(NullLogger.Instance);
         var handlerCalled = false;
-        cap.CaptureRequested += (_) =>
+        cap.CaptureRequested += (_, _) =>
         {
             handlerCalled = true;
             return Task.FromResult(new ScreenCaptureResult { Format = "png", Base64 = "x" });
@@ -2754,7 +2754,7 @@ public class ScreenCapabilityTests
         // Normalize the alias before invoking the capture handler.
         var cap = new ScreenCapability(NullLogger.Instance);
         ScreenCaptureArgs? received = null;
-        cap.CaptureRequested += (args) =>
+        cap.CaptureRequested += (args, _) =>
         {
             received = args;
             return Task.FromResult(new ScreenCaptureResult { Format = args.Format, Width = 10, Height = 10, Base64 = "data" });
@@ -2784,7 +2784,7 @@ public class ScreenCapabilityTests
     {
         // The response MIME type comes from the validated request format.
         var cap = new ScreenCapability(NullLogger.Instance);
-        cap.CaptureRequested += (_) => Task.FromResult(new ScreenCaptureResult
+        cap.CaptureRequested += (_, _) => Task.FromResult(new ScreenCaptureResult
         {
             Format = "svg+xml\";base64,evil",
             Width = 1,
@@ -2845,7 +2845,7 @@ public class ScreenCapabilityTests
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         ScreenRecordArgs? receivedArgs = null;
-        cap.RecordRequested += (args) =>
+        cap.RecordRequested += (args, _) =>
         {
             receivedArgs = args;
             return Task.FromResult(new ScreenRecordResult
@@ -2881,7 +2881,7 @@ public class ScreenCapabilityTests
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         var handlerCalled = false;
-        cap.RecordRequested += (args) =>
+        cap.RecordRequested += (args, _) =>
         {
             handlerCalled = true;
             return Task.FromResult(new ScreenRecordResult());
@@ -2904,7 +2904,7 @@ public class ScreenCapabilityTests
     public async Task Record_ReturnsMacCompatiblePayload()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        cap.RecordRequested += (args) => Task.FromResult(new ScreenRecordResult
+        cap.RecordRequested += (args, _) => Task.FromResult(new ScreenRecordResult
         {
             Format = "mp4",
             Base64 = "abc123",
@@ -2945,7 +2945,7 @@ public class ScreenCapabilityTests
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         ScreenRecordArgs? received = null;
-        cap.RecordRequested += (args) =>
+        cap.RecordRequested += (args, _) =>
         {
             received = args;
             return Task.FromResult(new ScreenRecordResult { Format = "mp4", Fps = args.Fps });
@@ -2969,7 +2969,7 @@ public class ScreenCapabilityTests
     {
         var cap = new ScreenCapability(NullLogger.Instance);
         ScreenRecordArgs? received = null;
-        cap.RecordRequested += (args) =>
+        cap.RecordRequested += (args, _) =>
         {
             received = args;
             return Task.FromResult(new ScreenRecordResult { Format = "mp4", Fps = args.Fps });
@@ -2992,12 +2992,40 @@ public class ScreenCapabilityTests
     public async Task Record_ReturnsError_WhenHandlerThrows()
     {
         var cap = new ScreenCapability(NullLogger.Instance);
-        cap.RecordRequested += (_) => throw new InvalidOperationException("Capture permission denied");
+        cap.RecordRequested += (_, _) => throw new InvalidOperationException("Capture permission denied");
 
         var req = new NodeInvokeRequest { Id = "s15", Command = "screen.record", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Equal("Recording failed", res.Error);
+    }
+
+    [Fact]
+    public async Task Record_PropagatesCancellationToken_AndReturnsCancelled()
+    {
+        var cap = new ScreenCapability(NullLogger.Instance);
+        var tokenObserved = false;
+        cap.RecordRequested += async (_, cancellationToken) =>
+        {
+            tokenObserved = cancellationToken.CanBeCanceled;
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new ScreenRecordResult();
+        };
+        using var cts = new CancellationTokenSource();
+        var request = new NodeInvokeRequest
+        {
+            Id = "screen-cancel",
+            Command = "screen.record",
+            Args = Parse("""{"durationMs":10000}""")
+        };
+
+        var responseTask = cap.ExecuteAsync(request, cts.Token);
+        cts.Cancel();
+        var response = await responseTask;
+
+        Assert.True(tokenObserved);
+        Assert.False(response.Ok);
+        Assert.Equal("cancelled", response.Error);
     }
 }
 
@@ -3035,7 +3063,7 @@ public class CameraCapabilityTests
     public async Task List_ReturnsCameras_WhenHandler()
     {
         var cap = new CameraCapability(NullLogger.Instance);
-        cap.ListRequested += () => Task.FromResult(new[]
+        cap.ListRequested += _ => Task.FromResult(new[]
         {
             new CameraInfo { DeviceId = "cam-1", Name = "Front", IsDefault = true },
             new CameraInfo { DeviceId = "cam-2", Name = "Back", IsDefault = false }
@@ -3076,7 +3104,7 @@ public class CameraCapabilityTests
     {
         var cap = new CameraCapability(NullLogger.Instance);
         CameraSnapArgs? receivedArgs = null;
-        cap.SnapRequested += (args) =>
+        cap.SnapRequested += (args, _) =>
         {
             receivedArgs = args;
             return Task.FromResult(new CameraSnapResult { Format = "jpeg", Width = 640, Height = 480, Base64 = "img" });
@@ -3103,7 +3131,7 @@ public class CameraCapabilityTests
     {
         var cap = new CameraCapability(NullLogger.Instance);
         CameraSnapArgs? receivedArgs = null;
-        cap.SnapRequested += (args) =>
+        cap.SnapRequested += (args, _) =>
         {
             receivedArgs = args;
             return Task.FromResult(new CameraSnapResult { Format = "jpeg", Width = 640, Height = 480, Base64 = "img" });
@@ -3122,7 +3150,7 @@ public class CameraCapabilityTests
     public async Task Snap_ReturnsError_WhenHandlerThrows()
     {
         var cap = new CameraCapability(NullLogger.Instance);
-        cap.SnapRequested += (args) => throw new InvalidOperationException("Camera access blocked");
+        cap.SnapRequested += (args, _) => throw new InvalidOperationException("Camera access blocked");
 
         var req = new NodeInvokeRequest { Id = "cam6", Command = "camera.snap", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
@@ -3145,7 +3173,7 @@ public class CameraCapabilityTests
     {
         var cap = new CameraCapability(NullLogger.Instance);
         CameraClipArgs? receivedArgs = null;
-        cap.ClipRequested += (args) =>
+        cap.ClipRequested += (args, _) =>
         {
             receivedArgs = args;
             return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "vid", DurationMs = args.DurationMs, HasAudio = true });
@@ -3169,7 +3197,7 @@ public class CameraCapabilityTests
     {
         var cap = new CameraCapability(NullLogger.Instance);
         CameraClipArgs? receivedArgs = null;
-        cap.ClipRequested += (args) =>
+        cap.ClipRequested += (args, _) =>
         {
             receivedArgs = args;
             return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "vid", DurationMs = args.DurationMs, HasAudio = args.IncludeAudio });
@@ -3210,7 +3238,7 @@ public class CameraCapabilityTests
         // zero / negative seconds, which produced a degenerate file.
         var cap = new CameraCapability(NullLogger.Instance);
         CameraClipArgs? received = null;
-        cap.ClipRequested += args =>
+        cap.ClipRequested += (args, _) =>
         {
             received = args;
             return Task.FromResult(new CameraClipResult { Format = "mp4", Base64 = "", DurationMs = args.DurationMs, HasAudio = false });
@@ -3227,6 +3255,34 @@ public class CameraCapabilityTests
         Assert.NotNull(received);
         Assert.True(received!.DurationMs >= 100, $"duration not floor-clamped: {received.DurationMs}");
         Assert.True(received.DurationMs <= 60000);
+    }
+
+    [Fact]
+    public async Task Clip_PropagatesCancellationToken_AndReturnsCancelled()
+    {
+        var cap = new CameraCapability(NullLogger.Instance);
+        var tokenObserved = false;
+        cap.ClipRequested += async (_, cancellationToken) =>
+        {
+            tokenObserved = cancellationToken.CanBeCanceled;
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new CameraClipResult();
+        };
+        using var cts = new CancellationTokenSource();
+        var request = new NodeInvokeRequest
+        {
+            Id = "camera-cancel",
+            Command = "camera.clip",
+            Args = Parse("""{"durationMs":10000}""")
+        };
+
+        var responseTask = cap.ExecuteAsync(request, cts.Token);
+        cts.Cancel();
+        var response = await responseTask;
+
+        Assert.True(tokenObserved);
+        Assert.False(response.Ok);
+        Assert.Equal("cancelled", response.Error);
     }
 }
 
