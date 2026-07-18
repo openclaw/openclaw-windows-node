@@ -165,6 +165,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("without prior approval", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.FallbackShellUnapproved,
+            result.SandboxDenialReason);
         Assert.Null(fallback.LastRequest);
     }
 
@@ -187,6 +190,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("effective shell changed after approval", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.EffectiveShellChanged,
+            result.SandboxDenialReason);
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
     }
@@ -238,6 +244,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("custom environment variables", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.CustomEnvironmentUnsupported,
+            result.SandboxDenialReason);
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
     }
@@ -604,6 +613,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("Explicit environment variables are not supported", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.UnsupportedSandboxRequest,
+            result.SandboxDenialReason);
         Assert.DoesNotContain("unexpected", result.Stderr, StringComparison.OrdinalIgnoreCase);
         Assert.Null(fallback.LastRequest);
     }
@@ -643,6 +655,9 @@ public class MxcCommandRunnerTests
         });
 
         Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.DirectArgvUnsupported,
+            result.SandboxDenialReason);
         // Neither the sandbox executor nor the host fallback ran the command.
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);

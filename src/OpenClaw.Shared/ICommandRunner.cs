@@ -68,6 +68,7 @@ public class CommandResult
     public long DurationMs { get; set; }
     public NodeToolExecutionMode? ExecutionMode { get; set; }
     public NodeToolErrorCategory ErrorCategory { get; set; }
+    public NodeToolSandboxDenialReason? SandboxDenialReason { get; set; }
 }
 
 /// <summary>

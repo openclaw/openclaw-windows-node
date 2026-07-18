@@ -741,11 +741,28 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             new(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(), completion.ErrorCategory.ToTelemetryValue()),
             new("openclaw.node.tool.duration_ms", completion.DurationMilliseconds),
         };
-        if (completion.ExecutionMode.HasValue)
+        var sandbox = NodeToolInvocation.GetSandboxTelemetry(
+            completion.ExecutionMode,
+            completion.ErrorCategory);
+        if (sandbox != null)
+        {
+            attributes.Add(new(NodeToolInvocation.SandboxRequestedTag, sandbox.Requested));
+            if (sandbox.Applied.HasValue)
+                attributes.Add(new(NodeToolInvocation.SandboxAppliedTag, sandbox.Applied.Value));
+            if (sandbox.Provider != null)
+                attributes.Add(new(NodeToolInvocation.SandboxProviderTag, sandbox.Provider));
+            if (sandbox.Technology != null)
+                attributes.Add(new(NodeToolInvocation.SandboxTechnologyTag, sandbox.Technology));
+            if (sandbox.FallbackTarget != null)
+                attributes.Add(new(NodeToolInvocation.SandboxFallbackTargetTag, sandbox.FallbackTarget));
+            if (sandbox.FallbackReason != null)
+                attributes.Add(new(NodeToolInvocation.SandboxFallbackReasonTag, sandbox.FallbackReason));
+        }
+        if (completion.SandboxDenialReason.HasValue)
         {
             attributes.Add(new(
-                NodeToolInvocation.ExecutionModeTag,
-                completion.ExecutionMode.Value.ToTelemetryValue()));
+                NodeToolInvocation.SandboxDenialReasonTag,
+                completion.SandboxDenialReason.Value.ToTelemetryValue()));
         }
         if (completion.ErrorType != null)
         {

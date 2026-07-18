@@ -262,10 +262,9 @@ contract:
 
 - root trace: `openclaw.node.tool.invoke`
 - dispatch child: `openclaw.node.tool.execute`
-- `system.run` children:
-  `openclaw.node.tool.system_run.approval`,
-  `openclaw.node.tool.system_run.process`, and
-  `openclaw.node.tool.system_run.sandbox` when MXC is attempted
+- `system.run` children of the dispatch span:
+  `openclaw.node.tool.system_run.authorize` and
+  `openclaw.node.tool.system_run.run`
 - counter: `openclaw.node.tool.invocations`
 - duration histogram: `openclaw.node.tool.duration`
 - dropped failure-log counter: `openclaw.node.tool.logs.dropped`
@@ -284,8 +283,20 @@ Reviewed attributes are:
 - `openclaw.node.tool.transport`: `gateway` or `mcp`
 - `openclaw.outcome`: `success`, `failure`, or `canceled`
 - `openclaw.error.category`: a finite typed category
-- `openclaw.node.tool.execution.mode`: `host`, `sandbox`, or `host_fallback`
-  when relevant
+- `openclaw.node.tool.sandbox.requested`: whether sandboxing was configured
+- `openclaw.node.tool.sandbox.applied`: whether the command was known to run
+  inside the sandbox; omitted when an infrastructure failure makes that unknown
+- `openclaw.node.tool.sandbox.provider`: `mxc` when MXC was selected
+- `openclaw.node.tool.sandbox.technology`: `windows_appcontainer` for the
+  currently wired MXC backend
+- `openclaw.node.tool.sandbox.denial.reason`: a finite host-side pre-execution
+  reason: `direct_argv_unsupported`, `custom_environment_unsupported`,
+  `effective_shell_changed`, `fallback_shell_unapproved`, or
+  `unsupported_sandbox_request`
+- `openclaw.node.tool.sandbox.fallback.target`: `unsandboxed` when an unavailable
+  MXC backend caused compatibility fallback
+- `openclaw.node.tool.sandbox.fallback.reason`: `mxc_unavailable` for that
+  fallback
 - `error.type`: exception type only
 
 Failure categories are `invalid_request`, `unsupported_command`, `node_busy`,
@@ -312,10 +323,11 @@ V2 exec approval results map as follows:
 Telemetry does not change protocol semantics. In particular, a nonzero or
 timed-out `system.run` remains a successful gateway/MCP RPC whose payload has
 `success=false`; telemetry records `command_failed` or `timeout`. A contained
-nonzero exit is `command_failed` with `execution.mode=sandbox`, not a sandbox
-denial. The current MXC result contract cannot distinguish a command failure
-caused by an in-container policy from other nonzero process exits without
-unsafe message parsing or a sandbox protocol change.
+nonzero exit is `command_failed` with `sandbox.requested=true` and
+`sandbox.applied=true`, not a sandbox denial. The current MXC result contract
+cannot distinguish a command failure caused by an in-container policy from
+other nonzero process exits without unsafe message parsing or a sandbox
+protocol change.
 
 The tray exports one structured log only for a failed or canceled invocation.
 Forwarding uses a nonblocking queue capped at 256 entries. Full queues drop the

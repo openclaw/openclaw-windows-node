@@ -363,11 +363,57 @@ public sealed class OpenTelemetryEndpointConnectionTests
                 OpenClawTelemetryTagKey.Outcome.ToTelemetryName(),
                 OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(),
                 "openclaw.node.tool.duration_ms",
-                NodeToolInvocation.ExecutionModeTag,
+                NodeToolInvocation.SandboxRequestedTag,
+                NodeToolInvocation.SandboxAppliedTag,
+                NodeToolInvocation.SandboxProviderTag,
+                NodeToolInvocation.SandboxTechnologyTag,
                 OpenClawTelemetryTagKey.ErrorType.ToTelemetryName(),
             ],
             keys);
         Assert.DoesNotContain("sensitive", values, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NodeToolLogAttributes_DescribeUnsandboxedFallback()
+    {
+        var completion = FailureCompletion() with
+        {
+            ErrorCategory = NodeToolErrorCategory.Timeout,
+            ExecutionMode = NodeToolExecutionMode.HostFallback,
+        };
+
+        var attributes = OpenTelemetryOtlpProbeSink.CreateNodeToolLogAttributes(completion)
+            .ToDictionary(attribute => attribute.Key, attribute => attribute.Value);
+
+        Assert.Equal(true, attributes[NodeToolInvocation.SandboxRequestedTag]);
+        Assert.Equal(false, attributes[NodeToolInvocation.SandboxAppliedTag]);
+        Assert.Equal("mxc", attributes[NodeToolInvocation.SandboxProviderTag]);
+        Assert.Equal(
+            "windows_appcontainer",
+            attributes[NodeToolInvocation.SandboxTechnologyTag]);
+        Assert.Equal(
+            "unsandboxed",
+            attributes[NodeToolInvocation.SandboxFallbackTargetTag]);
+        Assert.Equal(
+            "mxc_unavailable",
+            attributes[NodeToolInvocation.SandboxFallbackReasonTag]);
+    }
+
+    [Fact]
+    public void NodeToolLogAttributes_IncludeFiniteSandboxDenialReason()
+    {
+        var completion = FailureCompletion() with
+        {
+            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
+            SandboxDenialReason = NodeToolSandboxDenialReason.CustomEnvironmentUnsupported,
+        };
+
+        var attributes = OpenTelemetryOtlpProbeSink.CreateNodeToolLogAttributes(completion)
+            .ToDictionary(attribute => attribute.Key, attribute => attribute.Value);
+
+        Assert.Equal(
+            "custom_environment_unsupported",
+            attributes[NodeToolInvocation.SandboxDenialReasonTag]);
     }
 
     [Fact]

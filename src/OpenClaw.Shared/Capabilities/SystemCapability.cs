@@ -326,7 +326,9 @@ public class SystemCapability : NodeCapabilityBase
         if (_v2Handler != null)
         {
             Logger.Info($"[system.run] corr={correlationId} path=v2");
-            var approvalSpan = request.Telemetry?.StartChild(NodeToolInvocation.SystemRunApprovalSpanName);
+            var approvalSpan = request.Telemetry?.StartChild(
+                NodeToolInvocation.SystemRunAuthorizeSpanName,
+                GetTelemetryParentContext(request));
             ExecApprovalV2Result v2Result;
             var approvalCategory = NodeToolErrorCategory.None;
             var approvalSpanCompleted = false;
@@ -461,7 +463,9 @@ public class SystemCapability : NodeCapabilityBase
         // Check exec approval policy
         if (_approvalPolicy != null)
         {
-            var approvalSpan = request.Telemetry?.StartChild(NodeToolInvocation.SystemRunApprovalSpanName);
+            var approvalSpan = request.Telemetry?.StartChild(
+                NodeToolInvocation.SystemRunAuthorizeSpanName,
+                GetTelemetryParentContext(request));
             try
             {
                 var approvalError = await EnsureCommandAndNestedTargetsApprovedAsync(
@@ -511,7 +515,9 @@ public class SystemCapability : NodeCapabilityBase
             }
         }
         
-        var processSpan = request.Telemetry?.StartChild(NodeToolInvocation.SystemRunProcessSpanName);
+        var runSpan = request.Telemetry?.StartChild(
+            NodeToolInvocation.SystemRunRunSpanName,
+            GetTelemetryParentContext(request));
         try
         {
             var result = await _commandRunner.RunAsync(new CommandRequest
@@ -525,18 +531,21 @@ public class SystemCapability : NodeCapabilityBase
                 ApprovedEffectiveShell = effectiveShell,
                 ApprovedHostFallbackShell = approvedHostFallbackShell,
                 Telemetry = request.Telemetry,
-                TelemetryParentContext = processSpan?.Context ?? request.Telemetry?.Context ?? default
+                TelemetryParentContext = runSpan?.Context ?? request.Telemetry?.Context ?? default
             });
 
             var executionMode = result.ExecutionMode ?? NodeToolExecutionMode.Host;
             var errorCategory = ClassifyCommandResult(result);
+            if (result.SandboxDenialReason.HasValue)
+                request.Telemetry?.SetSandboxDenialReason(result.SandboxDenialReason.Value);
             NodeToolInvocation.CompleteChild(
-                processSpan,
+                runSpan,
                 errorCategory == NodeToolErrorCategory.None
                     ? NodeToolOutcome.Success
                     : NodeToolOutcome.Failure,
                 errorCategory,
-                executionMode);
+                    executionMode,
+                    sandboxDenialReason: result.SandboxDenialReason);
 
             var response = Success(new
             {
@@ -548,14 +557,19 @@ public class SystemCapability : NodeCapabilityBase
                 durationMs = result.DurationMs
             });
             if (errorCategory != NodeToolErrorCategory.None)
-                response.Diagnostic = new NodeToolDiagnostic(errorCategory, executionMode);
+            {
+                response.Diagnostic = new NodeToolDiagnostic(
+                    errorCategory,
+                    executionMode,
+                    result.SandboxDenialReason);
+            }
             return response;
         }
         catch (Exception ex)
         {
             Logger.Error("system.run failed", ex);
             NodeToolInvocation.CompleteChild(
-                processSpan,
+                runSpan,
                 NodeToolOutcome.Failure,
                 NodeToolErrorCategory.InternalFailure,
                 errorType: ex.GetType());
@@ -573,6 +587,12 @@ public class SystemCapability : NodeCapabilityBase
         response.Diagnostic = new NodeToolDiagnostic(errorCategory, executionMode);
         return response;
     }
+
+    private static System.Diagnostics.ActivityContext? GetTelemetryParentContext(
+        NodeInvokeRequest request) =>
+        request.TelemetryParentContext != default
+            ? request.TelemetryParentContext
+            : request.Telemetry?.Context;
 
     private static NodeToolErrorCategory ClassifyCommandResult(CommandResult result)
     {

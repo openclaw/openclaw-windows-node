@@ -455,6 +455,7 @@ public class McpToolBridge
         // bridge's handler slot.
         NodeInvokeResponse response;
         var executeActivity = telemetry.StartChild(NodeToolInvocation.ExecuteSpanName);
+        request.TelemetryParentContext = executeActivity?.Context ?? telemetry.Context;
         try
         {
             response = await capability.ExecuteAsync(request, cancellationToken).WaitAsync(cancellationToken);
@@ -489,7 +490,8 @@ public class McpToolBridge
                 executeActivity,
                 NodeToolOutcome.Failure,
                 diagnostic.ErrorCategory,
-                diagnostic.ExecutionMode);
+                diagnostic.ExecutionMode,
+                sandboxDenialReason: diagnostic.SandboxDenialReason);
             throw new McpToolException(
                 response.Error ?? "tool execution failed",
                 diagnostic.ErrorCategory,
@@ -503,7 +505,8 @@ public class McpToolBridge
             executeActivity,
             responseOutcome,
             response.Diagnostic?.ErrorCategory ?? NodeToolErrorCategory.None,
-            response.Diagnostic?.ExecutionMode);
+            response.Diagnostic?.ExecutionMode,
+            sandboxDenialReason: response.Diagnostic?.SandboxDenialReason);
 
         var payloadJson = response.Payload is null
             ? "null"

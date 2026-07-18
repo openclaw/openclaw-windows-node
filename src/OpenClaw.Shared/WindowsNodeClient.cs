@@ -1154,6 +1154,7 @@ public class WindowsNodeClient : WebSocketClientBase
         var telemetry = request.Telemetry!;
         var stopwatch = Stopwatch.StartNew();
         var executeActivity = telemetry.StartChild(NodeToolInvocation.ExecuteSpanName);
+        request.TelemetryParentContext = executeActivity?.Context ?? telemetry.Context;
         var capabilityStarted = false;
         var capabilityCompleted = false;
         var executeActivityCompleted = false;
@@ -1175,7 +1176,8 @@ public class WindowsNodeClient : WebSocketClientBase
                 executeActivity,
                 outcome,
                 category,
-                diagnostic?.ExecutionMode);
+                diagnostic?.ExecutionMode,
+                sandboxDenialReason: diagnostic?.SandboxDenialReason);
             executeActivityCompleted = true;
 
             await sendResponse(response);

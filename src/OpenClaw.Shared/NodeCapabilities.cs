@@ -30,6 +30,9 @@ public class NodeInvokeRequest
 
     [JsonIgnore]
     public NodeToolInvocation? Telemetry { get; set; }
+
+    [JsonIgnore]
+    internal System.Diagnostics.ActivityContext TelemetryParentContext { get; set; }
 }
 
 public class NodeInvokeCompletedEventArgs : EventArgs

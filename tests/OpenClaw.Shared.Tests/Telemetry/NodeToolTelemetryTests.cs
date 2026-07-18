@@ -21,13 +21,47 @@ public sealed class NodeToolTelemetryTests
     {
         Assert.Equal("openclaw.node.tool.invoke", NodeToolInvocation.InvokeSpanName);
         Assert.Equal("openclaw.node.tool.execute", NodeToolInvocation.ExecuteSpanName);
+        Assert.Equal("openclaw.node.tool.system_run.authorize", NodeToolInvocation.SystemRunAuthorizeSpanName);
+        Assert.Equal("openclaw.node.tool.system_run.run", NodeToolInvocation.SystemRunRunSpanName);
         Assert.Equal("openclaw.node.tool.invocations", NodeToolInvocation.InvocationsMetricName);
         Assert.Equal("openclaw.node.tool.duration", NodeToolInvocation.DurationMetricName);
         Assert.Equal("gateway", NodeToolTransport.Gateway.ToTelemetryValue());
         Assert.Equal("mcp", NodeToolTransport.Mcp.ToTelemetryValue());
         Assert.Equal("exec_policy_denied", NodeToolErrorCategory.ExecPolicyDenied.ToTelemetryValue());
         Assert.Equal("sandbox_failure", NodeToolErrorCategory.SandboxFailure.ToTelemetryValue());
-        Assert.Equal("host_fallback", NodeToolExecutionMode.HostFallback.ToTelemetryValue());
+        Assert.Equal(
+            "fallback_shell_unapproved",
+            NodeToolSandboxDenialReason.FallbackShellUnapproved.ToTelemetryValue());
+    }
+
+    [Fact]
+    public void SandboxDenialReason_IsAppliedToRunAndRootWithoutFreeFormText()
+    {
+        using var activities = new ActivityCollector();
+        var invocation = new NodeToolInvocation(NodeToolTransport.Gateway);
+        invocation.SetCommand("system.run");
+        invocation.SetSandboxDenialReason(NodeToolSandboxDenialReason.UnsupportedSandboxRequest);
+        var run = invocation.StartChild(NodeToolInvocation.SystemRunRunSpanName);
+
+        NodeToolInvocation.CompleteChild(
+            run,
+            NodeToolOutcome.Failure,
+            NodeToolErrorCategory.SandboxDenied,
+            NodeToolExecutionMode.Sandbox,
+            sandboxDenialReason: NodeToolSandboxDenialReason.UnsupportedSandboxRequest);
+        var completion = invocation.Complete(
+            NodeToolOutcome.Failure,
+            NodeToolErrorCategory.SandboxDenied,
+            NodeToolExecutionMode.Sandbox);
+
+        Assert.Equal(
+            NodeToolSandboxDenialReason.UnsupportedSandboxRequest,
+            completion!.SandboxDenialReason);
+        Assert.All(
+            activities.Stopped,
+            activity => Assert.Equal(
+                "unsupported_sandbox_request",
+                activity.GetTagItem(NodeToolInvocation.SandboxDenialReasonTag)));
     }
 
     [Fact]
@@ -60,7 +94,12 @@ public sealed class NodeToolTelemetryTests
         Assert.Equal("gateway", root.GetTagItem(NodeToolInvocation.TransportTag));
         Assert.Equal("failure", root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
         Assert.Equal("command_failed", root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
-        Assert.Equal("sandbox", root.GetTagItem(NodeToolInvocation.ExecutionModeTag));
+        Assert.Equal(true, root.GetTagItem(NodeToolInvocation.SandboxRequestedTag));
+        Assert.Equal(true, root.GetTagItem(NodeToolInvocation.SandboxAppliedTag));
+        Assert.Equal("mxc", root.GetTagItem(NodeToolInvocation.SandboxProviderTag));
+        Assert.Equal(
+            "windows_appcontainer",
+            root.GetTagItem(NodeToolInvocation.SandboxTechnologyTag));
 
         Assert.Single(metrics.LongMeasurements, m => m.Name == NodeToolInvocation.InvocationsMetricName);
         Assert.Single(metrics.DoubleMeasurements, m => m.Name == NodeToolInvocation.DurationMetricName);
@@ -94,11 +133,12 @@ public sealed class NodeToolTelemetryTests
     }
 
     [Fact]
-    public async Task SystemRun_NonzeroSandboxExit_EmitsProcessSpanAndSemanticDiagnostic()
+    public async Task SystemRun_NonzeroSandboxExit_EmitsNestedRunSpanAndSandboxAttributes()
     {
         using var activities = new ActivityCollector();
         using var invocation = new NodeToolInvocation(NodeToolTransport.Mcp);
         invocation.SetCommand("system.run");
+        var execute = invocation.StartChild(NodeToolInvocation.ExecuteSpanName);
         var capability = new SystemCapability(NullLogger.Instance);
         capability.SetCommandRunner(new FixedCommandRunner(new CommandResult
         {
@@ -113,18 +153,28 @@ public sealed class NodeToolTelemetryTests
             Command = "system.run",
             Args = args.RootElement.Clone(),
             Telemetry = invocation,
+            TelemetryParentContext = execute?.Context ?? invocation.Context,
         });
+        NodeToolInvocation.CompleteChild(execute, NodeToolOutcome.Failure);
 
         Assert.True(response.Ok);
         Assert.Equal(NodeToolErrorCategory.CommandFailed, response.Diagnostic?.ErrorCategory);
         Assert.Equal(NodeToolExecutionMode.Sandbox, response.Diagnostic?.ExecutionMode);
-        var process = Assert.Single(
+        var run = Assert.Single(
             activities.Stopped,
-            activity => activity.OperationName == NodeToolInvocation.SystemRunProcessSpanName);
-        Assert.Equal(invocation.Context.TraceId, process.TraceId);
-        Assert.Equal("failure", process.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
-        Assert.Equal("command_failed", process.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
-        Assert.Equal("sandbox", process.GetTagItem(NodeToolInvocation.ExecutionModeTag));
+            activity => activity.OperationName == NodeToolInvocation.SystemRunRunSpanName);
+        var executeActivity = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.ExecuteSpanName);
+        Assert.Equal(executeActivity.SpanId, run.ParentSpanId);
+        Assert.Equal("failure", run.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("command_failed", run.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+        Assert.Equal(true, run.GetTagItem(NodeToolInvocation.SandboxRequestedTag));
+        Assert.Equal(true, run.GetTagItem(NodeToolInvocation.SandboxAppliedTag));
+        Assert.Equal("mxc", run.GetTagItem(NodeToolInvocation.SandboxProviderTag));
+        Assert.Equal(
+            "windows_appcontainer",
+            run.GetTagItem(NodeToolInvocation.SandboxTechnologyTag));
         Assert.DoesNotContain(
             activities.Stopped.SelectMany(activity => activity.TagObjects),
             tag => Equals(tag.Value, "private stderr"));
@@ -146,6 +196,7 @@ public sealed class NodeToolTelemetryTests
         using var activities = new ActivityCollector();
         using var invocation = new NodeToolInvocation(NodeToolTransport.Gateway);
         invocation.SetCommand("system.run");
+        var execute = invocation.StartChild(NodeToolInvocation.ExecuteSpanName);
         var capability = new SystemCapability(NullLogger.Instance);
         capability.SetV2Handler(new FixedV2Handler(CreateV2Result(code)));
         using var args = JsonDocument.Parse("""{"command":"test"}""");
@@ -155,13 +206,19 @@ public sealed class NodeToolTelemetryTests
             Command = "system.run",
             Args = args.RootElement.Clone(),
             Telemetry = invocation,
+            TelemetryParentContext = execute?.Context ?? invocation.Context,
         });
+        NodeToolInvocation.CompleteChild(execute, NodeToolOutcome.Failure);
 
         Assert.False(response.Ok);
         Assert.Equal(expectedCategory, response.Diagnostic?.ErrorCategory);
         var approval = Assert.Single(
             activities.Stopped,
-            activity => activity.OperationName == NodeToolInvocation.SystemRunApprovalSpanName);
+            activity => activity.OperationName == NodeToolInvocation.SystemRunAuthorizeSpanName);
+        var executeActivity = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.ExecuteSpanName);
+        Assert.Equal(executeActivity.SpanId, approval.ParentSpanId);
         Assert.Equal(expectedCategory.ToTelemetryValue(),
             approval.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
