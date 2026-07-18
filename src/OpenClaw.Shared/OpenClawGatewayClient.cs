@@ -368,6 +368,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (completedTask != completion.Task)
         {
             RemovePendingChatSend(requestId);
+            // A cancelled delay is client shutdown, not an elapsed gateway timeout.
+            CancellationToken.ThrowIfCancellationRequested();
             throw new TimeoutException("Timed out waiting for chat.send response from gateway");
         }
 
@@ -503,6 +505,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             _pendingApprovalResolves.TryRemove(requestId, out _);
             RemovePendingRequest(requestId);
+            // A cancelled delay is client shutdown, not an elapsed gateway timeout.
+            CancellationToken.ThrowIfCancellationRequested();
             throw new TimeoutException("Timed out waiting for exec.approval.resolve response from gateway");
         }
 
