@@ -270,7 +270,7 @@ public sealed class SessionTitleFormatterTests
             "OpenClaw.Tray.WinUI",
             "Chat",
             "OpenClawComposer.cs"));
-        Assert.Contains("ToolTipService.SetToolTip(item, session.Title)", composer, StringComparison.Ordinal);
+        Assert.Contains("ToolTipService.SetToolTip(b, session.Title)", composer, StringComparison.Ordinal);
     }
 
     [Fact]
