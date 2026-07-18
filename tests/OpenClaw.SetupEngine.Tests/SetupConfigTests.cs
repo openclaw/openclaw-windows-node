@@ -152,6 +152,29 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void TryLoadFromFile_ReturnsErrorForJsonNull()
+    {
+        var path = Path.Combine(_tempDir, "null.json");
+        File.WriteAllText(path, "null");
+
+        var loaded = SetupConfig.TryLoadFromFile(path, out var config, out var error);
+
+        Assert.False(loaded);
+        Assert.Null(config);
+        Assert.Equal("Config file must contain a JSON object.", error);
+    }
+
+    [Fact]
+    public void TryLoadFromFile_ReturnsErrorForDirectoryPath()
+    {
+        var loaded = SetupConfig.TryLoadFromFile(_tempDir, out var config, out var error);
+
+        Assert.False(loaded);
+        Assert.Null(config);
+        Assert.False(string.IsNullOrWhiteSpace(error));
+    }
+
+    [Fact]
     public void FromEnvironment_OverridesDefaults()
     {
         // Set env vars temporarily

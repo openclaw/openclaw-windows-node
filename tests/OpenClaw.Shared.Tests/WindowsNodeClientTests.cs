@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -15,6 +16,20 @@ namespace OpenClaw.Shared.Tests;
 [Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
+    private sealed class CapturingWindowsNodeClient(
+        string gatewayUrl,
+        string token,
+        string dataPath) : WindowsNodeClient(gatewayUrl, token, dataPath)
+    {
+        public ConcurrentQueue<string> SentMessages { get; } = new();
+
+        protected override Task SendRawAsync(string message)
+        {
+            SentMessages.Enqueue(message);
+            return Task.CompletedTask;
+        }
+    }
+
     [Theory]
     [InlineData("http://localhost:18789", "ws://localhost:18789")]
     [InlineData("https://host.tailnet.ts.net", "wss://host.tailnet.ts.net")]
@@ -1872,6 +1887,103 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public async Task CommandDispatch_RequestPath_ThrowingCompletionSubscriber_DoesNotSuppressResponse()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "test-token",
+                dataPath);
+            var capability = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(capability);
+            var laterSubscriberCalled = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, _) => throw new InvalidOperationException("subscriber failure");
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "invoke-throw-request")
+                {
+                    laterSubscriberCalled.TrySetResult();
+                }
+            };
+
+            await InvokeProcessMessageAsync(
+                client,
+                BuildNodeInvokeRequest("invoke-throw-request", "mock.ping"));
+
+            await laterSubscriberCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var responseJson = await WaitForSentMessageAsync(
+                client,
+                message => message.Contains("\"id\":\"invoke-throw-request\"", StringComparison.Ordinal));
+            using var response = JsonDocument.Parse(responseJson);
+            Assert.Equal("res", response.RootElement.GetProperty("type").GetString());
+            Assert.True(response.RootElement.GetProperty("ok").GetBoolean());
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_EventPath_ThrowingCompletionSubscriber_DoesNotSuppressResult()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "test-token",
+                dataPath);
+            var capability = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(capability);
+            var laterSubscriberCalled = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, _) => throw new InvalidOperationException("subscriber failure");
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "invoke-throw-event")
+                {
+                    laterSubscriberCalled.TrySetResult();
+                }
+            };
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "invoke-throw-event",
+                    "command": "mock.ping",
+                    "args": {}
+                  }
+                }
+                """);
+
+            await laterSubscriberCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var responseJson = await WaitForSentMessageAsync(
+                client,
+                message => message.Contains("\"method\":\"node.invoke.result\"", StringComparison.Ordinal) &&
+                           message.Contains("\"id\":\"invoke-throw-event\"", StringComparison.Ordinal));
+            using var response = JsonDocument.Parse(responseJson);
+            Assert.Equal("req", response.RootElement.GetProperty("type").GetString());
+            Assert.True(response.RootElement.GetProperty("params").GetProperty("ok").GetBoolean());
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public async Task CommandDispatch_SlowCapability_DoesNotBlockNextInvoke()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
@@ -1956,6 +2068,176 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public async Task CommandDispatch_RequestCancel_CancelsMatchingInvoke()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        var blocking = new BlockingCapability("mock", "mock.slow");
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "test-token",
+                dataPath);
+            client.RegisterCapability(blocking);
+            var completedTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "inv-cancel")
+                {
+                    completedTcs.TrySetResult(args);
+                }
+            };
+
+            await InvokeProcessMessageAsync(client, BuildNodeInvokeRequest("inv-cancel", "mock.slow"));
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "req",
+                  "id": "cancel-request",
+                  "method": "node.invoke.cancel",
+                  "params": {
+                    "requestId": "inv-cancel"
+                  }
+                }
+                """);
+
+            var cancelResponseJson = Assert.Single(
+                client.SentMessages,
+                message => message.Contains("\"id\":\"cancel-request\"", StringComparison.Ordinal));
+            using var cancelResponse = JsonDocument.Parse(cancelResponseJson);
+            Assert.Equal("res", cancelResponse.RootElement.GetProperty("type").GetString());
+            Assert.True(cancelResponse.RootElement.GetProperty("ok").GetBoolean());
+            Assert.True(
+                cancelResponse.RootElement
+                    .GetProperty("payload")
+                    .GetProperty("cancelled")
+                    .GetBoolean());
+
+            await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            var completed = await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(completed.Ok);
+            Assert.Equal("cancelled", completed.Error);
+        }
+        finally
+        {
+            blocking.Release();
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_EventCancel_CancelsMatchingEventInvoke()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        var blocking = new BlockingCapability("mock", "mock.slow");
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            client.RegisterCapability(blocking);
+            var completedTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "event-cancel")
+                {
+                    completedTcs.TrySetResult(args);
+                }
+            };
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "event-cancel",
+                    "command": "mock.slow",
+                    "args": {}
+                  }
+                }
+
+                """);
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.cancel",
+                  "payload": {
+                    "invokeId": "event-cancel"
+                  }
+                }
+                """);
+
+            await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            var completed = await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(completed.Ok);
+            Assert.Equal("cancelled", completed.Error);
+        }
+        finally
+        {
+            blocking.Release();
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_RequestNotificationCancel_ReadsParamsWithoutResponseId()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        var blocking = new BlockingCapability("mock", "mock.slow");
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            client.RegisterCapability(blocking);
+            var completedTcs = new TaskCompletionSource<NodeInvokeCompletedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.InvokeCompleted += (_, args) =>
+            {
+                if (args.RequestId == "notification-cancel")
+                {
+                    completedTcs.TrySetResult(args);
+                }
+            };
+
+            await InvokeProcessMessageAsync(
+                client,
+                BuildNodeInvokeRequest("notification-cancel", "mock.slow"));
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "req",
+                  "method": "node.invoke.cancel",
+                  "params": {
+                    "invokeId": "notification-cancel"
+                  }
+                }
+                """);
+
+            await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            var completed = await completedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(completed.Ok);
+            Assert.Equal("cancelled", completed.Error);
+        }
+        finally
+        {
+            blocking.Release();
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public async Task CommandDispatch_ArgsSurviveAfterProcessMessageReturns()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
@@ -2006,6 +2288,25 @@ public class WindowsNodeClientTests
         Assert.NotNull(processMethod);
         var task = (Task)processMethod!.Invoke(client, [json])!;
         await task;
+    }
+
+    private static async Task<string> WaitForSentMessageAsync(
+        CapturingWindowsNodeClient client,
+        Func<string, bool> predicate)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!timeout.IsCancellationRequested)
+        {
+            var message = client.SentMessages.FirstOrDefault(predicate);
+            if (message != null)
+            {
+                return message;
+            }
+
+            await Task.Delay(10, timeout.Token);
+        }
+
+        throw new TimeoutException("Expected gateway response was not sent.");
     }
 
     private static string BuildNodeInvokeRequest(string requestId, string command)

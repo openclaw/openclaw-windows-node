@@ -394,6 +394,9 @@ public sealed class AppRefactorContractTests
         Assert.Contains("localDataDir: AppIdentity.ResolveSetupLocalDataDirectory()", source);
         Assert.Contains("distroNameOverride: AppIdentity.SetupDistroName", source);
         Assert.Contains("gatewayPortOverride: AppIdentity.SetupGatewayPort", source);
+        Assert.Contains("commandLineArgs: SetupWindowArgumentProjection.Project(", source);
+        Assert.Contains("IsDeepLinkArg,", source);
+        Assert.Contains("Environment.ProcessId)", source);
         Assert.Contains("SetupRunLock.TryAcquire(_dataDir", setupWindow);
         Assert.Contains("new SetupContext(", progressPage);
         Assert.Contains("step is not RunGatewayWizardStep", progressPage);

@@ -80,6 +80,8 @@ src/OpenClaw.SetupEngine.UI/
 ## Config File (`default-config.json`)
 
 **Config is required.** Neither the headless exe nor the UI will run without one. The bundled `default-config.json` is auto-loaded from `AppContext.BaseDirectory` if no `--config` is specified.
+If the setup UI cannot find, read, or deserialize the selected configuration,
+it opens on the setup failure page with the load error and does not start setup.
 
 ```json
 {
@@ -318,6 +320,26 @@ OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 ```
 
 Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and uninstall safety flags such as `--uninstall` plus `--confirm-destructive`.
+
+SetupEngine option names are case-insensitive. Value options accept either separated
+syntax (`--config custom.json`) or equals syntax (`--config=custom.json`). Unknown
+options, bare `--`, and positional arguments are rejected with exit code 2.
+Boolean flags do not accept values, and duplicate value options are rejected;
+duplicate bare flags remain idempotent.
+
+Duplicate value rejection is an intentional compatibility break from the legacy
+first-value-wins behavior. Scripts that repeat a value option must remove the
+duplicate before upgrading.
+
+The same parser enforces the tray-hosted setup window's narrower command-line
+contract: `--config` and `--no-rollback-on-failure`. The tray projects recognized
+restart and deep-link host arguments out first. A restart PID must be a positive
+integer other than the current process, and the post-setup launch target must be
+`chat`; malformed host values remain for strict rejection. All remaining unknown options,
+positionals, missing values, and duplicates render the setup failure page before
+the setup lock is acquired. The tray executable's uninstall arguments are parsed
+by `CliUninstallHandler` and currently use separated syntax for values such as
+`--json-output <path>`.
 
 Exit codes: 0 = success, 1 = pipeline failure, 2 = bad arguments or setup lock/safety failure, 3 = cancelled
 

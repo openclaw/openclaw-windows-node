@@ -406,7 +406,7 @@ public abstract class WebSocketClientBase : IDisposable
             or WebSocketState.Aborted;
 
     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
-    protected async Task SendRawAsync(string message)
+    protected virtual async Task SendRawAsync(string message)
     {
         try
         {

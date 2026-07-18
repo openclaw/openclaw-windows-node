@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared.Capabilities;
@@ -21,9 +22,9 @@ public class CameraCapability : NodeCapabilityBase
     public override IReadOnlyList<string> Commands => _commands;
     
     // Events for platform-specific implementation
-    public event Func<Task<CameraInfo[]>>? ListRequested;
-    public event Func<CameraSnapArgs, Task<CameraSnapResult>>? SnapRequested;
-    public event Func<CameraClipArgs, Task<CameraClipResult>>? ClipRequested;
+    public event Func<CancellationToken, Task<CameraInfo[]>>? ListRequested;
+    public event Func<CameraSnapArgs, CancellationToken, Task<CameraSnapResult>>? SnapRequested;
+    public event Func<CameraClipArgs, CancellationToken, Task<CameraClipResult>>? ClipRequested;
     
     public CameraCapability(IOpenClawLogger logger) : base(logger)
     {
@@ -32,18 +33,25 @@ public class CameraCapability : NodeCapabilityBase
     private static int Clamp(int value, int min, int max)
         => value < min ? min : (value > max ? max : value);
     
-    public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+    public override Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+        => ExecuteAsync(request, CancellationToken.None);
+
+    public override async Task<NodeInvokeResponse> ExecuteAsync(
+        NodeInvokeRequest request,
+        CancellationToken cancellationToken)
     {
         return request.Command switch
         {
-            "camera.list" => await HandleListAsync(request),
-            "camera.snap" => await HandleSnapAsync(request),
-            "camera.clip" => await HandleClipAsync(request),
+            "camera.list" => await HandleListAsync(request, cancellationToken),
+            "camera.snap" => await HandleSnapAsync(request, cancellationToken),
+            "camera.clip" => await HandleClipAsync(request, cancellationToken),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
     
-    private async Task<NodeInvokeResponse> HandleListAsync(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleListAsync(
+        NodeInvokeRequest request,
+        CancellationToken cancellationToken)
     {
         Logger.Info("camera.list");
         
@@ -54,8 +62,14 @@ public class CameraCapability : NodeCapabilityBase
         
         try
         {
-            var cameras = await ListRequested();
+            cancellationToken.ThrowIfCancellationRequested();
+            var cameras = await ListRequested(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             return Success(new { cameras });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Error("cancelled");
         }
         catch (Exception ex)
         {
@@ -71,7 +85,9 @@ public class CameraCapability : NodeCapabilityBase
     private const int MaxQuality = 100;
     private const int MaxClipDurationMs = 60_000;
 
-    private async Task<NodeInvokeResponse> HandleSnapAsync(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleSnapAsync(
+        NodeInvokeRequest request,
+        CancellationToken cancellationToken)
     {
         var deviceId = GetStringArg(request.Args, "deviceId");
         var format = GetStringArg(request.Args, "format", "jpeg");
@@ -87,13 +103,15 @@ public class CameraCapability : NodeCapabilityBase
         
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var result = await SnapRequested(new CameraSnapArgs
             {
                 DeviceId = deviceId,
                 Format = format ?? "jpeg",
                 MaxWidth = maxWidth,
                 Quality = quality
-            });
+            }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             
             return Success(new
             {
@@ -103,6 +121,10 @@ public class CameraCapability : NodeCapabilityBase
                 base64 = result.Base64
             });
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Error("cancelled");
+        }
         catch (Exception ex)
         {
             Logger.Error("Camera snap failed", ex);
@@ -110,7 +132,9 @@ public class CameraCapability : NodeCapabilityBase
         }
     }
     
-    private async Task<NodeInvokeResponse> HandleClipAsync(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleClipAsync(
+        NodeInvokeRequest request,
+        CancellationToken cancellationToken)
     {
         var deviceId = GetStringArg(request.Args, "deviceId");
         // Floor at 100ms — anything shorter is meaningless and a 0/negative
@@ -128,13 +152,15 @@ public class CameraCapability : NodeCapabilityBase
         
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var result = await ClipRequested(new CameraClipArgs
             {
                 DeviceId = deviceId,
                 DurationMs = durationMs,
                 IncludeAudio = includeAudio,
                 Format = format
-            });
+            }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             
             return Success(new
             {
@@ -143,6 +169,10 @@ public class CameraCapability : NodeCapabilityBase
                 durationMs = result.DurationMs,
                 hasAudio = result.HasAudio
             });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Error("cancelled");
         }
         catch (Exception ex)
         {
