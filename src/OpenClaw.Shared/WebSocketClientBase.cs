@@ -471,9 +471,23 @@ public abstract class WebSocketClientBase : IDisposable
     protected async Task CloseWebSocketAsync()
     {
         var ws = _webSocket;
-        if (ws?.State == WebSocketState.Open)
+        if (ws?.State != WebSocketState.Open)
+            return;
+
+        await _sendLock.WaitAsync(_cts.Token);
+        try
         {
-            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", System.Threading.CancellationToken.None);
+            if (ws.State == WebSocketState.Open)
+            {
+                await ws.CloseAsync(
+                    WebSocketCloseStatus.NormalClosure,
+                    "Disconnecting",
+                    CancellationToken.None);
+            }
+        }
+        finally
+        {
+            _sendLock.Release();
         }
     }
 
