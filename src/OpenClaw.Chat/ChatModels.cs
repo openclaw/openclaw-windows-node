@@ -5,7 +5,7 @@ public enum ChatThreadStatus
     Created,
     Running,
     Suspended,
-    Completed
+    Ended
 }
 
 public enum ChatActivity

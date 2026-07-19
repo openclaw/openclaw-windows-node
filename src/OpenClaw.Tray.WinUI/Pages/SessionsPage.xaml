@@ -34,7 +34,7 @@
                     </SelectorBar>
 
                     <ToggleSwitch x:Uid="SessionsPage_ShowCompleted" x:Name="ShowCompletedToggle" Grid.Column="1"
-                                  Header="Show completed"
+                                  Header="Show ended"
                                   MinWidth="0"
                                   OnContent="" OffContent=""
                                   Toggled="OnShowCompletedToggled"

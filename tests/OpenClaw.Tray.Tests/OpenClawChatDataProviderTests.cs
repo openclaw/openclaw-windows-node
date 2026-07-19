@@ -576,11 +576,12 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_MapsOnlyCleanCompletedSessionsToCompletedThreads()
+    public async Task LoadAsync_MapsOnlyEndedSessionsToEndedThreads()
     {
         var sessions = new[]
         {
             new SessionInfo { Key = "done", DisplayName = "Done", Status = "done" },
+            new SessionInfo { Key = "killed", DisplayName = "Killed", Status = "killed" },
             new SessionInfo
             {
                 Key = "aborted",
@@ -595,8 +596,11 @@ public class OpenClawChatDataProviderTests
         var snapshot = await provider.LoadAsync();
 
         Assert.Equal(
-            ChatThreadStatus.Completed,
+            ChatThreadStatus.Ended,
             Assert.Single(snapshot.Threads, thread => thread.Id == "done").Status);
+        Assert.Equal(
+            ChatThreadStatus.Ended,
+            Assert.Single(snapshot.Threads, thread => thread.Id == "killed").Status);
         Assert.Equal(
             ChatThreadStatus.Running,
             Assert.Single(snapshot.Threads, thread => thread.Id == "aborted").Status);

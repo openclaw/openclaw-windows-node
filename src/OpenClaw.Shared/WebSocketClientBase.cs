@@ -471,9 +471,38 @@ public abstract class WebSocketClientBase : IDisposable
     protected async Task CloseWebSocketAsync()
     {
         var ws = _webSocket;
-        if (ws?.State == WebSocketState.Open)
+        if (ws?.State != WebSocketState.Open)
+            return;
+
+        try
         {
-            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", System.Threading.CancellationToken.None);
+            await _sendLock.WaitAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown canceled the wait; no close ownership was acquired.
+            return;
+        }
+        catch (ObjectDisposedException)
+        {
+            // Send lock or lifetime token was disposed during shutdown.
+            return;
+        }
+
+        try
+        {
+            if (ws.State == WebSocketState.Open)
+            {
+                // Preserve normal graceful close; concurrent Dispose aborts the socket and callers contain that failure.
+                await ws.CloseAsync(
+                    WebSocketCloseStatus.NormalClosure,
+                    "Disconnecting",
+                    CancellationToken.None);
+            }
+        }
+        finally
+        {
+            _sendLock.Release();
         }
     }
 
