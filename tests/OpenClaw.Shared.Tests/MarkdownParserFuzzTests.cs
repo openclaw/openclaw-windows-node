@@ -46,11 +46,14 @@ public class MarkdownParserFuzzTests
             sw.Stop();
             return sw.ElapsedMilliseconds;
         }
-        long t1 = Time(10_000), t2 = Time(20_000), t3 = Time(40_000), t4 = Time(80_000);
-        _out.WriteLine($"list items 10k={t1}ms 20k={t2}ms 40k={t3}ms 80k={t4}ms  (linear=~2x/step, quadratic=~4x/step)");
-        // Regression guard: a 40k-item flat list parsed in ~5500ms with the O(n^2) bug and ~47ms after
+        const int largestItemCount = 30_000;
+        Assert.True(ListMd(largestItemCount).Length < ChatMarkdownAstBuilder.MaxInputBytes);
+
+        long t1 = Time(10_000), t2 = Time(20_000), t3 = Time(largestItemCount);
+        _out.WriteLine($"list items 10k={t1}ms 20k={t2}ms 30k={t3}ms");
+        // Regression guard: a 30k-item flat list parsed in seconds with the O(n^2) bug and tens of milliseconds after
         // the O(1) line-start fix. Assert it stays well under 500ms so the quadratic can't silently return.
-        Assert.True(t3 < 500, $"40k flat list items must parse near-linearly (<500ms); ~5500ms indicates the O(n^2) regression. Curve: 10k={t1} 20k={t2} 40k={t3}ms");
+        Assert.True(t3 < 500, $"30k flat list items must parse near-linearly (<500ms). Curve: 10k={t1} 20k={t2} 30k={t3}ms");
     }
 
     [Theory]
