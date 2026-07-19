@@ -41,6 +41,7 @@ public sealed class CanonicalCommandIdentity
     public IReadOnlyDictionary<string, string>? Env { get; }
     public string? AgentId { get; }
     public string? SessionKey { get; }
+    public string? CommandPreview { get; }
 
     internal CanonicalCommandIdentity(
         IReadOnlyList<string> command,
@@ -53,7 +54,8 @@ public sealed class CanonicalCommandIdentity
         int timeoutMs,
         IReadOnlyDictionary<string, string>? env,
         string? agentId,
-        string? sessionKey)
+        string? sessionKey,
+        string? commandPreview = null)
     {
         Command = command;
         DisplayCommand = displayCommand;
@@ -66,5 +68,6 @@ public sealed class CanonicalCommandIdentity
         Env = env;
         AgentId = agentId;
         SessionKey = sessionKey;
+        CommandPreview = commandPreview;
     }
 }

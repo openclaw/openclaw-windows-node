@@ -15,6 +15,7 @@ public sealed class ValidatedRunRequest
     public IReadOnlyDictionary<string, string>? Env { get; }
     public string? AgentId { get; }
     public string? SessionKey { get; }
+    public string? CommandPreview { get; }
 
     internal ValidatedRunRequest(
         string[] argv,
@@ -23,7 +24,8 @@ public sealed class ValidatedRunRequest
         int timeoutMs,
         IReadOnlyDictionary<string, string>? env,
         string? agentId,
-        string? sessionKey)
+        string? sessionKey,
+        string? commandPreview = null)
     {
         Argv = argv;
         Shell = shell;
@@ -32,6 +34,7 @@ public sealed class ValidatedRunRequest
         Env = env;
         AgentId = agentId;
         SessionKey = sessionKey;
+        CommandPreview = commandPreview;
     }
 }
 

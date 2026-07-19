@@ -17,6 +17,11 @@ public sealed class ExecApprovalV2PromptRequest
     public required string AgentId { get; init; }
     public string? ResolvedPath { get; init; }
     /// <summary>
+    /// Optional agent-supplied explanation of the request. Presentation context
+    /// only; <see cref="DisplayCommand"/> remains authoritative.
+    /// </summary>
+    public string? CommandPreview { get; init; }
+    /// <summary>
     /// Opaque key scoping AllowOnce/AllowAlways decisions to a conversation session.
     /// Minted by the gateway per session; null means no session context is available.
     /// Not safe to display — internal identifier only.

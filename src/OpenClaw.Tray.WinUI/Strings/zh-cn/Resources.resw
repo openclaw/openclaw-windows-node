@@ -729,6 +729,9 @@
   <data name="ExecApproval_Body" xml:space="preserve">
     <value>以下命令请求运行权限：</value>
   </data>
+  <data name="ExecApproval_RequestContextLabel" xml:space="preserve">
+    <value>请求上下文（由代理提供）</value>
+  </data>
   <data name="ExecApproval_AgentLabel" xml:space="preserve">
     <value>代理：</value>
   </data>
@@ -754,7 +757,7 @@
     <value>请滚动到命令末尾后再允许</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
-    <value>此命令混用了不同的字符集，可能与其外观不符。请仔细核对。</value>
+    <value>显示的内容混用了不同的字符集，可能与其外观不符。请仔细核对。</value>
   </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ 节点已配对！</value>

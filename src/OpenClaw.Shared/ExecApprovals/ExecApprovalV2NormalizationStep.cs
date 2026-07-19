@@ -74,7 +74,8 @@ public static class ExecApprovalV2Normalizer
             request.TimeoutMs,
             env,
             request.AgentId,
-            request.SessionKey);
+            request.SessionKey,
+            request.CommandPreview);
 
         return ExecApprovalV2NormalizationOutcome.Ok(identity);
     }

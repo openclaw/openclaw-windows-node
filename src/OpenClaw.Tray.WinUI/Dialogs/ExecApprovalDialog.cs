@@ -152,6 +152,33 @@ public sealed class ExecApprovalDialog : WindowEx
             Child = commandText,
         });
 
+        // Agent-supplied context is additive and deliberately follows the exact
+        // command so an oversized or whitespace-heavy preview cannot displace the
+        // authoritative approval target from the initial viewport.
+        if (!string.IsNullOrWhiteSpace(view.CommandPreviewText))
+        {
+            var preview = new StackPanel { Spacing = 6 };
+            preview.Children.Add(new TextBlock
+            {
+                Text = LocalizationHelper.GetString("ExecApproval_RequestContextLabel"),
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
+            });
+            preview.Children.Add(new TextBlock
+            {
+                Text = view.CommandPreviewText,
+                TextWrapping = TextWrapping.Wrap,
+                IsTextSelectionEnabled = true,
+            });
+            body.Children.Add(new Border
+            {
+                Background = ResolveBrush("CardBackgroundFillColorDefaultBrush"),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10),
+                Child = preview,
+            });
+        }
+
         AddContextRow(body, "ExecApproval_AgentLabel", view.AgentLabel);
         AddContextRow(body, "ExecApproval_CwdLabel", view.CwdText);
         AddContextRow(body, "ExecApproval_ExecutableLabel", view.ExecutablePathText);
