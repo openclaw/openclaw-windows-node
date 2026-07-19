@@ -86,6 +86,42 @@ public sealed class GatewayRequestShutdownClassificationTests
             "disposal must surface as cancellation instead of waiting out the 15s approval budget");
     }
 
+    [Fact]
+    public async Task ResolveGatewayResponse_ResponseWinsWhenTerminalSignalCompletedFirst()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
+        cancellation.Cancel();
+        var responseTask = Task.FromResult(42);
+
+        var result = await OpenClawGatewayClient.ResolveGatewayResponseAsync(
+            responseTask,
+            cancellationTask,
+            cancellationTask,
+            "must not time out");
+
+        Assert.Equal(42, result);
+    }
+
+    [Fact]
+    public async Task ResolveGatewayResponse_TimeoutWinnerStaysTimeoutAfterLaterCancellation()
+    {
+        var response = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var timeoutTask = Task.CompletedTask;
+        using var cancellation = new CancellationTokenSource();
+        var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
+        cancellation.Cancel();
+
+        var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
+            OpenClawGatewayClient.ResolveGatewayResponseAsync(
+                response.Task,
+                timeoutTask,
+                cancellationTask,
+                "expected timeout"));
+
+        Assert.Equal("expected timeout", exception.Message);
+    }
+
     private static OpenClawGatewayClient CreateClient(LoopbackWebSocketServer server, string identityPath)
         => new(server.WebSocketUrl, "test-token", new TestLogger(), identityPath: identityPath);
 
