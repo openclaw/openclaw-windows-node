@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using OpenClaw.Shared;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +16,11 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
     private readonly IOpenClawLogger _logger;
     private readonly Func<OpenClawChatDataProvider?>? _chatProviderProvider;
     private readonly Func<string, bool>? _inlineApprovalAvailable;
-    private static string NativePromptTitle => $"{AppIdentity.DisplayName} - Approve local command?";
+    private static bool UseGerman =>
+        string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "de", StringComparison.OrdinalIgnoreCase);
+    private static string NativePromptTitle => UseGerman
+        ? $"{AppIdentity.DisplayName} – Zugriff freigeben?"
+        : $"{AppIdentity.DisplayName} - Approve local command?";
 
     public ExecApprovalPromptService(
         DispatcherQueue dispatcherQueue,
@@ -161,14 +166,7 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
 
     private static ExecApprovalPromptDecision ShowNativePrompt(ExecApprovalPromptRequest request)
     {
-        var text =
-            $"{AppIdentity.DisplayName} needs approval before a remote agent can run a local command on this Windows machine." +
-            "\r\n\r\n" +
-            request.Command +
-            "\r\n\r\n" +
-            $"Shell: {request.Shell ?? "auto"}" +
-            "\r\n" +
-            $"Reason: {request.Reason}";
+        var text = ExecApprovalPromptText.Build(request, UseGerman, AppIdentity.DisplayName);
 
         try
         {
@@ -184,9 +182,9 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
     {
         var fallbackText = text +
             Environment.NewLine + Environment.NewLine +
-            "Yes = Allow once" +
+            (UseGerman ? "Ja = Einmal erlauben" : "Yes = Allow once") +
             Environment.NewLine +
-            "No or Cancel = Deny";
+            (UseGerman ? "Nein oder Abbrechen = Ablehnen" : "No or Cancel = Deny");
 
         var result = MessageBoxW(
             IntPtr.Zero,
@@ -358,9 +356,9 @@ public sealed class ExecApprovalPromptService : IExecApprovalPromptHandler
 
             var totalButtonWidth = ButtonWidth * 3 + ButtonGap * 2;
             var firstLeft = WindowWidth - 20 - totalButtonWidth;
-            _allowOnceButtonHwnd = CreateChild(hwnd, "BUTTON", "Allow once", firstLeft, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AllowOnceButtonId, font);
-            _alwaysAllowButtonHwnd = CreateChild(hwnd, "BUTTON", "Always allow", firstLeft + ButtonWidth + ButtonGap, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AlwaysAllowButtonId, font);
-            _denyButtonHwnd = CreateChild(hwnd, "BUTTON", "Deny", firstLeft + (ButtonWidth + ButtonGap) * 2, ButtonTop, ButtonWidth, ButtonHeight, ButtonStyleDefaultPushButton, DenyButtonId, font);
+            _allowOnceButtonHwnd = CreateChild(hwnd, "BUTTON", UseGerman ? "Einmal erlauben" : "Allow once", firstLeft, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AllowOnceButtonId, font);
+            _alwaysAllowButtonHwnd = CreateChild(hwnd, "BUTTON", UseGerman ? "Dauerhaft erlauben" : "Always allow", firstLeft + ButtonWidth + ButtonGap, ButtonTop, ButtonWidth, ButtonHeight, ButtonStylePushButton, AlwaysAllowButtonId, font);
+            _denyButtonHwnd = CreateChild(hwnd, "BUTTON", UseGerman ? "Ablehnen" : "Deny", firstLeft + (ButtonWidth + ButtonGap) * 2, ButtonTop, ButtonWidth, ButtonHeight, ButtonStyleDefaultPushButton, DenyButtonId, font);
             SetFocus(_denyButtonHwnd);
         }
 

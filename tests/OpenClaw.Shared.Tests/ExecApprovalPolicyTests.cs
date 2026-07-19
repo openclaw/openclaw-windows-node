@@ -1239,6 +1239,51 @@ public class SystemCapabilityExecApprovalsTests
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task SystemRun_PromptReceivesCanonicalCommandPreview()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(System.Array.Empty<ExecApprovalRule>(), ExecApprovalAction.Prompt);
+
+            var cap = CreateCapability(policy);
+            var prompt = new CapturingAllowOncePromptHandler();
+            cap.SetPromptHandler(prompt);
+
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("""
+                    {
+                      "command": "tasklist",
+                      "systemRunPlan": {
+                        "commandPreview": "Zweck: laufende Prozesse nur lesend prüfen."
+                      }
+                    }
+                    """).RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+
+            Assert.True(result.Ok);
+            Assert.NotNull(prompt.Request);
+            Assert.Equal(
+                "Zweck: laufende Prozesse nur lesend prüfen.",
+                prompt.Request!.CommandPreview);
+            Assert.Equal("tasklist", prompt.Request.TechnicalCommand);
+            Assert.StartsWith(
+                "Zweck: laufende Prozesse nur lesend prüfen.",
+                prompt.Request.Command);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
 }
 
 internal class AllowOncePromptHandler : IExecApprovalPromptHandler
@@ -1247,6 +1292,19 @@ internal class AllowOncePromptHandler : IExecApprovalPromptHandler
         ExecApprovalPromptRequest request,
         System.Threading.CancellationToken cancellationToken = default)
         => Task.FromResult(ExecApprovalPromptDecision.AllowOnce());
+}
+
+internal sealed class CapturingAllowOncePromptHandler : IExecApprovalPromptHandler
+{
+    public ExecApprovalPromptRequest? Request { get; private set; }
+
+    public Task<ExecApprovalPromptDecision> RequestAsync(
+        ExecApprovalPromptRequest request,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        Request = request;
+        return Task.FromResult(ExecApprovalPromptDecision.AllowOnce());
+    }
 }
 
 /// <summary>Mock command runner that always succeeds</summary>
