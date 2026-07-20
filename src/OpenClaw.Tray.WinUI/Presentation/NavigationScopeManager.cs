@@ -38,7 +38,7 @@ public sealed class NavigationScopeManager : IDisposable
     /// Advance navigation to the page whose view model is <paramref name="viewModelType"/>.
     /// The previous view model (if any) is deactivated and its scope disposed first. When
     /// <paramref name="viewModelType"/> is null (page has no registered view model), no new
-    /// scope is created and null is returned — this is the no-op path used for pages that
+    /// scope is created and null is returned - this is the no-op path used for pages that
     /// have no registered view model.
     /// </summary>
     /// <remarks>

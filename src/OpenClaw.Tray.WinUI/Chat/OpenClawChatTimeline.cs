@@ -1211,7 +1211,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             t.SelectionHighlightColor = selectionHighlightBrush;
                             // Render the message as a single Paragraph (one Run)
                             // so the whole user message is one continuous
-                            // selection scope — matching the assistant bubble's
+                            // selection scope - matching the assistant bubble's
                             // RichTextBlock append-block pattern. The plain-text
                             // run keeps the bubble inert (no markdown / links).
                             ApplyPlainSelectableParagraph(t, messageText);

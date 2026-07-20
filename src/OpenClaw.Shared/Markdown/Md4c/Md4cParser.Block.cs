@@ -631,7 +631,7 @@ public sealed partial class Md4cParser
         Debug.Assert(currentBlockIndex >= 0);
 
         int nLines = CurrentBlock.NLines;
-        // O(1) line-start: the current block's lines are the tail of blockLines — the same computation
+        // O(1) line-start: the current block's lines are the tail of blockLines - the same computation
         // the reference-def removal below (blockLines.Count - nLines) already relies on. Replaces the
         // former GetCurrentBlockLineStart() per-block-close O(n) scan over all prior blocks, which made
         // list parsing O(n^2) (one close per list item).

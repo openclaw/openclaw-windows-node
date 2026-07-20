@@ -185,7 +185,7 @@ public readonly record struct GridSize(double Value, GridUnitType Type)
 }
 
 public sealed record TextBlockElement(string Text) : Element;
-// A RichTextBlock host. Unlike TextBlockElement it carries no text of its own —
+// A RichTextBlock host. Unlike TextBlockElement it carries no text of its own -
 // its Blocks (Paragraphs / InlineUIContainers) are populated imperatively by a
 // caller-supplied setter (see the Set(Action<RichTextBlock>) overload), exactly
 // as TextBlockElement's Inlines are. Used by the chat renderer to give a whole

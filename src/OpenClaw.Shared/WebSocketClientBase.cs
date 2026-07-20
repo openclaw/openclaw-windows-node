@@ -215,7 +215,7 @@ public abstract class WebSocketClientBase : IDisposable
     }
 
     // Cap on a single accumulated inbound message. A peer that streams an unbounded multi-frame text
-    // message (never setting EndOfMessage) would otherwise grow the StringBuilder without limit —
+    // message (never setting EndOfMessage) would otherwise grow the StringBuilder without limit -
     // a memory-exhaustion DoS (CWE-770 / CWE-400). 32M UTF-16 chars (~64 MB) is generous for large
     // payloads (e.g. base64 attachments) yet bounded; on overflow the receive loop closes the socket.
     internal const int MaxInboundMessageChars = 32 * 1024 * 1024;

@@ -249,7 +249,7 @@ public sealed class WebLoginStartResult
 
     /// <summary>
     /// True when the gateway rejected <c>web.login.start</c> because it has no
-    /// web-login (QR) provider loaded for the channel — the telltale
+    /// web-login (QR) provider loaded for the channel - the telltale
     /// "web login provider is not available" (issue #957). This is a gateway-host
     /// provider/plugin state we can't fix from the Windows node, so the page
     /// upgrades its message to actionable recovery (install/enable the channel's
@@ -274,7 +274,7 @@ public sealed class WebLoginStartResult
 
     /// <summary>
     /// True when the gateway doesn't implement the <c>web.login</c> RPC at all
-    /// ("unknown method: web.login…") — i.e. QR linking isn't supported by this
+    /// ("unknown method: web.login…") - i.e. QR linking isn't supported by this
     /// gateway version yet. Recovery here is to update/upgrade the gateway, NOT
     /// to install a channel plugin (which wouldn't add the missing method), so
     /// the page shows different guidance than

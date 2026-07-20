@@ -1029,7 +1029,7 @@ public sealed partial class HubWindow : WindowEx
         // Navigation activation hook: resolve + assign a DI-backed view model for the
         // navigated page. The page→view-model map is currently empty, so this only
         // advances the navigation scope (deactivating any prior view model) and never
-        // touches a page's DataContext — a runtime no-op until pages adopt view models.
+        // touches a page's DataContext - a runtime no-op until pages adopt view models.
         // Contained in a try/catch so a future misbehaving view model's activation
         // cannot escape this XAML event handler and crash the app.
         if (e.Content is { } content)

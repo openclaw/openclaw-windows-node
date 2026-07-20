@@ -13,8 +13,8 @@ namespace OpenClaw.Shared;
 /// dotted-decimal form is not enough: a browser/OS resolver also accepts an IPv4 address written
 /// as a single decimal integer (2130706433), hex (0x7f000001), octal (0177.0.0.1), or a short
 /// 1-3 part form, and IPv6 has its own loopback/ULA/mapped forms. This normalizes the host the way
-/// the resolver would, then range-checks it — so every encoding of an internal address is blocked,
-/// not just the canonical spelling. (DNS names that RESOLVE to a private address — rebinding — are a
+/// the resolver would, then range-checks it - so every encoding of an internal address is blocked,
+/// not just the canonical spelling. (DNS names that RESOLVE to a private address - rebinding - are a
 /// residual this synchronous check cannot cover; the sound complement is a connection-time address
 /// filter, as OpenClaw's A2UI MediaResolver already does.)
 /// </summary>

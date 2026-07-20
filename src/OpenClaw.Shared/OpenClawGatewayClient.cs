@@ -1334,7 +1334,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // it in the diagnostic disclosure. Returning null would lose the
             // gateway's actual reason for failing.
             //
-            // Use ex.Message (the clean, gateway-relayed reason — e.g.
+            // Use ex.Message (the clean, gateway-relayed reason - e.g.
             // "web login provider is not available") rather than ex.ToString():
             // the latter leaks our own .NET stack trace with internal CI build
             // paths into user-facing UI (issue #957). The message is the signal
@@ -3433,7 +3433,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var arr = new SessionInfo[_sessions.Count];
         _sessions.Values.CopyTo(arr, 0);
         // Defensive copy: subscribers read the snapshot with no lock, and the tracked
-        // instances keep being mutated in place under _sessionsLock — hand out clones.
+        // instances keep being mutated in place under _sessionsLock - hand out clones.
         for (var i = 0; i < arr.Length; i++) arr[i] = arr[i].Clone();
         Array.Sort(arr, static (a, b) =>
         {

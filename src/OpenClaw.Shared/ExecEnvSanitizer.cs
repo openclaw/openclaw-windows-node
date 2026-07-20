@@ -53,7 +53,7 @@ internal static class ExecEnvSanitizer
             "NPM_TOKEN",
             "OPENAI_API_KEY",
             // Interpreter/tool code-injection variables: they make an allow-listed tool run an
-            // attacker command without the command string ever changing — the same intent as the
+            // attacker command without the command string ever changing - the same intent as the
             // NODE_OPTIONS / PYTHONSTARTUP / GIT_SSH_COMMAND / BASH_ENV entries above, for the
             // native-tool forms those miss. (GIT_CONFIG_* is prefix-blocked in IsBlocked.)
             "GIT_PAGER",              // git runs the pager command on paged output
