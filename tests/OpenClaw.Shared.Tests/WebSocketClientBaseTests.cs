@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.WebSockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -522,6 +523,8 @@ internal sealed class LoopbackWebSocketServer : IDisposable
     private readonly HttpListener _listener = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly List<WebSocket> _acceptedSockets = new();
+    private readonly TaskCompletionSource<WebSocket> _firstAcceptedSocket =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _acceptLoop;
 
     public string WebSocketUrl { get; }
@@ -581,7 +584,29 @@ internal sealed class LoopbackWebSocketServer : IDisposable
             {
                 _acceptedSockets.Add(wsContext.WebSocket);
             }
+            _firstAcceptedSocket.TrySetResult(wsContext.WebSocket);
         }
+    }
+
+    public async Task<string> ReceiveTextAsync(CancellationToken cancellationToken = default)
+    {
+        var socket = await _firstAcceptedSocket.Task.WaitAsync(cancellationToken);
+        var buffer = new byte[64 * 1024];
+        var result = await socket.ReceiveAsync(buffer, cancellationToken);
+        if (result.MessageType != WebSocketMessageType.Text || !result.EndOfMessage)
+            throw new InvalidOperationException("Expected one complete WebSocket text message.");
+
+        return Encoding.UTF8.GetString(buffer, 0, result.Count);
+    }
+
+    public async Task SendTextAsync(string message, CancellationToken cancellationToken = default)
+    {
+        var socket = await _firstAcceptedSocket.Task.WaitAsync(cancellationToken);
+        await socket.SendAsync(
+            Encoding.UTF8.GetBytes(message),
+            WebSocketMessageType.Text,
+            endOfMessage: true,
+            cancellationToken);
     }
 
     public async Task CloseSocketAsync(int index)

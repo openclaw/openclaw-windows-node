@@ -42,8 +42,11 @@ internal sealed class ScreenRecordingService : IDisposable
 
     // Public API
 
-    public async Task<ScreenRecordResult> RecordAsync(ScreenRecordArgs args)
+    public async Task<ScreenRecordResult> RecordAsync(
+        ScreenRecordArgs args,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var durationMs  = Math.Clamp(args.DurationMs, MinDurationMs, MaxDurationMs);
         var fps         = Math.Clamp((int)Math.Round(args.Fps), MinFps, MaxFps);
         var screenIndex = args.ScreenIndex;
@@ -92,9 +95,9 @@ internal sealed class ScreenRecordingService : IDisposable
             {
                 var waitMs = (int)(nextCapture - DateTime.UtcNow).TotalMilliseconds;
                 if (waitMs > 0)
-                    await Task.Delay(waitMs);
+                    await Task.Delay(waitMs, cancellationToken);
 
-                if (!await ready.WaitAsync(intervalMs * 2))
+                if (!await ready.WaitAsync(intervalMs * 2, cancellationToken))
                     continue;
 
                 var frame = Interlocked.Exchange(ref latestFrame, null);
@@ -110,8 +113,14 @@ internal sealed class ScreenRecordingService : IDisposable
 
                     try
                     {
-                        using var bmp = await SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface);
+                        using var bmp = await SoftwareBitmap
+                            .CreateCopyFromSurfaceAsync(frame.Surface)
+                            .AsTask(cancellationToken);
                         frames.Add(ExtractBitmapBytes(bmp));
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
                     }
                     catch (Exception ex)
                     {
@@ -132,7 +141,8 @@ internal sealed class ScreenRecordingService : IDisposable
 
         _logger.Info($"[ScreenRecording] Captured {frames.Count} frames, encoding...");
 
-        var base64 = await EncodeToMp4Async(frames, width, height, fps);
+        cancellationToken.ThrowIfCancellationRequested();
+        var base64 = await EncodeToMp4Async(frames, width, height, fps, cancellationToken);
         var actualDurationMs = (int)Math.Round(frames.Count * 1000.0 / fps);
 
         return new ScreenRecordResult
@@ -155,7 +165,11 @@ internal sealed class ScreenRecordingService : IDisposable
     // Encoding
 
     private static async Task<string> EncodeToMp4Async(
-        List<byte[]> frames, int width, int height, int fps)
+        List<byte[]> frames,
+        int width,
+        int height,
+        int fps,
+        CancellationToken cancellationToken)
     {
         if (frames.Count == 0)
             throw new InvalidOperationException("No frames to encode");
@@ -209,18 +223,19 @@ internal sealed class ScreenRecordingService : IDisposable
             try
             {
                 result = await transcoder
-                    .PrepareMediaStreamSourceTranscodeAsync(MakeMss(), output, MakeProfile());
+                    .PrepareMediaStreamSourceTranscodeAsync(MakeMss(), output, MakeProfile())
+                    .AsTask(cancellationToken);
             }
             catch (System.Runtime.InteropServices.COMException) when (hwEnabled)
             {
                 continue;
             }
             if (!result.CanTranscode) continue;
-            await result.TranscodeAsync();
+            await result.TranscodeAsync().AsTask(cancellationToken);
             var size = (uint)output.Size;
             if (size == 0) continue;
             var dr = new DataReader(output.GetInputStreamAt(0));
-            await dr.LoadAsync(size);
+            await dr.LoadAsync(size).AsTask(cancellationToken);
             var bytes = new byte[size];
             dr.ReadBytes(bytes);
             return Convert.ToBase64String(bytes);

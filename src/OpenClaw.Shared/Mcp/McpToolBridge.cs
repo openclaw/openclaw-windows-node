@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Numerics;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,11 +17,15 @@ namespace OpenClaw.Shared.Mcp;
 public class McpToolBridge
 {
     private const string ProtocolVersion = "2024-11-05";
+    private static readonly TimeSpan PendingCancellationTtl = TimeSpan.FromSeconds(5);
+    private const int MaxPendingCancellations = 1_024;
+    private const int MaxRecentCompletions = 1_024;
 
     private readonly Func<IReadOnlyList<INodeCapability>> _capabilityProvider;
     private readonly IOpenClawLogger _logger;
     private readonly string _serverName;
     private readonly string _serverVersion;
+    private readonly InvocationCancellationRegistry _activeRequests;
 
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -31,11 +37,32 @@ public class McpToolBridge
         IOpenClawLogger? logger = null,
         string serverName = "openclaw-tray-mcp",
         string serverVersion = "0.0.0")
+        : this(
+            capabilityProvider,
+            logger,
+            serverName,
+            serverVersion,
+            new InvocationCancellationRegistry(
+                allowDuplicateIds: true,
+                pendingCancellationTtl: PendingCancellationTtl,
+                maxPendingCancellations: MaxPendingCancellations,
+                maxRecentCompletions: MaxRecentCompletions,
+                timeProvider: TimeProvider.System))
+    {
+    }
+
+    internal McpToolBridge(
+        Func<IReadOnlyList<INodeCapability>> capabilityProvider,
+        IOpenClawLogger? logger,
+        string serverName,
+        string serverVersion,
+        InvocationCancellationRegistry activeRequests)
     {
         _capabilityProvider = capabilityProvider ?? throw new ArgumentNullException(nameof(capabilityProvider));
         _logger = logger ?? NullLogger.Instance;
         _serverName = serverName;
         _serverVersion = serverVersion;
+        _activeRequests = activeRequests ?? throw new ArgumentNullException(nameof(activeRequests));
     }
 
     /// <summary>
@@ -49,8 +76,8 @@ public class McpToolBridge
     /// Dispatch a JSON-RPC request body, observing a cancellation token (used
     /// by the HTTP transport to enforce a per-request deadline). When the
     /// token fires during a tool dispatch, the call surfaces as a tool error
-    /// ("request timed out") so the slot is freed even if the underlying
-    /// capability work continues to run.
+    /// ("request timed out"). MCP <c>notifications/cancelled</c> messages
+    /// cancel the matching active request and surface as "cancelled".
     /// </summary>
     public async Task<string?> HandleRequestAsync(string requestBody, CancellationToken cancellationToken)
     {
@@ -82,6 +109,7 @@ public class McpToolBridge
 
             var method = methodProp.GetString()!;
             var paramsElement = root.TryGetProperty("params", out var p) ? p : default;
+            var requestKey = hasId ? GetRequestKey(idElement!.Value) : null;
 
             try
             {
@@ -90,8 +118,12 @@ public class McpToolBridge
                     "initialize" => HandleInitialize(),
                     "ping" => new { },
                     "notifications/initialized" => null,
+                    "notifications/cancelled" => HandleCancelledNotification(paramsElement),
                     "tools/list" => HandleToolsList(),
-                    "tools/call" => await HandleToolsCallAsync(paramsElement, cancellationToken),
+                    "tools/call" => await HandleToolsCallAsync(
+                        paramsElement,
+                        requestKey,
+                        cancellationToken),
                     // Some clients (notably Cursor) probe these on startup. Returning
                     // empty lists is friendlier than MethodNotFound — both feature sets
                     // are deferred but compatible by being absent rather than failing.
@@ -322,7 +354,32 @@ public class McpToolBridge
             "Proxy an HTTP request to the local OpenClaw browser control host (CDP server) running on gateway port + 2. Args: path (string, required — a local control path like '/json/list' or '/json/activate/<id>'), method ('GET'|'POST'|'DELETE', default 'GET'), body (JSON object, POST/DELETE only), query (object, appended as query params), profile (string, optional browser profile), timeoutMs (int, default 20000, max 120000). Returns { result, files? } where files is present if the response included local file paths. Requires the gateway URL to have an explicit port and the browser control host to be running.",
     };
 
-    private async Task<object> HandleToolsCallAsync(JsonElement parameters, CancellationToken cancellationToken)
+    private object? HandleCancelledNotification(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("requestId", out var requestId) ||
+            requestId.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            _logger.Warn("[MCP] notifications/cancelled has no requestId");
+            return null;
+        }
+
+        var requestKey = GetRequestKey(requestId);
+        var result = _activeRequests.TryCancelOrRemember(requestKey);
+        _logger.Debug(result switch
+        {
+            InvocationCancellationResult.Cancelled => $"[MCP] Cancelled request {requestKey}",
+            InvocationCancellationResult.Pending => $"[MCP] Queued cancellation for request {requestKey}",
+            InvocationCancellationResult.Ambiguous => $"[MCP] Cancellation target is ambiguous: {requestKey}",
+            _ => $"[MCP] Cancellation target is not active: {requestKey}",
+        });
+        return null;
+    }
+
+    private async Task<object> HandleToolsCallAsync(
+        JsonElement parameters,
+        string? requestKey,
+        CancellationToken cancellationToken)
     {
         if (parameters.ValueKind != JsonValueKind.Object)
             throw new McpToolException("Invalid params: expected object");
@@ -366,19 +423,58 @@ public class McpToolBridge
         // their underlying pipeline on timeout; legacy capabilities fall back
         // to the no-CT signature and still benefit from WaitAsync freeing the
         // bridge's handler slot.
+        InvocationCancellationRegistry.InvocationCancellation? invocation = null;
+        if (requestKey != null &&
+            !_activeRequests.TryRegister(requestKey, cancellationToken, out invocation))
+        {
+            throw new McpToolException("duplicate active request id");
+        }
+
+        var executionToken = invocation?.Token ?? cancellationToken;
+        var cancelledByCaller = false;
         NodeInvokeResponse response;
         try
         {
-            response = await capability.ExecuteAsync(request, cancellationToken).WaitAsync(cancellationToken);
+            if (invocation?.CancelledByCaller == true)
+            {
+                throw new McpToolException("cancelled");
+            }
+
+            response = await capability.ExecuteAsync(request, executionToken).WaitAsync(executionToken);
+            if (invocation != null && !invocation.TryComplete())
+            {
+                throw new McpToolException(
+                    invocation.CancelledByCaller ? "cancelled" : "request timed out");
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (invocation?.CancelledByCaller == true)
+        {
+            _logger.Info($"[MCP] tools/call {name} cancelled");
+            throw new McpToolException("cancelled");
+        }
+        catch (OperationCanceledException) when (executionToken.IsCancellationRequested)
         {
             _logger.Warn($"[MCP] tools/call {name} timed out");
             throw new McpToolException("request timed out");
         }
+        finally
+        {
+            cancelledByCaller = invocation?.CancelledByCaller == true;
+            invocation?.Dispose();
+        }
 
         if (!response.Ok)
-            throw new McpToolException(response.Error ?? "tool execution failed");
+        {
+            var error = response.Error ?? "tool execution failed";
+            if (error == "cancelled" &&
+                executionToken.IsCancellationRequested &&
+                !cancelledByCaller)
+            {
+                error = "request timed out";
+            }
+
+            throw new McpToolException(error);
+        }
 
         var payloadJson = response.Payload is null
             ? "null"
@@ -392,6 +488,57 @@ public class McpToolBridge
             },
             isError = false,
         };
+    }
+
+    private static string GetRequestKey(JsonElement requestId) =>
+        requestId.ValueKind switch
+        {
+            JsonValueKind.String => $"string:{requestId.GetString()}",
+            JsonValueKind.Number => $"number:{NormalizeJsonNumber(requestId.GetRawText())}",
+            _ => $"{requestId.ValueKind}:{requestId.GetRawText()}",
+        };
+
+    private static string NormalizeJsonNumber(string rawNumber)
+    {
+        var exponentIndex = rawNumber.IndexOfAny('e', 'E');
+        var mantissa = exponentIndex >= 0 ? rawNumber[..exponentIndex] : rawNumber;
+        var exponent = exponentIndex >= 0
+            ? BigInteger.Parse(
+                rawNumber.AsSpan(exponentIndex + 1),
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture)
+            : BigInteger.Zero;
+
+        var negative = mantissa[0] == '-';
+        if (negative)
+        {
+            mantissa = mantissa[1..];
+        }
+
+        var decimalIndex = mantissa.IndexOf('.');
+        var fractionalDigits = decimalIndex >= 0 ? mantissa.Length - decimalIndex - 1 : 0;
+        var digits = decimalIndex >= 0 ? mantissa.Remove(decimalIndex, 1) : mantissa;
+        exponent -= fractionalDigits;
+
+        digits = digits.TrimStart('0');
+        if (digits.Length == 0)
+        {
+            return "0";
+        }
+
+        var trailingZeros = 0;
+        while (digits.Length - trailingZeros > 1 && digits[^(trailingZeros + 1)] == '0')
+        {
+            trailingZeros++;
+        }
+
+        if (trailingZeros > 0)
+        {
+            digits = digits[..^trailingZeros];
+            exponent += trailingZeros;
+        }
+
+        return $"{(negative ? "-" : string.Empty)}{digits}e{exponent}";
     }
 
     private static string WriteResult(JsonElement? id, object result)

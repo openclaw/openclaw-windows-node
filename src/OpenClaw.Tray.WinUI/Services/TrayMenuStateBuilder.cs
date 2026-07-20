@@ -348,8 +348,8 @@ internal sealed class TrayMenuStateBuilder
 
     private static string FormatTokenCount(long n)
     {
-        if (n >= 1_000_000) return $"{n / 1_000_000.0:F1}M";
-        if (n >= 1_000) return $"{n / 1_000.0:F1}K";
+        if (n >= 1_000_000) return $"{(n / 1_000_000.0).ToString("F1", CultureInfo.InvariantCulture)}M";
+        if (n >= 1_000) return $"{(n / 1_000.0).ToString("F1", CultureInfo.InvariantCulture)}K";
         return n.ToString();
     }
 

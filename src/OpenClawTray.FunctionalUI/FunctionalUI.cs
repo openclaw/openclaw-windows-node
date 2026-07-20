@@ -185,6 +185,12 @@ public readonly record struct GridSize(double Value, GridUnitType Type)
 }
 
 public sealed record TextBlockElement(string Text) : Element;
+// A RichTextBlock host. Unlike TextBlockElement it carries no text of its own —
+// its Blocks (Paragraphs / InlineUIContainers) are populated imperatively by a
+// caller-supplied setter (see the Set(Action<RichTextBlock>) overload), exactly
+// as TextBlockElement's Inlines are. Used by the chat renderer to give a whole
+// message one continuous text-selection scope across multiple paragraphs.
+public sealed record RichTextBlockElement : Element;
 public sealed record TextFieldElement(string Value, Action<string>? OnChanged, string? Placeholder, string? Header) : Element;
 public sealed record PasswordBoxElement(string Password, Action<string>? OnChanged, string? Placeholder) : Element;
 public sealed record ButtonElement(string Label, Action? OnClick, Element? ContentElement = null) : Element
@@ -593,6 +599,7 @@ public static class Factories
 {
     public static BorderElement Empty() => new(null);
     public static TextBlockElement TextBlock(string text) => new(text);
+    public static RichTextBlockElement RichTextBlock() => new();
     public static TextBlockElement Caption(string text) => TextBlock(text).FontSize(12);
     public static TextFieldElement TextField(string value, Action<string>? onChanged = null, string? placeholder = null, string? header = null) =>
         new(value, onChanged, placeholder, header);
@@ -773,6 +780,7 @@ public static class ElementExtensions
         element.FontWeight(Microsoft.UI.Text.FontWeights.SemiBold);
 
     public static TextBlockElement Set(this TextBlockElement element, Action<TextBlock> setter) => element.AddSetter(setter);
+    public static RichTextBlockElement Set(this RichTextBlockElement element, Action<RichTextBlock> setter) => element.AddSetter(setter);
     public static TextFieldElement Set(this TextFieldElement element, Action<TextBox> setter) => element.AddSetter(setter);
     public static PasswordBoxElement Set(this PasswordBoxElement element, Action<PasswordBox> setter) => element.AddSetter(setter);
     public static ButtonElement Set(this ButtonElement element, Action<Button> setter) => element.AddSetter(setter);
@@ -998,6 +1006,7 @@ internal sealed class UiRenderer(Action requestRender)
         var control = element switch
         {
             TextBlockElement e => ConfigureTextBlock(GetOrCreate<TextBlock>(path), e),
+            RichTextBlockElement e => ConfigureRichTextBlock(GetOrCreate<RichTextBlock>(path), e),
             TextFieldElement e => ConfigureTextBox(GetOrCreate<TextBox>(path), e),
             PasswordBoxElement e => ConfigurePasswordBox(GetOrCreate<PasswordBox>(path), e),
             ButtonElement e => ConfigureButton(GetOrCreate<Button>(path), e, path, effects),
@@ -1116,6 +1125,17 @@ internal sealed class UiRenderer(Action requestRender)
             if (control.Text != element.Text)
                 control.Text = element.Text;
         }
+        ApplyModifiers(control, element);
+        ApplySetters(control, element);
+        return control;
+    }
+
+    // RichTextBlock has no Text of its own; its Blocks are built entirely by the
+    // caller's setter (mirroring how ConfigureTextBlock leaves Inlines to the
+    // setter). We never touch Blocks here so an active text selection survives a
+    // modifier-only re-render.
+    private RichTextBlock ConfigureRichTextBlock(RichTextBlock control, RichTextBlockElement element)
+    {
         ApplyModifiers(control, element);
         ApplySetters(control, element);
         return control;
@@ -2120,6 +2140,25 @@ internal sealed class UiRenderer(Action requestRender)
                 tb.ClearValue(TextBlock.MaxLinesProperty);
                 tb.ClearValue(TextBlock.LineHeightProperty);
                 tb.ClearValue(TextBlock.CharacterSpacingProperty);
+                break;
+            case RichTextBlock rtb:
+                if (m.FontSize is { } richSize) rtb.FontSize = richSize;
+                else rtb.ClearValue(RichTextBlock.FontSizeProperty);
+                if (m.FontWeight is { } richWeight) rtb.FontWeight = richWeight;
+                else rtb.ClearValue(RichTextBlock.FontWeightProperty);
+                if (m.FontFamily is { } richFamily) rtb.FontFamily = richFamily;
+                else rtb.ClearValue(RichTextBlock.FontFamilyProperty);
+                if (m.TextWrapping is { } richWrapping) rtb.TextWrapping = richWrapping;
+                else rtb.ClearValue(RichTextBlock.TextWrappingProperty);
+                if (m.Padding is { } richPadding) rtb.Padding = richPadding;
+                else rtb.ClearValue(RichTextBlock.PaddingProperty);
+                if (m.ForegroundResourceKey is { } richFgResource) rtb.Foreground = ThemeResources.ResolveBrush(richFgResource);
+                else if (m.Foreground is { } richFg) rtb.Foreground = richFg;
+                else rtb.ClearValue(RichTextBlock.ForegroundProperty);
+                rtb.ClearValue(RichTextBlock.TextTrimmingProperty);
+                rtb.ClearValue(RichTextBlock.MaxLinesProperty);
+                rtb.ClearValue(RichTextBlock.LineHeightProperty);
+                rtb.ClearValue(RichTextBlock.CharacterSpacingProperty);
                 break;
             case Control c:
                 if (m.Padding is { } controlPadding) c.Padding = controlPadding;

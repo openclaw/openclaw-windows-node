@@ -253,6 +253,10 @@ public static class ChannelHealthParser
 
 public class SessionInfo
 {
+    /// <summary>Defensive copy so a snapshot handed to a SessionsUpdated subscriber does not
+    /// alias the live tracked instance (whose fields are mutated in place under _sessionsLock).</summary>
+    public SessionInfo Clone() => (SessionInfo)MemberwiseClone();
+
     public string Key { get; set; } = "";
     public bool IsMain { get; set; }
     public string Status { get; set; } = "unknown";
@@ -2102,6 +2106,7 @@ public class ModelInfo
     public string? Name { get; set; }
     public string? Provider { get; set; }
     public int? ContextWindow { get; set; }
+    public int? ContextTokens { get; set; }
 
     /// <summary>True when the model's provider is configured on the gateway.</summary>
     public bool IsConfigured { get; set; }

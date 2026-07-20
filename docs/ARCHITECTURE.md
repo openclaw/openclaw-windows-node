@@ -54,6 +54,9 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Settings test data | `OpenClaw.TestSupport.SettingsDataBuilder` | authoritative |
 | JSON `JsonElement` coercion (non-nullable fallback family) | `JsonReadHelpers` | authoritative |
 | WSL/POSIX shell quoting | `WslShellQuoting` | authoritative |
+| UI-thread marshaling for presentation code | `IUiDispatcher` | authoritative |
+| Page view-model activation/deactivation + disposal lifetime | `NavigationScopeManager` | authoritative |
+| Presentation-layer DI composition root | `AppServiceRegistration` (root `ServiceProvider`, owned by `App`) | authoritative |
 | Capability UI metadata | `NodeCapabilityUiCatalog` (planned) | planned |
 | Capability registration/gating | `NodeCapabilityRegistrationPolicy` (planned) | planned |
 | Local MCP exposure policy | `McpCapabilityPolicy` (planned) | planned |
@@ -74,7 +77,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | `src/OpenClaw.Shared/Models.cs` | per-domain model files + `*Mapper` classes |
 | `src/OpenClaw.Shared/Capabilities/SystemCapability.cs` | `ExecApprovalService` |
 | `src/OpenClaw.Connection/GatewayConnectionManager.cs` | `NodeConnectionCoordinator`, `BootstrapTokenLifecycle`, `DevicePairApprovalCoordinator` |
-| `src/OpenClaw.SetupEngine/SetupSteps.cs` | one file per step; `WslShellClient`, `WslShellQuoting`, `GatewayConfigScriptBuilder`, `KeepaliveProcessManager` |
+| `src/OpenClaw.SetupEngine/SetupSteps.cs` | one file per step; `WslShellClient`, `GatewayConfigScriptBuilder`, `KeepaliveProcessManager`. WSL/POSIX quoting is done — use `WslShellQuoting`, never a local `ShellEscape`. |
 | Any test hand-rolling a temp dir / env save-restore / CLI capture | `OpenClaw.TestSupport` fixtures |
 
 ## Ledger
@@ -108,13 +111,18 @@ leading and trailing pipe. Columns, in order:
 | test-gateway-builder | authoritative | OpenClaw.Connection.Tests | per-file MakeRecord(id,url) helpers | OpenClaw.Connection.Tests.GatewayRecordBuilder | pre-existing MakeRecord until migrated | gateway record test data has one builder | TestSupportFixtureTests.GatewayRecordBuilder_BuildsRecord | behavioral | when MakeRecord helpers are removed |
 | test-settings-builder | authoritative | scattered test files | ad hoc SettingsData construction in migrated tests | OpenClaw.TestSupport.SettingsDataBuilder | pre-existing un-migrated tests until adopted | settings test data starts from production defaults | TestSupportFixtureTests.SettingsDataBuilder_StartsFromDefaults | behavioral | when settings tests adopt the builder |
 | json-read-helpers | authoritative | OpenClaw.Shared (multiple files) | duplicate non-nullable fallback-returning JsonElement getters | JsonReadHelpers | null-sentinel / non-negative / whitespace-absent / trimming variants stay separate | canonical non-nullable fallback JSON coercion; divergent-contract helpers are not blindly routed here | JsonReadHelpersTests.GetString_ReturnsNull_WhenPropertyMissing | behavioral | when the non-nullable fallback getters are all routed here |
-| wsl-posix-quoting | authoritative | OpenClaw.SetupEngine/SetupSteps.cs | ad hoc ShellEscape with divergent wrap semantics | WslShellQuoting | SetupSteps ShellEscape until PR 3 migration | WSL scripts use POSIX quoting not cmd/PowerShell quoting | WslShellQuotingTests.QuotePosixSingleQuote_WrapsAndEscapesEmbeddedQuote | behavioral | when SetupSteps call sites use WslShellQuoting |
+| wsl-posix-quoting | authoritative | OpenClaw.SetupEngine/SetupSteps.cs | ad hoc ShellEscape with divergent wrap semantics | WslShellQuoting | - | WSL command lines use POSIX single-quote quoting via WslShellQuoting not cmd/PowerShell quoting | WslShellQuotingTests.QuotePosixSingleQuote_WrapsAndEscapesEmbeddedQuote | behavioral | when no code builds WSL command lines outside WslShellQuoting |
+| setup-shellescape-closed | closed | src/OpenClaw.SetupEngine/SetupSteps.cs | private ShellEscape helpers with divergent wrap semantics | WslShellQuoting | - | SetupSteps builds WSL command lines only via WslShellQuoting; no local ShellEscape helper | SetupStepsShellEscapeClosureTests.SetupSteps_DoesNotReintroduce_PrivateShellEscape | source-shape | when SetupSteps.cs no longer builds any WSL command strings |
 | app-window-manager | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | window creation/show/hide/shutdown | IWindowManager | composition/delegation only | startup/shutdown ordering deterministic; disposed once | none | review-only | extracted in Phase 3 |
 | app-tray-controller | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | tray icon/menu/action routing | ITrayController | composition/delegation only | tray actions route unchanged | none | review-only | extracted in Phase 3 |
 | app-activation-router | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | deep-link/toast/single-instance activation | IActivationRouter | composition/delegation only | activation routes land on the same UI/actions; current-user pipe security preserved | none | review-only | extracted in Phase 3 |
 | chat-send-queue | planned | src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs | send queue/admission/abort state | ChatSendQueue | - | queued send/abort/generation semantics preserved | none | review-only | extracted in Phase 4 |
 | gateway-pending-requests | planned | src/OpenClaw.Shared/OpenClawGatewayClient.cs | request-id -> method/completion tracking | PendingRequestRegistry | - | request ids never leak after disconnect; thread-safe | none | review-only | extracted in Phase 4 |
 | connect-envelope | planned | src/OpenClaw.Shared/OpenClawGatewayClient.cs + WindowsNodeClient.cs | connect message + auth precedence + signature version | ConnectEnvelopeBuilder | - | credential precedence never downgrades a device token; v3->v2 fallback preserved | none | review-only | extracted in Phase 4 |
+| ui-dispatcher | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | UI-thread marshaling abstraction for presentation code | IUiDispatcher | App and existing WinUI code may call DispatcherQueue directly until the view-model migration | presentation view models depend on IUiDispatcher not a concrete DispatcherQueue | UiDispatcherContractTests.PageViewModel_ReceivesRegisteredDispatcher | behavioral | - |
+| navigation-scope | authoritative | src/OpenClaw.Tray.WinUI/Windows/HubWindow.xaml.cs | page view-model activation/deactivation and disposal lifetime | NavigationScopeManager | HubWindow keeps frame navigation back-stack and rail selection | transient page view models are activated on navigation and deactivated then disposed on navigate-away | NavigationScopeManagerTests.NavigatingAway_DeactivatesAndDisposesPreviousViewModel | behavioral | - |
+| composition-root | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | presentation-layer service construction and wiring | AppServiceRegistration | App remains the composition root and owns non-DI service lifetimes | one validated root ServiceProvider; App-owned singletons registered as instances are never disposed by the container | AppServiceRegistrationTests.Dispose_DoesNotDisposeAppOwnedInstanceSingletons | behavioral | - |
+| node-summary-text | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | node-summary clipboard text formatting | NodeSummaryText | App keeps the clipboard side effect (building the DataPackage and setting clipboard content) | copied node-summary text is projected only by NodeSummaryText.Build (online/offline state, display-name fallback, short id, detail text, newline join) | NodeSummaryTextTests.Build_MultipleNodes_OneLinePerNodeJoinedByNewline | behavioral | - |
 <!-- LEDGER:END -->
 
 ## Deferred test builders

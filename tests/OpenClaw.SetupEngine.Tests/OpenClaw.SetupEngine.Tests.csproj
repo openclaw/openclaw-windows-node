@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
+    <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>
