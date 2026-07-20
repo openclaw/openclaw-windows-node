@@ -338,6 +338,84 @@ public class ExecShellWrapperParserTests
         Assert.Empty(result.Targets);
     }
 
+    // ── pipe splitting ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Expand_SinglePipeSeparated_ProducesMultipleTargets()
+    {
+        // A single pipe chains commands (the downstream stage executes), so each stage must become its
+        // own target — regression for the allow-then-pipe policy bypass.
+        var result = Expand("echo a | del b");
+        Assert.Null(result.Error);
+        Assert.Equal(2, result.Targets.Count);
+        Assert.Contains(result.Targets, t => t.Command.Contains("del b") || t.Command == "del b");
+    }
+
+    [Fact]
+    public void Expand_PipeInsideQuotes_NotSplit()
+    {
+        // A pipe inside quotes is a literal, not a separator.
+        var result = Expand("echo 'a|b'");
+        Assert.Null(result.Error);
+        Assert.Empty(result.Targets);
+    }
+
+    // ── command substitution $(...) / @(...) / `...` ──────────────────────────
+
+    [Fact]
+    public void Expand_CommandSubstitution_ProducesInnerTarget()
+    {
+        // $(...) executes its inner command, so the inner command must be an evaluated target.
+        var result = Expand("echo hi $(Start-Process calc.exe)");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Start-Process"));
+    }
+
+    [Fact]
+    public void Expand_NestedCommandSubstitution_ProducesInnerTargets()
+    {
+        var result = Expand("echo $(echo $(Remove-Item x))");
+        Assert.Null(result.Error);
+        Assert.Contains(result.Targets, t => t.Command.Contains("Remove-Item"));
+    }
+
+    // ── subexpression / substitution the parser cannot decompose → fail closed ──
+
+    [Fact]
+    public void Expand_PowershellBareSubexpression_FailsClosed()
+    {
+        // `echo hi (Start-Process x)` — PowerShell evaluates the bare `(...)` subexpression, so it
+        // must not ride past policy as a single `echo *`-matched segment.
+        var result = Expand("echo hi (Start-Process x)", "powershell");
+        Assert.NotNull(result.Error);
+    }
+
+    [Fact]
+    public void Expand_PosixBacktick_FailsClosed()
+    {
+        // Backtick is command substitution in POSIX shells — the inner command executes.
+        var result = Expand("echo x `id`", "sh");
+        Assert.NotNull(result.Error);
+    }
+
+    [Fact]
+    public void Expand_QuotedParenPath_NotFlagged()
+    {
+        // A `(` inside a quoted argument (e.g. a Program Files (x86) path) is a literal, not a
+        // subexpression — the fail-closed guard must not deny it.
+        var result = Expand("Get-Content \"C:\\Program Files (x86)\\readme.txt\"", "powershell");
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public void Expand_CmdParenPath_NotFlagged()
+    {
+        // cmd is exempt from the subexpression guard: `(...)` is not a substitution there, and its
+        // grouping chains via ; & | which are already split.
+        var result = Expand("dir C:\\Program Files (x86)", "cmd");
+        Assert.Null(result.Error);
+    }
+
     // ── depth limiting ────────────────────────────────────────────────────────
 
     [Fact]

@@ -49,10 +49,35 @@ public class SystemCapability : NodeCapabilityBase
         "shutdown",
         "invoke-webrequest",
         "invoke-restmethod",
+        "invoke-expression",
+        "iex ",
+        "invoke-command",
+        "icm ",
         "start-process",
         "set-executionpolicy",
         "reg ",
-        "net "
+        "net ",
+        // Living-off-the-land binaries: native tools whose purpose here is code execution or remote
+        // download-and-run — the same intent already blocked for the PowerShell downloaders
+        // (invoke-webrequest/-restmethod) and process spawning (start-process), but in native-binary
+        // form the fragments above miss. A remote .set must not be able to whitelist one and invoke
+        // it (mshta/regsvr32/rundll32 run remote script; certutil/bitsadmin/curl/wget download). A
+        // denylist cannot be exhaustive against the LOLBAS set — the local Permissions UI, not a
+        // remote caller, is the place to allow anything broader than the read-only defaults.
+        "mshta",
+        "rundll32",
+        "regsvr32",
+        "regsvcs",
+        "regasm",
+        "installutil",
+        "msbuild",
+        "wmic",
+        "cscript",
+        "wscript",
+        "certutil",
+        "bitsadmin",
+        "curl",
+        "wget"
     ];
     
     private readonly bool _includeRunCommands;
@@ -872,6 +897,15 @@ public class SystemCapability : NodeCapabilityBase
                     return $"Dangerous allow rule is not permitted: {pattern}";
                 }
             }
+
+            // Finally: the executable (first whitespace-delimited token) must be a concrete literal. A
+            // wildcard there lets a NON-dangerous pattern match ANY command (MatchesPattern globs
+            // * -> .* over the whole command line), e.g. "*.*", "*e*", "*.exe", "c*" — the broad-allow
+            // class the earlier shape checks miss. Runs after the dangerous-fragment check so a
+            // dangerous stem keeps its specific message. Legit rules pin the command ("git *").
+            var firstToken = normalized.Split(new[] { ' ', '\t' }, 2)[0];
+            if (firstToken.Contains('*') || firstToken.Contains('?'))
+                return $"Allow rule must name a concrete command (no wildcard in the executable): {pattern}";
         }
 
         return null;
