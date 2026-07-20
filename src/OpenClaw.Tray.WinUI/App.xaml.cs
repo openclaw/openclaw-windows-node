@@ -1243,13 +1243,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         try
         {
-            var lines = _appState!.Nodes.Select(node =>
-            {
-                var state = node.IsOnline ? "online" : "offline";
-                var name = string.IsNullOrWhiteSpace(node.DisplayName) ? node.ShortId : node.DisplayName;
-                return $"{state}: {name} ({node.ShortId}) · {node.DetailText}";
-            });
-            var summary = string.Join(Environment.NewLine, lines);
+            var summary = NodeSummaryText.Build(_appState!.Nodes);
 
             CopyTextToClipboard(summary);
 
