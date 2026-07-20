@@ -1,5 +1,6 @@
 namespace OpenClaw.Chat;
 
+using System.Globalization;
 using OpenClaw.Shared;
 
 /// <summary>
@@ -169,14 +170,14 @@ public static class ChatModelLabels
             // Trim a trailing ".0" so 2_000_000 → "2M" not "2.0M".
             return millions == Math.Floor(millions)
                 ? $"{(int)millions}M"
-                : $"{millions:0.#}M";
+                : $"{millions.ToString("0.#", CultureInfo.InvariantCulture)}M";
         }
         if (contextWindow >= 1_000)
         {
             var thousands = contextWindow / 1_000.0;
             return thousands == Math.Floor(thousands)
                 ? $"{(int)thousands}K"
-                : $"{thousands:0.#}K";
+                : $"{thousands.ToString("0.#", CultureInfo.InvariantCulture)}K";
         }
         return contextWindow.ToString();
     }
