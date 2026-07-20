@@ -4270,8 +4270,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
                         Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
                         Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
-                        ContextWindow = item.TryGetProperty("contextWindow", out var cw) && cw.ValueKind == JsonValueKind.Number ? cw.GetInt32() : null,
-                        ContextTokens = item.TryGetProperty("contextTokens", out var ct) && ct.ValueKind == JsonValueKind.Number ? ct.GetInt32() : null,
+                        ContextWindow = ReadPositiveInt32(item, "contextWindow"),
+                        ContextTokens = ReadPositiveInt32(item, "contextTokens"),
                         IsConfigured = hasConfiguredFlag && cfg.ValueKind == JsonValueKind.True,
                         HasConfiguredFlag = hasConfiguredFlag,
                         IsDefault = ReadBool(item, "default", "isDefault"),
@@ -4288,6 +4288,19 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             _logger.Warn($"Failed to parse models.list: {ex.Message}");
         }
+    }
+
+    private static int? ReadPositiveInt32(JsonElement obj, string key)
+    {
+        if (!obj.TryGetProperty(key, out var value)
+            || value.ValueKind != JsonValueKind.Number
+            || !value.TryGetInt32(out var parsed)
+            || parsed <= 0)
+        {
+            return null;
+        }
+
+        return parsed;
     }
 
     // Reads the first present boolean property among <paramref name="keys"/>.

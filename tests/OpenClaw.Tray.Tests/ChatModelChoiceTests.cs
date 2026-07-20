@@ -206,7 +206,20 @@ public class ChatModelChoiceTests
     }
 
     [Fact]
-    public void BuildMetaSegment_EqualRuntimeAndNative_ShowsRuntimeOnce()
+    public void BuildMetaSegment_RuntimeExceedsNative_DoesNotClampOrReorder()
+    {
+        var c = new ChatModelChoice(
+            "x",
+            "X",
+            Provider: "OpenAI",
+            ContextWindow: 272000,
+            ContextTokens: 1000000);
+
+        Assert.Equal("OpenAI · 1M runtime · 272K native", ChatModelLabels.BuildMetaSegment(c));
+    }
+
+    [Fact]
+    public void BuildMetaSegment_EqualRuntimeAndNative_ShowsUnqualifiedValueOnce()
     {
         var c = new ChatModelChoice(
             "x",
@@ -215,11 +228,11 @@ public class ChatModelChoiceTests
             ContextWindow: 272000,
             ContextTokens: 272000);
 
-        Assert.Equal("OpenAI · 272K runtime", ChatModelLabels.BuildMetaSegment(c));
+        Assert.Equal("OpenAI · 272K", ChatModelLabels.BuildMetaSegment(c));
     }
 
     [Fact]
-    public void BuildMetaSegment_DifferentValuesWithSameCompactLabel_ShowsRuntimeOnce()
+    public void BuildMetaSegment_DifferentValuesWithSameCompactLabel_UsesHigherPrecision()
     {
         var c = new ChatModelChoice(
             "x",
@@ -228,7 +241,29 @@ public class ChatModelChoiceTests
             ContextWindow: 1049000,
             ContextTokens: 1000001);
 
-        Assert.Equal("OpenAI · 1M runtime", ChatModelLabels.BuildMetaSegment(c));
+        Assert.Equal("OpenAI · 1M runtime · 1.049M native", ChatModelLabels.BuildMetaSegment(c));
+    }
+
+    [Fact]
+    public void BuildMetaSegment_DifferentValuesStillColliding_UsesExactInvariantValues()
+    {
+        var c = new ChatModelChoice(
+            "x",
+            "X",
+            Provider: "OpenAI",
+            ContextWindow: 1000002,
+            ContextTokens: 1000001);
+
+        Assert.Equal(
+            "OpenAI · 1,000,001 runtime · 1,000,002 native",
+            ChatModelLabels.BuildMetaSegment(c));
+    }
+
+    [Fact]
+    public void BuildMetaSegment_RuntimeOnly_QualifiesRuntimeValue()
+    {
+        var c = new ChatModelChoice("x", "X", Provider: "OpenAI", ContextTokens: 272000);
+        Assert.Equal("OpenAI · 272K runtime", ChatModelLabels.BuildMetaSegment(c));
     }
 
     [Fact]
