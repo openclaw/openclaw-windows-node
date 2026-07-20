@@ -46,6 +46,17 @@ public class SetupLoggerTests : IDisposable
     }
 
     [Fact]
+    public void Redaction_RedactsTailscaleAuthorizationUrlsAndKeys()
+    {
+        var text = SetupLogger.Sanitize("Visit https://login.tailscale.com/a/abc_123 and use tskey-auth-very-secret-value");
+
+        Assert.DoesNotContain("abc_123", text);
+        Assert.DoesNotContain("very-secret-value", text);
+        Assert.Contains("[REDACTED-TAILSCALE-AUTH-URL]", text);
+        Assert.Contains("[REDACTED-TAILSCALE-AUTH-KEY]", text);
+    }
+
+    [Fact]
     public void Redaction_RedactsGenericMessagesAndStructuredData()
     {
         var entries = new List<LogEntry>();

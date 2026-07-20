@@ -631,7 +631,11 @@ public sealed partial class Md4cParser
         Debug.Assert(currentBlockIndex >= 0);
 
         int nLines = CurrentBlock.NLines;
-        int lineStart = GetCurrentBlockLineStart();
+        // O(1) line-start: the current block's lines are the tail of blockLines — the same computation
+        // the reference-def removal below (blockLines.Count - nLines) already relies on. Replaces the
+        // former GetCurrentBlockLineStart() per-block-close O(n) scan over all prior blocks, which made
+        // list parsing O(n^2) (one close per list item).
+        int lineStart = blockLines.Count - nLines;
         int n = 0;
 
         while (n < nLines)
@@ -675,7 +679,7 @@ public sealed partial class Md4cParser
         if (CurrentBlock.Type == MarkdownBlockType.P ||
            (CurrentBlock.Type == MarkdownBlockType.H && (CurrentBlock.Flags & BLOCK_SETEXT_HEADER) != 0))
         {
-            int lineStart = GetCurrentBlockLineStart();
+            int lineStart = blockLines.Count - CurrentBlock.NLines;
             if (lineStart < blockLines.Count)
             {
                 var span = CollectionsMarshal.AsSpan(blockLines);
@@ -759,21 +763,6 @@ public sealed partial class Md4cParser
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => ref CollectionsMarshal.AsSpan(blocks)[currentBlockIndex];
-    }
-
-    private int GetCurrentBlockLineStart()
-    {
-        int lineIdx = 0;
-        var span = CollectionsMarshal.AsSpan(blocks);
-        for (int i = 0; i < currentBlockIndex; i++)
-        {
-            ref Block b = ref span[i];
-            if ((b.Flags & BLOCK_CONTAINER) != 0)
-                continue;
-            if (b.Type != MarkdownBlockType.Code && b.Type != MarkdownBlockType.Html)
-                lineIdx += b.NLines;
-        }
-        return lineIdx;
     }
 
     // ── Line Analysis ────────────────────────────────────────────────────

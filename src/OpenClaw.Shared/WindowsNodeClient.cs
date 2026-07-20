@@ -62,6 +62,7 @@ public class WindowsNodeClient : WebSocketClientBase
     // Invocations are fire-and-forget off the receive loop; this semaphore caps concurrency
     // at 8. When full, the gateway receives an immediate "node busy, retry" error response.
     private readonly SemaphoreSlim _invokeSemaphore = new(8, 8);
+    private readonly InvocationCancellationRegistry _activeInvocations = new();
 
     // Events
     public event EventHandler<NodeInvokeRequest>? InvokeReceived;
@@ -327,6 +328,9 @@ public class WindowsNodeClient : WebSocketClientBase
             case "node.invoke.request":
                 await HandleNodeInvokeEventAsync(root);
                 break;
+            case "node.invoke.cancel":
+                await HandleNodeInvokeCancelAsync(root, "payload", responseId: null);
+                break;
             case "health":
                 if (root.TryGetProperty("payload", out var payload))
                 {
@@ -555,7 +559,22 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
-        var ct = CancellationToken;
+        if (!_activeInvocations.TryRegister(requestId, CancellationToken, out var invocation))
+        {
+            _invokeSemaphore.Release();
+            _logger.Warn($"[NODE] Duplicate active invoke ID: {requestId}");
+            await SendGatewayResultAndCompleteTelemetryAsync(
+                telemetry,
+                () => SendNodeInvokeResultAsync(
+                    requestId,
+                    false,
+                    null,
+                    "duplicate active request id"),
+                NodeToolErrorCategory.InvalidRequest);
+            RaiseInvokeCompleted(requestId, command, false, "duplicate active request id", TimeSpan.Zero);
+            return;
+        }
+
         _ = Task.Run(
             () => ExecuteGatewayCapabilityAsync(
                 request,
@@ -565,12 +584,8 @@ public class WindowsNodeClient : WebSocketClientBase
                     response.Ok,
                     response.Payload,
                     response.Error),
-                () => SendNodeInvokeResultAsync(
-                    requestId,
-                    false,
-                    null,
-                    "Command execution failed"),
-                ct),
+                error => SendNodeInvokeResultAsync(requestId, false, null, error),
+                invocation!),
             CancellationToken.None);
     }
     
@@ -1029,6 +1044,9 @@ public class WindowsNodeClient : WebSocketClientBase
             case "node.invoke":
                 await HandleNodeInvokeAsync(root, id);
                 break;
+            case "node.invoke.cancel":
+                await HandleNodeInvokeCancelAsync(root, "params", id);
+                break;
             case "ping":
                 await SendPongAsync(id);
                 break;
@@ -1133,14 +1151,25 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
-        var ct = CancellationToken;
+        if (!_activeInvocations.TryRegister(requestId, CancellationToken, out var invocation))
+        {
+            _invokeSemaphore.Release();
+            _logger.Warn($"Duplicate active invoke ID: {requestId}");
+            await SendGatewayResultAndCompleteTelemetryAsync(
+                telemetry,
+                () => SendErrorResponseAsync(requestId, "duplicate active request id"),
+                NodeToolErrorCategory.InvalidRequest);
+            RaiseInvokeCompleted(requestId, command, false, "duplicate active request id", TimeSpan.Zero);
+            return;
+        }
+
         _ = Task.Run(
             () => ExecuteGatewayCapabilityAsync(
                 request,
                 capability,
                 SendInvokeResponseAsync,
-                () => SendErrorResponseAsync(requestId, "Command execution failed"),
-                ct),
+                error => SendErrorResponseAsync(requestId, error),
+                invocation!),
             CancellationToken.None);
     }
 
@@ -1148,23 +1177,50 @@ public class WindowsNodeClient : WebSocketClientBase
         NodeInvokeRequest request,
         INodeCapability capability,
         Func<NodeInvokeResponse, Task> sendResponse,
-        Func<Task> sendErrorResponse,
-        CancellationToken cancellationToken)
+        Func<string, Task> sendErrorResponse,
+        InvocationCancellationRegistry.InvocationCancellation invocation)
     {
+        using var activeInvocation = invocation;
+        var cancellationToken = activeInvocation.Token;
         var telemetry = request.Telemetry!;
         var stopwatch = Stopwatch.StartNew();
         var executeActivity = telemetry.StartChild(NodeToolInvocation.ExecuteSpanName);
         request.TelemetryParentContext = executeActivity?.Context ?? telemetry.Context;
         var capabilityStarted = false;
-        var capabilityCompleted = false;
         var executeActivityCompleted = false;
+
         try
         {
             InvokeReceived?.Invoke(this, request);
             capabilityStarted = true;
             var response = await capability.ExecuteAsync(request, cancellationToken);
             response.Id = request.Id;
-            capabilityCompleted = true;
+
+            if (!activeInvocation.TryComplete())
+            {
+                if (activeInvocation.CancelledByCaller)
+                {
+                    await SendCancellationResponseAndCompleteTelemetryAsync(
+                        request,
+                        telemetry,
+                        executeActivity,
+                        executeActivityCompleted,
+                        sendErrorResponse,
+                        stopwatch);
+                }
+                else
+                {
+                    NodeToolInvocation.CompleteChild(
+                        executeActivity,
+                        NodeToolOutcome.Canceled,
+                        NodeToolErrorCategory.Other);
+                    CompleteToolTelemetry(
+                        telemetry,
+                        NodeToolOutcome.Canceled,
+                        NodeToolErrorCategory.Other);
+                }
+                return;
+            }
 
             var diagnostic = response.Diagnostic;
             var outcome = diagnostic != null || !response.Ok
@@ -1180,7 +1236,25 @@ public class WindowsNodeClient : WebSocketClientBase
                 sandboxDenialReason: diagnostic?.SandboxDenialReason);
             executeActivityCompleted = true;
 
-            await sendResponse(response);
+            try
+            {
+                await sendResponse(response);
+                CompleteToolTelemetry(
+                    telemetry,
+                    outcome,
+                    category,
+                    diagnostic?.ExecutionMode);
+            }
+            catch (Exception sendEx)
+            {
+                _logger.Debug($"[NODE] Failed to deliver completed invoke {request.Id}: {sendEx.Message}");
+                CompleteToolTelemetry(
+                    telemetry,
+                    NodeToolOutcome.Failure,
+                    NodeToolErrorCategory.TransportFailure,
+                    errorType: sendEx.GetType());
+            }
+
             stopwatch.Stop();
             RaiseInvokeCompleted(
                 request.Id,
@@ -1188,13 +1262,18 @@ public class WindowsNodeClient : WebSocketClientBase
                 response.Ok,
                 response.Error,
                 stopwatch.Elapsed);
-            CompleteToolTelemetry(
-                telemetry,
-                outcome,
-                category,
-                diagnostic?.ExecutionMode);
         }
-        // slopwatch-ignore: SW003 Shutdown cancellation is expected; telemetry still records it.
+        // slopwatch-ignore: SW003 Caller cancellation has a protocol response; shutdown cancellation does not.
+        catch (OperationCanceledException) when (activeInvocation.CancelledByCaller)
+        {
+            await SendCancellationResponseAndCompleteTelemetryAsync(
+                request,
+                telemetry,
+                executeActivity,
+                executeActivityCompleted,
+                sendErrorResponse,
+                stopwatch);
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             if (!executeActivityCompleted)
@@ -1211,11 +1290,38 @@ public class WindowsNodeClient : WebSocketClientBase
         }
         catch (Exception ex)
         {
-            var category = capabilityCompleted
-                ? NodeToolErrorCategory.TransportFailure
-                : capabilityStarted
-                    ? NodeToolErrorCategory.CapabilityFailure
-                    : NodeToolErrorCategory.InternalFailure;
+            if (!activeInvocation.TryComplete())
+            {
+                if (activeInvocation.CancelledByCaller)
+                {
+                    await SendCancellationResponseAndCompleteTelemetryAsync(
+                        request,
+                        telemetry,
+                        executeActivity,
+                        executeActivityCompleted,
+                        sendErrorResponse,
+                        stopwatch);
+                }
+                else
+                {
+                    if (!executeActivityCompleted)
+                    {
+                        NodeToolInvocation.CompleteChild(
+                            executeActivity,
+                            NodeToolOutcome.Canceled,
+                            NodeToolErrorCategory.Other);
+                    }
+                    CompleteToolTelemetry(
+                        telemetry,
+                        NodeToolOutcome.Canceled,
+                        NodeToolErrorCategory.Other);
+                }
+                return;
+            }
+
+            var category = capabilityStarted
+                ? NodeToolErrorCategory.CapabilityFailure
+                : NodeToolErrorCategory.InternalFailure;
             if (!executeActivityCompleted)
             {
                 NodeToolInvocation.CompleteChild(
@@ -1225,10 +1331,10 @@ public class WindowsNodeClient : WebSocketClientBase
                     errorType: ex.GetType());
             }
             _logger.Error($"Command execution failed: {request.Command}", ex);
-            stopwatch.Stop();
+
             try
             {
-                await sendErrorResponse();
+                await sendErrorResponse("Command execution failed");
                 CompleteToolTelemetry(
                     telemetry,
                     NodeToolOutcome.Failure,
@@ -1244,6 +1350,8 @@ public class WindowsNodeClient : WebSocketClientBase
                     NodeToolErrorCategory.TransportFailure,
                     errorType: sendEx.GetType());
             }
+
+            stopwatch.Stop();
             RaiseInvokeCompleted(
                 request.Id,
                 request.Command,
@@ -1255,6 +1363,49 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             _invokeSemaphore.Release();
         }
+    }
+
+    private async Task SendCancellationResponseAndCompleteTelemetryAsync(
+        NodeInvokeRequest request,
+        NodeToolInvocation telemetry,
+        Activity? executeActivity,
+        bool executeActivityCompleted,
+        Func<string, Task> sendErrorResponse,
+        Stopwatch stopwatch)
+    {
+        if (!executeActivityCompleted)
+        {
+            NodeToolInvocation.CompleteChild(
+                executeActivity,
+                NodeToolOutcome.Canceled,
+                NodeToolErrorCategory.Other);
+        }
+
+        try
+        {
+            await sendErrorResponse("cancelled");
+            CompleteToolTelemetry(
+                telemetry,
+                NodeToolOutcome.Canceled,
+                NodeToolErrorCategory.Other);
+        }
+        catch (Exception sendEx)
+        {
+            _logger.Debug($"[NODE] Failed to send cancellation response for {request.Id}: {sendEx.Message}");
+            CompleteToolTelemetry(
+                telemetry,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.TransportFailure,
+                errorType: sendEx.GetType());
+        }
+
+        stopwatch.Stop();
+        RaiseInvokeCompleted(
+            request.Id,
+            request.Command,
+            false,
+            "cancelled",
+            stopwatch.Elapsed);
     }
 
     private async Task SendGatewayResultAndCompleteTelemetryAsync(
@@ -1299,6 +1450,51 @@ public class WindowsNodeClient : WebSocketClientBase
         }
     }
 
+    private async Task HandleNodeInvokeCancelAsync(
+        JsonElement root,
+        string containerName,
+        string? responseId)
+    {
+        if (!root.TryGetProperty(containerName, out var container) ||
+            container.ValueKind != JsonValueKind.Object ||
+            !TryGetCancellationTargetId(container, out var requestId))
+        {
+            _logger.Warn("[NODE] node.invoke.cancel has no invokeId/requestId");
+            if (responseId != null)
+            {
+                await SendErrorResponseAsync(responseId, "Missing invokeId");
+            }
+            return;
+        }
+
+        var cancelled = _activeInvocations.TryCancel(requestId);
+        _logger.Info(cancelled
+            ? $"[NODE] Cancelled node.invoke request: {requestId}"
+            : $"[NODE] node.invoke.cancel target is not active: {requestId}");
+
+        if (responseId != null)
+        {
+            await SendSuccessResponseAsync(responseId, new { cancelled });
+        }
+    }
+
+    private static bool TryGetCancellationTargetId(JsonElement container, out string requestId)
+    {
+        foreach (var propertyName in new[] { "invokeId", "requestId" })
+        {
+            if (container.TryGetProperty(propertyName, out var property) &&
+                property.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(property.GetString()))
+            {
+                requestId = property.GetString()!;
+                return true;
+            }
+        }
+
+        requestId = "";
+        return false;
+    }
+
     private static string? ExtractNodeInvokeSessionKey(JsonElement envelope, JsonElement args)
     {
         if (envelope.TryGetProperty("sessionKey", out var envelopeSessionKey) &&
@@ -1327,7 +1523,11 @@ public class WindowsNodeClient : WebSocketClientBase
 
     private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)
     {
-        InvokeCompleted?.Invoke(this, new NodeInvokeCompletedEventArgs
+        var handlers = InvokeCompleted;
+        if (handlers is null)
+            return;
+
+        var args = new NodeInvokeCompletedEventArgs
         {
             RequestId = requestId,
             Command = command,
@@ -1335,7 +1535,21 @@ public class WindowsNodeClient : WebSocketClientBase
             Error = error,
             Duration = duration,
             NodeId = _nodeId ?? _deviceIdentity.DeviceId
-        });
+        };
+
+        foreach (var handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler<NodeInvokeCompletedEventArgs>)handler)(this, args);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(
+                    $"[NODE] InvokeCompleted subscriber " +
+                    $"{handler.Method.DeclaringType?.Name}.{handler.Method.Name} threw: {ex.Message}");
+            }
+        }
     }
     
     private async Task SendInvokeResponseAsync(NodeInvokeResponse response)
@@ -1364,6 +1578,19 @@ public class WindowsNodeClient : WebSocketClientBase
             error = new { message = error }
         };
         
+        await SendRawAsync(JsonSerializer.Serialize(msg));
+    }
+
+    private async Task SendSuccessResponseAsync(string requestId, object payload)
+    {
+        var msg = new
+        {
+            type = "res",
+            id = requestId,
+            ok = true,
+            payload
+        };
+
         await SendRawAsync(JsonSerializer.Serialize(msg));
     }
     
@@ -1440,6 +1667,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnDisconnected()
     {
+        _activeInvocations.CancelAll();
         _isConnected = false;
         // Don't reset pairing state when disconnected due to pairing — gateway
         // closes the socket after PAIRING_REQUIRED but we're still waiting for approval
@@ -1452,11 +1680,17 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnError(Exception ex)
     {
+        _activeInvocations.CancelAll();
         _isConnected = false;
         if (!_pairingBlocked)
         {
             _isPendingApproval = false;
             _isPaired = false;
         }
+    }
+
+    protected override void OnDisposing()
+    {
+        _activeInvocations.CancelAll();
     }
 }

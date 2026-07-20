@@ -20,6 +20,21 @@ public class WslKeepAlivePolicyTests
     }
 
     [Fact]
+    public void ShouldStart_UsesAppOwnedTailscaleRegistryRecord()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "tailscale",
+            Url = "wss://openclaw.tailnet.ts.net",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+
+        Assert.True(WslKeepAlivePolicy.ShouldStart(record, legacyGatewayUrl: null));
+        Assert.True(WslKeepAlivePolicy.HasSetupManagedLocalGateway([record]));
+    }
+
+    [Fact]
     public void ShouldStart_DoesNotFallBackToLegacyLocalUrl_WhenActiveRecordIsRemote()
     {
         var record = new GatewayRecord

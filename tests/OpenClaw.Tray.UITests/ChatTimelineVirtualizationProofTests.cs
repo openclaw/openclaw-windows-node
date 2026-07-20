@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using OpenClaw.Chat;
 using OpenClawTray.Chat;
 using OpenClawTray.FunctionalUI;
@@ -113,10 +114,7 @@ public sealed class ChatTimelineVirtualizationProofTests
             Assert.Same(stableItemsSource, repeater.ItemsSource);
             Assert.Same(stableItemTemplate, repeater.ItemTemplate);
 
-            var visibleText = FindDescendants<TextBlock>(host!)
-                .Select(t => t.Text)
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .ToArray();
+            var visibleText = CollectVisibleText(host!);
             Assert.Contains(visibleText, text => text.Contains("revision 1", StringComparison.Ordinal));
         });
 
@@ -141,10 +139,7 @@ public sealed class ChatTimelineVirtualizationProofTests
                 scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 4,
                 $"chat follow should stay near the newest row; offset={scrollViewer.VerticalOffset:0.0}, height={scrollViewer.ScrollableHeight:0.0}");
 
-            var visibleText = FindDescendants<TextBlock>(host!)
-                .Select(t => t.Text)
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .ToArray();
+            var visibleText = CollectVisibleText(host!);
             Assert.Contains(visibleText, text => text.Contains("User proof row 241", StringComparison.Ordinal));
 
             Console.WriteLine(
@@ -264,6 +259,52 @@ public sealed class ChatTimelineVirtualizationProofTests
         itemsSource is System.Collections.IEnumerable enumerable
             ? enumerable.Cast<object>().Count()
             : 0;
+
+    // Collects visible message text from both TextBlock (lone text blocks,
+    // tool rows) and RichTextBlock (coalesced prose + user bubbles), since chat
+    // messages now render their prose through a RichTextBlock per message.
+    private static string[] CollectVisibleText(DependencyObject host)
+    {
+        var texts = new List<string>();
+
+        foreach (var tb in FindDescendants<TextBlock>(host))
+        {
+            if (!string.IsNullOrWhiteSpace(tb.Text)) texts.Add(tb.Text);
+        }
+
+        foreach (var rtb in FindDescendants<RichTextBlock>(host))
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var block in rtb.Blocks)
+            {
+                if (block is Paragraph p)
+                {
+                    foreach (var inline in p.Inlines) AppendInlineText(inline, sb);
+                    sb.Append('\n');
+                }
+            }
+            var s = sb.ToString();
+            if (!string.IsNullOrWhiteSpace(s)) texts.Add(s);
+        }
+
+        return texts.ToArray();
+    }
+
+    private static void AppendInlineText(Inline inline, System.Text.StringBuilder sb)
+    {
+        switch (inline)
+        {
+            case Run run:
+                sb.Append(run.Text);
+                break;
+            case Span span:
+                foreach (var child in span.Inlines) AppendInlineText(child, sb);
+                break;
+            case LineBreak:
+                sb.Append('\n');
+                break;
+        }
+    }
 
     private sealed record SwappingVirtualRowProps(bool Expanded);
 

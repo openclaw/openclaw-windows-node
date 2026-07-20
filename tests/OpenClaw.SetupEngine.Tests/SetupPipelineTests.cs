@@ -60,21 +60,63 @@ public class SetupPipelineTests
     {
         var steps = SetupStepFactory.BuildDefaultSteps();
 
-        Assert.Equal(19, steps.Count);
+        Assert.Equal(23, steps.Count);
         Assert.IsType<PreflightOsStep>(steps[0]);
         Assert.IsType<PreflightWslStep>(steps[1]);
-        Assert.IsType<CleanupStaleDistroStep>(steps[2]);
-        Assert.IsType<CleanupStaleGatewayStep>(steps[3]);
+        Assert.IsType<PreflightWindowsTailscaleStep>(steps[2]);
+        Assert.IsType<CleanupStaleDistroStep>(steps[3]);
+        Assert.IsType<CleanupStaleGatewayStep>(steps[4]);
         Assert.Contains(steps, s => s is ValidateWslLockdownStep);
         var lockdownIndex = steps.FindIndex(s => s is ValidateWslLockdownStep);
         var cliInstallIndex = steps.FindIndex(s => s is InstallCliStep);
         Assert.Equal(lockdownIndex + 1, cliInstallIndex);
+        Assert.IsType<InstallTailscaleStep>(steps[cliInstallIndex + 1]);
+        Assert.IsType<AuthorizeTailscaleStep>(steps[cliInstallIndex + 2]);
+        var installServiceIndex = steps.FindIndex(s => s is InstallGatewayServiceStep);
+        Assert.IsType<StartGatewayStep>(steps[installServiceIndex + 1]);
+        Assert.IsType<FinalizeTailscaleServeStep>(steps[installServiceIndex + 2]);
         Assert.Contains(steps, s => s is RunGatewayWizardStep);
         var pairNodeIndex = steps.FindIndex(s => s is PairNodeStep);
         Assert.IsType<VerifyEndToEndStep>(steps[pairNodeIndex + 1]);
         var wizardIndex = steps.FindIndex(s => s is RunGatewayWizardStep);
         Assert.IsType<WindowsNodeBootstrapContextStep>(steps[wizardIndex + 1]);
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TailscaleDisabled_FreshAndReplacementPipelinesSkipOnlyTailscaleSteps(bool replacement)
+    {
+        var executed = new List<string>();
+        var config = new SetupConfig
+        {
+            CleanBeforeRun = replacement,
+            Tailscale = new TailscaleConfig { Enabled = false }
+        };
+        var ctx = CreateContext(config);
+        var baselineStepId = replacement ? "replace-gateway" : "create-gateway";
+        var pipeline = new SetupPipeline([
+            new MockStep(baselineStepId, (_, _) =>
+            {
+                executed.Add(baselineStepId);
+                return Task.FromResult(StepResult.Ok());
+            }),
+            new PreflightWindowsTailscaleStep(),
+            new InstallTailscaleStep(),
+            new AuthorizeTailscaleStep(),
+            new FinalizeTailscaleServeStep(),
+            new MockStep("pair", (_, _) =>
+            {
+                executed.Add("pair");
+                return Task.FromResult(StepResult.Ok());
+            }),
+        ]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        Assert.Equal([baselineStepId, "pair"], executed);
     }
 
     [Fact]

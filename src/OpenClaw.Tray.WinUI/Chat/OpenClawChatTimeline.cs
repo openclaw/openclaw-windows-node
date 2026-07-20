@@ -312,6 +312,28 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             textBlock.Inlines.Add(new Run { Text = normalized });
     }
 
+    // RichTextBlock analog of the user-bubble plain-text cache. Selection lives
+    // on the RichTextBlock, so re-applying identical text must NOT clear Blocks
+    // (that wipes the active selection). Skip the rebuild when the run is
+    // unchanged and a paragraph is still present.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<RichTextBlock, string>
+        s_userParagraphCache = new();
+
+    private static void ApplyPlainSelectableParagraph(RichTextBlock richTextBlock, string? text)
+    {
+        var normalized = text ?? string.Empty;
+        if (richTextBlock.Blocks.Count > 0
+            && s_userParagraphCache.TryGetValue(richTextBlock, out var cached)
+            && cached == normalized)
+            return;
+        s_userParagraphCache.AddOrUpdate(richTextBlock, normalized);
+        richTextBlock.Blocks.Clear();
+        var paragraph = new Paragraph();
+        if (normalized.Length > 0)
+            paragraph.Inlines.Add(new Run { Text = normalized });
+        richTextBlock.Blocks.Add(paragraph);
+    }
+
     // Cache parsed markdown text per TextBlock to avoid re-clearing and
     // rebuilding Inlines on every re-render when message content is stable.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBlock, string>
@@ -1155,7 +1177,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 bool isHighContrast = TryDetectHighContrast();
                 var selectionHighlightBrush = GetUserBubbleSelectionBrush(isHighContrast);
                 bubbleChildren.Add(
-                    TextBlock(string.Empty)
+                    RichTextBlock()
                         .Set(t =>
                         {
                             t.TextWrapping = TextWrapping.Wrap;
@@ -1187,14 +1209,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             // color the OS guarantees contrasts with both
                             // surfaces.
                             t.SelectionHighlightColor = selectionHighlightBrush;
-                            // Render through Inlines (a single Run) rather
-                            // than the .Text property. This matches the
-                            // assistant bubble's selection-safe path and
-                            // sidesteps a WinUI bug where setting Text on a
-                            // selection-enabled TextBlock during a re-render
-                            // triggered by the mouse-up that ends a drag-
-                            // select leaves the glyph layer visually empty.
-                            ApplyPlainSelectableInlines(t, messageText);
+                            // Render the message as a single Paragraph (one Run)
+                            // so the whole user message is one continuous
+                            // selection scope — matching the assistant bubble's
+                            // RichTextBlock append-block pattern. The plain-text
+                            // run keeps the bubble inert (no markdown / links).
+                            ApplyPlainSelectableParagraph(t, messageText);
                         }));
             }
             Element content;

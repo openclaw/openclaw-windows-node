@@ -66,8 +66,36 @@ The capability list lives on `NodeService`, *not* on `WindowsNodeClient`. That s
 - `tools/list` — flattens `_capabilities` into MCP tools. Tool name = command name (`"screen.snapshot"`); known commands get curated descriptions from `McpToolBridge.CommandDescriptions`; unknown commands fall back to `"{category} capability: {command}"`. `inputSchema` is permissive.
 - `tools/call` — finds the capability via `INodeCapability.CanHandle(name)`, builds a `NodeInvokeRequest` (the same struct the gateway path uses), calls `ExecuteAsync`, wraps the result as MCP `content[].text`. Tool failures come back as `result.isError = true`, not JSON-RPC errors (per MCP spec — JSON-RPC errors are reserved for protocol issues).
 - `ping`, `notifications/initialized` — protocol housekeeping.
+- `notifications/cancelled` — cancels the active request whose JSON-RPC ID is
+  supplied as `params.requestId`. A cancelled `tools/call` completes with an MCP
+  tool error containing `cancelled`. If concurrent HTTP scheduling processes
+  cancellation just before an already-sent call registers, the notification
+  records a pending cancellation for five seconds. The first matching
+  registration atomically consumes that tombstone and returns `cancelled` before
+  capability execution begins, so correctness does not depend on scheduler
+  timing. Repeated notifications for the same pending ID do not extend its
+  original five-second lifetime. Pending cancellations and recent-completion
+  guards are each capped at 1,024 entries;
+  expired entries are pruned first and the oldest remaining entry is evicted at
+  capacity. Because JSON-RPC IDs are client-scoped but this stateless HTTP
+  transport has no client identity, duplicate active IDs are allowed and
+  cancellation is ignored when more than one active call matches; this prevents
+  one local client from cancelling another client when the collision is already
+  observable. Request matching uses the decoded JSON string value or normalized
+  arbitrary-precision JSON number value, while preserving the distinction
+  between string and numeric IDs. A tombstone cannot predict a later
+  cross-client ID collision, so it cancels the first matching registration;
+  complete isolation would require client identity in the transport. A recent
+  completion guard also prevents a late notification from poisoning immediate
+  ID reuse.
 
 The bridge takes a `Func<IReadOnlyList<INodeCapability>>` rather than a snapshot. Every `tools/list` re-reads the live list. This is what guarantees zero-cost capability addition — register a new capability after server start and it appears on the next `tools/list`.
+
+Cancellation is cooperative and uses the same `CancellationToken` capability
+contract as the gateway transport. Screen and camera operations propagate the
+token through recording consent/countdown, camera admission, capture waits, and
+recording shutdown. The HTTP request deadline remains a separate safety bound;
+no command-specific transport deadlines are applied.
 
 ### HTTP transport
 

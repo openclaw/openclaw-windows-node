@@ -14,6 +14,9 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using OpenClaw.Connection;
+using Microsoft.Extensions.DependencyInjection;
+using OpenClawTray.Presentation;
+using OpenClawTray.Presentation.Adapters;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -50,6 +53,29 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
     private OpenClawTray.Chat.OpenClawChatCoordinator? _chatCoordinator;
+
+    /// <summary>
+    /// Root DI composition root, built once during startup and disposed during
+    /// shutdown. The container only owns the presentation infrastructure it creates
+    /// (navigation scope manager + any open page-view-model scope); App-owned
+    /// services are registered as pre-built instances, so the container never
+    /// disposes them and there is no double-dispose.
+    /// </summary>
+    private ServiceProvider? _services;
+
+    /// <summary>
+    /// Page type → view-model type map used by the navigation activation hook.
+    /// Currently empty: no page resolves a view model from DI yet, so the activation
+    /// hook is a runtime no-op. Entries are added here as pages adopt view models.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<Type, Type> PageViewModelMap =
+        new Dictionary<Type, Type>();
+
+    /// <summary>The root service provider, or null before startup / after shutdown.</summary>
+    internal IServiceProvider? Services => _services;
+
+    /// <summary>Resolves the page activator used by <c>HubWindow</c>'s navigation hook.</summary>
+    internal IPageActivator? PageActivator => _services?.GetService<IPageActivator>();
     /// <summary>
     /// Cached reference to the most recently constructed local-setup engine. Used by
     /// <see cref="OnPairingStatusChanged"/> to suppress the "copy pairing command" toast
@@ -404,6 +430,70 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return null;
     }
 
+    /// <summary>
+    /// Builds the root DI composition root exactly once. Registers the WinUI-free
+    /// core (dispatcher/app-commands/settings as pre-built instances, the navigation
+    /// scope manager, and transient page view models) plus the WinUI-bound adapters
+    /// (navigation service + page activator). Built with scope and build-time
+    /// validation so wiring errors surface at startup rather than first use. No
+    /// registered service starts work in its constructor.
+    /// </summary>
+    private void InitializeServiceProvider()
+    {
+        if (_services is not null)
+        {
+            return;
+        }
+
+        if (_dispatcherQueue is null || _settings is null)
+        {
+            Logger.Warn("Skipping service provider init: dispatcher or settings not ready.");
+            return;
+        }
+
+        var dispatcher = new WinUIDispatcher(_dispatcherQueue);
+        var context = new AppServiceContext(dispatcher, this, _settings);
+
+        var services = new ServiceCollection();
+        services.AddOpenClawTrayCore(context);
+
+        // WinUI-bound registrations are added here (not in the pure core) so the core
+        // stays testable in a pure net10 project.
+        services.AddSingleton<INavigationService>(new AppNavigationService(
+            dispatcher,
+            navigate: tag => ((IAppCommands)this).Navigate(tag),
+            canGoBack: () => _hubWindow is { IsClosed: false } hub && hub.CanGoBack,
+            goBack: () =>
+            {
+                if (_hubWindow is { IsClosed: false } hub)
+                {
+                    hub.NavigateBack();
+                }
+            }));
+        services.AddSingleton<IPageActivator>(sp => new FramePageActivator(
+            sp.GetRequiredService<NavigationScopeManager>(),
+            PageViewModelMap));
+
+        try
+        {
+            _services = services.BuildServiceProvider(new ServiceProviderOptions
+            {
+                ValidateScopes = true,
+                ValidateOnBuild = true,
+            });
+            Logger.Info("Service provider initialized.");
+        }
+        catch (Exception ex)
+        {
+            // Additive plumbing must never take the tray down. A build/validation
+            // failure is logged and leaves _services null, so the navigation
+            // activation hook stays a no-op. Wiring regressions are caught by tests
+            // (AppServiceRegistrationTests builds with ValidateOnBuild).
+            _services = null;
+            Logger.Error($"Service provider initialization failed: {ex}");
+        }
+    }
+
     protected override void OnLaunched(LaunchActivatedEventArgs args) =>
         AsyncEventHandlerGuard.Run(
             () => OnLaunchedAsync(args),
@@ -607,6 +697,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // before the tray ever initializes.
         InitializeTrayIcon();
         ShowSurfaceImprovementsTipIfNeeded();
+
+        // Build the DI composition root AFTER the tray is up, so additive plumbing
+        // can never delay or preempt tray initialization. It only needs the
+        // dispatcher + settings (created above) and failures are non-fatal.
+        InitializeServiceProvider();
 
         // Initialize connection manager before setup flow.
         _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath, logger: new AppLogger());
@@ -3312,6 +3407,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 _hubWindow.SettingsSaved -= OnSettingsSaved;
                 _hubWindow = null;
+
+                // Deactivate + dispose the current navigation scope so a page view model
+                // (once pages are mapped) does not outlive the window it belonged to.
+                try
+                {
+                    PageActivator?.Reset();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[App] Navigation scope reset on hub close failed: {ex.Message}");
+                }
             };
 
             _hubWindow.BindToAppState();
@@ -3798,7 +3904,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 dataDir: AppIdentity.ResolveRoamingDataDirectory(),
                 localDataDir: AppIdentity.ResolveSetupLocalDataDirectory(),
                 distroNameOverride: AppIdentity.SetupDistroName,
-                gatewayPortOverride: AppIdentity.SetupGatewayPort);
+                gatewayPortOverride: AppIdentity.SetupGatewayPort,
+                commandLineArgs: SetupWindowArgumentProjection.Project(
+                    _startupArgs,
+                    IsDeepLinkArg,
+                    Environment.ProcessId));
             setupWindow.Title = AppIdentity.DecorateWindowTitle("OpenClaw Setup");
             _setupWindow = setupWindow;
             setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
@@ -4533,6 +4643,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _trayMenuWindow = null;
         SafeShutdownStep("keep alive window", () => CloseWindow(_keepAliveWindow));
         _keepAliveWindow = null;
+
+        // Dispose the DI composition root. The container only owns the presentation
+        // infrastructure it created (navigation scope manager + any open page-view-model
+        // scope). App-owned services were registered as pre-built instances, so this
+        // does not re-dispose them (no double-dispose). Null the field BEFORE awaiting
+        // disposal so a queued Frame.Navigated callback during shutdown cannot resolve
+        // the page activator against a disposing/disposed provider.
+        var services = _services;
+        _services = null;
+        if (services is not null)
+        {
+            await SafeShutdownStepAsync("service provider", async () =>
+            {
+                await services.DisposeAsync();
+            });
+        }
 
         // Dispose tray and mutex
         SafeShutdownStep("tray icon", () =>

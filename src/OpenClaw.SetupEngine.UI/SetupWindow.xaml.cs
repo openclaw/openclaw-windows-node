@@ -52,67 +52,13 @@ public sealed partial class SetupWindow : Window
         string? dataDir = null,
         string? localDataDir = null,
         string? distroNameOverride = null,
-        int? gatewayPortOverride = null)
+        int? gatewayPortOverride = null,
+        string[]? commandLineArgs = null)
     {
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = localDataDir ?? SetupContext.ResolveLocalDataDir();
         InitializeComponent();
         Active = this;
-
-        // Size window accounting for DPI
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dpi = GetDpiForWindow(hwnd);
-        var scale = dpi / 96.0;
-        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(820 * scale)));
-
-        // Extend into title bar for modern look
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(TitleBarDrag);
-
-        // Mica backdrop — the signature Windows 11 material (native).
-        SystemBackdrop = new MicaBackdrop();
-
-        // Load config: explicit --config arg, or bundled default-config.json (required)
-        var args = Environment.GetCommandLineArgs();
-        var explicitConfigPath = configPath ?? GetArg(args, "--config");
-        configPath = explicitConfigPath;
-        if (configPath == null)
-        {
-            var defaultPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
-            if (File.Exists(defaultPath))
-                configPath = defaultPath;
-            else
-            {
-                var libraryDefaultPath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.SetupEngine.UI", "default-config.json");
-                if (File.Exists(libraryDefaultPath))
-                    configPath = libraryDefaultPath;
-            }
-        }
-
-        if (configPath == null || !File.Exists(configPath))
-        {
-            throw new FileNotFoundException(
-                "No config file found. Place default-config.json next to the executable or pass --config <path>.",
-                configPath ?? Path.Combine(AppContext.BaseDirectory, "default-config.json"));
-        }
-
-        _config = SetupConfig.LoadFromFile(configPath);
-        _config.UsesBundledDefaultConfig = explicitConfigPath == null;
-        _config = SetupConfig.FromEnvironment(_config);
-        if (!string.IsNullOrWhiteSpace(distroNameOverride))
-            _config.DistroName = distroNameOverride;
-        if (gatewayPortOverride is > 0 and <= 65535)
-        {
-            _config.GatewayPort = gatewayPortOverride.Value;
-            _config.GatewayUrl = null;
-        }
-        GatewayLkgVersion.ApplyToConfig(_config);
-        _config.ApplyUiDefaults(rollbackOnFailure: !HasFlag(args, "--no-rollback-on-failure"));
-        if (startAtGatewayInstalledMilestone)
-        {
-            _persistStartupPreferenceOnComplete = false;
-            _showStartupPreferenceOnComplete = false;
-        }
 
         Closed += async (_, _) =>
         {
@@ -141,6 +87,79 @@ public sealed partial class SetupWindow : Window
                 _cleanupCompleted.TrySetResult(true);
             }
         };
+
+        // Size window accounting for DPI
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dpi = GetDpiForWindow(hwnd);
+        var scale = dpi / 96.0;
+        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(820 * scale)));
+
+        // Extend into title bar for modern look
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarDrag);
+
+        // Mica backdrop — the signature Windows 11 material (native).
+        SystemBackdrop = new MicaBackdrop();
+
+        // Load config: explicit --config arg, or bundled default-config.json (required)
+        commandLineArgs ??= Environment.GetCommandLineArgs().Skip(1).ToArray();
+        if (!SetupWindowCommandLine.TryParse(
+                commandLineArgs,
+                out var setupArguments,
+                out var argumentError))
+        {
+            ShowConfigurationError($"Invalid setup arguments: {argumentError}");
+            return;
+        }
+
+        var explicitConfigPath = configPath ?? setupArguments.ConfigPath;
+        configPath = explicitConfigPath;
+        if (configPath == null)
+        {
+            var defaultPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
+            if (File.Exists(defaultPath))
+                configPath = defaultPath;
+            else
+            {
+                var libraryDefaultPath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.SetupEngine.UI", "default-config.json");
+                if (File.Exists(libraryDefaultPath))
+                    configPath = libraryDefaultPath;
+            }
+        }
+
+        if (configPath == null)
+        {
+            var missingPath = Path.Combine(AppContext.BaseDirectory, "default-config.json");
+            ShowConfigurationError(
+                $"No setup configuration file was found at '{missingPath}'. " +
+                "Place default-config.json next to the executable or pass --config <path>.");
+            return;
+        }
+
+        if (!SetupConfig.TryLoadFromFile(configPath, out var loadedConfig, out var configError))
+        {
+            ShowConfigurationError(
+                $"The setup configuration file '{configPath}' could not be loaded. {configError}");
+            return;
+        }
+
+        _config = loadedConfig;
+        _config.UsesBundledDefaultConfig = explicitConfigPath == null;
+        _config = SetupConfig.FromEnvironment(_config);
+        if (!string.IsNullOrWhiteSpace(distroNameOverride))
+            _config.DistroName = distroNameOverride;
+        if (gatewayPortOverride is > 0 and <= 65535)
+        {
+            _config.GatewayPort = gatewayPortOverride.Value;
+            _config.GatewayUrl = null;
+        }
+        GatewayLkgVersion.ApplyToConfig(_config);
+        _config.ApplyUiDefaults(rollbackOnFailure: setupArguments.RollbackOnFailure);
+        if (startAtGatewayInstalledMilestone)
+        {
+            _persistStartupPreferenceOnComplete = false;
+            _showStartupPreferenceOnComplete = false;
+        }
 
         var previewPage = SetupPreview.RequestedPage;
         if (previewPage != null)
@@ -249,6 +268,20 @@ public sealed partial class SetupWindow : Window
                 DefaultAutoStart: true,
                 ShowStartupPreference: _showStartupPreferenceOnComplete,
                 ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir)));
+
+    private void ShowConfigurationError(string errorMessage)
+    {
+        _persistStartupPreferenceOnComplete = false;
+        _showStartupPreferenceOnComplete = false;
+        NavigateTo(
+            typeof(CompletePage),
+            new CompletePageArgs(
+                Success: false,
+                Elapsed: TimeSpan.Zero,
+                LogPath: null,
+                ErrorMessage: errorMessage,
+                ShowStartupPreference: false));
+    }
 
     // Directional page transition: forward steps slide in from the right, Back from the left.
     private void NavigateTo(Type page, object? parameter, bool back = false) =>
@@ -381,16 +414,6 @@ public sealed partial class SetupWindow : Window
             () => _initialContentReady.TrySetResult(true));
     }
 
-    private static string? GetArg(string[] args, string name)
-    {
-        for (int i = 0; i < args.Length - 1; i++)
-            if (args[i].Equals(name, StringComparison.OrdinalIgnoreCase))
-                return args[i + 1];
-        return null;
-    }
-
-    private static bool HasFlag(string[] args, string name)
-        => args.Any(a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed record CompletePageArgs(

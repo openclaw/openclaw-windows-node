@@ -109,7 +109,8 @@ public static class SetupExistingGatewayClassifier
             && registry.GetAll().Any(record =>
                 record.IsLocal
                 && record.SshTunnel is null
-                && LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url)))
+                && (LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url)
+                    || !string.IsNullOrWhiteSpace(record.SetupManagedDistroName))))
         {
             return true;
         }
