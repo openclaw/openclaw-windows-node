@@ -4271,6 +4271,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
                         Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
                         ContextWindow = item.TryGetProperty("contextWindow", out var cw) && cw.ValueKind == JsonValueKind.Number ? cw.GetInt32() : null,
+                        ContextTokens = item.TryGetProperty("contextTokens", out var ct) && ct.ValueKind == JsonValueKind.Number ? ct.GetInt32() : null,
                         IsConfigured = hasConfiguredFlag && cfg.ValueKind == JsonValueKind.True,
                         HasConfiguredFlag = hasConfiguredFlag,
                         IsDefault = ReadBool(item, "default", "isDefault"),

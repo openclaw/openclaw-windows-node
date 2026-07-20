@@ -2147,6 +2147,40 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseModelsList_PreservesRuntimeAndNativeContextMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            {
+              "models": [
+                {
+                  "id": "gpt-5.4",
+                  "contextWindow": 1000000,
+                  "contextTokens": 272000
+                },
+                {
+                  "id": "legacy-model",
+                  "contextWindow": 128000
+                }
+              ]
+            }
+            """);
+
+        Assert.Collection(
+            info.Models,
+            current =>
+            {
+                Assert.Equal(1000000, current.ContextWindow);
+                Assert.Equal(272000, current.ContextTokens);
+            },
+            legacy =>
+            {
+                Assert.Equal(128000, legacy.ContextWindow);
+                Assert.Null(legacy.ContextTokens);
+            });
+    }
+
+    [Fact]
     public void ParseModelsList_DefaultsAvailableTrue_WhenNoReadinessSignals()
     {
         var helper = new GatewayClientTestHelper();

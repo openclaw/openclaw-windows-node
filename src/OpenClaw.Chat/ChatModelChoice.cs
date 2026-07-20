@@ -9,7 +9,8 @@ using OpenClaw.Shared;
 /// <param name="Id">Wire model id (e.g. <c>claude-opus-4.8</c>).</param>
 /// <param name="DisplayName">Human-friendly label (falls back to <paramref name="Id"/>).</param>
 /// <param name="Provider">Owning provider (e.g. <c>OpenAI</c>, <c>Anthropic</c>), when known.</param>
-/// <param name="ContextWindow">Context-window size in tokens, when known.</param>
+/// <param name="ContextWindow">Native/catalog context-window size in tokens, when known.</param>
+/// <param name="ContextTokens">Effective runtime context budget in tokens, when known.</param>
 /// <param name="IsConfigured">True when the provider is configured on the gateway.</param>
 /// <param name="IsAvailable">
 /// True when the model can be selected right now. When false the picker shows it
@@ -25,6 +26,7 @@ public sealed record ChatModelChoice(
     string DisplayName,
     string? Provider = null,
     int? ContextWindow = null,
+    int? ContextTokens = null,
     bool IsConfigured = true,
     bool IsAvailable = true,
     bool RequiresAuth = false,
@@ -64,6 +66,7 @@ public sealed record ChatModelChoice(
                 DisplayName: m.DisplayName,
                 Provider: m.Provider,
                 ContextWindow: m.ContextWindow,
+                ContextTokens: m.ContextTokens,
                 IsConfigured: m.IsConfigured,
                 IsAvailable: m.IsAvailable,
                 RequiresAuth: m.RequiresAuth,
@@ -183,13 +186,25 @@ public static class ChatModelLabels
     }
 
     /// <summary>
-    /// Builds the secondary metadata segment ("OpenAI · 272K") from provider and
-    /// context window, or an empty string when neither is known.
+    /// Builds the secondary metadata segment from provider and context metadata.
+    /// Runtime budget is shown first when available; a differing native/catalog
+    /// window follows it. Older gateways that only expose a context window keep
+    /// the original unqualified display.
     /// </summary>
     public static string BuildMetaSegment(ChatModelChoice choice)
     {
         var hasProvider = !string.IsNullOrWhiteSpace(choice.Provider);
-        var ctx = choice.ContextWindow is { } cw ? FormatContextWindow(cw) : string.Empty;
+        var runtime = choice.ContextTokens is { } ct ? FormatContextWindow(ct) : string.Empty;
+        var native = choice.ContextWindow is { } cw ? FormatContextWindow(cw) : string.Empty;
+        var ctx = runtime.Length > 0
+            ? $"{runtime} runtime"
+            : native;
+        if (runtime.Length > 0
+            && native.Length > 0
+            && !string.Equals(runtime, native, StringComparison.Ordinal))
+        {
+            ctx = $"{ctx} · {native} native";
+        }
         var hasCtx = ctx.Length > 0;
 
         if (hasProvider && hasCtx) return $"{choice.Provider} · {ctx}";

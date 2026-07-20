@@ -20,6 +20,7 @@ public class ChatModelChoiceTests
                     Name = "Claude Opus 4.8",
                     Provider = "Anthropic",
                     ContextWindow = 200000,
+                    ContextTokens = 180000,
                     IsConfigured = true,
                     IsDefault = true,
                     IsAvailable = true,
@@ -36,6 +37,7 @@ public class ChatModelChoiceTests
         Assert.Equal("Claude Opus 4.8", c.DisplayName);
         Assert.Equal("Anthropic", c.Provider);
         Assert.Equal(200000, c.ContextWindow);
+        Assert.Equal(180000, c.ContextTokens);
         Assert.True(c.IsConfigured);
         Assert.True(c.IsDefault);
         Assert.True(c.IsAvailable);
@@ -191,14 +193,53 @@ public class ChatModelChoiceTests
     // ── Meta segment ─────────────────────────────────────────────────────
 
     [Fact]
-    public void BuildMetaSegment_CombinesProviderAndContext()
+    public void BuildMetaSegment_DifferingRuntimeAndNative_ShowsRuntimeFirst()
+    {
+        var c = new ChatModelChoice(
+            "x",
+            "X",
+            Provider: "OpenAI",
+            ContextWindow: 1000000,
+            ContextTokens: 272000);
+
+        Assert.Equal("OpenAI · 272K runtime · 1M native", ChatModelLabels.BuildMetaSegment(c));
+    }
+
+    [Fact]
+    public void BuildMetaSegment_EqualRuntimeAndNative_ShowsRuntimeOnce()
+    {
+        var c = new ChatModelChoice(
+            "x",
+            "X",
+            Provider: "OpenAI",
+            ContextWindow: 272000,
+            ContextTokens: 272000);
+
+        Assert.Equal("OpenAI · 272K runtime", ChatModelLabels.BuildMetaSegment(c));
+    }
+
+    [Fact]
+    public void BuildMetaSegment_DifferentValuesWithSameCompactLabel_ShowsRuntimeOnce()
+    {
+        var c = new ChatModelChoice(
+            "x",
+            "X",
+            Provider: "OpenAI",
+            ContextWindow: 1049000,
+            ContextTokens: 1000001);
+
+        Assert.Equal("OpenAI · 1M runtime", ChatModelLabels.BuildMetaSegment(c));
+    }
+
+    [Fact]
+    public void BuildMetaSegment_RuntimeMissing_FallsBackToNativeWindow()
     {
         var c = new ChatModelChoice("x", "X", Provider: "OpenAI", ContextWindow: 272000);
         Assert.Equal("OpenAI · 272K", ChatModelLabels.BuildMetaSegment(c));
     }
 
     [Fact]
-    public void BuildMetaSegment_ProviderOnly()
+    public void BuildMetaSegment_BothContextsMissing_PreservesProviderOnly()
     {
         var c = new ChatModelChoice("x", "X", Provider: "OpenAI");
         Assert.Equal("OpenAI", ChatModelLabels.BuildMetaSegment(c));
