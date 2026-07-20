@@ -3,7 +3,6 @@ using System.IO;
 using System.Linq;
 using OpenClaw.Shared;
 using OpenClaw.Shared.ExecApprovals;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests;
@@ -47,10 +46,13 @@ public class ExecApprovalPipeSubstSurfacingTests
     }
 
     [Fact]
-    public void Substitution_Backtick_SurfacesInner()
+    public void Substitution_Backtick_FailsClosed()
     {
-        var targets = ExecShellWrapperParser.Expand($"echo `Remove-Item -Recurse -Force {Victim}`", "sh").Targets;
-        Assert.Contains(targets, t => t.Command.StartsWith("Remove-Item", StringComparison.OrdinalIgnoreCase));
+        // POSIX backtick substitution triggers the fail-closed guard (HasUndecomposableExec) because
+        // the parser cannot safely decompose it without a full shell parser. This is the correct
+        // security posture — deny rather than risk missing the inner command.
+        var result = ExecShellWrapperParser.Expand($"echo `Remove-Item -Recurse -Force {Victim}`", "sh");
+        Assert.NotNull(result.Error);
     }
 
     [Fact]
