@@ -48,6 +48,7 @@ public static class SetupStepFactory
     {
         return
         [
+            new ValidateDistroInstallPathStep(),
             new PreflightOsStep(),
             new PreflightWslStep(),
             new CleanupStaleDistroStep(),
@@ -86,6 +87,13 @@ public sealed class SetupPipeline
         _steps = steps.ToList();
         _rollbackOnFailureOverride = rollbackOnFailureOverride;
     }
+
+    internal static bool ShouldRunTrayArtifactCleanup(PipelineResult result, bool dryRun)
+        => !dryRun &&
+           !string.Equals(
+               result.FailedStepId,
+               ValidateDistroInstallPathStep.StepId,
+               StringComparison.Ordinal);
 
     public async Task<PipelineResult> RunAsync(SetupContext ctx)
     {
@@ -246,6 +254,19 @@ public sealed class SetupPipeline
     {
         _completedSteps.Clear();
         var ct = ctx.CancellationToken;
+
+        if (!DistroInstallPathPolicy.TryGetManagedInstallPath(
+                ctx.LocalDataDir,
+                ctx.DistroName,
+                out _,
+                out var pathError))
+        {
+            ctx.Logger.Error($"Uninstall refused unsafe WSL distro path: {pathError}");
+            return new PipelineResult(
+                PipelineOutcome.Failed,
+                FailedStepId: ValidateDistroInstallPathStep.StepId,
+                Message: pathError);
+        }
 
         if (!ctx.Config.ConfirmDestructive && !ctx.Config.DryRun)
         {

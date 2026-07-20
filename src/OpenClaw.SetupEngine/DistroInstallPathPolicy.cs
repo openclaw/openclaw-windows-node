@@ -2,10 +2,22 @@ namespace OpenClaw.SetupEngine;
 
 internal static class DistroInstallPathPolicy
 {
+    public const string LegacyReplacementGuidance =
+        "To replace an existing distro with an unsupported legacy name, rerun SetupEngine with --uninstall --confirm-destructive and the same distro name, then rerun setup with a supported name.";
+
     private const int MaxDistroNameLength = 64;
     private const StringComparison PathComparison = StringComparison.OrdinalIgnoreCase;
+    private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
+    private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "COM¹", "COM²", "COM³",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "LPT¹", "LPT²", "LPT³",
+    };
 
-    public static bool TryGetInstallPath(
+    public static bool TryGetNewInstallPath(
         string localDataDir,
         string? distroName,
         out string installPath,
@@ -25,13 +37,27 @@ internal static class DistroInstallPathPolicy
             return false;
         }
 
+        return TryGetManagedInstallPath(localDataDir, distroName, out installPath, out error);
+    }
+
+    public static bool TryGetManagedInstallPath(
+        string localDataDir,
+        string? distroName,
+        out string installPath,
+        out string error)
+    {
+        installPath = "";
+
+        if (!IsSafeManagedPathSegment(distroName, out error))
+            return false;
+
         string localDataRoot;
         string wslRoot;
         try
         {
             localDataRoot = NormalizePath(localDataDir);
             wslRoot = NormalizePath(Path.Combine(localDataRoot, "wsl"));
-            installPath = NormalizePath(Path.Combine(wslRoot, distroName));
+            installPath = NormalizePath(Path.Combine(wslRoot, distroName!));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
@@ -54,6 +80,11 @@ internal static class DistroInstallPathPolicy
         return false;
     }
 
+    public static string WithLegacyReplacementGuidance(string? distroName, string error)
+        => IsLegacyTeardownOnlyName(distroName)
+            ? $"{error} {LegacyReplacementGuidance}"
+            : error;
+
     public static bool TryValidateDeleteTarget(
         string localDataDir,
         string? distroName,
@@ -61,7 +92,7 @@ internal static class DistroInstallPathPolicy
         out string deletePath,
         out string error)
     {
-        if (!TryGetInstallPath(localDataDir, distroName, out deletePath, out error))
+        if (!TryGetManagedInstallPath(localDataDir, distroName, out deletePath, out error))
             return false;
 
         string candidate;
@@ -125,6 +156,42 @@ internal static class DistroInstallPathPolicy
 
     private static bool IsAllowedDistroNameCharacter(char value)
         => char.IsAsciiLetterOrDigit(value) || value is '.' or '_' or '-';
+
+    private static bool IsLegacyTeardownOnlyName(string? name)
+        => !string.IsNullOrWhiteSpace(name) &&
+           !IsValidDistroName(name) &&
+           IsSafeManagedPathSegment(name, out _);
+
+    private static bool IsSafeManagedPathSegment(string? name, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            error = "WSL distro name is required.";
+            return false;
+        }
+
+        if (!string.Equals(name, name.Trim(), StringComparison.Ordinal) ||
+            name.EndsWith('.') ||
+            name is "." or ".." ||
+            Path.IsPathRooted(name) ||
+            name.IndexOfAny(InvalidFileNameChars) >= 0 ||
+            name.Contains(Path.DirectorySeparatorChar) ||
+            name.Contains(Path.AltDirectorySeparatorChar) ||
+            IsReservedDeviceName(name))
+        {
+            error = $"Invalid managed WSL distro name '{name}'. The name must be one unambiguous Windows path segment.";
+            return false;
+        }
+
+        error = "";
+        return true;
+    }
+
+    private static bool IsReservedDeviceName(string name)
+    {
+        var stem = name.Split('.')[0];
+        return ReservedDeviceNames.Contains(stem);
+    }
 
     private static string NormalizePath(string path)
         => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));

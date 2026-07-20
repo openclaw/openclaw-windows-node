@@ -230,6 +230,30 @@ internal sealed class SetupOpenClawLogger(SetupLogger logger) : IOpenClawLogger
 // CLEANUP STEPS
 // ═══════════════════════════════════════════════════════════════════
 
+public sealed class ValidateDistroInstallPathStep : SetupStep
+{
+    public const string StepId = "validate-distro-path";
+
+    public override string Id => StepId;
+    public override string DisplayName => "Validate WSL distro install path";
+    public override bool CanRetry => false;
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (DistroInstallPathPolicy.TryGetNewInstallPath(
+                ctx.LocalDataDir,
+                ctx.DistroName,
+                out _,
+                out var error))
+        {
+            return Task.FromResult(StepResult.Ok());
+        }
+
+        return Task.FromResult(StepResult.Terminal(
+            DistroInstallPathPolicy.WithLegacyReplacementGuidance(ctx.DistroName, error)));
+    }
+}
+
 public sealed class CleanupStaleDistroStep : SetupStep
 {
     public override string Id => "cleanup-distro";
@@ -241,7 +265,7 @@ public sealed class CleanupStaleDistroStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        if (!DistroInstallPathPolicy.TryGetInstallPath(ctx.LocalDataDir, distro, out var wslDir, out var pathError))
+        if (!DistroInstallPathPolicy.TryGetManagedInstallPath(ctx.LocalDataDir, distro, out var wslDir, out var pathError))
             return StepResult.Terminal(pathError);
 
         var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
@@ -728,7 +752,7 @@ public sealed class CreateWslInstanceStep : SetupStep
         if (string.IsNullOrWhiteSpace(baseDistro))
             return StepResult.Terminal("BaseDistro is required for fresh WSL gateway setup.");
 
-        if (!DistroInstallPathPolicy.TryGetInstallPath(ctx.LocalDataDir, distro, out var installPath, out var pathError))
+        if (!DistroInstallPathPolicy.TryGetNewInstallPath(ctx.LocalDataDir, distro, out var installPath, out var pathError))
             return StepResult.Terminal(pathError);
 
         ctx.Logger.Info($"Creating clean app-owned WSL distro '{distro}' from '{baseDistro}' at '{installPath}'");
@@ -912,13 +936,13 @@ public sealed class CreateWslInstanceStep : SetupStep
     {
         var distro = ctx.DistroName!;
 
-        // Name-based cleanup can still run when filesystem cleanup is unsafe.
+        if (!DistroInstallPathPolicy.TryGetManagedInstallPath(ctx.LocalDataDir, distro, out var vhdDir, out var pathError))
+            throw new IOException($"[Uninstall] Refusing WSL rollback filesystem cleanup: {pathError}");
+
+        // Unregister before filesystem cleanup so WSL releases the VHD.
         await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
         await Task.Delay(2000, ct); // Let port/VHD locks release
         await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
-
-        if (!DistroInstallPathPolicy.TryGetInstallPath(ctx.LocalDataDir, distro, out var vhdDir, out var pathError))
-            throw new IOException($"[Uninstall] Refusing WSL rollback filesystem cleanup: {pathError}");
 
         // VHD parent dir cleanup (mirrors old uninstall step 5a)
         var localDataPath = ctx.LocalDataDir;
