@@ -72,7 +72,7 @@ public sealed partial class HubWindow : WindowEx
     public string? NodeFullDeviceId { get; set; }
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
-    // Cached gateway data — pages read these on navigation
+    // Cached gateway data - pages read these on navigation
     public SessionInfo[]? LastSessions { get; private set; }
     public ChannelHealth[]? LastChannels { get; private set; }
     public GatewayUsageInfo? LastUsage { get; private set; }
@@ -221,7 +221,7 @@ public sealed partial class HubWindow : WindowEx
         {
             AppNotificationMessageText.Inlines.Add(new Run
             {
-                Text = $" — {notification.Message}"
+                Text = $" - {notification.Message}"
             });
         }
 
@@ -652,7 +652,7 @@ public sealed partial class HubWindow : WindowEx
 
     // Canonical tag of the page currently shown in ContentFrame; tracked here
     // (rather than relying on NavView.SelectedItem) so navigation identity
-    // includes the tag — important for agent-scoped pages where several tags
+    // includes the tag - important for agent-scoped pages where several tags
     // map to the same Page type (e.g. "sessions" vs "agent:main:sessions"
     // both → SessionsPage).
     private string? _currentNavTag;
@@ -670,7 +670,7 @@ public sealed partial class HubWindow : WindowEx
 
     private string NormalizeNavTag(string tag)
     {
-        // Map legacy tags — Home page was retired in favor of the Lobby/Cockpit
+        // Map legacy tags - Home page was retired in favor of the Lobby/Cockpit
         // layout on Connection. Any caller still using "home" or "general"
         // (deep links, persisted nav state, command palette) lands here.
         if (tag == "home" || tag == "general") return "connection";
@@ -982,7 +982,7 @@ public sealed partial class HubWindow : WindowEx
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         // Skip when the selection was set programmatically by
-        // OnContentFrameNavigated reflecting a Back/Forward — the page
+        // OnContentFrameNavigated reflecting a Back/Forward - the page
         // is already showing and re-running NavigateInternal would push
         // a duplicate back-stack entry.
         if (_syncingNavSelection) return;
@@ -1095,7 +1095,7 @@ public sealed partial class HubWindow : WindowEx
         if (settings.HubNavPaneOpen == newState) return;
         settings.HubNavPaneOpen = newState;
         // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-        try { settings.Save(); } catch { /* swallow — don't block UI */ }
+        try { settings.Save(); } catch { /* swallow - don't block UI */ }
     }
 
     private void InitializeCurrentPage()
@@ -1217,7 +1217,7 @@ public sealed partial class HubWindow : WindowEx
         return parts.Length >= 2 ? parts[1] : "main";
     }
 
-    // ── Command Search (Ctrl+E / Ctrl+K / Ctrl+F) — title bar AutoSuggestBox ──
+    // ── Command Search (Ctrl+E / Ctrl+K / Ctrl+F) - title bar AutoSuggestBox ──
 
     private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
@@ -1283,7 +1283,7 @@ public sealed partial class HubWindow : WindowEx
         }
         else if (sender.ItemsSource is List<CommandItem> items && items.Count > 0)
         {
-            // Enter pressed without selecting — execute first match
+            // Enter pressed without selecting - execute first match
             var first = items[0];
             sender.Text = "";
             sender.ItemsSource = null;
@@ -1402,7 +1402,7 @@ public sealed partial class HubWindow : WindowEx
     // brush so it auto-adapts to every HC variant (HC Black/White/#1/#2); our
     // multi-color SVGs don't, so we swap them out at construction. This mirrors
     // the original gray Segoe Fluent Icons that were here before the colorful
-    // refresh — same glyphs as those Windows users learned in earlier builds.
+    // refresh - same glyphs as those Windows users learned in earlier builds.
     private static readonly Dictionary<string, string> s_highContrastGlyphFallback = new()
     {
         { "chat",        "\uE8BD" },

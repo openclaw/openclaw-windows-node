@@ -189,7 +189,7 @@ public sealed class OpenClawChatRoot : Component
             {
                 setSnapshot(e.Snapshot);
                 // The debounce must clear only when the new snapshot is evidence
-                // that the send round-trip has progressed for the compose key —
+                // that the send round-trip has progressed for the compose key -
                 // either the optimistic user entry landed (Timelines has it) or
                 // an error event ended the turn. Clearing on every snapshot
                 // (presence, models, status, channel health …) would re-enable
@@ -260,7 +260,7 @@ public sealed class OpenClawChatRoot : Component
         // compose target (gateway connected + handshake snapshot resolved),
         // synthesize a transient compose-only ChatThread so the composer is
         // visible from the welcome screen. The synthetic thread's Id is the
-        // canonical compose key — so when the gateway materializes the session
+        // canonical compose key - so when the gateway materializes the session
         // and SessionsUpdated arrives, Threads contains a real entry with the
         // same Id and `selectedThread` resolves to it on the next render
         // without any re-keying or migration.
@@ -291,7 +291,7 @@ public sealed class OpenClawChatRoot : Component
         var effectiveThread = selectedThread ?? composeOnlyThread;
 
         // Lazy-load history the first time a real (materialized) thread is
-        // selected. Don't fire for the compose-only synthetic thread — it
+        // selected. Don't fire for the compose-only synthetic thread - it
         // doesn't exist server-side yet, so chat.history would 404.
         if (selectedThread is not null && _provider is OpenClawChatDataProvider native)
         {
@@ -332,7 +332,7 @@ public sealed class OpenClawChatRoot : Component
                 ? "connecting"
                 : "disconnected";
 
-        // Header & divider intentionally hidden — the surrounding chrome
+        // Header & divider intentionally hidden - the surrounding chrome
         // (NavigationView page or tray popup TitleBar) already shows the
         // session title; the in-chat header just duplicates it.
         Element header = Empty();
@@ -379,16 +379,16 @@ public sealed class OpenClawChatRoot : Component
         // Production zero-state: triggered when a thread is selected
         // but has no messages yet (true "empty conversation"). We only
         // surface the welcome zero-state once we're confident the
-        // conversation is genuinely empty — i.e. either the thread is
+        // conversation is genuinely empty - i.e. either the thread is
         // the synthetic compose-only thread (fresh install, no real
         // session yet) or `chat.history` has actually completed
         // (timeline.HistoryLoaded). For a real session whose history is
         // still being fetched, fall back to the reconnecting view so
         // the welcome screen doesn't flicker on top of an as-yet
         // unloaded timeline. See OpenClawChatDataProvider.HistoryLoaded
-        // — set to true only inside LoadHistoryAsync's rebuild.
+        // - set to true only inside LoadHistoryAsync's rebuild.
         // Note: `pendingPermissionOverride is null` is now redundant for
-        // live data — the reducer's ApplyPermissionRequest pushes a
+        // live data - the reducer's ApplyPermissionRequest pushes a
         // PermissionRequest timeline entry whenever PendingPermission is
         // set, so `entries.Count > 0` already covers that case.
         var isEmptyConversation = entries.Count == 0
@@ -405,13 +405,13 @@ public sealed class OpenClawChatRoot : Component
         // one for a returning user) never flashes the suggestion buttons.
         //
         // Two distinct paths qualify for welcome:
-        //   1. Fresh install — the synthetic compose-only thread is selected
+        //   1. Fresh install - the synthetic compose-only thread is selected
         //      AND the snapshot truly has no real threads yet. If real
         //      threads exist but the compose-only thread is *briefly*
         //      selected during a session-switch race, we explicitly do NOT
-        //      qualify — that's the case that previously flashed welcome
+        //      qualify - that's the case that previously flashed welcome
         //      on returning users.
-        //   2. Returning user with an empty real session — a real thread is
+        //   2. Returning user with an empty real session - a real thread is
         //      selected and its history has fully loaded (HistoryLoaded=true)
         //      but contains zero messages.
         var hasRealThreads = snapshot.Threads.Length > 0;
@@ -428,8 +428,8 @@ public sealed class OpenClawChatRoot : Component
         // appear empty, ComposeTarget becomes ready, and the synthetic
         // compose-only thread otherwise tricks the renderer into showing the
         // suggestion buttons before the real session list lands. Fresh-
-        // install users still see the welcome screen — just ~800ms after
-        // connect — which is still well within perceived "loading" time.
+        // install users still see the welcome screen - just ~800ms after
+        // connect - which is still well within perceived "loading" time.
         // 800ms (up from 300ms) absorbs gateway sequences where an empty
         // sessions.list precedes the populated one by several hundred ms.
         var welcomeSettledState = UseState<bool>(false);
@@ -529,7 +529,7 @@ public sealed class OpenClawChatRoot : Component
                 OnPermissionResponse: (rid, action) => OnPermission(effectiveThread.Id!, rid, action)));
         }
 
-        // Session list for the composer dropdown — grouped by agent, keyed by
+        // Session list for the composer dropdown - grouped by agent, keyed by
         // ID so every session gets its own entry regardless of display name.
         // Exclude cron sessions which are automated/background.
         var channelGroups = SessionVisibilityFilter.VisibleChatPickerThreads(snapshot.Threads)
@@ -655,7 +655,7 @@ public sealed class OpenClawChatRoot : Component
     }
 
     // Cheap allocation-free probe for "does any group contain a session with
-    // the given id?" — avoids the LINQ Any().Any() allocation in the render
+    // the given id?" - avoids the LINQ Any().Any() allocation in the render
     // hot path.
     private static bool ChannelGroupsContain(ChannelGroup[] groups, string id)
     {
@@ -686,7 +686,7 @@ public sealed class OpenClawChatRoot : Component
     {
         // Two-tier palette: a softer "bubble" fill and a marginally stronger
         // "text line" stripe so each bubble reads as a real message with
-        // text inside. Both lean subtle — the line alpha is ~20%, the bubble
+        // text inside. Both lean subtle - the line alpha is ~20%, the bubble
         // ~22%, so the placeholders read on light/dark/acrylic without
         // competing with the real timeline's visual weight.
         var bubbleBrush = (Microsoft.UI.Xaml.Media.Brush)new Microsoft.UI.Xaml.Media.SolidColorBrush(
@@ -820,7 +820,7 @@ public sealed class OpenClawChatRoot : Component
     }
 
     /// <summary>
-    /// Unified zero-state for the chat surface — shown when there is no
+    /// Unified zero-state for the chat surface - shown when there is no
     /// thread selected OR the selected thread has no messages yet. Renders
     /// the app icon, a welcome message, and three prompt suggestions that
     /// invoke <paramref name="onSuggestionPicked"/> when clicked. The caller

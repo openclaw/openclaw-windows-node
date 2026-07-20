@@ -56,7 +56,7 @@ public sealed partial class UsagePage : Page
         // A non-null client may still be disconnected (e.g. WebSocket reconnecting).
         // The underlying RequestUsage*/RequestUsageCost*/RequestUsageStatus calls
         // silently no-op when !IsConnectedToGateway, so without this check the
-        // page would spin its progress rings forever — see user reports of
+        // page would spin its progress rings forever - see user reports of
         // "page not loading, no values".
         if (client == null || !client.IsConnectedToGateway)
         {
@@ -72,7 +72,7 @@ public sealed partial class UsagePage : Page
         // Apply cached data immediately, then request fresh.
         if (_appState?.Usage != null) UpdateUsage(_appState.Usage);
         // Only apply cached cost data when its period matches the current
-        // selection — otherwise the daily list briefly shows e.g. 30-day
+        // selection - otherwise the daily list briefly shows e.g. 30-day
         // data while the selector reads "7 Days".
         if (_appState?.UsageCost != null && ShouldApplyUsageCost(_appState.UsageCost))
         {
@@ -192,7 +192,7 @@ public sealed partial class UsagePage : Page
         RequestCountText.Text = usage.RequestCount.ToString();
         // Note: TotalCostText and TokenCountText are owned by UpdateUsageCost
         // (period-scoped), not UpdateUsage (all-time). Writing them from both
-        // sources caused a race where the last response to arrive won — see
+        // sources caused a race where the last response to arrive won - see
         // Hanselman review #1 (HIGH).
     }
 
@@ -282,8 +282,8 @@ public sealed partial class UsagePage : Page
         _currentPeriodDays = days;
         _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
         DailyListView.ItemsSource = null;
-        TotalCostText.Text = "—";
-        TokenCountText.Text = "—";
+        TotalCostText.Text = "-";
+        TokenCountText.Text = "-";
         _dailyCostLoading.BeginInitialRefresh();
         UpdateDailyCostLoadingVisuals();
 

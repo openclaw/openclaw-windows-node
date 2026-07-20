@@ -77,7 +77,7 @@ public static class DiagnosticsJsonlService
         catch (NotSupportedException ex)
         {
             // Serialization failure is the only thing we want to surface from
-            // the calling thread — record IS untrusted (caller-supplied).
+            // the calling thread - record IS untrusted (caller-supplied).
             Logger.Warn($"Diagnostics JSONL record was not serializable: {ex.Message}");
         }
     }

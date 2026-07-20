@@ -6,7 +6,7 @@
     xmlns:winex="using:WinUIEx"
     Title="OpenClaw Chat">
 
-    <!-- SystemBackdrop is set in code-behind. Do NOT set it here in XAML —
+    <!-- SystemBackdrop is set in code-behind. Do NOT set it here in XAML -
          the XAML value would override the code-behind set on first paint. -->
 
     <Grid>

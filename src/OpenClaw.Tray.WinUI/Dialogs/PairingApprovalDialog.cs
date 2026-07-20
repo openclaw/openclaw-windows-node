@@ -215,7 +215,7 @@ public sealed class PairingApprovalDialog : WindowEx
         var current = _coordinator.Current;
         if (current.Count == 0)
         {
-            // Nothing left to decide — close.
+            // Nothing left to decide - close.
             Close();
             return;
         }
@@ -237,7 +237,7 @@ public sealed class PairingApprovalDialog : WindowEx
 
         // If the request at the front of the queue hasn't changed (an unrelated
         // list refresh arrived), do NOT rebuild the card, reset the in-flight
-        // decision guard, or re-arm the approve delay — that would let a second
+        // decision guard, or re-arm the approve delay - that would let a second
         // click through while a decision is still in flight for this same request.
         if (!keyChanged)
             return;
@@ -257,7 +257,7 @@ public sealed class PairingApprovalDialog : WindowEx
         _bodyPanel.Children.Clear();
         _bodyPanel.Children.Add(BuildDetailCard(approval));
 
-        // Fresh request — reset interaction state and re-arm the approve guard.
+        // Fresh request - reset interaction state and re-arm the approve guard.
         _busy = false;
         _rejectButton.IsEnabled = true;
         _laterButton.IsEnabled = true;
@@ -418,14 +418,14 @@ public sealed class PairingApprovalDialog : WindowEx
 
         // The window may have closed (disconnect -> Reset -> Close) or the queue may have advanced
         // to a different request while the RPC was in flight. Only touch UI if we're still on a live
-        // window showing the same request — otherwise this stale continuation must not mutate state.
+        // window showing the same request - otherwise this stale continuation must not mutate state.
         if (IsClosed || !string.Equals(_currentKey, decisionKey, StringComparison.Ordinal))
             return;
 
         if (!ok)
         {
             // Re-enable the secondary actions and RE-ARM the approve guard (don't force-enable
-            // Approve — that would defeat the anti-clickthrough delay on the retry).
+            // Approve - that would defeat the anti-clickthrough delay on the retry).
             _busy = false;
             _rejectButton.IsEnabled = true;
             _laterButton.IsEnabled = true;

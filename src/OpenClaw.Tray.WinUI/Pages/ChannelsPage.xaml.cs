@@ -21,7 +21,7 @@ using Windows.Storage.Streams;
 namespace OpenClawTray.Pages;
 
 /// <summary>
-/// Channels page — single-column Expander layout. See <c>ChannelsPage.xaml</c>
+/// Channels page - single-column Expander layout. See <c>ChannelsPage.xaml</c>
 /// for the architectural comment. Data flows from the gateway's
 /// <c>channels.status</c> response → <see cref="ChannelsStatusSnapshot"/> →
 /// <see cref="ChannelRecord"/>s → Expander cards built imperatively below.
@@ -38,7 +38,7 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// When we last received a snapshot from the gateway. The snapshot itself
     /// lives on <see cref="AppState.ChannelsSnapshot"/> so other surfaces can
-    /// observe it — only the receive-timestamp is page-local because
+    /// observe it - only the receive-timestamp is page-local because
     /// <see cref="ChannelsAggregator"/> needs it to stamp records.
     /// </summary>
     private DateTime _latestSnapshotAt;
@@ -47,7 +47,7 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// Atomic config-cache snapshot (root + baseHash bundled). Replaced
     /// wholesale by <see cref="CaptureConfigSnapshot"/> so callers can read
-    /// a single field and get a consistent pair — see Hanselman review
+    /// a single field and get a consistent pair - see Hanselman review
     /// HIGH-2: reading root and baseHash as two separate fields opens a
     /// TOCTOU window where a fresh config.get can advance baseHash while
     /// the patch is still being built from the older root, letting the
@@ -95,7 +95,7 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// True when the pending banner is from a control action (Start/Stop/Logout)
     /// rather than a config Save. Render() must NOT rewrite the banner title to
-    /// "is running" or clear cached form values for action banners — that's
+    /// "is running" or clear cached form values for action banners - that's
     /// only correct for Save flows where the form was just submitted.
     /// </summary>
     private bool _pendingBannerIsAction;
@@ -103,7 +103,7 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// Gates concurrent refreshes so a burst of channel-health pushes plus a user
     /// click don't trigger overlapping <c>channels.status</c> requests. The CTS
-    /// only suppresses stale UI updates — the semaphore prevents duplicate calls.
+    /// only suppresses stale UI updates - the semaphore prevents duplicate calls.
     /// </summary>
     private readonly System.Threading.SemaphoreSlim _refreshGate = new(1, 1);
 
@@ -134,7 +134,7 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// Toggle both <see cref="InfoBar.IsOpen"/> and <see cref="UIElement.Visibility"/>
     /// in lock-step. WinUI's <c>InfoBar.IsOpen=false</c> only collapses the
-    /// bar's internal content — the control element itself stays Visible,
+    /// bar's internal content - the control element itself stays Visible,
     /// so the parent <c>StackPanel</c> keeps applying its 16-px Spacing
     /// around the (empty) bar. Stacking four conditional bars that way
     /// leaves a ~60–80 px gap below the header when nothing is open.
@@ -167,7 +167,7 @@ public sealed partial class ChannelsPage : Page
     }
 
     /// <summary>
-    /// Hook from <c>HubWindow.InitializeCurrentPage</c> — subscribes to
+    /// Hook from <c>HubWindow.InitializeCurrentPage</c> - subscribes to
     /// <see cref="AppState"/> and triggers an initial <c>channels.status</c> fetch.
     /// </summary>
     public void Initialize()
@@ -192,7 +192,7 @@ public sealed partial class ChannelsPage : Page
 
         _ = RefreshAsync();
 
-        // Warm the config cache. Required by SaveAsync — the gateway only
+        // Warm the config cache. Required by SaveAsync - the gateway only
         // accepts full-config patches, so we need the current config + baseHash
         // before we can write channel credentials.
         if (CurrentApp.GatewayClient != null)
@@ -202,13 +202,13 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// React to <see cref="AppState"/> updates. Three properties matter:
     /// <list type="bullet">
-    /// <item><see cref="AppState.ChannelsSnapshot"/> — the rich snapshot
+    /// <item><see cref="AppState.ChannelsSnapshot"/> - the rich snapshot
     /// (Updated by us after a <c>channels.status</c> fetch; other surfaces
     /// may write to it too). Re-render directly.</item>
-    /// <item><see cref="AppState.Channels"/> — slim per-event health array
+    /// <item><see cref="AppState.Channels"/> - slim per-event health array
     /// pushed by the gateway. Signals something changed; refresh the rich
     /// snapshot to keep metadata current.</item>
-    /// <item><see cref="AppState.Config"/> — full gateway config snapshot
+    /// <item><see cref="AppState.Config"/> - full gateway config snapshot
     /// (required by SaveAsync to build atomic config.patch payloads).
     /// Unwrap into <see cref="_configSnapshot"/> (an atomic record bundling
     /// the unwrapped root + baseHash so they can't desync)
@@ -240,7 +240,7 @@ public sealed partial class ChannelsPage : Page
     /// follows the same chain ConfigPage uses: prefer the gateway's
     /// <c>baseHash</c> field, fall back to <c>hash</c>, fall back to
     /// SHA256(raw). Publishes the (root, baseHash) pair atomically by
-    /// replacing the single <see cref="_configSnapshot"/> field — readers
+    /// replacing the single <see cref="_configSnapshot"/> field - readers
     /// never see a torn write.
     /// </summary>
     private void CaptureConfigSnapshot(JsonElement envelope)
@@ -289,7 +289,7 @@ public sealed partial class ChannelsPage : Page
     /// <item>If a load is already in flight → await THAT load's TCS
     /// (never overwrite it). Multiple concurrent saves share one fetch.</item>
     /// <item>Otherwise start a new fetch, store the TCS, fire the request.</item>
-    /// <item>After the timeout, re-check the cache directly — another path
+    /// <item>After the timeout, re-check the cache directly - another path
     /// (the page-warm fetch in Initialize, a parallel save, an unrelated
     /// gateway push) may have populated it while our TCS was racing.</item>
     /// </list>
@@ -345,7 +345,7 @@ public sealed partial class ChannelsPage : Page
             catch (Exception ex) { Logger.Debug($"ChannelsPage: prior refresh cts cancel/dispose failed: {ex.Message}"); }
         }
 
-        // Coalesce concurrent calls (user clicks + push deltas) — only one
+        // Coalesce concurrent calls (user clicks + push deltas) - only one
         // gateway request in flight at a time. If we can't acquire immediately,
         // skip: the in-flight call will reflect the latest state shortly.
         if (!await _refreshGate.WaitAsync(0))
@@ -365,7 +365,7 @@ public sealed partial class ChannelsPage : Page
             }
             SetInfoBarOpen(ErrorBar, false);
             _latestSnapshotAt = DateTime.UtcNow;
-            // Publish into AppState — single source of truth. Setting the
+            // Publish into AppState - single source of truth. Setting the
             // property fires PropertyChanged which calls Render via
             // OnAppStateChanged; no need to call Render directly here.
             if (_appState != null)
@@ -375,7 +375,7 @@ public sealed partial class ChannelsPage : Page
         }
         finally
         {
-            // Always re-enable the button — OnUnloaded also calls SetRefreshBusy(false)
+            // Always re-enable the button - OnUnloaded also calls SetRefreshBusy(false)
             // as a belt-and-braces for the cancel-during-cancel race.
             SetRefreshBusy(false);
             _refreshGate.Release();
@@ -391,7 +391,7 @@ public sealed partial class ChannelsPage : Page
     {
         // Always allow the built-in fallback. Reasoning: showing the user
         // common channels they can attempt to set up is more useful than
-        // honest emptiness — when their gateway truly doesn't support a
+        // honest emptiness - when their gateway truly doesn't support a
         // channel, the inline form / Show QR error path will surface the
         // failure with a real diagnostic. Empty-page-when-connected is the
         // worst of both worlds: no path forward AND no error to act on.
@@ -440,7 +440,7 @@ public sealed partial class ChannelsPage : Page
         // The "upgrade to 'is running'" path is ONLY safe for Save-flow banners.
         // For control-action banners (Stop/Start/Logout) the title is already
         // truthful ("X stopped", "X starting…") and rewriting it would lie about
-        // state — especially after Stop, where the override would say "is running"
+        // state - especially after Stop, where the override would say "is running"
         // and additionally wipe the user's cached form drafts.
         if (_pendingSaveBanner is { } pending)
         {
@@ -451,7 +451,7 @@ public sealed partial class ChannelsPage : Page
                 // configured/running. Don't lie about it.
                 SaveBanner.Severity = InfoBarSeverity.Warning;
                 SaveBanner.Title = $"{pending.ChannelId}: config saved, but not running yet";
-                SaveBanner.Message = "The gateway accepted the settings but didn't start the channel. Expand the channel below — the Status section and the diagnostic disclosure will show why.";
+                SaveBanner.Message = "The gateway accepted the settings but didn't start the channel. Expand the channel below - the Status section and the diagnostic disclosure will show why.";
             }
             else if (!_pendingBannerIsAction && pending.Severity == InfoBarSeverity.Success && record != null && record.IsConfigured)
             {
@@ -479,7 +479,7 @@ public sealed partial class ChannelsPage : Page
                 ? "this gateway didn't report any channels"
                 : "connect to a gateway to see what channels are available")
             : (connected && !gatewayReportedSomething
-                ? $"showing {records.Count} common channels (your gateway didn't list any — some may not work)"
+                ? $"showing {records.Count} common channels (your gateway didn't list any - some may not work)"
                 : $"{configured.Count} configured · {available.Count} available to add");
     }
 
@@ -492,7 +492,7 @@ public sealed partial class ChannelsPage : Page
         var header = BuildHeader(record, dotBrushKey, badgeText, badgeSeverity, subtitles);
         var body = BuildBody(record);
 
-        // Symmetric 24 px horizontal padding — matches the Fluent 2 page
+        // Symmetric 24 px horizontal padding - matches the Fluent 2 page
         // gutter and the design-skill tokens.md "card padding" norm.
         //
         // Vertical padding scales with how "rich" the card is:
@@ -529,7 +529,7 @@ public sealed partial class ChannelsPage : Page
         // ──────────────────────────────────────────────────────────────────
         // WinUI Expander template gotcha
         // ──────────────────────────────────────────────────────────────────
-        // Setting `Expander.Padding` ONLY pads the expanded body content —
+        // Setting `Expander.Padding` ONLY pads the expanded body content -
         // it does NOT touch the always-visible header. The template's
         // ExpanderHeader uses two theme resources baked into its setters:
         //
@@ -546,7 +546,7 @@ public sealed partial class ChannelsPage : Page
         // here: the template setter resolves the ThemeResource lookup
         // when the style/template is applied (control loaded), which
         // happens before / outside the visual subtree where our local
-        // Resources are visible. Verified empirically in this codebase —
+        // Resources are visible. Verified empirically in this codebase -
         // overriding via Resources left the card pixel-identical.
         //
         // The robust fix is to apply Margin to the header element
@@ -576,7 +576,7 @@ public sealed partial class ChannelsPage : Page
         // For compact (unconfigured) cards we scale down to keep the
         // intentional "this is just a discoverability suggestion"
         // asymmetry from the original design: Margin=14 lands ~24/21
-        // visible — close to the originally-intended 24/24 once the
+        // visible - close to the originally-intended 24/24 once the
         // template overhead is accounted for.
         var headerVPadding = isRichRow ? 20.0 : 14.0;
         header.Margin = new Thickness(0, headerVPadding, 0, headerVPadding);
@@ -601,7 +601,7 @@ public sealed partial class ChannelsPage : Page
         //   Col 1: title + subtitle stack (1*)
         //
         // The expand chevron is rendered by the Expander template at the
-        // right edge — outside our Grid.
+        // right edge - outside our Grid.
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -692,7 +692,7 @@ public sealed partial class ChannelsPage : Page
             // Pill: CornerRadius must equal at least half the rendered height
             // for full half-circle ends. Setting MinHeight and matching the
             // radius keeps the shape consistent regardless of the inner
-            // TextBlock's font metrics on different DPIs — relying on
+            // TextBlock's font metrics on different DPIs - relying on
             // CornerRadius=999 alone was getting rendered as a soft-rounded
             // rectangle on Win11 (radius clamped against the bar's actual
             // measured height which is shorter than expected for small text).
@@ -704,7 +704,7 @@ public sealed partial class ChannelsPage : Page
             {
                 Text = text,
                 // FontSize=11 is an intentional exception to tokens.md's
-                // 12 px minimum — this is a status chip, not body text, and
+                // 12 px minimum - this is a status chip, not body text, and
                 // FontSize=12 makes the pill visually chunky against the
                 // surrounding 14 px text. Keep the override here only.
                 FontSize = 11,
@@ -717,10 +717,10 @@ public sealed partial class ChannelsPage : Page
 
     private Button BuildHeaderActionButton(string glyph, string label, string? tag, Func<string?, Task> handler)
     {
-        // Real WinUI command button — not a caption-sized chip. Specs from
+        // Real WinUI command button - not a caption-sized chip. Specs from
         // the Fluent critique: MinHeight=32 (standard control height),
-        // 16 px icon (legible — was 12), BodyTextBlockStyle for the label
-        // (looks tappable — caption made it read as inline metadata),
+        // 16 px icon (legible - was 12), BodyTextBlockStyle for the label
+        // (looks tappable - caption made it read as inline metadata),
         // 12 px horizontal padding (matches default Button rhythm).
         var btn = new Button
         {
@@ -745,7 +745,7 @@ public sealed partial class ChannelsPage : Page
         });
         btn.Content = stack;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(btn, label);
-        // Reentrancy guard — disable the button while the async handler runs
+        // Reentrancy guard - disable the button while the async handler runs
         // so a rapid double-click can't send duplicate gateway commands (or,
         // for handlers that show a ContentDialog, crash with COMException
         // because WinUI doesn't allow two simultaneous ShowAsync calls).
@@ -786,7 +786,7 @@ public sealed partial class ChannelsPage : Page
             return stack;
         }
 
-        // CONTROLS section — every state-changing action for configured
+        // CONTROLS section - every state-changing action for configured
         // channels lives here, at the TOP of the body. Header has no
         // action buttons; the chevron is the only header-level
         // affordance. This gives every card the same mental model:
@@ -795,7 +795,7 @@ public sealed partial class ChannelsPage : Page
         if (controls != null)
             stack.Children.Add(controls);
 
-        // Getting started — only for unconfigured channels. The user doesn't
+        // Getting started - only for unconfigured channels. The user doesn't
         // need to read setup instructions for something that's already running.
         if (!record.IsConfigured)
         {
@@ -809,11 +809,11 @@ public sealed partial class ChannelsPage : Page
         // value grid inside the expander body, regardless of configured
         // state.
 
-        // Linking section (WhatsApp/Signal) — body is built lazily when the user opens the section.
+        // Linking section (WhatsApp/Signal) - body is built lazily when the user opens the section.
         if (record.Capabilities.HasFlag(ChannelCapabilities.CanShowQr))
             stack.Children.Add(BuildLinkingPlaceholder(record));
 
-        // Configuration section — inline credential form for channels we have
+        // Configuration section - inline credential form for channels we have
         // explicit field definitions for (Telegram/Discord bot tokens,
         // Slack tokens, Google Chat webhook, Nostr key/relays).
         //
@@ -826,7 +826,7 @@ public sealed partial class ChannelsPage : Page
         stack.Children.Add(BuildSection(configSectionTitle, inlineForm));
 
         // "Install plugin on your gateway" panel. Hidden entirely when the
-        // channel is already running — if it's up, the plugin is provably
+        // channel is already running - if it's up, the plugin is provably
         // loaded and showing install instructions is misleading. Shown for
         // unconfigured channels (plugin state unknown) AND for configured-
         // but-not-running channels (missing plugin is one likely cause).
@@ -837,7 +837,7 @@ public sealed partial class ChannelsPage : Page
     }
 
     /// <summary>
-    /// CONTROLS section — every state-changing action for the channel,
+    /// CONTROLS section - every state-changing action for the channel,
     /// grouped at the top of the expanded body. Returns null for
     /// unconfigured channels (nothing meaningful to "control" yet) and
     /// for channels with no applicable actions.
@@ -862,7 +862,7 @@ public sealed partial class ChannelsPage : Page
 
         var stack = new StackPanel { Spacing = 8 };
 
-        // Caption explains the action set at a glance — what's the
+        // Caption explains the action set at a glance - what's the
         // lightweight option vs the destructive one. Keeps users from
         // accidentally clicking Disconnect when they meant Stop.
         string caption;
@@ -914,7 +914,7 @@ public sealed partial class ChannelsPage : Page
                 MinHeight = 32,
                 Padding = new Thickness(12, 5, 12, 5),
             };
-            // Reentrancy guard — see BuildHeaderActionButton for rationale.
+            // Reentrancy guard - see BuildHeaderActionButton for rationale.
             stopBtn.Click += async (_, _) =>
             {
                 if (!stopBtn.IsEnabled) return;
@@ -926,7 +926,7 @@ public sealed partial class ChannelsPage : Page
         }
 
         // QR channels: Logout = unlink the device (lightweight, can re-scan QR).
-        // Non-QR channels: Logout = clear credentials (destructive — label says so).
+        // Non-QR channels: Logout = clear credentials (destructive - label says so).
         if (hasLogout && isQr)
         {
             buttonRow.Children.Add(BuildHeaderActionButton(FluentIconCatalog.ChannelLogout, LocalizationHelper.GetString("ChannelsPage_Logout"), record.Id, channelId => LogoutAsync(channelId!, isQr: true)));
@@ -939,7 +939,7 @@ public sealed partial class ChannelsPage : Page
                 MinHeight = 32,
                 Padding = new Thickness(12, 5, 12, 5),
             };
-            // Reentrancy guard is especially important here — LogoutAsync shows
+            // Reentrancy guard is especially important here - LogoutAsync shows
             // a ContentDialog, and WinUI throws COMException if a second
             // ShowAsync starts before the first closes.
             disconnectBtn.Click += async (_, _) =>
@@ -1057,7 +1057,7 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// External help URL for each channel. Where the credentials come from a
     /// phone app (WhatsApp / Signal) we point at the canonical "Linked devices"
-    /// help page — useful when the user doesn't know where the toggle lives.
+    /// help page - useful when the user doesn't know where the toggle lives.
     /// Where the channel is Windows-incompatible (iMessage) we link to a doc
     /// explaining why.
     /// </summary>
@@ -1077,7 +1077,7 @@ public sealed partial class ChannelsPage : Page
 
     /// <summary>
     /// Channel-specific setup content. Returns (null, null) for channels we
-    /// don't have explicit guidance for — the generic Configuration section
+    /// don't have explicit guidance for - the generic Configuration section
     /// still renders, so plugin channels aren't left without any signposting.
     /// </summary>
     private static (string? Headline, string[]? Steps) ResolveSetupGuide(string channelId) =>
@@ -1161,7 +1161,7 @@ public sealed partial class ChannelsPage : Page
     /// gateway test fixtures (src/cli/config-cli.test.ts and related tests
     /// confirm channels.telegram.botToken, channels.slack.botToken/signingSecret,
     /// channels.discord.token, etc.). Returns null for channels without an
-    /// inline form — those still get the "Open Config page" stub.
+    /// inline form - those still get the "Open Config page" stub.
     /// </summary>
     private static IReadOnlyList<ConfigField>? ResolveConfigFields(string channelId) =>
         channelId.ToLowerInvariant() switch
@@ -1236,7 +1236,7 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// Build the Configuration body for a channel. For channels in
     /// <see cref="ResolveConfigFields"/> we render an inline form that writes
-    /// directly to the gateway via <c>config.set</c> — no Config page detour.
+    /// directly to the gateway via <c>config.set</c> - no Config page detour.
     /// For unknown channels we fall back to the generic "Open Config page" stub.
     /// </summary>
     private FrameworkElement BuildInlineConfigForm(ChannelRecord record)
@@ -1246,7 +1246,7 @@ public sealed partial class ChannelsPage : Page
 
         var stack = new StackPanel { Spacing = 10 };
 
-        // Cached form state for THIS channel — survives the Expander rebuild
+        // Cached form state for THIS channel - survives the Expander rebuild
         // that fires after every snapshot refresh (Save → Refresh → Render →
         // new Expander instance). Without this the user's typed token vanishes.
         if (!_formValuesByChannel.TryGetValue(record.Id, out var cached))
@@ -1255,7 +1255,7 @@ public sealed partial class ChannelsPage : Page
             _formValuesByChannel[record.Id] = cached;
         }
 
-        // Field inputs — track the FrameworkElement (TextBox / PasswordBox) so
+        // Field inputs - track the FrameworkElement (TextBox / PasswordBox) so
         // Save can read the value and validate "required".
         var inputs = new Dictionary<string, FrameworkElement>();
 
@@ -1353,7 +1353,7 @@ public sealed partial class ChannelsPage : Page
 
         async Task SaveAsync()
         {
-            // This is a Save flow — let Render upgrade the success banner to
+            // This is a Save flow - let Render upgrade the success banner to
             // "is running" / "config saved, but not running yet" and clear
             // cached form drafts on success.
             _pendingBannerIsAction = false;
@@ -1422,8 +1422,8 @@ public sealed partial class ChannelsPage : Page
                 var configForThisSave = _configSnapshot;
                 if (!configForThisSave.HasRoot)
                 {
-                    // Shouldn't happen — EnsureConfigLoadedAsync only returns
-                    // true when the snapshot is populated — but defend
+                    // Shouldn't happen - EnsureConfigLoadedAsync only returns
+                    // true when the snapshot is populated - but defend
                     // against a race where the snapshot was reset between
                     // the load returning and this read.
                     _pendingSaveBanner = (record.Id, LocalizationHelper.GetString("ChannelsPage_BannerCantLoadConfigTitle"),
@@ -1479,7 +1479,7 @@ public sealed partial class ChannelsPage : Page
                     InfoBarSeverity.Success);
                 ApplyPendingSaveBanner();
                 // Invalidate the snapshot so a rapid second save MUST wait
-                // for a fresh baseHash — protects against silent clobber in
+                // for a fresh baseHash - protects against silent clobber in
                 // the baseHash-null case (Hanselman review HIGH-2 follow-on).
                 // The fresh config.get below will repopulate the snapshot.
                 _configSnapshot = ConfigSnapshot.Empty;
@@ -1667,7 +1667,7 @@ public sealed partial class ChannelsPage : Page
             Visibility = Visibility.Collapsed,
         };
 
-        // Initial message is a call-to-action, not "scan this QR" — the QR
+        // Initial message is a call-to-action, not "scan this QR" - the QR
         // doesn't exist yet. RenderQrAsync (and the success path) replace this
         // text with the real instructions once a QR is on screen.
         var messageBlock = new TextBlock
@@ -1678,7 +1678,7 @@ public sealed partial class ChannelsPage : Page
             TextWrapping = TextWrapping.Wrap,
         };
 
-        // Collapsed diagnostic detail — populated by StartLinkingAsync when a
+        // Collapsed diagnostic detail - populated by StartLinkingAsync when a
         // call fails so the user can see exactly what the gateway said
         // instead of just our paraphrased error message.
         var diagnostic = new Expander
@@ -1707,7 +1707,7 @@ public sealed partial class ChannelsPage : Page
         buttonsRow.Children.Add(showQrBtn);
         buttonsRow.Children.Add(relinkBtn);
 
-        // Collapsed recovery affordance — populated by StartLinkingAsync only when
+        // Collapsed recovery affordance - populated by StartLinkingAsync only when
         // the gateway reports it has no web-login provider loaded for this channel
         // (issue #957). Distinct from the raw diagnostic: this is the actionable,
         // plain-language "here's how to fix it on your gateway host" panel.
@@ -1780,7 +1780,7 @@ public sealed partial class ChannelsPage : Page
         // Local helper: render the actionable "your gateway has no web-login
         // provider loaded" recovery panel (issue #957). This is a gateway-host
         // provider/plugin state we can't fix from the tray, so we show the exact
-        // CLI command to run on the gateway host plus a Copy button — mirroring
+        // CLI command to run on the gateway host plus a Copy button - mirroring
         // BuildInstallPluginPanel's affordance.
         void ShowProviderRecovery()
         {
@@ -1788,7 +1788,7 @@ public sealed partial class ChannelsPage : Page
 
             recoveryPanel.Children.Add(new TextBlock
             {
-                Text = $"Your gateway can't start {channelId} QR linking yet — it doesn't have the {channelId} web-login provider loaded. Web/QR linking runs on the machine that hosts your gateway, so this is fixed there, not in the tray.",
+                Text = $"Your gateway can't start {channelId} QR linking yet - it doesn't have the {channelId} web-login provider loaded. Web/QR linking runs on the machine that hosts your gateway, so this is fixed there, not in the tray.",
                 TextWrapping = TextWrapping.Wrap,
                 Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
@@ -1853,7 +1853,7 @@ public sealed partial class ChannelsPage : Page
 
             recoveryPanel.Children.Add(new TextBlock
             {
-                Text = $"This gateway version doesn't support QR linking for {channelId} yet. QR/web linking runs on the machine that hosts your gateway — update your gateway to a version that supports web login, then come back and click Show QR again.",
+                Text = $"This gateway version doesn't support QR linking for {channelId} yet. QR/web linking runs on the machine that hosts your gateway - update your gateway to a version that supports web login, then come back and click Show QR again.",
                 TextWrapping = TextWrapping.Wrap,
                 Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
                 Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
@@ -1918,7 +1918,7 @@ public sealed partial class ChannelsPage : Page
                 // loaded for this channel. Show actionable recovery instead of the
                 // relayed internal error as the headline (issue #957). Keep the raw
                 // gateway detail available in the collapsed diagnostic.
-                messageBlock.Text = $"{displayName} linking isn't available on this gateway yet — see how to enable it below.";
+                messageBlock.Text = $"{displayName} linking isn't available on this gateway yet - see how to enable it below.";
                 ShowProviderRecovery();
                 ShowDiagnostic("web.login.start", startParams, start.Error, start.RawResponse);
                 return;
@@ -1927,15 +1927,15 @@ public sealed partial class ChannelsPage : Page
             if (start.LooksLikeWebLoginUnsupported)
             {
                 // Gateway is too old to implement web.login at all. Installing a
-                // plugin wouldn't add the method — guide the user to update the
+                // plugin wouldn't add the method - guide the user to update the
                 // gateway instead.
-                messageBlock.Text = $"{displayName} linking isn't available on this gateway yet — see how to enable it below.";
+                messageBlock.Text = $"{displayName} linking isn't available on this gateway yet - see how to enable it below.";
                 ShowUnsupportedRecovery();
                 ShowDiagnostic("web.login.start", startParams, start.Error, start.RawResponse);
                 return;
             }
 
-            messageBlock.Text = $"Couldn't link {channelId}. The gateway returned an error — see details below.";
+            messageBlock.Text = $"Couldn't link {channelId}. The gateway returned an error - see details below.";
             ShowDiagnostic("web.login.start", startParams, start.Error, start.RawResponse);
             return;
         }
@@ -1950,7 +1950,7 @@ public sealed partial class ChannelsPage : Page
         }
         if (string.IsNullOrEmpty(start.QrDataUrl))
         {
-            // Gateway accepted the call (no Error) but returned no QR — show the
+            // Gateway accepted the call (no Error) but returned no QR - show the
             // raw response so the user can see what it did say.
             qrImage.Visibility = Visibility.Collapsed;
             messageBlock.Text = !string.IsNullOrEmpty(start.Message)
@@ -1974,7 +1974,7 @@ public sealed partial class ChannelsPage : Page
         if (ct.IsCancellationRequested) return;
         if (waitResult == null)
         {
-            messageBlock.Text = "Still waiting — click Show QR again if the code has expired.";
+            messageBlock.Text = "Still waiting - click Show QR again if the code has expired.";
             return;
         }
         if (!string.IsNullOrEmpty(waitResult.Error))
@@ -2001,7 +2001,7 @@ public sealed partial class ChannelsPage : Page
         }
         else
         {
-            messageBlock.Text = "Still waiting — click Show QR again if the code has expired.";
+            messageBlock.Text = "Still waiting - click Show QR again if the code has expired.";
         }
     }
 
@@ -2030,7 +2030,7 @@ public sealed partial class ChannelsPage : Page
             }
 
             // The stream must outlive the SetSourceAsync call (BitmapImage reads
-            // it during decode) but should be disposed after — its native COM
+            // it during decode) but should be disposed after - its native COM
             // handle leaks otherwise.
             using var stream = new InMemoryRandomAccessStream();
             using (var writer = new DataWriter(stream))
@@ -2048,7 +2048,7 @@ public sealed partial class ChannelsPage : Page
         }
         catch (Exception ex)
         {
-            // Surface decode failures to the user — silent hide makes gateway faults
+            // Surface decode failures to the user - silent hide makes gateway faults
             // look like UX bugs.
             target.Visibility = Visibility.Collapsed;
             messageBlock.Text = $"QR decode failed: {ex.Message}";
@@ -2083,13 +2083,13 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// "Install plugin on your gateway" section. The gateway doesn't expose
     /// plugin install over the operator wire (verified against
-    /// <c>openclaw/src/gateway/server-methods-list.ts</c> — only
+    /// <c>openclaw/src/gateway/server-methods-list.ts</c> - only
     /// <c>channels.{status,start,stop,logout}</c> and <c>config.*</c> are
     /// available), so this section shows the exact CLI command the user
     /// needs to run on the gateway host, plus a one-click Copy button and
     /// a docs link.
     ///
-    /// Renders as a flat section (no nested Expander) — the channel card
+    /// Renders as a flat section (no nested Expander) - the channel card
     /// is itself the Expander, and stacking an Expander inside an Expander
     /// is the "open a card to open another card" anti-pattern. Callers
     /// already gate the call: <see cref="BuildBody"/> only invokes this
@@ -2104,7 +2104,7 @@ public sealed partial class ChannelsPage : Page
 
         body.Children.Add(new TextBlock
         {
-            Text = $"Channel plugins are loaded by the gateway, not the tray — so installs happen on the machine that hosts your gateway. If {record.Id} isn't coming up after Save, the plugin may not be installed yet.",
+            Text = $"Channel plugins are loaded by the gateway, not the tray - so installs happen on the machine that hosts your gateway. If {record.Id} isn't coming up after Save, the plugin may not be installed yet.",
             TextWrapping = TextWrapping.Wrap,
             Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
@@ -2133,7 +2133,7 @@ public sealed partial class ChannelsPage : Page
                 var pkgData = new DataPackage();
                 pkgData.SetText(cmd);
                 Clipboard.SetContent(pkgData);
-                // Briefly indicate copied — flip the label, restore after a short delay.
+                // Briefly indicate copied - flip the label, restore after a short delay.
                 copyBtn.Content = "Copied";
                 _ = Task.Delay(1200).ContinueWith(_ =>
                 {
@@ -2182,9 +2182,9 @@ public sealed partial class ChannelsPage : Page
             SetInfoBarOpen(ErrorBar, true);
             return;
         }
-        // QR channels: Logout = unlink the device (lightweight — re-scan a
+        // QR channels: Logout = unlink the device (lightweight - re-scan a
         // new QR to reconnect, your account stays paired on your phone).
-        // Non-QR channels: Logout = forget stored credentials (destructive —
+        // Non-QR channels: Logout = forget stored credentials (destructive -
         // you'll need to re-enter the bot token / webhook URL to reconnect).
         var dialog = new ContentDialog
         {
@@ -2192,7 +2192,7 @@ public sealed partial class ChannelsPage : Page
                 ? $"Unlink {channelId} from this device?"
                 : $"Disconnect {channelId} and forget credentials?",
             Content = isQr
-                ? "This unlinks the channel from this device. Your account stays paired on your phone — scan a fresh QR to reconnect."
+                ? "This unlinks the channel from this device. Your account stays paired on your phone - scan a fresh QR to reconnect."
                 : "This signs out the channel and clears the stored credentials. You'll need to re-enter them to reconnect.",
             PrimaryButtonText = isQr ? "Unlink" : "Disconnect",
             CloseButtonText = "Cancel",
@@ -2207,7 +2207,7 @@ public sealed partial class ChannelsPage : Page
         catch (System.Runtime.InteropServices.COMException)
         {
             // A ContentDialog is already on screen (double-click race). Drop
-            // this invocation silently — the first dialog will drive the action.
+            // this invocation silently - the first dialog will drive the action.
             return;
         }
         if (result != ContentDialogResult.Primary) return;
@@ -2226,7 +2226,7 @@ public sealed partial class ChannelsPage : Page
 
     /// <summary>
     /// Pause a running channel via <c>channels.stop</c>. Lightweight
-    /// counterpart to <see cref="LogoutAsync"/> — keeps credentials in
+    /// counterpart to <see cref="LogoutAsync"/> - keeps credentials in
     /// the gateway config so the channel can be started again later
     /// without re-entering the bot token / webhook URL / etc. Wired to
     /// the "Stop" button in the body CONTROLS section on non-QR running
@@ -2235,7 +2235,7 @@ public sealed partial class ChannelsPage : Page
     /// </summary>
     private async Task StopChannelAsync(string channelId)
     {
-        // Action-flow banner — Render must not rewrite the title to "is running"
+        // Action-flow banner - Render must not rewrite the title to "is running"
         // or clear form drafts (see _pendingBannerIsAction docs).
         _pendingBannerIsAction = true;
 
@@ -2261,7 +2261,7 @@ public sealed partial class ChannelsPage : Page
         }
         catch (Exception ex)
         {
-            // Don't let the network exception become an unobserved task fault —
+            // Don't let the network exception become an unobserved task fault -
             // the user clicked Stop, they deserve to see why it didn't work.
             _pendingSaveBanner = (channelId, $"Couldn't stop {channelId}",
                 $"Lost connection to the gateway while stopping ({ex.GetType().Name}). Try Refresh.",
@@ -2280,7 +2280,7 @@ public sealed partial class ChannelsPage : Page
         }
 
         _pendingSaveBanner = (channelId, $"{channelId} stopped",
-            "Channel paused. Press Start to resume — credentials are kept.",
+            "Channel paused. Press Start to resume - credentials are kept.",
             InfoBarSeverity.Success);
         ApplyPendingSaveBanner();
         await RefreshAsync(probe: false);
@@ -2290,7 +2290,7 @@ public sealed partial class ChannelsPage : Page
     /// Try to start a channel via <c>channels.start</c>. Used as the recovery
     /// affordance when a channel is configured but didn't come up on its own
     /// (e.g., after a save that didn't auto-start, or after a gateway restart).
-    /// Surfaces gateway errors on the page-level <c>SaveBanner</c> — including
+    /// Surfaces gateway errors on the page-level <c>SaveBanner</c> - including
     /// the telltale "unknown channel" which means the channel's plugin isn't
     /// loaded on the gateway host and the user needs to install it via the
     /// gateway-host CLI.
@@ -2477,21 +2477,21 @@ public sealed partial class ChannelsPage : Page
     /// <summary>
     /// Per-channel one-liner shown as the card subtitle when the channel
     /// isn't configured yet. Replaces the generic "Click to expand and
-    /// configure" hint — each tagline tells the user up-front what the
+    /// configure" hint - each tagline tells the user up-front what the
     /// integration shape is (QR-linked phone, OAuth bot, webhook URL, …)
     /// so they can pick the right channel without expanding each one.
     /// </summary>
     private static string ResolveTagline(string channelId) => channelId.ToLowerInvariant() switch
     {
-        "whatsapp"   => "Link your phone — scan a QR to connect",
-        "telegram"   => "Bot integration — paste your bot token to set up",
-        "discord"    => "Bot integration — paste your Discord bot token",
-        "googlechat" => "Webhook integration — paste a Google Chat webhook",
-        "slack"      => "OAuth app — install a Slack app to connect",
-        "signal"     => "Link your phone — scan a QR to connect",
-        "imessage"   => "macOS-only — requires running the gateway on a Mac",
-        "nostr"      => "Decentralized — paste your nsec and relays",
-        _            => "Plugin channel — expand to configure",
+        "whatsapp"   => "Link your phone - scan a QR to connect",
+        "telegram"   => "Bot integration - paste your bot token to set up",
+        "discord"    => "Bot integration - paste your Discord bot token",
+        "googlechat" => "Webhook integration - paste a Google Chat webhook",
+        "slack"      => "OAuth app - install a Slack app to connect",
+        "signal"     => "Link your phone - scan a QR to connect",
+        "imessage"   => "macOS-only - requires running the gateway on a Mac",
+        "nostr"      => "Decentralized - paste your nsec and relays",
+        _            => "Plugin channel - expand to configure",
     };
 
     // ─── Tiny utility helpers ─────────────────────────────────────────────

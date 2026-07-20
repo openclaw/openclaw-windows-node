@@ -65,7 +65,7 @@ public sealed partial class CronPage : Page
             }
             else if (_appState.CronList.HasValue)
             {
-                // First visit but AppState has cached data from gateway — process it
+                // First visit but AppState has cached data from gateway - process it
                 _cronLoading.BeginRefresh();
                 UpdateFromGateway(_appState.CronList.Value);
                 if (_appState.CronStatus.HasValue)
@@ -465,7 +465,7 @@ public sealed partial class CronPage : Page
 
         if (_editingJobId != null)
         {
-            // Update existing job — payload.kind depends on sessionTarget
+            // Update existing job - payload.kind depends on sessionTarget
             var payloadKind = sessionTarget == "main" ? "systemEvent" : "agentTurn";
             var payloadTextField = sessionTarget == "main" ? "text" : "message";
             var patch = new Dictionary<string, object>
@@ -486,7 +486,7 @@ public sealed partial class CronPage : Page
         }
         else
         {
-            // Create new job — payload.kind depends on sessionTarget
+            // Create new job - payload.kind depends on sessionTarget
             var payloadKind = sessionTarget == "main" ? "systemEvent" : "agentTurn";
             var payloadTextField = sessionTarget == "main" ? "text" : "message";
             var job = new Dictionary<string, object>
@@ -859,7 +859,7 @@ public sealed partial class CronPage : Page
             }
             else
             {
-                vm.LastRunTime = "—";
+                vm.LastRunTime = "-";
             }
 
             // Infer running state: if scheduled time has passed but lastRunAtMs hasn't caught up
@@ -870,7 +870,7 @@ public sealed partial class CronPage : Page
                 var oldVm = _jobs.Find(j => j.Id == vm.Id);
                 if (oldVm != null && oldVm.NextRunAtMs > 0 && nowMs >= oldVm.NextRunAtMs && vm.LastRunAtMs == oldVm.LastRunAtMs)
                 {
-                    // The scheduled time has passed but the job hasn't completed yet — it's running
+                    // The scheduled time has passed but the job hasn't completed yet - it's running
                     _runningJobIds.Add(vm.Id);
                 }
             }
@@ -1005,7 +1005,7 @@ public sealed partial class CronPage : Page
         if (payload.TryGetProperty("storePath", out var storeEl))
             storePath = storeEl.GetString() ?? storePath;
 
-        string nextWake = "—";
+        string nextWake = "-";
         if (payload.TryGetProperty("nextWakeAtMs", out var wakeEl) && wakeEl.ValueKind == JsonValueKind.Number)
         {
             var ms = wakeEl.GetInt64();
@@ -1466,7 +1466,7 @@ public sealed partial class CronPage : Page
         var isRunning = _runningJobIds.Contains(vm.Id);
         var canRunOrEditJob = _cronLoading.CanEdit && !isRunning;
 
-        // "Run Now" button — show running state if job is in the running set
+        // "Run Now" button - show running state if job is in the running set
         var runNowBtn = MakeActionButton("\uE768", LocalizationHelper.GetString("CronPage_RunNow"), vm.Id, OnRunNowClick, "RunNow");
         if (isRunning)
         {
@@ -2048,7 +2048,7 @@ public sealed partial class CronPage : Page
         grid.Children.Add(contentPanel);
 
         // Duration
-        var durText = durationMs > 0 ? $"{durationMs / 1000.0:F1}s" : "—";
+        var durText = durationMs > 0 ? $"{durationMs / 1000.0:F1}s" : "-";
         var durBlock = new TextBlock
         {
             Text = durText,
@@ -2061,7 +2061,7 @@ public sealed partial class CronPage : Page
         grid.Children.Add(durBlock);
 
         // Timestamp
-        var timeText = "—";
+        var timeText = "-";
         if (tsMs > 0)
         {
             var dt = DateTimeOffset.FromUnixTimeMilliseconds(tsMs).LocalDateTime;
@@ -2170,11 +2170,11 @@ public sealed partial class CronPage : Page
             LastRunAtMs > 0 &&
             NextRunAtMs <= 0;
         public bool HasRunHistory => LastRunAtMs > 0;
-        public string LastRunTime { get; set; } = "—";
+        public string LastRunTime { get; set; } = "-";
         public string LastResult { get; set; } = "";
         public SolidColorBrush ResultBadgeForeground { get; set; } = new(Colors.White);
         public Visibility ResultBadgeVisibility { get; set; } = Visibility.Collapsed;
-        public string NextRunTime { get; set; } = "—";
+        public string NextRunTime { get; set; } = "-";
         public string LastDuration { get; set; } = "";
         public Visibility DurationVisibility { get; set; } = Visibility.Collapsed;
         public long LastRunAtMs { get; set; } = 0;

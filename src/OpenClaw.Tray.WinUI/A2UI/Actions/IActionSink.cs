@@ -69,7 +69,7 @@ public sealed class ActionDispatcher : IActionSink, IDisposable
                 foreach (var kv in _lastDelivery)
                     if (kv.Value < cutoff) stale.Add(kv.Key);
                 foreach (var k in stale) _lastDelivery.Remove(k);
-                // If sweep didn't reclaim enough, evict arbitrarily — this only
+                // If sweep didn't reclaim enough, evict arbitrarily - this only
                 // affects debounce, not delivery semantics.
                 if (_lastDelivery.Count > MaxDebounceEntries)
                 {

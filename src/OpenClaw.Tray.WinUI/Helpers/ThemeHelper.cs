@@ -65,7 +65,7 @@ public static class ThemeHelper
         {
             Logger.Debug($"ThemeHelper: Failed to read Windows accent color: {ex.Message}");
         }
-        return Color.FromArgb(255, 0, 120, 212); // #0078D4 — WinUI default accent
+        return Color.FromArgb(255, 0, 120, 212); // #0078D4 - WinUI default accent
     }
 
     public static Color GetBackgroundColor()

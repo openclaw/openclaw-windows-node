@@ -24,8 +24,8 @@ public static class FluentIconCatalog
     // ── Sections / categories ──────────────────────────────────────
     public const string Sessions = "\uE8BD";       // Message
     public const string Approvals = "\uE7BA";      // Warning (re-use)
-    public const string Devices = "\uE772";        // Devices (two devices — section header)
-    public const string Hostname = "\uE977";       // Devices/IT — single hostname/system info pill
+    public const string Devices = "\uE772";        // Devices (two devices - section header)
+    public const string Hostname = "\uE977";       // Devices/IT - single hostname/system info pill
     public const string Permissions = "\uEA18";    // Shield
 
     // ── Capabilities (per-permission glyphs) ───────────────────────
@@ -36,38 +36,38 @@ public static class FluentIconCatalog
     public const string Location = "\uE707";       // MapPin (Globe2 alt)
     public const string Voice = "\uE767";          // Volume (speaker, for TTS)
     public const string Speech = "\uF12E";         // Dictate (speech-to-text)
-    public const string System = "\uE839";         // PC1 — "this PC as a node" (per CDR-0001 — was TVMonitor \uE7F4)
-    public const string Terminal = "\uE756";       // CommandPrompt — system.run shell-command capability
-    public const string Operator = "\uE77B";       // ContactInfo — operator role (a human controlling agents)
+    public const string System = "\uE839";         // PC1 - "this PC as a node" (per CDR-0001 - was TVMonitor \uE7F4)
+    public const string Terminal = "\uE756";       // CommandPrompt - system.run shell-command capability
+    public const string Operator = "\uE77B";       // ContactInfo - operator role (a human controlling agents)
 
     // ── Actions ────────────────────────────────────────────────────
     public const string Dashboard = "\uE774";      // Globe
-    public const string OpenInBrowser = "\uE8A7";  // OpenInNewWindow — top-right dashboard launcher icon
+    public const string OpenInBrowser = "\uE8A7";  // OpenInNewWindow - top-right dashboard launcher icon
     public const string Chat = "\uE8BD";           // Message
     public const string CanvasAct = "\uE790";      // Color (palette) - matches Canvas permission glyph
     public const string VoiceAct = "\uE720";       // Microphone
     public const string Settings = "\uE713";       // Settings
-    public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
+    public const string Setup = "\uE825";          // Bank - Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
-    public const string Notifications = "\uE7E7";   // Ringer — title-bar notifications bell
-    public const string Exit = "\uE711";           // Cancel (X) — used for "Close" menu item
-    public const string Add = "\uE710";            // Add — "+ Add gateway" header button
-    public const string Back = "\uE72B";           // Back — leading chevron on Back hyperlink
-    public const string Sync = "\uE895";           // Sync — Connecting / Disconnecting transient
-    public const string Lock = "\uE192";           // Lock — Setup code / pairing waiting
-    public const string Plug = "\uE839";           // Plug/PC1 — Direct connection tile (alias of System; same glyph)
-    public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button
+    public const string Notifications = "\uE7E7";   // Ringer - title-bar notifications bell
+    public const string Exit = "\uE711";           // Cancel (X) - used for "Close" menu item
+    public const string Add = "\uE710";            // Add - "+ Add gateway" header button
+    public const string Back = "\uE72B";           // Back - leading chevron on Back hyperlink
+    public const string Sync = "\uE895";           // Sync - Connecting / Disconnecting transient
+    public const string Lock = "\uE192";           // Lock - Setup code / pairing waiting
+    public const string Plug = "\uE839";           // Plug/PC1 - Direct connection tile (alias of System; same glyph)
+    public const string MoreOverflow = "\uE712";   // More - saved-row overflow ⋯ button
 
     // ── Channel actions ────────────────────────────────────────────
-    public const string ChannelLogout = "\uF3B1";   // SignOut — per-channel logout (WhatsApp/Signal in the header; non-QR channels' destructive "disconnect" body action)
-    public const string ChannelStart = "\uE768";    // Play — start-channel header action
+    public const string ChannelLogout = "\uF3B1";   // SignOut - per-channel logout (WhatsApp/Signal in the header; non-QR channels' destructive "disconnect" body action)
+    public const string ChannelStart = "\uE768";    // Play - start-channel header action
 
     // ── Glance chips (Connection page) ─────────────────────────────
-    public const string People = "\uE716";         // People — N clients chip
-    public const string Money = "\uE9D9";          // Money — $today chip
-    public const string ServerEnvironment = "\uE968"; // ServerEnvironment — topology chip
-    public const string CapabilityOff = "\uE894";  // RemoveFrom — disabled capability state
-    public const string Channels = "\uEC05";       // CellularData/Tower — N/M channels chip
+    public const string People = "\uE716";         // People - N clients chip
+    public const string Money = "\uE9D9";          // Money - $today chip
+    public const string ServerEnvironment = "\uE968"; // ServerEnvironment - topology chip
+    public const string CapabilityOff = "\uE894";  // RemoveFrom - disabled capability state
+    public const string Channels = "\uEC05";       // CellularData/Tower - N/M channels chip
 
     // ── Affordances ────────────────────────────────────────────────
     public const string ChevronR = "\uE76C";       // ChevronRight
@@ -78,21 +78,21 @@ public static class FluentIconCatalog
     // (src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml). Keep these here
     // rather than as XAML literals so the icon catalog stays the
     // single source of truth and FluentIconCatalogTests pins each one.
-    public const string Bug = "\uEBE8";            // BugSolid — nav item glyph for Diagnostics
-    public const string Briefcase = "\uE7B8";      // Briefcase — diagnostics bundle action
-    public const string Folder = "\uE8DA";         // OpenLocal — open folder action
-    public const string Copy = "\uE8C8";           // Copy — copy-to-clipboard affordance
-    public const string Document = "\uE8A5";       // Document — recent log / log file
-    public const string Refresh = "\uE72C";        // Refresh — re-read a snapshot (distinct from Sync E895)
+    public const string Bug = "\uEBE8";            // BugSolid - nav item glyph for Diagnostics
+    public const string Briefcase = "\uE7B8";      // Briefcase - diagnostics bundle action
+    public const string Folder = "\uE8DA";         // OpenLocal - open folder action
+    public const string Copy = "\uE8C8";           // Copy - copy-to-clipboard affordance
+    public const string Document = "\uE8A5";       // Document - recent log / log file
+    public const string Refresh = "\uE72C";        // Refresh - re-read a snapshot (distinct from Sync E895)
     // Reset aliases Refresh (U+E72C). Both share the "restart from scratch"
     // metaphor; the named constant keeps Reconfigure call sites semantically
     // distinct from data-refresh call sites even though the glyph is the same.
-    public const string Reset = "\uE72C";          // Refresh (alias) — Reconfigure / start over
-    public const string Clear = "\uE74D";          // Delete — clear/reset a buffer
-    public const string Develop = "\uE943";        // Code — engineering / explorations action
-    public const string Telemetry = "\uE9F5";      // Processing — ongoing telemetry endpoint/stream
-    public const string AgentEvents = "\uE81C";    // History — agent events feed
-    public const string Doctor = "\uE95E";         // Health — "Run gateway doctor" health-check action
+    public const string Reset = "\uE72C";          // Refresh (alias) - Reconfigure / start over
+    public const string Clear = "\uE74D";          // Delete - clear/reset a buffer
+    public const string Develop = "\uE943";        // Code - engineering / explorations action
+    public const string Telemetry = "\uE9F5";      // Processing - ongoing telemetry endpoint/stream
+    public const string AgentEvents = "\uE81C";    // History - agent events feed
+    public const string Doctor = "\uE95E";         // Health - "Run gateway doctor" health-check action
 
     // ── Agents / Workspace surface ─────────────────────────────────
     // Workspace concept (per-agent file viewer). Reuses the Folder
@@ -100,7 +100,7 @@ public static class FluentIconCatalog
     // keeps call sites semantically distinct.
     // See reference/concepts/states/workspace.md.
     public const string Workspace = "\uE8DA";      // OpenLocal (alias of Folder)
-    public const string Cron = "\uE787";           // Calendar — Cron / scheduled jobs (matches HubWindow search mapping)
+    public const string Cron = "\uE787";           // Calendar - Cron / scheduled jobs (matches HubWindow search mapping)
 
     public static FontFamily SymbolThemeFontFamily =>
         (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];
@@ -123,7 +123,7 @@ public static class FluentIconCatalog
 
     /// <summary>
     /// True when <paramref name="value"/> is a single character in the
-    /// Unicode Private Use Area (U+E000-U+F8FF) — i.e. a Segoe Fluent
+    /// Unicode Private Use Area (U+E000-U+F8FF) - i.e. a Segoe Fluent
     /// Icons glyph rather than an emoji.
     /// </summary>
     public static bool IsPuaGlyph(string? value)

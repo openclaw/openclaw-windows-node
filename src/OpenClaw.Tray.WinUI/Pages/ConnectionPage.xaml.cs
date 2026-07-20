@@ -19,12 +19,12 @@ using System.Threading.Tasks;
 namespace OpenClawTray.Pages;
 
 // ════════════════════════════════════════════════════════════════════════════
-// ConnectionPage — Lobby & Cockpit & Recovery
+// ConnectionPage - Lobby & Cockpit & Recovery
 // ────────────────────────────────────────────────────────────────────────────
 // Visual policy:
 //   • Page mode (Lobby / Cockpit / Recovery / Add) computed by
 //     ConnectionPagePlan.Build(...) (pure projection).
-//   • Every status surface uses a 4-px colored LEFT border — accent brush
+//   • Every status surface uses a 4-px colored LEFT border - accent brush
 //     resolved via ConnectionPagePlan.AccentToBrushKey.
 //   • This code-behind never mutates connection state directly; every
 //     connection-touching action goes through GatewayConnectionManager,
@@ -68,7 +68,7 @@ public sealed partial class ConnectionPage : Page
     // Disconnecting → Disconnected → Connecting → Connected transition was
     // showing through every visual surface (strip headline, operator card,
     // active-row badge) as a "you're disconnected!" flicker, which is wrong
-    // — the user's *intent* is still to be connected, the connection layer
+    // - the user's *intent* is still to be connected, the connection layer
     // is just round-tripping. We mask the gateway/operator visuals during
     // this window and let them resume once the snapshot stabilizes again.
     private GatewayConnectionSnapshot? _lastStableSnapshot;
@@ -115,9 +115,9 @@ public sealed partial class ConnectionPage : Page
 
         // Local-WSL install entry points are only useful until setup has
         // created its managed local WSL gateway record.
-        //   • WelcomeLocalWslSetupCard — get-started CTA on the empty-state
+        //   • WelcomeLocalWslSetupCard - get-started CTA on the empty-state
         //     Welcome screen for first-run users.
-        //   • AddLocalWslItem — third method tab inside the Add Gateway
+        //   • AddLocalWslItem - third method tab inside the Add Gateway
         //     form, alongside Direct and Setup code.
         UpdateLocalWslSetupVisibility();
 
@@ -136,7 +136,7 @@ public sealed partial class ConnectionPage : Page
         _suppressNodeModeToggle = false;
 
         // RefreshFromSnapshot below already calls LoadSavedGateways with the
-        // up-to-date snapshot — calling it standalone here would render the
+        // up-to-date snapshot - calling it standalone here would render the
         // active row as "disconnected" for one frame before the snapshot pass
         // flips it to "Connected".
         RefreshFromSnapshot(_connectionManager?.CurrentSnapshot ?? GatewayConnectionSnapshot.Idle);
@@ -157,7 +157,7 @@ public sealed partial class ConnectionPage : Page
         }
 
         // Push any already-resolved pending lists into the page immediately
-        // — the AppState may have been populated on a prior visit and the
+        // - the AppState may have been populated on a prior visit and the
         // PropertyChanged subscriber only fires on future changes.
         if (_appState?.NodePairList is { } existingNode)
             UpdatePairingRequests(existingNode);
@@ -281,7 +281,7 @@ public sealed partial class ConnectionPage : Page
             // guard the very first refresh that happens immediately after
             // BeginReconnectMask() (still carrying the pre-toggle stable
             // snapshot) would disarm the mask before any transient state
-            // arrives — defeating the entire fix.
+            // arrives - defeating the entire fix.
             if (_maskHasObservedTransient)
             {
                 _suppressReconnectVisualsUntilUtc = DateTime.MinValue;
@@ -336,7 +336,7 @@ public sealed partial class ConnectionPage : Page
         ApplyPlan(plan);
 
         // Rebuild saved-gateway rows so the active row's "Connected" badge /
-        // background highlight reflects the live snapshot. Cheap — list is
+        // background highlight reflects the live snapshot. Cheap - list is
         // typically < 10 entries and only re-runs on real state transitions.
         LoadSavedGateways();
     }
@@ -367,9 +367,9 @@ public sealed partial class ConnectionPage : Page
             : Visibility.Collapsed;
 
         // Bottom section: exactly one of these is visible
-        //   • SavedGatewaysCard  — Cockpit / Recovery (always present when registry has items)
-        //   • WelcomeAddTilesCard — Welcome (empty registry)
-        //   • AddGatewayPanel    — AddGateway sub-view
+        //   • SavedGatewaysCard  - Cockpit / Recovery (always present when registry has items)
+        //   • WelcomeAddTilesCard - Welcome (empty registry)
+        //   • AddGatewayPanel    - AddGateway sub-view
         SavedGatewaysCard.Visibility    = (isCockpit || isRecovery) ? Visibility.Visible : Visibility.Collapsed;
         WelcomeAddTilesCard.Visibility  = isWelcome ? Visibility.Visible : Visibility.Collapsed;
         AddGatewayPanel.Visibility      = isAdding ? Visibility.Visible : Visibility.Collapsed;
@@ -421,7 +421,7 @@ public sealed partial class ConnectionPage : Page
         StripSub.Text = plan.StripSub ?? "";
         StripSub.Visibility = string.IsNullOrEmpty(plan.StripSub) ? Visibility.Collapsed : Visibility.Visible;
 
-        // Primary action button — show only for actions the connection
+        // Primary action button - show only for actions the connection
         // toggle can't already do. The toggle covers Connect / Reconnect /
         // Retry / Cancel; CopyApproveCommand and Rep were removed because
         // their visible UI (inline Copy button next to the command, plus
@@ -447,12 +447,12 @@ public sealed partial class ConnectionPage : Page
             StripPrimaryButton.Visibility = Visibility.Collapsed;
         }
 
-        // Connection toggle — visible when there's an active gateway record.
+        // Connection toggle - visible when there's an active gateway record.
         // ON = currently connected (or attempting); tap OFF to disconnect.
         // OFF = idle/disconnecting; tap ON to reconnect.
         bool hasActive = plan.RelevantGatewayId != null;
         // "ON" = the gateway is or is trying to be connected. Error state
-        // is a terminal failure — toggle should read OFF so the affordance
+        // is a terminal failure - toggle should read OFF so the affordance
         // ("tap to disconnect") stops lying to the user; tapping ON re-tries.
         bool toggleOn = _lastSnapshot.OverallState is
             OverallConnectionState.Connecting
@@ -466,7 +466,7 @@ public sealed partial class ConnectionPage : Page
         ConnectionToggle.IsOn = toggleOn;
         _suppressConnectionToggle = false;
 
-        // Dashboard icon — top-right of the gateway header. Only when there's
+        // Dashboard icon - top-right of the gateway header. Only when there's
         // a healthy connection (no point opening the dashboard of a broken one)
         // and we're not in the focused Add Gateway sub-view.
         bool showDashboard = plan.Mode == ConnectionPageMode.Cockpit
@@ -474,7 +474,7 @@ public sealed partial class ConnectionPage : Page
                           && plan.ActiveGatewayDisplayName != null;
         StripDashboardButton.Visibility = showDashboard ? Visibility.Visible : Visibility.Collapsed;
 
-        // Glance chips (presence • channels • $today • topology) — when connected.
+        // Glance chips (presence • channels • $today • topology) - when connected.
         ApplyGlanceChips(plan, hasActive && toggleOn);
     }
 
@@ -554,7 +554,7 @@ public sealed partial class ConnectionPage : Page
     {
         // Re-run the strip/operator pass with the cached snapshot so chips
         // pick up the new data without bouncing the rest of the page. Derive
-        // visibility from _lastSnapshot directly — ConnectionToggle.IsOn is
+        // visibility from _lastSnapshot directly - ConnectionToggle.IsOn is
         // a downstream visual signal, not the source of truth, and during
         // any future regression where they diverge we'd render stale chips.
         if (_currentPlan == null) return;
@@ -602,7 +602,7 @@ public sealed partial class ConnectionPage : Page
         }
         // Include cost-data presence (daily count) separately from the
         // amount so the chip correctly appears/disappears on $0.00 days
-        // — without this the fingerprint can be identical when daily list
+        // - without this the fingerprint can be identical when daily list
         // appears/empties at $0.00, leaving a stale chip state.
         int dailyCount = cost?.Daily?.Count ?? 0;
         var sharedToken = activeRec?.SharedGatewayToken;
@@ -613,21 +613,21 @@ public sealed partial class ConnectionPage : Page
 
         var chips = new List<Border>(5);
 
-        // 1. Topology — Local / via SSH / LAN / Tailscale / Remote.
+        // 1. Topology - Local / via SSH / LAN / Tailscale / Remote.
         //    Tells the user what kind of gateway they're talking to.
         if (topology != null)
         {
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.ServerEnvironment, topology, neutral: true));
         }
 
-        // 2. Local hostname — "on PERSEID". Tells the user what device the
+        // 2. Local hostname - "on PERSEID". Tells the user what device the
         //    tray (and therefore Operator + Node) runs on. Free signal.
         if (!string.IsNullOrWhiteSpace(hostname))
         {
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Hostname, string.Format(LocalizationHelper.GetString("ConnectionPage_OnHostname"), hostname), neutral: true));
         }
 
-        // 3. Presence count — "1 client" / "3 clients" if the gateway has
+        // 3. Presence count - "1 client" / "3 clients" if the gateway has
         //    multiple operators connected.
         if (presence is int n && n > 0)
         {
@@ -635,7 +635,7 @@ public sealed partial class ConnectionPage : Page
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.People, label, neutral: true));
         }
 
-        // 4. Channels glance — "2/2 channels ready" when at least one channel
+        // 4. Channels glance - "2/2 channels ready" when at least one channel
         //    is configured. Counts linked-and-ok channels.
         if (channelTotal > 0)
         {
@@ -645,7 +645,7 @@ public sealed partial class ConnectionPage : Page
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Channels, label, neutral: channelOk == channelTotal));
         }
 
-        // 5. Today's $ — falls back to "$0.00 today" so the chip stays in a
+        // 5. Today's $ - falls back to "$0.00 today" so the chip stays in a
         //    consistent slot even on a fresh day with no usage yet.
         if (cost?.Daily is { Count: > 0 })
         {
@@ -655,7 +655,7 @@ public sealed partial class ConnectionPage : Page
             chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Money, label, neutral: true));
         }
 
-        // 6. Shared token — click to copy.
+        // 6. Shared token - click to copy.
         if (hasSharedToken)
         {
             var chip = BuildGlanceChip(Helpers.FluentIconCatalog.Lock, LocalizationHelper.GetString("ConnectionPage_SharedTokenChip"), neutral: true);
@@ -747,7 +747,7 @@ public sealed partial class ConnectionPage : Page
 
     private void ApplyOperatorCard(ConnectionPagePlan plan)
     {
-        // No prose body — the card's identity ("Operator") + the active
+        // No prose body - the card's identity ("Operator") + the active
         // sessions caption + the deep links carry meaning. Dim transient states.
         bool linksEnabled = plan.OperatorCard == OperatorCardState.Active
                          || plan.OperatorCard == OperatorCardState.Idle;
@@ -1303,7 +1303,7 @@ public sealed partial class ConnectionPage : Page
             Foreground = textBrush,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        AutomationProperties.SetName(labelText, $"{label} — {stateText}");
+        AutomationProperties.SetName(labelText, $"{label} - {stateText}");
         content.Children.Add(labelText);
 
         if (stateGlyph != null)
@@ -1440,7 +1440,7 @@ public sealed partial class ConnectionPage : Page
         var items = new List<SavedGatewayRow>();
         var emptyVisible = Visibility.Visible;
 
-        // Auth mode for the ACTIVE gateway — taken from the latest hello-ok
+        // Auth mode for the ACTIVE gateway - taken from the latest hello-ok
         // response (server-reported, the source of truth for what we're
         // actually using). For inactive saved gateways we fall back to whatever
         // credential is stored on the record.
@@ -1474,7 +1474,7 @@ public sealed partial class ConnectionPage : Page
         SavedGatewaysEmptyText.Visibility = emptyVisible;
 
         // Fingerprint to skip ItemsSource swap when nothing observable
-        // changed — see field comment. Includes overall connection state
+        // changed - see field comment. Includes overall connection state
         // because that drives the per-row "Connected" badge, and Url
         // because the row's sub-line shows it.
         var sb = new System.Text.StringBuilder(items.Count * 64);
@@ -1557,14 +1557,14 @@ public sealed partial class ConnectionPage : Page
     /// Returns the inline status badge to render on the active gateway row
     /// in the saved-gateways list, or <c>null</c> when the row should fall
     /// back to a [Connect] button. The badge tracks the *real* overall
-    /// state — historically Connecting and PairingRequired were collapsed
+    /// state - historically Connecting and PairingRequired were collapsed
     /// into "Connected", which told users they were connected while the
     /// page was actually mid-handshake or awaiting an approval.
     /// </summary>
     private FrameworkElement? BuildActiveRowBadge(OverallConnectionState state)
     {
         // (glyph, brushKey, label) per state. Connected/Ready/Degraded all
-        // mean "operator is online" — the only case that warrants the
+        // mean "operator is online" - the only case that warrants the
         // affirmative "Connected" badge.
         (string glyph, string brushKey, string label)? badge = state switch
         {
@@ -1587,7 +1587,7 @@ public sealed partial class ConnectionPage : Page
             // reach gateway" signal (with the URL and category), and the
             // Recovery card right beneath it offers Disconnect. Adding an
             // "Error" badge here would duplicate that signal and remove the
-            // [Connect] retry affordance — which is the one actionable
+            // [Connect] retry affordance - which is the one actionable
             // thing the row should offer in an Error state.
             _ => null,
         };
@@ -1705,7 +1705,7 @@ public sealed partial class ConnectionPage : Page
         // *active* gateway and the snapshot has something live-ish to report,
         // otherwise a [Connect] button to (re)activate the row.
         //
-        // The badge label must follow real state — previously this branch
+        // The badge label must follow real state - previously this branch
         // collapsed Connecting and PairingRequired into "Connected", which
         // told users they were connected while the page was actually
         // mid-handshake or waiting for the gateway operator to approve a
@@ -1730,7 +1730,7 @@ public sealed partial class ConnectionPage : Page
             grid.Children.Add(connectBtn);
         }
 
-        // Overflow menu — actions depend on whether this row is currently the
+        // Overflow menu - actions depend on whether this row is currently the
         // live connection. Disconnect only makes sense when actually connected.
         //   Connected (active + live) : Open dashboard · Disconnect · Edit
         //   Active but disconnected   : Open dashboard · Edit · Remove
@@ -1768,7 +1768,7 @@ public sealed partial class ConnectionPage : Page
             // Whenever the row is in a state where Disconnect makes sense
             // (Connected / Connecting… / Awaiting approval / Error) we offer
             // it as the corresponding teardown / cancel action. Disconnecting
-            // is intentionally excluded — teardown is already in flight and
+            // is intentionally excluded - teardown is already in flight and
             // re-entering would race the connection manager.
             if (CanDisconnectFromBadge(_lastSnapshot.OverallState))
             {
@@ -1786,7 +1786,7 @@ public sealed partial class ConnectionPage : Page
             edit.Click += OnSavedRowEdit;
             flyout.Items.Add(edit);
             // Removing the active-but-disconnected row just clears the active
-            // pointer — safe.
+            // pointer - safe.
             flyout.Items.Add(new MenuFlyoutSeparator());
             var remove = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_Remove"), Tag = row.Id };
             remove.Click += OnSavedRowRemove;
@@ -1834,7 +1834,7 @@ public sealed partial class ConnectionPage : Page
         _editingGatewayId = null;
         _userIntent = UserIntent.AddingGateway;
         ClearAddGatewaySshFields();
-        // Direct is default — make sure the selector is on Direct.
+        // Direct is default - make sure the selector is on Direct.
         // Pre-fill the most common local gateway URL.
         DirectUrlBox.Text = "ws://127.0.0.1:18789";
         DirectTokenBox.Text = "";
@@ -1867,7 +1867,7 @@ public sealed partial class ConnectionPage : Page
 
     private void OnEnterAddGatewayScan(object sender, RoutedEventArgs e)
     {
-        // Legacy entry point — Scan no longer lives in the Add form.
+        // Legacy entry point - Scan no longer lives in the Add form.
         // Route to the canonical scan-from-gateways flow instead.
         OnScanGatewaysClicked(sender, e);
     }
@@ -1995,7 +1995,7 @@ public sealed partial class ConnectionPage : Page
                 message = LocalizationHelper.GetString("ConnectionPage_AdviceTunnelMessage");
                 break;
             default:
-                // Local or unparseable — no transport warning needed.
+                // Local or unparseable - no transport warning needed.
                 AddSecurityAdviceBar.IsOpen = false;
                 return;
         }
@@ -2244,7 +2244,7 @@ public sealed partial class ConnectionPage : Page
     /// <summary>
     /// Handler for both the Welcome and Cockpit "Install local WSL gateway"
     /// buttons. Hands off to the hub's OpenSetupAction (which the App wires
-    /// to the V2 onboarding flow) — same wiring master added on the legacy
+    /// to the V2 onboarding flow) - same wiring master added on the legacy
     /// ConnectionPage; the cards live in different slots in the rebuilt
     /// page but the user-facing behavior is identical.
     /// </summary>
@@ -2470,7 +2470,7 @@ public sealed partial class ConnectionPage : Page
         if (result == ContentDialogResult.Primary)
         {
             // If the user is removing the currently-active gateway, tear
-            // down the live connection first — otherwise the connection
+            // down the live connection first - otherwise the connection
             // manager keeps trying to talk to a record that no longer
             // exists in the registry, which leaves the UI in a stale state.
             var wasActive = string.Equals(_gatewayRegistry?.ActiveGatewayId, gwId, StringComparison.Ordinal);
@@ -2634,7 +2634,7 @@ public sealed partial class ConnectionPage : Page
     }
 
     /// <summary>
-    /// Direct connect — adapted from the legacy OnDirectConnect handler.
+    /// Direct connect - adapted from the legacy OnDirectConnect handler.
     /// Identical semantics: validate, snapshot for rollback, AddOrUpdate +
     /// SetActive in the registry, ClearStoredTokens for the identity, save
     /// settings, kick the connection manager and wait for a terminal state.
@@ -2678,7 +2678,7 @@ public sealed partial class ConnectionPage : Page
 
         // Resolve which record we're operating on:
         //   1. If the user opened the form via Edit on a saved row, prefer
-        //      the original record id — this lets a URL change *update* the
+        //      the original record id - this lets a URL change *update* the
         //      existing record instead of orphaning it as a duplicate.
         //   2. Otherwise look up by URL (typical "user typed a URL" flow).
         //   3. Otherwise it's brand new.
@@ -2724,7 +2724,7 @@ public sealed partial class ConnectionPage : Page
             //     device token is no longer trusted by the gateway, so we
             //     clear the stored device tokens to force a fresh re-pair.
             //   - When the form is left blank (user is just renaming /
-            //     fixing SSH), keep the existing device tokens — clearing
+            //     fixing SSH), keep the existing device tokens - clearing
             //     them would silently force a re-pair the user didn't ask
             //     for and would violate the "never downgrade a paired
             //     device" architecture rule.
@@ -2781,7 +2781,7 @@ public sealed partial class ConnectionPage : Page
                 ? string.Format(LocalizationHelper.GetString("ConnectionPage_PairingApprovalRequired"), GatewayUrlHelper.SanitizeForDisplay(url))
                 : string.Format(LocalizationHelper.GetString("ConnectionPage_ConnectedTo"), GatewayUrlHelper.SanitizeForDisplay(url));
 
-            // Success — leave Add mode and stop tracking the edited record.
+            // Success - leave Add mode and stop tracking the edited record.
             _editingGatewayId = null;
             _userIntent = UserIntent.None;
             LoadSavedGateways();
@@ -2929,10 +2929,10 @@ public sealed partial class ConnectionPage : Page
         // DoDirectConnectFromAddFormAsync. Without this, a failed direct
         // connect after the user had typed a (possibly wrong) shared token
         // would permanently destroy the device token earned during the
-        // last successful pairing — forcing a full re-pair the user never
+        // last successful pairing - forcing a full re-pair the user never
         // asked for. Skip the restore if the file changed since backup
         // (e.g. a late-arriving successful pairing wrote a fresh token in
-        // the meantime — that token is more valuable than our backup).
+        // the meantime - that token is more valuable than our backup).
         if (!string.IsNullOrEmpty(identityKeyPath) && identityBackup != null)
         {
             try
@@ -2947,7 +2947,7 @@ public sealed partial class ConnectionPage : Page
                 else
                 {
                     // ClearStoredTokens may have rewritten the file with a
-                    // smaller body — that's the expected post-clear state,
+                    // smaller body - that's the expected post-clear state,
                     // so treat as unchanged-from-clear and restore.
                     fileUnchanged = true;
                 }
@@ -3102,7 +3102,7 @@ public sealed partial class ConnectionPage : Page
     }
 
     /// <summary>
-    /// Legacy entry point — kept for the now-inert Add form Scan-pane
+    /// Legacy entry point - kept for the now-inert Add form Scan-pane
     /// "Start scan" button. Routes to the canonical scan flow.
     /// </summary>
     private void OnAddScanStart(object sender, RoutedEventArgs e)
@@ -3183,7 +3183,7 @@ public sealed partial class ConnectionPage : Page
 
         var icon = new FontIcon
         {
-            Glyph = Helpers.FluentIconCatalog.System, // PC1 — discovered, not yet connected
+            Glyph = Helpers.FluentIconCatalog.System, // PC1 - discovered, not yet connected
             FontSize = 14,
             Foreground = ResolveBrush("TextFillColorTertiaryBrush"),
             VerticalAlignment = VerticalAlignment.Center,
@@ -3230,7 +3230,7 @@ public sealed partial class ConnectionPage : Page
         RefreshFromSnapshot(_lastSnapshot);
     }
 
-    // Legacy [Use this] handler — replaced by [Add] above. Kept inert in
+    // Legacy [Use this] handler - replaced by [Add] above. Kept inert in
     // case any legacy XAML still binds it.
     private void OnScanResultUseThis(object sender, RoutedEventArgs e)
         => OnAddDiscoveredGateway(sender, e);
@@ -3360,7 +3360,7 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
-    // ─── Pending pairing — populate the banner with existing semantics ─
+    // ─── Pending pairing - populate the banner with existing semantics ─
 
     public void UpdateDevicePairingRequests(DevicePairingListInfo data)
     {
@@ -3375,7 +3375,7 @@ public sealed partial class ConnectionPage : Page
             // pending requests. When a legacy gateway omits RequestId we
             // fall back to DeviceId; if two pending requests share the
             // same DeviceId, approving from the UI would be ambiguous and
-            // could act on the wrong one — disable those rows so the user
+            // could act on the wrong one - disable those rows so the user
             // is forced to approve via the gateway-host CLI instead.
             var ambiguousIds = ComputeAmbiguousFallbackIds(
                 data.Pending.Select(r => (RequestId: (string?)r.RequestId, FallbackId: (string?)r.DeviceId)));
@@ -3418,7 +3418,7 @@ public sealed partial class ConnectionPage : Page
 
     /// <summary>
     /// Returns the set of fallback ids (DeviceId / NodeId) that appear in
-    /// 2+ pending requests where RequestId is missing — i.e. the cases
+    /// 2+ pending requests where RequestId is missing - i.e. the cases
     /// where approve/deny via the fallback id would be ambiguous.
     /// </summary>
     private static HashSet<string> ComputeAmbiguousFallbackIds(IEnumerable<(string? RequestId, string? FallbackId)> rows)
@@ -3457,7 +3457,7 @@ public sealed partial class ConnectionPage : Page
     /// On success they stay disabled, expecting the gateway to push a
     /// list-updated event that rebuilds the panel (and drops this card).
     /// A 8-second watchdog re-enables the buttons if that event never
-    /// arrives — without it, a dropped websocket frame would leave the
+    /// arrives - without it, a dropped websocket frame would leave the
     /// row permanently inert and the user would have no way to retry.
     /// </summary>
     private async Task RunPairingDecisionAsync(
@@ -3473,13 +3473,13 @@ public sealed partial class ConnectionPage : Page
             if (client == null) return; // finally re-enables
             var ok = await action(client);
             successPath = ok;
-            // !ok falls into finally below — re-enable so user can retry.
+            // !ok falls into finally below - re-enable so user can retry.
         }
         catch (Exception ex)
         {
             // Finally re-enables. The pairing list refresh has its own
             // observable surface (gateway list-updated event), so there's
-            // no clean place to surface a per-row error here — but log it.
+            // no clean place to surface a per-row error here - but log it.
             Services.Logger.Warn($"[ConnectionPage] Pairing row action failed: {ex.Message}");
         }
         finally
@@ -3499,7 +3499,7 @@ public sealed partial class ConnectionPage : Page
     private void ArmPairingDecisionWatchdog(Button approveBtn, Button rejectBtn)
     {
         // 8 s matches the existing reconnect-mask budget at the top of the
-        // file — the gateway's normal list-updated round-trip is < 1 s, so
+        // file - the gateway's normal list-updated round-trip is < 1 s, so
         // arming at 8 s only fires when something has genuinely gone wrong
         // (websocket dropped, gateway crashed mid-approve, ...). The card
         // will be removed by RefreshFromSnapshot in the happy path, which
@@ -3513,7 +3513,7 @@ public sealed partial class ConnectionPage : Page
         {
             timer.Stop();
             // If the row is still on screen (Parent != null), the gateway
-            // didn't push a list update — re-enable so the user can retry
+            // didn't push a list update - re-enable so the user can retry
             // instead of being stuck with permanently disabled buttons.
             if (approveBtn.Parent != null)
             {
@@ -3526,7 +3526,7 @@ public sealed partial class ConnectionPage : Page
 
     /// <summary>
     /// Builds a per-row pairing decision button (Approve / Deny). The button
-    /// stays a plain <see cref="Button"/> — accent style is intentionally
+    /// stays a plain <see cref="Button"/> - accent style is intentionally
     /// avoided so we comply with the Fluent "one accent per view" rule when
     /// several pending requests are stacked. The affirmative or negative
     /// cue comes from a leading glyph painted in a theme brush
@@ -3594,7 +3594,7 @@ public sealed partial class ConnectionPage : Page
             // legacy snapshots; if neither id is present, leave the buttons
             // disabled so the user isn't tricked into a no-op.
             // Per-row Approve/Deny: per Fluent guidance ("at most one accent
-            // button per view"), don't paint the affirmative half accent —
+            // button per view"), don't paint the affirmative half accent -
             // when several pending requests are stacked, multiple accent
             // buttons compete and dilute the cue. The outer
             // PendingApprovalsBanner (caution-yellow, bold count, live

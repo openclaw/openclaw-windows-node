@@ -276,17 +276,17 @@
     <value>Sluiten</value>
   </data>
   <data name="WindowTitle_Settings" xml:space="preserve">
-    <value>Instellingen — OpenClaw Tray</value>
+    <value>Instellingen - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_Status" xml:space="preserve">
-    <value>Status — OpenClaw-systeemvak</value>
-    <value>Statusvenster — OpenClaw Tray</value>
+    <value>Status - OpenClaw-systeemvak</value>
+    <value>Statusvenster - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_ActivityStream" xml:space="preserve">
-    <value>Activiteitenstroom — OpenClaw Tray</value>
+    <value>Activiteitenstroom - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
-    <value>Meldingsgeschiedenis — OpenClaw Tray</value>
+    <value>Meldingsgeschiedenis - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw-chatgesprek</value>
@@ -692,7 +692,7 @@ Gebruik een van deze opties:
     <value>Gevraagde toegang</value>
   </data>
   <data name="PairingApproval_RepairBadge" xml:space="preserve">
-    <value>Verzoek om opnieuw te koppelen — het apparaattoken wordt vernieuwd.</value>
+    <value>Verzoek om opnieuw te koppelen - het apparaattoken wordt vernieuwd.</value>
   </data>
   <data name="PairingApproval_Approve" xml:space="preserve">
     <value>Goedkeuren</value>
@@ -900,7 +900,7 @@ Gebruik een van deze opties:
     <value>Verbergen</value>
   </data>
   <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
-    <value>(niet gegenereerd — schakel de MCP-server in en klik op Opslaan)</value>
+    <value>(niet gegenereerd - schakel de MCP-server in en klik op Opslaan)</value>
   </data>
   <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
     <value>Opgeslagen op {0}</value>
@@ -936,7 +936,7 @@ Gebruik een van deze opties:
     <value>Update downloaden...</value>
   </data>
   <data name="UrlApproval_Caption" xml:space="preserve">
-    <value>OpenClaw — URL goedkeuren</value>
+    <value>OpenClaw - URL goedkeuren</value>
   </data>
   <data name="UrlApproval_Body" xml:space="preserve">
     <value>Een agent wil een risicovolle bestemming in je browser openen.</value>
@@ -957,10 +957,10 @@ Gebruik een van deze opties:
     <value>Redenen:</value>
   </data>
   <data name="UrlApproval_YesHint" xml:space="preserve">
-    <value>Ja — open deze URL.</value>
+    <value>Ja - open deze URL.</value>
   </data>
   <data name="UrlApproval_NoHint" xml:space="preserve">
-    <value>Nee — blokkeer hem.</value>
+    <value>Nee - blokkeer hem.</value>
   </data>
   <data name="Onboarding_Title" xml:space="preserve">
     <value>OpenClaw instellen</value>
@@ -1095,10 +1095,10 @@ Gebruik een van deze opties:
     <value>Apparaat vereist goedkeuring</value>
   </data>
   <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
-    <value>Token onjuist — controleer uw bootstrap-token</value>
+    <value>Token onjuist - controleer uw bootstrap-token</value>
   </data>
   <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
-    <value>Verbinding verlopen (15s) — controleer of de gateway actief is</value>
+    <value>Verbinding verlopen (15s) - controleer of de gateway actief is</value>
   </data>
   <data name="Onboarding_Permissions_Title" xml:space="preserve">
     <value>Machtigingen verlenen</value>
@@ -1170,19 +1170,19 @@ Gebruik een van deze opties:
     <value>Uitgeschakeld door beleid</value>
   </data>
   <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
-    <value>Uitgeschakeld — open Instellingen</value>
+    <value>Uitgeschakeld - open Instellingen</value>
   </data>
   <data name="Onboarding_Perm_Allowed" xml:space="preserve">
     <value>Toegestaan</value>
   </data>
   <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
-    <value>Geweigerd — open Instellingen</value>
+    <value>Geweigerd - open Instellingen</value>
   </data>
   <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
     <value>Geweigerd door systeembeleid</value>
   </data>
   <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
-    <value>Niet bepaald — open Instellingen</value>
+    <value>Niet bepaald - open Instellingen</value>
   </data>
   <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
     <value>Kan niet worden gecontroleerd</value>
@@ -1194,7 +1194,7 @@ Gebruik een van deze opties:
     <value>Geen microfoon gedetecteerd</value>
   </data>
   <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
-    <value>Beschikbaar — gebruikt kiezer per opname</value>
+    <value>Beschikbaar - gebruikt kiezer per opname</value>
   </data>
   <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
     <value>Niet ondersteund op dit apparaat</value>
@@ -1224,10 +1224,10 @@ Gebruik een van deze opties:
     <value>Instellingen → Vaardigheden</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
-    <value>Oorsprong niet toegestaan — gateway weigert deze verbinding</value>
+    <value>Oorsprong niet toegestaan - gateway weigert deze verbinding</value>
   </data>
   <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
-    <value>Snelheidsbeperking — wacht even en probeer opnieuw</value>
+    <value>Snelheidsbeperking - wacht even en probeer opnieuw</value>
   </data>
   <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
     <value>Voer uit op uw gateway:</value>
@@ -1236,13 +1236,13 @@ Gebruik een van deze opties:
     <value>Klik om te kopiëren</value>
   </data>
   <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
-    <value>Kopiëren mislukt — klik om opnieuw te proberen</value>
+    <value>Kopiëren mislukt - klik om opnieuw te proberen</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>Gekopieerd!</value>
   </data>
   <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
-    <value>Verbinding mislukt — controleer URL en token en probeer opnieuw</value>
+    <value>Verbinding mislukt - controleer URL en token en probeer opnieuw</value>
   </data>
   <data name="Onboarding_Wizard_StepError" xml:space="preserve">
     <value>Er is een fout opgetreden bij het verwerken van deze stap</value>
@@ -1379,7 +1379,7 @@ Gebruik een van deze opties:
     <value>Alle agents</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Realtime stroom van agentactiviteit — toolaanroepen, antwoorden, fouten en levenscyclusgebeurtenissen.</value>
+    <value>Realtime stroom van agentactiviteit - toolaanroepen, antwoorden, fouten en levenscyclusgebeurtenissen.</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>Alle agents</value>
@@ -1577,7 +1577,7 @@ Gebruik een van deze opties:
     <value>Opnieuw verbinden</value>
   </data>
   <data name="OperatorStatusText.Text" xml:space="preserve">
-    <value>Operatorstatus: —</value>
+    <value>Operatorstatus: -</value>
   </data>
   <data name="ConnectToggle.Header" xml:space="preserve">
     <value>Verbinding</value>
@@ -1697,7 +1697,7 @@ Gebruik een van deze opties:
     <value>Store: ~/.openclaw/cron.db</value>
   </data>
   <data name="NextWakeText.Text" xml:space="preserve">
-    <value>Volgende wake: —</value>
+    <value>Volgende wake: -</value>
   </data>
   <data name="CronPage_Button_80.Content" xml:space="preserve">
     <value>Nu uitvoeren</value>
@@ -1856,7 +1856,7 @@ Gebruik een van deze opties:
     <value>Knooppunt vergeten</value>
   </data>
   <data name="NodesPage_Forget_Error_Generic" xml:space="preserve">
-    <value>Knooppunt vergeten mislukt — gateway niet bereikbaar of toestemming geweigerd.</value>
+    <value>Knooppunt vergeten mislukt - gateway niet bereikbaar of toestemming geweigerd.</value>
   </data>
   <data name="NodesPage_Common_Cancel" xml:space="preserve">
     <value>Annuleren</value>
@@ -1904,7 +1904,7 @@ Gebruik een van deze opties:
     <value>Knooppunt-allowlist</value>
   </data>
   <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
-    <value>Opdrachten die de gateway toestaat voor verbonden knooppunten. Deze lijst is alleen-lezen — bewerk via de configuratiepagina.</value>
+    <value>Opdrachten die de gateway toestaat voor verbonden knooppunten. Deze lijst is alleen-lezen - bewerk via de configuratiepagina.</value>
   </data>
   <data name="AllowlistEmpty.Text" xml:space="preserve">
     <value>Geen allowlistgegevens beschikbaar. Maak eerst verbinding met een gateway.</value>
@@ -2546,13 +2546,13 @@ Gebruik een van deze opties:
     <value>Modelgrootte</value>
   </data>
   <data name="VoiceSettingsPage_ModelTiny.Content" xml:space="preserve">
-    <value>Tiny (~75 MB) — Snel, basisnauwkeurigheid</value>
+    <value>Tiny (~75 MB) - Snel, basisnauwkeurigheid</value>
   </data>
   <data name="VoiceSettingsPage_ModelBase.Content" xml:space="preserve">
-    <value>Base (~142 MB) — Goede balans</value>
+    <value>Base (~142 MB) - Goede balans</value>
   </data>
   <data name="VoiceSettingsPage_ModelSmall.Content" xml:space="preserve">
-    <value>Small (~466 MB) — Hoge nauwkeurigheid</value>
+    <value>Small (~466 MB) - Hoge nauwkeurigheid</value>
   </data>
   <data name="VoiceSettingsPage_DownloadButtonText.Text" xml:space="preserve">
     <value>Model downloaden</value>
@@ -2786,7 +2786,7 @@ Gebruik een van deze opties:
     <value>🗣️ Aan het luisteren...</value>
   </data>
   <data name="VoiceOverlayWindow_StatusSpeakNow" xml:space="preserve">
-    <value>Spreek nu — ik luister</value>
+    <value>Spreek nu - ik luister</value>
   </data>
   <data name="VoiceOverlayWindow_StateInitializing" xml:space="preserve">
     <value>Initialiseren...</value>
@@ -2975,7 +2975,7 @@ Gebruik een van deze opties:
     <value>Niet verbonden</value>
   </data>
   <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
-    <value>Gateway update required — incompatible version</value>
+    <value>Gateway update required - incompatible version</value>
   </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>Bijvoegen</value>
@@ -3128,13 +3128,13 @@ Gebruik een van deze opties:
     <value>De gateway meldt {0} als {1}.</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Node-sandbox is uitgeschakeld — opdrachten worden onbeperkt uitgevoerd</value>
+    <value>Node-sandbox is uitgeschakeld - opdrachten worden onbeperkt uitgevoerd</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
     <value>Door agents gestarte Windows-opdrachten worden zonder sandboxbeperking uitgevoerd totdat Node-sandbox weer is ingeschakeld.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox niet beschikbaar — host-fallback</value>
+    <value>Sandbox niet beschikbaar - host-fallback</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3142,7 +3142,7 @@ Gebruik een van deze opties:
 Opdrachten worden op de host uitgevoerd zonder sandboxbescherming zolang sandboxing niet beschikbaar is.</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
-    <value>Sandbox niet beschikbaar — opdrachten geblokkeerd</value>
+    <value>Sandbox niet beschikbaar - opdrachten geblokkeerd</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3162,7 +3162,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>De gateway heeft de cron.run-aanvraag geweigerd.</value>
   </data>
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
-    <value>{0} — {1}</value>
+    <value>{0} - {1}</value>
   </data>
   <data name="NotificationsPage_Title.Text" xml:space="preserve">
     <value>Meldingen</value>
@@ -3303,7 +3303,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Assistent heeft geantwoord</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Verbinding verbroken — antwoord onderbroken.</value>
+    <value>Verbinding verbroken - antwoord onderbroken.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Gateway-tijdlijngebeurtenis genegeerd</value>
@@ -3324,7 +3324,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Browser control</value>
   </data>
   <data name="PermissionsPage_Cap_Browser_Description" xml:space="preserve">
-    <value>Lets agents drive a Chromium browser on this PC — open pages, click, and read content.</value>
+    <value>Lets agents drive a Chromium browser on this PC - open pages, click, and read content.</value>
   </data>
   <data name="PermissionsPage_Cap_Camera_Label" xml:space="preserve">
     <value>Camera</value>
@@ -3402,16 +3402,16 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Connect to a gateway to start providing device capabilities.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReady" xml:space="preserve">
-    <value>Server enabled — token ready</value>
+    <value>Server enabled - token ready</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenPending" xml:space="preserve">
-    <value>Server enabled — token will be created on next start</value>
+    <value>Server enabled - token will be created on next start</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenCopied" xml:space="preserve">
     <value>Token copied to clipboard</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenNotFound" xml:space="preserve">
-    <value>Token file not found — start the MCP server first</value>
+    <value>Token file not found - start the MCP server first</value>
   </data>
   <data name="PermissionsPage_McpStatus_UrlCopied" xml:space="preserve">
     <value>URL copied to clipboard</value>
@@ -3516,19 +3516,19 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected — no active presence</value>
+    <value>Disconnected - no active presence</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active — last seen {0}</value>
+    <value>Active - last seen {0}</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle — last seen {0}</value>
+    <value>Idle - last seen {0}</value>
   </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive — last seen {0}</value>
+    <value>Inactive - last seen {0}</value>
   </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
@@ -3636,7 +3636,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789 - visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -3765,7 +3765,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Your gateway didn't list any channels</value>
   </data>
   <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials — the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
+    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials - the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
   </data>
   <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
     <value>Read the channels guide</value>
@@ -4122,7 +4122,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Een gateway toevoegen</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Title" xml:space="preserve">
-    <value>Aan de slag — installeer een lokale gateway</value>
+    <value>Aan de slag - installeer een lokale gateway</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Message" xml:space="preserve">
     <value>De snelste manier om te starten: stelt een WSL-gehoste gateway in op deze pc en maakt deze de actieve verbinding.</value>
@@ -4206,7 +4206,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Lokale gateway installeren</value>
   </data>
   <data name="ConnectionPage_LocalWSLSetupIsn.Text" xml:space="preserve">
-    <value>Lokale WSL-installatie is op deze machine niet beschikbaar — de installatiewizard kon niet worden geïnitialiseerd.</value>
+    <value>Lokale WSL-installatie is op deze machine niet beschikbaar - de installatiewizard kon niet worden geïnitialiseerd.</value>
   </data>
   <data name="ConnectionPage_UseSSHTunnelOptional.Text" xml:space="preserve">
     <value>SSH-tunnel gebruiken (optioneel)</value>
@@ -4509,7 +4509,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Wat er wordt ingesloten</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
-    <value>Bekijk welke opdrachten deze pagina dekt — en welke andere besturingselementen nodig hebben.</value>
+    <value>Bekijk welke opdrachten deze pagina dekt - en welke andere besturingselementen nodig hebben.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns.Text" xml:space="preserve">
     <value>Opdrachten die de agent via de Windows-node uitvoert (</value>
@@ -4521,7 +4521,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>) worden ingesloten door onderstaande instellingen.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
-    <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert niet. Als de gateway op WSL op deze pc draait, kunnen ze uw Windows-bestanden, klembord en netwerk bereiken — gebruik de exec-goedkeuringen van de gateway.</value>
+    <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert niet. Als de gateway op WSL op deze pc draait, kunnen ze uw Windows-bestanden, klembord en netwerk bereiken - gebruik de exec-goedkeuringen van de gateway.</value>
   </data>
   <data name="SandboxPage_SandboxUnavailable.Title" xml:space="preserve">
     <value>Sandbox niet beschikbaar</value>
@@ -4632,10 +4632,10 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Geen (standaard)</value>
   </data>
   <data name="SandboxPage_ReadAgentCanSee.Content" xml:space="preserve">
-    <value>Lezen — agent kan zien wat u hebt gekopieerd</value>
+    <value>Lezen - agent kan zien wat u hebt gekopieerd</value>
   </data>
   <data name="SandboxPage_WriteAgentCanReplace.Content" xml:space="preserve">
-    <value>Schrijven — agent kan uw klembord vervangen (kan het niet lezen)</value>
+    <value>Schrijven - agent kan uw klembord vervangen (kan het niet lezen)</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
     <value>Lezen &amp;amp; schrijven</value>
@@ -5106,7 +5106,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Stemvoorbeeld</value>
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
-    <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert, vallen hier niet onder. Als de gateway op deze pc staat, hebben ze mogelijk nog steeds toegang tot uw Windows-bestanden, klembord en netwerk — controleer de configuratie van uw gateway.</value>
+    <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert, vallen hier niet onder. Als de gateway op deze pc staat, hebben ze mogelijk nog steeds toegang tot uw Windows-bestanden, klembord en netwerk - controleer de configuratie van uw gateway.</value>
   </data>
   <data name="AgentEventsPage_AllAgents" xml:space="preserve">
     <value>Alle agenten</value>
@@ -5248,7 +5248,7 @@ Controleer of de gateway actief is.</value>
     <value>Wacht op goedkeuring</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalApproveThenConnect" xml:space="preserve">
-    <value>🔐 Wacht op goedkeuring — keur goed en klik op Verbinden</value>
+    <value>🔐 Wacht op goedkeuring - keur goed en klik op Verbinden</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalFromGateway" xml:space="preserve">
     <value>🔐 Wacht op goedkeuring van de gateway</value>
@@ -5572,7 +5572,7 @@ Controleer of de gateway actief is.</value>
     <value>Toepassen…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>Toegepast — gateway: {0}</value>
+    <value>Toegepast - gateway: {0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>Ongeldige installatiecode</value>
@@ -5689,19 +5689,19 @@ Controleer of de gateway actief is.</value>
     <value>Configuratie</value>
   </data>
   <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>Ontkoppel dit apparaat van het kanaal. Scan een nieuwe QR om opnieuw te verbinden — uw account blijft gekoppeld op uw telefoon.</value>
+    <value>Ontkoppel dit apparaat van het kanaal. Scan een nieuwe QR om opnieuw te verbinden - uw account blijft gekoppeld op uw telefoon.</value>
   </data>
   <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>Pauzeer het kanaal tijdelijk — inloggegevens worden bewaard zodat u het opnieuw kunt starten. Of verbreek de verbinding volledig om ze te wissen.</value>
+    <value>Pauzeer het kanaal tijdelijk - inloggegevens worden bewaard zodat u het opnieuw kunt starten. Of verbreek de verbinding volledig om ze te wissen.</value>
   </data>
   <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>Start het kanaal — het begint berichten te verwerken met de opgeslagen inloggegevens. Of verbreek de verbinding volledig om ze te wissen.</value>
+    <value>Start het kanaal - het begint berichten te verwerken met de opgeslagen inloggegevens. Of verbreek de verbinding volledig om ze te wissen.</value>
   </data>
   <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>Pauzeer het kanaal — inloggegevens worden bewaard zodat u het opnieuw kunt starten.</value>
+    <value>Pauzeer het kanaal - inloggegevens worden bewaard zodat u het opnieuw kunt starten.</value>
   </data>
   <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>Start het kanaal — het begint berichten te verwerken met de opgeslagen inloggegevens.</value>
+    <value>Start het kanaal - het begint berichten te verwerken met de opgeslagen inloggegevens.</value>
   </data>
   <data name="ChannelsPage_Start" xml:space="preserve">
     <value>Starten</value>
@@ -5941,7 +5941,7 @@ Controleer of de gateway actief is.</value>
     <value>Kan gatewayconfiguratie niet laden</value>
   </data>
   <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>De gateway heeft de huidige configuratie niet geretourneerd — kan niet veilig opslaan zonder deze. Probeer te vernieuwen en opnieuw op te slaan.</value>
+    <value>De gateway heeft de huidige configuratie niet geretourneerd - kan niet veilig opslaan zonder deze. Probeer te vernieuwen en opnieuw op te slaan.</value>
   </data>
   <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
     <value>De configuratie van de gateway is tijdens het opslaan gewist. Probeer te vernieuwen en opnieuw op te slaan.</value>
@@ -5956,7 +5956,7 @@ Controleer of de gateway actief is.</value>
     <value>Opslaan mislukt voor {0}</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>Uw gatewayconfiguratie is elders gewijzigd (bijv. vanaf de configuratiepagina). We hebben de cache vernieuwd — probeer opnieuw op te slaan. Details: {0}</value>
+    <value>Uw gatewayconfiguratie is elders gewijzigd (bijv. vanaf de configuratiepagina). We hebben de cache vernieuwd - probeer opnieuw op te slaan. Details: {0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} Als dit lijkt op een mismatch in het draadformaat, open dan de configuratiepagina voor directe JSON-bewerking.</value>
@@ -6250,7 +6250,7 @@ Controleer of de gateway actief is.</value>
     <value>Validatiefouten oplossen</value>
   </data>
   <data name="ConfigPage_StatusValidationErrorMessageFormat" xml:space="preserve">
-    <value>{0} — {1}</value>
+    <value>{0} - {1}</value>
   </data>
   <data name="ConfigPage_StatusNotConnectedTitle" xml:space="preserve">
     <value>Niet verbonden</value>
@@ -6436,19 +6436,19 @@ Controleer of de gateway actief is.</value>
     <value>{0} gekopieerd naar klembord.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>Node-sandbox niet beschikbaar — host-fallback</value>
+    <value>Node-sandbox niet beschikbaar - host-fallback</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
     <value>Containment is niet beschikbaar op deze pc, dus opdrachten die de agent start, worden op de host uitgevoerd zonder sandboxbescherming.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
-    <value>Node-sandbox niet beschikbaar — opdrachten geblokkeerd</value>
+    <value>Node-sandbox niet beschikbaar - opdrachten geblokkeerd</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
     <value>Containment is niet beschikbaar op deze pc en strikte fallbackblokkering staat aan, dus opdrachten die de agent start, worden geblokkeerd.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
-    <value>Node-sandbox is uitgeschakeld — hostuitvoering</value>
+    <value>Node-sandbox is uitgeschakeld - hostuitvoering</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
     <value>Containment is niet beschikbaar en Node-sandbox is uitgeschakeld, dus opdrachten die de agent start, worden op de host uitgevoerd zonder sandboxbescherming.</value>
@@ -6460,7 +6460,7 @@ Controleer of de gateway actief is.</value>
     <value>Programma's die de agent op deze pc uitvoert, zijn ingesloten.</value>
   </data>
   <data name="SandboxPage_StatusOffTitle" xml:space="preserve">
-    <value>Node-sandbox is uitgeschakeld — hoog risico</value>
+    <value>Node-sandbox is uitgeschakeld - hoog risico</value>
   </data>
   <data name="SandboxPage_StatusOffSubtext" xml:space="preserve">
     <value>Programma's die de agent op deze pc uitvoert, zijn niet ingesloten.</value>
@@ -6483,7 +6483,7 @@ Controleer of de gateway actief is.</value>
   <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
     <value>{0}
 
-{1} De sandboxcapaciteitscontrole is niet voltooid. Dit is meestal tijdelijk (een trage of geblokkeerde controle) — probeer het opnieuw en controleer, als het probleem blijft bestaan, of beveiligingssoftware wxc-exec blokkeert.</value>
+{1} De sandboxcapaciteitscontrole is niet voltooid. Dit is meestal tijdelijk (een trage of geblokkeerde controle) - probeer het opnieuw en controleer, als het probleem blijft bestaan, of beveiligingssoftware wxc-exec blokkeert.</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Opnieuw proberen</value>
@@ -6511,10 +6511,10 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
     <value>Installatie-instructies weergeven</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>Sandbox niet beschikbaar — host-fallback</value>
+    <value>Sandbox niet beschikbaar - host-fallback</value>
   </data>
   <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
-    <value>Sandbox niet beschikbaar — opdrachten geblokkeerd</value>
+    <value>Sandbox niet beschikbaar - opdrachten geblokkeerd</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>Lokale gateway verwijderd</value>
@@ -6688,7 +6688,7 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
     <value>Niet-versleutelde verbinding</value>
   </data>
   <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
-    <value>Deze externe gateway gebruikt ws:// — uw token zou onversleuteld worden verzonden. Gebruik wss:// (TLS), een SSH-tunnel of een vertrouwde proxy / Tailscale.</value>
+    <value>Deze externe gateway gebruikt ws:// - uw token zou onversleuteld worden verzonden. Gebruik wss:// (TLS), een SSH-tunnel of een vertrouwde proxy / Tailscale.</value>
   </data>
   <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
     <value>Versleuteld (TLS)</value>

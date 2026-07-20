@@ -63,7 +63,7 @@ public sealed class MediaResolver : IDisposable
             // The ConnectCallback validates IP addresses, but auto-redirect
             // would let an allowlisted host respond with a 30x to a hostname
             // we never validated against the allowlist. Disable redirects
-            // entirely — a broken image is preferable to an SSRF window.
+            // entirely - a broken image is preferable to an SSRF window.
             AllowAutoRedirect = false,
             // Disable connection pooling so a host's resolution can't be cached
             // across requests in a way that bypasses revalidation.
@@ -74,7 +74,7 @@ public sealed class MediaResolver : IDisposable
                 if (addresses.Length == 0)
                     throw new HttpRequestException($"DNS returned no addresses for '{ctx.DnsEndPoint.Host}'");
                 // Reject the entire connection if ANY resolved address is
-                // unsafe — DNS round-robin must not let a partially-internal
+                // unsafe - DNS round-robin must not let a partially-internal
                 // record slip through.
                 foreach (var ip in addresses)
                 {
@@ -142,7 +142,7 @@ public sealed class MediaResolver : IDisposable
               || header.StartsWith("image/svg+xml")))
             return false;
         // SVG data: URLs are commonly transmitted as percent-encoded UTF-8 (utf8 / charset=utf-8) rather than base64.
-        // The size cap still applies — measure against the worst-case decoded size of the payload portion.
+        // The size cap still applies - measure against the worst-case decoded size of the payload portion.
         bool isBase64 = header.Contains(";base64");
         var encoded = url.Length - comma - 1;
         long decoded = isBase64
@@ -327,7 +327,7 @@ public sealed class MediaResolver : IDisposable
 
     /// <summary>
     /// Decode SVG bytes through D2D's static SVG 1.1 subset (no scripts, no SMIL, no &lt;foreignObject&gt;,
-    /// no external fetches — that's our trust model). Two pieces of defense-in-depth on top:
+    /// no external fetches - that's our trust model). Two pieces of defense-in-depth on top:
     ///   - DOCTYPE pre-strip in case D2D's XML parser would resolve external entities (XXE / billion-laughs).
     ///   - Wall-clock timeout because a 1 MiB SVG can hold pathologically expensive geometry.
     /// </summary>
@@ -395,8 +395,8 @@ public sealed class MediaResolver : IDisposable
 
     /// <summary>
     /// Remove the first <c>&lt;!DOCTYPE …&gt;</c> declaration (including any internal subset
-    /// in <c>[…]</c>) from the byte stream. SVG content has no need for a DOCTYPE — browsers
-    /// ignore it — but stripping it pre-empts XXE / entity-expansion attacks regardless of
+    /// in <c>[…]</c>) from the byte stream. SVG content has no need for a DOCTYPE - browsers
+    /// ignore it - but stripping it pre-empts XXE / entity-expansion attacks regardless of
     /// what the downstream XML parser does.
     /// </summary>
     internal static byte[] StripDoctype(byte[] bytes)

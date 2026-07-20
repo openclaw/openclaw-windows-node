@@ -11,7 +11,7 @@ namespace OpenClawTray.Helpers;
 /// Opens native Win32 file dialogs on a dedicated STA thread.
 /// UWP FileOpenPicker/FileSavePicker are unreliable in unpackaged / self-hosted WinUI 3 apps,
 /// so we use the COM dialogs directly. These STA COM objects must
-/// run on an STA thread — using a dedicated STA thread avoids hangs/failures from
+/// run on an STA thread - using a dedicated STA thread avoids hangs/failures from
 /// shell extensions when called from MTA thread-pool threads.
 /// </summary>
 [SupportedOSPlatform("windows")]

@@ -301,16 +301,16 @@
   <!-- ==================== Runtime strings (C# code) ==================== -->
   <!-- Window titles -->
   <data name="WindowTitle_Settings" xml:space="preserve">
-    <value>Settings — OpenClaw Tray</value>
+    <value>Settings - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_Status" xml:space="preserve">
-    <value>Status — OpenClaw Tray</value>
+    <value>Status - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_ActivityStream" xml:space="preserve">
-    <value>Activity Stream — OpenClaw Tray</value>
+    <value>Activity Stream - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
-    <value>Notification History — OpenClaw Tray</value>
+    <value>Notification History - OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw Chat</value>
@@ -732,7 +732,7 @@ Use one of these options:
     <value>Access requested</value>
   </data>
   <data name="PairingApproval_RepairBadge" xml:space="preserve">
-    <value>Re-pair request — the device token will rotate.</value>
+    <value>Re-pair request - the device token will rotate.</value>
   </data>
   <data name="PairingApproval_Approve" xml:space="preserve">
     <value>Approve</value>
@@ -944,7 +944,7 @@ Use one of these options:
     <value>Hide</value>
   </data>
   <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
-    <value>(not generated — enable MCP server and click Save)</value>
+    <value>(not generated - enable MCP server and click Save)</value>
   </data>
   <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
     <value>Stored at {0}</value>
@@ -982,7 +982,7 @@ Use one of these options:
   </data>
   <!-- ==================== UrlNavigationApprovalService prompt ==================== -->
   <data name="UrlApproval_Caption" xml:space="preserve">
-    <value>OpenClaw — Approve URL</value>
+    <value>OpenClaw - Approve URL</value>
   </data>
   <data name="UrlApproval_Body" xml:space="preserve">
     <value>An agent wants to open a high-risk destination in your browser.</value>
@@ -1003,10 +1003,10 @@ Use one of these options:
     <value>Reasons:</value>
   </data>
   <data name="UrlApproval_YesHint" xml:space="preserve">
-    <value>Yes — open this URL.</value>
+    <value>Yes - open this URL.</value>
   </data>
   <data name="UrlApproval_NoHint" xml:space="preserve">
-    <value>No — block it.</value>
+    <value>No - block it.</value>
   </data>
   <data name="Onboarding_Title" xml:space="preserve">
     <value>OpenClaw Setup</value>
@@ -1117,10 +1117,10 @@ Use one of these options:
     <value>Device needs approval</value>
   </data>
   <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
-    <value>Token mismatch — check your bootstrap token</value>
+    <value>Token mismatch - check your bootstrap token</value>
   </data>
   <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
-    <value>Connection timed out (15s) — verify gateway is running</value>
+    <value>Connection timed out (15s) - verify gateway is running</value>
   </data>
   <data name="Onboarding_Permissions_Title" xml:space="preserve">
     <value>Grant Permissions</value>
@@ -1192,19 +1192,19 @@ Use one of these options:
     <value>Disabled by policy</value>
   </data>
   <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
-    <value>Disabled — open Settings to enable</value>
+    <value>Disabled - open Settings to enable</value>
   </data>
   <data name="Onboarding_Perm_Allowed" xml:space="preserve">
     <value>Allowed</value>
   </data>
   <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
-    <value>Denied — open Settings to allow</value>
+    <value>Denied - open Settings to allow</value>
   </data>
   <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
     <value>Denied by system policy</value>
   </data>
   <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
-    <value>Not determined — open Settings</value>
+    <value>Not determined - open Settings</value>
   </data>
   <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
     <value>Unable to check</value>
@@ -1216,7 +1216,7 @@ Use one of these options:
     <value>No microphone detected</value>
   </data>
   <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
-    <value>Available — uses picker per capture</value>
+    <value>Available - uses picker per capture</value>
   </data>
   <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
     <value>Not supported on this device</value>
@@ -1246,10 +1246,10 @@ Use one of these options:
     <value>Settings → Skills</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
-    <value>Origin not allowed — gateway rejects this connection</value>
+    <value>Origin not allowed - gateway rejects this connection</value>
   </data>
   <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
-    <value>Rate limited — wait a moment and try again</value>
+    <value>Rate limited - wait a moment and try again</value>
   </data>
   <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
     <value>Run on your gateway:</value>
@@ -1258,13 +1258,13 @@ Use one of these options:
     <value>Click to copy</value>
   </data>
   <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
-    <value>Copy failed — click to retry</value>
+    <value>Copy failed - click to retry</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>Copied!</value>
   </data>
   <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
-    <value>Connection failed — check URL and token, then try again</value>
+    <value>Connection failed - check URL and token, then try again</value>
   </data>
   <data name="Onboarding_Wizard_StepError" xml:space="preserve">
     <value>An error occurred processing this step</value>
@@ -1425,7 +1425,7 @@ Use one of these options:
     <value>All Agents</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Real-time stream of agent activity — tool calls, responses, errors, and lifecycle events.</value>
+    <value>Real-time stream of agent activity - tool calls, responses, errors, and lifecycle events.</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>All Agents</value>
@@ -1623,7 +1623,7 @@ Use one of these options:
     <value>Reconnect</value>
   </data>
   <data name="OperatorStatusText.Text" xml:space="preserve">
-    <value>Operator: —</value>
+    <value>Operator: -</value>
   </data>
   <data name="ConnectToggle.Header" xml:space="preserve">
     <value>Connection</value>
@@ -1743,7 +1743,7 @@ Use one of these options:
     <value>Store: ~/.openclaw/cron.db</value>
   </data>
   <data name="NextWakeText.Text" xml:space="preserve">
-    <value>Next wake: —</value>
+    <value>Next wake: -</value>
   </data>
   <data name="CronPage_Button_80.Content" xml:space="preserve">
     <value>Run Now</value>
@@ -1902,7 +1902,7 @@ Use one of these options:
     <value>Forget node</value>
   </data>
   <data name="NodesPage_Forget_Error_Generic" xml:space="preserve">
-    <value>Could not forget node — gateway not reachable or permission denied.</value>
+    <value>Could not forget node - gateway not reachable or permission denied.</value>
   </data>
   <data name="NodesPage_Common_Cancel" xml:space="preserve">
     <value>Cancel</value>
@@ -1950,7 +1950,7 @@ Use one of these options:
     <value>Node Allowlist</value>
   </data>
   <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
-    <value>Commands allowed by the gateway for connected nodes. This list is read-only — edit via the Config page.</value>
+    <value>Commands allowed by the gateway for connected nodes. This list is read-only - edit via the Config page.</value>
   </data>
   <data name="AllowlistEmpty.Text" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -2592,13 +2592,13 @@ Use one of these options:
     <value>Model Size</value>
   </data>
   <data name="VoiceSettingsPage_ModelTiny.Content" xml:space="preserve">
-    <value>Tiny (~75 MB) — Fast, basic accuracy</value>
+    <value>Tiny (~75 MB) - Fast, basic accuracy</value>
   </data>
   <data name="VoiceSettingsPage_ModelBase.Content" xml:space="preserve">
-    <value>Base (~142 MB) — Good balance</value>
+    <value>Base (~142 MB) - Good balance</value>
   </data>
   <data name="VoiceSettingsPage_ModelSmall.Content" xml:space="preserve">
-    <value>Small (~466 MB) — High accuracy</value>
+    <value>Small (~466 MB) - High accuracy</value>
   </data>
   <data name="VoiceSettingsPage_DownloadButtonText.Text" xml:space="preserve">
     <value>Download Model</value>
@@ -2832,7 +2832,7 @@ Use one of these options:
     <value>🗣️ Listening...</value>
   </data>
   <data name="VoiceOverlayWindow_StatusSpeakNow" xml:space="preserve">
-    <value>Speak now — I'm listening</value>
+    <value>Speak now - I'm listening</value>
   </data>
   <data name="VoiceOverlayWindow_StateInitializing" xml:space="preserve">
     <value>Initializing...</value>
@@ -3021,7 +3021,7 @@ Use one of these options:
     <value>Not connected</value>
   </data>
   <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
-    <value>Gateway update required — incompatible version</value>
+    <value>Gateway update required - incompatible version</value>
   </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>Attach</value>
@@ -3198,13 +3198,13 @@ Use one of these options:
     <value>The gateway reports {0} as {1}.</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Node Sandbox is off — commands run uncontained</value>
+    <value>Node Sandbox is off - commands run uncontained</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
     <value>Agent-started Windows commands will run without sandbox containment until Node Sandbox is turned back on.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox unavailable — host fallback</value>
+    <value>Sandbox unavailable - host fallback</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3212,7 +3212,7 @@ Use one of these options:
 Commands will run on the host without sandbox protection while sandboxing is unavailable.</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
-    <value>Sandbox unavailable — commands blocked</value>
+    <value>Sandbox unavailable - commands blocked</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3349,7 +3349,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Assistant replied</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Connection lost — response interrupted.</value>
+    <value>Connection lost - response interrupted.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Gateway timeline event dropped</value>
@@ -3370,7 +3370,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Browser control</value>
   </data>
   <data name="PermissionsPage_Cap_Browser_Description" xml:space="preserve">
-    <value>Lets agents drive a Chromium browser on this PC — open pages, click, and read content.</value>
+    <value>Lets agents drive a Chromium browser on this PC - open pages, click, and read content.</value>
   </data>
   <data name="PermissionsPage_Cap_Camera_Label" xml:space="preserve">
     <value>Camera</value>
@@ -3448,16 +3448,16 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Connect to a gateway to start providing device capabilities.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReady" xml:space="preserve">
-    <value>Server enabled — token ready</value>
+    <value>Server enabled - token ready</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenPending" xml:space="preserve">
-    <value>Server enabled — token will be created on next start</value>
+    <value>Server enabled - token will be created on next start</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenCopied" xml:space="preserve">
     <value>Token copied to clipboard</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenNotFound" xml:space="preserve">
-    <value>Token file not found — start the MCP server first</value>
+    <value>Token file not found - start the MCP server first</value>
   </data>
   <data name="PermissionsPage_McpStatus_UrlCopied" xml:space="preserve">
     <value>URL copied to clipboard</value>
@@ -3562,19 +3562,19 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected — no active presence</value>
+    <value>Disconnected - no active presence</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active — last seen {0}</value>
+    <value>Active - last seen {0}</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle — last seen {0}</value>
+    <value>Idle - last seen {0}</value>
   </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive — last seen {0}</value>
+    <value>Inactive - last seen {0}</value>
   </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
@@ -3682,7 +3682,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789 - visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -3811,7 +3811,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Your gateway didn't list any channels</value>
   </data>
   <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials — the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
+    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials - the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
   </data>
   <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
     <value>Read the channels guide</value>
@@ -4168,7 +4168,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Add a gateway</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Title" xml:space="preserve">
-    <value>Get started — install a local gateway</value>
+    <value>Get started - install a local gateway</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Message" xml:space="preserve">
     <value>The fastest way to start: sets up a WSL-hosted gateway on this PC and makes it the active connection.</value>
@@ -4252,7 +4252,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Install local gateway</value>
   </data>
   <data name="ConnectionPage_LocalWSLSetupIsn.Text" xml:space="preserve">
-    <value>Local-WSL setup isn't available on this machine — the install wizard couldn't be initialized.</value>
+    <value>Local-WSL setup isn't available on this machine - the install wizard couldn't be initialized.</value>
   </data>
   <data name="ConnectionPage_UseSSHTunnelOptional.Text" xml:space="preserve">
     <value>Use SSH tunnel (optional)</value>
@@ -4555,7 +4555,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>What gets contained</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
-    <value>See which commands this page covers — and which need different controls.</value>
+    <value>See which commands this page covers - and which need different controls.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns.Text" xml:space="preserve">
     <value>Commands the agent runs through the Windows node (</value>
@@ -4567,7 +4567,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>) are contained by the settings below.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
-    <value>Commands the agent runs directly on the gateway aren't. If the gateway is on WSL on this PC they can reach your Windows files, clipboard, and network — use the gateway's exec approvals.</value>
+    <value>Commands the agent runs directly on the gateway aren't. If the gateway is on WSL on this PC they can reach your Windows files, clipboard, and network - use the gateway's exec approvals.</value>
   </data>
   <data name="SandboxPage_SandboxUnavailable.Title" xml:space="preserve">
     <value>Sandbox unavailable</value>
@@ -4678,10 +4678,10 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>None (default)</value>
   </data>
   <data name="SandboxPage_ReadAgentCanSee.Content" xml:space="preserve">
-    <value>Read — agent can see what you copied</value>
+    <value>Read - agent can see what you copied</value>
   </data>
   <data name="SandboxPage_WriteAgentCanReplace.Content" xml:space="preserve">
-    <value>Write — agent can replace your clipboard (cannot read it)</value>
+    <value>Write - agent can replace your clipboard (cannot read it)</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
     <value>Read &amp; write</value>
@@ -5110,7 +5110,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Preview Voice</value>
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
-    <value>Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network — check your gateway's configuration.</value>
+    <value>Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network - check your gateway's configuration.</value>
   </data>  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
     <value>All Agents</value>
   </data>
@@ -5251,7 +5251,7 @@ Make sure the gateway is running.</value>
     <value>Awaiting approval</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalApproveThenConnect" xml:space="preserve">
-    <value>🔐 Awaiting approval — approve then click Connect</value>
+    <value>🔐 Awaiting approval - approve then click Connect</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalFromGateway" xml:space="preserve">
     <value>🔐 Awaiting approval from gateway</value>
@@ -5575,7 +5575,7 @@ Make sure the gateway is running.</value>
     <value>Applying…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>Applied — gateway: {0}</value>
+    <value>Applied - gateway: {0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>Invalid setup code</value>
@@ -5692,19 +5692,19 @@ Make sure the gateway is running.</value>
     <value>Configuration</value>
   </data>
   <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>Unlink this device from the channel. Scan a fresh QR to reconnect — your account stays paired on your phone.</value>
+    <value>Unlink this device from the channel. Scan a fresh QR to reconnect - your account stays paired on your phone.</value>
   </data>
   <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>Pause the channel temporarily — credentials are kept so you can start it again. Or disconnect entirely to clear them.</value>
+    <value>Pause the channel temporarily - credentials are kept so you can start it again. Or disconnect entirely to clear them.</value>
   </data>
   <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>Start the channel — it’ll begin handling messages with the stored credentials. Or disconnect entirely to clear them.</value>
+    <value>Start the channel - it’ll begin handling messages with the stored credentials. Or disconnect entirely to clear them.</value>
   </data>
   <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>Pause the channel — credentials are kept so you can start it again.</value>
+    <value>Pause the channel - credentials are kept so you can start it again.</value>
   </data>
   <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>Start the channel — it’ll begin handling messages with the stored credentials.</value>
+    <value>Start the channel - it’ll begin handling messages with the stored credentials.</value>
   </data>
   <data name="ChannelsPage_Start" xml:space="preserve">
     <value>Start</value>
@@ -5944,7 +5944,7 @@ Make sure the gateway is running.</value>
     <value>Couldn’t load gateway config</value>
   </data>
   <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>The gateway didn’t return its current config — can’t safely save without it. Try Refresh and save again.</value>
+    <value>The gateway didn’t return its current config - can’t safely save without it. Try Refresh and save again.</value>
   </data>
   <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
     <value>The gateway’s config was cleared mid-save. Try Refresh and save again.</value>
@@ -5959,7 +5959,7 @@ Make sure the gateway is running.</value>
     <value>Save failed for {0}</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>Your gateway config changed elsewhere (e.g., from the Config page). We refreshed the cache — try Save again. Details: {0}</value>
+    <value>Your gateway config changed elsewhere (e.g., from the Config page). We refreshed the cache - try Save again. Details: {0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} If this looks like a wire-format mismatch, open the Config page for direct JSON editing.</value>
@@ -6439,19 +6439,19 @@ Make sure the gateway is running.</value>
     <value>{0} copied to clipboard.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>Node Sandbox unavailable — host fallback</value>
+    <value>Node Sandbox unavailable - host fallback</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
     <value>Containment isn't available on this PC, so agent-started commands run on the host without sandbox protection.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
-    <value>Node Sandbox unavailable — commands blocked</value>
+    <value>Node Sandbox unavailable - commands blocked</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
     <value>Containment isn't available on this PC, and strict fallback blocking is on, so agent-started commands are blocked.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
-    <value>Node Sandbox is off — host execution</value>
+    <value>Node Sandbox is off - host execution</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
     <value>Containment isn't available and Node Sandbox is off, so agent-started commands run on the host without sandbox protection.</value>
@@ -6463,7 +6463,7 @@ Make sure the gateway is running.</value>
     <value>Programs the agent runs on this PC are contained.</value>
   </data>
   <data name="SandboxPage_StatusOffTitle" xml:space="preserve">
-    <value>Node Sandbox is off — high risk</value>
+    <value>Node Sandbox is off - high risk</value>
   </data>
   <data name="SandboxPage_StatusOffSubtext" xml:space="preserve">
     <value>Programs the agent runs on this PC are not contained.</value>
@@ -6484,7 +6484,7 @@ Make sure the gateway is running.</value>
     <value>Couldn't verify sandbox availability</value>
   </data>
   <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;{1} The sandbox capability check didn't complete. This is usually transient (a slow or blocked check) — retry, and if it persists check whether security software is blocking wxc-exec.</value>
+    <value>{0}&#x0A;&#x0A;{1} The sandbox capability check didn't complete. This is usually transient (a slow or blocked check) - retry, and if it persists check whether security software is blocking wxc-exec.</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Retry</value>
@@ -6508,10 +6508,10 @@ Make sure the gateway is running.</value>
     <value>Show install instructions</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>Sandbox unavailable — host fallback</value>
+    <value>Sandbox unavailable - host fallback</value>
   </data>
   <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
-    <value>Sandbox unavailable — commands blocked</value>
+    <value>Sandbox unavailable - commands blocked</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>Local gateway removed</value>
@@ -6685,7 +6685,7 @@ Make sure the gateway is running.</value>
     <value>Unencrypted connection</value>
   </data>
   <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
-    <value>This remote gateway uses ws:// — your token would be sent in cleartext. Use wss:// (TLS), an SSH tunnel, or a trusted proxy / Tailscale.</value>
+    <value>This remote gateway uses ws:// - your token would be sent in cleartext. Use wss:// (TLS), an SSH tunnel, or a trusted proxy / Tailscale.</value>
   </data>
   <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
     <value>Encrypted (TLS)</value>

@@ -11,7 +11,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Toolbar — Home/Refresh/DevTools only meaningful when WebView2 mode is active.
+        <!-- Toolbar - Home/Refresh/DevTools only meaningful when WebView2 mode is active.
              Collapsed by default in native mode so the chat surface starts at the very top. -->
         <Border x:Name="ToolbarBorder" Grid.Row="0"
                 Visibility="Collapsed"

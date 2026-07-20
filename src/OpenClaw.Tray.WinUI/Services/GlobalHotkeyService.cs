@@ -243,7 +243,7 @@ public class GlobalHotkeyService : IDisposable
                 Logger.Warn("Failed to register voice hotkey Ctrl+Alt+Shift+V");
             }
 
-            // Settings hotkey: Ctrl+Alt+; — opens Companion Settings.
+            // Settings hotkey: Ctrl+Alt+; - opens Companion Settings.
             // (Win+; is reserved by Windows for the emoji panel.)
             if (RegisterHotKey(hWnd, HOTKEY_ID_SETTINGS,
                 MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,

@@ -29,7 +29,7 @@
                     <TextBlock x:Uid="UsagePage_TextBlock_21" Text="Total Cost" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="TotalCostText" Text="—"
+                    <TextBlock x:Name="TotalCostText" Text="-"
                                Style="{StaticResource TitleLargeTextBlockStyle}"
                                HorizontalAlignment="Center"/>
                 </StackPanel>
@@ -49,7 +49,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_35" Text="Requests" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="RequestCountText" Text="—"
+                        <TextBlock x:Name="RequestCountText" Text="-"
                                    Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
@@ -61,7 +61,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_45" Text="Tokens" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="TokenCountText" Text="—"
+                        <TextBlock x:Name="TokenCountText" Text="-"
                                    Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
@@ -73,13 +73,13 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_55" Text="Providers" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="ProviderCountText" Text="—"
+                        <TextBlock x:Name="ProviderCountText" Text="-"
                                    Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <!-- Provider Breakdown card — real-time provider status (independent of the time range below). -->
+            <!-- Provider Breakdown card - real-time provider status (independent of the time range below). -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,8,0,0">
@@ -125,7 +125,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- Daily Cost card — header + time-range selector grouped together so
+            <!-- Daily Cost card - header + time-range selector grouped together so
                  the filter is visually scoped to the data inside the same card. -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

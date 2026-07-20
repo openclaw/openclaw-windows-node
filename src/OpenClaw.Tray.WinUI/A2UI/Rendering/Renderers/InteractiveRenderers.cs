@@ -141,7 +141,7 @@ public sealed class TextFieldRenderer : IComponentRenderer
         // Obscured fields are sensitive: register the bound path so dump/action-context
         // redact it (canvas.a2ui.dump is the loudest exfil channel). The value still
         // round-trips through the data model so a Submit button can read it via an
-        // explicit dataBinding opt-in — but every other read path drops it.
+        // explicit dataBinding opt-in - but every other read path drops it.
         if (obscured && textVal?.HasPath == true)
             ctx.MarkSecretPath(textVal.Path);
 
@@ -262,7 +262,7 @@ public sealed class DateTimeInputRenderer : IComponentRenderer
                 catch (FormatException)
                 {
                     // Bogus agent-supplied format. Fall back to ISO-8601 so the
-                    // surface keeps working — without this, every keystroke
+                    // surface keeps working - without this, every keystroke
                     // throws and the tab re-renders as the unknown placeholder.
                     formatted = combined.ToString("o");
                 }

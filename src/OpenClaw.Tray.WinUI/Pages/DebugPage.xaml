@@ -64,7 +64,7 @@
 
                     <!-- Top status InfoBar. Both actions render as
                          HyperlinkButtons inside InfoBar.Content (matches
-                         the Win11 Settings convention — see Settings →
+                         the Win11 Settings convention - see Settings →
                          System → Storage). Padding=0 strips button chrome
                          so they read as inline links flush with the
                          message text. -->
@@ -86,7 +86,7 @@
                         </controls:InfoBar.Content>
                     </controls:InfoBar>
 
-                    <!-- Gateway — shown only when the active gateway is an
+                    <!-- Gateway - shown only when the active gateway is an
                          app-managed WSL distro we can run commands in
                          (CanControlWslGateway). Hidden for SSH/remote
                          gateways. Visibility is driven from code-behind in
@@ -258,7 +258,7 @@
                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                                 </toolkit:SettingsCard.ActionIcon>
                                 <TextBlock x:Name="DeviceIdText"
-                                           Text="—"
+                                           Text="-"
                                            FontFamily="Consolas"
                                            FontSize="12"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -273,7 +273,7 @@
                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                                 </toolkit:SettingsCard.ActionIcon>
                                 <TextBlock x:Name="PublicKeyText"
-                                           Text="—"
+                                           Text="-"
                                            FontFamily="Consolas"
                                            FontSize="11"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"

@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace OpenClawTray.A2UI.Protocol;
 
 /// <summary>
-/// Inbound A2UI v0.8 message envelopes (agent → node). Sealed hierarchy —
+/// Inbound A2UI v0.8 message envelopes (agent → node). Sealed hierarchy -
 /// extend by adding a new record + a router branch. Unknown envelope kinds
 /// surface as <see cref="UnknownEnvelopeMessage"/> and are logged.
 /// </summary>
@@ -14,7 +14,7 @@ public abstract record A2UIMessage;
 
 /// <summary>
 /// surfaceUpdate: declares (or replaces) the components for a surface. The
-/// surface is implicitly created on first surfaceUpdate — there is no
+/// surface is implicitly created on first surfaceUpdate - there is no
 /// separate createSurface envelope in v0.8.
 /// </summary>
 public sealed record SurfaceUpdateMessage : A2UIMessage
@@ -228,11 +228,11 @@ public static class A2UIMessageParser
                         try { msg = ParseLine(trimmed); }
                         catch (JsonException ex)
                         {
-                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {OpenClaw.Shared.TokenSanitizer.Sanitize(Truncate(trimmed, 200))} — {ex.Message}");
+                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {OpenClaw.Shared.TokenSanitizer.Sanitize(Truncate(trimmed, 200))} - {ex.Message}");
                         }
                         catch (FormatException ex)
                         {
-                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {OpenClaw.Shared.TokenSanitizer.Sanitize(Truncate(trimmed, 200))} — {ex.Message}");
+                            logger?.Warn($"[A2UI] dropping malformed JSONL line: {OpenClaw.Shared.TokenSanitizer.Sanitize(Truncate(trimmed, 200))} - {ex.Message}");
                         }
                         if (msg != null) yield return msg;
                     }
@@ -386,7 +386,7 @@ public static class A2UIMessageParser
     /// with no key (e.g. <c>{ "valueString": "admin" }</c>). For robustness we
     /// also tolerate bare primitives (<c>["a", 1, true]</c>) that an agent may
     /// emit. A JSON <c>null</c> element is preserved as an explicit null slot so
-    /// array indices stay stable for position-sensitive consumers — matching how
+    /// array indices stay stable for position-sensitive consumers - matching how
     /// a value-less wrapped object (<c>{}</c>) round-trips. Elements of an
     /// unsupported kind are dropped, matching <see cref="ParseValueMap"/>'s
     /// skip-bad-item tolerance.

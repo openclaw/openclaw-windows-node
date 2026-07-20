@@ -28,7 +28,7 @@ public interface IChatGatewayBridge : IDisposable
     ///
     /// Callers should invoke this AFTER subscribing to
     /// <see cref="ModelsListUpdated"/> and <see cref="SessionsUpdated"/> so
-    /// they actually receive the resulting frames — firing the request
+    /// they actually receive the resulting frames - firing the request
     /// before subscription leaves the response handler unset and the
     /// dropdowns stale until the next gateway-driven update.
     /// </summary>
@@ -45,7 +45,7 @@ public interface IChatGatewayBridge : IDisposable
     /// Fetches the gateway command catalog (<c>commands.list</c>) via the typed
     /// protocol API. Returns a <see cref="CommandCatalog"/> whose
     /// <see cref="CommandCatalog.IsSupported"/> is <c>false</c> when the gateway
-    /// does not implement the method. Request/response — no event subscription.
+    /// does not implement the method. Request/response - no event subscription.
     /// </summary>
     Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null);
     Task PatchSessionModelAsync(string sessionKey, string model);
@@ -129,8 +129,8 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         //
         // The seed only writes if ``_currentStatus`` is still
         // ``Disconnected`` (its default). If a handler edge fired in
-        // the subscribe→read window — including intermediate states
-        // like ``Connecting`` — the handler's write is preserved
+        // the subscribe→read window - including intermediate states
+        // like ``Connecting`` - the handler's write is preserved
         // rather than collapsed by the 2-state read of
         // ``IsConnectedToGateway``. ``volatile`` covers atomic reads.
         _client.StatusChanged += _statusChangedHandler;
@@ -149,7 +149,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
         Logger.Info($"[ChatBridge] ctor: IsConnectedToGateway={_client.IsConnectedToGateway}");
         // The actual proactive models.list/sessions.list request is
-        // deferred to StartProactiveBootstrap() — kicking it off here
+        // deferred to StartProactiveBootstrap() - kicking it off here
         // would race the provider's subscription to ModelsListUpdated:
         // the response can arrive before the provider has wired its
         // handler, leaving the composer dropdowns empty until the next

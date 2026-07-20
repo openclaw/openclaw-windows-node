@@ -352,7 +352,7 @@
                                TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis"/>
                     <!-- Action sits at the far right of the banner, before the
-                         close button — mirrors the prior Connection-page bar. -->
+                         close button - mirrors the prior Connection-page bar. -->
                     <HyperlinkButton x:Name="AppNotificationActionButton"
                             Grid.Column="1"
                             Visibility="Collapsed"
@@ -442,7 +442,7 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Cron">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Cron_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <!-- Advanced — consolidates gateway-oriented pages -->
+            <!-- Advanced - consolidates gateway-oriented pages -->
             <NavigationViewItem x:Uid="HubWindow_Advanced" x:Name="NavAdvanced" Content="Advanced" SelectsOnInvoked="False">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Advanced_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                 <NavigationViewItem.MenuItems>

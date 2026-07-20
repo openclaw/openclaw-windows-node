@@ -14,7 +14,7 @@ namespace OpenClawTray.Pages;
 /// view rows and owns the search/sort/format logic so the code-behind stays a
 /// thin view.
 ///
-/// This layer <i>consumes</i> the protocol DTOs — it does not re-parse wire JSON
+/// This layer <i>consumes</i> the protocol DTOs - it does not re-parse wire JSON
 /// or redefine the protocol contract (that lives in
 /// <c>OpenClaw.Shared.GatewayProtocolModels</c> /
 /// <c>OpenClawGatewayClient.Protocol</c>).
@@ -33,7 +33,7 @@ internal static class WorkspaceFilesModel
         public required string RelativePath { get; init; }
 
         /// <summary>
-        /// The original path string from the gateway DTO — used verbatim when
+        /// The original path string from the gateway DTO - used verbatim when
         /// requesting content via <c>sessions.files.get</c> so normalization
         /// never diverges from what the gateway expects.
         /// </summary>

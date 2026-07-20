@@ -265,7 +265,7 @@ internal sealed class TrayMenuStateBuilder
         AutomationProperties.SetName(gwOuter,
             $"Gateway {statusText}. Activate to open connection settings.");
 
-        // Gateway hover flyout — richer connection details
+        // Gateway hover flyout - richer connection details
         var gwFlyoutItems = BuildGatewayFlyoutItems(
             isConnected, statusText, gwUri, _snapshot.Presence, _snapshot.GatewaySelf,
             _snapshot.NodePairList, _snapshot.DevicePairList, _snapshot.AuthFailureMessage,
@@ -274,7 +274,7 @@ internal sealed class TrayMenuStateBuilder
 
         // ── Connected Devices (moved above Sessions) ──
         // Devices flow directly after the Gateway block without a divider
-        // or section header — they share the gateway visual format.
+        // or section header - they share the gateway visual format.
         var connectedNodes = _snapshot.Nodes.Where(n => n.IsOnline).ToArray();
         if (connectedNodes.Length > 0)
         {
@@ -323,10 +323,10 @@ internal sealed class TrayMenuStateBuilder
         menu.AddMenuItem("Chat", FluentIconCatalog.Build(FluentIconCatalog.Chat), "openchat");
         menu.AddMenuItem("Canvas", FluentIconCatalog.Build(FluentIconCatalog.CanvasAct), "canvas");
         menu.AddMenuItem("Diagnostics", FluentIconCatalog.Build(FluentIconCatalog.Bug), "diagnostics");
-        // Voice overlay disabled — inline chat voice mode is used instead.
+        // Voice overlay disabled - inline chat voice mode is used instead.
         // menu.AddMenuItem("Voice", FluentIconCatalog.Build(FluentIconCatalog.VoiceAct), "voice");
 
-        // Setup Guide / Reconfigure entry — label flips based on whether prior
+        // Setup Guide / Reconfigure entry - label flips based on whether prior
         // configuration exists; routes to the existing "setup" action handler.
         if (_snapshot.ShowSetupMenuEntry)
         {
@@ -782,7 +782,7 @@ internal sealed class TrayMenuStateBuilder
             }
         }
 
-        // Pending pairings (if any) — quick summary line
+        // Pending pairings (if any) - quick summary line
         var nodePending = nodePair?.Pending.Count ?? 0;
         var devicePending = devicePair?.Pending.Count ?? 0;
         if (nodePending + devicePending > 0)
@@ -908,7 +908,7 @@ internal sealed class TrayMenuStateBuilder
         }
         outer.Children.Add(line1);
 
-        // Row 1: model + ratio (text only — bar gets its own row below for clarity)
+        // Row 1: model + ratio (text only - bar gets its own row below for clarity)
         var line2 = new Grid { ColumnSpacing = 8 };
         line2.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         line2.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1029,7 +1029,7 @@ internal sealed class TrayMenuStateBuilder
             line1.Children.Add(osChip);
         }
 
-        // Inner chevron removed — AddFlyoutCustomItem already appends the
+        // Inner chevron removed - AddFlyoutCustomItem already appends the
         // official Fluent chevron, so drawing another here looked like a
         // duplicate ":›" glyph in narrow flyouts.
         outer.Children.Add(line1);
@@ -1423,7 +1423,7 @@ internal sealed class TrayMenuStateBuilder
             }
         }
 
-        // By Model section — aggregate from sessions
+        // By Model section - aggregate from sessions
         var byModel = _snapshot.Sessions
             .Where(s => !string.IsNullOrEmpty(s.Model))
             .GroupBy(s => s.Model!, StringComparer.OrdinalIgnoreCase)

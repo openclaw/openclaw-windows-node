@@ -13,8 +13,8 @@
             <!-- Setup-only indicator brushes. They must live at App scope (not just in
                  SetupWindow's element resources) because the setup pages resolve them via
                  {ThemeResource} at page-load, before they attach to the setup window's
-                 resource scope. They alias NATIVE system resources — the active indicator
-                 follows the user's Windows accent, the inactive dot is a native neutral —
+                 resource scope. They alias NATIVE system resources - the active indicator
+                 follows the user's Windows accent, the inactive dot is a native neutral -
                  so onboarding showcases the user's chosen system colors. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">

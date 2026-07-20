@@ -4,9 +4,9 @@ namespace OpenClawTray.Chat;
 /// Per-entry metadata maintained by <see cref="OpenClawChatDataProvider"/>
 /// in parallel to the vendored <see cref="OpenClaw.Chat.ChatTimelineItem"/>.
 /// Tracks values that the upstream <c>ChatTimelineItem</c> record doesn't
-/// carry — specifically the wall-clock timestamp of when the entry was
+/// carry - specifically the wall-clock timestamp of when the entry was
 /// created, the model active at that moment, and gateway-reported usage
-/// counters — so the timeline renderer can show a richer footer like
+/// counters - so the timeline renderer can show a richer footer like
 /// <c>Field · 7:54 PM · ↑1475 ↓12 R45.4k 23% ctx · gpt-5.5</c>.
 /// </summary>
 /// <param name="Timestamp">
@@ -21,7 +21,7 @@ namespace OpenClawTray.Chat;
 /// <param name="InputTokens">
 /// Cumulative input (prompt) tokens reported by the gateway for this turn,
 /// shown in the footer with an up arrow (<c>↑</c>). <c>null</c> when not
-/// reported (most live ``chat`` deltas don't carry usage info — only the
+/// reported (most live ``chat`` deltas don't carry usage info - only the
 /// final summary does).
 /// </param>
 /// <param name="OutputTokens">
@@ -29,7 +29,7 @@ namespace OpenClawTray.Chat;
 /// the footer with a down arrow (<c>↓</c>).
 /// </param>
 /// <param name="ResponseTokens">
-/// Total tokens spent on the response (prompt + completion) — surfaces as
+/// Total tokens spent on the response (prompt + completion) - surfaces as
 /// <c>R&lt;n&gt;</c> in the footer (e.g. <c>R45.4k</c>).
 /// </param>
 /// <param name="ContextPercent">

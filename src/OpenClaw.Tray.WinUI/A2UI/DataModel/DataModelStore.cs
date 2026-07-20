@@ -73,7 +73,7 @@ public sealed class DataModelStore
     /// Apply a v0.8 dataModelUpdate batch. Each entry's <c>key</c> is appended
     /// to the optional <paramref name="basePath"/> to form the full pointer.
     /// Special case: basePath="/" or null with key="" replaces the whole tree.
-    /// Coalesced — observers fire once per affected path after the batch.
+    /// Coalesced - observers fire once per affected path after the batch.
     /// </summary>
     public void ApplyDataModelUpdate(string surfaceId, string? basePath, IReadOnlyList<Protocol.DataModelEntry> entries)
     {
@@ -137,7 +137,7 @@ public sealed class DataModelStore
         if (depth > max) return false;
         foreach (var e in children)
         {
-            // Both nested maps and nested arrays add a level — bound either path
+            // Both nested maps and nested arrays add a level - bound either path
             // so a deeply-nested valueArray can't bypass the valueMap depth cap.
             if (!IsWithinDepth(e.ValueMap, depth + 1, max)) return false;
             if (!IsWithinDepth(e.ValueArray, depth + 1, max)) return false;
@@ -149,7 +149,7 @@ public sealed class DataModelStore
     /// RFC 6901 token escape: <c>~</c> → <c>~0</c>, <c>/</c> → <c>~1</c>. The
     /// caller's <c>entry.Key</c> is treated as a single pointer reference token,
     /// so a key like <c>"users/0/name"</c> escapes to one segment
-    /// <c>users~10~1name</c> — it does NOT split into nested path segments.
+    /// <c>users~10~1name</c> - it does NOT split into nested path segments.
     /// Use <c>basePath</c> to traverse into nested objects.
     /// </summary>
     private static string EncodePointerToken(string key) =>
@@ -173,7 +173,7 @@ public sealed class DataModelStore
     {
         // Per-model lock guarding Root and any traversal/mutation. JsonObject
         // and JsonArray are not thread-safe, so every read AND every write must
-        // go through this lock — including the deep-clone in canvas.a2ui.dump.
+        // go through this lock - including the deep-clone in canvas.a2ui.dump.
         public readonly object Sync = new();
         // Single dictionary keyed by normalized pointer path → list of subscribers.
         public readonly Dictionary<string, List<Action>> Subscribers = new(StringComparer.Ordinal);
@@ -208,7 +208,7 @@ public sealed class DataModelStore
                     {
                         // Whole-tree replace requires an object root. Coerce a
                         // scalar/array into { "value": <scalar> } rather than
-                        // silently dropping the write — the previous no-op
+                        // silently dropping the write - the previous no-op
                         // behaviour masked agent bugs.
                         Root = new JsonObject { ["value"] = value.DeepClone() };
                     }

@@ -46,7 +46,7 @@ public sealed class VoiceService : IAsyncDisposable
     //
     // Whisper is "ready" only when the model is both downloaded AND loaded
     // into memory. Anything else falls back to the WinRT engine inside the
-    // selector — kept transparent at the SttCapability response surface.
+    // selector - kept transparent at the SttCapability response surface.
     // ============================================================
 
     /// <summary>True when Whisper can serve a transcribe / listen call right now.</summary>
@@ -293,7 +293,7 @@ public sealed class VoiceService : IAsyncDisposable
             await pipeline.StartAsync(options, linkedCts.Token);
 
             // Wait for either an utterance or timeout/cancellation.
-            // We don't throw immediately on timeout — pipeline.StopAsync's
+            // We don't throw immediately on timeout - pipeline.StopAsync's
             // flush path may still produce an UtteranceTranscribed for
             // speech that was buffered when the timer fired. Only after
             // giving the flush a brief window do we report timeout.

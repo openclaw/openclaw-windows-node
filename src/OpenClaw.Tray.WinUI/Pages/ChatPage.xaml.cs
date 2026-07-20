@@ -59,7 +59,7 @@ public sealed partial class ChatPage : Page
         _pageActive = false;
         UpdateNativeChatSurfaceActive();
 
-        // Don't tear down the native chat host — preserve it across page
+        // Don't tear down the native chat host - preserve it across page
         // navigations so that scroll position, selected session, and loaded
         // history survive. ShowFunctionalSurface's _mountedProvider check
         // will reuse the existing host when the page reloads.
@@ -96,7 +96,7 @@ public sealed partial class ChatPage : Page
             _functionalHost.TriggerVoiceRecording();
             return;
         }
-        // Composer may not have rendered yet — retry until trigger is registered
+        // Composer may not have rendered yet - retry until trigger is registered
         RetryTriggerVoice(retries: 15, delayMs: 100);
     }
 
@@ -238,7 +238,7 @@ public sealed partial class ChatPage : Page
 
         // Consume a pending session-key hand-off from SessionsPage or a
         // notification toast so the chat root mounts with that thread selected.
-        // Any pending key forces a remount — _mountedThreadId only records what
+        // Any pending key forces a remount - _mountedThreadId only records what
         // we asked for, not what the user later picked inside the composer's
         // dropdown, so we cannot use it to detect "already on the right thread".
         var pendingSessionKey = _hub?.PendingChatSessionKey
@@ -476,7 +476,7 @@ public sealed partial class ChatPage : Page
 
         if (_webViewInitialized)
         {
-            // Already initialized — show it. The caller's `forceNavigate`
+            // Already initialized - show it. The caller's `forceNavigate`
             // flag is informational; we always re-navigate so a settings
             // change (token / gateway URL) reaches the WebView.
             if (!NavigateWebViewToCurrentChatUrl())
@@ -615,7 +615,7 @@ public sealed partial class ChatPage : Page
 
                 if (e.IsSuccess)
                 {
-                    // Hide the web Control UI sidebar — Hub NavigationView handles top-level nav.
+                    // Hide the web Control UI sidebar - Hub NavigationView handles top-level nav.
                     _ = WebView.CoreWebView2.ExecuteScriptAsync(@"
                         (function() {
                             var style = document.createElement('style');

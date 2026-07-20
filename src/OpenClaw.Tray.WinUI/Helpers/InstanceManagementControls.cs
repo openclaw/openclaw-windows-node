@@ -93,7 +93,7 @@ public static class InstanceManagementControls
             Tag = node.NodeId,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        // The button content is icon-only — screen readers would otherwise
+        // The button content is icon-only - screen readers would otherwise
         // just announce the glyph codepoint. Set explicit AutomationProperties.Name
         // and a tooltip so it announces "Copy node ID" instead.
         AutomationProperties.SetName(copyBtn, LocalizationHelper.GetString("InstanceManage_CopyNodeId_AccessibilityName"));
@@ -157,7 +157,7 @@ public static class InstanceManagementControls
         // Only show ✓/✗ when the permissions dict has an explicit entry for
         // the exact capability name. Real-world permissions dicts may be
         // command-scoped (e.g. "screen.record"), so a capability without a
-        // matching key is left neutral — we don't want to falsely claim
+        // matching key is left neutral - we don't want to falsely claim
         // "enabled" when consent state is unknown.
         if (node.Capabilities is not { Count: > 0 } caps) return null;
         var perms = node.Permissions ?? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
@@ -353,7 +353,7 @@ public static class InstanceManagementControls
         return footer;
     }
 
-    // Single ContentDialog at a time — WinUI 3 only permits one per XamlRoot.
+    // Single ContentDialog at a time - WinUI 3 only permits one per XamlRoot.
     // A static gate is fine because all rows on a page share the same XamlRoot.
     private static bool _dialogOpen;
 

@@ -19,7 +19,7 @@ public enum ChatSurfaceOverride
 
 /// <summary>
 /// Process-wide debug overrides for which chat surface (legacy WebView or
-/// native chat) renders inside each chat container. Not persisted — these
+/// native chat) renders inside each chat container. Not persisted - these
 /// reset every app launch and are intended only for engineering A/B tests.
 ///
 /// Subscribers (<see cref="OpenClawTray.Pages.ChatPage"/>,

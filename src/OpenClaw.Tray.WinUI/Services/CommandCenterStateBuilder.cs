@@ -349,7 +349,7 @@ internal sealed class CommandCenterStateBuilder
                     Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyHostNotDetected"),
                     Detail = "browser.proxy needs a compatible browser-control host listening on the gateway port + 2.",
                     RepairAction = "Copy browser setup guidance",
-                    // string formatter — no UI
+                    // string formatter - no UI
                     CopyText = CommandCenterTextHelper.BuildBrowserSetupGuidance(port.Port, topology, tunnel, browserControlPort)
                 };
             }

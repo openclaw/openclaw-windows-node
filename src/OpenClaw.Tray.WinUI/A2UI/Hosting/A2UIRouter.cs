@@ -16,7 +16,7 @@ namespace OpenClawTray.A2UI.Hosting;
 /// hosts on the UI thread, and exposes events for the window to react to
 /// (surface lifecycle).
 ///
-/// Designed for single-window/multiple-surfaces — the spec leaves room for a
+/// Designed for single-window/multiple-surfaces - the spec leaves room for a
 /// future multi-window mode but the v1 host stacks surfaces in TabView slots.
 /// </summary>
 public sealed class A2UIRouter
@@ -111,7 +111,7 @@ public sealed class A2UIRouter
         // TryEnqueue returns false when the dispatcher is shutting down (or
         // its queue is at capacity). Silently dropping a router push there
         // would hide the failure from upstream callers that already returned
-        // success on the wire — log a warning so we can correlate the dropped
+        // success on the wire - log a warning so we can correlate the dropped
         // surface update with whatever shutdown sequence is underway.
         if (!_dispatcher.TryEnqueue(() => action()))
             _logger.Warn("[A2UI] Router dispatch dropped: dispatcher unavailable (likely shutting down)");
@@ -176,7 +176,7 @@ public sealed class A2UIRouter
         if (_surfaces.Count >= MaxSurfaces)
         {
             // Cap reached. The previous "degraded fallback" returned the first
-            // existing surface, which corrupted unrelated surface state — a
+            // existing surface, which corrupted unrelated surface state - a
             // surfaceUpdate aimed at the new id would clobber the components
             // of an entirely different surface. Skip the message instead and
             // let the cap log + telemetry counter signal the misbehavior.

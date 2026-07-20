@@ -47,7 +47,7 @@ internal static class StartupSetupState
     }
 
     /// <summary>
-    /// True when the user has configured an actual gateway target — either a
+    /// True when the user has configured an actual gateway target - either a
     /// non-default <c>GatewayUrl</c> or an SSH tunnel host.
     /// </summary>
     internal static bool HasAnyConfiguredGatewayTarget(SettingsManager settings)

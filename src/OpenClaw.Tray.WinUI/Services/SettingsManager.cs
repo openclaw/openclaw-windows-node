@@ -96,7 +96,7 @@ public class SettingsManager
     public string OpenTelemetryEndpoint { get => _data.OpenTelemetryEndpoint ?? ""; set => _data = _data with { OpenTelemetryEndpoint = NormalizeOptionalString(value) }; }
     public string OpenTelemetryProtocol { get => OpenTelemetryEndpointProtocol.Normalize(_data.OpenTelemetryProtocol); set => _data = _data with { OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Normalize(value) }; }
 
-    // Node mode(gateway WebSocket connection — separate from MCP)
+    // Node mode(gateway WebSocket connection - separate from MCP)
     public bool EnableNodeMode { get => _data.EnableNodeMode; set => _data = _data with { EnableNodeMode = value }; }
     /// <summary>Master switch for the focused inbound-pairing approval dialog + awareness toast.</summary>
     public bool ShowPairingApprovalDialog { get => _data.ShowPairingApprovalDialog; set => _data = _data with { ShowPairingApprovalDialog = value }; }
@@ -141,7 +141,7 @@ public class SettingsManager
     public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
     /// <summary>
     /// Hostnames the A2UI image renderer is allowed to fetch over HTTPS.
-    /// Empty by default — agents can still ship inline data: images. The
+    /// Empty by default - agents can still ship inline data: images. The
     /// runtime never bypasses this list, so it is the single switch keeping
     /// agent JSON from issuing arbitrary outbound HTTP from the tray process.
     /// </summary>
@@ -437,7 +437,7 @@ public class SettingsManager
             try
             {
                 Directory.CreateDirectory(_settingsDirectory);
-                // Lock the tray data dir to current user + SYSTEM + Administrators —
+                // Lock the tray data dir to current user + SYSTEM + Administrators -
                 // it co-locates the MCP bearer token, settings.json (which embeds
                 // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
                 // running as the same user could otherwise read these freely.

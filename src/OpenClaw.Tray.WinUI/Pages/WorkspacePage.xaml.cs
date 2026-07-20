@@ -112,8 +112,8 @@ public sealed partial class WorkspacePage : Page
 
     private async Task LoadAsync()
     {
-        // Invalidate any in-flight list/file loads up front — before the
-        // connected/key early-returns — so a stale result can never render
+        // Invalidate any in-flight list/file loads up front - before the
+        // connected/key early-returns - so a stale result can never render
         // after a newer (even failed) load.
         var token = ++_loadToken;
         _usingLegacyAgentFilesFallback = false;

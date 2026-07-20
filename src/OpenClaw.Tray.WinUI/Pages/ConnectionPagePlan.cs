@@ -24,7 +24,7 @@ namespace OpenClawTray.Pages;
 // state changes from a single deterministic function. Trivially unit-testable.
 //
 // IMPORTANT: This file lives in the Tray.WinUI layer for proximity to the
-// page, but it MUST NOT call into GatewayConnectionManager/Registry — that
+// page, but it MUST NOT call into GatewayConnectionManager/Registry - that
 // would couple a pure projection to live services. Code-behind is responsible
 // for collecting the inputs and applying the outputs.
 // ───────────────────────────────────────────────────────────────────────────
@@ -109,11 +109,11 @@ internal enum RecoveryCategory
     Network,
     Server,
     Tunnel,
-    /// <summary>Authenticated but missing a required scope — re-pair for higher scopes.</summary>
+    /// <summary>Authenticated but missing a required scope - re-pair for higher scopes.</summary>
     Scope,
-    /// <summary>Stored device token rotated/revoked — re-pair to repair.</summary>
+    /// <summary>Stored device token rotated/revoked - re-pair to repair.</summary>
     TokenDrift,
-    /// <summary>TLS/cleartext transport problem — switch to wss:// or a tunnel.</summary>
+    /// <summary>TLS/cleartext transport problem - switch to wss:// or a tunnel.</summary>
     Tls,
     /// <summary>Gateway is temporarily rate-limiting this client.</summary>
     RateLimited,
@@ -130,7 +130,7 @@ internal sealed record ConnectionPagePlan
     public ConnectionPageMode Mode { get; init; } = ConnectionPageMode.Welcome;
 
     // ─── Status strip ───
-    public string StripGlyph { get; init; } = OpenClawTray.Helpers.FluentIconCatalog.System; // PC1 default — "no gateway yet"
+    public string StripGlyph { get; init; } = OpenClawTray.Helpers.FluentIconCatalog.System; // PC1 default - "no gateway yet"
     public ConnectionAccent StripAccent { get; init; } = ConnectionAccent.Neutral;
     public string StripHeadline { get; init; } = "Not connected";
     public string StripSub { get; init; } = "";
@@ -143,7 +143,7 @@ internal sealed record ConnectionPagePlan
 
     // ─── Node card ───
     public NodeCardState NodeCard { get; init; } = NodeCardState.Hidden;
-    /// <summary>For OnNodePairingRequired — the exact CLI command to copy/paste.</summary>
+    /// <summary>For OnNodePairingRequired - the exact CLI command to copy/paste.</summary>
     public string? NodeApproveCommand { get; init; }
     /// <summary>Copy-only command for node-list command-trust approval or reapproval.</summary>
     public string? NodeTrustApproveCommand { get; init; }
@@ -158,13 +158,13 @@ internal sealed record ConnectionPagePlan
     public IReadOnlyList<string> NodePendingDeclaredCommands { get; init; } = Array.Empty<string>();
     public IReadOnlyDictionary<string, bool> NodePendingDeclaredPermissions { get; init; } =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-    /// <summary>For OnNodeError — sanitized error string.</summary>
+    /// <summary>For OnNodeError - sanitized error string.</summary>
     public string? NodeErrorDetail { get; init; }
 
     // ─── Recovery sub-screen ───
     public RecoveryCategory Recovery { get; init; } = RecoveryCategory.None;
     public string? RecoveryDetail { get; init; }
-    /// <summary>For RecoveryCategory.Pairing — the CLI command the user should run.</summary>
+    /// <summary>For RecoveryCategory.Pairing - the CLI command the user should run.</summary>
     public string? RecoveryApproveCommand { get; init; }
 
     // ─── Active gateway display ───
@@ -282,7 +282,7 @@ internal sealed record ConnectionPagePlan
             };
         }
 
-        // Saved gateways exist but none active — drop straight into Cockpit
+        // Saved gateways exist but none active - drop straight into Cockpit
         // (role panels hide themselves unless local MCP-only status is visible).
         return new ConnectionPagePlan
         {
@@ -396,8 +396,8 @@ internal sealed record ConnectionPagePlan
         SettingsManager? settings,
         string name)
     {
-        // Pairing can be either operator-level (device pairing — full Recovery) or
-        // node-level (operator is fine, just Node toggle awaits approval — Cockpit
+        // Pairing can be either operator-level (device pairing - full Recovery) or
+        // node-level (operator is fine, just Node toggle awaits approval - Cockpit
         // with the Node card in OnNodePairingRequired).
         var operatorPairing = snap.OperatorState == RoleConnectionState.PairingRequired ||
                               snap.OperatorPairingRequired;
@@ -493,7 +493,7 @@ internal sealed record ConnectionPagePlan
                 RelevantGatewayId = rec?.Id,
             },
 
-            // Stored device token rotated/revoked — the fix is to re-pair, not
+            // Stored device token rotated/revoked - the fix is to re-pair, not
             // retry. Same paste-setup-code affordance as Auth, clearer copy.
             RecoveryCategory.TokenDrift => new ConnectionPagePlan
             {
@@ -513,7 +513,7 @@ internal sealed record ConnectionPagePlan
                 RelevantGatewayId = rec?.Id,
             },
 
-            // Authenticated but under-privileged — re-pair to request the scopes
+            // Authenticated but under-privileged - re-pair to request the scopes
             // this device needs (e.g. operator.admin / operator.pairing).
             RecoveryCategory.Scope => new ConnectionPagePlan
             {
@@ -533,7 +533,7 @@ internal sealed record ConnectionPagePlan
                 RelevantGatewayId = rec?.Id,
             },
 
-            // TLS/cleartext transport problem — steer toward wss:// or a tunnel.
+            // TLS/cleartext transport problem - steer toward wss:// or a tunnel.
             RecoveryCategory.Tls => new ConnectionPagePlan
             {
                 Mode = ConnectionPageMode.Recovery,
@@ -579,7 +579,7 @@ internal sealed record ConnectionPagePlan
                 StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusErr,
                 StripAccent = ConnectionAccent.Critical,
                 StripHeadline = "Can't reach gateway",
-                StripSub = "SSH tunnel is down — " + (err.Length > 0 ? err : "last attempt failed."),
+                StripSub = "SSH tunnel is down - " + (err.Length > 0 ? err : "last attempt failed."),
                 StripPrimaryLabel = "Restart tunnel",
                 StripPrimaryAction = ConnectionPrimaryAction.RestartTunnel,
                 RecoveryDetail = err,
@@ -761,11 +761,11 @@ internal sealed record ConnectionPagePlan
         // events stay discovery-only so operators can classify the request.
         // Missing requestId is a real-world case on older gateway builds:
         // emit a single discovery command the
-        // user can paste verbatim into any shell — they then pick a
+        // user can paste verbatim into any shell - they then pick a
         // requestId from its output and run approve manually. We avoid
         // embedding a "# then:" or "<requestId>" follow-up in the clipboard
         // text because `#` is treated as a literal arg by cmd.exe and `<`
-        // is parsed as input redirection — pasting either breaks for
+        // is parsed as input redirection - pasting either breaks for
         // Windows-cmd users.
         if (snap.NodePairingApprovalKind == PairingApprovalKind.DevicePair)
         {
@@ -918,7 +918,7 @@ internal sealed record ConnectionPagePlan
         ConnectionAccent.Success   => "SystemFillColorSuccessBrush",
         ConnectionAccent.Caution   => "SystemFillColorCautionBrush",
         ConnectionAccent.Critical  => "SystemFillColorCriticalBrush",
-        // Neutral default — using ControlStrokeColorDefaultBrush instead of
+        // Neutral default - using ControlStrokeColorDefaultBrush instead of
         // SystemFillColorNeutralBrush so the page accent matches the standard
         // card stroke colour at rest (per tokens.md "Neutral / off").
         _                          => "ControlStrokeColorDefaultBrush",

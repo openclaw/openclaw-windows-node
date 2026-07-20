@@ -110,7 +110,7 @@ public sealed partial class A2UICanvasWindow : WindowEx
     }
 
     /// <summary>
-    /// Push a JSONL blob through the router. Safe from any thread — the
+    /// Push a JSONL blob through the router. Safe from any thread - the
     /// router posts UI work to the dispatcher.
     /// </summary>
     public void Push(string jsonl) => _router.Push(jsonl);
@@ -148,7 +148,7 @@ public sealed partial class A2UICanvasWindow : WindowEx
             return existing;
         }
         // HorizontalScrollBarVisibility=Disabled forces children to lay out
-        // within the viewport width — same as the HTML body's default of
+        // within the viewport width - same as the HTML body's default of
         // wrapping rather than overflowing horizontally. Vertical=Auto keeps
         // the bar out of sight when the content fits.
         var sv = new ScrollViewer
@@ -340,7 +340,7 @@ public sealed partial class A2UICanvasWindow : WindowEx
     /// JSON state dump: surfaces (with components + data model) keyed by id.
     /// Returned as a string so callers can hand it back through MCP without
     /// further serialization. Reflects the renderer's authoritative state at
-    /// call time — components that haven't been rendered yet are still listed.
+    /// call time - components that haven't been rendered yet are still listed.
     /// </summary>
     public string GetStateSnapshot()
     {

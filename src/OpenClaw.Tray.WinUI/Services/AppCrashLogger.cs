@@ -29,7 +29,7 @@ internal sealed class AppCrashLogger
             // Crash logger itself crashed (disk full, ACL, etc.). Try a Trace
             // breadcrumb so it's at least visible in attached debuggers.
             try { System.Diagnostics.Trace.WriteLine($"AppCrashLogger.Log: failed to write crash log: {fileEx.GetType().Name}: {fileEx.Message}"); }
-            catch (Exception) { /* Trace itself failed — nothing left to call. */ }
+            catch (Exception) { /* Trace itself failed - nothing left to call. */ }
         }
 
         try
@@ -47,7 +47,7 @@ internal sealed class AppCrashLogger
         {
             // Logger.Error itself crashed (e.g., writer torn down mid-shutdown).
             try { System.Diagnostics.Trace.WriteLine($"AppCrashLogger.Log: failed to log crash via Logger: {logEx.GetType().Name}: {logEx.Message}"); }
-            catch (Exception) { /* Trace itself failed — nothing left to call. */ }
+            catch (Exception) { /* Trace itself failed - nothing left to call. */ }
         }
     }
 }

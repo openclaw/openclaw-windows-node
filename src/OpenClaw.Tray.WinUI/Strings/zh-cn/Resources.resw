@@ -276,16 +276,16 @@
     <value>关闭</value>
   </data>
   <data name="WindowTitle_Settings" xml:space="preserve">
-    <value>设置 — OpenClaw 托盘</value>
+    <value>设置 - OpenClaw 托盘</value>
   </data>
   <data name="WindowTitle_Status" xml:space="preserve">
-    <value>状态 — OpenClaw 托盘</value>
+    <value>状态 - OpenClaw 托盘</value>
   </data>
   <data name="WindowTitle_ActivityStream" xml:space="preserve">
-    <value>活动流 — OpenClaw 托盘</value>
+    <value>活动流 - OpenClaw 托盘</value>
   </data>
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
-    <value>通知历史 — OpenClaw 托盘</value>
+    <value>通知历史 - OpenClaw 托盘</value>
   </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw 聊天</value>
@@ -691,7 +691,7 @@
     <value>请求的访问权限</value>
   </data>
   <data name="PairingApproval_RepairBadge" xml:space="preserve">
-    <value>重新配对请求——设备令牌将轮换。</value>
+    <value>重新配对请求--设备令牌将轮换。</value>
   </data>
   <data name="PairingApproval_Approve" xml:space="preserve">
     <value>批准</value>
@@ -899,7 +899,7 @@
     <value>隐藏</value>
   </data>
   <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
-    <value>(未生成 — 启用 MCP 服务器并单击保存)</value>
+    <value>(未生成 - 启用 MCP 服务器并单击保存)</value>
   </data>
   <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
     <value>保存位置：{0}</value>
@@ -935,7 +935,7 @@
     <value>正在下载更新...</value>
   </data>
   <data name="UrlApproval_Caption" xml:space="preserve">
-    <value>OpenClaw — 批准 URL</value>
+    <value>OpenClaw - 批准 URL</value>
   </data>
   <data name="UrlApproval_Body" xml:space="preserve">
     <value>代理希望在您的浏览器中打开高风险目的地。</value>
@@ -956,10 +956,10 @@
     <value>原因：</value>
   </data>
   <data name="UrlApproval_YesHint" xml:space="preserve">
-    <value>是 — 打开此 URL。</value>
+    <value>是 - 打开此 URL。</value>
   </data>
   <data name="UrlApproval_NoHint" xml:space="preserve">
-    <value>否 — 阻止该请求。</value>
+    <value>否 - 阻止该请求。</value>
   </data>
   <data name="Onboarding_Title" xml:space="preserve">
     <value>OpenClaw 设置</value>
@@ -1094,10 +1094,10 @@
     <value>设备需要审批</value>
   </data>
   <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
-    <value>Token 不匹配 — 请检查您的引导 Token</value>
+    <value>Token 不匹配 - 请检查您的引导 Token</value>
   </data>
   <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
-    <value>连接超时 (15s) — 请确认网关正在运行</value>
+    <value>连接超时 (15s) - 请确认网关正在运行</value>
   </data>
   <data name="Onboarding_Permissions_Title" xml:space="preserve">
     <value>授予权限</value>
@@ -1169,19 +1169,19 @@
     <value>被策略禁用</value>
   </data>
   <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
-    <value>已禁用 — 打开设置以启用</value>
+    <value>已禁用 - 打开设置以启用</value>
   </data>
   <data name="Onboarding_Perm_Allowed" xml:space="preserve">
     <value>已允许</value>
   </data>
   <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
-    <value>被拒绝 — 打开设置以允许</value>
+    <value>被拒绝 - 打开设置以允许</value>
   </data>
   <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
     <value>被系统策略拒绝</value>
   </data>
   <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
-    <value>未确定 — 打开设置</value>
+    <value>未确定 - 打开设置</value>
   </data>
   <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
     <value>无法检查</value>
@@ -1193,7 +1193,7 @@
     <value>未检测到麦克风</value>
   </data>
   <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
-    <value>可用 — 每次截图使用选择器</value>
+    <value>可用 - 每次截图使用选择器</value>
   </data>
   <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
     <value>此设备不支持</value>
@@ -1223,10 +1223,10 @@
     <value>设置 → 技能</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
-    <value>来源不允许 — 网关拒绝此连接</value>
+    <value>来源不允许 - 网关拒绝此连接</value>
   </data>
   <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
-    <value>速率限制 — 请稍等后重试</value>
+    <value>速率限制 - 请稍等后重试</value>
   </data>
   <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
     <value>在您的网关上运行：</value>
@@ -1235,13 +1235,13 @@
     <value>点击复制</value>
   </data>
   <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
-    <value>复制失败 — 点击重试</value>
+    <value>复制失败 - 点击重试</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>已复制！</value>
   </data>
   <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
-    <value>连接失败 — 请检查 URL 和令牌，然后重试</value>
+    <value>连接失败 - 请检查 URL 和令牌，然后重试</value>
   </data>
   <data name="Onboarding_Wizard_StepError" xml:space="preserve">
     <value>处理此步骤时出错</value>
@@ -1378,7 +1378,7 @@
     <value>所有代理</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>代理活动的实时流——工具调用、响应、错误和生命周期事件。</value>
+    <value>代理活动的实时流--工具调用、响应、错误和生命周期事件。</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>所有代理</value>
@@ -1576,7 +1576,7 @@
     <value>重新连接</value>
   </data>
   <data name="OperatorStatusText.Text" xml:space="preserve">
-    <value>操作员：—</value>
+    <value>操作员：-</value>
   </data>
   <data name="ConnectToggle.Header" xml:space="preserve">
     <value>连接</value>
@@ -1696,7 +1696,7 @@
     <value>Store: ~/.openclaw/cron.db</value>
   </data>
   <data name="NextWakeText.Text" xml:space="preserve">
-    <value>下次唤醒：—</value>
+    <value>下次唤醒：-</value>
   </data>
   <data name="CronPage_Button_80.Content" xml:space="preserve">
     <value>立即运行</value>
@@ -1855,7 +1855,7 @@
     <value>忘记节点</value>
   </data>
   <data name="NodesPage_Forget_Error_Generic" xml:space="preserve">
-    <value>无法忘记节点 — 网关不可达或权限被拒绝。</value>
+    <value>无法忘记节点 - 网关不可达或权限被拒绝。</value>
   </data>
   <data name="NodesPage_Common_Cancel" xml:space="preserve">
     <value>取消</value>
@@ -1903,7 +1903,7 @@
     <value>节点允许列表</value>
   </data>
   <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
-    <value>网关允许连接节点执行的命令。此列表为只读 — 请通过“配置”页面编辑。</value>
+    <value>网关允许连接节点执行的命令。此列表为只读 - 请通过“配置”页面编辑。</value>
   </data>
   <data name="AllowlistEmpty.Text" xml:space="preserve">
     <value>没有可用的允许列表数据。请先连接到网关。</value>
@@ -2545,13 +2545,13 @@
     <value>模型大小</value>
   </data>
   <data name="VoiceSettingsPage_ModelTiny.Content" xml:space="preserve">
-    <value>Tiny (~75 MB) — 快速,基础精度</value>
+    <value>Tiny (~75 MB) - 快速,基础精度</value>
   </data>
   <data name="VoiceSettingsPage_ModelBase.Content" xml:space="preserve">
-    <value>Base (~142 MB) — 良好平衡</value>
+    <value>Base (~142 MB) - 良好平衡</value>
   </data>
   <data name="VoiceSettingsPage_ModelSmall.Content" xml:space="preserve">
-    <value>Small (~466 MB) — 高精度</value>
+    <value>Small (~466 MB) - 高精度</value>
   </data>
   <data name="VoiceSettingsPage_DownloadButtonText.Text" xml:space="preserve">
     <value>下载模型</value>
@@ -2785,7 +2785,7 @@
     <value>🗣️ 正在聆听...</value>
   </data>
   <data name="VoiceOverlayWindow_StatusSpeakNow" xml:space="preserve">
-    <value>现在请说话 — 我在聆听</value>
+    <value>现在请说话 - 我在聆听</value>
   </data>
   <data name="VoiceOverlayWindow_StateInitializing" xml:space="preserve">
     <value>正在初始化...</value>
@@ -2974,7 +2974,7 @@
     <value>未连接</value>
   </data>
   <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
-    <value>Gateway update required — incompatible version</value>
+    <value>Gateway update required - incompatible version</value>
   </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>附加</value>
@@ -3127,13 +3127,13 @@
     <value>网关报告 {0} 为 {1}。</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>节点沙盒已关闭 — 命令将不受限制地运行</value>
+    <value>节点沙盒已关闭 - 命令将不受限制地运行</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
     <value>在重新启用节点沙盒之前，代理启动的 Windows 命令将在没有沙盒隔离的情况下运行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙盒不可用 — 回退到主机</value>
+    <value>沙盒不可用 - 回退到主机</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3141,7 +3141,7 @@
 在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
-    <value>沙盒不可用 — 命令已阻止</value>
+    <value>沙盒不可用 - 命令已阻止</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3302,7 +3302,7 @@
     <value>助手已回复</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>连接已断开 — 回复已中断。</value>
+    <value>连接已断开 - 回复已中断。</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>已丢弃网关时间线事件</value>
@@ -3323,7 +3323,7 @@
     <value>Browser control</value>
   </data>
   <data name="PermissionsPage_Cap_Browser_Description" xml:space="preserve">
-    <value>Lets agents drive a Chromium browser on this PC — open pages, click, and read content.</value>
+    <value>Lets agents drive a Chromium browser on this PC - open pages, click, and read content.</value>
   </data>
   <data name="PermissionsPage_Cap_Camera_Label" xml:space="preserve">
     <value>Camera</value>
@@ -3401,16 +3401,16 @@
     <value>Connect to a gateway to start providing device capabilities.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReady" xml:space="preserve">
-    <value>Server enabled — token ready</value>
+    <value>Server enabled - token ready</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenPending" xml:space="preserve">
-    <value>Server enabled — token will be created on next start</value>
+    <value>Server enabled - token will be created on next start</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenCopied" xml:space="preserve">
     <value>Token copied to clipboard</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenNotFound" xml:space="preserve">
-    <value>Token file not found — start the MCP server first</value>
+    <value>Token file not found - start the MCP server first</value>
   </data>
   <data name="PermissionsPage_McpStatus_UrlCopied" xml:space="preserve">
     <value>URL copied to clipboard</value>
@@ -3515,19 +3515,19 @@
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected — no active presence</value>
+    <value>Disconnected - no active presence</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active — last seen {0}</value>
+    <value>Active - last seen {0}</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle — last seen {0}</value>
+    <value>Idle - last seen {0}</value>
   </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive — last seen {0}</value>
+    <value>Inactive - last seen {0}</value>
   </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
@@ -3635,7 +3635,7 @@
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789 — visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789 - visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -3764,7 +3764,7 @@
     <value>Your gateway didn't list any channels</value>
   </data>
   <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials — the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
+    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials - the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
   </data>
   <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
     <value>Read the channels guide</value>
@@ -4121,7 +4121,7 @@
     <value>添加网关</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Title" xml:space="preserve">
-    <value>开始使用 — 安装本地网关</value>
+    <value>开始使用 - 安装本地网关</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Message" xml:space="preserve">
     <value>最快的入门方式:在此电脑上设置 WSL 托管的网关,并将其设为活动连接。</value>
@@ -4205,7 +4205,7 @@
     <value>安装本地网关</value>
   </data>
   <data name="ConnectionPage_LocalWSLSetupIsn.Text" xml:space="preserve">
-    <value>此电脑无法进行本地 WSL 设置 — 安装向导无法初始化。</value>
+    <value>此电脑无法进行本地 WSL 设置 - 安装向导无法初始化。</value>
   </data>
   <data name="ConnectionPage_UseSSHTunnelOptional.Text" xml:space="preserve">
     <value>使用 SSH 隧道(可选)</value>
@@ -4508,7 +4508,7 @@
     <value>哪些内容受隔离</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
-    <value>查看此页面涵盖的命令 — 以及需要其他控件的命令。</value>
+    <value>查看此页面涵盖的命令 - 以及需要其他控件的命令。</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns.Text" xml:space="preserve">
     <value>代理通过 Windows 节点运行的命令 (</value>
@@ -4520,7 +4520,7 @@
     <value>) 受下面的设置隔离。</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
-    <value>代理直接在网关上运行的命令不受隔离。如果网关位于此电脑的 WSL 上,它们可能会访问您的 Windows 文件、剪贴板和网络 — 请使用网关的执行审批。</value>
+    <value>代理直接在网关上运行的命令不受隔离。如果网关位于此电脑的 WSL 上,它们可能会访问您的 Windows 文件、剪贴板和网络 - 请使用网关的执行审批。</value>
   </data>
   <data name="SandboxPage_SandboxUnavailable.Title" xml:space="preserve">
     <value>沙盒不可用</value>
@@ -4631,10 +4631,10 @@
     <value>无(默认)</value>
   </data>
   <data name="SandboxPage_ReadAgentCanSee.Content" xml:space="preserve">
-    <value>读取 — 代理可以看到您复制的内容</value>
+    <value>读取 - 代理可以看到您复制的内容</value>
   </data>
   <data name="SandboxPage_WriteAgentCanReplace.Content" xml:space="preserve">
-    <value>写入 — 代理可以替换您的剪贴板(无法读取)</value>
+    <value>写入 - 代理可以替换您的剪贴板(无法读取)</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
     <value>读取与写入</value>
@@ -5105,7 +5105,7 @@
     <value>语音预览</value>
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
-    <value>代理直接在网关上运行的命令不受此限制。如果网关在此电脑上，它们仍可能访问您的 Windows 文件、剪贴板和网络——请检查网关的配置。</value>
+    <value>代理直接在网关上运行的命令不受此限制。如果网关在此电脑上，它们仍可能访问您的 Windows 文件、剪贴板和网络--请检查网关的配置。</value>
   </data>
   <data name="AgentEventsPage_AllAgents" xml:space="preserve">
     <value>所有代理</value>
@@ -5571,7 +5571,7 @@
     <value>正在应用…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>已应用 — 网关：{0}</value>
+    <value>已应用 - 网关：{0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>设置代码无效</value>
@@ -5688,19 +5688,19 @@
     <value>配置</value>
   </data>
   <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>将此设备与频道取消关联。扫描新的 QR 码以重新连接——您的帐户仍会在手机上保持配对。</value>
+    <value>将此设备与频道取消关联。扫描新的 QR 码以重新连接--您的帐户仍会在手机上保持配对。</value>
   </data>
   <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>暂时暂停频道——凭据会被保留，以便您可以重新启动。或完全断开连接以清除凭据。</value>
+    <value>暂时暂停频道--凭据会被保留，以便您可以重新启动。或完全断开连接以清除凭据。</value>
   </data>
   <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>启动频道——它将使用已存储的凭据开始处理消息。或完全断开连接以清除凭据。</value>
+    <value>启动频道--它将使用已存储的凭据开始处理消息。或完全断开连接以清除凭据。</value>
   </data>
   <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>暂停频道——凭据会被保留，以便您可以重新启动。</value>
+    <value>暂停频道--凭据会被保留，以便您可以重新启动。</value>
   </data>
   <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>启动频道——它将使用已存储的凭据开始处理消息。</value>
+    <value>启动频道--它将使用已存储的凭据开始处理消息。</value>
   </data>
   <data name="ChannelsPage_Start" xml:space="preserve">
     <value>启动</value>
@@ -5940,7 +5940,7 @@
     <value>无法加载网关配置</value>
   </data>
   <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>网关未返回其当前配置——没有它无法安全保存。请尝试刷新并重新保存。</value>
+    <value>网关未返回其当前配置--没有它无法安全保存。请尝试刷新并重新保存。</value>
   </data>
   <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
     <value>网关配置在保存过程中被清除。请尝试刷新并重新保存。</value>
@@ -5955,7 +5955,7 @@
     <value>{0} 的保存失败</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>您的网关配置已在其他位置更改（例如，从配置页面）。我们已刷新缓存——请再次尝试保存。详细信息：{0}</value>
+    <value>您的网关配置已在其他位置更改（例如，从配置页面）。我们已刷新缓存--请再次尝试保存。详细信息：{0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} 如果这看起来像是线路格式不匹配，请打开配置页面进行直接 JSON 编辑。</value>
@@ -6435,19 +6435,19 @@
     <value>{0} 已复制到剪贴板。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>节点沙盒不可用 — 回退到主机</value>
+    <value>节点沙盒不可用 - 回退到主机</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
     <value>此电脑上无法使用隔离，因此代理启动的命令会在主机上运行，且没有沙盒保护。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
-    <value>节点沙盒不可用 — 命令已阻止</value>
+    <value>节点沙盒不可用 - 命令已阻止</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
     <value>此电脑上无法使用隔离，并且已启用严格回退阻止，因此代理启动的命令会被阻止。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
-    <value>节点沙盒已关闭 — 主机执行</value>
+    <value>节点沙盒已关闭 - 主机执行</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
     <value>隔离不可用且节点沙盒已关闭，因此代理启动的命令会在主机上运行，且没有沙盒保护。</value>
@@ -6459,7 +6459,7 @@
     <value>代理在此电脑上运行的程序会被隔离。</value>
   </data>
   <data name="SandboxPage_StatusOffTitle" xml:space="preserve">
-    <value>节点沙盒已关闭 — 高风险</value>
+    <value>节点沙盒已关闭 - 高风险</value>
   </data>
   <data name="SandboxPage_StatusOffSubtext" xml:space="preserve">
     <value>代理在此电脑上运行的程序不会被隔离。</value>
@@ -6482,7 +6482,7 @@
   <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
     <value>{0}
 
-{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）— 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
+{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）- 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>重试</value>
@@ -6510,10 +6510,10 @@
     <value>显示安装说明</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>沙盒不可用 — 回退到主机</value>
+    <value>沙盒不可用 - 回退到主机</value>
   </data>
   <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
-    <value>沙盒不可用 — 命令已阻止</value>
+    <value>沙盒不可用 - 命令已阻止</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>本地网关已移除</value>
@@ -6687,7 +6687,7 @@
     <value>未加密的连接</value>
   </data>
   <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
-    <value>此远程 gateway 使用 ws:// — 您的 token 将以明文发送。请使用 wss://（TLS）、SSH 隧道或受信任的代理 / Tailscale。</value>
+    <value>此远程 gateway 使用 ws:// - 您的 token 将以明文发送。请使用 wss://（TLS）、SSH 隧道或受信任的代理 / Tailscale。</value>
   </data>
   <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
     <value>已加密 (TLS)</value>

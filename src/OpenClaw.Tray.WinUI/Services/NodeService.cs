@@ -40,7 +40,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private CanvasWindow? _canvasWindow;
     // Invariant: _a2uiCanvasWindow is only read/written from the UI dispatcher
     // (DispatcherQueue.TryEnqueue callbacks). Today's WinUI dispatcher serializes,
-    // so no memory barrier is needed — but introducing a non-dispatcher caller
+    // so no memory barrier is needed - but introducing a non-dispatcher caller
     // would silently see stale references. Stay on-thread or marshal.
     private A2UICanvasWindow? _a2uiCanvasWindow;
     private MediaResolver? _mediaResolver;
@@ -59,7 +59,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // looping canvas.navigate could otherwise stack arbitrarily many topmost
     // MessageBoxW prompts.
     //   _navigationPromptGate: only one prompt visible at a time across all hosts.
-    //   _pendingNavigationPrompts: in-flight prompt per HostKey — a second
+    //   _pendingNavigationPrompts: in-flight prompt per HostKey - a second
     //     request for the same host inherits the user's decision instead of
     //     queueing a duplicate prompt.
     //   _navigationDenyCooldown: HostKey → expiresAt. After a Deny, repeated
@@ -104,7 +104,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly Func<string?>? _activeGatewayUrlResolver;
     private string? _token;
 
-    // Authoritative capability list — populated by RegisterCapabilities and
+    // Authoritative capability list - populated by RegisterCapabilities and
     // shared with both the gateway client (when present) and the MCP bridge.
     // Holding it here lets MCP-only mode skip the gateway client entirely.
     //
@@ -115,7 +115,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly List<INodeCapability> _capabilities = new();
     private readonly object _capabilitiesLock = new();
 
-    // MCP-only capabilities — visible to local MCP clients but NOT registered
+    // MCP-only capabilities - visible to local MCP clients but NOT registered
     // on the gateway WebSocket. Used for app-level testing/control tools that
     // should not be callable by remote agents.
     private readonly List<INodeCapability> _mcpOnlyCapabilities = new();
@@ -127,7 +127,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // its own lock above.
     private readonly object _clientLock = new();
 
-    // Local MCP server — exposes the same capabilities to local MCP clients.
+    // Local MCP server - exposes the same capabilities to local MCP clients.
     // TODO: when the port becomes user-configurable (see docs/MCP_MODE.md
     // "Deferred"), McpServerUrl needs to read the live port off the running
     // server, not the constant. Settings UI is the only consumer today.
@@ -228,7 +228,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     // NodeService.ConnectAsync (gateway-connecting variant) was removed in
     // phase 5 of the connection-unification rollout. Node lifecycle is owned by
-    // GatewayConnectionManager — call manager.EnsureNodeConnectedAsync (or
+    // GatewayConnectionManager - call manager.EnsureNodeConnectedAsync (or
     // ConnectionManagerWindowsNodeConnector for the easy-button setup engine).
     // StartLocalOnlyAsync (MCP-only mode, no gateway) is unchanged.
 
@@ -239,7 +239,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// </summary>
     public Task StartLocalOnlyAsync()
     {
-        // No gateway client at all — WebSocketClientBase requires non-empty
+        // No gateway client at all - WebSocketClientBase requires non-empty
         // url/token, and we don't need it. Capabilities live on NodeService
         // and are consumed by the MCP bridge directly.
         _logger.Info("Starting Windows Node in MCP-only mode (no gateway)");
@@ -260,7 +260,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     /// <summary>
     /// Detach from the manager-owned node client and tear down capability state.
-    /// Does NOT dispose <c>_nodeClient</c> — the client lifecycle is owned by
+    /// Does NOT dispose <c>_nodeClient</c> - the client lifecycle is owned by
     /// <see cref="OpenClawTray.Services.Connection.GatewayConnectionManager"/> /
     /// <see cref="OpenClawTray.Services.Connection.NodeConnector"/>; call
     /// <c>GatewayConnectionManager.DisconnectAsync</c> to actually close the WebSocket.
@@ -277,7 +277,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
         if (previous != null)
         {
-            // Unsubscribe but don't dispose — the connector owns the client.
+            // Unsubscribe but don't dispose - the connector owns the client.
             DetachClientHandlers(previous);
         }
 
@@ -311,7 +311,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         // System capability (notifications + command execution). The
         // "Run system tools" toggle gates the run/run.prepare commands
-        // inside the capability — the rest (notify/which/execApprovals)
+        // inside the capability - the rest (notify/which/execApprovals)
         // stay registered regardless.
         _systemCapability = new SystemCapability(
             _logger,
@@ -383,7 +383,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         if (NodeCapabilityGating.ShouldRegisterStt(_settings))
         {
             // Whisper is the only STT engine. The legacy WinRT
-            // SpeechRecognizer + desktop SAPI fallback was removed —
+            // SpeechRecognizer + desktop SAPI fallback was removed -
             // both stacks are old, can leak audio to the Microsoft
             // cloud (online speech), and don't activate in unpackaged
             // builds. When the Whisper model isn't downloaded yet, the
@@ -490,12 +490,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// and register all current capabilities on it. Called via
     /// <see cref="OpenClaw.Connection.INodeConnector.ClientCreated"/>
     /// every time the connector spins up a fresh client (initial connect AND
-    /// reconnect). Idempotent on the capability list — the same capability
+    /// reconnect). Idempotent on the capability list - the same capability
     /// objects get registered against the new client; <c>WindowsNodeClient</c>
     /// dedupes by category+command into its <c>_registration</c> structure.
     ///
     /// Must run synchronously before the client's outbound "connect" message
-    /// is serialized — otherwise the gateway sees this node as having no
+    /// is serialized - otherwise the gateway sees this node as having no
     /// advertised commands and the agent can't invoke anything.
     /// </summary>
     public void AttachClient(WindowsNodeClient client, string? bearerToken = null)
@@ -524,7 +524,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // App.OnPairingStatusChanged + OnNodeStatusChanged subscribe to NodeService events;
             // those subscriptions are stable across reconnects because the subscriptions are
             // on NodeService, not on the underlying WindowsNodeClient. (Pre-unification this
-            // wiring lived in NodeService.ConnectAsync — moved here so the unified
+            // wiring lived in NodeService.ConnectAsync - moved here so the unified
             // manager-owned lifecycle still drives NodeService's event surface.)
             // -= before += so a re-attach of the same client (e.g. AttachClient called
             // again after a DisconnectAsync that nulled _nodeClient) doesn't double-subscribe.
@@ -550,13 +550,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         // Always rebuild from current settings. The previous reconnect path
         // re-registered the cached _capabilities instances, but _capabilities
-        // is only cleared in DisconnectAsync — which is never invoked on the
+        // is only cleared in DisconnectAsync - which is never invoked on the
         // reconnect path used by App.OnSettingsSaved (CapabilityReload calls
         // ReconnectAsync, not DisconnectAsync). That left toggles like
         // NodeCanvasEnabled / NodeSystemRunEnabled silently requiring a full
         // app restart to take effect. RegisterCapabilities() clears the list,
         // rebuilds with current settings, and registers on the new _nodeClient
-        // — correct for first-attach AND reconnect.
+        // - correct for first-attach AND reconnect.
         _logger.Info("[NodeService] AttachClient: rebuilding capabilities from current settings");
         RegisterCapabilities();
 
@@ -654,7 +654,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             SystemRunSandboxEnabled = _settings.SystemRunSandboxEnabled,
             SystemRunBlockHostFallbackWhenMxcUnavailable = _settings.SystemRunBlockHostFallbackWhenMxcUnavailable,
             SystemRunAllowOutbound = _settings.SystemRunAllowOutbound,
-            // Sandbox page fields — read by MxcPolicyBuilder.ForSystemRun.
+            // Sandbox page fields - read by MxcPolicyBuilder.ForSystemRun.
             SandboxClipboard = _settings.SandboxClipboard,
             SandboxDocumentsAccess = _settings.SandboxDocumentsAccess,
             SandboxDownloadsAccess = _settings.SandboxDownloadsAccess,
@@ -686,7 +686,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// Return the current MXC availability, probing if needed. Definitive verdicts
     /// (supported / host-unsupported) are cached for the process lifetime; a transient
     /// probe error (<see cref="MxcAvailability.ProbeErrored"/>) is NOT cached
-    /// permanently — once the retry window opens we re-probe so a momentary glitch
+    /// permanently - once the retry window opens we re-probe so a momentary glitch
     /// doesn't pin the whole process to uncontained execution.
     /// </summary>
     /// <remarks>
@@ -702,11 +702,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         Task<MxcAvailability> probe;
         lock (_mxcAvailabilityLock)
         {
-            // Definitive verdict — cached for the process lifetime.
+            // Definitive verdict - cached for the process lifetime.
             if (_mxcAvailability is { ProbeErrored: false } definitive)
                 return definitive;
 
-            // Transient error — keep serving it (routes to uncontained) until the
+            // Transient error - keep serving it (routes to uncontained) until the
             // retry window opens, so we don't re-probe on every command.
             if (_mxcAvailability is { ProbeErrored: true } errored
                 && _mxcProbeInFlight is null
@@ -782,7 +782,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // they appear in tools/list but never touch the gateway client.
             // The snapshot takes the same lock RegisterCapabilities holds,
             // so a tools/list arriving mid-rebuild observes either the old
-            // or the new set — never a partially-cleared list.
+            // or the new set - never a partially-cleared list.
             var bridge = new McpToolBridge(
                 () => {
                     lock (_capabilitiesLock)
@@ -807,7 +807,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             var authToken = OpenClaw.Shared.Mcp.McpAuthToken.LoadOrCreate(McpTokenPath);
             // ACL hygiene check: warn if the token file is owned by someone
             // else, or if the DACL grants read to anyone outside
-            // {current user, SYSTEM, Administrators}. Warning-only — restricting
+            // {current user, SYSTEM, Administrators}. Warning-only - restricting
             // ACLs is best-effort and a malicious local user can already do
             // worse than read this file. The point is operator visibility.
             var aclWarning = OpenClaw.Shared.Mcp.McpAuthToken.VerifyAcl(McpTokenPath);
@@ -906,7 +906,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         {
             if (_mcpServer != null) return; // already running
 
-            _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
+            _logger.Info("[MCP] SetMcpEnabled(true) - starting MCP server");
             _mcpStartupError = null;
 
             bool needsCapabilities;
@@ -935,7 +935,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
         else
         {
-            _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
+            _logger.Info("[MCP] SetMcpEnabled(false) - stopping MCP server");
             // Always call StopMcpServer to clear stale startup errors even
             // if the server isn't running. StopMcpServer is lock-protected
             // and handles _mcpServer == null safely.
@@ -1018,7 +1018,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     private void OnPairingStatusChanged(object? sender, PairingStatusEventArgs args)
     {
-        // Guard the slice — a malformed/missing/short device id would otherwise
+        // Guard the slice - a malformed/missing/short device id would otherwise
         // throw out of the event handler and suppress PairingStatusChanged,
         // hiding the very pairing problem the listener is trying to diagnose.
         var displayId = string.IsNullOrEmpty(args.DeviceId)
@@ -1086,7 +1086,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         {
             try
             {
-                // Web canvas is taking the foreground — close the native A2UI window so
+                // Web canvas is taking the foreground - close the native A2UI window so
                 // the user only sees the most-recently-targeted surface (last-write-wins).
                 CloseA2UICanvasWindow();
 
@@ -1237,7 +1237,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 _logger.Warn($"Canvas navigate auto-denied (cooldown): {OpenClaw.Shared.UrlLogSanitizer.Sanitize(pinnedRisk.CanonicalOrigin)}");
                 return false;
             }
-            // Stale entry — drop it. A racing concurrent request can re-add via
+            // Stale entry - drop it. A racing concurrent request can re-add via
             // the deny path below; this is just opportunistic cleanup.
             _navigationDenyCooldown.TryRemove(pinnedRisk.HostKey, out _);
         }
@@ -1255,12 +1255,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         try
         {
-            // Serialize prompt display globally — multiple HostKeys racing must
+            // Serialize prompt display globally - multiple HostKeys racing must
             // not stack overlapping topmost MessageBoxes either.
             await _navigationPromptGate.WaitAsync().ConfigureAwait(false);
             try
             {
-                // Re-check cooldown / allowlist now that we hold the gate — a
+                // Re-check cooldown / allowlist now that we hold the gate - a
                 // prior prompt's Deny may have populated the cooldown while we
                 // were queued.
                 if (_allowedNavigationHosts.ContainsKey(pinnedRisk.HostKey))
@@ -1290,7 +1290,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                     return false;
                 }
                 // AllowHost (session-allowlist) is currently unreachable from
-                // the Win32 prompt — Yes maps to AllowOnce only. The session
+                // the Win32 prompt - Yes maps to AllowOnce only. The session
                 // allowlist remains as scaffolding for a future Fluent
                 // ContentDialog prompt (worklist T2-43).
                 return true;
@@ -1357,7 +1357,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// <summary>
     /// Hand off to the OS default browser via ShellExecuteEx, then close any
     /// open in-app canvas surfaces (web or A2UI) on the dispatcher. Failures
-    /// are logged but never thrown — callers expect a fire-and-forget shape.
+    /// are logged but never thrown - callers expect a fire-and-forget shape.
     /// </summary>
     private void LaunchInDefaultBrowser(string canonical)
     {
@@ -1368,14 +1368,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
 
         // Process.Start with UseShellExecute=true wraps ShellExecuteEx, which
-        // routes the URL to the user's registered http/https handler — never
-        // to a script host or file association — given the validator already
+        // routes the URL to the user's registered http/https handler - never
+        // to a script host or file association - given the validator already
         // restricted the scheme.
         //
         // Note: this used to close any open canvas windows after launch. That
         // made sense when canvas == WebView2 and navigate implied "you don't
         // need this frame anymore." With native A2UI the canvas is a control
-        // surface (dashboard / launcher), not a browser frame — clicking a
+        // surface (dashboard / launcher), not a browser frame - clicking a
         // link in a dashboard shouldn't nuke the dashboard. Lifecycle is now
         // explicit: agents that want the canvas dismissed after a navigate
         // should follow up with canvas.hide or deleteSurface.
@@ -1580,7 +1580,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         {
             cts.Cancel();
             throw new TimeoutException(
-                $"CANVAS_TIMEOUT: {command} did not complete within {timeoutSeconds}s — the UI dispatcher may not be pumping");
+                $"CANVAS_TIMEOUT: {command} did not complete within {timeoutSeconds}s - the UI dispatcher may not be pumping");
         }
         return await task; // propagate the result or exception
     }
@@ -1640,7 +1640,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// <summary>
     /// Pull <c>sessionKey</c> out of the push props blob and update the action
     /// context so subsequent button clicks route to the same session. Silently
-    /// no-ops when props is malformed or doesn't include a sessionKey — the
+    /// no-ops when props is malformed or doesn't include a sessionKey - the
     /// previous (or default "main") value stays in effect.
     /// </summary>
     private void UpdateSessionKeyFromPushProps(string? propsJson)
@@ -1683,7 +1683,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         if (_a2uiCanvasWindow != null && !_a2uiCanvasWindow.IsClosed) return;
 
-        // Native A2UI is taking the foreground — close the legacy WebView2 canvas
+        // Native A2UI is taking the foreground - close the legacy WebView2 canvas
         // so its placeholder doesn't mask the rendered surface.
         CloseWebCanvasWindow();
 
@@ -1973,7 +1973,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     //
     // Single engine: VoiceService (Whisper.net + NAudio + Silero VAD).
     // The legacy WinRT/SAPI engine and the engine selector have been
-    // removed — see Audio_FollowUps.md for the rationale.
+    // removed - see Audio_FollowUps.md for the rationale.
     //
     // When the Whisper model isn't downloaded yet, every stt.* call
     // returns a clear error pointing the caller at the Voice Settings

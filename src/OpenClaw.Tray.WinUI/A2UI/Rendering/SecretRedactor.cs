@@ -138,7 +138,7 @@ internal static class SecretRedactor
                 var current = arr[i];
                 // Mirror the object branch: a registered/denylisted element path
                 // (e.g. an obscured TextField bound to "/codes/0") must be
-                // redacted, not just recursed into — a scalar element would
+                // redacted, not just recursed into - a scalar element would
                 // otherwise pass through unchanged and leak via canvas.a2ui.dump.
                 if (IsSecret(childPath, registered))
                 {

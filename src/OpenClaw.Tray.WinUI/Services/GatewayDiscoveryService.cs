@@ -14,7 +14,7 @@ namespace OpenClawTray.Services;
 /// <summary>
 /// Discovers OpenClaw gateways on the local network via mDNS/Bonjour.
 /// Browses for _openclaw-gw._tcp services and resolves SRV records for endpoints.
-/// TXT records are used for display metadata only — routing uses resolved SRV host/port.
+/// TXT records are used for display metadata only - routing uses resolved SRV host/port.
 /// </summary>
 public sealed class GatewayDiscoveryService : IDisposable
 {
@@ -135,7 +135,7 @@ public sealed class GatewayDiscoveryService : IDisposable
                 {
                     ct.ThrowIfCancellationRequested();
                     var response = await http.GetStringAsync($"http://127.0.0.1:{port}/", ct);
-                    // Match the gateway's specific HTML title — not generic "OpenClaw" which matches MCP too
+                    // Match the gateway's specific HTML title - not generic "OpenClaw" which matches MCP too
                     if (response.Contains("<title>OpenClaw Control</title>", StringComparison.OrdinalIgnoreCase))
                     {
                         return new DiscoveredGateway
@@ -182,7 +182,7 @@ public sealed class GatewayDiscoveryService : IDisposable
         txt.TryGetValue("gatewayTls", out var tlsFlag);
         txt.TryGetValue("gatewayTlsSha256", out var tlsFingerprint);
 
-        // Routing uses resolved SRV data only — TXT is for display metadata
+        // Routing uses resolved SRV data only - TXT is for display metadata
 
         return new DiscoveredGateway
         {

@@ -385,7 +385,7 @@ public sealed partial class PermissionsPage : Page
             NodeStatusDot.Fill = new SolidColorBrush(Microsoft.UI.Colors.LimeGreen);
             NodeStatusText.Text = LocalizationHelper.GetString("PermissionsPage_NodeStatus_Active");
 
-            // Read capability list from GatewayNodeInfo — same source of truth
+            // Read capability list from GatewayNodeInfo - same source of truth
             // used by the tray menu, instances page, and connection page.
             var caps = NodeCapabilityGating.GetLocalNodeCapabilities(
                 CurrentApp.AppState?.Nodes, CurrentApp.NodeFullDeviceId);
@@ -519,7 +519,7 @@ public sealed partial class PermissionsPage : Page
                     {
                         _policyRules.Add(new ExecPolicyRule
                         {
-                            // Accept either case — earlier saves wrote "Pattern" capitalized
+                            // Accept either case - earlier saves wrote "Pattern" capitalized
                             // due to an anonymous-type property name leak.
                             Pattern = TryGetStringCaseInsensitive(rule, "pattern", "Pattern") ?? "",
                             Action = ExecPolicyRuleList.TryGetActionCaseInsensitive(rule, "action", "Action") ?? "deny",

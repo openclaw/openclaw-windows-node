@@ -23,12 +23,12 @@
 
     <!--
         ╔════════════════════════════════════════════════════════════════════╗
-        ║  Connection page — Lobby & Cockpit & Recovery                      ║
+        ║  Connection page - Lobby & Cockpit & Recovery                      ║
         ║                                                                    ║
         ║  This page renders three layouts gated by connection state:        ║
-        ║   • Lobby   — no active gateway / never paired / switching / add   ║
-        ║   • Cockpit — connected (incl. connecting / degraded)              ║
-        ║   • Recovery — active gateway is failing; help fix THIS one        ║
+        ║   • Lobby   - no active gateway / never paired / switching / add   ║
+        ║   • Cockpit - connected (incl. connecting / degraded)              ║
+        ║   • Recovery - active gateway is failing; help fix THIS one        ║
         ║                                                                    ║
         ║  All status accents use a 4-px colored LEFT border on cards,       ║
         ║  no trailing dots. The accent brush is set in code-behind.         ║
@@ -56,7 +56,7 @@
                         HorizontalAlignment="Stretch" MaxWidth="900">
 
             <!-- ═════════════════════════════════════════════════════════
-                 PINNED MODIFIERS — render across every mode
+                 PINNED MODIFIERS - render across every mode
                  ═════════════════════════════════════════════════════════ -->
 
             <!-- Pending approvals (others waiting on the user's decision) -->
@@ -92,7 +92,7 @@
             </Border>
 
             <!-- ═════════════════════════════════════════════════════════
-                 GATEWAY CARD — status header (top) + Operator content
+                 GATEWAY CARD - status header (top) + Operator content
                  (below a divider). When connected, the gateway card IS the
                  operator card; we don't need to label that explicitly.
                  ═════════════════════════════════════════════════════════ -->
@@ -123,7 +123,7 @@
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <ProgressRing x:Name="StripProgress" Width="32" Height="32"
                                           IsActive="False" Visibility="Collapsed"/>
-                            <!-- Filled circle for the "connected" state — feels
+                            <!-- Filled circle for the "connected" state - feels
                                  more like a presence indicator than a checkmark. -->
                             <Ellipse x:Name="StripDot" Width="14" Height="14"
                                      Fill="{ThemeResource SystemFillColorSuccessBrush}"
@@ -198,7 +198,7 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- Host access controls — only for setup-managed WSL gateways.
+                    <!-- Host access controls - only for setup-managed WSL gateways.
                          SSH gateways keep the top-right terminal affordance but
                          do not expose lifecycle buttons. -->
                     <StackPanel x:Name="GatewayHostControlsSection" Spacing="8" Visibility="Collapsed">
@@ -287,7 +287,7 @@
                         </Grid>
                     </StackPanel>
 
-                    <!-- Operator section — visible only when there's an active operator session.
+                    <!-- Operator section - visible only when there's an active operator session.
                          Mirrors the Permissions Node card pattern: 22-px icon
                          column + title + small description, then a status
                          sub-row with a colored 12-px dot.  -->
@@ -349,7 +349,7 @@
             </Border>
 
             <!-- ═════════════════════════════════════════════════════════
-                 NODE CARD — the "expose this machine" banner
+                 NODE CARD - the "expose this machine" banner
                  ═════════════════════════════════════════════════════════ -->
 
             <StackPanel x:Name="CockpitPanel" Spacing="8" Visibility="Collapsed">
@@ -357,7 +357,7 @@
                      CockpitPanel now contains only the Node card so its
                      visibility independently controls the Node section.) -->
 
-                <!-- Node card — mirrors the PermissionsPage NodeStatusCard pattern:
+                <!-- Node card - mirrors the PermissionsPage NodeStatusCard pattern:
                      22-px PC icon + title + small description + master toggle,
                      then a divider, then a status sub-row with a colored dot. -->
                 <Border x:Name="NodeCardBorder"
@@ -556,7 +556,7 @@
             </StackPanel>
 
             <!-- ═════════════════════════════════════════════════════════
-                 RECOVERY body — fix THIS gateway, escape into Lobby explicit
+                 RECOVERY body - fix THIS gateway, escape into Lobby explicit
                  ═════════════════════════════════════════════════════════ -->
 
             <StackPanel x:Name="RecoveryPanel" Spacing="12" Visibility="Collapsed">
@@ -569,7 +569,7 @@
                                    Text="Help us fix this connection:"
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
 
-                        <!-- Bullets — populated in code-behind by category -->
+                        <!-- Bullets - populated in code-behind by category -->
                         <StackPanel x:Name="RecoveryBulletsPanel" Spacing="6"/>
 
                         <!-- Tunnel diag block (only when SSH tunnel involved) -->
@@ -676,12 +676,12 @@
             </StackPanel>
 
             <!-- ═════════════════════════════════════════════════════════
-                 BOTTOM SECTION — gateways list (default), Add-gateway form
+                 BOTTOM SECTION - gateways list (default), Add-gateway form
                  (when adding), and Welcome tiles (when registry empty).
                  ═════════════════════════════════════════════════════════ -->
 
             <!-- ═════════════════════════════════════════════════════════
-                 GATEWAYS LIST — always visible (except in Welcome and
+                 GATEWAYS LIST - always visible (except in Welcome and
                  AddGateway modes). Active gateway highlighted with the
                  ACTIVE badge and a different action set on its row.
                  ═════════════════════════════════════════════════════════ -->
@@ -767,7 +767,7 @@
             </Border>
 
             <!-- ═════════════════════════════════════════════════════════
-                 WELCOME — only in Welcome mode (registry empty).
+                 WELCOME - only in Welcome mode (registry empty).
                  Three tiles route into the AddGateway sub-view with the
                  corresponding method preselected.
                  ═════════════════════════════════════════════════════════ -->
@@ -788,7 +788,7 @@
                          discovered on the network yet. Hidden when the
                          hub doesn't expose OpenSetupAction (no WSL tooling
                          on this machine). Uses InfoBar (Informational) as
-                         the WinUI-canonical "featured callout" surface —
+                         the WinUI-canonical "featured callout" surface -
                          soft blue tint + info icon are theme-aware and
                          match tokens.md guidance (no custom brushes). -->
                     <InfoBar x:Uid="ConnectionPage_GetStartedInstallA" x:Name="WelcomeLocalWslSetupCard"
@@ -796,7 +796,7 @@
                              IsOpen="True"
                              IsClosable="False"
                              Visibility="Collapsed"
-                             Title="Get started — install a local gateway"
+                             Title="Get started - install a local gateway"
                              Message="The fastest way to start: sets up a WSL-hosted gateway on this PC and makes it the active connection.">
                         <InfoBar.ActionButton>
                             <Button x:Uid="ConnectionPage_Install" Content="Install"
@@ -867,7 +867,7 @@
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-                    <!-- Inline scan — also surfaces here for first-run users
+                    <!-- Inline scan - also surfaces here for first-run users
                          since the Gateways section isn't visible in Welcome. -->
                     <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" Margin="0,4,0,0"/>
                     <Grid>
@@ -970,7 +970,7 @@
                                  AutomationProperties.AutomationId="AddDirectName"/>
                     </StackPanel>
 
-                    <!-- Remote gateway setup help — a lightweight info link that
+                    <!-- Remote gateway setup help - a lightweight info link that
                          opens a TeachingTip. Deliberately NOT an Expander so it
                          reads as guidance and is visually distinct from the
                          functional "Use SSH tunnel" input section below. -->
@@ -1066,7 +1066,7 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Scan pane removed — scan now lives in the Gateways
+                    <!-- Scan pane removed - scan now lives in the Gateways
                          section header (and inline in Welcome). Discovered
                          gateways pre-fill the Direct pane via [Add]. -->
                     <StackPanel x:Name="AddScanPane" Spacing="8" Visibility="Collapsed">
@@ -1076,7 +1076,7 @@
                         <StackPanel x:Name="AddScanResultsPanel" Visibility="Collapsed"/>
                     </StackPanel>
 
-                    <!-- Local WSL pane — third method. Hands off to the V2
+                    <!-- Local WSL pane - third method. Hands off to the V2
                          setup flow via OpenSetupAction. No URL/token form
                          needed: the install wizard creates the gateway,
                          pairs this PC into it, and saves the record. -->
@@ -1090,14 +1090,14 @@
                                 Click="OnInstallLocalWslGateway"
                                 AutomationProperties.AutomationId="AddInstallLocalGateway"/>
                         <TextBlock x:Uid="ConnectionPage_LocalWSLSetupIsn" x:Name="AddLocalWslUnavailableText"
-                                   Text="Local-WSL setup isn't available on this machine — the install wizard couldn't be initialized."
+                                   Text="Local-WSL setup isn't available on this machine - the install wizard couldn't be initialized."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                    TextWrapping="Wrap"
                                    Visibility="Collapsed"/>
                     </StackPanel>
 
-                    <!-- Transport-security advice — populated in code-behind
+                    <!-- Transport-security advice - populated in code-behind
                          from RemoteGatewayClassifier for the active method's
                          URL (Direct field or decoded setup code). -->
                     <InfoBar x:Name="AddSecurityAdviceBar"
@@ -1105,7 +1105,7 @@
                              Severity="Informational"
                              AutomationProperties.AutomationId="AddSecurityAdvice"/>
 
-                    <!-- Per-gateway SSH tunnel — saved with the gateway record -->
+                    <!-- Per-gateway SSH tunnel - saved with the gateway record -->
                     <Expander x:Name="AddSshExpander"
                               HorizontalAlignment="Stretch"
                               HorizontalContentAlignment="Stretch"
@@ -1191,7 +1191,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- (Legacy global SSH expander removed — SSH tunnel config is
+            <!-- (Legacy global SSH expander removed - SSH tunnel config is
                  now per-gateway and lives inside the Add Gateway flow.
                  Pre-existing SettingsManager.UseSshTunnel values are still
                  honored by the connection layer for back-compat.) -->

@@ -192,7 +192,7 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                        Margin="4,0,4,4"/>
 
-            <!-- Default action — its own row card (matches the Settings row pattern) -->
+            <!-- Default action - its own row card (matches the Settings row pattern) -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16,14,16,14">
@@ -256,7 +256,7 @@
 
                     <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
 
-                    <!-- Empty state — visible when there are no rules -->
+                    <!-- Empty state - visible when there are no rules -->
                     <TextBlock x:Uid="PermissionsPage_NoRulesYetAdd" x:Name="RulesEmptyState"
                               Text="No rules yet. Add a pattern below to deny, allow, or ask for specific commands."
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -341,7 +341,7 @@
             <TextBlock x:Uid="PermissionsPage_TextBlock_69" Text="Node allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
             <TextBlock x:Uid="PermissionsPage_TextBlock_72"
-                       Text="Commands the gateway will accept from connected nodes. Read-only — edit via the Config page."
+                       Text="Commands the gateway will accept from connected nodes. Read-only - edit via the Config page."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                        Margin="4,0,4,4"/>

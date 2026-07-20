@@ -107,7 +107,7 @@ public sealed class ConnectionManagerOperatorConnector : IGatewayOperatorConnect
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // Timeout — disconnect to clean up the manager's in-flight connection
+                // Timeout - disconnect to clean up the manager's in-flight connection
                 try { await _manager.DisconnectAsync(); }
                 catch (Exception ex) { _logger.Debug($"ConnectionManagerOperatorConnector: cleanup disconnect after operator-handshake timeout failed: {ex.GetType().Name}: {ex.Message}"); }
                 return new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Timeout, "Timed out waiting for operator handshake.");
@@ -144,7 +144,7 @@ public sealed class ConnectionManagerOperatorConnector : IGatewayOperatorConnect
         _manager.StateChanged += OnStateChanged;
         try
         {
-            // Reconnect — the credential resolver will pick up the stored device token
+            // Reconnect - the credential resolver will pick up the stored device token
             await _manager.ReconnectAsync();
             if (!tcs.Task.IsCompleted)
                 OnStateChanged(this, _manager.CurrentSnapshot);
@@ -158,7 +158,7 @@ public sealed class ConnectionManagerOperatorConnector : IGatewayOperatorConnect
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // Timeout — disconnect to clean up the manager's in-flight connection
+                // Timeout - disconnect to clean up the manager's in-flight connection
                 try { await _manager.DisconnectAsync(); }
                 catch (Exception ex) { _logger.Debug($"ConnectionManagerOperatorConnector: cleanup disconnect after operator-reconnect timeout failed: {ex.GetType().Name}: {ex.Message}"); }
                 return new GatewayOperatorConnectionResult(GatewayOperatorConnectionStatus.Timeout, "Timed out waiting for operator reconnect.");

@@ -54,7 +54,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse x:Name="SchedulerStatusIndicator" Width="8" Height="8"
                              Fill="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="SchedulerStatusText" Text="—" VerticalAlignment="Center"
+                    <TextBlock x:Name="SchedulerStatusText" Text="-" VerticalAlignment="Center"
                                Style="{StaticResource BodyTextBlockStyle}"/>
                     <TextBlock x:Name="NextWakeText" Text="" VerticalAlignment="Center"
                                Style="{StaticResource CaptionTextBlockStyle}"

@@ -18,7 +18,7 @@ internal sealed class GatewayService
     private readonly AppState _state;
     private readonly DispatcherQueue _dispatcher;
 
-    // Re-raised events — App subscribes for UI side effects that don't belong in this service.
+    // Re-raised events - App subscribes for UI side effects that don't belong in this service.
     public event EventHandler<ConnectionStatus>? ConnectionStatusChanged;
     public event EventHandler<string>? AuthenticationFailed;
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
@@ -192,7 +192,7 @@ internal sealed class GatewayService
             if (status == ConnectionStatus.Disconnected || status == ConnectionStatus.Error)
             {
                 _state.ClearCachedData();
-                // Pair lists were just cleared — notify the approval coordinator so it
+                // Pair lists were just cleared - notify the approval coordinator so it
                 // reconciles to empty (resolving any open approvals / closing the dialog)
                 // instead of leaving stale state until the operator client is swapped out.
                 PairListsChanged?.Invoke(this, EventArgs.Empty);

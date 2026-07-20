@@ -6,7 +6,7 @@ using Windows.UI;
 namespace OpenClawTray.A2UI.Theming;
 
 /// <summary>
-/// Per-surface theme overrides resolved from createSurface.theme. Optional —
+/// Per-surface theme overrides resolved from createSurface.theme. Optional -
 /// surfaces without theme payloads default to Fluent (XamlControlsResources).
 /// Values resolve to <see cref="ThemeResource"/> overrides applied to the
 /// SurfaceHost's resource scope, never globally.

@@ -105,7 +105,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
             return Task.CompletedTask;
         }
 
-        // Manual "play" button — bypass mute (mute is for auto-read only)
+        // Manual "play" button - bypass mute (mute is for auto-read only)
         return SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: true);
     }
 

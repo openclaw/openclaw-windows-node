@@ -13,7 +13,7 @@ public static class DeepLinkHandler
     [SupportedOSPlatform("windows")]
     public static void RegisterUriScheme()
     {
-        // MSIX-packaged apps declare the protocol in Package.appxmanifest — skip registry
+        // MSIX-packaged apps declare the protocol in Package.appxmanifest - skip registry
         if (IsPackagedApp())
         {
             Logger.Info("URI scheme handled by MSIX manifest (packaged mode)");
@@ -86,7 +86,7 @@ public static class DeepLinkHandler
                 break;
 
             case "history":
-                // Legacy notification-history alias — Channels page is the closest match.
+                // Legacy notification-history alias - Channels page is the closest match.
                 actions.OpenHub?.Invoke("channels");
                 break;
 
@@ -211,7 +211,7 @@ public static class DeepLinkHandler
             case "notifications":
             case "notification-history":
             case "activity-stream":
-                // ActivityPage removed — channel events now live on the Channels page.
+                // ActivityPage removed - channel events now live on the Channels page.
                 actions.OpenHub?.Invoke("channels");
                 break;
             case "dashboard":

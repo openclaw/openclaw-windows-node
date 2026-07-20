@@ -45,7 +45,7 @@ public sealed partial class SkillsPage : Page
         }
         else
         {
-            // No cached data — show loading spinner
+            // No cached data - show loading spinner
             LoadingState.Visibility = Visibility.Visible;
             EmptyState.Visibility = Visibility.Collapsed;
         }
@@ -115,7 +115,7 @@ public sealed partial class SkillsPage : Page
 
         if (success)
         {
-            // Re-lookup after await — _allSkills may have been replaced by UpdateFromGateway
+            // Re-lookup after await - _allSkills may have been replaced by UpdateFromGateway
             var current = _allSkills.FirstOrDefault(s => s.SkillKey == skillKey);
             if (current != null)
             {

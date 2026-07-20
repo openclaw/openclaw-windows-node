@@ -16,7 +16,7 @@ namespace OpenClawTray.A2UI.Rendering;
 /// </summary>
 public interface IComponentRenderer
 {
-    /// <summary>The A2UI component name (case-sensitive — matches the wire), e.g. "Button", "Column".</summary>
+    /// <summary>The A2UI component name (case-sensitive - matches the wire), e.g. "Button", "Column".</summary>
     string ComponentName { get; }
 
     /// <summary>
@@ -43,7 +43,7 @@ public sealed class RenderContext
     public required Func<string, FrameworkElement?> BuildChild { get; init; }
     /// <summary>
     /// Surface-scoped subscription store. Renderers should not access this
-    /// dictionary directly — use <see cref="WatchValue"/> (or
+    /// dictionary directly - use <see cref="WatchValue"/> (or
     /// <see cref="RegisterSubscription"/> for non-value subs). Exposed here for
     /// the surface host's lifecycle management.
     /// </summary>
@@ -186,7 +186,7 @@ public sealed class RenderContext
     /// Paths outside that scope are silently dropped to prevent unrelated
     /// surface state from leaking into the agent envelope. Secret paths
     /// (registered via obscured TextField, or matching the SecretRedactor
-    /// denylist) are always dropped — even when the component declares an
+    /// denylist) are always dropped - even when the component declares an
     /// explicit <c>dataBinding</c>. <c>dataBinding: ["/"]</c> is a root-level
     /// wildcard that opts in to everything; allowing secret paths through it
     /// (or through any explicit binding) lets a malicious surface drain
@@ -244,7 +244,7 @@ public sealed class RenderContext
         }
 
         // Implicit: any A2UIValue path that appears in the component's other properties.
-        // The action's own "context" array doesn't count — that's what we're scoping.
+        // The action's own "context" array doesn't count - that's what we're scoping.
         foreach (var kv in props)
         {
             if (kv.Key == "action" && kv.Value is JsonObject actionObj)
@@ -296,7 +296,7 @@ public sealed class RenderContext
 
     // EmptySet was a hand-rolled stand-in for an empty IReadOnlySet<string>.
     // FrozenSet<string>.Empty is a single shared, allocation-free instance
-    // with the same behavior — see IsSecretPath above.
+    // with the same behavior - see IsSecretPath above.
 }
 
 public sealed class MediaLoadBudget

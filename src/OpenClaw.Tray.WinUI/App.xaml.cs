@@ -171,7 +171,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// the HubWindow directly (single-app-model rule); they call this
     /// when they need the handle and discard it afterwards.
     /// Guards against the close-window race where `_hubWindow != null`
-    /// but the window is mid-teardown — every other call site in this
+    /// but the window is mid-teardown - every other call site in this
     /// file pairs the null check with `!IsClosed` (Hanselman v2 #4).
     /// </summary>
     public IntPtr GetHubWindowHandle()
@@ -197,14 +197,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private bool _isExiting;
     
     /// <summary>
-    /// Cached connection status — sole writer is OnManagerStateChanged.
+    /// Cached connection status - sole writer is OnManagerStateChanged.
     /// Reads are safe from any thread; derives from the connection manager's state machine.
     /// </summary>
     private WeakReference<ToggleSwitch>? _connectionToggleRef;
     private bool _suspendConnectionToggleEvent;
     private string? _lastManagerConnectedSideEffectsKey;
 
-    // FrozenDictionary for O(1) case-insensitive notification type → setting lookup — no per-call allocation.
+    // FrozenDictionary for O(1) case-insensitive notification type → setting lookup - no per-call allocation.
     private static readonly System.Collections.Frozen.FrozenDictionary<string, Func<SettingsManager, bool>> s_notifTypeMap =
         new Dictionary<string, Func<SettingsManager, bool>>(StringComparer.OrdinalIgnoreCase)
         {
@@ -384,13 +384,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         catch (Exception ex)
         {
             // Process is exiting; the logger writer may already be torn down.
-            // Nothing we can do — Trace.WriteLine matches the standard set in
+            // Nothing we can do - Trace.WriteLine matches the standard set in
             // Services/Logger.cs's own ProcessExit handler; Console.Error is a
             // belt-and-suspenders backup in case no Trace listener is attached.
             try { System.Diagnostics.Trace.WriteLine($"App.OnProcessExit: logger unavailable: {ex.GetType().Name}: {ex.Message}"); }
             catch (Exception) { /* Trace itself failed during process exit. */ }
             try { Console.Error.WriteLine($"Process exiting (logger unavailable): {ex.GetType().Name}: {ex.Message}"); }
-            catch (Exception) { /* Console.Error itself failed during process exit — nothing left to call. */ }
+            catch (Exception) { /* Console.Error itself failed during process exit - nothing left to call. */ }
         }
 
         try
@@ -507,7 +507,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _postSetupLaunch = GetArgValue(_startupArgs, "--post-setup-launch");
 
         // -----------------------------------------------------------------------
-        // CLI uninstall path — headless; never shows tray or any windows.
+        // CLI uninstall path - headless; never shows tray or any windows.
         // Approach: detect in OnLaunched before any UI is created (WinUI3 Main
         // is auto-generated; earliest interception point is OnLaunched).
         // Bypasses the single-instance mutex so the Inno uninstaller can invoke
@@ -527,12 +527,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // the test instance does not collide with the user's regular tray app.
         // String.GetHashCode() is randomized per process since .NET Core 2.1, so
         // two test runs against the same data dir would otherwise pick different
-        // mutex names — and `Math.Abs(int.MinValue)` overflows. Use a stable
+        // mutex names - and `Math.Abs(int.MinValue)` overflows. Use a stable
         // SHA-256 prefix instead.
         // NOTE: The build variant's bare mutex name is also referenced by
         // installer.iss `AppMutex=` for install/uninstall race coordination.
         // The suffixed test-isolation variant is
-        // intentionally not covered by AppMutex — production installs only
+        // intentionally not covered by AppMutex - production installs only
         // ever use the unsuffixed name.
         var mutexName = AppIdentity.MutexBaseName;
         if (DataDirOverride is not null)
@@ -663,14 +663,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Anchor the WinUI runtime so transient windows (UpdateDialog,
         // setup wizard, etc.) don't terminate the process when closed.
         // WinUI 3 Desktop's default DispatcherShutdownMode is
-        // OnLastWindowClose — without this override, closing the
+        // OnLastWindowClose - without this override, closing the
         // UpdateDialog on the startup path (when it is the only window)
         // would shut down the WinUI runtime mid-flight and kill the
         // in-progress download/extraction. We still control shutdown
         // explicitly via Application.Exit().
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
 
-        // Check for updates before launching. Skip in test instances — no UI dialogs,
+        // Check for updates before launching. Skip in test instances - no UI dialogs,
         // no network calls, no startup delay.
         if (DataDirOverride is null &&
             Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
@@ -723,10 +723,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 // A node client was just created (manager auto-start OR setup engine
                 // EnsureNodeConnectedAsync). We MUST have a NodeService to register
-                // capabilities on this client before the outbound "connect" goes out —
+                // capabilities on this client before the outbound "connect" goes out -
                 // see NodeConnector.cs:66. Build it lazily here so we never depend on
                 // OnLaunched ordering. EnsureNodeService is
-                // idempotent — it returns the existing instance if already built.
+                // idempotent - it returns the existing instance if already built.
                 // Without this, _nodeService?.AttachClient below is a silent no-op and
                 // the gateway sees the node with caps=0/cmds=0 (regression introduced
                 // 2026-05-12 in 62533e2 when capability registration moved to this
@@ -767,7 +767,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 throw;
             }
         };
-        // SshTunnelService implements ISshTunnelManager directly — no shim needed
+        // SshTunnelService implements ISshTunnelManager directly - no shim needed
         _connectionManager = new GatewayConnectionManager(
             credentialResolver, clientFactory, _gatewayRegistry, appLogger,
             identityStore: new DeviceIdentityFileStore(appLogger),
@@ -802,19 +802,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // new WindowsNodeClient. If we don't pre-construct here, the first connect
         // happens with empty caps and the gateway records this node as having no
         // advertised commands (which leaves the agent unable to invoke anything on it).
-        // The method is idempotent — safe to call here AND later if first-run setup runs.
+        // The method is idempotent - safe to call here AND later if first-run setup runs.
         if (ShouldInitializeNodeService() && _settings != null)
         {
             EnsureNodeService(_settings);
         }
 
-        // Initialize connections — always create operator client for UI data,
+        // Initialize connections - always create operator client for UI data,
         // additionally create node service for gateway node mode or local MCP.
         // Re-arm the WSL keepalive so the local gateway VM stays up across tray
         // restarts and across the 20s WSL vmIdleTimeout window observed on some
         // hosts. Fire-and-forget on a background task so a slow LxssManager at
         // cold logon never delays InitializeGatewayClient. The keepalive itself
-        // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
+        // runs detached from the tray - see WslDistroKeepAlive in LocalGatewaySetup.cs.
         var wslKeepAlive = new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry);
         _ = Task.Run(wslKeepAlive.TryEnsureAsync);
         InitializeGatewayClient();
@@ -826,7 +826,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             _chatWindow = new ChatWindow(prewarmUrl, prewarmToken);
             ApplyThemePreference(_chatWindow);
-            // Window is created but hidden — WebView2 initializes in the background
+            // Window is created but hidden - WebView2 initializes in the background
         }
 
         // Start deep link server
@@ -1029,7 +1029,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         ShowHub("connection");
     }
 
-    // Voice overlay disabled — inline chat voice mode is used instead.
+    // Voice overlay disabled - inline chat voice mode is used instead.
     // private VoiceOverlayWindow? _voiceOverlayWindow;
     private VoiceService? _standaloneVoiceService;
 
@@ -1040,7 +1040,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     public VoiceService? VoiceServiceInstance =>
         _nodeService?.VoiceService ?? EnsureStandaloneVoiceService();
 
-    // Voice overlay disabled — inline chat voice mode is used instead.
+    // Voice overlay disabled - inline chat voice mode is used instead.
     // Kept for potential future re-enablement.
     /*
     private void ShowVoiceOverlay()
@@ -1048,7 +1048,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var voiceService = _nodeService?.VoiceService ?? EnsureStandaloneVoiceService();
         if (voiceService == null)
         {
-            // STT not enabled — show settings
+            // STT not enabled - show settings
             ShowHub("voice");
             return;
         }
@@ -1102,7 +1102,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return;
             }
 
-            // Menu uses purely cached data — no gateway requests on open
+            // Menu uses purely cached data - no gateway requests on open
             // Data stays fresh via WebSocket event stream (session/health broadcasts)
 
             // Reuse pre-created window - never create new ones after startup
@@ -1353,7 +1353,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
             catch (Exception toastEx)
             {
-                // Toast surface failed while reporting an outer error — outer error already logged above.
+                // Toast surface failed while reporting an outer error - outer error already logged above.
                 Logger.Debug($"App: Session action failure toast suppressed: {toastEx.Message}");
             }
         }
@@ -1429,7 +1429,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         _appState?.ClearCachedData();
         UpdateTrayIcon();
-        // Dismiss the tray menu on disconnect — it will capture fresh data on next open
+        // Dismiss the tray menu on disconnect - it will capture fresh data on next open
         _trayMenuWindow?.HideCascade();
     }
 
@@ -1504,7 +1504,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// environment variable is set to <c>1</c>, populate the session/usage
     /// caches with synthetic values so the Sessions and Usage flyouts render
     /// meaningful progress bars and provider data without a live gateway.
-    /// Real data takes precedence — preview values are only written when the
+    /// Real data takes precedence - preview values are only written when the
     /// corresponding cache is empty/null, so attaching to a real gateway
     /// after launch immediately replaces the preview.
     /// </summary>
@@ -1600,13 +1600,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
         var gatewayUrl = _settings.GetEffectiveGatewayUrl();
 
-        // Check registry first — it's the source of truth after initial setup
+        // Check registry first - it's the source of truth after initial setup
         var activeRecord = _gatewayRegistry.GetActive();
         if (activeRecord != null)
         {
             if (!TryConnectGatewayIfCredentialAvailable(activeRecord, "startup"))
             {
-                // Still start MCP-only node if enabled — the active record may be stale
+                // Still start MCP-only node if enabled - the active record may be stale
                 // and MCP-only mode must work without gateway credentials.
                 TryStartLocalMcpOnlyNode();
             }
@@ -1627,7 +1627,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             if (TryStartLocalMcpOnlyNode())
                 return;
 
-            Logger.Info("Gateway URL not configured — skipping client initialization");
+            Logger.Info("Gateway URL not configured - skipping client initialization");
             return;
         }
 
@@ -1636,12 +1636,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var existing = _gatewayRegistry.FindByUrl(gatewayUrl);
         if (existing != null)
         {
-            // Record already exists — just ensure it's active and connect
+            // Record already exists - just ensure it's active and connect
             _gatewayRegistry.SetActive(existing.Id);
         }
         else
         {
-            // No record yet — create one from settings URL if we have a stored device token.
+            // No record yet - create one from settings URL if we have a stored device token.
             var hasStoredDeviceToken = DeviceIdentity.HasStoredDeviceToken(
                 Path.Combine(SettingsManager.SettingsDirectoryPath));
             if (!hasStoredDeviceToken)
@@ -1649,7 +1649,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 if (TryStartLocalMcpOnlyNode())
                     return;
 
-                Logger.Info("No stored device token — skipping startup connect (use Setup Code)");
+                Logger.Info("No stored device token - skipping startup connect (use Setup Code)");
                 return;
             }
 
@@ -1697,7 +1697,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             catch (Exception ex) { Logger.Warn($"Failed to copy identity file: {ex.Message}"); }
         }
 
-        // Delegate to connection manager — it creates the client, fires OperatorClientChanged,
+        // Delegate to connection manager - it creates the client, fires OperatorClientChanged,
         // and our handler re-wires the 27 event subscriptions
         if (!TryConnectGatewayIfCredentialAvailable(migratedRecord, "startup bridge"))
             TryStartLocalMcpOnlyNode();
@@ -1729,7 +1729,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return true;
             }
 
-            Logger.Info($"Active gateway has no usable credential — skipping {context} connect");
+            Logger.Info($"Active gateway has no usable credential - skipping {context} connect");
             return false;
         }
 
@@ -1999,7 +1999,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             var concreteClient = client as OpenClawGatewayClient;
             if (concreteClient == null)
-                Logger.Warn("[ConnMgr] NewClient is not OpenClawGatewayClient — chat coordinator disabled");
+                Logger.Warn("[ConnMgr] NewClient is not OpenClawGatewayClient - chat coordinator disabled");
             _chatCoordinator?.SetOperatorClient(concreteClient);
         }
         else
@@ -2041,7 +2041,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             UpdateConnectionIssueNotification(snap);
             if (mapped is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
             {
-                // Dismiss the tray menu on state change — it will capture fresh data on next open
+                // Dismiss the tray menu on state change - it will capture fresh data on next open
                 _trayMenuWindow?.HideCascade();
             }
         });
@@ -2140,7 +2140,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // In node-only mode, surface node connection in main status indicator
         if (_settings?.EnableNodeMode == true)
         {
-            // Status field is maintained by OnManagerStateChanged — no write needed here.
+            // Status field is maintained by OnManagerStateChanged - no write needed here.
             UpdateTrayIcon();
             OnUiThread(UpdateStatusDetailWindow);
         }
@@ -2198,7 +2198,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 RefreshGatewayNodes("node paired");
                 ClearPairingAppNotifications(args.DeviceId);
-                // Bug 3: idempotency guard — only show "Node paired" toast/activity once
+                // Bug 3: idempotency guard - only show "Node paired" toast/activity once
                 // per device per session. WS reconnects re-fire Paired; suppress duplicates.
                 var deviceKey = args.DeviceId ?? string.Empty;
                 if (!_toastService!.HasShownPairedToast(deviceKey))
@@ -2263,7 +2263,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     /// <summary>
     /// Pushes current node service state to hub window so ConnectionPage reflects live pairing/identity.
-    /// Now a no-op — pages read App properties directly via CurrentApp.
+    /// Now a no-op - pages read App properties directly via CurrentApp.
     /// </summary>
 
     public static string BuildPairingApprovalCommand(string deviceId) =>
@@ -2344,7 +2344,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// connection-issue notification identity. Used for transient, page-driven
     /// failures (e.g. a manual gateway switch that throws) where the snapshot
     /// may be briefly silent. Because it reuses the connection-issue id/dedupe
-    /// key it occupies the same banner slot — it cannot produce a second bar —
+    /// key it occupies the same banner slot - it cannot produce a second bar -
     /// and the snapshot-driven path will replace or dismiss it on the next tick.
     /// </summary>
     internal void ShowTransientConnectionError(string message)
@@ -2810,7 +2810,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     {
         UpdateTrayIcon();
 
-        // Store auth failure in AppState — observed for tray tooltip / status.
+        // Store auth failure in AppState - observed for tray tooltip / status.
         if (_appState != null)
         {
             _appState.AuthFailureMessage = message;
@@ -2895,7 +2895,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             if (ChatProvider?.IsResponseSuppressed == true)
                 return;
 
-            // Voice overlay disabled — agent responses no longer routed to overlay window.
+            // Voice overlay disabled - agent responses no longer routed to overlay window.
             // if (_voiceOverlayWindow != null)
             // {
             //     OnUiThread(() =>
@@ -2968,7 +2968,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     }
 
     // ── AppState → tray-level side effects (tray icon, status detail) ──
-    // The tray menu is NOT refreshed live while open — data is frozen at
+    // The tray menu is NOT refreshed live while open - data is frozen at
     // open time via TrayMenuSnapshot to avoid WinUI layout races that cause
     // blank subflyouts. The menu captures a fresh snapshot on every open.
 
@@ -3425,7 +3425,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
         else
         {
-            // Show without stealing focus — used by right-click on the
+            // Show without stealing focus - used by right-click on the
             // tray icon where the popup needs to remain the foreground
             // window (popups light-dismiss if focus moves away).
             // If the Hub was minimized, restore it first so it actually
@@ -3486,7 +3486,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 // Status is updated by OnManagerStateChanged when reconnect starts.
                 UpdateTrayIcon();
 
-                // Reset chat window — it has a stale URL/token
+                // Reset chat window - it has a stale URL/token
                 if (_chatWindow != null)
                 {
                     _chatWindow.ForceClose();
@@ -3510,7 +3510,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 break;
         }
 
-        // MCP server lifecycle — handled separately from gateway reconnects
+        // MCP server lifecycle - handled separately from gateway reconnects
         // because MCP-only mode doesn't involve a gateway at all. SetMcpEnabled
         // checks actual runtime state (_mcpServer != null), so it's safe to
         // call unconditionally. Only create NodeService when MCP is being
@@ -3655,7 +3655,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         return ids;
     }
 
-    /// <summary>A new inbound pairing request arrived — present the focused dialog and an awareness toast.</summary>
+    /// <summary>A new inbound pairing request arrived - present the focused dialog and an awareness toast.</summary>
     private void OnPairingApprovalRequested(object? sender, PendingApproval approval)
     {
         OnUiThread(() =>
@@ -3692,7 +3692,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// <summary>After a decision is confirmed by the gateway, surface a confirmation toast + activity entry.</summary>
     private void OnPairingDecisionCompleted(object? sender, PairingDecisionResult result)
     {
-        if (!result.Success) return; // defensive — the coordinator only raises this for confirmed decisions
+        if (!result.Success) return; // defensive - the coordinator only raises this for confirmed decisions
         OnUiThread(() =>
         {
             var name = string.IsNullOrWhiteSpace(result.Approval.DisplayName)
@@ -3799,7 +3799,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     private void UpdateStatusDetailWindow()
     {
-        // No-op — hub window observes AppState.PropertyChanged directly.
+        // No-op - hub window observes AppState.PropertyChanged directly.
         // Tray status detail window reads from AppState too.
     }
 
@@ -4250,19 +4250,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_dispatcherQueue == null) return;
         _dispatcherQueue.TryEnqueue(() =>
         {
-            // Always set the flag first — ChatPage checks it during navigation
+            // Always set the flag first - ChatPage checks it during navigation
             var hubExisted = _hubWindow != null;
             ShowHub("chat");
             if (_hubWindow == null) return;
 
             if (_hubWindow.CurrentPage is Pages.ChatPage chatPage)
             {
-                // Chat page is already visible — trigger voice directly
+                // Chat page is already visible - trigger voice directly
                 chatPage.TriggerAutoStartVoice();
             }
             else
             {
-                // Chat page is being created — set the flag for ChatPage.Initialize to pick up.
+                // Chat page is being created - set the flag for ChatPage.Initialize to pick up.
                 // Also schedule a delayed trigger in case the flag isn't consumed during navigation.
                 _hubWindow.PendingAutoStartVoice = true;
                 _dispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>

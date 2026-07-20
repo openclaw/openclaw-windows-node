@@ -131,7 +131,7 @@ public static class ChatMarkdownRenderer
     // Bounded AST cache so the per-tick FunctionalUI re-render of a chat
     // bubble doesn't reparse the same markdown source. We cache the parsed
     // AST (cheap to retain, pure-data records) and always rebuild a fresh
-    // Element tree from it — WinUI elements can only live in one visual
+    // Element tree from it - WinUI elements can only live in one visual
     // parent slot, so re-using rendered Elements across mounts is unsafe.
     private const int CacheCapacity = 64;
     private static readonly object s_cacheLock = new();
@@ -651,7 +651,7 @@ public static class ChatMarkdownRenderer
 
     private const string TableGridColor = "#40808080";
 
-    // Shared brush — avoids allocating one DependencyObject per cell on the UI thread.
+    // Shared brush - avoids allocating one DependencyObject per cell on the UI thread.
     // SolidColorBrush is freezable/lightweight, but we still construct it lazily on first
     // table render so type initialization doesn't run in headless test contexts that
     // never touch a renderer.
@@ -723,7 +723,7 @@ public static class ChatMarkdownRenderer
             MdColumnAlignment.Center => tb.HAlign(HorizontalAlignment.Center),
             _                        => tb,
         };
-        // Per-cell top/left strokes only — the table-level Border closes
+        // Per-cell top/left strokes only - the table-level Border closes
         // the bottom/right edges. This produces a uniform 1px grid with
         // no double-thickness interior lines.
         double leftThickness = colIndex == 0 ? 0 : 1;
