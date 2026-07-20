@@ -10,6 +10,7 @@ using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -884,8 +885,8 @@ public sealed partial class SessionsPage : Page
 
     private static string FormatTokenCount(long n)
     {
-        if (n >= 1_000_000) return $"{n / 1_000_000.0:0.#}M";
-        if (n >= 1_000) return $"{n / 1_000.0:0.#}K";
+        if (n >= 1_000_000) return $"{(n / 1_000_000.0).ToString("0.#", CultureInfo.InvariantCulture)}M";
+        if (n >= 1_000) return $"{(n / 1_000.0).ToString("0.#", CultureInfo.InvariantCulture)}K";
         return n.ToString();
     }
 

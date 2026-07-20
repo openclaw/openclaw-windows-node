@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using OpenClaw.Shared;
@@ -300,8 +301,8 @@ internal static class WorkspaceFilesModel
     {
         if (bytes is not { } b || b < 0) return string.Empty;
         if (b < 1024) return $"{b} B";
-        if (b < 1024 * 1024) return $"{b / 1024.0:F1} KB";
-        return $"{b / (1024.0 * 1024.0):F1} MB";
+        if (b < 1024 * 1024) return $"{(b / 1024.0).ToString("F1", CultureInfo.InvariantCulture)} KB";
+        return $"{(b / (1024.0 * 1024.0)).ToString("F1", CultureInfo.InvariantCulture)} MB";
     }
 
     /// <summary>
