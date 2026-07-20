@@ -22,7 +22,7 @@ public static class ExecApprovalV2InputValidator
         if (string.IsNullOrWhiteSpace(argv[0]))
             return Deny("empty-command");
 
-        // cwd - optional, but empty/whitespace is a caller error; wrong type is a protocol violation
+        // cwd — optional, but empty/whitespace is a caller error; wrong type is a protocol violation
         string? cwd = null;
         if (request.Args.ValueKind == JsonValueKind.Object &&
             request.Args.TryGetProperty("cwd", out var cwdEl))
@@ -35,7 +35,7 @@ public static class ExecApprovalV2InputValidator
             cwd = rawCwd;
         }
 
-        // env - must be a JSON object if present; non-string values are a protocol violation
+        // env — must be a JSON object if present; non-string values are a protocol violation
         IReadOnlyDictionary<string, string>? env = null;
         if (request.Args.ValueKind == JsonValueKind.Object &&
             request.Args.TryGetProperty("env", out var envEl))
@@ -52,7 +52,7 @@ public static class ExecApprovalV2InputValidator
             env = dict;
         }
 
-        // timeoutMs / timeout - positive integer; defaults to 30 000.
+        // timeoutMs / timeout — positive integer; defaults to 30 000.
         // Upper-bound clamping (legacy safety limit) is enforced in the execution/policy phase, not here.
         var timeoutMs = DefaultTimeoutMs;
         if (request.Args.ValueKind == JsonValueKind.Object)

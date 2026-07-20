@@ -4,7 +4,7 @@ using OpenClaw.Shared;
 namespace OpenClaw.Connection;
 
 /// <summary>
-/// Pure data catalog of known gateway endpoints. Persistence only - no runtime state.
+/// Pure data catalog of known gateway endpoints. Persistence only — no runtime state.
 /// Thread-safe: lock-protected internal list; events fire outside the lock.
 /// </summary>
 public sealed class GatewayRegistry
@@ -375,7 +375,7 @@ public sealed class GatewayRegistry
         AddOrUpdate(record);
         SetActive(id);
 
-        // Copy identity file to per-gateway directory (rollback safe - original stays)
+        // Copy identity file to per-gateway directory (rollback safe — original stays)
         var legacyIdentity = Path.Combine(settingsDir, "device-key-ed25519.json");
         var newIdentityDir = GetIdentityDirectory(id);
         if (File.Exists(legacyIdentity))

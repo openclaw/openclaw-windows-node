@@ -11,7 +11,7 @@ namespace OpenClaw.Shared.Mcp;
 
 /// <summary>
 /// Transport-agnostic MCP server core. Auto-discovers tools from the live
-/// <see cref="INodeCapability"/> registry - registering a new capability on
+/// <see cref="INodeCapability"/> registry — registering a new capability on
 /// the node client immediately exposes its commands as MCP tools.
 /// </summary>
 public class McpToolBridge
@@ -125,14 +125,14 @@ public class McpToolBridge
                         requestKey,
                         cancellationToken),
                     // Some clients (notably Cursor) probe these on startup. Returning
-                    // empty lists is friendlier than MethodNotFound - both feature sets
+                    // empty lists is friendlier than MethodNotFound — both feature sets
                     // are deferred but compatible by being absent rather than failing.
                     "resources/list" => new { resources = Array.Empty<object>() },
                     "prompts/list" => new { prompts = Array.Empty<object>() },
                     _ => throw new McpMethodNotFoundException(method),
                 };
 
-                if (!hasId) return null; // notification - no response
+                if (!hasId) return null; // notification — no response
                 return WriteResult(idElement, result ?? new { });
             }
             catch (McpMethodNotFoundException ex)
@@ -229,7 +229,7 @@ public class McpToolBridge
         ["system.execApprovals.set"] =
             "Replace the exec approval policy. Args: rules (array of { pattern, action, shells?, description?, enabled? }), defaultAction (string, optional). Persisted to disk; used by future system.run calls.",
 
-        // canvas.* - agent-controlled WebView2 panel for HTML/CSS/JS, A2UI, and small interactive UI surfaces.
+        // canvas.* — agent-controlled WebView2 panel for HTML/CSS/JS, A2UI, and small interactive UI surfaces.
         ["canvas.present"] =
             "Show the agent-controlled Canvas window (WebView2). Args: url (string) or html (string), width (int, default 800), height (int, default 600), x/y (int, -1 = center), title (string, default 'Canvas'), alwaysOnTop (bool, default false). The Canvas is a lightweight visual workspace for HTML/CSS/JS, A2UI, and small interactive UI surfaces.",
         ["canvas.hide"] =
@@ -251,7 +251,7 @@ public class McpToolBridge
         ["canvas.a2ui.pushJSONL"] =
             "Streaming variant of canvas.a2ui.push for very large surfaces. Same protocol contract; jsonlPath argument must live under the system temp directory and is opened via FileStream + GetFinalPathNameByHandle to defeat reparse-point traversal.",
 
-        // screen.* - names match the canonical OpenClaw protocol
+        // screen.* — names match the canonical OpenClaw protocol
         // (apps/shared/OpenClawKit/Sources/OpenClawKit/ScreenCommands.swift).
         // No screen.list or screen.capture exist in the protocol; previous
         // drift advertised tools that didn't actually resolve.
@@ -268,7 +268,7 @@ public class McpToolBridge
         ["camera.clip"] =
             "Record a short clip from a camera. Args: deviceId (string, optional), durationMs (int, required, max 60000), format ('mp4'|'webm', default 'mp4'), maxWidth (int, default 1280). Returns { format, durationMs, base64 }.",
 
-        // stt.* - microphone capture → text. Default-off; privacy-sensitive.
+        // stt.* — microphone capture → text. Default-off; privacy-sensitive.
         // Single engine: Whisper.net runs locally on the device.
         ["stt.transcribe"] =
             "Capture microphone audio for a bounded duration and return the transcribed text. Args: maxDurationMs (int, required, > 0, max 30000), language (string, optional BCP-47 tag like 'en-US' or 'auto' - falls back to the configured SttLanguage setting). Returns { transcribed, text, durationMs, language, engineEffective ('whisper') }. Whisper model is downloaded on first use; until then this returns an error pointing to Voice Settings. Requires NodeSttEnabled.",
@@ -598,7 +598,7 @@ public class McpToolBridge
         switch (id.Value.ValueKind)
         {
             case JsonValueKind.Number:
-                // Preserve the original number form - fractional, big-int, etc.
+                // Preserve the original number form — fractional, big-int, etc.
                 // GetInt64 would throw on non-integer or out-of-range ids and
                 // strip the request id from the error response, breaking the
                 // client's response correlation.

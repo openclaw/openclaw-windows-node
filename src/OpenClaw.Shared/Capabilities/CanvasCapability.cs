@@ -47,7 +47,7 @@ public class CanvasCapability : NodeCapabilityBase
         add => SetSingleHandler(ref _navigateRequested, value, nameof(NavigateRequested));
         remove => ClearSingleHandler(ref _navigateRequested, value);
     }
-    // Func-based "events" are inherently single-handler - multi-subscribe to a
+    // Func-based "events" are inherently single-handler — multi-subscribe to a
     // Delegate.Combine'd Func silently invokes only the last subscriber's
     // return value, hiding the others. Expose them as single-subscriber events
     // that throw on a second subscribe so this is loud.
@@ -187,7 +187,7 @@ public class CanvasCapability : NodeCapabilityBase
         // URIs. The subscriber re-validates as defense-in-depth.
         if (!HttpUrlValidator.TryParse(rawUrl, out var canonical, out var validationError))
         {
-            // Avoid leaking the raw URL - agents sometimes hand us tokenized
+            // Avoid leaking the raw URL — agents sometimes hand us tokenized
             // OAuth/reset URLs that fail validation, and our log files have
             // an effectively-unbounded retention policy. Sanitize to scheme +
             // host + first path segment.
@@ -417,7 +417,7 @@ public class CanvasCapability : NodeCapabilityBase
 
         using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
         // GetFinalPathFromHandle is a Windows-only guard (returns "" on non-Windows); skip the
-        // containment check when no resolved path is available - prior symlink resolution covers that case.
+        // containment check when no resolved path is available — prior symlink resolution covers that case.
         var finalPath = GetFinalPathFromHandle(stream.SafeFileHandle);
         if (!string.IsNullOrEmpty(finalPath) && !IsPathWithinRoot(finalPath, tempRoot))
         {

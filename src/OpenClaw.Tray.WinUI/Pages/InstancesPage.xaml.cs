@@ -17,7 +17,7 @@ namespace OpenClawTray.Pages;
 
 /// <summary>
 /// Single nav-visible "Instances" page modelled on the macOS InstancesSettings
-/// tab. One card per OpenClaw entity that is - or has been - connected to the
+/// tab. One card per OpenClaw entity that is — or has been — connected to the
 /// gateway: the gateway itself, presence-only clients (Macs, iPhones, iPads,
 /// Android), and paired Windows nodes. Paired Windows nodes additionally render
 /// the per-row management surface (Identity / Version / Network / Timestamps /
@@ -84,7 +84,7 @@ public sealed partial class InstancesPage : Page
     /// Show a banner at the top of the Instances list when there's at least
     /// one pending node-pair or device-pair request. The actual approve/reject
     /// UI lives on the Connection page (where the legacy "Pending approvals"
-    /// banner already handles per-row decisions) - this banner just makes it
+    /// banner already handles per-row decisions) — this banner just makes it
     /// impossible to miss while looking at a node that appears connected but
     /// has empty capabilities.
     /// </summary>
@@ -223,7 +223,7 @@ public sealed partial class InstancesPage : Page
             CornerRadius = new CornerRadius(8),
         };
 
-        // Fluent hover affordance - cards subtly elevate to the secondary
+        // Fluent hover affordance — cards subtly elevate to the secondary
         // card fill on pointer-over. Cards are not clickable (only the
         // right-click context menu fires), so we keep this lightweight and
         // do not change cursor / press states.
@@ -420,7 +420,7 @@ public sealed partial class InstancesPage : Page
             header.Children.Add(statusLabel);
         }
 
-        // Raw protocol status (e.g. "pairing") - only surfaced when it carries
+        // Raw protocol status (e.g. "pairing") — only surfaced when it carries
         // additional signal beyond the computed PresenceStatus.
         if (!string.IsNullOrWhiteSpace(row.NodeStatusRaw))
         {
@@ -511,7 +511,7 @@ public sealed partial class InstancesPage : Page
 
     private static FrameworkElement? BuildUpdateLine(MergedInstance row, DateTime nowUtc)
     {
-        // Suppressed for gateway rows - their "updated via" provenance is noise.
+        // Suppressed for gateway rows — their "updated via" provenance is noise.
         if (row.IsGateway) return null;
 
         var stack = new StackPanel

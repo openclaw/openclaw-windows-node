@@ -12,7 +12,7 @@ namespace OpenClawTray.Services;
 /// uniformly with the normal (post-setup) connection lifecycle.
 /// </summary>
 /// <remarks>
-/// Sibling to <see cref="ConnectionManagerOperatorConnector"/> - both are
+/// Sibling to <see cref="ConnectionManagerOperatorConnector"/> — both are
 /// thin facades over <see cref="GatewayConnectionManager"/> for the easy-button
 /// setup engine.
 /// </remarks>
@@ -42,7 +42,7 @@ public sealed class ConnectionManagerWindowsNodeConnector : IWindowsNodeConnecto
 
         // The operator connector (ConnectionManagerOperatorConnector) created the
         // registry record during PairOperator phase. Refresh it with any newly-minted
-        // bootstrap/shared token the engine may have provisioned in between phases -
+        // bootstrap/shared token the engine may have provisioned in between phases —
         // the credential resolver will then surface them through ResolveNode.
         var normalized = GatewayUrlHelper.NormalizeForWebSocket(gatewayUrl);
         var existing = _registry.FindByUrl(normalized);
@@ -52,7 +52,7 @@ public sealed class ConnectionManagerWindowsNodeConnector : IWindowsNodeConnecto
                 "Operator pairing did not create a gateway record for the setup gateway.");
         }
 
-        // Patch in any newly-supplied tokens - never overwrite a stored value with empty.
+        // Patch in any newly-supplied tokens — never overwrite a stored value with empty.
         var updated = existing with
         {
             SharedGatewayToken = !string.IsNullOrWhiteSpace(token) ? token : existing.SharedGatewayToken,

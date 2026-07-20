@@ -10,7 +10,7 @@ namespace OpenClawTray.Services;
 /// File logger for the tray. Calls return immediately: writes are queued onto
 /// a bounded <see cref="Channel{T}"/> and a single background task drains
 /// them in batches. UI / dispatcher / MCP threads no longer block on disk
-/// I/O. Drop-oldest is the overflow policy - losing the oldest queued line
+/// I/O. Drop-oldest is the overflow policy — losing the oldest queued line
 /// is preferable to back-pressuring callers, since the recent context around
 /// a failure is what matters at debug time.
 ///
@@ -21,7 +21,7 @@ namespace OpenClawTray.Services;
 public static class Logger
 {
     private const long RotateThresholdBytes = 5 * 1024 * 1024;
-    // Sample the file size after this many flushes - File.Length on Windows
+    // Sample the file size after this many flushes — File.Length on Windows
     // requires a metadata round-trip and we don't need byte-precise rotation.
     private const int RotateCheckInterval = 64;
     // Cap. Drop-oldest on overflow keeps memory bounded under a logging
@@ -69,7 +69,7 @@ public static class Logger
             }
             catch (Exception ex)
             {
-                // Logger is self-referential - must not call Logger.* here (recursion
+                // Logger is self-referential — must not call Logger.* here (recursion
                 // risk if the logger itself is the thing that failed). Trace is the
                 // documented fallback for this file.
                 System.Diagnostics.Trace.WriteLine($"Logger.ProcessExit: flush failed: {ex.GetType().Name}: {ex.Message}");
@@ -167,7 +167,7 @@ public static class Logger
     {
         LastWriteError = detail;
         try { System.Diagnostics.Trace.WriteLine($"[OpenClaw Logger] {detail}"); }
-        catch (Exception) { /* fallback diagnostics in the logger itself - cannot recurse into Log(). */ }
+        catch (Exception) { /* fallback diagnostics in the logger itself — cannot recurse into Log(). */ }
 #if DEBUG
         try { System.Diagnostics.Debug.WriteLine($"[OpenClaw Logger] {detail}"); }
         catch (Exception) { /* see above. */ }

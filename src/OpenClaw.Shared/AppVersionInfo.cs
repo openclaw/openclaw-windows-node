@@ -11,7 +11,7 @@ namespace OpenClaw.Shared;
 /// </summary>
 /// <remarks>
 /// Under <c>dotnet test</c> and inside CLI siblings, <see cref="Assembly.GetEntryAssembly"/>
-/// is the host process (testhost / dotnet), not the tray exe - so we first
+/// is the host process (testhost / dotnet), not the tray exe — so we first
 /// search the current <see cref="AppDomain"/> for the tray assembly by name.
 /// Tests that need a deterministic value can set <see cref="TestOverride"/>.
 /// </remarks>
@@ -65,7 +65,7 @@ public static class AppVersionInfo
         }
         catch
         {
-            // Never let the type initializer fail - a TypeInitializationException
+            // Never let the type initializer fail — a TypeInitializationException
             // would poison every future access from every caller.
             return "0.0.0";
         }

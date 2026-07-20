@@ -170,7 +170,7 @@ public sealed class SetupPipeline
                 continue;
             }
 
-            // Step failed - handle rollback if configured.
+            // Step failed — handle rollback if configured.
             // When result.Error is set, StepCompleted already emitted an Error log for the
             // exception, so we downgrade the summary to Warn to avoid duplicate Errors.
             // When there is no exception (StepResult.Fail(message)), StepCompleted does NOT
@@ -304,7 +304,7 @@ public sealed class SetupPipeline
                 ctx.Journal.RecordRollback(step.Id, success: false);
                 failures.Add((step.Id, ex.Message));
                 StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Failed, sw.Elapsed));
-                // Continue past failures - best-effort cleanup
+                // Continue past failures — best-effort cleanup
             }
         }
 

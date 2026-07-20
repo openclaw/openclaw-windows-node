@@ -66,7 +66,7 @@ public sealed class ListRenderer : IComponentRenderer
             : Orientation.Vertical;
 
         // Virtualize via ItemsRepeater + ItemsRepeaterScrollHost. Building 10k
-        // FrameworkElements upfront - the previous StackPanel behavior - was
+        // FrameworkElements upfront — the previous StackPanel behavior — was
         // fine for tiny lists but pinned the UI thread on large ones. The
         // repeater realizes only the items in the viewport. (Spec §5 calls
         // this out as the expected mapping for v1.)
@@ -216,7 +216,7 @@ public sealed class TabsRenderer : IComponentRenderer
                     Content = childId != null ? ctx.BuildChild(childId) : null,
                 };
 
-                // Live-bind the title if it's path-bound. Key by tab index - never
+                // Live-bind the title if it's path-bound. Key by tab index — never
                 // Guid.NewGuid(), which leaked a subscription on every render and
                 // collided when two tabs had null childId.
                 if (titleVal?.HasPath == true)

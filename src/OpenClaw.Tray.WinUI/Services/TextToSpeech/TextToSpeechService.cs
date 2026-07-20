@@ -215,7 +215,7 @@ public sealed class TextToSpeechService : IDisposable
 
         // Distinguish an explicit per-call voice from the configured default.
         // An explicit per-call voice that can't be resolved is a caller error
-        // and throws. A stale/removed *configured* voice must NOT throw - that
+        // and throws. A stale/removed *configured* voice must NOT throw — that
         // would break the always-available fallback guarantee (a provider that
         // fell back to Windows would still fail). In that case we silently use
         // the synthesizer's system default voice.
@@ -237,7 +237,7 @@ public sealed class TextToSpeechService : IDisposable
             }
             else
             {
-                // Configured voice no longer installed - fall through with the
+                // Configured voice no longer installed — fall through with the
                 // system default so playback still happens.
                 _logger.Info("Configured Windows TTS voice not found; using system default voice");
             }
@@ -288,7 +288,7 @@ public sealed class TextToSpeechService : IDisposable
 
         if (!_piperVoices.IsVoiceDownloaded(voiceId))
         {
-            // Privacy: don't echo the voiceId - it's user-controlled. The
+            // Privacy: don't echo the voiceId — it's user-controlled. The
             // SttCapability sanitization layer wraps "Speak failed" anyway,
             // but we also keep this throw site free of caller args.
             throw new InvalidOperationException("Piper voice not downloaded. Open Voice Settings to download it.");
@@ -312,7 +312,7 @@ public sealed class TextToSpeechService : IDisposable
             if (_piperClient != null && string.Equals(_piperClient.VoiceId, voiceId, StringComparison.OrdinalIgnoreCase))
                 return _piperClient;
 
-            // Voice changed (or first call) - dispose the old client before
+            // Voice changed (or first call) — dispose the old client before
             // loading the new model so we don't double the memory footprint.
             // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
             try { _piperClient?.Dispose(); } catch { /* swallow */ }

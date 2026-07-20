@@ -128,7 +128,7 @@ public sealed partial class SessionsPage : Page
 
     public void UpdateSessions(SessionInfo[] sessions)
     {
-        // Drop cron-spawned sessions (key shape "agent:<id>:cron" - slot is
+        // Drop cron-spawned sessions (key shape "agent:<id>:cron" — slot is
         // the third ":"-separated part). They have their own home on the
         // Cron page; surfacing them here overcrowds the conversation list.
         _allSessions = sessions

@@ -68,7 +68,7 @@ public sealed class SurfaceHost : IDisposable
 
     /// <summary>
     /// Add or replace components in the definition table. If a root has
-    /// already been declared, rebuild the visual tree - but only if the
+    /// already been declared, rebuild the visual tree — but only if the
     /// incoming defs actually change something. A surfaceUpdate that re-sends
     /// already-known components verbatim no-ops; this preserves caret / scroll
     /// / tab selection for agents that re-emit the full surface as their
@@ -141,7 +141,7 @@ public sealed class SurfaceHost : IDisposable
     }
 
     /// <summary>
-    /// JSON snapshot of this surface's logical state - components (id +
+    /// JSON snapshot of this surface's logical state — components (id +
     /// componentName + properties), declared root, and the current data
     /// model tree. Used by <c>canvas.a2ui.dump</c> for headless verification.
     /// Sensitive paths (obscured fields + denylist matches) are redacted.
@@ -234,7 +234,7 @@ public sealed class SurfaceHost : IDisposable
             catch (Exception ex)
             {
                 // Renderer failure should never crash the surface. Don't reroute through
-                // the registry - that's how we lose the real component name when fallback
+                // the registry — that's how we lose the real component name when fallback
                 // also fails. Render an inline placeholder showing actual name + message.
                 _logger.Warn($"[A2UI] renderer for '{def.ComponentName}' threw: {ex.Message}");
                 return BuildErrorPlaceholder(def.ComponentName, ex.Message);

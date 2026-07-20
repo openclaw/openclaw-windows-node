@@ -248,13 +248,13 @@ internal sealed class AppState : INotifyPropertyChanged
 
     /// <summary>
     /// Resets ALL gateway data fields to defaults. Called on disconnect and client swap.
-    /// Does NOT reset <see cref="Status"/> - that is managed by OnManagerStateChanged.
+    /// Does NOT reset <see cref="Status"/> — that is managed by OnManagerStateChanged.
     /// Fires <see cref="PropertyChanged"/> for every property so observers refresh.
     /// </summary>
     public void ClearCachedData()
     {
-        // Status is NOT reset - it is managed by OnManagerStateChanged.
-        // AuthFailureMessage is NOT reset - it's set by OnAuthenticationFailed
+        // Status is NOT reset — it is managed by OnManagerStateChanged.
+        // AuthFailureMessage is NOT reset — it's set by OnAuthenticationFailed
         // and cleared explicitly on Connected (not on disconnect/error).
         CurrentActivity = null;
         Channels = Array.Empty<ChannelHealth>();

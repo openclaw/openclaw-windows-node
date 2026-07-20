@@ -205,7 +205,7 @@ public sealed partial class TrayMenuWindow : WindowEx
         Activated += OnActivated;
 
         // Keyboard navigation across menu items. We intentionally do NOT
-        // attach per-Button KeyboardAccelerator instances - those crash
+        // attach per-Button KeyboardAccelerator instances — those crash
         // inside this WindowEx popup because their scope falls outside
         // the XamlRoot (see commit 08bce3a on the abandoned settings
         // branch). A single KeyDown handler on MenuPanel sidesteps the
@@ -221,7 +221,7 @@ public sealed partial class TrayMenuWindow : WindowEx
 
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
-            // Always use delayed check - immediate dismiss races with flyout transitions
+            // Always use delayed check — immediate dismiss races with flyout transitions
             var timer = DispatcherQueue.CreateTimer();
             timer.Interval = TimeSpan.FromMilliseconds(150);
             timer.IsRepeating = false;
@@ -244,7 +244,7 @@ public sealed partial class TrayMenuWindow : WindowEx
                     (ownerHwnd != IntPtr.Zero && foreground == ownerHwnd))
                     return;
 
-                // Focus went elsewhere - dismiss everything
+                // Focus went elsewhere — dismiss everything
                 HideCascade();
                 _ownerMenu?.HideCascade();
             };
@@ -1149,7 +1149,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             {
                 MenuItemClicked?.Invoke(this, action);
                 // Toggle actions inside a sub-flyout should not close the
-                // cascade - the user often wants to flip several toggles
+                // cascade — the user often wants to flip several toggles
                 // before dismissing the panel.
                 if (!action.StartsWith("perm-toggle|", StringComparison.Ordinal))
                 {
@@ -1188,7 +1188,7 @@ public sealed partial class TrayMenuWindow : WindowEx
                 }
                 else if (string.IsNullOrEmpty(item.Action))
                 {
-                    // Non-interactive detail line - compact padding
+                    // Non-interactive detail line — compact padding
                     flyoutWindow.AddCustomElement(new TextBlock
                     {
                         Text = item.Text,
@@ -1215,7 +1215,7 @@ public sealed partial class TrayMenuWindow : WindowEx
     private void HideActiveFlyout()
     {
         _activeFlyoutWindow?.HideCascade();
-        // Keep _activeFlyoutWindow alive for reuse - creating a new WinUI
+        // Keep _activeFlyoutWindow alive for reuse — creating a new WinUI
         // window on every hover is expensive and causes content measurement
         // failures before XamlRoot is initialized.
         _activeFlyoutOwner = null;
@@ -1290,7 +1290,7 @@ public sealed partial class TrayMenuWindow : WindowEx
             case VirtualKey.Right:
                 if (focused != null && ReferenceEquals(focused, _activeFlyoutOwner) && _activeFlyoutWindow != null)
                 {
-                    // Already open - push focus into the child flyout.
+                    // Already open — push focus into the child flyout.
                     var firstChild = _activeFlyoutWindow.MenuPanel.Children
                         .OfType<Button>().FirstOrDefault();
                     firstChild?.Focus(FocusState.Keyboard);

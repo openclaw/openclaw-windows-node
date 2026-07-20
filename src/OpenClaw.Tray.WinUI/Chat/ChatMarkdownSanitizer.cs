@@ -40,7 +40,7 @@ internal static class ChatMarkdownSanitizer
     /// that links the parser DOES emit (bare URLs, autolinks
     /// <c>&lt;https://…&gt;</c>) collapse to non-clickable text instead
     /// of <see cref="System.Windows.Documents.Hyperlink"/>-style runs.
-    /// Pure function - kept here so it can be unit-tested without a
+    /// Pure function — kept here so it can be unit-tested without a
     /// dependency on the WinUI project.
     /// </summary>
     /// <remarks>
@@ -182,7 +182,7 @@ internal static class ChatMarkdownSanitizer
                     sb.Append("[Image");
                     if (!string.IsNullOrEmpty(alt))
                     {
-                        // Recursively sanitize alt text - the gateway can
+                        // Recursively sanitize alt text — the gateway can
                         // place link / image syntax inside an alt and
                         // we must not re-emit it verbatim.
                         sb.Append(": ");
@@ -428,7 +428,7 @@ internal static class ChatMarkdownSanitizer
 
     // Detect a CommonMark indented code block: a line that begins with
     // a tab OR 4+ spaces. Blank lines (within an existing code block
-    // context) are not handled here - but the conservative
+    // context) are not handled here — but the conservative
     // single-line-at-a-time copy is fine because a non-indented line
     // simply re-enters the normal scan path.
     private static bool IsIndentedCodeStart(string text, int i, int n)

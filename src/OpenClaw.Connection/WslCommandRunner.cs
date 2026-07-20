@@ -33,7 +33,7 @@ public interface IWslCommandRunner
 
 /// <summary>
 /// Lightweight WSL command runner for probing distro state.
-/// Does not include diagnostics tee - use SetupEngine for full setup/teardown.
+/// Does not include diagnostics tee — use SetupEngine for full setup/teardown.
 /// </summary>
 public sealed class WslExeCommandRunner : IWslCommandRunner
 {

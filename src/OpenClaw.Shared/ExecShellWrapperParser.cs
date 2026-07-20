@@ -50,9 +50,9 @@ internal static class ExecShellWrapperParser
 
                 // Fail closed on an execution-introducing construct the parser cannot safely
                 // decompose: an unquoted subexpression/subshell `(` (PowerShell and POSIX shells
-                // EXECUTE it), or - for POSIX shells - an unquoted command-substitution backtick.
+                // EXECUTE it), or — for POSIX shells — an unquoted command-substitution backtick.
                 // $(...) is exempt (decomposed into its own target below); cmd is exempt (no
-                // $()/backtick, and its `(...)` grouping chains via ; & | which are already split -
+                // $()/backtick, and its `(...)` grouping chains via ; & | which are already split —
                 // so `C:\Program Files (x86)` paths stay valid).
                 if (HasUndecomposableExec(segment, currentShell))
                 {
@@ -82,7 +82,7 @@ internal static class ExecShellWrapperParser
                     pending.Enqueue((wrapped.Payload!, wrapped.Shell ?? currentShell, depth + 1));
                 }
 
-                // Command substitution / subexpression - $(...), @(...), `...` - runs the enclosed
+                // Command substitution / subexpression — $(...), @(...), `...` — runs the enclosed
                 // command and splices its output, so the shell executes it. Surface each inner
                 // command for approval too; otherwise `echo $(Remove-Item ...)` runs a denied
                 // command that never appears as a target.
@@ -245,7 +245,7 @@ internal static class ExecShellWrapperParser
         var inSingleQuotes = false;
         var inDoubleQuotes = false;
         // Depth of unquoted parentheses. Separators inside a $(...) / @(...) / (...) group belong
-        // to that sub-expression, not the top level, so they must not split here - the group's
+        // to that sub-expression, not the top level, so they must not split here — the group's
         // contents are surfaced separately via ExtractCommandSubstitutions and re-expanded.
         var parenDepth = 0;
 
@@ -288,8 +288,8 @@ internal static class ExecShellWrapperParser
                         continue;
                     }
 
-                    // A pipeline stage is a distinct command the shell runs - `a | b` executes both
-                    // `a` and `b` - so `|` is a top-level separator like `;`/`&&`/`||`. Splitting it
+                    // A pipeline stage is a distinct command the shell runs — `a | b` executes both
+                    // `a` and `b` — so `|` is a top-level separator like `;`/`&&`/`||`. Splitting it
                     // surfaces every stage for approval; without this a denied executor
                     // (`... | iex`, `... | Remove-Item`) hides behind a benign first stage.
                     if (c == '|')
@@ -311,9 +311,9 @@ internal static class ExecShellWrapperParser
 
     // True when `segment` contains an execution-introducing construct the parser does not decompose,
     // for a shell that evaluates it: an unquoted `(` subexpression/subshell not part of a `$(` or
-    // `@(` command substitution, or - for POSIX shells only - an unquoted backtick substitution. cmd
+    // `@(` command substitution, or — for POSIX shells only — an unquoted backtick substitution. cmd
     // is exempt (no $()/backtick, and its `(...)` grouping chains via ; & | which are already split
-    // - so `C:\Program Files (x86)` paths stay valid). Single/double quote state is tracked so a `(`
+    // — so `C:\Program Files (x86)` paths stay valid). Single/double quote state is tracked so a `(`
     // or backtick inside a quoted argument is treated as a literal and not flagged.
     private static bool HasUndecomposableExec(string segment, string? shell)
     {
@@ -341,7 +341,7 @@ internal static class ExecShellWrapperParser
 
     /// <summary>
     /// Extracts the inner command of every command-substitution / subexpression the shell will
-    /// execute inside <paramref name="s"/> - <c>$(...)</c>, <c>@(...)</c>, and <c>`...`</c>
+    /// execute inside <paramref name="s"/> — <c>$(...)</c>, <c>@(...)</c>, and <c>`...`</c>
     /// (backticks). Spans inside single quotes are literal in both POSIX shells and PowerShell and
     /// are skipped; double-quoted and unquoted spans are surfaced. The paren forms are nesting- and
     /// quote-aware; nested substitutions are re-discovered when the extracted command is itself
@@ -368,7 +368,7 @@ internal static class ExecShellWrapperParser
                 continue;
             }
             if (inSingleQuotes)
-                continue; // literal - the shell performs no expansion inside single quotes
+                continue; // literal — the shell performs no expansion inside single quotes
 
             // $(...) / @(...) subexpression: find the matching ')' with nesting + quote awareness.
             if ((c == '$' || c == '@') && i + 1 < s.Length && s[i + 1] == '(')
@@ -444,7 +444,7 @@ internal static class ExecShellWrapperParser
             }
         }
 
-        return null; // unbalanced - leave the span untouched
+        return null; // unbalanced — leave the span untouched
     }
 
     private static string[] Tokenize(string command)

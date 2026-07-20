@@ -11,7 +11,7 @@ namespace OpenClaw.Shared.Markdown;
 /// parse+sanitize behavior is unit-testable without the WinUI runtime.
 ///
 /// SECURITY: link <c>Href</c> and image <c>Src</c> values are intentionally
-/// NOT carried in the AST - the builder flattens them into the
+/// NOT carried in the AST — the builder flattens them into the
 /// surrounding <see cref="MdInlineText"/> at parse time so no downstream
 /// renderer can re-introduce a <c>Hyperlink</c> or a remote-image fetch.
 /// Raw HTML blocks/spans are dropped (via <c>NoHtml</c> parser flag) and
@@ -71,7 +71,7 @@ public sealed record MdTableCell(IReadOnlyList<MdInline> Inlines);
 /// <summary>
 /// Base type for all inline AST nodes.
 /// <para>
-/// IMPORTANT - cache invariant: <c>ChatMarkdownRenderer</c> uses
+/// IMPORTANT — cache invariant: <c>ChatMarkdownRenderer</c> uses
 /// <c>IReadOnlyList&lt;MdInline&gt;.SequenceEqual</c> (record value-equality)
 /// to short-circuit rebuilding <c>TextBlock.Inlines</c> on re-render, which
 /// is what keeps a user's text selection alive across pointer-enter/leave
@@ -80,7 +80,7 @@ public sealed record MdTableCell(IReadOnlyList<MdInline> Inlines);
 /// members (primitives, <c>string</c>, enums). If a future subtype adds a
 /// reference-typed member (e.g. <c>IReadOnlyList&lt;MdInline&gt; Children</c>
 /// for links), the auto-generated record <c>Equals</c> will compare those
-/// members BY REFERENCE - silently breaking cache correctness and wiping
+/// members BY REFERENCE — silently breaking cache correctness and wiping
 /// selection again on every re-render. Update the renderer's equality
 /// strategy (and <c>MdInlineEqualityTests</c>) before introducing such a
 /// member.

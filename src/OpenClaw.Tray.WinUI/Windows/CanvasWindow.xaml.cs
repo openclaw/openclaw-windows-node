@@ -64,7 +64,7 @@ public sealed partial class CanvasWindow : WindowEx
     /// </summary>
     public event EventHandler<WebBridgeMessage>? BridgeMessageReceived;
     
-    // HTML sanitization - block embedded iframes/objects/embeds/applets
+    // HTML sanitization — block embedded iframes/objects/embeds/applets
     private static readonly Regex s_sanitizeBlock = new(
         @"<\s*(iframe|object|embed|applet)\b[^>]*>.*?<\s*/\s*\1\s*>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
@@ -107,7 +107,7 @@ public sealed partial class CanvasWindow : WindowEx
         // Host-normalizing private/loopback guard. The DangerousUrlPattern regex only blocks the
         // literal dotted-decimal spelling, so encoded IPv4 (2130706433 / 0x7f000001 / 0177.0.0.1),
         // IPv6 (::1, ::ffff:127.0.0.1, fd00::/fe80::), 0.0.0.0, and CGNAT/Tailscale (100.64/10)
-        // slip through - this is the load-bearing SSRF check for canvas.present, which reaches the
+        // slip through — this is the load-bearing SSRF check for canvas.present, which reaches the
         // WebView through IsUrlSafe without the navigate command's HttpUrlRiskEvaluator.
         if (Uri.TryCreate(url, UriKind.Absolute, out var parsedUri) &&
             OpenClaw.Shared.CanvasUrlSafety.IsPrivateOrLoopbackHost(parsedUri.Host))
@@ -182,7 +182,7 @@ public sealed partial class CanvasWindow : WindowEx
 
         try
         {
-            // Handle relative paths - prepend the gateway origin
+            // Handle relative paths — prepend the gateway origin
             var rewritten = CanvasGatewayUrlRewriter.Rewrite(url, _gatewayOriginForRewrite, _configuredGatewayOrigin);
             if (!string.Equals(url, rewritten, StringComparison.Ordinal))
             {
@@ -193,7 +193,7 @@ public sealed partial class CanvasWindow : WindowEx
                 return rewritten;
             }
 
-            // Same origin - just add token if needed
+            // Same origin — just add token if needed
             url = AppendGatewayToken(url);
 
             // If this is a canvas document path and we have it locally, use the virtual host
@@ -202,7 +202,7 @@ public sealed partial class CanvasWindow : WindowEx
                 var pathPart = new Uri(url).AbsolutePath;
                 var localRelative = pathPart.Replace("/__openclaw__/canvas/documents/", "");
                 var localPath = Path.GetFullPath(Path.Combine(_canvasDir, localRelative.Replace('/', Path.DirectorySeparatorChar)));
-                // Containment check - block directory traversal
+                // Containment check — block directory traversal
                 if (localPath.StartsWith(_canvasDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
                     File.Exists(localPath))
                 {
@@ -514,7 +514,7 @@ public sealed partial class CanvasWindow : WindowEx
     
     private void OnCanvasFileChanged(object sender, FileSystemEventArgs e)
     {
-        // Debounce - ignore rapid file changes within 500ms (thread-safe)
+        // Debounce — ignore rapid file changes within 500ms (thread-safe)
         var nowTicks = DateTime.UtcNow.Ticks;
         var prevTicks = Interlocked.Exchange(ref _lastReloadTicks, nowTicks);
         if ((nowTicks - prevTicks) < TimeSpan.FromMilliseconds(500).Ticks) return;

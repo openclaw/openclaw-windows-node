@@ -4,7 +4,7 @@ namespace OpenClaw.Shared.Audio;
 /// Pinned descriptor for the Silero VAD ONNX model that the audio
 /// pipeline auto-downloads on first use.
 ///
-/// SECURITY - same fail-closed verification discipline as
+/// SECURITY — same fail-closed verification discipline as
 /// <see cref="WhisperModelManager"/> and <see cref="PiperVoiceManager"/>:
 /// the runtime checks the downloaded file's SHA-256 against
 /// <see cref="Sha256"/> before installing it. The pinned hash here was

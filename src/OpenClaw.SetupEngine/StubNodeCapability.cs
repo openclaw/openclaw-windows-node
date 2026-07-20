@@ -4,7 +4,7 @@ namespace OpenClaw.SetupEngine;
 
 /// <summary>
 /// Lightweight INodeCapability stub used only during setup to advertise capabilities
-/// to the gateway. Does not handle actual command invocation - the tray app owns that.
+/// to the gateway. Does not handle actual command invocation — the tray app owns that.
 /// </summary>
 internal sealed class StubNodeCapability : INodeCapability
 {

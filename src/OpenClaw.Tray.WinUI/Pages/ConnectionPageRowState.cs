@@ -15,7 +15,7 @@ internal static class ConnectionPageRowState
     /// "Disconnect". Tear-down is meaningful while the connection is
     /// live (Connected / Ready / Degraded) or in transit
     /// (Connecting / PairingRequired). It is NOT meaningful while the
-    /// teardown itself is in flight (Disconnecting) - re-entering would
+    /// teardown itself is in flight (Disconnecting) — re-entering would
     /// race the connection manager. Error and Idle return false because
     /// those states render a [Connect] button (no badge) and the Recovery
     /// card / Welcome panel above already exposes Disconnect when needed.

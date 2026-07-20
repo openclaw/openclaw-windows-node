@@ -11,7 +11,7 @@ public enum GatewayConnectionTopology
     /// <summary>URL was empty or could not be parsed.</summary>
     Unknown,
 
-    /// <summary>localhost / 127.0.0.1 / ::1 - reached directly on this machine.</summary>
+    /// <summary>localhost / 127.0.0.1 / ::1 — reached directly on this machine.</summary>
     Local,
 
     /// <summary>
@@ -25,7 +25,7 @@ public enum GatewayConnectionTopology
     DirectSecure,
 
     /// <summary>
-    /// Remote host over cleartext (<c>ws://</c> or <c>http://</c>) - the token
+    /// Remote host over cleartext (<c>ws://</c> or <c>http://</c>) — the token
     /// travels unencrypted across the network.
     /// </summary>
     DirectInsecure,
@@ -34,13 +34,13 @@ public enum GatewayConnectionTopology
 /// <summary>Whether the credential is protected in transit.</summary>
 public enum GatewayTransportSecurity
 {
-    /// <summary>Loopback only - no network exposure.</summary>
+    /// <summary>Loopback only — no network exposure.</summary>
     LocalLoopback,
 
-    /// <summary>Encrypted (TLS) or tunnelled (SSH) - token protected on the wire.</summary>
+    /// <summary>Encrypted (TLS) or tunnelled (SSH) — token protected on the wire.</summary>
     Encrypted,
 
-    /// <summary>Cleartext to a non-local host - token exposed on the wire.</summary>
+    /// <summary>Cleartext to a non-local host — token exposed on the wire.</summary>
     Cleartext,
 }
 

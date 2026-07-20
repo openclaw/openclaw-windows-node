@@ -61,7 +61,7 @@
             </Button>
         </Grid>
 
-        <!-- Filter bar - removed; agent dropdown + live badge provide enough context -->
+        <!-- Filter bar — removed; agent dropdown + live badge provide enough context -->
 
         <ListView x:Name="EventsList" Grid.Row="3"
                   SelectionMode="None"

@@ -394,7 +394,7 @@ public sealed partial class SettingsPage : Page
             ? Visibility.Visible : Visibility.Collapsed;
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
-        // MSIX warning: Path A (conservative) - show when packaged AND gateway installed.
+        // MSIX warning: Path A (conservative) — show when packaged AND gateway installed.
         MsixWarningBar.IsOpen = PackageHelper.IsPackaged && _localGatewayInstalled;
     }
 
@@ -403,7 +403,7 @@ public sealed partial class SettingsPage : Page
     /// OR an uninstall has been initiated this view session (latch). The latch prevents the
     /// card from collapsing mid-flight when
     /// the engine deletes setup-state.json before the result InfoBar is shown.
-    /// Resets on page navigation - the card hides again on clean Settings re-open.
+    /// Resets on page navigation — the card hides again on clean Settings re-open.
     /// </summary>
     private Visibility ComputeLocalGatewaySectionVisibility()
     {

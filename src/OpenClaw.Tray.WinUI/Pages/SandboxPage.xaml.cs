@@ -63,8 +63,8 @@ public sealed partial class SandboxPage : Page
             _availabilityProbeInFlight = false;
 
             // await resumed us on the UI thread (DispatcherQueue sync context), so it
-            // is safe to touch controls here. Always re-render - on both the happy
-            // path and the failure path - so the page never stays in "Checking…".
+            // is safe to touch controls here. Always re-render — on both the happy
+            // path and the failure path — so the page never stays in "Checking…".
             NormalizeSandboxToggleForAvailability();
             UpdateSandboxStatusCard();
             UpdateControlsEnabledState();
@@ -75,7 +75,7 @@ public sealed partial class SandboxPage : Page
     //
     // Picking a preset writes ALL the values below into SettingsManager
     // in one go (auto-saves like any other change). Users can override any
-    // individual control afterward - the cards just highlight whichever
+    // individual control afterward — the cards just highlight whichever
     // preset matches the current state.
 
     private sealed record SandboxPreset(
@@ -136,7 +136,7 @@ public sealed partial class SandboxPage : Page
 
         // Kick off the (potentially slow) MXC probe off the UI thread. The page
         // renders a neutral "checking" state until it completes, then re-renders
-        // with the real availability - so the settings UI never blocks on
+        // with the real availability — so the settings UI never blocks on
         // wxc-exec --probe.
         AsyncEventHandlerGuard.Run(
             RefreshAvailabilityAsync,
@@ -208,7 +208,7 @@ public sealed partial class SandboxPage : Page
 
         if (availability is null)
         {
-            // Probe still running on the background thread - neutral interim state.
+            // Probe still running on the background thread — neutral interim state.
             SandboxStatusIcon.Text = "⏳";
             SandboxStatusTitle.Text = "Checking sandbox availability…";
             SandboxStatusSubtext.Text = "Verifying that this PC can contain commands the agent runs.";
@@ -292,7 +292,7 @@ public sealed partial class SandboxPage : Page
             : L("SandboxPage_UnavailableDefaultReason");
 
         // A transient probe error (timeout / couldn't launch / garbled output) is NOT
-        // the same as the host being unsupported - don't push the user at Windows
+        // the same as the host being unsupported — don't push the user at Windows
         // Update. Offer a retry; the next probe may succeed.
         var isProbeError = availability.ProbeErrored;
 
@@ -409,14 +409,14 @@ public sealed partial class SandboxPage : Page
         // slopwatch-ignore: SW003 UI helper action is best-effort and failure should not break the owning UI flow.
         catch
         {
-            // Best-effort - if the URI handler isn't available we just no-op.
+            // Best-effort — if the URI handler isn't available we just no-op.
         }
     }
 
     /// <summary>
     /// Enables/disables sub-sections based on MXC availability AND master toggle state.
     /// When sandbox is off (or MXC unavailable), the entire page below the master
-    /// toggle dims - presets and their heading included - so users can't tweak
+    /// toggle dims — presets and their heading included — so users can't tweak
     /// settings that don't apply.
     /// </summary>
     private void UpdateControlsEnabledState()
@@ -433,7 +433,7 @@ public sealed partial class SandboxPage : Page
         SandboxControlsContainer.Opacity = active ? 1.0 : 0.45;
 
         // Dim the Security-level card (Border wrapping the preset section) as a single
-        // visual block - the tinted background and content all fade together so the
+        // visual block — the tinted background and content all fade together so the
         // master-control region reads as a unit when off.
         PresetCard.IsHitTestVisible = active;
         PresetCard.Opacity = active ? 1.0 : 0.45;
@@ -465,7 +465,7 @@ public sealed partial class SandboxPage : Page
             s.SandboxClipboard = preset.Clipboard;
             s.SandboxTimeoutMs = preset.TimeoutMs;
             s.SandboxMaxOutputBytes = preset.MaxOutputBytes;
-            // Note: custom folders are NOT touched by presets - users curate them.
+            // Note: custom folders are NOT touched by presets — users curate them.
         }
         finally
         {
@@ -477,7 +477,7 @@ public sealed partial class SandboxPage : Page
         s.Save();
 
         // If the user just applied a preset and still has custom folder grants,
-        // warn them - they may override the preset's intent (especially Locked Down).
+        // warn them — they may override the preset's intent (especially Locked Down).
         var customCount = s.SandboxCustomFolders?.Count ?? 0;
         if (customCount > 0)
         {
@@ -511,7 +511,7 @@ public sealed partial class SandboxPage : Page
         // Visual cue for the active preset: accent-themed border, slightly thicker.
         // The default ButtonStyle has visual states for BOTH the background and the
         // border brush (PointerOver / Pressed). Setting button.BorderBrush directly
-        // only paints the Normal state - on hover the template animates to
+        // only paints the Normal state — on hover the template animates to
         // ButtonBorderBrushPointerOver (grey), which is what was "stealing" the
         // accent. To stop that we override the per-state resources locally on the
         // button so hover/pressed keep the accent (or no change at all when idle).
@@ -639,7 +639,7 @@ public sealed partial class SandboxPage : Page
             return;
         }
 
-        // Confirm before turning sandbox OFF - this is the high-risk transition.
+        // Confirm before turning sandbox OFF — this is the high-risk transition.
         if (!newValue && oldValue)
         {
             // Re-entrancy guard: rapid toggling could otherwise stack ContentDialog
@@ -671,7 +671,7 @@ public sealed partial class SandboxPage : Page
             catch (System.Runtime.InteropServices.COMException)
             {
                 // Another dialog is already open (e.g., system surface popped
-                // one underneath us). Treat as cancel - keep sandbox on.
+                // one underneath us). Treat as cancel — keep sandbox on.
                 _suppress = true;
                 try { SandboxEnabledToggle.IsOn = true; } finally { _suppress = false; }
                 return;
@@ -794,7 +794,7 @@ public sealed partial class SandboxPage : Page
         if (CustomFolders.Any(f => string.Equals(f.Path, folder.Path, StringComparison.OrdinalIgnoreCase))) return;
 
         var row = new CustomFolderRow(folder.Path, access);
-        // Mark "initial" as already fired - when the ListView materializes this row's
+        // Mark "initial" as already fired — when the ListView materializes this row's
         // ComboBox and its SelectedIndex binding fires SelectionChanged, we want to
         // skip processing (this isn't a user-driven change, the settings entry was
         // already added below).
@@ -816,7 +816,7 @@ public sealed partial class SandboxPage : Page
         if (combo.DataContext is not CustomFolderRow row) return;
 
         // The ComboBox's SelectedIndex binding fires SelectionChanged once on
-        // initial materialization. Skip that "fake" change - only act on real
+        // initial materialization. Skip that "fake" change — only act on real
         // user-driven changes.
         if (!row.InitialSelectionFired)
         {
@@ -839,7 +839,7 @@ public sealed partial class SandboxPage : Page
 
         if (newAccess is null)
         {
-            // User picked "Blocked" - drop the grant entirely.
+            // User picked "Blocked" — drop the grant entirely.
             if (existing != null) s.SandboxCustomFolders.Remove(existing);
             var rowToRemove = CustomFolders.FirstOrDefault(f =>
                 string.Equals(f.Path, row.Path, StringComparison.OrdinalIgnoreCase));

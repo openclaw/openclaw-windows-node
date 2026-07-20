@@ -2,7 +2,7 @@ namespace OpenClaw.Connection;
 
 /// <summary>
 /// Overall derived connection state combining operator and node sub-states.
-/// This is NOT a state machine - it's derived from the two role sub-FSMs.
+/// This is NOT a state machine — it's derived from the two role sub-FSMs.
 /// </summary>
 public enum OverallConnectionState
 {

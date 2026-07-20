@@ -268,7 +268,7 @@ public sealed class CommandRunner : ICommandRunner
         try { process.Kill(entireProcessTree: true); }
         catch (Exception ex)
         {
-            // Best effort - process may already be exiting; no logger in this static helper.
+            // Best effort — process may already be exiting; no logger in this static helper.
             Trace.WriteLine($"CommandRunner.TryKill: {ex.GetType().Name}: {ex.Message}");
         }
     }

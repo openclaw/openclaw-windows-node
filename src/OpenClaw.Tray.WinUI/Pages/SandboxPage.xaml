@@ -53,7 +53,7 @@
                  Expander gives full control over Header + Content layout so both
                  icons line up at the same x. Also replaces the previous blue
                  scope-clarity InfoBar and the separate "How sandboxing works"
-                 ContentDialog - the architectural breakdown of which execution
+                 ContentDialog — the architectural breakdown of which execution
                  paths are contained vs not is inline, on-demand. -->
             <Expander x:Name="ScopeExpander"
                       AutomationProperties.LabeledBy="{Binding ElementName=ScopeExpanderLabel}"
@@ -137,7 +137,7 @@
                 </InfoBar.Content>
             </InfoBar>
 
-            <!-- Preset cards- wrapped in a subtle filled Border so the whole region
+            <!-- Preset cards— wrapped in a subtle filled Border so the whole region
                  reads as the master control region. -->
             <Border x:Name="PresetCard"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
@@ -235,7 +235,7 @@
             <!-- Detail sections: gated by SandboxControlsContainer's IsEnabled (off when sandbox unavailable or master toggle off) -->
             <StackPanel x:Name="SandboxControlsContainer" Spacing="16">
 
-                <!-- Files (highest privacy risk - appears first) -->
+                <!-- Files (highest privacy risk — appears first) -->
                 <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <Expander.Header>
                         <TextBlock x:Uid="SandboxPage_Files" Text="📁 Files" Style="{StaticResource BodyStrongTextBlockStyle}"/>

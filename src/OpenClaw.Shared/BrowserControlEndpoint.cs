@@ -9,11 +9,11 @@ namespace OpenClaw.Shared;
 /// actually dials, the endpoint shown in diagnostics, and the copied SSH-forward
 /// guidance can never diverge.
 ///
-/// Contract - scoped to the active gateway/tunnel, highest priority first:
+/// Contract — scoped to the active gateway/tunnel, highest priority first:
 /// <list type="number">
 ///   <item>Explicit <c>BrowserControlPort</c> override (validated): the active
 ///   connection's browser-control local port for split / manual-forward topologies.</item>
-///   <item>Managed SSH tunnel active: tunnel local gateway port + 2 - the companion
+///   <item>Managed SSH tunnel active: tunnel local gateway port + 2 — the companion
 ///   browser-proxy forward the tunnel sets up
 ///   (<c>SshTunnelCommandLine</c> forwards <c>localPort + 2 -&gt; remotePort + 2</c>).</item>
 ///   <item>Co-located gateway: gateway local port + 2.</item>

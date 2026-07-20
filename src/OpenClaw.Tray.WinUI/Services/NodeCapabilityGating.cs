@@ -16,7 +16,7 @@ namespace OpenClawTray.Services;
 ///
 /// <see cref="ShouldRegisterSystemRun"/> gates the <c>system.run</c> /
 /// <c>system.run.prepare</c> commands inside <c>SystemCapability</c>, not
-/// the whole <c>system</c> category - <c>system.notify</c>, <c>system.which</c>,
+/// the whole <c>system</c> category — <c>system.notify</c>, <c>system.which</c>,
 /// and the exec-approval read/write commands stay registered regardless.
 /// </summary>
 internal static class NodeCapabilityGating
@@ -35,7 +35,7 @@ internal static class NodeCapabilityGating
 
     /// <summary>
     /// Resolve the local node's capability list from the gateway-reported
-    /// <see cref="OpenClaw.Shared.GatewayNodeInfo"/> array - the single source
+    /// <see cref="OpenClaw.Shared.GatewayNodeInfo"/> array — the single source
     /// of truth used by the tray menu, instances page, connection page, and
     /// permissions page.
     /// </summary>

@@ -117,12 +117,12 @@ public class ExecApprovalPolicy
 
     // File-signature cache for non-destructive hot-reload. When the on-disk
     // file's (mtime, length) differs from the cached pair, Evaluate() reparses
-    // the file into local variables and swaps them in only on success - never
+    // the file into local variables and swaps them in only on success — never
     // calling the bootstrap fallback that would wipe user rules on a torn write.
     private DateTime _lastFileMtimeUtc;
     private long _lastFileLength = -1;
 
-    // Compiled regex cache - ConcurrentDictionary for thread safety.
+    // Compiled regex cache — ConcurrentDictionary for thread safety.
     // Pattern → compiled Regex mapping never changes for a given pattern string
     // (glob-to-regex conversion is deterministic), so no cache invalidation is needed.
     private static readonly ConcurrentDictionary<string, Regex> _regexCache = new(StringComparer.Ordinal);
@@ -163,7 +163,7 @@ public class ExecApprovalPolicy
         }
 
         // Snapshot policy state under lock (and hot-reload if the on-disk file
-        // changed externally - e.g. the Permissions UI saved a new default).
+        // changed externally — e.g. the Permissions UI saved a new default).
         // Pattern matching runs outside the lock against the local snapshot.
         List<ExecApprovalRule> rulesSnapshot;
         ExecApprovalAction defaultActionSnapshot;
@@ -228,7 +228,7 @@ public class ExecApprovalPolicy
     /// (mtime, length) differs from the cached pair, attempt to reparse it.
     /// On success, atomically swap rules + default action. On failure (file
     /// missing, partially written, corrupt JSON), log and keep the existing
-    /// in-memory state - NEVER fall back to default rules, which would
+    /// in-memory state — NEVER fall back to default rules, which would
     /// silently destroy the user's policy during a torn write.
     /// Caller must hold <see cref="_stateLock"/>.
     /// </summary>

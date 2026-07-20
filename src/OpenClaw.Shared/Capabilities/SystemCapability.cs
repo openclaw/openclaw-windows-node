@@ -58,11 +58,11 @@ public class SystemCapability : NodeCapabilityBase
         "reg ",
         "net ",
         // Living-off-the-land binaries: native tools whose purpose here is code execution or remote
-        // download-and-run - the same intent already blocked for the PowerShell downloaders
+        // download-and-run — the same intent already blocked for the PowerShell downloaders
         // (invoke-webrequest/-restmethod) and process spawning (start-process), but in native-binary
         // form the fragments above miss. A remote .set must not be able to whitelist one and invoke
         // it (mshta/regsvr32/rundll32 run remote script; certutil/bitsadmin/curl/wget download). A
-        // denylist cannot be exhaustive against the LOLBAS set - the local Permissions UI, not a
+        // denylist cannot be exhaustive against the LOLBAS set — the local Permissions UI, not a
         // remote caller, is the place to allow anything broader than the read-only defaults.
         "mshta",
         "rundll32",
@@ -90,10 +90,10 @@ public class SystemCapability : NodeCapabilityBase
 
     /// <summary>
     /// Fired when policy denies an exec request non-interactively (no native
-    /// prompt is shown - e.g. default action is Deny, or matched rule action
+    /// prompt is shown — e.g. default action is Deny, or matched rule action
     /// is Deny). Lets UI surfaces (chat) render a denial card that would
     /// otherwise be invisible to the user. Not raised when the user clicks
-    /// Deny in the native prompt - that path already raises
+    /// Deny in the native prompt — that path already raises
     /// <see cref="ExecApprovalPromptService.Decided"/>.
     /// </summary>
     public event EventHandler<ExecApprovalPromptDecidedEventArgs>? PolicyAutoDecided;
@@ -154,7 +154,7 @@ public class SystemCapability : NodeCapabilityBase
     
     public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
     {
-        // "Run system tools" kill switch - applied before V2/legacy dispatch
+        // "Run system tools" kill switch — applied before V2/legacy dispatch
         // so stale gateway allowlists and cached MCP clients still see the
         // capability as disabled when the user turned it off.
         if (!_includeRunCommands &&
@@ -344,7 +344,7 @@ public class SystemCapability : NodeCapabilityBase
     {
         var correlationId = Guid.NewGuid().ToString("N")[..8];
 
-        // Routing seam (rail 2): select path, delegate - no approval logic here.
+        // Routing seam (rail 2): select path, delegate — no approval logic here.
         if (_v2Handler != null)
         {
             Logger.Info($"[system.run] corr={correlationId} path=v2");
@@ -355,7 +355,7 @@ public class SystemCapability : NodeCapabilityBase
             }
             catch (Exception ex)
             {
-                // Rail 1: no silent fallback - handler exceptions become typed denies.
+                // Rail 1: no silent fallback — handler exceptions become typed denies.
                 Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
                 v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
             }
@@ -367,7 +367,7 @@ public class SystemCapability : NodeCapabilityBase
             return Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
         }
 
-        // Legacy path - untouched (rail 3).
+        // Legacy path — untouched (rail 3).
         Logger.Info($"[system.run] corr={correlationId} path=legacy decision=legacy reason=legacy");
 
         if (_commandRunner == null)
@@ -440,7 +440,7 @@ public class SystemCapability : NodeCapabilityBase
         
         // Build the full command string for policy evaluation and logging.
         // When command arrives as an argv array, we must evaluate the entire
-        // command line - not just argv[0] - so policy rules like "rm *" correctly
+        // command line — not just argv[0] — so policy rules like "rm *" correctly
         // match "rm -rf /".
         var fullCommand = args != null
             ? FormatExecCommand([command!, ..args])
@@ -868,7 +868,7 @@ public class SystemCapability : NodeCapabilityBase
 
             // Reject Allow rules whose pattern looks like an absolute file path.
             // A remote .set call should never be able to whitelist a specific binary
-            // by path - that would be a two-step EoP (compromise MCP token → whitelist
+            // by path — that would be a two-step EoP (compromise MCP token → whitelist
             // attacker binary → invoke it). Legitimate rules name commands, not paths.
             // Strip one layer of matching surrounding quotes first so quoted forms
             // ("C:\evil.exe", 'C:\evil.exe') are caught alongside bare paths.
@@ -904,7 +904,7 @@ public class SystemCapability : NodeCapabilityBase
 
             // Finally: the executable (first whitespace-delimited token) must be a concrete literal. A
             // wildcard there lets a NON-dangerous pattern match ANY command (MatchesPattern globs
-            // * -> .* over the whole command line), e.g. "*.*", "*e*", "*.exe", "c*" - the broad-allow
+            // * -> .* over the whole command line), e.g. "*.*", "*e*", "*.exe", "c*" — the broad-allow
             // class the earlier shape checks miss. Runs after the dangerous-fragment check so a
             // dangerous stem keeps its specific message. Legit rules pin the command ("git *").
             var firstToken = normalized.Split(new[] { ' ', '\t' }, 2)[0];

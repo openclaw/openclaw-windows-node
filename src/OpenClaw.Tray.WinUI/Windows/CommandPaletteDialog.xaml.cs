@@ -35,7 +35,7 @@ public sealed partial class CommandPaletteDialog : ContentDialog
                 popup.IsLightDismissEnabled = true;
                 break;
             }
-            // The ContentDialog smoke layer is a Border or Grid - attach Tapped handler
+            // The ContentDialog smoke layer is a Border or Grid — attach Tapped handler
             if (parent is FrameworkElement fe && fe.GetType().Name == "ContentDialogSmokeLayer")
             {
                 fe.Tapped += (s, e) => Hide();

@@ -93,7 +93,7 @@ public sealed partial class ChatWindow : WindowEx
         // Auto-hide when clicking outside the panel
         Activated += OnWindowActivated;
 
-        // Hide instead of close - preserves native chat state for instant reopen
+        // Hide instead of close — preserves native chat state for instant reopen
         Closed += OnWindowClosing;
 
         // a11y: Esc to hide the popup + try to focus composer on first show.
@@ -112,7 +112,7 @@ public sealed partial class ChatWindow : WindowEx
             };
             contentRoot.KeyboardAccelerators.Add(escAccel);
             // Suppress the default "Esc" tooltip that WinUI shows for
-            // keyboard accelerators - it lingers as a floating orphan
+            // keyboard accelerators — it lingers as a floating orphan
             // when the user scrolls the chat timeline.
             contentRoot.KeyboardAcceleratorPlacementMode =
                 Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
@@ -273,13 +273,13 @@ public sealed partial class ChatWindow : WindowEx
         _token = token;
         _chatUrl = ChatSurfaceResolver.BuildChatUrl(_gatewayUrl, _token);
 
-        // HIGH 4: never log the full chat URL - its query string contains the
+        // HIGH 4: never log the full chat URL — its query string contains the
         // auth token. Strip the query before logging.
         Logger.Info($"[ChatWindow] Refreshing to {SafeLogUrl(_chatUrl)}");
 
         // If WebView2 is already up, navigate it to the refreshed URL so the user gets a
         // working chat instead of the pre-warmed (auth-failed) view.
-        // BUT only when we're actively in webview mode - otherwise this would
+        // BUT only when we're actively in webview mode — otherwise this would
         // un-hide the WebView on top of the active native surface (e.g. when
         // the Debug Overrides force the Companion Chat UI on the Tray popup).
         if (_webViewMode && _webViewInitialized && WebView?.CoreWebView2 != null)
@@ -750,7 +750,7 @@ public sealed partial class ChatWindow : WindowEx
     {
         if (args.WindowActivationState != WindowActivationState.Deactivated)
         {
-            // First time the window actually becomes visible/active - re-apply the
+            // First time the window actually becomes visible/active — re-apply the
             // system backdrop. Setting SystemBackdrop on a pre-warmed (never shown)
             // window doesn't always attach the controller, which is why acrylic
             // appeared blank until the user toggled it from the exploration panel.
@@ -771,7 +771,7 @@ public sealed partial class ChatWindow : WindowEx
             return;
         }
 
-        // Pinned via Chat exploration panel - keep open so the user can
+        // Pinned via Chat exploration panel — keep open so the user can
         // preview backdrop/composer changes side-by-side.
         if (ChatWindowPinState.IsPinned) return;
         HideNearTray();
@@ -827,7 +827,7 @@ public sealed partial class ChatWindow : WindowEx
         // even though the tray chat is already in the process of opening.
         SetShownNearTray(true);
 
-        // Provider may have arrived after construction - re-apply surface so
+        // Provider may have arrived after construction — re-apply surface so
         // a native-mode window swaps placeholder → live tree on first show.
         ApplyChatSurface();
 
@@ -868,7 +868,7 @@ public sealed partial class ChatWindow : WindowEx
 
     private void OnPopout(object sender, RoutedEventArgs e)
     {
-        // Open in Companion app - route to the Hub window's chat tab so the
+        // Open in Companion app — route to the Hub window's chat tab so the
         // full companion experience is available, then dismiss the tray popup.
         try
         {

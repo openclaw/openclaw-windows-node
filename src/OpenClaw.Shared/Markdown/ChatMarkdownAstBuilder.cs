@@ -17,13 +17,13 @@ namespace OpenClaw.Shared.Markdown;
 ///         can never become a clickable <c>Hyperlink</c>.</item>
 ///   <item>Images: replaced with the inert literal <c>[Image: alt]</c>
 ///         (or <c>[Image]</c> when no alt is present). No URL is ever passed
-///         downstream - guarantees no <c>BitmapImage</c> remote fetch.</item>
+///         downstream — guarantees no <c>BitmapImage</c> remote fetch.</item>
 ///   <item>Raw HTML is suppressed at the parser level via
 ///         <see cref="MarkdownParserFlags.NoHtml"/>; any residual
 ///         <see cref="MarkdownBlockType.Html"/> blocks collapse to inert
 ///         <see cref="MdRawTextBlock"/> nodes.</item>
 ///   <item>Input is hard-capped at <see cref="MaxInputBytes"/> characters
-///         (~ 256 KB) - oversized payloads return a single inert
+///         (~ 256 KB) — oversized payloads return a single inert
 ///         paragraph with the leading prefix preserved.</item>
 /// </list>
 ///
@@ -45,7 +45,7 @@ public sealed class ChatMarkdownAstBuilder
     /// strikethrough, task lists, permissive autolinks) plus
     /// <see cref="MarkdownParserFlags.NoHtml"/> (raw HTML disabled) and
     /// <see cref="MarkdownParserFlags.CollapseWhitespace"/> (consecutive
-    /// whitespace collapsed in normal text - matches how chat clients
+    /// whitespace collapsed in normal text — matches how chat clients
     /// typically render assistant prose).
     /// </summary>
     public const MarkdownParserFlags DefaultFlags =
@@ -55,7 +55,7 @@ public sealed class ChatMarkdownAstBuilder
 
     private readonly MarkdownParserFlags _flags;
 
-    // Block-frame stack - every EnterBlock pushes, every LeaveBlock pops and
+    // Block-frame stack — every EnterBlock pushes, every LeaveBlock pops and
     // either adds the resulting block to its parent frame, or (for inline
     // blocks like H/P) drains the inline accumulator into the block.
     private readonly Stack<BlockFrame> _stack = new();
@@ -65,7 +65,7 @@ public sealed class ChatMarkdownAstBuilder
     // paragraph, etc.).
     private readonly List<MdInline> _inlines = new();
 
-    // Inline style state - toggled by Enter/LeaveSpan(Em/Strong/Del/U/Code).
+    // Inline style state — toggled by Enter/LeaveSpan(Em/Strong/Del/U/Code).
     // Tracked as depth counters so nested same-style spans don't prematurely
     // turn the style off when one of them closes.
     private int _strongDepth;
@@ -95,7 +95,7 @@ public sealed class ChatMarkdownAstBuilder
     // handle it defensively in case a future flag combination admits it).
     private StringBuilder? _rawHtmlText;
 
-    // Table state - md4c emits Table > {Thead,Tbody} > Tr > {Th,Td}. We
+    // Table state — md4c emits Table > {Thead,Tbody} > Tr > {Th,Td}. We
     // collect header and body rows separately, then assemble the MdTable on
     // table close.
     private List<MdColumnAlignment>? _tableColumnAligns;
@@ -112,7 +112,7 @@ public sealed class ChatMarkdownAstBuilder
 
     /// <summary>
     /// Parse <paramref name="markdown"/> into a <see cref="ChatMarkdownDocument"/>.
-    /// Never throws on malformed input - falls back to a single inert
+    /// Never throws on malformed input — falls back to a single inert
     /// paragraph containing the verbatim source if the parser reports an
     /// error.
     /// </summary>
@@ -714,7 +714,7 @@ public sealed class ChatMarkdownAstBuilder
                 codepoint = (codepoint * radix) + digit;
                 if (codepoint > 0x10FFFF)
                 {
-                    // Out of Unicode range - CommonMark says U+FFFD.
+                    // Out of Unicode range — CommonMark says U+FFFD.
                     return "\uFFFD";
                 }
             }
@@ -732,7 +732,7 @@ public sealed class ChatMarkdownAstBuilder
         var entity = Md4cEntity.EntityLookup(token);
         if (entity is null)
         {
-            // Unrecognized named entity - leave the token alone so the
+            // Unrecognized named entity — leave the token alone so the
             // user can see what was actually written.
             return token.ToString();
         }
@@ -740,7 +740,7 @@ public sealed class ChatMarkdownAstBuilder
         uint cp0 = entity.Value.Codepoint0;
         uint cp1 = entity.Value.Codepoint1;
         // The md4c entity table uses Codepoint0 == 0 as the "no replacement"
-        // sentinel - fall back to the raw token rather than substituting U+FFFD.
+        // sentinel — fall back to the raw token rather than substituting U+FFFD.
         if (cp0 == 0) return token.ToString();
         if (cp1 == 0)
         {

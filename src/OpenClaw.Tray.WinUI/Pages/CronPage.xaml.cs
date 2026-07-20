@@ -65,7 +65,7 @@ public sealed partial class CronPage : Page
             }
             else if (_appState.CronList.HasValue)
             {
-                // First visit but AppState has cached data from gateway - process it
+                // First visit but AppState has cached data from gateway — process it
                 _cronLoading.BeginRefresh();
                 UpdateFromGateway(_appState.CronList.Value);
                 if (_appState.CronStatus.HasValue)
@@ -465,7 +465,7 @@ public sealed partial class CronPage : Page
 
         if (_editingJobId != null)
         {
-            // Update existing job - payload.kind depends on sessionTarget
+            // Update existing job — payload.kind depends on sessionTarget
             var payloadKind = sessionTarget == "main" ? "systemEvent" : "agentTurn";
             var payloadTextField = sessionTarget == "main" ? "text" : "message";
             var patch = new Dictionary<string, object>
@@ -486,7 +486,7 @@ public sealed partial class CronPage : Page
         }
         else
         {
-            // Create new job - payload.kind depends on sessionTarget
+            // Create new job — payload.kind depends on sessionTarget
             var payloadKind = sessionTarget == "main" ? "systemEvent" : "agentTurn";
             var payloadTextField = sessionTarget == "main" ? "text" : "message";
             var job = new Dictionary<string, object>
@@ -870,7 +870,7 @@ public sealed partial class CronPage : Page
                 var oldVm = _jobs.Find(j => j.Id == vm.Id);
                 if (oldVm != null && oldVm.NextRunAtMs > 0 && nowMs >= oldVm.NextRunAtMs && vm.LastRunAtMs == oldVm.LastRunAtMs)
                 {
-                    // The scheduled time has passed but the job hasn't completed yet - it's running
+                    // The scheduled time has passed but the job hasn't completed yet — it's running
                     _runningJobIds.Add(vm.Id);
                 }
             }
@@ -1466,7 +1466,7 @@ public sealed partial class CronPage : Page
         var isRunning = _runningJobIds.Contains(vm.Id);
         var canRunOrEditJob = _cronLoading.CanEdit && !isRunning;
 
-        // "Run Now" button - show running state if job is in the running set
+        // "Run Now" button — show running state if job is in the running set
         var runNowBtn = MakeActionButton("\uE768", LocalizationHelper.GetString("CronPage_RunNow"), vm.Id, OnRunNowClick, "RunNow");
         if (isRunning)
         {

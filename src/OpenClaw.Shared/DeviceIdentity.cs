@@ -214,7 +214,7 @@ public class DeviceIdentity
                 ? data.NodeDeviceToken
                 : data.DeviceToken;
             if (string.IsNullOrEmpty(token))
-                return false; // already null - idempotent
+                return false; // already null — idempotent
 
             if (tokenRole == DeviceTokenRole.Node)
             {
@@ -607,7 +607,7 @@ public class DeviceIdentity
     /// Atomic write of device-key JSON: serialize to a sibling temp file
     /// (<c>.&lt;name&gt;.&lt;guid&gt;.tmp</c>), lock its ACL, then
     /// <see cref="File.Move(string,string,bool)"/> with overwrite=true. The
-    /// rename is atomic on NTFS - a process-kill or power-loss mid-write
+    /// rename is atomic on NTFS — a process-kill or power-loss mid-write
     /// either leaves the existing key file intact or replaces it wholesale,
     /// never a torn/zero-byte file that the next LoadOrCreate would silently
     /// rotate the identity over.

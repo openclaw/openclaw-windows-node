@@ -58,7 +58,7 @@ public sealed partial class DiagnosticsBundleDialog : ContentDialog
     private void OnCopyClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         ClipboardHelper.CopyText(_bundleText);
-        // Do NOT close on copy - the user may want to also save the file
+        // Do NOT close on copy — the user may want to also save the file
         // before dismissing. Cancel the implicit close.
         args.Cancel = true;
         PrimaryButtonText = "Copied";

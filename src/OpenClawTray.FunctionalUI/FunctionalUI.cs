@@ -185,7 +185,7 @@ public readonly record struct GridSize(double Value, GridUnitType Type)
 }
 
 public sealed record TextBlockElement(string Text) : Element;
-// A RichTextBlock host. Unlike TextBlockElement it carries no text of its own -
+// A RichTextBlock host. Unlike TextBlockElement it carries no text of its own —
 // its Blocks (Paragraphs / InlineUIContainers) are populated imperatively by a
 // caller-supplied setter (see the Set(Action<RichTextBlock>) overload), exactly
 // as TextBlockElement's Inlines are. Used by the chat renderer to give a whole
@@ -1042,7 +1042,7 @@ internal sealed class UiRenderer(Action requestRender)
     /// <summary>
     /// Renders a navigation host into a STABLE Border wrapper at <paramref name="path"/>
     /// whose Child is swapped to the current route's content on every render. This
-    /// prevents stale route UIElements from leaking into the parent panel - previously
+    /// prevents stale route UIElements from leaking into the parent panel — previously
     /// the navigation host returned the inner content directly to its parent's
     /// SyncChildren, which made route transitions correct only as a side effect of the
     /// parent's clear-and-re-add loop and could leave the previous page's UI visible
@@ -1944,7 +1944,7 @@ internal sealed class UiRenderer(Action requestRender)
 
         // Fast path: when panel is empty (e.g. pre-cleared), just add children
         // directly. Avoids EnsureChildAt → RemoveFromParent which scans ALL
-        // cached controls - O(controls × children) with no benefit when
+        // cached controls — O(controls × children) with no benefit when
         // children have no parent.
         if (panel.Children.Count == 0)
         {

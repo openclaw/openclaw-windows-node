@@ -33,7 +33,7 @@ public enum ChatTimelineItemKind
 /// <see cref="ChatTimelineItemKind.PermissionRequest"/> timeline entry.
 /// </summary>
 /// <remarks>
-/// <para><see cref="Pending"/> is the initial state - Allow/Deny buttons
+/// <para><see cref="Pending"/> is the initial state — Allow/Deny buttons
 /// render and the matching <see cref="ChatTimelineState.PendingPermission"/>
 /// slot is non-null.</para>
 /// <para><see cref="Allowed"/> / <see cref="Denied"/> are set locally as
@@ -41,7 +41,7 @@ public enum ChatTimelineItemKind
 /// "decided" badge without waiting for the gateway round-trip.</para>
 /// <para><see cref="Expired"/> is the backstop set when the gateway emits
 /// a terminal approval phase (resolved / cancelled / timed-out) before the
-/// user picked an option - e.g. another client decided, or the gateway
+/// user picked an option — e.g. another client decided, or the gateway
 /// timed the prompt out. Visually distinguishes it from a user choice.</para>
 /// </remarks>
 public enum ChatPermissionDecision

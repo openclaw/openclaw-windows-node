@@ -15,7 +15,7 @@ namespace OpenClawTray;
 
 public partial class App
 {
-    // MCP-only app capabilities - local testing/control, not exposed to gateway.
+    // MCP-only app capabilities — local testing/control, not exposed to gateway.
     private AppCapability? _appCapability;
     private AppConnectionCapability? _appConnectionCapability;
 

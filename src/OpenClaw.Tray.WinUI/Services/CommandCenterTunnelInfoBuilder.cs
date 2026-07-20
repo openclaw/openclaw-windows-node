@@ -7,7 +7,7 @@ namespace OpenClawTray.Services;
 /// Builds the Command Center tunnel diagnostics (endpoints, status, copied-SSH host/user) from the
 /// active-GatewayRecord-first <see cref="CommandCenterTopologyTunnelResolver.TunnelInputs"/>, layering
 /// live <see cref="SshTunnelSnapshot"/> values on top. A stale global SettingsManager.UseSshTunnel must
-/// not hide an active gateway's tunnel - nor surface one a now-direct gateway no longer uses - so these
+/// not hide an active gateway's tunnel — nor surface one a now-direct gateway no longer uses — so these
 /// details match the endpoint browser.proxy actually dials. Kept free of <c>AppStateSnapshot</c>/WinUI
 /// so it is unit-testable, the same way <see cref="BrowserProxyTunnelState"/> and
 /// <see cref="CommandCenterTopologyTunnelResolver"/> are.

@@ -33,7 +33,7 @@ internal sealed record UrlNavigationApprovalDecision(UrlNavigationApprovalDecisi
 /// visible Window for the prompt crashed with ExecutionEngineException when
 /// invoked from the MCP handler's nested dispatcher callback. Win32 MessageBox
 /// has no WinUI dependencies, can be called from any thread, and pumps its own
-/// modal message loop - so it's reliable from the MCP request path regardless
+/// modal message loop — so it's reliable from the MCP request path regardless
 /// of which (if any) tray windows are open.
 /// </summary>
 internal sealed class UrlNavigationApprovalService

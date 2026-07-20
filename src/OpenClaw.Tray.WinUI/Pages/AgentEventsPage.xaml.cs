@@ -152,7 +152,7 @@ public sealed partial class AgentEventsPage : Page
         if (_allEvents.Count > MaxEvents)
             _allEvents.RemoveRange(MaxEvents, _allEvents.Count - MaxEvents);
 
-        // Debounce UI updates - mark dirty, update on next idle
+        // Debounce UI updates — mark dirty, update on next idle
         if (!_filterDirty)
         {
             _filterDirty = true;

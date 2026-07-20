@@ -33,7 +33,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
     public event Action? SettingsRequested;
 
     /// <param name="testOnly">When true, transcription is displayed but never
-    /// submitted to the agent - used for mic/model verification from Settings.</param>
+    /// submitted to the agent — used for mic/model verification from Settings.</param>
     public VoiceOverlayWindow(VoiceService voiceService, IOpenClawLogger logger, bool testOnly = false)
     {
         InitializeComponent();
@@ -316,7 +316,7 @@ public sealed partial class VoiceOverlayWindow : WindowEx
         catch (Exception ex)
         {
             _logger.Error("Voice overlay start/stop failed", ex);
-            // Sanitized - full ex.Message is in the log.
+            // Sanitized — full ex.Message is in the log.
             StatusText.Text = L("VoiceOverlayWindow_StatusError");
             StatusBadge.Text = L("VoiceOverlayWindow_StateError");
         }

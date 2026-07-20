@@ -41,7 +41,7 @@ public static class HttpUrlRiskEvaluator
             reasons.Add("URL does not use HTTPS");
 
         // Homograph defense: a Unicode hostname that round-trips to a different
-        // ASCII (Punycode) form is suspicious - `аpple.com` (Cyrillic 'а') and
+        // ASCII (Punycode) form is suspicious — `аpple.com` (Cyrillic 'а') and
         // `apple.com` are visually identical but resolve differently. Always
         // surface the mismatch as a Reason so the prompt fires for IDN hosts.
         if (!string.Equals(uri.Host, uri.IdnHost, StringComparison.Ordinal))
@@ -109,7 +109,7 @@ public static class HttpUrlRiskEvaluator
 
         if (ip.AddressFamily == AddressFamily.InterNetworkV6)
         {
-            // Unspecified (::) - never a routable destination.
+            // Unspecified (::) — never a routable destination.
             if (ip.Equals(IPAddress.IPv6None)) return false;
             if (ip.IsIPv6LinkLocal) return false;
             if (ip.IsIPv6SiteLocal) return false;
@@ -117,7 +117,7 @@ public static class HttpUrlRiskEvaluator
             var b = ip.GetAddressBytes();
             // Unique-local fc00::/7 (existing).
             if ((b[0] & 0xFE) == 0xFC) return false;
-            // ::ffff:0:0/96 - IPv4-mapped (caught above by IsIPv4MappedToIPv6,
+            // ::ffff:0:0/96 — IPv4-mapped (caught above by IsIPv4MappedToIPv6,
             // but defensively re-check).
             if (b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0 &&
                 b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0 &&
@@ -126,21 +126,21 @@ public static class HttpUrlRiskEvaluator
                 var mapped = new IPAddress(new[] { b[12], b[13], b[14], b[15] });
                 return IsPublicAddress(mapped);
             }
-            // ::/96 IPv4-compatible (deprecated; treat as non-public - never legit
+            // ::/96 IPv4-compatible (deprecated; treat as non-public — never legit
             // for an agent-supplied URL).
             if (b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0 &&
                 b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0 &&
                 b[8] == 0 && b[9] == 0 && b[10] == 0 && b[11] == 0)
                 return false;
-            // 2001:db8::/32 - documentation prefix (RFC 3849).
+            // 2001:db8::/32 — documentation prefix (RFC 3849).
             if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8) return false;
-            // 2001:0000::/32 - Teredo (relay tunneling; not a normal target).
+            // 2001:0000::/32 — Teredo (relay tunneling; not a normal target).
             if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x00) return false;
-            // 100::/64 - discard-only address block (RFC 6666).
+            // 100::/64 — discard-only address block (RFC 6666).
             if (b[0] == 0x01 && b[1] == 0x00 &&
                 b[2] == 0 && b[3] == 0 && b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0)
                 return false;
-            // 2002::/16 - 6to4. Block: payload destination is unverifiable.
+            // 2002::/16 — 6to4. Block: payload destination is unverifiable.
             if (b[0] == 0x20 && b[1] == 0x02) return false;
             return true;
         }

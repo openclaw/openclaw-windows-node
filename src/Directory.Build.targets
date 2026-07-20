@@ -11,7 +11,7 @@
     Both x64 and ARM64 resolve loose VC++ runtime DLLs from the local Visual
     Studio install at publish time (via ResolveOpenClawVCRuntimeFromVSInstall).
     This ensures onnxruntime and other native dependencies always get a current
-    CRT - the VCRuntime.CefSharp.140 NuGet ships 14.29 DLLs that are too old
+    CRT — the VCRuntime.CefSharp.140 NuGet ships 14.29 DLLs that are too old
     for onnxruntime ≥ 1.20.
 
     For local x64 *builds* (not publish), the NuGet DLLs are still copied to

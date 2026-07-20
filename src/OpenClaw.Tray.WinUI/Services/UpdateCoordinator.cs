@@ -122,7 +122,7 @@ internal sealed class UpdateCoordinator(
             if (string.IsNullOrEmpty(release.TagName))
             {
                 // Defensive: AppUpdater says an update is available but the
-                // release has no tag. Don't silently claim "up to date" -
+                // release has no tag. Don't silently claim "up to date" —
                 // surface as Failed so the user sees something is off.
                 Logger.Warn("Update reported available but release has no TagName");
                 appState.UpdateInfo = new UpdateCommandCenterInfo
@@ -225,7 +225,7 @@ internal sealed class UpdateCoordinator(
             {
                 // Visual tree torn down mid-await (e.g. window closed).
                 // Treat as "remind me later" rather than tainting Status with
-                // "Failed" - the network check itself succeeded.
+                // "Failed" — the network check itself succeeded.
                 Logger.Warn($"[Update] Prompt dialog dismissed before completion: 0x{ex.HResult:X8}");
                 return true;
             }
@@ -242,7 +242,7 @@ internal sealed class UpdateCoordinator(
                 // a concurrent loser of the install-flag CAS may have just
                 // overwritten appState.UpdateInfo with a "Failed" object,
                 // and mutating its Detail would leave Status="Failed" with
-                // our "download requested" detail - briefly inconsistent.
+                // our "download requested" detail — briefly inconsistent.
                 appState.UpdateInfo = new UpdateCommandCenterInfo
                 {
                     Status = "Available",
@@ -288,7 +288,7 @@ internal sealed class UpdateCoordinator(
                                  StringComparison.OrdinalIgnoreCase))
             {
                 // User explicitly bypassed the remembered skip for THIS
-                // release and picked RemindLater - clear the stale tag.
+                // release and picked RemindLater — clear the stale tag.
                 _settings.SkippedUpdateTag = string.Empty;
                 _settings.Save();
             }
@@ -330,7 +330,7 @@ internal sealed class UpdateCoordinator(
         {
             Logger.Info("Manual update check requested");
             // Pass userInitiated=true so an explicit click bypasses the
-            // "remind me later" SkippedUpdateTag - the user is asking *now*.
+            // "remind me later" SkippedUpdateTag — the user is asking *now*.
             var shouldContinue = await CheckForUpdatesAsync(userInitiated: true);
             refreshStatus();
 
@@ -467,7 +467,7 @@ internal sealed class UpdateCoordinator(
         // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
         catch (COMException)
         {
-            // Window already closed - closing a closed WinUI window throws
+            // Window already closed — closing a closed WinUI window throws
             // COMException 0x80070578. Swallow so a real exception in the
             // outer catch isn't masked by this cleanup failure.
         }

@@ -11,10 +11,10 @@ namespace OpenClaw.Shared;
 //
 // Typed client methods for the richer gateway protocol, matching the canonical
 // openclaw/openclaw schemas exactly:
-//   • commands.list             - command catalog
-//   • sessions.patch            - extended per-session field set
-//   • sessions.files.list/get   - workspace file rail + browser (param: sessionKey)
-//   • sessions.compaction.*     - compaction checkpoints (param: key, checkpointId)
+//   • commands.list             — command catalog
+//   • sessions.patch            — extended per-session field set
+//   • sessions.files.list/get   — workspace file rail + browser (param: sessionKey)
+//   • sessions.compaction.*     — compaction checkpoints (param: key, checkpointId)
 //
 // Backwards compatibility: read/list/get methods detect an "unknown method"
 // error from an older gateway and return a typed result with IsSupported = false
@@ -411,7 +411,7 @@ public partial class OpenClawGatewayClient
         }
         catch (InvalidOperationException ex)
         {
-            // Genuine gateway error (e.g. checkpoint not found) - surface it,
+            // Genuine gateway error (e.g. checkpoint not found) — surface it,
             // do not swallow.
             _logger.Warn($"{method} failed: {ex.Message}");
             return new SessionCompactionMutationResult

@@ -35,7 +35,7 @@ public class AppCapability : NodeCapabilityBase
 
     public override IReadOnlyList<string> Commands => _commands;
 
-    // Handler delegates - wired up by App.xaml.cs after construction.
+    // Handler delegates — wired up by App.xaml.cs after construction.
     public Func<string, Task<object?>>? NavigateHandler;
     public Func<object?>? StatusHandler;
     public Func<string?, Task<object?>>? SessionsHandler;

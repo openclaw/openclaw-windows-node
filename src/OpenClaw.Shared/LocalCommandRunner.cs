@@ -54,7 +54,7 @@ public class LocalCommandRunner : ICommandRunner
         if (plan.IsDirectArgv)
         {
             // The approved argv reaches the process verbatim via ArgumentList, with
-            // no shell re-parsing it. Log the arg count, not the values - args may
+            // no shell re-parsing it. Log the arg count, not the values — args may
             // carry secrets.
             foreach (var arg in plan.ArgList!)
                 psi.ArgumentList.Add(arg);
@@ -197,7 +197,7 @@ public class LocalCommandRunner : ICommandRunner
     {
         // Argv set (non-null) means the caller approved a direct-argv execution and
         // it takes precedence (ICommandRunner contract). An empty argv is a malformed
-        // approved payload, not a request to fall back to the shell - fail closed.
+        // approved payload, not a request to fall back to the shell — fail closed.
         if (request.Argv is { } argv)
         {
             if (argv.Count == 0)
@@ -215,7 +215,7 @@ public class LocalCommandRunner : ICommandRunner
     /// fully-qualified path so Windows never guesses argv[0] from PATH/cwd (e.g. a
     /// "C:\Program.exe" hijack), and must not be a batch script: .bat/.cmd cannot
     /// run without cmd.exe, which re-parses arguments and breaks the verbatim-argv
-    /// guarantee. Both are bugs in the approval layer, not recoverable states -
+    /// guarantee. Both are bugs in the approval layer, not recoverable states —
     /// throw rather than degrade to a shell.
     /// </summary>
     private static void ValidateDirectExecutable(string executable)

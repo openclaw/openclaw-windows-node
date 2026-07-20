@@ -52,7 +52,7 @@ public sealed class AudioPipeline : IAsyncDisposable
     private const int MaxConcurrentTranscriptions = 2;
     // Flag set by StopAsync so TranscribeSamplesAsync can distinguish
     // "Whisper actually failed" from "Whisper was interrupted by our own
-    // cancel during shutdown" - the latter often surfaces as a misleading
+    // cancel during shutdown" — the latter often surfaces as a misleading
     // "Failed to encode audio features" exception.
     private volatile bool _isStopping;
 
@@ -65,7 +65,7 @@ public sealed class AudioPipeline : IAsyncDisposable
     private readonly List<float> _fixedCaptureBuffer = new();
 
     /// <summary>Fired when a single Whisper segment has been transcribed.
-    /// Multiple of these may fire per silence-bounded utterance - useful
+    /// Multiple of these may fire per silence-bounded utterance — useful
     /// for streaming bubble updates. Consumers that want a complete
     /// utterance (chat submission, stt.listen result) should listen on
     /// <see cref="UtteranceTranscribed"/> instead.</summary>
@@ -169,7 +169,7 @@ public sealed class AudioPipeline : IAsyncDisposable
     /// <summary>
     /// Capture audio for exactly <paramref name="durationMs"/> milliseconds
     /// (or until the token is cancelled), then return the entire 16 kHz
-    /// mono float buffer. Bypasses VAD entirely - every sample in the
+    /// mono float buffer. Bypasses VAD entirely — every sample in the
     /// window is preserved. Used by stt.transcribe to honor the
     /// "bounded fixed-duration capture" contract.
     /// </summary>
@@ -236,13 +236,13 @@ public sealed class AudioPipeline : IAsyncDisposable
         try
         {
             // Order matters here. Previously we cancelled `_cts` first and THEN
-            // tried to flush the speech buffer - but the flush passed `_cts.Token`
+            // tried to flush the speech buffer — but the flush passed `_cts.Token`
             // straight into Whisper.net, which honored the cancel and dropped the
             // final utterance. Now:
             //
             //   1. Stop capturing new audio so the buffer doesn't grow further.
             //   2. Wait briefly for any in-flight transcriptions (Task.Run-spawned
-            //      from earlier VAD bursts) to finish - so the user's last
+            //      from earlier VAD bursts) to finish — so the user's last
             //      utterance reaches Whisper instead of being killed mid-encode.
             //   3. Flush any buffered speech using a fresh (non-cancelled) token
             //      so anything left over also reaches Whisper.
@@ -431,7 +431,7 @@ public sealed class AudioPipeline : IAsyncDisposable
             }
             else
             {
-                // Not speaking - maintain rolling pre-buffer
+                // Not speaking — maintain rolling pre-buffer
                 _preBuffer.Enqueue(chunk);
                 while (_preBuffer.Count > PreBufferChunks)
                     _preBuffer.Dequeue();
@@ -502,7 +502,7 @@ public sealed class AudioPipeline : IAsyncDisposable
             // If we're tearing the pipeline down, mid-encode interruptions
             // surface from Whisper.net as misleading exceptions like
             // "Failed to encode audio features." instead of a clean
-            // OperationCanceledException. Suppress those - the user already
+            // OperationCanceledException. Suppress those — the user already
             // knows they pressed Stop.
             if (_isStopping || (_cts?.IsCancellationRequested ?? false))
             {
@@ -510,7 +510,7 @@ public sealed class AudioPipeline : IAsyncDisposable
                 return;
             }
             _logger.Error("Transcription failed", ex);
-            // Sanitized - the raw ex.Message can include sample lengths,
+            // Sanitized — the raw ex.Message can include sample lengths,
             // language tags, or other audio-shape detail.
             SafeRaiseDiag("⚠️ Transcription error");
         }
@@ -530,7 +530,7 @@ public sealed class AudioPipeline : IAsyncDisposable
 
         try
         {
-            // Pass CancellationToken.None - the flush is the last chance
+            // Pass CancellationToken.None — the flush is the last chance
             // to transcribe the user's final utterance during teardown,
             // so it must not be killable by the pipeline's own cancel
             // token (which StopAsync is about to fire).
@@ -656,7 +656,7 @@ public sealed class AudioPipeline : IAsyncDisposable
             catch (Exception ex)
             {
                 // NAudio's WasapiCapture.Dispose may throw on a stuck COM
-                // object. Log but never propagate - this method is called
+                // object. Log but never propagate — this method is called
                 // from finally-blocks and re-throwing would mask the original
                 // failure AND leave the mic device held by the OS until
                 // process exit.

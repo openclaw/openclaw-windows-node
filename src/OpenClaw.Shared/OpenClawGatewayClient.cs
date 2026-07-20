@@ -180,7 +180,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override void OnDisconnected()
     {
         ClearPendingRequests();
-        // Invalidate the handshake snapshot - the next hello-ok must
+        // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
         // a reconnect-after-server-restart could leave the tray sending to a
         // stale canonical key that the new server doesn't recognize, and
@@ -425,7 +425,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// This is the correct path for native approval-button UI. Do NOT use a
     /// <c>/approve &lt;id&gt; &lt;decision&gt;</c> chat message: slash commands are
     /// queued behind the agent's main turn, but the agent is blocked waiting
-    /// on the approval - so the slash command can only be processed after the
+    /// on the approval — so the slash command can only be processed after the
     /// run times out, by which point the approval is moot.
     /// </summary>
     /// <param name="approvalId">The exec approval id from <c>exec.approval.requested.payload.id</c>.</param>
@@ -479,7 +479,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // until the 15s timeout instead of failing fast for retry.
         //
         // TryRemove-first idiom: if we win the race and pull our TCS out of
-        // the dict, throw immediately - no exception is ever set on the
+        // the dict, throw immediately — no exception is ever set on the
         // discarded TCS, so it can never be unobserved by
         // TaskScheduler.UnobservedTaskException. If TryRemove returns false,
         // ClearPendingRequests already claimed (and faulted) our entry; fall
@@ -962,7 +962,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
-            // Sanitize before logging - the gateway sometimes echoes patched
+            // Sanitize before logging — the gateway sometimes echoes patched
             // field values in validation errors, so logging ex.Message verbatim
             // can leak secrets to the on-disk tray log (Hanselman review LOW-7).
             // The full unsanitized message stays in ConfigPatchResult.Error so
@@ -983,7 +983,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// credential keys we know about (botToken / signingSecret / webhookUrl
     /// / nsec / privateKey / generic token|secret|key|password fields). The
     /// gateway may put raw field values in validation errors, and the log
-    /// is persistent on disk - see Hanselman review LOW-7.
+    /// is persistent on disk — see Hanselman review LOW-7.
     /// </summary>
     private static string SanitizeErrorForLog(string? raw)
     {
@@ -1045,7 +1045,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <summary>
     /// Removes a paired node from the gateway and waits for the gateway's
     /// application-level response. Returns Success=true only when the
-    /// gateway confirms the removal - Success=false on transport failure,
+    /// gateway confirms the removal — Success=false on transport failure,
     /// missing scope, unknown nodeId, or any server-side rejection. The
     /// gateway also broadcasts <c>node.pair.resolved</c> with
     /// <c>decision="removed"</c> after success, which the broadcast handler
@@ -1079,7 +1079,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         catch (Exception ex)
         {
             // Transport / timeout / unexpected exception. Don't leak raw
-            // exception text into the UI - return null so the caller uses
+            // exception text into the UI — return null so the caller uses
             // its localized fallback string.
             _logger.Warn($"node.pair.remove failed: {ex.Message}");
             return new NodeForgetResult(false, ErrorMessage: null);
@@ -1130,7 +1130,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         catch (Exception ex)
         {
             // Transport / timeout / unexpected exception. Don't leak raw
-            // exception text into the UI - return null so the caller uses
+            // exception text into the UI — return null so the caller uses
             // its localized fallback string.
             _logger.Warn($"node.rename failed: {ex.Message}");
             return new NodeRenameResult(false, ErrorMessage: null);
@@ -1180,13 +1180,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     /// <summary>
-    /// Start a channel. Sends <c>channels.start { channel }</c> - the gateway's
+    /// Start a channel. Sends <c>channels.start { channel }</c> — the gateway's
     /// canonical wire method per <c>src/gateway/server-methods-list.ts:21</c>.
     /// (Note: previously this sent <c>channel.start</c> singular which the gateway
     /// rejects as an unknown method; that was a latent bug.) Returns true when
     /// the gateway acknowledges the start, false on any failure. For the rich
-    /// error payload - including "unknown channel" which means the channel
-    /// plugin isn't installed on the gateway host - use
+    /// error payload — including "unknown channel" which means the channel
+    /// plugin isn't installed on the gateway host — use
     /// <see cref="StartChannelDetailedAsync"/>.
     /// </summary>
     public async Task<bool> StartChannelAsync(string channelName)
@@ -1265,7 +1265,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     /// <summary>
-    /// Fetch the rich channels.status snapshot - the canonical channel-status API
+    /// Fetch the rich channels.status snapshot — the canonical channel-status API
     /// used by macOS and the web UI. Returns null on failure.
     /// The <paramref name="timeoutMs"/> is propagated to the gateway so slow
     /// environments can extend the probe budget without recompiling.
@@ -1334,7 +1334,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // it in the diagnostic disclosure. Returning null would lose the
             // gateway's actual reason for failing.
             //
-            // Use ex.Message (the clean, gateway-relayed reason - e.g.
+            // Use ex.Message (the clean, gateway-relayed reason — e.g.
             // "web login provider is not available") rather than ex.ToString():
             // the latter leaks our own .NET stack trace with internal CI build
             // paths into user-facing UI (issue #957). The message is the signal
@@ -1652,7 +1652,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // to preserve the chat approval banner on disconnect-mid-flight. The
         // OperationCanceledException thrown here is intentionally a connection
         // lifecycle signal, NOT a benign cancel. RunFireAndForget in the tray
-        // (OpenClawChatRoot) silently swallows OperationCanceledException -
+        // (OpenClawChatRoot) silently swallows OperationCanceledException —
         // if a caller forwards the OCE up to RunFireAndForget instead of
         // catching it locally, the banner will be cleared with no UI feedback.
         // Today OpenClawChatDataProvider.RespondToPermissionAsync correctly
@@ -1762,7 +1762,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
             else if (root.TryGetProperty("payload", out var wizPayload))
             {
-                // HIGH: never log the wizard payload body - even after token
+                // HIGH: never log the wizard payload body — even after token
                 // sanitisation it can include prompts, tool args, and chat
                 // content. Log shape only; full payload is available in the
                 // gateway's own server-side logs if engineering needs it.
@@ -1898,7 +1898,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             });
         }
 
-        // Handle health response - channels
+        // Handle health response — channels
         if (payload.TryGetProperty("channels", out var channels))
         {
             PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
@@ -2102,15 +2102,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             if (!_useV2Signature)
             {
-                // v3 rejected - set flag so next connect uses v2.
-                // Don't retry on this socket - gateway closes it after rejection.
+                // v3 rejected — set flag so next connect uses v2.
+                // Don't retry on this socket — gateway closes it after rejection.
                 // The auto-reconnect will use v2 on the fresh connection.
                 _useV2Signature = true;
                 _logger.Warn($"[HANDSHAKE] v3 signature rejected, will use v2 on reconnect");
                 V2SignatureFallback?.Invoke(this, EventArgs.Empty);
                 return;
             }
-            // v2 also rejected - real auth error
+            // v2 also rejected — real auth error
             _logger.Warn($"[HANDSHAKE] v2 signature also rejected - wrong key or token. Raw: {message}");
             _authFailed = true;
             RaiseAuthenticationFailed($"device signature rejected - {message}");
@@ -2129,7 +2129,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             return;
         }
 
-        // Permanent auth failures - stop retrying and notify the app
+        // Permanent auth failures — stop retrying and notify the app
         var detailCode2 = TryGetErrorDetailCode(root);
         if (method == "connect" && (IsTerminalAuthError(message) || IsTerminalAuthDetailCode(detailCode2)))
         {
@@ -2424,13 +2424,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Resolves the effective <c>sessionKey</c> for a chat-related RPC,
     /// preferring a non-empty caller-supplied value over the handshake
     /// <paramref name="resolvedMainSessionKey"/>. Throws
-    /// <see cref="InvalidOperationException"/> if neither is usable -
+    /// <see cref="InvalidOperationException"/> if neither is usable —
     /// callers MUST NOT fall back to a literal like <c>"main"</c>, which
     /// can drift from the canonical key the gateway echoes back.
     /// </summary>
     /// <remarks>
     /// Extracted as an internal static so unit tests can exercise the
-    /// pre-handshake throw without needing a live WebSocket - see
+    /// pre-handshake throw without needing a live WebSocket — see
     /// <c>OpenClawGatewayClientSessionKeyTests</c>.
     /// </remarks>
     internal static string ResolveEffectiveSessionKey(
@@ -2687,7 +2687,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 _ = RequestSessionsAsync();
                 break;
             case "cron":
-                // Gateway pushes cron events when jobs run/change - refresh the list
+                // Gateway pushes cron events when jobs run/change — refresh the list
                 _ = RequestCronListAsync();
                 _ = RequestCronStatusAsync();
                 break;
@@ -2711,8 +2711,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     // Translate a top-level exec.approval.{requested,resolved} envelope into
     // a synthetic AgentEventInfo with Stream="approval" so the existing chat
     // approval-banner code path lights up unchanged. The wire payload does
-    // not carry a "phase" field - the phase is encoded in the top-level event
-    // name and (for resolved) the decision - so we always derive it here
+    // not carry a "phase" field — the phase is encoded in the top-level event
+    // name and (for resolved) the decision — so we always derive it here
     // rather than reading payload.phase. If a future protocol revision adds
     // an explicit payload.phase, this is the place to honor it.
     private void HandleExecApprovalEvent(JsonElement root, string topLevelEventType)
@@ -2759,7 +2759,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         // Derive a chat-provider phase. "requested" stays as-is. For the
         // resolved envelope, map an exact ``deny`` decision to ``denied``
-        // and any allow-* decision to ``resolved`` - both are accepted by
+        // and any allow-* decision to ``resolved`` — both are accepted by
         // OpenClawChatDataProvider.IsTerminalApprovalPhase, so the banner
         // clears for remote allows (e.g. dashboard, plugin auto-approve) as
         // well as deny. NOTE: ``allowed`` is NOT in the terminal phase
@@ -2854,7 +2854,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // subscriber under its own try/catch so a throwing handler does NOT
         // short-circuit subsequent ones. A single wrapping try/catch around
         // ``AgentEventReceived?.Invoke`` would catch the exception but skip
-        // every handler after the throwing one - silently regressing the
+        // every handler after the throwing one — silently regressing the
         // very ``HTML dashboard sees it / native chat drops it`` bug this
         // translation exists to fix.
         var handler = AgentEventReceived;
@@ -2911,7 +2911,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         if (!root.TryGetProperty("payload", out var payload)) return;
 
-        // HIGH: never log raw agent event JSON - it can carry prompts,
+        // HIGH: never log raw agent event JSON — it can carry prompts,
         // tool args/outputs, and URLs. Log shape only (type + length).
         try
         {
@@ -2939,7 +2939,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         // sessionKey is inside payload, not root. We deliberately do NOT
-        // substitute a fallback like "unknown" or "main" - empty must
+        // substitute a fallback like "unknown" or "main" — empty must
         // propagate so the provider can drop the event and surface the
         // protocol gap, rather than silently routing into a synthetic bucket.
         var sessionKey = "";
@@ -3081,7 +3081,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         // HIGH: the activity Label may include user-provided values
         // (commands, queries, file paths, URLs from tool args). Log only
-        // the tool name + phase - the label is for UI consumption.
+        // the tool name + phase — the label is for UI consumption.
         _logger.Info($"Tool: {toolName} ({phase})");
         ActivityChanged?.Invoke(this, activity);
 
@@ -3094,7 +3094,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void HandleChatEvent(JsonElement root, int rawMessageLength)
     {
-        // HIGH 4: never log chat content. Log shape only - the raw payload
+        // HIGH 4: never log chat content. Log shape only — the raw payload
         // can include user prompts, assistant text, tool output, and even
         // bearer tokens routed through the gateway in some flows.
         _logger.Debug($"Chat event received: len={rawMessageLength}");
@@ -3103,7 +3103,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         EmitRawChatEvent(payload);
 
         // Extract sessionKey for the timeline-driving event. As with agent
-        // events, do NOT substitute a fallback like "main" - empty must
+        // events, do NOT substitute a fallback like "main" — empty must
         // propagate so the provider's empty-key drop policy can surface the
         // protocol gap instead of silently routing into a synthetic bucket.
         var sessionKey = "";
@@ -3112,7 +3112,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (string.IsNullOrEmpty(sessionKey))
             _logger.Warn("[GatewayClient] Chat event missing sessionKey; will be dropped downstream.");
 
-        // Best-effort usage extraction - gateway emits this only on terminal
+        // Best-effort usage extraction — gateway emits this only on terminal
         // (state="final") events in practice; we still read it defensively
         // from common locations so any reasonable shape lights up the chat
         // footer pills.
@@ -3158,7 +3158,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
             if (role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
-                // HIGH 4: log shape only - content previously
+                // HIGH 4: log shape only — content previously
                 // surfaced in the operator log.
                 _logger.Info($"Assistant response: role={role} state={state} len={text.Length}");
                 EmitChatNotification(text, sessionKey);
@@ -3433,7 +3433,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var arr = new SessionInfo[_sessions.Count];
         _sessions.Values.CopyTo(arr, 0);
         // Defensive copy: subscribers read the snapshot with no lock, and the tracked
-        // instances keep being mutated in place under _sessionsLock - hand out clones.
+        // instances keep being mutated in place under _sessionsLock — hand out clones.
         for (var i = 0; i < arr.Length; i++) arr[i] = arr[i].Clone();
         Array.Sort(arr, static (a, b) =>
         {
@@ -3473,7 +3473,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             SessionInfo[] snapshot;
             lock (_sessionsLock)
             {
-                // Merge instead of clear - collect incoming keys, update/add, then remove absent
+                // Merge instead of clear — collect incoming keys, update/add, then remove absent
                 var incomingKeys = new HashSet<string>();
 
                 if (sessions.ValueKind == JsonValueKind.Array)
@@ -3732,7 +3732,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                         GetString(nodeElement, "os")),
                     // Gateway NodeListNode wire schema uses *Ms suffix; older
                     // fallbacks kept for compatibility with mocks/tests.
-                    // ConnectedAt is parsed independently below - do NOT fall
+                    // ConnectedAt is parsed independently below — do NOT fall
                     // back to it here, otherwise the UI shows the same value
                     // twice as both "Connected Xm ago" and "Seen Xm ago".
                     LastSeen = ParseUnixTimestampMs(nodeElement, "lastSeenAtMs") ??
@@ -4220,7 +4220,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // allocating an intermediate Replace'd string or a Split array.
         var span = path.AsSpan();
         int lastSep = span.LastIndexOfAny('/', '\\');
-        if (lastSep < 0) return path; // single component - no separator
+        if (lastSep < 0) return path; // single component — no separator
 
         var lastName = span[(lastSep + 1)..];
 

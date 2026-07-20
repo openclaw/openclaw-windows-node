@@ -54,9 +54,9 @@ public static class ChatMarkdownRenderer
         // Coalesce maximal runs of consecutive mergeable blocks (paragraphs,
         // headings, and "simple" bullet/numbered lists) into a single
         // RichTextBlock so the whole run is one continuous text-selection scope
-        // - a drag can select across paragraphs AND list items. Blocks that
+        // — a drag can select across paragraphs AND list items. Blocks that
         // carry their own chrome (code cards, table grids, block-quote borders,
-        // rules) - and any list that contains such a block - stay as their own
+        // rules) — and any list that contains such a block — stay as their own
         // selectable sibling controls, keeping their existing layout.
         var blocks = document.Blocks;
         var segments = new List<Element?>(blocks.Count);
@@ -71,14 +71,14 @@ public static class ChatMarkdownRenderer
                 if (count == 1 && blocks[start] is MdParagraph or MdHeading)
                 {
                     // A lone paragraph / heading keeps the lightweight
-                    // single-TextBlock shape (already internally selectable) -
+                    // single-TextBlock shape (already internally selectable) —
                     // no behavior change.
                     var single = RenderBlock(blocks[start]);
                     if (single is not null) segments.Add(single);
                 }
                 else
                 {
-                    // Multi-block prose runs - and any run containing a list -
+                    // Multi-block prose runs — and any run containing a list —
                     // become one continuous RichTextBlock so paragraphs,
                     // headings, and list items share a single selection scope.
                     var run = new List<MdBlock>(count);
@@ -102,7 +102,7 @@ public static class ChatMarkdownRenderer
     // Blocks that can flow into one continuous RichTextBlock: prose (paragraphs,
     // headings) and "simple" lists whose items contain only more mergeable
     // blocks. A list containing a code block, table, block quote, thematic
-    // break, or raw block is NOT mergeable - it keeps its own layout as a
+    // break, or raw block is NOT mergeable — it keeps its own layout as a
     // sibling island so that chrome (code cards, table grids) survives and the
     // list's non-text children stay selectable in their native form.
     private static bool IsMergeable(MdBlock block) => block switch
@@ -131,7 +131,7 @@ public static class ChatMarkdownRenderer
     // Bounded AST cache so the per-tick FunctionalUI re-render of a chat
     // bubble doesn't reparse the same markdown source. We cache the parsed
     // AST (cheap to retain, pure-data records) and always rebuild a fresh
-    // Element tree from it - WinUI elements can only live in one visual
+    // Element tree from it — WinUI elements can only live in one visual
     // parent slot, so re-using rendered Elements across mounts is unsafe.
     private const int CacheCapacity = 64;
     private static readonly object s_cacheLock = new();
@@ -363,7 +363,7 @@ public static class ChatMarkdownRenderer
 
     // ────────────────────────────────────────────────────────────────────
     //  Lists coalesced into the shared RichTextBlock (hanging-indent
-    //  paragraphs) - one continuous selection scope with the surrounding
+    //  paragraphs) — one continuous selection scope with the surrounding
     //  prose. Only reached for "simple" lists (see IsSimpleList); lists that
     //  carry chrome-bearing children render via RenderList as their own island.
     // ────────────────────────────────────────────────────────────────────
@@ -373,7 +373,7 @@ public static class ChatMarkdownRenderer
     // Fixed offset from a list item's marker column to its text/content column.
     // Applied as a hanging indent (negative TextIndent on the marker line) so
     // wrapped lines and continuation paragraphs align under the text rather than
-    // back at the marker - approximating the Grid path's Auto/Star columns with
+    // back at the marker — approximating the Grid path's Auto/Star columns with
     // the flat Paragraph model (which has no per-item measured marker width).
     private const double ListHangingIndent = 18.0;
     // Marker → text separator. En space gives a stable, font-independent gap
@@ -440,7 +440,7 @@ public static class ChatMarkdownRenderer
         }
         if (!markerEmitted)
         {
-            // Empty item - still emit the marker so numbering stays consistent.
+            // Empty item — still emit the marker so numbering stays consistent.
             rtb.Blocks.Add(BuildListParagraph(
                 rtb, Array.Empty<MdInline>(), indent, marker, leadGap));
         }
@@ -473,7 +473,7 @@ public static class ChatMarkdownRenderer
     // MdParagraph / MdHeading records compare their MdInline lists by reference,
     // so two equivalent-but-distinct block instances (produced when the bounded
     // GetOrParse AST cache evicts and re-parses an unchanged message) would
-    // compare unequal and needlessly rebuild Blocks - wiping the active
+    // compare unequal and needlessly rebuild Blocks — wiping the active
     // selection. MdInline subtypes are value-comparable, so comparing the inline
     // sequences by value keeps the selection-preservation guarantee independent
     // of parser-cache residency.
@@ -539,7 +539,7 @@ public static class ChatMarkdownRenderer
                 return p;
             }
             default:
-                // Only paragraphs / headings reach this method - lists flow
+                // Only paragraphs / headings reach this method — lists flow
                 // through AppendList, other blocks render as sibling islands.
                 return new Paragraph { FontSize = BodyFontSize };
         }
@@ -651,7 +651,7 @@ public static class ChatMarkdownRenderer
 
     private const string TableGridColor = "#40808080";
 
-    // Shared brush - avoids allocating one DependencyObject per cell on the UI thread.
+    // Shared brush — avoids allocating one DependencyObject per cell on the UI thread.
     // SolidColorBrush is freezable/lightweight, but we still construct it lazily on first
     // table render so type initialization doesn't run in headless test contexts that
     // never touch a renderer.
@@ -723,7 +723,7 @@ public static class ChatMarkdownRenderer
             MdColumnAlignment.Center => tb.HAlign(HorizontalAlignment.Center),
             _                        => tb,
         };
-        // Per-cell top/left strokes only - the table-level Border closes
+        // Per-cell top/left strokes only — the table-level Border closes
         // the bottom/right edges. This produces a uniform 1px grid with
         // no double-thickness interior lines.
         double leftThickness = colIndex == 0 ? 0 : 1;

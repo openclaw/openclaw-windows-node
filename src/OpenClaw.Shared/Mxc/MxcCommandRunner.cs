@@ -13,9 +13,9 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Honors <see cref="SettingsData.SystemRunSandboxEnabled"/>:
 /// <list type="bullet">
-/// <item><c>true</c> (default) - sandbox via MXC when available; fall back uncontained when MXC is unavailable.</item>
-/// <item><c>true</c> with <see cref="SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable"/> set to <c>true</c> - deny when MXC is unavailable.</item>
-/// <item><c>false</c> - bypass MXC; route through the host runner.</item>
+/// <item><c>true</c> (default) — sandbox via MXC when available; fall back uncontained when MXC is unavailable.</item>
+/// <item><c>true</c> with <see cref="SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable"/> set to <c>true</c> — deny when MXC is unavailable.</item>
+/// <item><c>false</c> — bypass MXC; route through the host runner.</item>
 /// </list>
 /// </remarks>
 public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
@@ -169,7 +169,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
         }
         catch (SandboxUnavailableException ex)
         {
-            // Invalidate any cached availability - what we thought was available
+            // Invalidate any cached availability — what we thought was available
             // turned out not to be at runtime. Next command re-probes and the
             // top-level !_isSandboxAvailable() branch will use the compatibility
             // fallback until MXC is available again.
@@ -219,7 +219,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
         {
             // Fail closed for ANY other error (bridge crashed, JSON malformed, IO
             // failure on stdin). Returning a -1 CommandResult is what the agent
-            // pipeline understands - letting the exception escape here can crash
+            // pipeline understands — letting the exception escape here can crash
             // the node loop and ultimately the tray.
             _logger.Warn($"[mxc] system.run sandbox execution failed: {ex.GetType().Name}: {ex.Message}");
             return new CommandResult

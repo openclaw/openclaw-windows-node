@@ -7,7 +7,7 @@ namespace OpenClawTray.A2UI.Actions;
 
 /// <summary>
 /// Per-node identity / session context the transport needs to format the
-/// CANVAS_A2UI message. Supplied by NodeService - sessionKey can change over
+/// CANVAS_A2UI message. Supplied by NodeService — sessionKey can change over
 /// the lifetime of the node (re-resolved on each delivery), the rest is
 /// effectively immutable per process.
 /// </summary>
@@ -15,9 +15,9 @@ public interface IGatewayActionContext
 {
     /// <summary>Logical session the action should be appended to. Defaults to "main".</summary>
     string SessionKey { get; }
-    /// <summary>Display name of this node (e.g. "Windows Node (DESKTOP-123)") - shown to the model as <c>host=</c>.</summary>
+    /// <summary>Display name of this node (e.g. "Windows Node (DESKTOP-123)") — shown to the model as <c>host=</c>.</summary>
     string Host { get; }
-    /// <summary>Stable per-device id, lowercased - shown to the model as <c>instance=</c>.</summary>
+    /// <summary>Stable per-device id, lowercased — shown to the model as <c>instance=</c>.</summary>
     string InstanceId { get; }
 }
 
@@ -39,7 +39,7 @@ public sealed class A2UIActionStatusEventArgs : EventArgs
 /// channel (the same path Android uses, see
 /// <c>NodeRuntime.handleCanvasA2UIActionFromWebView</c>). The gateway appends
 /// the message as a user turn in the named session and runs an agent step;
-/// there is no server-side action→tool registry - the model decides.
+/// there is no server-side action→tool registry — the model decides.
 /// </summary>
 public sealed class GatewayActionTransport : IA2UIActionTransport
 {
@@ -47,7 +47,7 @@ public sealed class GatewayActionTransport : IA2UIActionTransport
     private readonly IGatewayActionContext _context;
     private readonly IOpenClawLogger _logger;
 
-    /// <summary>Raised after each delivery attempt - successful or not.</summary>
+    /// <summary>Raised after each delivery attempt — successful or not.</summary>
     public event EventHandler<A2UIActionStatusEventArgs>? ActionStatus;
 
     public GatewayActionTransport(
@@ -87,7 +87,7 @@ public sealed class GatewayActionTransport : IA2UIActionTransport
 
     /// <summary>
     /// Build the <c>agent.request</c> deep-link payload that the gateway
-    /// receives via <c>node.event</c>. Pure helper - exposed for tests so the
+    /// receives via <c>node.event</c>. Pure helper — exposed for tests so the
     /// wire contract can be asserted without spinning up a real node client.
     /// </summary>
     public static JsonObject BuildAgentRequestPayload(Protocol.A2UIAction action, IGatewayActionContext context)
@@ -168,7 +168,7 @@ public sealed class LoggingActionTransport : IA2UIActionTransport
         }
         else
         {
-            // Default: identifiers only - drops the action context payload that
+            // Default: identifiers only — drops the action context payload that
             // would otherwise carry form/PII data into the log file.
             _logger.Info($"[A2UI] action '{action.Name}' from {action.SourceComponentId ?? "?"} on surface '{action.SurfaceId}' (no remote sink)");
         }

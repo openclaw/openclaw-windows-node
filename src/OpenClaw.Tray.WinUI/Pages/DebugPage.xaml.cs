@@ -34,7 +34,7 @@ namespace OpenClawTray.Pages;
 /// ConnectionPage.AddGatewayPanel.
 ///
 /// Observes the single application model (AppState) directly per
-/// docs/DATA_FLOW_ARCHITECTURE.md - no HubWindow dependency.
+/// docs/DATA_FLOW_ARCHITECTURE.md — no HubWindow dependency.
 /// </summary>
 public sealed partial class DebugPage : Page
 {
@@ -58,7 +58,7 @@ public sealed partial class DebugPage : Page
     // tokens (per docs/design/tokens.md) so the colors track
     // light/dark/HC themes and stay consistent with the ConnectionPage
     // status dots. (The connection event timeline lives in
-    // ConnectionStatusWindow, which still uses ARGB literals - flagged
+    // ConnectionStatusWindow, which still uses ARGB literals — flagged
     // as drift in docs/design/surfaces/diagnostics-page.md "Drift
     // candidates".)
     private static Brush ErrorTextBrush => (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
@@ -557,7 +557,7 @@ public sealed partial class DebugPage : Page
 
     // DispatcherTimer that auto-closes the inline "Copied" InfoBar so
     // the success notice doesn't linger after the user has moved on.
-    // Reused across copy actions - Start() restarts the countdown if
+    // Reused across copy actions — Start() restarts the countdown if
     // the user fires another copy before the previous tick.
     //
     // Lifecycle: created lazily on first ShowCopyFeedback, stopped + nulled
@@ -578,12 +578,12 @@ public sealed partial class DebugPage : Page
             _copyFeedbackTimer = new DispatcherTimer { Interval = CopyFeedbackDuration };
             _copyFeedbackTimer.Tick += (_, _) =>
             {
-                // Use ?.Stop() rather than !.Stop() - StopCopyFeedbackTimer()
+                // Use ?.Stop() rather than !.Stop() — StopCopyFeedbackTimer()
                 // may have nulled the field between queue-time and execute-time
                 // (DispatcherTimer.Stop in teardown does not cancel ticks
                 // already queued on the DispatcherQueue).
                 _copyFeedbackTimer?.Stop();
-                // IsLoaded guard: same reason - a tick queued before
+                // IsLoaded guard: same reason — a tick queued before
                 // teardown can still fire after Unloaded. Touching IsOpen
                 // on a detached FrameworkElement is undefined in WinUI 3.
                 if (CopyFeedbackInfoBar.IsLoaded)

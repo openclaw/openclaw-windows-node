@@ -2,7 +2,7 @@ namespace OpenClaw.Shared;
 
 /// <summary>
 /// Event args raised when a client receives a device token from the gateway
-/// during the hello-ok handshake. Additive event - clients continue to write
+/// during the hello-ok handshake. Additive event — clients continue to write
 /// tokens internally for backward compatibility.
 /// </summary>
 public sealed class DeviceTokenReceivedEventArgs : EventArgs

@@ -102,7 +102,7 @@ public sealed class TtsCapability : NodeCapabilityBase
             return new TtsProviderResolution(preferred, WindowsProvider, FellBack: true);
         }
 
-        // Nothing usable - surface the preferred provider so the dispatch
+        // Nothing usable — surface the preferred provider so the dispatch
         // layer's "not configured" error is about the provider the user asked
         // for, not an arbitrary fallback.
         return new TtsProviderResolution(preferred, preferred, FellBack: false);
@@ -268,7 +268,7 @@ public sealed class TtsProviderStatus
 /// Status surface for TTS, mirroring <c>stt.status</c>. Reports the
 /// configured default provider, the provider that would actually run now
 /// (after fallback), and per-provider readiness. The configured/effective
-/// view reflects the configured defaults only - a specific <c>tts.speak</c>
+/// view reflects the configured defaults only — a specific <c>tts.speak</c>
 /// call that supplies its own voiceId can still avoid a fallback that this
 /// snapshot reports. Carries no PII (no voice ids, no key fragments, no
 /// device names).

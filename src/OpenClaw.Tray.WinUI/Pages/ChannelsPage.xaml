@@ -7,11 +7,11 @@
 
     <!--
         ╔════════════════════════════════════════════════════════════════════╗
-        ║  Channels page - single-column Expander layout                     ║
+        ║  Channels page — single-column Expander layout                     ║
         ║                                                                    ║
         ║  Channels are surfaced as a vertical stack of Expander cards       ║
         ║  grouped into Configured / Available, matching the existing        ║
-        ║  ConnectionPage Expander pattern (no inner sidebar - the HubWindow ║
+        ║  ConnectionPage Expander pattern (no inner sidebar — the HubWindow ║
         ║  nav rail already provides outer navigation).                      ║
         ║                                                                    ║
         ║  Content within each card mirrors what the macOS Channels          ║
@@ -28,7 +28,7 @@
                         HorizontalAlignment="Stretch" MaxWidth="900">
 
                 <!-- ═════════════════════════════════════════════════════════
-                     PAGE HEADER - title + last-check meta + Refresh
+                     PAGE HEADER — title + last-check meta + Refresh
                      ═════════════════════════════════════════════════════════ -->
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -61,11 +61,11 @@
                      definitive supported-channels list). The title flags the
                      state; the body explains how channels work; the action
                      button opens the canonical docs. Hidden once the gateway
-                     reports at least one channel - no need to keep teaching
+                     reports at least one channel — no need to keep teaching
                      the page to a user who's clearly past that point.
 
                      Visibility starts Collapsed and is toggled alongside
-                     IsOpen via SetInfoBarOpen - InfoBar's IsOpen=false only
+                     IsOpen via SetInfoBarOpen — InfoBar's IsOpen=false only
                      hides its inner content, the control element itself
                      stays Visible to the StackPanel which then applies its
                      16-px Spacing around the (empty) bar. Explicitly
@@ -111,7 +111,7 @@
                          Visibility="Collapsed"/>
 
                 <!-- ═════════════════════════════════════════════════════════
-                     CONFIGURED GROUP - channels with active state
+                     CONFIGURED GROUP — channels with active state
                      ═════════════════════════════════════════════════════════ -->
                 <StackPanel x:Name="ConfiguredSection" Spacing="4" Visibility="Collapsed">
                     <TextBlock x:Uid="ChannelsPage_ConfiguredHeader" Text="CONFIGURED"
@@ -123,7 +123,7 @@
                 </StackPanel>
 
                 <!-- ═════════════════════════════════════════════════════════
-                     AVAILABLE GROUP - channels not yet configured
+                     AVAILABLE GROUP — channels not yet configured
                      ═════════════════════════════════════════════════════════ -->
                 <StackPanel x:Name="AvailableSection" Spacing="4" Visibility="Collapsed">
                     <TextBlock x:Uid="ChannelsPage_AvailableHeader" Text="AVAILABLE"
@@ -134,7 +134,7 @@
                     <StackPanel x:Name="AvailableList" Spacing="8"/>
                 </StackPanel>
 
-                <!-- Empty state - only visible when there are zero channels at all -->
+                <!-- Empty state — only visible when there are zero channels at all -->
                 <StackPanel x:Name="EmptyState" Spacing="8" HorizontalAlignment="Center" Margin="0,32,0,0"
                             Visibility="Collapsed">
                     <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Channels, Mode=OneTime}"

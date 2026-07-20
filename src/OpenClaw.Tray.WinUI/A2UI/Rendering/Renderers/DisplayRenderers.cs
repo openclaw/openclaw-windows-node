@@ -167,10 +167,10 @@ public sealed class ImageRenderer : IComponentRenderer
     {
         try
         {
-            // ImageSource is the common base of BitmapImage (raster) and SvgImageSource - Image.Source accepts either.
+            // ImageSource is the common base of BitmapImage (raster) and SvgImageSource — Image.Source accepts either.
             var src = await _media.LoadImageAsync(url, cancellationToken).ConfigureAwait(true);
             // Only commit if our token is still current. Volatile read is sufficient
-            // - UI thread is the only writer and we're awaited back onto it.
+            // — UI thread is the only writer and we're awaited back onto it.
             if (src != null && System.Threading.Volatile.Read(ref generation[0]) == token)
                 target.Source = src;
         }
@@ -251,7 +251,7 @@ public sealed class IconRenderer : IComponentRenderer
         ctx.WatchValue(c.Id, "name", nameVal, Update);
         // Prefer the A2UI label/description fields (they are human-readable
         // and localized by the agent). Fall back to NOT announcing the icon
-        // at all - the previous behavior would speak raw enum names like
+        // at all — the previous behavior would speak raw enum names like
         // "moreHoriz" or "accountCircle" to Narrator users, which is worse
         // than the icon being skipped. Decorative icons inside Buttons / Cards
         // already have parent labels for assistive tech.
@@ -302,7 +302,7 @@ public sealed class IconRenderer : IComponentRenderer
             "mail"             => "", // Mail
             "menu"             => "", // GlobalNavButton (hamburger)
             "moreVert"         => "", // More (vertical dots)
-            "moreHoriz"        => "", // More - no canonical horizontal in MDL2; reuse vertical
+            "moreHoriz"        => "", // More — no canonical horizontal in MDL2; reuse vertical
             "notificationsOff" => "", // RingerOff
             "notifications"    => "", // Ringer
             "payment"          => "", // Payment
@@ -345,7 +345,7 @@ public sealed class VideoRenderer : IComponentRenderer
         void Update()
         {
             var url = ctx.ResolveString(urlVal);
-            // Gate is allowlist + IP-literal-public only - DNS-rebinding pin
+            // Gate is allowlist + IP-literal-public only — DNS-rebinding pin
             // would not hold here because MediaSource.CreateFromUri does its
             // own resolution at playback. See MediaResolver.TryResolveMediaUri.
             var uri = string.IsNullOrEmpty(url) ? null : _media.TryResolveMediaUri(url);

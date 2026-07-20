@@ -79,7 +79,7 @@
                 </Border>
             </Grid>
 
-            <!-- Provider Breakdown card - real-time provider status (independent of the time range below). -->
+            <!-- Provider Breakdown card — real-time provider status (independent of the time range below). -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,8,0,0">
@@ -125,7 +125,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- Daily Cost card - header + time-range selector grouped together so
+            <!-- Daily Cost card — header + time-range selector grouped together so
                  the filter is visually scoped to the data inside the same card. -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

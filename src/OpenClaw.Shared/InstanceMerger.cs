@@ -8,7 +8,7 @@ namespace OpenClaw.Shared;
 /// (rich, Windows-paired only) into one ordered list for the Instances UI.
 /// </summary>
 /// <remarks>
-/// Match strategy is intentionally conservative - destructive actions (Rename/Forget)
+/// Match strategy is intentionally conservative — destructive actions (Rename/Forget)
 /// must never be attached to the wrong row. The fallback to host/displayName matching
 /// only applies when both sides are unambiguous on those values.
 /// </remarks>
@@ -39,7 +39,7 @@ public static class InstanceMerger
         // Two-pass match: do all strong (DeviceId/InstanceId → NodeId/ClientId)
         // matches FIRST, then weak (host → displayName) fallbacks on what's
         // left. Without this split, an earlier presence that matches a node by
-        // host would consume that node from the indexes - and a later presence
+        // host would consume that node from the indexes — and a later presence
         // entry with a strong DeviceId match for the same node would miss it
         // and render presence-only, losing the Rename/Forget surface.
         var matchByPresenceIndex = new GatewayNodeInfo?[presenceList.Count];
@@ -135,7 +135,7 @@ public static class InstanceMerger
     {
         var k = Normalize(key);
         if (k.Length == 0) return;
-        // Only remove the entry if it still points at the same node - a later
+        // Only remove the entry if it still points at the same node — a later
         // node with a colliding key (which AddIfMissing would have skipped)
         // never reached the index in the first place.
         if (map.TryGetValue(k, out var existing) && ReferenceEquals(existing, node))
@@ -297,7 +297,7 @@ public static class InstanceMerger
     }
 
     /// <summary>
-    /// Normalize the raw node status - return null when the value carries no extra
+    /// Normalize the raw node status — return null when the value carries no extra
     /// signal beyond what PresenceStatus already conveys (e.g. blank, "unknown",
     /// "online" for an active row).
     /// </summary>
@@ -413,7 +413,7 @@ public static class InstanceMerger
         string? ip = null,
         string? displayName = null)
     {
-        // Strongest identifiers first - any one of these is sufficient.
+        // Strongest identifiers first — any one of these is sufficient.
         var strong = Normalize(nodeId);
         if (strong.Length > 0) return "n:" + strong;
         strong = Normalize(deviceId);
@@ -421,7 +421,7 @@ public static class InstanceMerger
         strong = Normalize(instanceId);
         if (strong.Length > 0) return "i:" + strong;
 
-        // Weak identifiers - combine all that are present so two rows that
+        // Weak identifiers — combine all that are present so two rows that
         // share, say, a host name but live on different IPs remain distinct.
         var parts = new List<string>(3);
         var h = Normalize(host);

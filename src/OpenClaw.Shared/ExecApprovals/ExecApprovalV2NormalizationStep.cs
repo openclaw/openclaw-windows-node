@@ -30,7 +30,7 @@ public sealed class ExecApprovalV2NormalizationOutcome
 }
 
 // Steps 2-4 of the approval pipeline: normalize command form → resolve executable → build canonical identity.
-// Stateless - safe to call concurrently.
+// Stateless — safe to call concurrently.
 public static class ExecApprovalV2Normalizer
 {
     public static ExecApprovalV2NormalizationOutcome Normalize(ValidatedRunRequest request)
@@ -43,7 +43,7 @@ public static class ExecApprovalV2Normalizer
         var displayCommand = ShellQuoting.FormatExecCommand(argv);
 
         // rawCommand is null in Windows v1 (system.run does not carry it).
-        // EvaluationRawCommand stays null - correct and documented conservative output.
+        // EvaluationRawCommand stays null — correct and documented conservative output.
         string? evaluationRawCommand = null;
 
         // Singular resolution for state machine.
@@ -51,7 +51,7 @@ public static class ExecApprovalV2Normalizer
 
         // Multi-segment resolution for allowlist.
         // Empty list is fail-closed: no allowlist satisfaction possible.
-        // An empty list is NOT itself a denial at this step - the evaluator decides.
+        // An empty list is NOT itself a denial at this step — the evaluator decides.
         var allowlistResolutions = ExecCommandResolver.ResolveForAllowlist(
             argv, evaluationRawCommand, cwd, env);
 

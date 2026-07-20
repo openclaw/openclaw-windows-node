@@ -10,7 +10,7 @@ namespace OpenClaw.Shared.ExecApprovals;
 // Full coordinator pipeline: validate → normalize → buildContext → evaluate(pass1) →
 // prompt/fallback → evaluate(pass2) → side effects → final decision.
 // UI-free: no WinUI types. A SemaphoreSlim serializes the prompt+pass2 block.
-// Not wired in production src - verified by ProductionWiring_CoordinatorNotReferencedInSrc test.
+// Not wired in production src — verified by ProductionWiring_CoordinatorNotReferencedInSrc test.
 // Must be registered as singleton when wired: the SemaphoreSlim is per-instance.
 public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 {
@@ -20,7 +20,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     private readonly IOpenClawLogger _logger;
 
     // Serializes the prompt call + second-pass block.
-    // Does NOT protect validate/normalize/buildContext - those are stateless.
+    // Does NOT protect validate/normalize/buildContext — those are stateless.
     private readonly SemaphoreSlim _promptLock = new(1, 1);
 
     public ExecApprovalsCoordinator(
@@ -58,7 +58,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         // Step 3: buildContext
         var resolved = _store.ResolveReadOnly(identity.AgentId);
 
-        // Env injection guard - preserves SystemCapability.HandleRunAsync:343-351 behavior.
+        // Env injection guard — preserves SystemCapability.HandleRunAsync:343-351 behavior.
         // identity.Env is IReadOnlyDictionary; copy to Dictionary for Sanitize.
         var envInput = identity.Env is null
             ? null
@@ -92,7 +92,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             identity.AllowAlwaysPatterns,
             matches);
 
-        // Step 4: first pass (approvalDecision always null - pass2 decides based on user response)
+        // Step 4: first pass (approvalDecision always null — pass2 decides based on user response)
         var pass1 = ExecApprovalEvaluator.Evaluate(context, null);
         if (pass1 is ExecHostPolicyDecision.DenyOutcome denyPass1)
             return LogAndReturn(denyPass1.Error, correlationId,
@@ -144,7 +144,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                         canonical: context.DisplayCommand);
                 }
 
-                // Allow (plain) from a prompt handler is an invariant violation -
+                // Allow (plain) from a prompt handler is an invariant violation —
                 // only AllowOnce and AllowAlways are semantically valid from UI.
                 if (promptResult == ExecApprovalPromptOutcome.Allow)
                 {
@@ -155,7 +155,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                         canonical: context.DisplayCommand);
                 }
 
-                // Allow is unreachable here - handled by the check above. The fallback arm
+                // Allow is unreachable here — handled by the check above. The fallback arm
                 // fails closed for invalid enum values that can still be cast at runtime.
                 followupDecision = promptResult switch
                 {
@@ -172,7 +172,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 followupDecision = FallbackDecision(context, resolved.Defaults.AskFallback);
             }
 
-            // Step 7: second pass - must never return RequiresPrompt
+            // Step 7: second pass — must never return RequiresPrompt
             var pass2 = ExecApprovalEvaluator.Evaluate(context, followupDecision);
             if (pass2 is ExecHostPolicyDecision.DenyOutcome denyPass2)
                 return LogAndReturn(denyPass2.Error, correlationId, promptAttempted, fallbackUsed,
@@ -184,7 +184,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 return LogAndReturn(ExecApprovalV2Result.InternalError("second-pass-requires-prompt"),
                     correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
             }
-            // pass2 is AllowOutcome - record whether AllowAlways was the prompt decision.
+            // pass2 is AllowOutcome — record whether AllowAlways was the prompt decision.
             persistAllowlistEntry = followupDecision == ExecApprovalDecision.AllowAlways;
         }
         finally
@@ -192,14 +192,14 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             _promptLock.Release();
         }
 
-        // Step 8: build payload before any store writes - a fail-closed payload result
+        // Step 8: build payload before any store writes — a fail-closed payload result
         // must not leave persistent allowlist state behind.
         var execution = BuildApprovedExecution(identity, sanitizedEnv);
         if (execution is null)
             return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
 
-        // Step 9: side effects - only reached when the payload is valid.
+        // Step 9: side effects — only reached when the payload is valid.
         // Each side effect is independently best-effort so a failure in one does not skip the other.
         if (persistAllowlistEntry && context.Security == ExecSecurity.Allowlist)
         {
@@ -235,7 +235,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     // was evaluated under: a relative argv[0] in the payload would let Windows
     // re-resolve it against PATH/cwd at execution time (a hijack), and the
     // direct-argv runner rejects non-absolute executables anyway. Returns null when
-    // the executable could not be resolved to a path - the caller fails closed
+    // the executable could not be resolved to a path — the caller fails closed
     // rather than execute a command whose identity we cannot pin.
     internal static ExecApprovedExecution? BuildApprovedExecution(
         CanonicalCommandIdentity identity,
@@ -329,7 +329,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         string correlationId)
         => new()
         {
-            DisplayCommand = context.DisplayCommand,  // NOT sanitized - presenter's responsibility
+            DisplayCommand = context.DisplayCommand,  // NOT sanitized — presenter's responsibility
             Cwd = identity.Cwd,
             Security = context.Security,
             Ask = context.Ask,
@@ -341,7 +341,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         };
 
     // Anti log-injection: replaces control characters in DisplayCommand before writing to logs.
-    // Truncates to 200 chars - sufficient for triage, bounded for disk-bound logs.
+    // Truncates to 200 chars — sufficient for triage, bounded for disk-bound logs.
     private static string SanitizeForLog(string? value)
     {
         if (string.IsNullOrEmpty(value)) return "";

@@ -27,7 +27,7 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Drive the node connection for the active gateway and await its terminal state.
-    /// Operator must already be Connected (caller responsibility - usually the easy-button
+    /// Operator must already be Connected (caller responsibility — usually the easy-button
     /// setup engine, which only invokes this after PairOperator completes).
     /// <para>
     /// Behavior:

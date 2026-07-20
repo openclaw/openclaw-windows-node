@@ -27,7 +27,7 @@ public sealed class WhisperModelManager
     /// <summary>
     /// Known Whisper model definitions.
     ///
-    /// SECURITY - pinned SHA-256 hashes (lowercase hex) verified against
+    /// SECURITY — pinned SHA-256 hashes (lowercase hex) verified against
     /// HuggingFace on 2026-05-05. Downloads with a different hash are
     /// rejected and the partial file is deleted. Before any public release:
     /// re-verify each hash from an independent source and document the
@@ -150,7 +150,7 @@ public sealed class WhisperModelManager
             // SECURITY: verify SHA-256 BEFORE the atomic rename, so a
             // tampered file never lands at the canonical path. On mismatch
             // we delete the temp file (no partial install) and surface a
-            // sanitized error - we deliberately do NOT echo the actual
+            // sanitized error — we deliberately do NOT echo the actual
             // hash because that gives an attacker a confirmation oracle.
             await VerifyHashAsync(tempPath, info.Sha256, info.Name, cancellationToken);
 
@@ -214,7 +214,7 @@ public sealed class WhisperModelManager
 /// <param name="DownloadUrl">HTTPS URL of the model file.</param>
 /// <param name="Sha256">Pinned lowercase hex SHA-256 of the downloaded file.
 /// MUST be set; downloads are refused when null. See the catalog for the
-/// "verified on" date - these need re-verification before any public
+/// "verified on" date — these need re-verification before any public
 /// release (see Audio_FollowUps.md §2).</param>
 public sealed record WhisperModelInfo(
     string FileName,

@@ -53,7 +53,7 @@ internal static class ExecEnvSanitizer
             "NPM_TOKEN",
             "OPENAI_API_KEY",
             // Interpreter/tool code-injection variables: they make an allow-listed tool run an
-            // attacker command without the command string ever changing - the same intent as the
+            // attacker command without the command string ever changing — the same intent as the
             // NODE_OPTIONS / PYTHONSTARTUP / GIT_SSH_COMMAND / BASH_ENV entries above, for the
             // native-tool forms those miss. (GIT_CONFIG_* is prefix-blocked in IsBlocked.)
             "GIT_PAGER",              // git runs the pager command on paged output
@@ -104,12 +104,12 @@ internal static class ExecEnvSanitizer
             return true;
 
         // Vectorized scan: any char in [0x00, 0x20] covers all ASCII control characters
-        // (0x01–0x1F) plus space (0x20) in a single SIMD pass - the common fast path for
+        // (0x01–0x1F) plus space (0x20) in a single SIMD pass — the common fast path for
         // the ASCII-only names that make up virtually all environment variable keys.
         var span = name.AsSpan();
         if (span.IndexOfAnyInRange('\x00', '\x20') >= 0)
             return true;
-        // DEL (0x7F) - control char outside the range above.
+        // DEL (0x7F) — control char outside the range above.
         if (span.IndexOf('\x7F') >= 0)
             return true;
         // Non-ASCII Unicode control / whitespace (rare; UTF-8 env var names are uncommon).

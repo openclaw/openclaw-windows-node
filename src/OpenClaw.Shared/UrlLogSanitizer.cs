@@ -8,7 +8,7 @@ namespace OpenClaw.Shared;
 /// and PII; the log-rotation policy on a developer machine is "never", so
 /// anything we put in the log file effectively lives forever.
 ///
-/// The shape is "scheme://host[:port]/<first-segment>/…" - enough to triage,
+/// The shape is "scheme://host[:port]/<first-segment>/…" — enough to triage,
 /// not enough to replay an OAuth callback or recover a credential. URLs that
 /// fail to parse are returned as the literal "&lt;unparseable URL&gt;" rather
 /// than echoed back, so a deliberately malformed string can't slip through.

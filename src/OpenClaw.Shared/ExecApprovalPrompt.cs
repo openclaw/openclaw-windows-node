@@ -48,7 +48,7 @@ public interface IExecApprovalPromptHandler
 /// <summary>
 /// Why the prompt resolved. Distinguishes a user's explicit click from
 /// non-interactive terminations (token cancellation, prompt failure)
-/// - all of which collapse to a Deny <see cref="ExecApprovalPromptDecisionKind"/>
+/// — all of which collapse to a Deny <see cref="ExecApprovalPromptDecisionKind"/>
 /// for safety but mean very different things to UI surfaces.
 /// </summary>
 public enum ExecApprovalPromptDecisionSource

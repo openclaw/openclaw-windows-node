@@ -15,18 +15,18 @@ namespace OpenClaw.Shared;
 /// All accessors are <em>total</em> (they never throw): a missing property, a
 /// JSON null, a value of the wrong <see cref="JsonValueKind"/>, or a non-object
 /// <paramref name="parent"/> yields the documented fallback (<c>null</c> / 0 /
-/// the caller-supplied fallback) rather than an exception - including a non-object
+/// the caller-supplied fallback) rather than an exception — including a non-object
 /// element, which <see cref="JsonElement.TryGetProperty(string, out JsonElement)"/>
 /// would otherwise throw on.
 ///
-/// <para><b>Scope - do not blindly migrate.</b> This is deliberately NOT a
+/// <para><b>Scope — do not blindly migrate.</b> This is deliberately NOT a
 /// drop-in for every private JSON helper in the repo. Several existing helpers
 /// have different contracts; routing them through these methods changes behavior
 /// and needs a call-site guard or a dedicated variant:</para>
 /// <list type="bullet">
 /// <item><c>Models.GetInt</c> / <c>Models.GetLong</c> return <c>int?</c> /
 /// <c>long?</c> (a null sentinel means "missing"), and <c>Models.GetLong</c> has
-/// no double-to-long fallback - the canonical <see cref="GetLong"/> instead
+/// no double-to-long fallback — the canonical <see cref="GetLong"/> instead
 /// truncates a fractional number.</item>
 /// <item><c>WorkspaceFilesModel.GetLong</c> rejects negatives (requires
 /// <c>&gt;= 0</c>); the canonical getters accept negative numbers.</item>

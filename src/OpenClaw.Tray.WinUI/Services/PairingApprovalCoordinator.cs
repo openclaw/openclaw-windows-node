@@ -64,7 +64,7 @@ public sealed class PairingApprovalCoordinator
 
     /// <summary>
     /// Raised when a submitted approve/reject is CONFIRMED by the gateway (the request left the
-    /// pending list). This is the authoritative success signal - it does not fire on send-ack alone.
+    /// pending list). This is the authoritative success signal — it does not fire on send-ack alone.
     /// </summary>
     public event EventHandler<PairingDecisionResult>? DecisionCompleted;
 
@@ -74,11 +74,11 @@ public sealed class PairingApprovalCoordinator
     /// <summary>
     /// Feed a fresh device/node pair-list snapshot. Diffs against prior state and raises the
     /// appropriate presentation events. A null list for a kind means "no fresh snapshot for that
-    /// kind" - its prior entries are carried forward rather than treated as resolved.
+    /// kind" — its prior entries are carried forward rather than treated as resolved.
     /// </summary>
     public void OnPairListsUpdated(DevicePairingListInfo? devices, PairingListInfo? nodes)
     {
-        // If we're not connected, an empty/missing list reflects lost visibility - NOT that
+        // If we're not connected, an empty/missing list reflects lost visibility — NOT that
         // requests resolved. Clearing silently here prevents a still-pending submitted decision
         // from being mis-reported as a confirmed success on disconnect, and drops stale approvals.
         var client = _getClient();
@@ -104,7 +104,7 @@ public sealed class PairingApprovalCoordinator
             return;
 
         // A submitted decision the gateway has now confirmed (request left the pending list) is the
-        // authoritative success signal - report it so the app shows the "approved/rejected" toast.
+        // authoritative success signal — report it so the app shows the "approved/rejected" toast.
         foreach (var resolved in delta.ConfirmedDecisions)
         {
             try
@@ -204,11 +204,11 @@ public sealed class PairingApprovalCoordinator
 
         // Legacy gateways may omit a request id; DecisionId then falls back to the device/node id.
         // The gateway may ignore that, but the confirmed-resolution model handles it gracefully: the
-        // request simply isn't confirmed, expires, and re-surfaces - no permanent hide, no false toast.
+        // request simply isn't confirmed, expires, and re-surfaces — no permanent hide, no false toast.
         if (string.IsNullOrEmpty(approval.RequestId))
             _logger.Info($"[PairApproval] No request id; submitting decision with device/node id fallback for '{key}'");
 
-        // Guard against a double decision for the same request - e.g. a stray
+        // Guard against a double decision for the same request — e.g. a stray
         // second click that slips through while the approve/reject RPC is still
         // in flight. Single-threaded (UI dispatcher), so a HashSet is sufficient.
         if (!_inFlight.Add(key))
@@ -220,7 +220,7 @@ public sealed class PairingApprovalCoordinator
         try
         {
             var client = _getClient();
-            // Re-check connection AND approval scope at decision time - the dialog may have been
+            // Re-check connection AND approval scope at decision time — the dialog may have been
             // open while scope was revoked or the operator reconnected with fewer scopes. The
             // approve/reject frame is "send-acknowledged" (not gateway-acked), so guarding here
             // avoids attempting an out-of-scope decision the gateway would silently reject.
@@ -255,7 +255,7 @@ public sealed class PairingApprovalCoordinator
                 // But first re-validate the exact connection: a disconnect/reconnect may have raced
                 // the await (and already Reset() the queue). Recording a submission against a new
                 // client would strand a likely-dropped frame and risk a later false confirmation, so
-                // treat it as not completed instead - the request re-surfaces on reconnect for a
+                // treat it as not completed instead — the request re-surfaces on reconnect for a
                 // clean retry.
                 var liveClient = _getClient();
                 if (!ReferenceEquals(liveClient, client) || !CanApproveWith(liveClient))

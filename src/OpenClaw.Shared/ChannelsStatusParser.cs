@@ -5,7 +5,7 @@ namespace OpenClaw.Shared;
 
 /// <summary>
 /// Parses the JSON payload of a <c>channels.status</c> response into a
-/// <see cref="ChannelsStatusSnapshot"/>. Tolerant of missing optional fields -
+/// <see cref="ChannelsStatusSnapshot"/>. Tolerant of missing optional fields —
 /// older gateways or plugin-only responses still parse.
 /// </summary>
 public static class ChannelsStatusParser

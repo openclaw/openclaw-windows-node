@@ -53,7 +53,7 @@ internal static class ExecEnvInvocationUnwrapper
                     continue;
                 }
 
-                return null; // Unknown flag - fail-closed.
+                return null; // Unknown flag — fail-closed.
             }
 
             break; // Executable token found.

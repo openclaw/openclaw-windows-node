@@ -15,7 +15,7 @@ public static class HttpUrlValidator
     /// <summary>
     /// Parse <paramref name="raw"/> and accept only absolute http/https URLs
     /// with a non-empty host and no userinfo. On success, <paramref name="canonical"/>
-    /// is the re-serialized form (<see cref="Uri.AbsoluteUri"/>) - what the
+    /// is the re-serialized form (<see cref="Uri.AbsoluteUri"/>) — what the
     /// caller should hand to the OS, not the raw input string.
     /// </summary>
     public static bool TryParse(string? raw, out string? canonical, out string? error)

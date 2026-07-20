@@ -70,7 +70,7 @@ public record class SettingsData
     /// capability's declared command list (so they don't appear in the
     /// connect handshake or in MCP <c>tools/list</c>) and invocations are
     /// rejected defensively. Per-command exec approvals still apply when
-    /// enabled. Default <c>true</c> for backward compatibility - exec has
+    /// enabled. Default <c>true</c> for backward compatibility — exec has
     /// been part of the Windows node since day one.
     /// </summary>
     public bool NodeSystemRunEnabled { get; set; } = true;
@@ -107,7 +107,7 @@ public record class SettingsData
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>
     /// Hostnames the A2UI image renderer is allowed to fetch over HTTPS.
-    /// Empty by default - agents can still ship inline data: images. Add hosts
+    /// Empty by default — agents can still ship inline data: images. Add hosts
     /// (e.g., "cdn.example.com") via the Settings window.
     /// </summary>
     public List<string>? A2UIImageHosts { get; set; }
@@ -170,12 +170,12 @@ public record class SettingsData
 
     /// <summary>
     /// When sandboxed, allow system.run commands to reach the public internet.
-    /// Default false - most shell commands are local-only.
+    /// Default false — most shell commands are local-only.
     /// </summary>
     public bool SystemRunAllowOutbound { get; set; } = false;
 
     /// <summary>
-    /// Clipboard access policy inside the sandbox. Default <c>None</c> - the
+    /// Clipboard access policy inside the sandbox. Default <c>None</c> — the
     /// sandboxed payload cannot see or change the user's clipboard.
     /// </summary>
     public SandboxClipboardMode SandboxClipboard { get; set; } = SandboxClipboardMode.None;

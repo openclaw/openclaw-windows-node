@@ -30,10 +30,10 @@ namespace OpenClawTray.Chat;
 /// toolbar row:
 ///
 /// <list type="bullet">
-///   <item><description>LEFT cluster - an Add (+) subtle icon button followed by
+///   <item><description>LEFT cluster — an Add (+) subtle icon button followed by
 ///     subtle text+chevron pickers for the session/channel, model, and reasoning
 ///     effort (menu-flyout dropdowns, not ComboBoxes).</description></item>
-///   <item><description>RIGHT cluster - Dictate and speaker subtle icon buttons
+///   <item><description>RIGHT cluster — Dictate and speaker subtle icon buttons
 ///     plus one primary action slot that switches between accent <c>Send</c> and
 ///     neutral <c>Stop</c>.</description></item>
 /// </list>
@@ -106,7 +106,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 
     public override Element Render()
     {
-        // UseRef for input text - avoids full-tree re-render on every keypress.
+        // UseRef for input text — avoids full-tree re-render on every keypress.
         // A separate hasTextState tracks the empty↔non-empty transition so the
         // send button accent styling updates correctly (at most 2 re-renders
         // per compose cycle instead of one per keypress).
@@ -134,7 +134,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // Track whether the mic is actively recording for visual indicator.
         var isRecording = UseState(false, threadSafe: true);
         var voiceCtsRef = UseRef<CancellationTokenSource?>(null);
-        // When true, a stop (not cancel) was requested - keep the transcript.
+        // When true, a stop (not cancel) was requested — keep the transcript.
         var voiceStoppedRef = UseRef(false);
         // TextBox reference for focusing after recording completes
         var textBoxRef = UseRef<TextBox?>(null);
@@ -176,7 +176,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             var cts = new CancellationTokenSource();
             voiceCtsRef.Current = cts;
             voiceStoppedRef.Current = false;
-            // Don't set isRecording yet - the request may show a dialog
+            // Don't set isRecording yet — the request may show a dialog
             // (e.g. STT model not installed) and return null immediately.
             _ = Task.Run(async () =>
             {
@@ -261,7 +261,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // richer content flyout (built below, once model choices are resolved) so
         // each session can show its associated model as a second-line subtext.
         // All pickers carry the same SubtleButton hover/press treatment as the
-        // icon buttons - no accent, no hard-coded colors - so light/dark/
+        // icon buttons — no accent, no hard-coded colors — so light/dark/
         // high-contrast all stay correct. Menus open upward (Top) since the
         // composer sits at the bottom of the chat surface.
 
@@ -339,7 +339,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         }
         var modelMenu = MenuItems(FlyoutPlacementMode.Top, modelMenuItems.ToArray());
 
-        // Compact label for the model picker button - just the model's display
+        // Compact label for the model picker button — just the model's display
         // name (menu rows carry the provider/context/state detail).
         string modelPickerLabel = trackingDefault
             ? (defaultChoice?.DisplayName ?? "Default")
@@ -510,7 +510,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 
         // Lazily fetch the catalog when the menu opens without one. Keyed via
         // UseEffect on the (open + missing-catalog) transition so the request
-        // fires once on that edge - not as a render side effect, and not on every
+        // fires once on that edge — not as a render side effect, and not on every
         // keystroke while loading. If a fetch fails and the catalog stays null the
         // deps don't change, so it won't retry until the menu is reopened.
         // EnsureCommandCatalogAsync is itself cached + in-flight guarded.
@@ -523,7 +523,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         IReadOnlyList<GatewayCommand> slashResults = Array.Empty<GatewayCommand>();
         IReadOnlyList<CommandCategoryGroup> slashGroups = Array.Empty<CommandCategoryGroup>();
         // Index (within the flattened group order) of the GLOBAL best search match
-        // - the default keyboard selection, so display grouping never demotes a
+        // — the default keyboard selection, so display grouping never demotes a
         // strong later-bucket match behind a weak earlier-bucket one for Enter/Tab.
         var slashDefaultIndex = 0;
         if (slashActive && !slash.ArgsMode && Props.AvailableCommands is { } slashCmds)
@@ -635,7 +635,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 tb.MinHeight = 56;
                 tb.MaxHeight = 200;
                 tb.IsEnabled = isConnected;
-                // Strip the TextBox's own chrome - the wrapper Border below
+                // Strip the TextBox's own chrome — the wrapper Border below
                 // (composerInput) provides the unified border + corner radius
                 // so the optional attachment preview visually sits inside the
                 // same input "card" as the typed text.
@@ -688,7 +688,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 var key = e.Key;
 
                 // While the slash menu is open with results, the arrow keys
-                // navigate it and Enter/Tab autocompletes - instead of moving
+                // navigate it and Enter/Tab autocompletes — instead of moving
                 // the caret or sending the message. Works for both the command
                 // list and the argument-choice picker (slashSelectableCount and
                 // the Enter/Tab branch dispatch on the active mode).
@@ -740,7 +740,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     if (key == global::Windows.System.VirtualKey.Up
                         || key == global::Windows.System.VirtualKey.Down)
                     {
-                        // Nothing to move through - swallow so the caret doesn't jump.
+                        // Nothing to move through — swallow so the caret doesn't jump.
                         e.Handled = true;
                         return;
                     }
@@ -957,7 +957,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             attachmentPreview = VStack(6, pendingAttachments.Select(BuildAttachmentPreview).ToArray());
         }
 
-        // Composer "card" - wraps the attachment preview (if any) and the
+        // Composer "card" — wraps the attachment preview (if any) and the
         // textbox in a single bordered container so the preview reads as
         // content inside the chat input rather than a separate row.
         Element RenderQueuedMessages()
@@ -1122,7 +1122,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 
         var queuedPanel = RenderQueuedMessages();
 
-        // Inner text content - the border + fill now live on the unified
+        // Inner text content — the border + fill now live on the unified
         // composerSurface below, so this stays transparent/chromeless. Kept as
         // its own element (name preserved) so the attachment preview and
         // textbox read as one input region.
@@ -1219,7 +1219,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             voiceIndicator.Key = "voice-pill-hidden";
         }
 
-        // Subtle 32×32 icon button - transparent at rest, Fluent
+        // Subtle 32×32 icon button — transparent at rest, Fluent
         // SubtleFillColorSecondary on hover / Tertiary on press (theme
         // resources, so light/dark/high-contrast stay correct). Radius uses the
         // tighter ControlCornerRadius. Mirrors the design-system
@@ -1253,7 +1253,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             .AutomationName(tip)
             .SetToolTip(tip);
 
-        // Subtle inline picker - text label + chevron with the same
+        // Subtle inline picker — text label + chevron with the same
         // SubtleButton hover/press treatment as the icon buttons. Reads as a
         // quiet dropdown (no border/fill until hover), never an accent. The
         // MenuFlyout opens upward from the toolbar. Mirrors the design-system
@@ -1339,14 +1339,14 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         Element voiceCancelBtn = Empty();
         if (isRecording.Value)
         {
-            // Stop button - ends recording and keeps the transcript
+            // Stop button — ends recording and keeps the transcript
             voiceBtn = IconButton("\uE15B", "Stop recording", () =>
             {
                 voiceStoppedRef.Current = true;
                 voiceCtsRef.Current?.Cancel();
             }, foreground: new SolidColorBrush(Microsoft.UI.Colors.Red));
 
-            // Cancel button - discards recording entirely
+            // Cancel button — discards recording entirely
             voiceCancelBtn = IconButton("\uE711", "Cancel recording", () =>
             {
                 voiceStoppedRef.Current = false;
@@ -1361,7 +1361,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 startVoiceRecording);
         }
 
-        // Speaker mute - subtle icon button (never accent). Reflects TTS mute
+        // Speaker mute — subtle icon button (never accent). Reflects TTS mute
         // state via the glyph and toggles it through the host. Only rendered
         // when the host wires OnSpeakerToggle (chat surfaces with TTS).
         Element speakerBtn = Props.OnSpeakerToggle is not null
@@ -1399,7 +1399,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             }
             else if (slashResults.Count == 0)
             {
-                // No command matches the typed text - hide the palette entirely
+                // No command matches the typed text — hide the palette entirely
                 // (no "no matches" hint) so the composer reads as normal.
                 slashMenuVisible = false;
             }
@@ -1410,7 +1410,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             }
         }
 
-        // Primary action button - a single slot that shows Send when idle and
+        // Primary action button — a single slot that shows Send when idle and
         // the Stop button while the assistant is responding. Keeping one slot
         // (identical geometry) means the toolbar never reflows between states.
         // Follow-up messages can still be queued mid-turn via Enter.
@@ -1467,7 +1467,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         .AutomationName(sendTooltip)
         .SetToolTip(sendTooltip);
 
-        // Stop button - occupies the SAME action slot as Send (identical size)
+        // Stop button — occupies the SAME action slot as Send (identical size)
         // while the assistant is responding, so nothing in the toolbar shifts.
         // Uses a neutral text-primary fill (theme-adaptive black/white); red is
         // reserved for genuine error states. The glyph uses the base surface
@@ -1642,7 +1642,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
 
         // The arg-choice picker filters on a single token. Once the user types
         // whitespace within that token (e.g. completed "/model gpt-5 " and kept
-        // typing), they've moved past the picker - fall back to plain text so the
+        // typing), they've moved past the picker — fall back to plain text so the
         // menu doesn't keep trapping Enter/Tab on a value they've finished.
         if (rest.Any(char.IsWhiteSpace))
             return (false, string.Empty, false);
@@ -1870,7 +1870,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
     // Highlights every case-insensitive occurrence of the typed query inside a
     // row TextBlock (command name / description) with a soft accent tint, so it's
     // clear what the filter matched. Uses TextHighlighter (rectangular) because it
-    // is the only WinUI text-highlight that doesn't disturb the line layout -
+    // is the only WinUI text-highlight that doesn't disturb the line layout —
     // inline rounded "chip" elements (InlineUIContainer) render as superscript and
     // break the baseline. No-op when the query is empty or shorter than the text.
     private static void ApplyQueryHighlight(TextBlock tb, string? query)
@@ -1884,7 +1884,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             ?? new SolidColorBrush(Microsoft.UI.Colors.SteelBlue);
         // IMPORTANT: TextHighlighter ignores SolidColorBrush.Opacity (unlike a
         // normal element background), so the alpha must be baked into the Color
-        // itself - otherwise it renders the full, vivid accent. ~12% alpha gives
+        // itself — otherwise it renders the full, vivid accent. ~12% alpha gives
         // the same soft, muted blue-grey the old padded chip had.
         var ac = accent.Color;
         var tint = global::Windows.UI.Color.FromArgb(31, ac.R, ac.G, ac.B);
@@ -1892,7 +1892,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         {
             Background = new SolidColorBrush(tint),
             // Make the matched text pop over the tint (white in dark theme, near-
-            // black in light) - theme-aware via the primary text brush.
+            // black in light) — theme-aware via the primary text brush.
             Foreground = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"],
         };
 
@@ -2107,7 +2107,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
     /// Synchronously builds a <see cref="Microsoft.UI.Xaml.Media.Imaging.BitmapImage"/>
     /// from a base64-encoded image payload (PNG/JPEG/etc.). Returns
     /// <c>null</c> if the base64 string can't be decoded or the bitmap can't
-    /// be initialized - callers should fall back to a glyph in that case.
+    /// be initialized — callers should fall back to a glyph in that case.
     /// </summary>
     private static Microsoft.UI.Xaml.Media.Imaging.BitmapImage? TryCreateBitmapFromBase64(string base64)
     {
@@ -2171,7 +2171,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             reader.ReadBytes(buffer);
         }
 
-        // Use a timestamp filename - clipboard bitmaps have no original name.
+        // Use a timestamp filename — clipboard bitmaps have no original name.
         var fileName = $"pasted-image-{DateTime.Now:yyyyMMdd-HHmmss}.png";
         return new ChatAttachment
         {

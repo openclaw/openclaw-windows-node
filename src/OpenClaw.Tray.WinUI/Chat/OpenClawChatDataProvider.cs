@@ -106,7 +106,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly Dictionary<string, long> _activeRunStartSequences = new(); // sessionKey → lifecycle.start sequence
     private readonly Dictionary<string, int> _pendingAbortCounts = new(); // threads → count of pending aborts waiting for lifecycle.start
     private readonly HashSet<string> _abortedRunIds = new();             // runIds whose events should be suppressed
-    private readonly HashSet<string> _abortedThreads = new();            // threads with active abort - suppress chat messages (no runId on those)
+    private readonly HashSet<string> _abortedThreads = new();            // threads with active abort — suppress chat messages (no runId on those)
     private Dictionary<string, HashSet<string>> _persistedAbortedIds;    // threadId → set of __openclaw.id values (loaded from disk)
     private readonly SemaphoreSlim _persistLock = new(1, 1);             // serialize persist calls to avoid races
 
@@ -200,7 +200,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // one) for the current connection. Used to gate the synthetic
     // compose-only thread so the UI doesn't briefly render the welcome
     // zero-state in the window between hello-ok (HasHandshakeSnapshot)
-    // and the first sessions.list - at that point the gateway may still
+    // and the first sessions.list — at that point the gateway may still
     // be about to deliver real sessions for a returning user. Reset to
     // false on disconnect alongside `_status`.
     private bool _sessionsListReceived;
@@ -296,7 +296,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // edge that would normally trigger the models.list / sessions.list
         // refresh was missed. Now that our handlers are wired, ask the
         // bridge to send those requests proactively so the composer's
-        // channel + model dropdowns populate on first paint - without this,
+        // channel + model dropdowns populate on first paint — without this,
         // the dropdowns sit on a single placeholder until the user sends
         // their first message.
         _bridge.StartProactiveBootstrap();
@@ -361,7 +361,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         // Cache image attachments by filename so the timeline can render an
         // actual thumbnail preview (the display-text marker only carries the
-        // filename - see ImagePreviewCache notes).
+        // filename — see ImagePreviewCache notes).
         if (hasAttachments)
         {
             foreach (var a in attachments!)
@@ -401,7 +401,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (CanClearAssistantFallbackPromotionLocked(threadId))
                 _assistantFallbackPromotedThreads.Remove(threadId);
 
-            // Clear abort suppression - the user is starting a new interaction.
+            // Clear abort suppression — the user is starting a new interaction.
             // Also clear pending abort counts: if the user sends a new message,
             // any queued aborts from before should not fire against the new turn.
             _abortedThreads.Remove(threadId);
@@ -755,7 +755,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
             catch (Exception ex)
             {
-                // Abort RPC failed - clear suppression so the thread isn't permanently blocked.
+                // Abort RPC failed — clear suppression so the thread isn't permanently blocked.
                 lock (_gate)
                 {
                     _abortedThreads.Remove(threadId);
@@ -782,7 +782,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         // If there was a real in-flight turn, mark the partial assistant text
         // as aborted so users can tell it isn't a complete response (per spec
-        // Edge Cases - "Aborted runs: Show with abort indicator").
+        // Edge Cases — "Aborted runs: Show with abort indicator").
         if (hadActiveTurn)
         {
             ApplyEventAndPublish(threadId, new ChatStatusEvent("Aborted", ChatTone.Warning));
@@ -800,7 +800,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 _locallyInitiatedThreads.Remove(threadId);
         }
 
-        // Always clear local "turn active" state - the gateway will emit a
+        // Always clear local "turn active" state — the gateway will emit a
         // lifecycle.end if the abort succeeds, but we want the UI to reflect
         // the user's intent immediately.
         ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
@@ -809,7 +809,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// <summary>
     /// Fetch the conversation transcript for <paramref name="threadId"/> from
     /// the gateway (via <c>chat.history</c>) and fold it into the local
-    /// timeline. Idempotent - the first successful call per thread populates
+    /// timeline. Idempotent — the first successful call per thread populates
     /// the timeline; subsequent calls are no-ops unless <paramref name="force"/>
     /// is true. Safe to call from any thread.
     /// </summary>
@@ -939,7 +939,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     if (roleLower == "assistant") nextAssistantIsAborted = false; // reset after consuming
 
                     // Diagnostic: log shape (role + length + heuristic flags) only.
-                    // Never log the message text - see HIGH 4 logging audit.
+                    // Never log the message text — see HIGH 4 logging audit.
                     var isFlat = LooksLikeFlattenedToolOutput(text);
                     var isSys  = LooksLikeSystemControlNote(text);
                     Logger.Debug($"[ChatHistory] role='{roleLower}' len={text.Length} flat={isFlat} sys={isSys} aborted={shouldMarkAborted}");
@@ -952,7 +952,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             // history replay we render them as a dim audit-trail
                             // status entry so the user can scroll back and see
                             // that an approval decision was made on this thread
-                            // (whether by us or another client - origin is
+                            // (whether by us or another client — origin is
                             // indistinguishable on replay).
                             if (LooksLikeApprovalSlashCommand(text))
                             {
@@ -965,7 +965,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             }
                             // System-injected notes (the gateway sometimes wraps
                             // exec result reports in ``System (untrusted): ...``
-                            // and sends them as role=user) - render dim instead
+                            // and sends them as role=user) — render dim instead
                             // of as a giant user bubble. See the ChatHistory log.
                             if (LooksLikeSystemControlNote(text))
                             {
@@ -1006,7 +1006,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             }
                             // ── Heuristic recovery for history-flattened tool calls ──
                             // The gateway strips ``stream:"item"`` / ``command_output``
-                            // detail server-side when serving ``chat.history`` -
+                            // detail server-side when serving ``chat.history`` —
                             // raw exec output is replayed as plain assistant text.
                             // Detect these telltale shapes and route them through
                             // the chip pipeline so historic turns look like live ones.
@@ -1045,7 +1045,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
                         case "toolresult":
                         case "tool_result":
-                            // Verified empirically - gateway 2026.4.x emits
+                            // Verified empirically — gateway 2026.4.x emits
                             // ``role: "toolresult"`` for shell/exec tool output
                             // in chat.history (not the spec's ``"tool"``).
                             // Always route to a chip pair regardless of whether
@@ -1080,7 +1080,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             break;
 
                         default:
-                            // Unknown role - fall back to assistant rendering so it's
+                            // Unknown role — fall back to assistant rendering so it's
                             // at least visible. Bracket with TurnEnd to avoid
                             // collapsing into adjacent assistant entries.
                             Logger.Debug($"[ChatHistory]   → routed: ASSISTANT (unknown role '{roleLower}', fallback)");
@@ -1113,7 +1113,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 //   2. Content+timestamp dedup: only when BOTH sides have a
                 //      non-zero timestamp AND they agree within 2 seconds.
                 //   3. If either side's timestamp is missing/zero, KEEP the
-                //      live entry - visible duplication beats silent loss.
+                //      live entry — visible duplication beats silent loss.
                 if (prior.Entries.Count > 0)
                 {
                     var priorMeta = _entryMeta.TryGetValue(threadId, out var pm)
@@ -1181,7 +1181,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
                         // Rule 2: content+timestamp dedup only when BOTH sides
                         // have valid timestamps within 2 seconds. Otherwise
-                        // (Rule 3) fall through and keep the entry - silent
+                        // (Rule 3) fall through and keep the entry — silent
                         // data loss is worse than visible duplicates.
                         if (priorTs is { } pts && pts != default &&
                             rebuiltContentTimestamps.TryGetValue(ContentKey(entry.Kind, entry.Text), out var rebuiltTimes))
@@ -1298,13 +1298,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     public Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.CompletedTask; // Not supported by gateway - no-op.
+        return Task.CompletedTask; // Not supported by gateway — no-op.
     }
 
     public Task DeleteThreadAsync(string threadId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.CompletedTask; // Not supported by gateway - no-op.
+        return Task.CompletedTask; // Not supported by gateway — no-op.
     }
 
     public async Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken = default)
@@ -1400,7 +1400,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         int epoch;
         lock (_gate)
         {
-            // Only fetch while connected - the command catalog is a property of
+            // Only fetch while connected — the command catalog is a property of
             // the live gateway connection. A not-connected caller would just
             // land in the catch below.
             if (_status != ConnectionStatus.Connected)
@@ -1521,7 +1521,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // rather than the ``/approve <id> <decision>`` chat slash command.
         //
         // Why: slash commands are processed as ordinary chat input on the
-        // agent's main turn - but when an exec approval is pending, the agent
+        // agent's main turn — but when an exec approval is pending, the agent
         // is BLOCKED waiting on that approval. The slash command therefore
         // sits in the input queue until the run times out, by which point the
         // approval has already expired and the approve/deny is a no-op. The
@@ -2081,7 +2081,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (message is null) return;
 
         // The gateway must include a canonical sessionKey on every chat event.
-        // If it doesn't, that's a protocol bug - drop the event rather than
+        // If it doesn't, that's a protocol bug — drop the event rather than
         // routing it to a literal "main" bucket that can't possibly match the
         // optimistic timeline keyed by the canonical key. Surfacing the drop
         // here makes future protocol gaps visible instead of silently merging
@@ -2101,7 +2101,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // dupes; if the two frames differ by a single char the dupe
         // survives). The hash is seeded with a random value that rotates
         // on every tray restart, so it cannot be reproduced from a guessed
-        // plaintext outside this process - it is a per-run frame
+        // plaintext outside this process — it is a per-run frame
         // discriminator, not a content fingerprint.
         var traceText = message.Text ?? string.Empty;
         Logger.Info(
@@ -2172,7 +2172,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // "/approve <slug> allow-always",
             // "/deny <slug>") are transport, not user prose. If WE sent
             // it (matched + consumed from _localSentTexts) suppress the
-            // echo entirely - RespondToPermissionAsync already cleared
+            // echo entirely — RespondToPermissionAsync already cleared
             // the banner. If it came from ANOTHER client subscribed to
             // this thread, render a dim audit-trail status so the user
             // can still see that an approval decision was made elsewhere
@@ -2195,7 +2195,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     Logger.Debug($"[Approval] suppressed echo of our slash command on thread='{msgThreadId}'");
                     return;
                 }
-                // From another client - render as dim audit status.
+                // From another client — render as dim audit status.
                 ChatEntryMetadata? approvalMeta;
                 lock (_gate) { approvalMeta = BuildLiveMetaLocked(msgThreadId, message.Ts); }
                 ApplyEventAndPublish(msgThreadId,
@@ -2244,7 +2244,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 return;
             }
 
-            // Not a local echo - show it as a user message from another client.
+            // Not a local echo — show it as a user message from another client.
             if (!string.IsNullOrEmpty(message.Text))
             {
                 var userText = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(message.Text));
@@ -2369,11 +2369,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ChatResponseOutputKind.Assistant);
         // Both `state: "delta"` and `state: "final"` carry the cumulative
         // assistant text (the gateway's EmbeddedBlockChunker emits completed
-        // blocks, not token deltas - see spec §"Block Streaming"). Map both
+        // blocks, not token deltas — see spec §"Block Streaming"). Map both
         // to ChatMessageEvent so the reducer REPLACES the active assistant
         // entry's text. We tag delta frames with IsStreaming:true so the
         // reducer's reconcile-into-previous logic only collapses follow-up
-        // finals into a still-streaming preview - a finalised assistant
+        // finals into a still-streaming preview — a finalised assistant
         // from a completed earlier turn must not be silently overwritten
         // by a brand-new turn's reply (e.g. user → reply → tool → reply).
         // Final additionally ends the turn.
@@ -2442,7 +2442,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (evt is null) return;
         // As with chat events, every agent event must carry a canonical
-        // sessionKey. Drop the event rather than routing to "main" if missing -
+        // sessionKey. Drop the event rather than routing to "main" if missing —
         // see the rationale in OnChatMessageReceived.
         if (string.IsNullOrEmpty(evt.SessionKey))
         {
@@ -2506,7 +2506,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         Logger.Warn($"[ABORT] Deferred chat.abort failed: {ex.Message}");
                     }
                 }
-                // Always persist - scan history for user messages with missing/truncated responses.
+                // Always persist — scan history for user messages with missing/truncated responses.
                 await PersistAbortedMessageIdAsync(threadId);
             });
         }
@@ -2538,11 +2538,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // every other approval phase lands here as a null mapping.
             //
             // Guardrails:
-            //  • Whitelist terminal phases - we explicitly enumerate the
+            //  • Whitelist terminal phases — we explicitly enumerate the
             //    phases that mean "approval is done". Anything else (e.g. a
             //    future ``acknowledged``/``in_progress`` phase the gateway
             //    might add) must not wipe a live banner.
-            //  • Match by requestId - clear ONLY on a proven positive match
+            //  • Match by requestId — clear ONLY on a proven positive match
             //    between (evtSlug, evtApprovalId) and (pendingId, its
             //    recorded alternate id). The previous "clear unless we can
             //    prove a mismatch" default would wipe the banner when the
@@ -2575,14 +2575,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
                     if (string.IsNullOrEmpty(pendingId))
                     {
-                        // No live banner - nothing to clear, nothing to log loudly.
+                        // No live banner — nothing to clear, nothing to log loudly.
                         Logger.Debug($"[Approval] terminal phase='{phase}' for slug='{evtSlug}' approvalId='{evtApprovalId}' - no PendingPermission");
                     }
                     else if (ApprovalIdMatches(pendingId!, evtSlug, evtApprovalId))
                     {
                         // Honor the gateway's actual decision instead of always
                         // stamping Expired. The resolved echo races the local
-                        // RPC response on the same WebSocket - if Expired wins
+                        // RPC response on the same WebSocket — if Expired wins
                         // here, ResolvePermission's no-overwrite guard then
                         // blocks the user's Allow/Denied stamp from landing.
                         // Phase already passed IsTerminalApprovalPhase; use
@@ -2595,7 +2595,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     {
                         // Either the event carried no id (gateway protocol drift)
                         // or ids didn't match the live banner. Either way we must
-                        // not clear - preserving the banner is the safer default.
+                        // not clear — preserving the banner is the safer default.
                         Logger.Info($"[Approval] terminal phase='{phase}' slug='{evtSlug}' approvalId='{evtApprovalId}' did not match pending '{pendingId}' - banner preserved");
                     }
                 }
@@ -2755,7 +2755,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     _activeRunStartSequences.Remove(threadId);
 
                     // Clear thread-level abort suppression on terminal lifecycle events.
-                    // The turn is over - any remaining abort suppression is no longer needed.
+                    // The turn is over — any remaining abort suppression is no longer needed.
                     _abortedThreads.Remove(threadId);
                     // Clear locally-initiated flag only when no locally queued
                     // follow-up prompts remain for this thread. Multiple rapid
@@ -2772,7 +2772,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     if (_pendingAbortCounts.TryGetValue(threadId, out var lateCount) && lateCount > 0)
                     {
                         _pendingAbortCounts.Remove(threadId);
-                        deferredAbortRunId = evt.RunId; // may be null, that's ok - persist doesn't need it
+                        deferredAbortRunId = evt.RunId; // may be null, that's ok — persist doesn't need it
                         deferredAbortCount = lateCount;
                         Logger.Info($"[ABORT] Late deferred abort - lifecycle.end arrived with pending aborts for threadId='{threadId}' (pendingCount={lateCount})");
                     }
@@ -3724,7 +3724,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 // children (their output arrives on ``command_output``).
                 return MapItemEvent(evt);
             case "command_output":
-                // Shell command stdout/stderr - attach to the active tool
+                // Shell command stdout/stderr — attach to the active tool
                 // chip as its ``Tool output`` body.
                 return MapCommandOutputEvent(evt);
             case "job":
@@ -3738,7 +3738,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     // Whitelist of approval phases that mean "the approval is finished and
     // the banner should go away". Anything outside this set is treated as
-    // an intermediate / unknown phase and leaves the banner alone - that
+    // an intermediate / unknown phase and leaves the banner alone — that
     // way a future gateway phase like ``acknowledged`` or ``in_progress``
     // can't accidentally wipe a live banner.
     private static bool IsTerminalApprovalPhase(string phase)
@@ -3758,7 +3758,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // to the timeline decision badge. ``resolved`` carries an allow-* decision
     // upstream (see OpenClawGatewayClient.HandleExecApprovalEvent), so it maps to
     // Allowed. ``denied`` maps to Denied. Every other terminal phase (aborted,
-    // canceled/cancelled, expired, timeout, error) collapses to Expired - the
+    // canceled/cancelled, expired, timeout, error) collapses to Expired — the
     // "decided elsewhere or never decided" badge.
     private static ChatPermissionDecision MapTerminalPhaseToDecision(string phase, string? decision = null)
     {
@@ -3806,14 +3806,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     // Dedupe accepts both id forms (slug and full approvalId) so the same
     // approval doesn't render twice when two upstream paths surface it with
-    // different ids - e.g. the top-level ``exec.approval.requested``
+    // different ids — e.g. the top-level ``exec.approval.requested``
     // translator emits with the UUID while the agent-stream variant emits
     // with the shorter slug. If either form has been seen (or is already
     // linked to a seen form), suppress; when both forms are known, record the
     // link before suppressing so terminal events in either form can resolve.
     private bool MarkApprovalSeen(string requestId, string? altId = null)
     {
-        if (string.IsNullOrEmpty(requestId)) return true; // can't dedupe - render
+        if (string.IsNullOrEmpty(requestId)) return true; // can't dedupe — render
         lock (_approvalSeenLock)
         {
             RecordApprovalAltIdLocked(requestId, altId);
@@ -3905,7 +3905,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     }
 
     // Returns true if either of (evtPrimary, evtAlt) matches the pending
-    // request - checking pendingId directly AND its recorded alternate id
+    // request — checking pendingId directly AND its recorded alternate id
     // (see ``_approvalAltIds`` above). All three inputs may be empty;
     // empty values never match.
     private bool ApprovalIdMatches(string pendingId, string evtPrimary, string evtAlt)
@@ -4005,7 +4005,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
 
         // NOTE: Cumulative `content`/`text` blocks are intentionally ignored
-        // here - the gateway also fires a `chat.message` (role=assistant)
+        // here — the gateway also fires a `chat.message` (role=assistant)
         // event carrying the same cumulative text, which OnChatMessageReceived
         // already maps to ChatMessageEvent. Honoring both paths produced two
         // identical assistant bubbles per turn (delta-bubble sealed by
@@ -4080,7 +4080,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     /// <summary>
     /// Map ``stream: "item"`` agent events (the gateway's actual tool/command
-    /// lifecycle channel as of 2026.4.x - distinct from the spec's ``"tool"``
+    /// lifecycle channel as of 2026.4.x — distinct from the spec's ``"tool"``
     /// stream which has not been observed in the wild).
     ///
     /// Verified payload shape:
@@ -4133,7 +4133,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         {
             "start" => new ChatToolStartEvent(title, toolName, ToolCallId: itemId),
             // ``end`` flips the active tool's status to Success even when no
-            // command_output arrived (e.g. ``read``, ``glob`` - non-shell).
+            // command_output arrived (e.g. ``read``, ``glob`` — non-shell).
             // Use the title as a no-op output so the reducer marks Success.
             "end" => new ChatToolOutputEvent(string.Empty, ToolCallId: itemId),
             "error" => new ChatToolErrorEvent(title, ToolCallId: itemId),
@@ -4144,14 +4144,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// <summary>
     /// Map ``stream: "command_output"`` agent events. These carry shell
     /// stdout/stderr and may arrive in chunks (phase=delta) and as a final
-    /// (phase=end) - we attach the text to the currently-active tool chip.
+    /// (phase=end) — we attach the text to the currently-active tool chip.
     /// </summary>
     private static ChatEvent? MapCommandOutputEvent(AgentEventInfo evt)
     {
         if (evt.Data.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
 
         var phase = evt.Data.TryGetProperty("phase", out var phaseProp) ? phaseProp.GetString() ?? "" : "";
-        // Only emit on ``end`` - accumulating deltas into the same chip
+        // Only emit on ``end`` — accumulating deltas into the same chip
         // would require a new reducer event; the consolidated final
         // payload is enough to populate the body in one go.
         if (!string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase))
@@ -4172,7 +4172,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// <summary>
     /// Pull a short ``kind`` token out of the gateway's free-form ``title``
     /// for display in the chip header. Titles look like
-    /// ``"exec run command ..."`` or ``"read ./foo"`` - we take the first
+    /// ``"exec run command ..."`` or ``"read ./foo"`` — we take the first
     /// token before whitespace, lower-cased.
     /// </summary>
     private static string ExtractToolKindFromTitle(string title)
@@ -4402,7 +4402,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// user's behalf (<c>/approve &lt;slug&gt; allow-once</c>,
     /// <c>/approve &lt;slug&gt; allow-always</c>, or
     /// <c>/deny &lt;slug&gt;</c>). Matches the exact dashboard grammar
-    /// - not just the prefix - so legitimate user prose like
+    /// — not just the prefix — so legitimate user prose like
     /// "/approve the design changes" still renders as a normal bubble.
     /// </summary>
     /// <remarks>
@@ -4477,11 +4477,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // to minimize false positives in normal prose:
     //
     //   • Bold-close seam: lowercase/digit, then ``**``, then a capital
-    //     letter - i.e. a heading-style bold span immediately followed by
+    //     letter — i.e. a heading-style bold span immediately followed by
     //     new sentence text. Inline emphasis like ``**foo**bar`` is left
     //     alone (next char is lowercase).
     //   • Punctuation seam: lowercase/digit, then ``. ! ? :``, then a
-    //     capital letter - i.e. a sentence terminator immediately followed
+    //     capital letter — i.e. a sentence terminator immediately followed
     //     by a new sentence. Single-letter abbreviations such as ``U.S.A``
     //     are skipped (the lookbehind requires lowercase/digit, so ``S.A``
     //     doesn't match). File paths like ``C:\temp`` and URLs like
@@ -4501,12 +4501,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // from member-access in code identifiers (``Path.Combine``,
     // ``System.IO.File``, ``obj.Method``). Two guards do the work:
     //
-    //  • Lookbehind ``[a-z0-9][.!?:]`` - the punctuation must follow a
+    //  • Lookbehind ``[a-z0-9][.!?:]`` — the punctuation must follow a
     //    lowercase letter or digit. This already rejects ALL-CAPS
     //    abbreviations like ``U.S.A`` (S before the trailing ``.`` is
     //    uppercase, so the lookbehind fails).
     //
-    //  • Lookahead ``[A-Z][a-z]+(?:[\s,;:!?]|$)`` - the next word must be
+    //  • Lookahead ``[A-Z][a-z]+(?:[\s,;:!?]|$)`` — the next word must be
     //    a Pascal-case run (capital + ≥1 lowercase) followed immediately by
     //    whitespace, sentence punctuation, or end-of-string. That single
     //    trailing-char constraint is what rejects identifiers:
@@ -4530,7 +4530,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // content-block seams always have more prose after them.
     //
     // The whole pattern is a pair of zero-width assertions, so the
-    // replacement is a pure ``\n\n`` insert at the seam - no captured
+    // replacement is a pure ``\n\n`` insert at the seam — no captured
     // punctuation to re-emit.
     private static readonly System.Text.RegularExpressions.Regex s_seamSentencePunct =
         new(@"(?<=[a-z0-9][.!?:])(?=[A-Z][a-z]+[\s,;:!?])",
@@ -4541,7 +4541,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     /// <summary>
     /// Re-insert paragraph breaks at gateway-glued content-block seams in
-    /// an assistant message. Safe to call on any text - short text, text
+    /// an assistant message. Safe to call on any text — short text, text
     /// without seams, and text that is entirely fenced code all pass
     /// through unchanged. Fenced code blocks (``` ``` ``` ```) are skipped
     /// so JSON/code samples never get whitespace injected inside them.
@@ -4578,7 +4578,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             int fenceEnd = text.IndexOf("```", fenceStart + 3, System.StringComparison.Ordinal);
             if (fenceEnd < 0)
             {
-                // Unclosed fence - append the rest verbatim as code.
+                // Unclosed fence — append the rest verbatim as code.
                 sb.Append(text, fenceStart, text.Length - fenceStart);
                 break;
             }
@@ -4597,7 +4597,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         segment = s_seamBoldClose.Replace(segment, "$1\n\n");
         // s_seamSentencePunct is a zero-width assertion (lookbehind +
         // lookahead) so the replacement is a pure insert of "\n\n" at
-        // the seam - no captured punctuation to re-emit.
+        // the seam — no captured punctuation to re-emit.
         segment = s_seamSentencePunct.Replace(segment, "\n\n");
         return segment;
     }
@@ -4642,12 +4642,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     ///   <item>Opens with a UNC / POSIX system path that's almost always a
     ///     tool result (e.g. <c>\\wsl.localhost\</c>, <c>/usr/</c>).</item>
     ///   <item>Opens with the OpenClaw CLI version banner
-    ///     (<c>"OpenClaw 2026.4.23 ..."</c>) - these are <c>--help</c>
+    ///     (<c>"OpenClaw 2026.4.23 ..."</c>) — these are <c>--help</c>
     ///     dumps captured by an exec tool.</item>
     ///   <item>Contains both <c>Usage:</c> AND any of <c>Options:</c> /
-    ///     <c>Commands:</c> / <c>Examples:</c> / <c>Aliases:</c> -
+    ///     <c>Commands:</c> / <c>Examples:</c> / <c>Aliases:</c> —
     ///     classic CLI help layout.</item>
-    ///   <item>Has ≥ 5 CLI flag tokens (matches <c>s_cliFlagRegex</c>) -
+    ///   <item>Has ≥ 5 CLI flag tokens (matches <c>s_cliFlagRegex</c>) —
     ///     dense flag listings only show up in <c>--help</c> output.</item>
     /// </list>
     /// </summary>
@@ -4673,7 +4673,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             trimmed.StartsWith("OpenClaw v") ||
             trimmed.StartsWith("openclaw ")) return true;
 
-        // ── Usage: + (Options:|Commands:|Examples:|Aliases:) - generic CLI
+        // ── Usage: + (Options:|Commands:|Examples:|Aliases:) — generic CLI
         // help layout regardless of which tool emitted it.
         if (text.Contains("Usage:", StringComparison.Ordinal) &&
             (text.Contains("Options:", StringComparison.Ordinal) ||
@@ -4784,7 +4784,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// currently-unused
     /// <see cref="ChatModelChangedEvent"/> /
     /// <see cref="ChatPermissionRequestEvent"/> /
-    /// <see cref="ChatIntentEvent"/> shapes - these don't flow through
+    /// <see cref="ChatIntentEvent"/> shapes — these don't flow through
     /// <see cref="ApplyEventAndPublish"/> today but covering them now
     /// prevents a future caller from bypassing the cap when wiring
     /// them up. The <see cref="ChatTurnEndEvent"/> /
@@ -4855,7 +4855,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         // Capture metadata for any newly-created entries. Updates to
         // existing entries (e.g. UpsertAssistant on the active assistant)
-        // intentionally don't overwrite - the original creation timestamp
+        // intentionally don't overwrite — the original creation timestamp
         // for the turn is more useful than the most-recent-delta time.
         // EXCEPTION: if the new metadata carries usage tokens (only
         // emitted on terminal frames), merge them into the existing entry
@@ -5837,7 +5837,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private ChatDataSnapshot BuildSnapshotLocked()
     {
         // Build threads from the gateway's authoritative session list.
-        // No synthesis based on local timeline keys - the UI's compose target
+        // No synthesis based on local timeline keys — the UI's compose target
         // is exposed separately via ChatComposeTarget so the renderer can show
         // a usable composer even before the first session materializes server-
         // side (e.g. fresh install with zero sessions).
@@ -5851,7 +5851,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             && !string.IsNullOrWhiteSpace(composeKey)
             && _status == ConnectionStatus.Connected
             // Wait until sessions.list has been delivered for this
-            // connection - otherwise the UI may synthesize a compose-only
+            // connection — otherwise the UI may synthesize a compose-only
             // thread (and render the welcome zero-state) in the brief
             // window before a returning user's real sessions arrive.
             && _sessionsListReceived;
@@ -5863,7 +5863,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // falling back into the "no thread selected" zero state. The synthetic
         // thread's Id is the canonical compose key, so when SessionsUpdated
         // eventually arrives with the same key it replaces the synthetic in
-        // place - no migration, no re-keying.
+        // place — no migration, no re-keying.
         if (composeReady
             && composeKey is { } ck
             && _timelines.TryGetValue(ck, out var pendingTl)
@@ -6664,7 +6664,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (list.Count > MaxToolEntriesPerSession)
                 list.RemoveRange(0, list.Count - MaxToolEntriesPerSession);
 
-            // Debounce save - reset the timer on each cache addition so we only
+            // Debounce save — reset the timer on each cache addition so we only
             // write once after 500ms of quiescence, avoiding concurrent file writes.
             _toolMetaCacheDirty = true;
             saveVersion = ++_toolMetaSaveVersion;
@@ -6717,10 +6717,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // Both sequences are chronological. Consume the next cached entry
         // for each tool result we encounter in history.
         // Guard: if the history timestamp is much OLDER than the next cached
-        // entry, this toolresult predates our cache - skip it.
+        // entry, this toolresult predates our cache — skip it.
         var candidate = cache.Peek();
         if (historyTsMs > 0 && candidate.Ts > 0 && candidate.Ts > historyTsMs + 300_000)
-            return null; // cached entry is >5 min after this history entry - not a match
+            return null; // cached entry is >5 min after this history entry — not a match
 
         var match = cache.Dequeue();
         match.ToolName = NormalizeCachedDisplayText(match.ToolName);

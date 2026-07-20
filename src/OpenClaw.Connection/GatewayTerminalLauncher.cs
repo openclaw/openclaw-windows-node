@@ -36,7 +36,7 @@ public static class GatewayTerminalLaunchCommandBuilder
     // Runs `openclaw doctor` in the app-managed WSL gateway, then `exec bash`
     // so the terminal stays interactive after doctor exits. doctor is a rich
     // terminal TUI and frequently exits non-zero for advisory findings, so we
-    // neither capture its output nor gate the keep-open on its exit code - the
+    // neither capture its output nor gate the keep-open on its exit code — the
     // `|| true` absorbs the non-zero exit and `exec bash` always runs.
     //
     // IMPORTANT: the keep-open uses `&&` / `|| true &&`, NOT `;`. Windows Terminal
@@ -45,7 +45,7 @@ public static class GatewayTerminalLaunchCommandBuilder
     // launch " exec bash" → error 0x80070002). `&&` / `||` are not wt delimiters,
     // so the command passes through wt intact (verified with the app's
     // ProcessStartInfo.ArgumentList quoting), letting doctor open in a themed
-    // Windows Terminal tab - matching the Connection page's Open terminal action.
+    // Windows Terminal tab — matching the Connection page's Open terminal action.
     public static GatewayTerminalLaunchCommand BuildGatewayDoctor(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
     {
         if (accessPlan.TerminalTarget != GatewayTerminalTarget.Wsl || string.IsNullOrWhiteSpace(accessPlan.DistroName))
@@ -212,7 +212,7 @@ public sealed class GatewayTerminalLauncher(IOpenClawLogger logger) : IGatewayTe
         var startInfo = new ProcessStartInfo
         {
             FileName = command.FileName,
-            // Direct console apps (wsl.exe / ssh.exe - the doctor terminal and the
+            // Direct console apps (wsl.exe / ssh.exe — the doctor terminal and the
             // Open-terminal fallback) need ShellExecute so Windows allocates a
             // visible console window. Windows Terminal opens its own window, so it
             // keeps the lighter CreateProcess path.

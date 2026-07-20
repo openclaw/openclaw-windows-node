@@ -88,7 +88,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
     // SECURITY (chat-rubber-duck HIGH 1 / MEDIUM 3): chat-bubble Markdown is
     // rendered as sanitized inert text that:
-    //   1. Renders images as inert ``[Image: <alt>]`` text (no Uri fetch) -
+    //   1. Renders images as inert ``[Image: <alt>]`` text (no Uri fetch) —
     //      blocks SSRF / tracking-pixel beacons triggered by a compromised
     //      gateway, malicious tool output, or a prompt-injected model.
     //   2. Pre-strips inline link / image / ref-def syntax via
@@ -140,7 +140,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     // Keying by DispatcherQueue mirrors the brush cache above: one
     // shared instance per window, collected with its dispatcher.
     // Off-dispatcher callers (tests, design-time) get a one-shot
-    // uncached instance - correct, just not reused.
+    // uncached instance — correct, just not reused.
     private const string MonoFontFamilySource = "Cascadia Code, Cascadia Mono, Consolas";
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
         Microsoft.UI.Dispatching.DispatcherQueue, FontFamily> s_monoFontByDispatcher = new();
@@ -186,7 +186,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     // bubble. The bubble background is the user's chosen system accent
     // (which may be red, green, purple, …), so a hardcoded color would
     // clash whenever the accent is non-blue. SystemAccentColorDark2 is
-    // the OS-defined "darker shade of the current accent" - guaranteed
+    // the OS-defined "darker shade of the current accent" — guaranteed
     // darker than the bubble's AccentFillColorDefault background and
     // high-contrast against the bubble's white foreground for every
     // accent. In High Contrast the bubble switches to
@@ -255,7 +255,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             : TryGetThemeColor("SystemAccentColorDark2", Microsoft.UI.Colors.DarkBlue);
 
         // No dispatcher means we're being called off-thread (e.g.
-        // from a unit test). Allocate a one-shot brush - it can't be
+        // from a unit test). Allocate a one-shot brush — it can't be
         // safely cached without a dispatcher to key it on.
         if (dispatcher is null)
             return new SolidColorBrush(color);
@@ -510,7 +510,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // Per-entry expand state for tool chips. Tokens are
         // "{entryId}:call" and "{entryId}:out" so call and output
         // toggle independently. HashSet so the empty default is "all
-        // collapsed" - matches the web's default-collapsed look.
+        // collapsed" — matches the web's default-collapsed look.
         var expandedToolChips = UseState<HashSet<string>>(new HashSet<string>(), threadSafe: true);
 
         // Track the last-seen collapse version so we clear expanded
@@ -539,7 +539,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 stackPanel.Children.Clear();
         }
 
-        // Hover state - set of entry ids currently under the pointer. Used to
+        // Hover state — set of entry ids currently under the pointer. Used to
         // reveal the trash / speak action icons beside user / assistant
         // bubbles. Re-renders the whole timeline on hover transitions; that's
         // fine for the entry counts we deal with (typically <100 visible).
@@ -551,7 +551,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // without needing a ProgressRing (which renders awkwardly at small
         // sizes). DispatcherTimer fires on the UI thread so the reducer call
         // is safe. UseReducer (not UseState) because the timer-tick closure
-        // re-reads on each fire - UseState.Value is a render-time snapshot,
+        // re-reads on each fire — UseState.Value is a render-time snapshot,
         // so a long-lived timer would forever advance from the same stale
         // value. (Same reason as the AckAction reducer below.)
         var (thinkingDotPhase, thinkingDotPhaseUpdate) = UseReducer<int>(0, threadSafe: true);
@@ -568,12 +568,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             return () => timer.Stop();
         }), Props.ShowThinkingIndicator);
 
-        // Acknowledged actions - set of "entryId|actionKey" strings briefly
+        // Acknowledged actions — set of "entryId|actionKey" strings briefly
         // marked after a click so the icon can swap to a checkmark for ~1.2s
         // before reverting. Gives the user immediate "done" feedback for
         // Copy / Read aloud / Delete without a toast.
         // UseReducer (not UseState) so the updater always sees the LIVE
-        // hook value - UseState's `.Value` is a render-time snapshot, so
+        // hook value — UseState's `.Value` is a render-time snapshot, so
         // a delayed continuation that reads it later sees a stale set and
         // bails out, leaving the ack glyph stuck.
         var (ackedActionsValue, ackUpdate) = UseReducer<HashSet<string>>(new HashSet<string>(), threadSafe: true);
@@ -702,7 +702,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             });
         }
 
-        // Load more button - outside the repeated items
+        // Load more button — outside the repeated items
         var loadMoreButton = Props.HasMoreHistory
             ? Button(LocalizationHelper.GetString("Chat_Timeline_LoadEarlier"), () => Props.OnLoadMoreHistory?.Invoke())
                 .HAlign(HorizontalAlignment.Center)
@@ -735,7 +735,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         }
 
         // ── Web Control UI palette: "dash-light" theme (verified against the
-        // bundled assets/index-*.css - dash-light is what the user runs).
+        // bundled assets/index-*.css — dash-light is what the user runs).
         // Colors here mirror the CSS variables exactly so bubbles/avatars
         // look identical to the web at http://localhost:18789/chat.
         // ──────────────────────────────────────────────────────────────
@@ -755,7 +755,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var assistantBubbleBdr  = themeBrush("ControlStrokeColorDefaultBrush");
         // User bubble brushes vary with the configured tone. Accent → bold
         // brand-color bubble with white text (classic iMessage feel).
-        // Secondary → ``AccentFillColorSecondaryBrush`` - the same accent
+        // Secondary → ``AccentFillColorSecondaryBrush`` — the same accent
         // color at a softer fill weight. Both modes pair with
         // ``TextOnAccentFillColorPrimaryBrush``, which Fluent guarantees
         // meets WCAG AA contrast against any accent-tinted fill in both
@@ -777,7 +777,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // Tool chips: very subtle background tint + light border so they
         // read as a secondary surface distinct from the filled assistant
         // bubble without looking like an empty outlined box.
-        // CardBackgroundFillColorDefaultBrush is the right semantic key -
+        // CardBackgroundFillColorDefaultBrush is the right semantic key —
         // the bubble surface below is opaque (Mica/acrylic isn't being
         // used directly), so the LayerOnAcrylic family would render
         // incorrectly in dark/HC themes.
@@ -862,7 +862,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 b.Padding = new Thickness(7, 5, 7, 5);
                 b.MinWidth = 30; b.MinHeight = 26;
                 b.CornerRadius = new CornerRadius(13);
-                // Hide together with hover - once the pointer leaves the
+                // Hide together with hover — once the pointer leaves the
                 // bubble, the icon (whether ack'd or not) goes away too.
                 b.Opacity = visible ? 1.0 : 0.0;
                 b.IsHitTestVisible = visible;
@@ -881,7 +881,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // hoveredEntries on PointerEntered/Exited. Callers should wrap the
         // row in a Border with a transparent background so the WHOLE
         // bounding box (including the gap between bubble and footer) is
-        // hit-testable - otherwise moving the pointer down to a
+        // hit-testable — otherwise moving the pointer down to a
         // hover-revealed action button briefly exits the hover area and
         // hides the icon before the click lands.
         T WithHoverHandlers<T>(T el, string entryId) where T : Element
@@ -994,7 +994,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     .VAlign(VerticalAlignment.Center));
             }
 
-            // Hover actions - Copy + Read aloud. Placed at the END of the
+            // Hover actions — Copy + Read aloud. Placed at the END of the
             // footer so the timestamp/sender stay anchored on the left and
             // the empty space (when not hovered) trails off harmlessly to
             // the right instead of leaving an awkward gap before the time.
@@ -1023,7 +1023,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // User-bubble footer mirrors the assistant footer UX so the same
         // hover affordance shows up on both sides. Order is reversed for
         // the user side: hover actions sit on the LEFT and the timestamp
-        // anchors the FAR RIGHT (closest to the bubble corner) - matches
+        // anchors the FAR RIGHT (closest to the bubble corner) — matches
         // the user's reading direction when the bubble is right-aligned.
         Element BuildUserFooter(string sender, string time, Brush stampFg,
             string entryId, string entryText)
@@ -1082,7 +1082,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // ImagePreviewCache (populated on Send). Non-image attachments
             // remain as compact icon+name chips. Both are placed *inside* the
             // same bubble as the message text so the user sees a single
-            // unified message - matching how Slack/iMessage/etc. show
+            // unified message — matching how Slack/iMessage/etc. show
             // image-with-caption posts.
             var attachmentElements = new List<Element>();
             if (hasAttachments)
@@ -1193,8 +1193,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             t.MinWidth = 0;
                             t.MaxWidth = double.PositiveInfinity;
                             // The default SelectionHighlightColor is the
-                            // system accent - which equals the user bubble's
-                            // background - so the highlight band is invisible
+                            // system accent — which equals the user bubble's
+                            // background — so the highlight band is invisible
                             // against the bubble, and WinUI does NOT auto-
                             // invert an explicitly-set Foreground for
                             // selected glyphs. Outside High Contrast, use a
@@ -1211,7 +1211,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             t.SelectionHighlightColor = selectionHighlightBrush;
                             // Render the message as a single Paragraph (one Run)
                             // so the whole user message is one continuous
-                            // selection scope - matching the assistant bubble's
+                            // selection scope — matching the assistant bubble's
                             // RichTextBlock append-block pattern. The plain-text
                             // run keeps the bubble inert (no markdown / links).
                             ApplyPlainSelectableParagraph(t, messageText);
@@ -1297,7 +1297,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             if (string.IsNullOrEmpty(entry.Text) && nestedTool is null && overrideBubbleContent is null)
                 return Empty();
 
-            // Hidden by user toggle - collapses entire assistant block.
+            // Hidden by user toggle — collapses entire assistant block.
             if (!showAsstBubbles && !forceVisible)
                 return Empty();
 
@@ -1311,14 +1311,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     ? AssistantAvatar().VAlign(VerticalAlignment.Top)
                     : Border(Empty()).Size(36, 36));
 
-            // Assistant bubble - subtle gray with primary text. HAlign=Left
+            // Assistant bubble — subtle gray with primary text. HAlign=Left
             // keeps the bubble anchored next to the avatar/timestamp column.
             // MaxWidth=720 caps the growth so long messages stop where the
             // tool burst card's max right edge lands.
             // When `nestedTool` is supplied, the tool burst (single chip OR
             // collapsed multi-step summary) is rendered INSIDE the bubble's
-            // content area - directly below the assistant text with a small
-            // top gap - so it visually reads as a child of the bubble.
+            // content area — directly below the assistant text with a small
+            // top gap — so it visually reads as a child of the bubble.
             var assistantEntryMeta = MetaFor(entry.Id);
             Element bubbleContent = overrideBubbleContent ?? SafeMarkdownText(entry.Text);
             if (nestedTool != null)
@@ -1326,7 +1326,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 // Top gap (markdown bottom → tool card top) needs to be a
                 // little larger than the bubble's bottom padding so the
                 // optical spacing matches the gap from the tool card to the
-                // bubble's bottom edge - Markdown text has very tight
+                // bubble's bottom edge — Markdown text has very tight
                 // line-height with no trailing descender, so a literal-equal
                 // gap reads as visibly tighter on top.
                 var nestedTopGap = (int)Math.Round(bubblePadding.Bottom + 4);
@@ -1369,7 +1369,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // AutomationName: when the bubble nests a tool burst inside it,
             // UIA would treat the named container as a leaf and hide the
             // nested tool card from screen readers. Drop the bubble-level
-            // name in the nested case - the markdown text inside is read
+            // name in the nested case — the markdown text inside is read
             // out by UIA on its own, and Narrator can then traverse into
             // the nested tool card as a sibling child.
             var stack = VStack(2, bubbleRow, footer).HAlign(HorizontalAlignment.Stretch);
@@ -1398,7 +1398,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
             (string text, Brush bg, Brush fg) ResolveStatus(ChatTimelineItem entry)
             {
-                // Same palette as the previous chip - keeps continuity with
+                // Same palette as the previous chip — keeps continuity with
                 // Kenny's Cat04 tool cards. Running orange / Done green /
                 // Error critical / Interrupted grey.
                 switch (entry.ToolResult)
@@ -1443,7 +1443,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 var isExpanded = expandedToolChips.Value.Contains(token);
                 var chevron = isExpanded ? "▾" : "▸";
 
-                // Optional step prefix ("1.", "2.", …) - surfaced when the
+                // Optional step prefix ("1.", "2.", …) — surfaced when the
                 // explorations panel asks for explicit numbering and the burst
                 // contains more than one tool.
                 var labelText = string.IsNullOrEmpty(stepPrefix)
@@ -1456,7 +1456,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         // ⚡ / label / summary), Auto = status pill on the
                         // right. The Auto column always renders at its
                         // natural width, and the Star column is forced to
-                        // ``parent_width - pill_width`` during measure - so
+                        // ``parent_width - pill_width`` during measure — so
                         // Done can never be clipped by the card's rounded
                         // corner. Inside the Star column an inner Grid
                         // arranges the four left elements with summary in
@@ -1566,7 +1566,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                     .Set(t =>
                                     {
                                         // Hoisted static FontFamily is the
-                                        // critical bit - reassigning the same
+                                        // critical bit — reassigning the same
                                         // reference is a DP-equality no-op,
                                         // so this setter is safe to re-run on
                                         // every render without invalidating
@@ -1626,7 +1626,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         var bodyBorder = Border(VStack(0, sections.ToArray())).Background(blockHeaderBg);
                         // When this row is the last in the card AND expanded
                         // with actual content, the body sits at the bottom
-                        // edge - it must own the bottom rounded corners so
+                        // edge — it must own the bottom rounded corners so
                         // the row blends into the card instead of showing a
                         // square edge clipped by the card's rounding.
                         if (isLast)
@@ -1649,7 +1649,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     expandedToolChips.Set(next);
                 };
 
-                // Scope the toggle Button to the header only - the body
+                // Scope the toggle Button to the header only — the body
                 // contains selectable TextBlocks (TOOL OUTPUT / CALL), and
                 // wrapping body in the Button caused unhandled PointerReleased
                 // events inside the body's padding/whitespace to bubble up
@@ -1673,7 +1673,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     .Resources(r => r
                         .Set("ButtonBackground", new SolidColorBrush(Colors.Transparent))
                         // Subtler-than-default hover for tool cards (Scott
-                        // feedback): Tertiary on hover, Secondary on press -
+                        // feedback): Tertiary on hover, Secondary on press —
                         // one step lighter than the icon-button family. The
                         // themed brushes adapt to light/dark/HC automatically,
                         // unlike the previous 0x10/0x1C black-alpha overlays
@@ -1747,7 +1747,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     if (nested)
                     {
                         // Inside the assistant bubble: stretch to bubble's
-                        // content width - exactly 100%. No MinWidth, no
+                        // content width — exactly 100%. No MinWidth, no
                         // MaxWidth, no margin. The bubble's Padding already
                         // creates the visual inset from the rounded corners,
                         // and the headerRow's own Padding insets the Done
@@ -1771,7 +1771,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     // bind the tool card's Width to the bubble's ActualWidth
                     // minus the indent so the right edges stay parallel and
                     // the tool card visually nests inside the bubble's reading
-                    // column - regardless of how the bubble's content sized it.
+                    // column — regardless of how the bubble's content sized it.
                     var slotBubble = bubbleSlot != null ? bubbleSlot[0] : null;
                     if (slotBubble != null)
                     {
@@ -1825,7 +1825,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // Wrap the card in a left-anchored single-Star Grid so the card
             // is measured with the **finite** parent slot width instead of
             // infinity. Previously this used [Auto, Star] with the card in
-            // the Auto column, which gave the card unbounded measure - and
+            // the Auto column, which gave the card unbounded measure — and
             // when the summary text was long, the card grew to its MaxWidth
             // (720) and overflowed narrow chat viewports, clipping the
             // status pill on the right. With a single Star column the
@@ -1838,7 +1838,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 card.Grid(row: 0, column: 0)
             ).HAlign(HorizontalAlignment.Stretch);
 
-            // Build the per-step rows once - used by Plain and CompactSummary
+            // Build the per-step rows once — used by Plain and CompactSummary
             // (when expanded).
             var rows = new Element[entries.Count];
             for (int i = 0; i < entries.Count; i++)
@@ -1851,7 +1851,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
             // CompactSummary: a single collapsed-by-default row showing the
             // task summary; clicking expands the per-step list. Only worth it
-            // for multi-step bursts - single-step falls back to plain.
+            // for multi-step bursts — single-step falls back to plain.
             if (entries.Count > 1)
             {
                 var summaryToken = $"{entries[0].Id}:burst-summary";
@@ -1865,7 +1865,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     var expanding = next.Add(summaryToken);
                     if (!expanding) next.Remove(summaryToken);
                     // Suppress auto-follow so the scroll position stays put
-                    // while the card unfurls - the SizeChanged handler would
+                    // while the card unfurls — the SizeChanged handler would
                     // otherwise chase the new bottom.
                     suppressAutoFollowRef.Current = true;
                     expandedToolChips.Set(next);
@@ -1874,7 +1874,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 var summaryHeader = Border(
                     Grid(
                         // 2-col layout (left content Star + status pill Auto)
-                        // - see headerRow above for the rationale.
+                        // — see headerRow above for the rationale.
                         [GridSize.Star(), GridSize.Auto],
                         [GridSize.Auto],
                         Grid(
@@ -1947,14 +1947,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             return Wrap(CardOf(rows));
         }
 
-        // Legacy single-entry RenderToolEntry removed - all ToolCall rendering
+        // Legacy single-entry RenderToolEntry removed — all ToolCall rendering
         // goes through RenderToolBurst from the outer loop. The RenderEntry
         // switch returns Empty() for ToolCall since the outer loop coalesces
         // the burst itself.
 
         // Inline exec-approval bubble. Lives in the timeline so the
         // conversation history records "approval was requested for X" in
-        // chronological order - previously this was a banner pinned above
+        // chronological order — previously this was a banner pinned above
         // the composer (visible only while pending) and vanished entirely
         // after the user decided, leaving no trail.
         Element RenderPermissionEntry(ChatTimelineItem entry)
@@ -2042,7 +2042,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             }
             else
             {
-                // Decided badge - single-line summary. Glyph + state label
+                // Decided badge — single-line summary. Glyph + state label
                 // + truncated detail so users can scroll back and see what
                 // was approved/denied without expanding anything.
                 var (glyph, labelKey) = entry.PermissionDecision switch
@@ -2107,7 +2107,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             ChatTimelineItemKind.Assistant => RenderAssistantEntry(entry, startsBurst, endsBurst, showAvatar),
             ChatTimelineItemKind.ToolCall => Empty(),
 
-            // Reasoning - use a WinUI Expander with a "🧠 Thinking" header,
+            // Reasoning — use a WinUI Expander with a "🧠 Thinking" header,
             // matching Kenny's ComponentLibrary Cat03/NativeChatThread design.
             // Collapsed by default so the model thought trace doesn't crowd
             // the conversation; click to peek.
@@ -2141,7 +2141,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     Caption(LocalizationHelper.GetString("Chat_Reasoning_ThinkingEllipsis")).Foreground(TertiaryText)
                         .Set(t => { t.FontStyle = global::Windows.UI.Text.FontStyle.Italic; t.FontSize = 12; })),
 
-            // Permission request - inline approval bubble. Renders Allow/Deny
+            // Permission request — inline approval bubble. Renders Allow/Deny
             // buttons while the decision is Pending; collapses to a "decided"
             // badge once the user picks (or the gateway times the prompt out
             // and the backstop marks it Expired). Replaces the legacy banner
@@ -2150,10 +2150,10 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             ChatTimelineItemKind.PermissionRequest =>
                 RenderPermissionEntry(entry),
 
-            // Filtered status - drop transient connection chatter.
+            // Filtered status — drop transient connection chatter.
             ChatTimelineItemKind.Status when entry.Text.Contains("Restored") || entry.Text.Contains("Connecting to") || entry.Text.Contains("Connected") || entry.Text.Contains("Resuming") => Empty(),
 
-            // Error status - centered red pill (Kenny's Cat10 system-notice
+            // Error status — centered red pill (Kenny's Cat10 system-notice
             // pattern: small bordered capsule, tinted background, glyph + text).
             ChatTimelineItemKind.Status when entry.Tone == ChatTone.Error =>
                 Border(
@@ -2172,7 +2172,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                      .HAlign(HorizontalAlignment.Center)
                 ).Margin(0, 4, 0, 4),
 
-            // Generic status - small dim centered pill at 18% tint.
+            // Generic status — small dim centered pill at 18% tint.
             ChatTimelineItemKind.Status =>
                 Border(
                     Border(
@@ -2193,7 +2193,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
              _ => Empty()
         };
 
-        // Render entries - compute "burst" boundaries so consecutive
+        // Render entries — compute "burst" boundaries so consecutive
         // messages from the same role share a single avatar+footer.
         // A burst is delimited by a Kind change (User↔Assistant, or any
         // Tool/Status/Reasoning entry breaks both).
@@ -2204,7 +2204,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         // Agent-side kinds share a single avatar across a contiguous run so
         // a task card followed by an assistant bubble (or back-to-back
-        // assistant bubbles) reads as one speaker - only the topmost item
+        // assistant bubbles) reads as one speaker — only the topmost item
         // carries the avatar; subsequent items render an aligned spacer.
         static bool IsAgentSide(ChatTimelineItemKind k) =>
             k == ChatTimelineItemKind.Assistant || k == ChatTimelineItemKind.ToolCall;
@@ -2219,7 +2219,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // denied permission appears last as the outcome. Approved permission
         // badges keep their natural pre-tool position so they read as "user
         // accepted → tool ran". Exception: when any tool call in the turn failed, preserve
-        // insertion order so the error renders before the assistant's acknowledgement -
+        // insertion order so the error renders before the assistant's acknowledgement —
         // [User] → [Tool burst (error)] → [Assistant reply]. This places the final
         // assistant response at the scroll anchor (bottom), matching the web UI.
         // See issue #672.
@@ -2301,7 +2301,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         }
 
         // orderedIdx positions whose ToolCall entries have been "consumed" by
-        // an assistant bubble that nested them inline - render Empty() for
+        // an assistant bubble that nested them inline — render Empty() for
         // these so the burst doesn't appear twice (once inside the bubble,
         // once below it).
         var nestedConsumed = new System.Collections.Generic.HashSet<int>();
@@ -2324,7 +2324,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             if (b.Count == 1) return true;
             // Multi-step bursts collapse into a single summary row, so they
             // fit comfortably inside an assistant bubble even while a step is
-            // in-flight - the aggregate status pill shows Running/Done.
+            // in-flight — the aggregate status pill shows Running/Done.
             return true;
         }
 
@@ -2361,7 +2361,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (nestedConsumed.Contains(k))
                 {
                     // The assistant bubble above already rendered this burst
-                    // inline as a child element - emit nothing here.
+                    // inline as a child element — emit nothing here.
                     renderedEntries[k] = Empty().WithKey(RowKey(entry));
                     continue;
                 }
@@ -2535,7 +2535,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                 {
                                     if (scrollViewRef.Current is not { } sv) return;
 
-                                    // Pending scroll restoration from initialLoad - apply
+                                    // Pending scroll restoration from initialLoad — apply
                                     // once the layout is ready (ScrollableHeight > 0).
                                     if (pendingRestoreOffsetRef.Current is { } pendingOffset && sv.ScrollableHeight > 0)
                                     {

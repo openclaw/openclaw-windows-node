@@ -13,7 +13,7 @@ namespace OpenClaw.Shared.Audio;
 /// Manages downloads and on-disk lifecycle for Piper TTS voices.
 ///
 /// Each "voice" is a sherpa-onnx pre-packaged tarball that contains
-/// everything needed for offline synthesis - the .onnx model, the
+/// everything needed for offline synthesis — the .onnx model, the
 /// tokens.txt phoneme map, and the language-specific espeak-ng-data.
 /// We use the sherpa-onnx repackaged distribution rather than the raw
 /// HuggingFace Piper voices because the latter requires the user (or
@@ -49,7 +49,7 @@ public sealed class PiperVoiceManager
     /// download the tarball, compute its SHA-256, and pin it below.
     /// Sizes shown in the UI are approximate compressed sizes.
     ///
-    /// SECURITY - pinned SHA-256 hashes (lowercase hex) verified against
+    /// SECURITY — pinned SHA-256 hashes (lowercase hex) verified against
     /// the sherpa-onnx GitHub release on 2026-05-05. Downloads with a
     /// different hash are rejected and the partial tarball is deleted.
     /// Before any public release: re-verify each hash from an independent
@@ -117,7 +117,7 @@ public sealed class PiperVoiceManager
         }
         catch (Exception ex)
         {
-            // FindVoice throws on unknown voiceId - treat as not-downloaded.
+            // FindVoice throws on unknown voiceId — treat as not-downloaded.
             _logger.Debug($"PiperVoiceManager.IsVoiceDownloaded('{voiceId}'): {ex.Message}");
             return false;
         }
@@ -201,7 +201,7 @@ public sealed class PiperVoiceManager
             // hand it to the extractor. tar reads file contents to disk; an
             // attacker-controlled tarball could plant arbitrary files (path
             // traversal aside, the .onnx model itself is loaded into the
-            // process). Fail closed on mismatch - partial dir cleanup runs
+            // process). Fail closed on mismatch — partial dir cleanup runs
             // in the catch block below.
             await VerifyHashAsync(tarballPath, info.Sha256, info.VoiceId, cancellationToken);
 
@@ -220,7 +220,7 @@ public sealed class PiperVoiceManager
         }
         catch
         {
-            // Best-effort cleanup - leaves the user able to retry without
+            // Best-effort cleanup — leaves the user able to retry without
             // leftover partial files.
             try { if (File.Exists(tarballPath)) File.Delete(tarballPath); }
             catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: post-failure tarball cleanup failed: {cleanupEx.Message}"); }
@@ -356,7 +356,7 @@ public sealed class PiperVoiceManager
         using var proc = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
-        // Cancellation: kill the tar process if requested. Static context - no logger;
+        // Cancellation: kill the tar process if requested. Static context — no logger;
         // best-effort kill, the cancellation surfaces via the awaited WaitForExit.
         using var reg = cancellationToken.Register(() => { try { proc.Kill(entireProcessTree: true); } catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"PiperVoiceManager: tar cancellation kill failed: {ex.GetType().Name}: {ex.Message}"); } });
 
@@ -392,7 +392,7 @@ public sealed class PiperVoiceManager
 /// <param name="DownloadUrl">HTTPS URL of the .tar.bz2.</param>
 /// <param name="Sha256">Pinned lowercase hex SHA-256 of the downloaded
 /// tarball. MUST be set; downloads are refused when null. See the catalog
-/// for the "verified on" date - these need re-verification before any
+/// for the "verified on" date — these need re-verification before any
 /// public release (see Audio_FollowUps.md §2).</param>
 public sealed record PiperVoiceInfo(
     string VoiceId,

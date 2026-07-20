@@ -46,7 +46,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private readonly string _gatewayToken;
     private readonly string? _bootstrapToken;
     
-    // Cached serialization/validation - reused on every message instead of allocating per-call
+    // Cached serialization/validation — reused on every message instead of allocating per-call
     private static readonly JsonSerializerOptions s_ignoreNullOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -801,7 +801,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 _nodeId = nodeIdProp.GetString();
             }
             
-            // Check for device token in auth - if present, pairing is confirmed in this response.
+            // Check for device token in auth — if present, pairing is confirmed in this response.
             // Use gotNewToken to guard the fallback check below and avoid a double-fire of
             // PairingStatusChanged when the gateway includes auth.deviceToken in hello-ok.
             bool gotNewToken = false;
@@ -942,7 +942,7 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
-        // Rate-limit / terminal auth errors - stop reconnecting
+        // Rate-limit / terminal auth errors — stop reconnecting
         if (error.Contains("too many failed", StringComparison.OrdinalIgnoreCase) ||
             error.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
             error.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase) ||
@@ -955,7 +955,7 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
-        // v3 signature rejected - fall back to v2 for this session
+        // v3 signature rejected — fall back to v2 for this session
         if (error.Contains("device signature invalid", StringComparison.OrdinalIgnoreCase) ||
             errorCode == "DEVICE_AUTH_SIGNATURE_INVALID")
         {
@@ -1446,7 +1446,7 @@ public class WindowsNodeClient : WebSocketClientBase
     
     protected override bool ShouldAutoReconnect()
     {
-        // Don't reconnect while awaiting pairing approval - each reconnect
+        // Don't reconnect while awaiting pairing approval — each reconnect
         // generates a new pairing request on the gateway, causing a storm.
         // _pairingBlocked survives OnDisconnected (which clears _isPendingApproval).
         if (_pairingBlocked)
@@ -1462,7 +1462,7 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         _activeInvocations.CancelAll();
         _isConnected = false;
-        // Don't reset pairing state when disconnected due to pairing - gateway
+        // Don't reset pairing state when disconnected due to pairing — gateway
         // closes the socket after PAIRING_REQUIRED but we're still waiting for approval
         if (!_pairingBlocked)
         {

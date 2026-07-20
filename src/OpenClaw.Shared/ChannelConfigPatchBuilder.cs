@@ -10,7 +10,7 @@ namespace OpenClaw.Shared;
 ///
 /// Either <see cref="Patch"/> is set (caller sends it via <c>config.patch</c>)
 /// OR <see cref="BlockedReason"/> is set (caller refuses to send and surfaces
-/// the reason to the user - typically "you've got redacted secrets in other
+/// the reason to the user — typically "you've got redacted secrets in other
 /// channels that we can't safely round-trip; open the Config page instead").
 /// </summary>
 public sealed class ChannelPatchBuildResult
@@ -30,7 +30,7 @@ public sealed class ChannelPatchBuildResult
 /// cached gateway config snapshot, producing a full-config JsonElement
 /// suitable for the gateway's <c>config.patch { raw, baseHash }</c> wire.
 ///
-/// Necessary because the gateway (v2026.5+) only accepts whole-config writes -
+/// Necessary because the gateway (v2026.5+) only accepts whole-config writes —
 /// the legacy <c>config.set { path, value }</c> dot-path API was removed and
 /// per-field writes are rejected with "must have required property 'raw'".
 ///
@@ -39,14 +39,14 @@ public sealed class ChannelPatchBuildResult
 /// with their redaction sentinels. <see cref="BuildPatch"/> scans for the
 /// common sentinels (<c>[REDACTED]</c>, <c>&lt;redacted&gt;</c>, <c>***</c>)
 /// in fields OUTSIDE the channel being written and aborts the patch if any
-/// are found - caller should direct the user to the Config page in that
+/// are found — caller should direct the user to the Config page in that
 /// state.
 /// </summary>
 public static class ChannelConfigPatchBuilder
 {
     /// <summary>
     /// Redaction sentinel strings we've observed gateways use. Matched
-    /// case-insensitively, trimmed, and exactly - we don't want to false-
+    /// case-insensitively, trimmed, and exactly — we don't want to false-
     /// positive on a value that happens to *contain* "redacted" as part of
     /// a legitimate string.
     /// </summary>
@@ -65,7 +65,7 @@ public static class ChannelConfigPatchBuilder
     /// </summary>
     /// <param name="cachedConfig">
     /// The actual config root (already unwrapped from any <c>{ path, raw,
-    /// parsed }</c> wrapper - pass <c>parsed</c>). May be Undefined / Null
+    /// parsed }</c> wrapper — pass <c>parsed</c>). May be Undefined / Null
     /// if the gateway hasn't returned config yet, in which case we start
     /// with an empty document.
     /// </param>
@@ -73,7 +73,7 @@ public static class ChannelConfigPatchBuilder
     /// <param name="updates">
     /// Dot-path / value pairs, e.g. <c>("channels.telegram.botToken",
     /// "12345:abc")</c>. The builder also sets <c>channels.{channelId}.enabled
-    /// = true</c> automatically - callers shouldn't include it.
+    /// = true</c> automatically — callers shouldn't include it.
     /// </param>
     /// <param name="multilineDotPaths">
     /// Dot-paths whose string value should be split on newlines into an
@@ -93,14 +93,14 @@ public static class ChannelConfigPatchBuilder
         multilineDotPaths ??= new HashSet<string>(StringComparer.Ordinal);
 
         // Seed a mutable dict from the cached config. An Object root is the
-        // only valid input - otherwise treat as fresh.
+        // only valid input — otherwise treat as fresh.
         Dictionary<string, object?> root = cachedConfig.ValueKind == JsonValueKind.Object
             ? DeserializeObject(cachedConfig)
             : new Dictionary<string, object?>();
 
         // Safety rail: scan the cached config for redaction sentinels in any
         // leaf string field that lives OUTSIDE the channel we're writing.
-        // If we'd be re-sending one of those, abort - the gateway might
+        // If we'd be re-sending one of those, abort — the gateway might
         // clobber the on-disk secret with the sentinel.
         var targetPrefix = $"channels.{channelId}.";
         var redactedPath = FindRedactionSentinel(cachedConfig, "", targetPrefix);
@@ -124,7 +124,7 @@ public static class ChannelConfigPatchBuilder
             SetNestedValue(root, path, value);
         }
 
-        // Channel enable flag - the gateway needs `enabled: true` alongside
+        // Channel enable flag — the gateway needs `enabled: true` alongside
         // credentials before it will start the channel (see e.g. gateway test
         // src/commands/channels.adds-non-default-telegram-account.test.ts).
         SetNestedValue(root, $"channels.{channelId}.enabled", true);
@@ -140,7 +140,7 @@ public static class ChannelConfigPatchBuilder
     /// Recursively walk <paramref name="el"/> looking for a string leaf whose
     /// value matches one of <see cref="RedactionSentinels"/>. Returns the
     /// first matching dot-path found, OR null if none. Paths that start with
-    /// <paramref name="excludePrefix"/> are skipped - we don't care about
+    /// <paramref name="excludePrefix"/> are skipped — we don't care about
     /// sentinels in the channel we're about to overwrite.
     /// </summary>
     internal static string? FindRedactionSentinel(JsonElement el, string path, string excludePrefix)
@@ -177,7 +177,7 @@ public static class ChannelConfigPatchBuilder
 
     /// <summary>
     /// Convert a request value into the JSON-serializable form we'll write.
-    /// For multiline fields we split on \n and trim each line - relay URL
+    /// For multiline fields we split on \n and trim each line — relay URL
     /// lists arrive as one-per-line text.
     /// </summary>
     private static object? NormalizeValue(object value, bool multiline)
@@ -224,7 +224,7 @@ public static class ChannelConfigPatchBuilder
                     current = converted;
                     continue;
                 }
-                // Existing non-object value at intermediate path - overwrite
+                // Existing non-object value at intermediate path — overwrite
                 // with a new object so the deeper write can proceed.
             }
             var fresh = new Dictionary<string, object?>();
@@ -238,7 +238,7 @@ public static class ChannelConfigPatchBuilder
     /// Deep-deserialize a JsonElement Object into a Dictionary tree we can
     /// mutate. Nested objects become Dictionaries; everything else (arrays,
     /// scalars) stays as JsonElement and is preserved verbatim on re-
-    /// serialization - only the paths we explicitly write are changed.
+    /// serialization — only the paths we explicitly write are changed.
     /// </summary>
     private static Dictionary<string, object?> DeserializeObject(JsonElement obj)
     {

@@ -4,7 +4,7 @@ namespace OpenClaw.Shared;
 
 /// <summary>
 /// Actionable classification of a gateway connection error. Lets the UI route a
-/// raw error string to a specific recovery path instead of a generic failure -
+/// raw error string to a specific recovery path instead of a generic failure —
 /// distinguishing unauthorized, scope mismatch, token drift, pairing, TLS,
 /// tunnel, and server problems.
 /// </summary>
@@ -21,13 +21,13 @@ public enum GatewayErrorKind
 
     /// <summary>
     /// The stored device token is no longer recognized by the gateway (rotated,
-    /// revoked, or replaced) - the fix is to re-pair, not to retry.
+    /// revoked, or replaced) — the fix is to re-pair, not to retry.
     /// </summary>
     TokenDrift,
 
     /// <summary>
     /// Authenticated but missing a required operator/node scope (e.g. cannot
-    /// approve pairing or read config) - the fix is to re-pair for higher scopes.
+    /// approve pairing or read config) — the fix is to re-pair for higher scopes.
     /// </summary>
     ScopeMismatch,
 
@@ -80,7 +80,7 @@ public static class GatewayErrorClassifier
             Contains(e, "cleartext") || Contains(e, "insecure"))
             return GatewayErrorKind.Tls;
 
-        // Scope/permission problems - authenticated but under-privileged.
+        // Scope/permission problems — authenticated but under-privileged.
         if (Contains(e, "scope") ||
             Contains(e, "insufficient priv") ||
             Contains(e, "not permitted") ||
@@ -88,7 +88,7 @@ public static class GatewayErrorClassifier
             (Contains(e, "forbidden") && Contains(e, "scope")))
             return GatewayErrorKind.ScopeMismatch;
 
-        // Token drift - the device token specifically is stale/unknown.
+        // Token drift — the device token specifically is stale/unknown.
         if (Contains(e, "re-pair") || Contains(e, "repair token") ||
             Contains(e, "token rotat") || Contains(e, "token revoked") ||
             Contains(e, "token mismatch") || Contains(e, "token drift") ||
@@ -114,7 +114,7 @@ public static class GatewayErrorClassifier
             Contains(e, "internal error") || Contains(e, "server error"))
             return GatewayErrorKind.Server;
 
-        // Generic auth - after the more specific auth-adjacent kinds above.
+        // Generic auth — after the more specific auth-adjacent kinds above.
         if (Contains(e, "401") || Contains(e, "unauthor") || Contains(e, "forbid") ||
             Contains(e, "auth") || Contains(e, "token") || Contains(e, "credential"))
             return GatewayErrorKind.Auth;

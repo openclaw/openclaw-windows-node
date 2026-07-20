@@ -6,7 +6,7 @@ namespace OpenClaw.Connection;
 
 /// <summary>
 /// Maps gateway operator scope identifiers to short, human-readable descriptions so a person
-/// approving a pairing request understands what access they are granting - mirroring the
+/// approving a pairing request understands what access they are granting — mirroring the
 /// friendly scope list shown by the macOS pairing prompt.
 ///
 /// Returns canonical English fallbacks; the presentation layer may override any entry with a

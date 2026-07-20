@@ -78,7 +78,7 @@ public class CameraCapability : NodeCapabilityBase
         }
     }
     
-    // Boundary clamps - reject extreme/negative caller values up-front.
+    // Boundary clamps — reject extreme/negative caller values up-front.
     private const int MinCameraDimension = 16;
     private const int MaxCameraWidth = 4096;
     private const int MinQuality = 1;
@@ -137,7 +137,7 @@ public class CameraCapability : NodeCapabilityBase
         CancellationToken cancellationToken)
     {
         var deviceId = GetStringArg(request.Args, "deviceId");
-        // Floor at 100ms - anything shorter is meaningless and a 0/negative
+        // Floor at 100ms — anything shorter is meaningless and a 0/negative
         // value previously slipped through the `Math.Min` cap.
         var durationMs = Clamp(GetIntArg(request.Args, "durationMs", 3000), 100, MaxClipDurationMs);
         var includeAudio = GetBoolArg(request.Args, "includeAudio", true);

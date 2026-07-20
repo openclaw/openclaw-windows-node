@@ -11,11 +11,11 @@ namespace OpenClaw.Shared.Mxc;
 /// <remarks>
 /// Backends checked:
 /// <list type="bullet">
-/// <item><see cref="IsAppContainerAvailable"/> - the native <c>wxc-exec --probe</c>
+/// <item><see cref="IsAppContainerAvailable"/> — the native <c>wxc-exec --probe</c>
 ///   reports a usable isolation tier on this host. This is the source of truth
 ///   for "does this machine support the sandbox".</item>
-/// <item><see cref="IsWxcExecResolvable"/> - wxc-exec.exe found in the shipped tray output layout or via override.</item>
-/// <item><see cref="IsIsolationSessionAvailable"/> - requires a supported host plus IsolationProxy.exe in System32.</item>
+/// <item><see cref="IsWxcExecResolvable"/> — wxc-exec.exe found in the shipped tray output layout or via override.</item>
+/// <item><see cref="IsIsolationSessionAvailable"/> — requires a supported host plus IsolationProxy.exe in System32.</item>
 /// </list>
 /// </remarks>
 public sealed class MxcAvailability
@@ -49,8 +49,8 @@ public sealed class MxcAvailability
     /// True when the availability verdict came from a <em>probe error</em>
     /// (timeout, failure to launch <c>wxc-exec</c>, or unparseable output) rather
     /// than a definitive answer (supported, or the host reporting unsupported).
-    /// Callers should treat an errored verdict as transient - re-probe instead of
-    /// caching it for the process lifetime - so a momentary glitch doesn't pin the
+    /// Callers should treat an errored verdict as transient — re-probe instead of
+    /// caching it for the process lifetime — so a momentary glitch doesn't pin the
     /// whole process to uncontained execution.
     /// </summary>
     public bool ProbeErrored { get; }
@@ -92,7 +92,7 @@ public sealed class MxcAvailability
     /// <summary>
     /// True when MXC is available but only via a weaker, last-resort isolation tier
     /// (DACL augmentation, or a tier we don't recognize as full-strength). Still
-    /// contained - surface as a warning, not a block; refusing would drop the host
+    /// contained — surface as a warning, not a block; refusing would drop the host
     /// to fully uncontained execution, which is strictly worse.
     /// </summary>
     public bool IsDegradedContainment =>
@@ -214,7 +214,7 @@ public sealed class MxcAvailability
     /// </summary>
     internal static MxcProbeResult ParseProbeOutput(WxcProbeStatus status, int exitCode, string? stdout, string? stderr)
     {
-        // We never obtained a verdict - our own infrastructure failure, not a host
+        // We never obtained a verdict — our own infrastructure failure, not a host
         // decision. Always transient/retryable, regardless of any exit code.
         if (status != WxcProbeStatus.Completed)
         {
@@ -224,7 +224,7 @@ public sealed class MxcAvailability
                 $"Could not determine MXC sandbox support (wxc-exec --probe {what}{(detail is null ? "" : $": {Summarize(detail)}")}).");
         }
 
-        // No/garbled output is a binary anomaly, not a clear answer -
+        // No/garbled output is a binary anomaly, not a clear answer —
         // treat as a (retryable) probe error rather than silently "unsupported".
         if (string.IsNullOrWhiteSpace(stdout))
         {
@@ -430,7 +430,7 @@ public sealed class MxcAvailability
             if (string.IsNullOrWhiteSpace(root))
                 continue;
 
-            // Preferred: tools/mxc/<arch>/wxc-exec.exe - the layout the build
+            // Preferred: tools/mxc/<arch>/wxc-exec.exe — the layout the build
             // target extracts to so we don't ship a node_modules/ tree.
             var shipped = Path.Combine(root, "tools", "mxc", arch, "wxc-exec.exe");
             if (File.Exists(shipped))
@@ -488,7 +488,7 @@ internal enum MxcProbeOutcome
 
     /// <summary>
     /// We could not obtain a verdict (timeout, failure to launch, or exit 0 with
-    /// no usable output). Transient/indeterminate - should be re-probed, not cached.
+    /// no usable output). Transient/indeterminate — should be re-probed, not cached.
     /// </summary>
     ProbeError,
 }

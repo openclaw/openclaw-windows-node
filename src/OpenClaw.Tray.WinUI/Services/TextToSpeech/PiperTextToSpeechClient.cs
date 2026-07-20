@@ -49,7 +49,7 @@ public sealed class PiperTextToSpeechClient : IDisposable
         config.Model.Vits.Model = voices.GetModelPath(voiceId);
         config.Model.Vits.Tokens = voices.GetTokensPath(voiceId);
         config.Model.Vits.DataDir = voices.GetEspeakDataDir(voiceId);
-        // Piper defaults - produce natural-sounding speech.
+        // Piper defaults — produce natural-sounding speech.
         config.Model.Vits.NoiseScale = 0.667f;
         config.Model.Vits.NoiseScaleW = 0.8f;
         config.Model.Vits.LengthScale = 1.0f;
@@ -75,7 +75,7 @@ public sealed class PiperTextToSpeechClient : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // Inference is CPU-bound - push it off the caller thread so
+            // Inference is CPU-bound — push it off the caller thread so
             // cancellation can race the synthesis.
             return await Task.Run(() =>
             {

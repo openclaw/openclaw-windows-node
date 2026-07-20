@@ -65,7 +65,7 @@ public sealed partial class VoiceSettingsPage : Page
             app.SpeakerMuteChanged -= OnAppSpeakerMuteChanged;
             app.SpeakerMuteChanged += OnAppSpeakerMuteChanged;
         }
-        // Seed the Preview button labels from resw - x:Uid was removed from
+        // Seed the Preview button labels from resw — x:Uid was removed from
         // the buttons so their inner StackPanel (FontIcon + TextBlock)
         // survives state changes in the click handlers (we update only the
         // TextBlock's Text, never the Button's Content).
@@ -920,7 +920,7 @@ public sealed partial class VoiceSettingsPage : Page
         {
             var voices = new OpenClaw.Shared.Audio.PiperVoiceManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
             // Same throttling story as the Whisper download: ~80 KB per
-            // streaming callback Ã- ~150 MB voices = ~1,800 reports. Coalesce
+            // streaming callback Ã— ~150 MB voices = ~1,800 reports. Coalesce
             // to â‰¥150 ms intervals so we don't choke the dispatcher.
             DateTime lastPiperReportUtc = DateTime.MinValue;
             var progress = new Progress<(long downloaded, long total)>(p =>
@@ -1138,7 +1138,7 @@ public sealed partial class VoiceSettingsPage : Page
         }
         catch (Exception ex)
         {
-            // Show error inline (sanitized - full detail in the log). Swap the
+            // Show error inline (sanitized — full detail in the log). Swap the
             // Play glyph for ErrorBadge while the error label is visible.
             Logger.Error($"Windows TTS preview failed: {ex}");
             PreviewVoiceIcon.Glyph = "\uEA39";

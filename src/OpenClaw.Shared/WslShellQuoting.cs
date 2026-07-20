@@ -7,7 +7,7 @@ namespace OpenClaw.Shared;
 /// <em>wrong and injection-unsafe</em> for the bash/sh command lines OpenClaw
 /// builds to run inside WSL.
 ///
-/// A POSIX shell performs no processing whatsoever inside single quotes - there
+/// A POSIX shell performs no processing whatsoever inside single quotes — there
 /// is no backslash escape for a single quote. The only way to place a literal
 /// single quote in a single-quoted string is to close the quote, emit an escaped
 /// literal quote, then reopen: the canonical <c>'\''</c> idiom. Every embedded
