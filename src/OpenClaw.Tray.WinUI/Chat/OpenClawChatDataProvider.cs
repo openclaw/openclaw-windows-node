@@ -6024,7 +6024,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Title = title,
             AgentId = presentation.AgentId,
             IsBackground = presentation.IsBackground,
-            Status = ChatThreadStatus.Running,
+            Status = SessionVisibilityFilter.ToChatThreadStatus(s),
             Activity = string.IsNullOrEmpty(s.CurrentActivity) ? ChatActivity.Idle : ChatActivity.Working,
             Workspace = s.Channel,
             Model = s.Model,

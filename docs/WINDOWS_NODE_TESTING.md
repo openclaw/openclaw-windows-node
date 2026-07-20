@@ -91,6 +91,22 @@ These features need the gateway to send `node.invoke` commands:
 | `stt.listen` | Voice-activity microphone transcription | Returns when the user stops speaking or timeout expires |
 | `stt.status` | Speech-to-text readiness | Returns Whisper.net model download/readiness state |
 
+### Cancelling an invocation
+
+The gateway may send the `node.invoke.cancel` event with
+`payload.invokeId` matching an active `node.invoke.request`. The Windows node
+cancels only that invocation and completes its original result with
+`ok: false, error: "cancelled"`; unknown or already-completed IDs are ignored.
+The legacy `payload.requestId` spelling is also accepted for compatibility.
+Operation completion is the linearization point: once capability execution
+returns and atomically marks the invocation complete, later cancellation is too
+late and the completed result is preserved.
+
+For local MCP, send a JSON-RPC `notifications/cancelled` notification with
+`params.requestId` matching the active `tools/call` JSON-RPC ID. Cancellation
+must stop queued camera admission, recording delays/frame waits, and active
+recording cleanup rather than only abandoning the HTTP waiter.
+
 ## Capabilities Advertised
 
 When the node connects, it advertises these capabilities:

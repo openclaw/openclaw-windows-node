@@ -289,6 +289,27 @@ public class StartupSetupStateTests
     }
 
     [Fact]
+    public async Task ClassifyAsync_ReturnsAppOwnedLocalWsl_WhenManagedGatewayUsesTailscaleUrl()
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "tailscale-gateway",
+            Url = "wss://openclaw.tailnet.ts.net",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        });
+        var wsl = new FakeWslCommandRunner([new WslDistroInfo("OpenClawGateway", "Stopped", 2)]);
+
+        var kind = await SetupExistingGatewayClassifier.ClassifyAsync(
+            registry, settings, temp.Path, wsl, localDataPath: temp.Path);
+
+        Assert.Equal(SetupExistingGatewayKind.AppOwnedLocalWsl, kind);
+    }
+
+    [Fact]
     public async Task ClassifyAsync_StaleOpenClawDistroWithoutLocalEvidence_DoesNotTriggerLocalReplacementWarning()
     {
         using var temp = TempSettings.Create();

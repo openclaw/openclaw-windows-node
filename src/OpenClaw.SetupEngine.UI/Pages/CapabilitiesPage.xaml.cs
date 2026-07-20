@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Shared;
 using OpenClaw.SetupEngine.UI;
+using System.Diagnostics;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
@@ -81,6 +82,10 @@ public sealed partial class CapabilitiesPage : Page
         if (_setupWindow is not null)
             _setupWindow.Activated += SetupWindow_Activated;
         ApplySetupReviewSummary(_config);
+        TailscaleToggle.IsOn = _config.Tailscale.Enabled;
+        TailscaleTrustAuthToggle.IsOn = _config.Tailscale.TrustTailscaleAuth;
+        TailscaleAuthModeSelector.SelectedIndex = _config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey ? 1 : 0;
+        UpdateTailscaleOptions();
         GoToStep(1);
     }
 
@@ -201,6 +206,14 @@ public sealed partial class CapabilitiesPage : Page
             }
         }
         config.Settings.ApplyCapabilities(caps);
+        config.Tailscale.Enabled = TailscaleToggle.IsOn == true;
+        config.Tailscale.TrustTailscaleAuth = TailscaleTrustAuthToggle.IsOn == true;
+        config.Tailscale.AuthMode = TailscaleAuthModeSelector.SelectedIndex == 1
+            ? TailscaleAuthMode.AuthKey
+            : TailscaleAuthMode.Browser;
+        config.Tailscale.AuthKey = config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey
+            ? TailscaleAuthKeyBox.Password
+            : null;
     }
 
     private void ApplySetupReviewSummary(SetupConfig config)
@@ -216,6 +229,93 @@ public sealed partial class CapabilitiesPage : Page
         GatewayServiceDetailText.Text = summary.GatewayDescription;
         GatewayEndpointText.Text = summary.GatewayEndpoint;
         ExactCommandsText.Text = summary.ExactCommands;
+    }
+
+    private void TailscaleToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        UpdateTailscaleOptions();
+        if (_config is not null)
+        {
+            _config.Tailscale.Enabled = TailscaleToggle.IsOn == true;
+            ApplySetupReviewSummary(_config);
+        }
+    }
+
+    private void TailscaleAuthMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        TailscaleAuthKeyBox.Visibility = TailscaleAuthModeSelector.SelectedIndex == 1
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void TailscaleTrustAuthToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_config is null)
+            return;
+
+        _config.Tailscale.TrustTailscaleAuth = TailscaleTrustAuthToggle.IsOn == true;
+        ApplySetupReviewSummary(_config);
+    }
+
+    private void UpdateTailscaleOptions()
+    {
+        var enabled = TailscaleToggle.IsOn == true;
+        TailscaleOptions.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        TailscaleAuthKeyBox.Visibility = enabled && TailscaleAuthModeSelector.SelectedIndex == 1
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (enabled)
+            _ = RefreshWindowsTailscaleStatusAsync();
+    }
+
+    private async Task RefreshWindowsTailscaleStatusAsync()
+    {
+        TailscaleStatusText.Text = "Checking Windows Tailscale…";
+        try
+        {
+            var path = PreflightWindowsTailscaleStep.ResolveWindowsTailscaleCliPath();
+            var result = await Task.Run(() =>
+            {
+                var psi = new ProcessStartInfo(path, "status --json")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                using var process = Process.Start(psi);
+                if (process is null) return (ExitCode: -1, Output: string.Empty);
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(5000);
+                return (ExitCode: process.ExitCode, Output: output);
+            });
+            string? dnsName = null;
+            string? tailnetDnsSuffix = null;
+            if (result.ExitCode == 0 &&
+                TailscaleSetupPolicy.TryParseStatus(result.Output, out var status) &&
+                status.IsRunning)
+            {
+                dnsName = status.DnsName;
+                tailnetDnsSuffix = TailscaleSetupPolicy.GetTailnetDnsSuffix(dnsName);
+            }
+            TailscaleStatusText.Text = tailnetDnsSuffix is not null
+                ? $"Windows Tailscale connected as {dnsName}."
+                : "Windows Tailscale must be installed and signed in before setup can continue.";
+            if (_config is not null && TailscaleToggle.IsOn == true)
+            {
+                _config.Tailscale.TailnetDnsSuffix = tailnetDnsSuffix;
+                ApplySetupReviewSummary(_config);
+            }
+        }
+        catch
+        {
+            TailscaleStatusText.Text = "Windows Tailscale must be installed and signed in before setup can continue.";
+            if (_config is not null && TailscaleToggle.IsOn == true)
+            {
+                _config.Tailscale.TailnetDnsSuffix = null;
+                ApplySetupReviewSummary(_config);
+            }
+        }
     }
 
     private string ProfileSummary()

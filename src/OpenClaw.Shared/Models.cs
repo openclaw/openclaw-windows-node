@@ -2116,6 +2116,7 @@ public class ModelInfo
     public string? Name { get; set; }
     public string? Provider { get; set; }
     public int? ContextWindow { get; set; }
+    public int? ContextTokens { get; set; }
 
     /// <summary>True when the model's provider is configured on the gateway.</summary>
     public bool IsConfigured { get; set; }

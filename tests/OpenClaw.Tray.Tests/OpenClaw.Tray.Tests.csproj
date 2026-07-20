@@ -17,6 +17,7 @@
   <ItemGroup>
     <PackageReference Include="OpenTelemetry" Version="1.16.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <!-- Compile only the model-layer files directly so the tests can remain
@@ -75,6 +76,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayNavVisibilityDebouncePolicy.cs" Link="Services\GatewayNavVisibilityDebouncePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeInvokeActivityFormatter.cs" Link="Services\NodeInvokeActivityFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeCapabilityGating.cs" Link="Services\NodeCapabilityGating.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureOperationGate.cs" Link="Services\CaptureOperationGate.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureCancellationPolicy.cs" Link="Services\CaptureCancellationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BrowserProxyTunnelState.cs" Link="Services\BrowserProxyTunnelState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTopologyTunnelResolver.cs" Link="Services\CommandCenterTopologyTunnelResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTunnelInfoBuilder.cs" Link="Services\CommandCenterTunnelInfoBuilder.cs" />
@@ -102,6 +105,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayTooltipBuilder.cs" Link="Services\TrayTooltipBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayMenuSnapshot.cs" Link="Services\TrayMenuSnapshot.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayDashboardSummary.cs" Link="Services\TrayDashboardSummary.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeSummaryText.cs" Link="Services\NodeSummaryText.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" Link="Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDiscoveryService.cs" Link="Services\GatewayDiscoveryService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\AgentMessageFormatter.cs" Link="A2UI\Actions\AgentMessageFormatter.cs" />
@@ -117,9 +121,28 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ExecPolicyRuleList.cs" Link="Pages\ExecPolicyRuleList.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\WorkspaceFilesModel.cs" Link="Imported\WorkspaceFilesModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionManagerWindowsNodeConnector.cs" Link="Services\ConnectionManagerWindowsNodeConnector.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupWindowArgumentProjection.cs" Link="Services\SetupWindowArgumentProjection.cs" />
     <!-- Pulled in for console-log tail tests. Pure logic, no WinUI deps. -->
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardConsoleTail.cs" Link="WizardConsoleTail.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardPayloadHelpers.cs" Link="WizardPayloadHelpers.cs" />
+  </ItemGroup>
+
+  <!-- Phase 2 presentation seam: WinUI-free DI + navigation core, hand-linked so it
+       is unit-tested in this pure net10 project. WinUI-bound adapters
+       (Presentation/Adapters/*) are intentionally NOT linked; they are covered by
+       source-contract tests instead. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\IAppCommands.cs" Link="Services\IAppCommands.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\IUiDispatcher.cs" Link="Presentation\IUiDispatcher.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\INavigationAware.cs" Link="Presentation\INavigationAware.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\INavigationService.cs" Link="Presentation\INavigationService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\IPageActivator.cs" Link="Presentation\IPageActivator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\NavigationScopeManager.cs" Link="Presentation\NavigationScopeManager.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNavigationService.cs" Link="Presentation\AppNavigationService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPageViewModel.cs" Link="Presentation\SettingsPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageViewModel.cs" Link="Presentation\PermissionsPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>
 
 </Project>

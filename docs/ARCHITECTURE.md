@@ -54,6 +54,9 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Settings test data | `OpenClaw.TestSupport.SettingsDataBuilder` | authoritative |
 | JSON `JsonElement` coercion (non-nullable fallback family) | `JsonReadHelpers` | authoritative |
 | WSL/POSIX shell quoting | `WslShellQuoting` | authoritative |
+| UI-thread marshaling for presentation code | `IUiDispatcher` | authoritative |
+| Page view-model activation/deactivation + disposal lifetime | `NavigationScopeManager` | authoritative |
+| Presentation-layer DI composition root | `AppServiceRegistration` (root `ServiceProvider`, owned by `App`) | authoritative |
 | Capability UI metadata | `NodeCapabilityUiCatalog` (planned) | planned |
 | Capability registration/gating | `NodeCapabilityRegistrationPolicy` (planned) | planned |
 | Local MCP exposure policy | `McpCapabilityPolicy` (planned) | planned |
@@ -116,6 +119,10 @@ leading and trailing pipe. Columns, in order:
 | chat-send-queue | planned | src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs | send queue/admission/abort state | ChatSendQueue | - | queued send/abort/generation semantics preserved | none | review-only | extracted in Phase 4 |
 | gateway-pending-requests | planned | src/OpenClaw.Shared/OpenClawGatewayClient.cs | request-id -> method/completion tracking | PendingRequestRegistry | - | request ids never leak after disconnect; thread-safe | none | review-only | extracted in Phase 4 |
 | connect-envelope | planned | src/OpenClaw.Shared/OpenClawGatewayClient.cs + WindowsNodeClient.cs | connect message + auth precedence + signature version | ConnectEnvelopeBuilder | - | credential precedence never downgrades a device token; v3->v2 fallback preserved | none | review-only | extracted in Phase 4 |
+| ui-dispatcher | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | UI-thread marshaling abstraction for presentation code | IUiDispatcher | App and existing WinUI code may call DispatcherQueue directly until the view-model migration | presentation view models depend on IUiDispatcher not a concrete DispatcherQueue | UiDispatcherContractTests.PageViewModel_ReceivesRegisteredDispatcher | behavioral | - |
+| navigation-scope | authoritative | src/OpenClaw.Tray.WinUI/Windows/HubWindow.xaml.cs | page view-model activation/deactivation and disposal lifetime | NavigationScopeManager | HubWindow keeps frame navigation back-stack and rail selection | transient page view models are activated on navigation and deactivated then disposed on navigate-away | NavigationScopeManagerTests.NavigatingAway_DeactivatesAndDisposesPreviousViewModel | behavioral | - |
+| composition-root | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | presentation-layer service construction and wiring | AppServiceRegistration | App remains the composition root and owns non-DI service lifetimes | one validated root ServiceProvider; App-owned singletons registered as instances are never disposed by the container | AppServiceRegistrationTests.Dispose_DoesNotDisposeAppOwnedInstanceSingletons | behavioral | - |
+| node-summary-text | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | node-summary clipboard text formatting | NodeSummaryText | App keeps the clipboard side effect (building the DataPackage and setting clipboard content) | copied node-summary text is projected only by NodeSummaryText.Build (online/offline state, display-name fallback, short id, detail text, newline join) | NodeSummaryTextTests.Build_MultipleNodes_OneLinePerNodeJoinedByNewline | behavioral | - |
 <!-- LEDGER:END -->
 
 ## Deferred test builders

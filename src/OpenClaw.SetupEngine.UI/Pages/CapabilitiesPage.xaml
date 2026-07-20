@@ -110,6 +110,28 @@
                                     </Grid>
                                 </Border>
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                            <FontIcon Grid.Column="0" Glyph="&#xE701;" FontSize="18" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="Tailnet access with Tailscale Serve" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Publish this private gateway as HTTPS/WSS to your Tailscale tailnet. Windows Tailscale must already be signed in; setup root owns Serve." />
+                                            </StackPanel>
+                                            <ToggleSwitch x:Name="TailscaleToggle" Grid.Column="2" OnContent="" OffContent="" Toggled="TailscaleToggle_Toggled" VerticalAlignment="Center" />
+                                        </Grid>
+                                        <StackPanel x:Name="TailscaleOptions" Visibility="Collapsed" Spacing="6" Margin="32,0,0,0">
+                                            <TextBlock x:Name="TailscaleStatusText" Text="Check Windows Tailscale before continuing." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                            <RadioButtons x:Name="TailscaleAuthModeSelector" SelectedIndex="0" SelectionChanged="TailscaleAuthMode_SelectionChanged">
+                                                <x:String>Sign in in browser</x:String>
+                                                <x:String>Use one-off auth key</x:String>
+                                            </RadioButtons>
+                                            <PasswordBox x:Name="TailscaleAuthKeyBox" Visibility="Collapsed" PlaceholderText="Tailscale auth key (not saved)" />
+                                            <ToggleSwitch x:Name="TailscaleTrustAuthToggle" Header="Trust Tailscale identities for gateway authentication" OnContent="Enabled" OffContent="Disabled" Toggled="TailscaleTrustAuthToggle_Toggled" />
+                                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Off by default. Enable only when your Tailscale ACLs should be part of the gateway access-control boundary; OpenClaw receives only a restricted identity lookup, not Tailscale operator control." />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                                         <FontIcon Grid.Column="0" Glyph="&#xE896;" FontSize="18" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Spacing="2">

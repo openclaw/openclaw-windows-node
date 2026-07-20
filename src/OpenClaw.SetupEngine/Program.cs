@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using System.Text.Json;
 using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
@@ -6,36 +7,78 @@ namespace OpenClaw.SetupEngine;
 [SupportedOSPlatform("windows")]
 public static class Program
 {
+    internal static IReadOnlyList<string> ValueOptionNames { get; } = Array.AsReadOnly(
+    [
+        "--config",
+        "--log-path",
+        "--json-output",
+        "--data-dir",
+        "--local-data-dir",
+        "--distro-name",
+        "--gateway-port",
+        "--tailscale-auth",
+        "--tailscale-hostname",
+        "--autostart-name",
+        "--startup-task-name",
+    ]);
+
+    internal static IReadOnlyList<string> FlagOptionNames { get; } = Array.AsReadOnly(
+    [
+        "--headless",
+        "--rollback-on-failure",
+        "--no-rollback-on-failure",
+        "--dry-run",
+        "--wizard-only",
+        "--uninstall",
+        "--confirm-destructive",
+        "--preserve-logs",
+        "--tailscale",
+        "--tailscale-trust-auth",
+    ]);
+
     public static async Task<int> Main(string[] args)
     {
         Console.WriteLine("OpenClaw Setup Engine v0.1");
         Console.WriteLine("─────────────────────────────");
 
-        // Parse CLI arguments
-        var configPath = GetArg(args, "--config");
-        var logPath = GetArg(args, "--log-path");
-        var headless = HasFlag(args, "--headless");
-        var rollback = HasFlag(args, "--rollback-on-failure");
-        var noRollback = HasFlag(args, "--no-rollback-on-failure");
-        var dryRun = HasFlag(args, "--dry-run");
-        var wizardOnly = HasFlag(args, "--wizard-only");
-        var uninstall = HasFlag(args, "--uninstall");
-        var confirmDestructive = HasFlag(args, "--confirm-destructive");
-        var jsonOutput = GetArg(args, "--json-output");
-        var preserveLogs = HasFlag(args, "--preserve-logs");
-        var dataDir = GetArg(args, "--data-dir");
-        var localDataDir = GetArg(args, "--local-data-dir");
-        var distroName = GetArg(args, "--distro-name");
-        var gatewayPortText = GetArg(args, "--gateway-port");
-        var autoStartName = GetArg(args, "--autostart-name") ?? "OpenClawTray";
-        var startupTaskName = GetArg(args, "--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
+        if (!TryParseArguments(args, out var parsedArguments, out var argumentError))
+        {
+            Console.Error.WriteLine($"ERROR: {argumentError}");
+            return 2;
+        }
+
+        var configPath = parsedArguments.GetValue("--config");
+        var logPath = parsedArguments.GetValue("--log-path");
+        var headless = parsedArguments.HasFlag("--headless");
+        var rollback = parsedArguments.HasFlag("--rollback-on-failure");
+        var noRollback = parsedArguments.HasFlag("--no-rollback-on-failure");
+        var dryRun = parsedArguments.HasFlag("--dry-run");
+        var wizardOnly = parsedArguments.HasFlag("--wizard-only");
+        var uninstall = parsedArguments.HasFlag("--uninstall");
+        var confirmDestructive = parsedArguments.HasFlag("--confirm-destructive");
+        var jsonOutput = parsedArguments.GetValue("--json-output");
+        var preserveLogs = parsedArguments.HasFlag("--preserve-logs");
+        var dataDir = parsedArguments.GetValue("--data-dir");
+        var localDataDir = parsedArguments.GetValue("--local-data-dir");
+        var distroName = parsedArguments.GetValue("--distro-name");
+        var gatewayPortText = parsedArguments.GetValue("--gateway-port");
+        var tailscale = parsedArguments.HasFlag("--tailscale");
+        var tailscaleTrustAuth = parsedArguments.HasFlag("--tailscale-trust-auth");
+        var tailscaleAuth = parsedArguments.GetValue("--tailscale-auth");
+        var tailscaleHostname = parsedArguments.GetValue("--tailscale-hostname");
+        var autoStartName = parsedArguments.GetValue("--autostart-name") ?? "OpenClawTray";
+        var startupTaskName = parsedArguments.GetValue("--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
 
         // Load config
         SetupConfig config;
-        if (configPath != null && File.Exists(configPath))
+        if (configPath != null)
         {
             Console.WriteLine($"Loading config from: {configPath}");
-            config = SetupConfig.LoadFromFile(configPath);
+            if (!TryLoadConfig(configPath, out config, out var configError))
+            {
+                Console.Error.WriteLine($"ERROR: Cannot load config '{configPath}': {configError}");
+                return 2;
+            }
         }
         else
         {
@@ -44,7 +87,11 @@ public static class Program
             if (File.Exists(defaultPath))
             {
                 Console.WriteLine($"Loading config from: {defaultPath}");
-                config = SetupConfig.LoadFromFile(defaultPath);
+                if (!TryLoadConfig(defaultPath, out config, out var configError))
+                {
+                    Console.Error.WriteLine($"ERROR: Cannot load bundled config '{defaultPath}': {configError}");
+                    return 1;
+                }
             }
             else
             {
@@ -67,6 +114,24 @@ public static class Program
             config.GatewayPort = gatewayPort;
             config.GatewayUrl = null;
         }
+        if (tailscale)
+            config.Tailscale.Enabled = true;
+        if (tailscaleTrustAuth)
+        {
+            config.Tailscale.Enabled = true;
+            config.Tailscale.TrustTailscaleAuth = true;
+        }
+        if (!string.IsNullOrWhiteSpace(tailscaleAuth))
+        {
+            if (!TailscaleConfig.TryParseAuthMode(tailscaleAuth, out var authMode))
+            {
+                Console.Error.WriteLine($"ERROR: Invalid --tailscale-auth value '{tailscaleAuth}'. Use browser or auth-key.");
+                return 2;
+            }
+            config.Tailscale.AuthMode = authMode;
+        }
+        if (!string.IsNullOrWhiteSpace(tailscaleHostname))
+            config.Tailscale.Hostname = tailscaleHostname;
         GatewayLkgVersion.ApplyToConfig(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
@@ -75,6 +140,12 @@ public static class Program
         if (logPath != null) config.LogPath = logPath;
         if (dryRun) config.DryRun = true;
         if (confirmDestructive) config.ConfirmDestructive = true;
+
+        if (TailscaleSetupPolicy.ValidateConfig(config) is { } tailscaleConfigError)
+        {
+            Console.Error.WriteLine($"ERROR: {tailscaleConfigError}");
+            return 2;
+        }
 
         // Default log path if not specified
         var logLabel = uninstall ? "uninstall" : "setup";
@@ -137,7 +208,8 @@ public static class Program
             commands,
             cts.Token,
             dataDir,
-            localDataDir);
+            localDataDir,
+            new ConsoleExternalAuthorizationPresenter());
 
         // Build step pipeline
         List<SetupStep> steps;
@@ -231,16 +303,26 @@ public static class Program
     private static List<SetupStep> BuildSteps(SetupConfig config)
         => SetupStepFactory.BuildDefaultSteps();
 
-    private static string? GetArg(string[] args, string name)
-    {
-        for (int i = 0; i < args.Length - 1; i++)
-        {
-            if (args[i].Equals(name, StringComparison.OrdinalIgnoreCase))
-                return args[i + 1];
-        }
-        return null;
-    }
+    internal static bool TryParseArguments(
+        string[] args,
+        out SetupArgumentParser.ParsedArguments parsedArguments,
+        out string? error)
+        => SetupArgumentParser.TryParse(
+            args,
+            ValueOptionNames,
+            FlagOptionNames,
+            out parsedArguments,
+            out error);
 
-    private static bool HasFlag(string[] args, string name)
-        => args.Any(a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
+    private static bool TryLoadConfig(string path, out SetupConfig config, out string? error)
+    {
+        if (SetupConfig.TryLoadFromFile(path, out var loadedConfig, out error))
+        {
+            config = loadedConfig;
+            return true;
+        }
+
+        config = null!;
+        return false;
+    }
 }

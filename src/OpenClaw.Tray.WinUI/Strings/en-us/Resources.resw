@@ -4729,7 +4729,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>All</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>Show completed</value>
+    <value>Show ended</value>
   </data>
   <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
     <value>Show background</value>

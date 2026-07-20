@@ -94,6 +94,34 @@ wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "ls -ld /home/openclaw/.o
 
 Do not run `systemctl --user` as `root`; that checks root's user service manager, not the gateway's service.
 
+## Inspect an optional Tailscale Serve endpoint
+
+When the setup review enabled **Tailnet access with Tailscale Serve**, the generated distro runs its own Tailscale daemon. The Windows Companion intentionally uses the generated `wss://<node>.<tailnet>.ts.net` endpoint; it does not silently fall back to localhost.
+
+Windows must also have Tailscale installed and signed in to the same tailnet. These checks do not print credentials:
+
+```powershell
+# Windows Companion side: confirm this PC is connected to Tailscale.
+& "$env:ProgramFiles\Tailscale\tailscale.exe" status --json
+
+# WSL side: confirm the daemon is connected and has a MagicDNS name.
+wsl.exe -d OpenClawGateway --user root -- tailscale status --json
+
+# Confirm Serve routes tailnet HTTPS to the loopback OpenClaw gateway port.
+# Tailscale lifecycle and Serve are intentionally owned by root, not openclaw.
+wsl.exe -d OpenClawGateway --user root -- /usr/bin/tailscale serve status --json
+
+# Funnel is unsupported. This must show no public route.
+wsl.exe -d OpenClawGateway --user root -- /usr/bin/tailscale funnel status --json
+
+# Check the OpenClaw gateway itself; it remains loopback-bound inside WSL.
+wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "systemctl --user status openclaw-gateway.service --no-pager || true"
+```
+
+The generated WSL distro is Ubuntu 24.04 (noble). Tailscale Serve setup requires that exact generated distro and rejects another `BaseDistro` before replacing an existing gateway. Setup installs Tailscale from its signed stable APT repository rather than executing the mutable `install.sh` bootstrap script as root.
+
+Tailscale Serve preserves Companion token and device authentication by default (`gateway.auth.allowTailscale=false`). Setup runs `tailscale up`, Serve, reset, logout, and daemon management as root; the `openclaw` account is never made a Tailscale operator. Tailscale's LocalAPI permits read-only operations, such as identity lookup, to local unprivileged clients while reserving mutation for root or an explicitly configured operator. In the setup review, **Trust Tailscale identities for gateway authentication** is an explicit opt-in; when enabled, verified Tailscale identity headers and tailnet ACLs become part of the gateway access-control boundary. Token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
+
 ## Use root instead of sudo
 
 There is no interactive sudo password prompt. Open a root shell only when you intentionally need to inspect or change protected files:

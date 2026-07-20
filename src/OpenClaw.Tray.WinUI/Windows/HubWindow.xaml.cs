@@ -606,6 +606,12 @@ public sealed partial class HubWindow : WindowEx
 
     private void OnBackRequested(object sender, RoutedEventArgs e) => GoBack();
 
+    /// <summary>True when the content frame's back-stack can navigate back.</summary>
+    public bool CanGoBack => ContentFrame?.CanGoBack ?? false;
+
+    /// <summary>Navigate back one entry when possible. Exposed for the navigation service.</summary>
+    public void NavigateBack() => GoBack();
+
     private void GoBack()
     {
         RemoveUnavailableGatewayBackStackEntries();
@@ -1019,6 +1025,24 @@ public sealed partial class HubWindow : WindowEx
         InitializeCurrentPage();
         UpdateAppNotificationActionEnabledState();
         ArmContentReady(e.Content as FrameworkElement);
+
+        // Navigation activation hook: resolve + assign a DI-backed view model for the
+        // navigated page. The page→view-model map is currently empty, so this only
+        // advances the navigation scope (deactivating any prior view model) and never
+        // touches a page's DataContext — a runtime no-op until pages adopt view models.
+        // Contained in a try/catch so a future misbehaving view model's activation
+        // cannot escape this XAML event handler and crash the app.
+        if (e.Content is { } content)
+        {
+            try
+            {
+                CurrentApp.PageActivator?.OnNavigatedTo(content, tag);
+            }
+            catch (Exception ex)
+            {
+                OpenClawTray.Services.Logger.Error($"[HubWindow] Page activation failed: {ex}");
+            }
+        }
     }
 
     private void OnContentFrameNavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)

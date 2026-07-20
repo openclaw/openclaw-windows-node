@@ -128,6 +128,10 @@ public sealed partial class SetupLogger : IDisposable
     internal static string Sanitize(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
+        // Match Tailscale's one-time credentials before the generic URL / token
+        // sanitizer rewrites their shape, so diagnostics retain a useful redaction label.
+        input = TailscaleAuthorizationUrlPattern().Replace(input, "[REDACTED-TAILSCALE-AUTH-URL]");
+        input = TailscaleAuthKeyPattern().Replace(input, "[REDACTED-TAILSCALE-AUTH-KEY]");
         input = TokenSanitizer.SanitizeLogMessage(input);
         if (input == TokenSanitizer.SanitizerTimeoutSentinel)
             return input;
@@ -217,6 +221,12 @@ public sealed partial class SetupLogger : IDisposable
 
     [GeneratedRegex(@"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", RegexOptions.Compiled)]
     private static partial Regex JwtPattern();
+
+    [GeneratedRegex(@"https://login\.tailscale\.com/a/[A-Za-z0-9_-]+", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex TailscaleAuthorizationUrlPattern();
+
+    [GeneratedRegex(@"\btskey-[A-Za-z0-9_-]+", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex TailscaleAuthKeyPattern();
 
     [GeneratedRegex(@"((?:""[^""]*(?:token|password|secret|api[_-]?key|setup[_-]?code|authorization)[^""]*""|[A-Za-z0-9_.-]*(?:token|password|secret|api[_-]?key|setup[_-]?code|authorization)[A-Za-z0-9_.-]*)\s*[:=]?\s*""?)[^""\s,}]+", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex SensitiveKeyPattern();
