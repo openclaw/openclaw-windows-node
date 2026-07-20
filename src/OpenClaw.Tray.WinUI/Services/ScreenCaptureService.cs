@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
@@ -24,8 +25,11 @@ public class ScreenCaptureService
     /// <summary>
     /// Capture a screenshot
     /// </summary>
-    public Task<ScreenCaptureResult> CaptureAsync(ScreenCaptureArgs args)
+    public Task<ScreenCaptureResult> CaptureAsync(
+        ScreenCaptureArgs args,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _logger.Info($"Capturing screen {args.MonitorIndex}, maxWidth={args.MaxWidth}");
         
         // Get screen bounds
@@ -83,12 +87,14 @@ public class ScreenCaptureService
         
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             hdcScreen = GetDC(IntPtr.Zero);
             hdcMem = CreateCompatibleDC(hdcScreen);
             hBitmap = CreateCompatibleBitmap(hdcScreen, width, height);
             hOld = SelectObject(hdcMem, hBitmap);
             
             BitBlt(hdcMem, 0, 0, width, height, hdcScreen, targetBounds.X, targetBounds.Y, SRCCOPY);
+            cancellationToken.ThrowIfCancellationRequested();
             
             // Optionally include mouse cursor
             if (args.IncludePointer)
@@ -115,6 +121,7 @@ public class ScreenCaptureService
                 width = newWidth;
                 height = newHeight;
             }
+            cancellationToken.ThrowIfCancellationRequested();
             
             // Encode to base64
             string base64;
@@ -143,6 +150,7 @@ public class ScreenCaptureService
                 
                 base64 = Convert.ToBase64String(ms.ToArray());
             }
+            cancellationToken.ThrowIfCancellationRequested();
             
             _logger.Info($"Screen captured: {width}x{height}, {base64.Length} bytes");
             

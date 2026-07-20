@@ -28,6 +28,7 @@ public sealed partial class ProgressPage : Page
     private bool _pipelineFinished;
     private string _dataDir = null!;
     private string _localDataDir = null!;
+    private Uri? _tailscaleAuthorizationUri;
     private const int MaxLogLines = 200;
 
     internal bool IsPipelineRunning => _runCts != null && !_pipelineFinished;
@@ -35,14 +36,16 @@ public sealed partial class ProgressPage : Page
     // Map pipeline step IDs to display groups (N:1)
     private static readonly (string GroupId, string DisplayName, string[] StepIds)[] StepGroups =
     [
-        ("preflight", "Check system", ["validate-distro-path", "preflight-os", "preflight-wsl"]),
+        ("preflight", "Check system", ["validate-distro-path", "preflight-os", "preflight-wsl", "preflight-windows-tailscale"]),
         ("cleanup", "Removing existing gateway", ["cleanup-distro", "cleanup-gateway"]),
         ("port", "Checking gateway port", ["preflight-port"]),
         ("wsl-create", "Installing clean WSL gateway", ["wsl-create"]),
         ("wsl-configure", "Configuring instance", ["wsl-configure", "validate-wsl-lockdown"]),
         ("install-cli", "Installing OpenClaw", ["install-cli"]),
+        ("tailscale-auth", "Connecting Tailscale", ["install-tailscale", "authorize-tailscale"]),
         ("configure", "Preparing gateway", ["configure-gateway", "install-service"]),
         ("start", "Starting gateway", ["start-gateway", "mint-token"]),
+        ("tailscale-serve", "Publishing on Tailscale", ["finalize-tailscale-serve"]),
         ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e"]),
         ("finish", "Finishing setup", ["run-wizard", "start-keepalive"]),
     ];
@@ -153,6 +156,7 @@ public sealed partial class ProgressPage : Page
                 cts.Token,
                 _dataDir,
                 _localDataDir);
+            ctx.ExternalAuthorizationPresenter = new ProgressAuthorizationPresenter(DispatcherQueue, ShowTailscaleAuthorization);
 
             var steps = BuildSteps(config);
             _pipeline = new SetupPipeline(steps);
@@ -294,6 +298,20 @@ public sealed partial class ProgressPage : Page
         LogFileLauncher.RevealInExplorer(_config?.LogPath);
     }
 
+    private void ShowTailscaleAuthorization(ExternalAuthorizationRequest request)
+    {
+        _tailscaleAuthorizationUri = request.AuthorizationUri;
+        TailscaleAuthorizationText.Text = request.Message;
+        TailscaleAuthorizationPanel.Visibility = Visibility.Visible;
+        _ = global::Windows.System.Launcher.LaunchUriAsync(request.AuthorizationUri);
+    }
+
+    private void TailscaleAuthorization_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tailscaleAuthorizationUri is not null)
+            _ = global::Windows.System.Launcher.LaunchUriAsync(_tailscaleAuthorizationUri);
+    }
+
     // Swap the install UI for a "Gateway installed" milestone with an explicit
     // onboard CTA. The gateway keeps running (WSL keepalive), so the wizard
     // connects when the user chooses to continue.
@@ -318,6 +336,19 @@ public sealed partial class ProgressPage : Page
             .Where(step => step is not RunGatewayWizardStep)
             .Where(step => config.SkipWizard || step is not WindowsNodeBootstrapContextStep)
             .ToList();
+}
+
+internal sealed class ProgressAuthorizationPresenter(
+    DispatcherQueue dispatcherQueue,
+    Action<ExternalAuthorizationRequest> present) : IExternalAuthorizationPresenter
+{
+    public Task PresentAsync(ExternalAuthorizationRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!dispatcherQueue.TryEnqueue(() => present(request)))
+            throw new InvalidOperationException("Setup UI closed before the Tailscale authorization link could be shown.");
+        return Task.CompletedTask;
+    }
 }
 
 // ─── Step Row UI Element ───

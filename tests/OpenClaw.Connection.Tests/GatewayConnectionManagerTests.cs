@@ -120,6 +120,74 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Null(reconnectRoot.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
+    [Fact]
+    public async Task ActivityCollector_ExcludesActivitiesFromUnrelatedExecutionContext()
+    {
+        using var activities = new ActivityCollector();
+
+        var expected = OpenClawTelemetry.StartDetachedActivity("test.connection.expected");
+        Task unrelatedTask;
+        var flow = ExecutionContext.SuppressFlow();
+        try
+        {
+            unrelatedTask = Task.Run(() =>
+            {
+                var unrelated = OpenClawTelemetry.StartDetachedActivity("test.connection.unrelated");
+                OpenClawTelemetry.StopDetachedActivity(unrelated);
+            });
+        }
+        finally
+        {
+            flow.Undo();
+        }
+
+        await unrelatedTask;
+        OpenClawTelemetry.StopDetachedActivity(expected);
+
+        var activity = Assert.Single(activities.GetStopped());
+        Assert.Equal("test.connection.expected", activity.OperationName);
+    }
+
+    [Fact]
+    public void ActivityCollector_RejectsOutOfOrderDisposal()
+    {
+        using var outer = new ActivityCollector();
+        using var inner = new ActivityCollector();
+
+        var error = Assert.Throws<InvalidOperationException>(outer.Dispose);
+
+        Assert.Equal("Activity collectors must be disposed in reverse creation order.", error.Message);
+    }
+
+    [Fact]
+    public void ActivityCollector_DisposeIsIdempotent()
+    {
+        var collector = new ActivityCollector();
+
+        collector.Dispose();
+        collector.Dispose();
+    }
+
+    [Fact]
+    public void ActivityCollector_CapturesActivityWithStringParentId()
+    {
+        using var activities = new ActivityCollector();
+        using var source = new ActivitySource(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        var parentId = $"00-{ActivityTraceId.CreateRandom()}-{ActivitySpanId.CreateRandom()}-01";
+
+        var activity = source.StartActivity(
+            "test.connection.string_parent",
+            System.Diagnostics.ActivityKind.Internal,
+            parentId);
+
+        Assert.NotNull(activity);
+        activity.Stop();
+        activity.Dispose();
+        var captured = Assert.Single(activities.GetStopped());
+        Assert.Equal("test.connection.string_parent", captured.OperationName);
+        Assert.Equal(1, activities.StringParentSamples);
+    }
+
     /// <summary>
     /// Regression guard for the post-onboarding "don't cancel an in-flight reconnect"
     /// path in App.OnboardingCompleted. When the V2 GatewayWelcome wizard saves a new
@@ -1996,26 +2064,60 @@ public class GatewayConnectionManagerTests : IDisposable
 
     private sealed class ActivityCollector : IDisposable
     {
+        private static readonly AsyncLocal<ActivityCollector?> Current = new();
         private readonly object _gate = new();
         private readonly ActivityListener _listener;
+        private readonly ActivityCollector? _previousCollector;
+        private readonly HashSet<Activity> _accepted = [];
         private readonly List<Activity> _stopped = [];
+        private bool _disposed;
+        private int _stringParentSamples;
 
         public ActivityCollector()
         {
+            _previousCollector = Current.Value;
+            Current.Value = this;
             _listener = new ActivityListener
             {
                 ShouldListenTo = source =>
                     source.Name == OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
                 Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
-                    ActivitySamplingResult.AllDataAndRecorded,
+                    SampleCurrentContext(),
+                SampleUsingParentId = (ref ActivityCreationOptions<string> _) =>
+                {
+                    var result = SampleCurrentContext();
+                    if (result != ActivitySamplingResult.None)
+                        Interlocked.Increment(ref _stringParentSamples);
+                    return result;
+                },
+                ActivityStarted = activity =>
+                {
+                    if (!ReferenceEquals(Current.Value, this))
+                        return;
+
+                    lock (_gate)
+                        _accepted.Add(activity);
+                },
                 ActivityStopped = activity =>
                 {
                     lock (_gate)
+                    {
+                        if (!_accepted.Remove(activity))
+                            return;
+
                         _stopped.Add(activity);
+                    }
                 }
             };
             ActivitySource.AddActivityListener(_listener);
         }
+
+        private ActivitySamplingResult SampleCurrentContext() =>
+            ReferenceEquals(Current.Value, this)
+                ? ActivitySamplingResult.AllDataAndRecorded
+                : ActivitySamplingResult.None;
+
+        public int StringParentSamples => Volatile.Read(ref _stringParentSamples);
 
         public Activity[] GetStopped()
         {
@@ -2023,7 +2125,24 @@ public class GatewayConnectionManagerTests : IDisposable
                 return [.. _stopped];
         }
 
-        public void Dispose() => _listener.Dispose();
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            if (!ReferenceEquals(Current.Value, this))
+                throw new InvalidOperationException(
+                    "Activity collectors must be disposed in reverse creation order.");
+
+            _disposed = true;
+            try
+            {
+                _listener.Dispose();
+            }
+            finally
+            {
+                Current.Value = _previousCollector;
+            }
+        }
     }
 
     private sealed class MockCredentialResolver : ICredentialResolver

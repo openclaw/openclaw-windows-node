@@ -24,6 +24,15 @@
         <ScrollViewer x:Name="InstallContent" Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Padding="48,12,48,16" Spacing="16" VerticalAlignment="Top">
 
+                <InfoBar x:Name="TailscaleAuthorizationPanel" Visibility="Collapsed" IsOpen="True" IsClosable="False"
+                         Severity="Informational" Title="Authorize Tailscale">
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="TailscaleAuthorizationText" TextWrapping="Wrap" />
+                        <HyperlinkButton x:Name="TailscaleAuthorizationLink" Content="Open Tailscale authorization"
+                                         HorizontalAlignment="Left" Click="TailscaleAuthorization_Click" />
+                    </StackPanel>
+                </InfoBar>
+
                 <StackPanel x:Name="StepsPanel" Spacing="2" />
 
                 <Expander IsExpanded="False"

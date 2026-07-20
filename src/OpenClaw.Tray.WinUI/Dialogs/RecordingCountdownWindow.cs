@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using WinUIEx;
 
@@ -40,6 +41,7 @@ public sealed class RecordingCountdownWindow : WindowEx
     private readonly TextBlock _countdownText;
     private readonly DispatcherQueueTimer _timer;
     private int _remaining;
+    private bool _closeRequested;
 
     public RecordingCountdownWindow(int seconds = 3)
     {
@@ -94,17 +96,33 @@ public sealed class RecordingCountdownWindow : WindowEx
 
         if (_remaining <= 0)
         {
-            _timer.Stop();
-            Close();
+            CloseOnce();
             return;
         }
 
         _countdownText.Text = _remaining.ToString();
     }
 
-    public Task ShowCountdownAsync()
+    public async Task ShowCountdownAsync(CancellationToken cancellationToken)
     {
-        Closed += (s, e) => _tcs.TrySetResult();
+        Closed += (s, e) =>
+        {
+            _closeRequested = true;
+            _tcs.TrySetResult();
+        };
+        if (cancellationToken.IsCancellationRequested)
+        {
+            CloseOnce();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        using var cancellationRegistration = cancellationToken.Register(() =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                CloseOnce();
+            });
+        });
 
         // Transparent window background so only the dark circle is visible
         SystemBackdrop = new TransparentTintBackdrop();
@@ -129,6 +147,19 @@ public sealed class RecordingCountdownWindow : WindowEx
 
         _timer.Start();
 
-        return _tcs.Task;
+        await _tcs.Task;
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private void CloseOnce()
+    {
+        if (_closeRequested)
+        {
+            return;
+        }
+
+        _closeRequested = true;
+        _timer.Stop();
+        Close();
     }
 }

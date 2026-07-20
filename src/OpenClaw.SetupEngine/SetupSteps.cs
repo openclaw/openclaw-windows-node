@@ -1381,9 +1381,11 @@ public sealed class ConfigureGatewayStep : SetupStep
         var port = ctx.Config.GatewayPort;
         var gw = ctx.Config.Gateway;
 
-        // Validate bind value — only "loopback" and "lan" are accepted
+        // Validate bind value — Tailscale Serve deliberately keeps the gateway loopback-bound.
         if (gw.Bind is not ("loopback" or "lan"))
             return StepResult.Terminal($"Invalid Gateway.Bind value '{gw.Bind}'. Must be 'loopback' or 'lan'.");
+        if (TailscaleSetupPolicy.ValidateConfig(ctx.Config) is { } tailscaleConfigError)
+            return StepResult.Terminal(tailscaleConfigError);
 
         // Generate a shared gateway token
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
@@ -1402,12 +1404,12 @@ public sealed class ConfigureGatewayStep : SetupStep
             }
         }
 
-        var configCommands = BuildConfigCommands(gw, port, escapedAllowedCommands);
+        var configCommands = BuildConfigCommands(gw, port, escapedAllowedCommands, ctx.Config.Tailscale);
 
         ctx.Logger.Info($"Gateway node allowCommands derived from setup capabilities: {allowedCommandsJson}");
         if (extraConfigOverridesAllowCommands)
             ctx.Logger.Warn("Gateway.ExtraConfig overrides derived gateway.nodes.allowCommands");
-        if (GetDefaultDevicePairPublicUrl(gw, port) is { } defaultPublicUrl &&
+        if (GetDefaultDevicePairPublicUrl(gw, port, ctx.Config.Tailscale.Enabled) is { } defaultPublicUrl &&
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
             ctx.Logger.Info($"Configured device-pair public URL for loopback gateway: {defaultPublicUrl}");
@@ -1439,7 +1441,11 @@ public sealed class ConfigureGatewayStep : SetupStep
         return StepResult.Ok("Gateway configured");
     }
 
-    internal static string BuildConfigCommands(GatewayConfig gw, int port, string escapedAllowedCommands)
+    internal static string BuildConfigCommands(
+        GatewayConfig gw,
+        int port,
+        string escapedAllowedCommands,
+        TailscaleConfig? tailscale = null)
     {
         var configCommands = $"""
             openclaw config set gateway.mode local
@@ -1451,7 +1457,17 @@ public sealed class ConfigureGatewayStep : SetupStep
             openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
             """;
 
-        if (GetDefaultDevicePairPublicUrl(gw, port) is { } defaultPublicUrl &&
+        if (tailscale?.Enabled == true)
+        {
+            var trustTailscaleAuth = tailscale.TrustTailscaleAuth ? "true" : "false";
+            configCommands += $"""
+
+                openclaw config set gateway.tailscale.mode off
+                openclaw config set gateway.auth.allowTailscale {trustTailscaleAuth}
+                """;
+        }
+
+        if (GetDefaultDevicePairPublicUrl(gw, port, tailscale?.Enabled == true) is { } defaultPublicUrl &&
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
             configCommands += $"\n            openclaw config set {DevicePairPublicUrlKey} {WslShellQuoting.QuotePosixSingleQuote(defaultPublicUrl)}";
@@ -1465,7 +1481,7 @@ public sealed class ConfigureGatewayStep : SetupStep
         // to reach it (i.e. we either wrote the default loopback URL above, or the user
         // supplied their own publicUrl via ExtraConfig).
         var hasDevicePairPublicUrl =
-            GetDefaultDevicePairPublicUrl(gw, port) is not null ||
+            GetDefaultDevicePairPublicUrl(gw, port, tailscale?.Enabled == true) is not null ||
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) == true;
         var devicePairExplicitlyConfigured =
             gw.ExtraConfig?.ContainsKey(DevicePairEnabledKey) == true;
@@ -1511,8 +1527,8 @@ public sealed class ConfigureGatewayStep : SetupStep
         return count;
     }
 
-    internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port) =>
-        gw.Bind == "loopback" ? $"http://127.0.0.1:{port}" : null;
+    internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port, bool tailscaleEnabled = false) =>
+        gw.Bind == "loopback" && !tailscaleEnabled ? $"http://127.0.0.1:{port}" : null;
 
     internal static bool IsSafeExtraConfigKey(string value)
         => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
@@ -1697,6 +1713,15 @@ public sealed class StartGatewayStep : SetupStep
 // PAIRING STEPS
 // ═══════════════════════════════════════════════════════════════════
 
+internal static class SetupPairingCredentialPolicy
+{
+    // A durable device token does not exist until pairing completes. Initial
+    // operator and node pairing must therefore use the shared token first,
+    // with the one-time bootstrap credential as the fallback.
+    public static string? ResolveInitialPairingToken(SetupContext ctx) =>
+        ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+}
+
 public sealed class MintBootstrapTokenStep : SetupStep
 {
     public override string Id => "mint-token";
@@ -1769,7 +1794,12 @@ internal static class WindowsGatewayReachability
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var resp = await http.GetAsync($"http://localhost:{ctx.Config.GatewayPort}/", ct);
+            var gatewayUri = new Uri(ctx.GatewayUrl!);
+            var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
+                ? Uri.UriSchemeHttps
+                : Uri.UriSchemeHttp;
+            var healthUri = new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port }.Uri;
+            var resp = await http.GetAsync(healthUri, ct);
             ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
             return StepResult.Ok();
         }
@@ -1793,7 +1823,7 @@ public sealed class PairOperatorStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var gatewayUrl = ctx.GatewayUrl!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        var token = SetupPairingCredentialPolicy.ResolveInitialPairingToken(ctx);
 
         if (string.IsNullOrEmpty(token))
             return StepResult.Terminal("No credential available for operator pairing");
@@ -1817,7 +1847,9 @@ public sealed class PairOperatorStep : SetupStep
             {
                 Id = Guid.NewGuid().ToString("N")[..16],
                 Url = gatewayUrl,
-                FriendlyName = $"Local ({ctx.DistroName})",
+                FriendlyName = ctx.Config.Tailscale.Enabled
+                    ? $"Tailscale ({ctx.DistroName})"
+                    : $"Local ({ctx.DistroName})",
                 SharedGatewayToken = ctx.SharedGatewayToken,
                 BootstrapToken = ctx.BootstrapToken,
                 IsLocal = true,
@@ -2224,7 +2256,7 @@ public sealed class PairNodeStep : SetupStep
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var gatewayUrl = ctx.GatewayUrl!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        var token = SetupPairingCredentialPolicy.ResolveInitialPairingToken(ctx);
 
         if (string.IsNullOrEmpty(token))
             return StepResult.Terminal("No credential available for node pairing");
@@ -2307,6 +2339,13 @@ public sealed class PairNodeStep : SetupStep
             }
 
             return StepResult.Fail($"Node connection failed: {outcome.Outcome}");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Let a caller-driven cancel propagate so the pipeline reports Cancelled,
+            // not a Failed step — the catch-all below would otherwise convert it back
+            // into StepResult.Fail (same idiom as the other steps' cancel rethrow).
+            throw;
         }
         catch (Exception ex)
         {
@@ -2438,8 +2477,11 @@ public sealed class PairNodeStep : SetupStep
             cts.CancelAfter(timeout);
             return await tcs.Task.WaitAsync(cts.Token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            // Only the internal CancelAfter(timeout) firing is a Timeout; a caller
+            // (user aborting setup) cancelling `ct` must propagate so the pipeline
+            // reports Cancelled, rather than being misreported as a node timeout.
             return new NodeConnectionResult(NodeConnectionOutcome.Timeout);
         }
         finally
@@ -3458,14 +3500,15 @@ public sealed class VerifyEndToEndStep : SetupStep
         // Phase.Complete = 13, Status.Complete = 7
         var state = new
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
             RunId = Guid.NewGuid().ToString("N"),
             InstallId = GetStableInstallId(ctx),
             Phase = 13,
             Status = 7,
             DistroName = ctx.DistroName,
             GatewayUrl = ctx.GatewayUrl,
-            IsLocalOnly = true,
+            IsLocalOnly = !ctx.Config.Tailscale.Enabled,
+            TailscaleEnabled = ctx.Config.Tailscale.Enabled,
             FailureCode = (string?)null,
             UserMessage = (string?)null,
             CreatedAtUtc = DateTimeOffset.UtcNow,
