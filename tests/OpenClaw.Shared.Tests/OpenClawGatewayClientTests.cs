@@ -2147,6 +2147,99 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseModelsList_PreservesRuntimeAndNativeContextMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            {
+              "models": [
+                {
+                  "id": "gpt-5.4",
+                  "contextWindow": 1000000,
+                  "contextTokens": 272000
+                },
+                {
+                  "id": "legacy-model",
+                  "contextWindow": 128000
+                }
+              ]
+            }
+            """);
+
+        Assert.Collection(
+            info.Models,
+            current =>
+            {
+                Assert.Equal(1000000, current.ContextWindow);
+                Assert.Equal(272000, current.ContextTokens);
+            },
+            legacy =>
+            {
+                Assert.Equal(128000, legacy.ContextWindow);
+                Assert.Null(legacy.ContextTokens);
+            });
+    }
+
+    [Fact]
+    public void ParseModelsList_InvalidContextMetadata_DoesNotDropModelsOrValidFields()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            {
+              "models": [
+                {
+                  "id": "valid-native",
+                  "contextWindow": 128000,
+                  "contextTokens": 128000.5
+                },
+                {
+                  "id": "valid-runtime",
+                  "contextWindow": 2147483648,
+                  "contextTokens": 272000
+                },
+                {
+                  "id": "non-positive",
+                  "contextWindow": 0,
+                  "contextTokens": -1
+                },
+                {
+                  "id": "unaffected",
+                  "contextWindow": 64000,
+                  "contextTokens": 32000
+                }
+              ]
+            }
+            """);
+
+        Assert.Collection(
+            info.Models,
+            native =>
+            {
+                Assert.Equal("valid-native", native.Id);
+                Assert.Equal(128000, native.ContextWindow);
+                Assert.Null(native.ContextTokens);
+            },
+            runtime =>
+            {
+                Assert.Equal("valid-runtime", runtime.Id);
+                Assert.Null(runtime.ContextWindow);
+                Assert.Equal(272000, runtime.ContextTokens);
+            },
+            nonPositive =>
+            {
+                Assert.Equal("non-positive", nonPositive.Id);
+                Assert.Null(nonPositive.ContextWindow);
+                Assert.Null(nonPositive.ContextTokens);
+            },
+            unaffected =>
+            {
+                Assert.Equal("unaffected", unaffected.Id);
+                Assert.Equal(64000, unaffected.ContextWindow);
+                Assert.Equal(32000, unaffected.ContextTokens);
+            });
+    }
+
+    [Fact]
     public void ParseModelsList_DefaultsAvailableTrue_WhenNoReadinessSignals()
     {
         var helper = new GatewayClientTestHelper();

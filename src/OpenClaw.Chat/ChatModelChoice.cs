@@ -9,7 +9,8 @@ using OpenClaw.Shared;
 /// <param name="Id">Wire model id (e.g. <c>claude-opus-4.8</c>).</param>
 /// <param name="DisplayName">Human-friendly label (falls back to <paramref name="Id"/>).</param>
 /// <param name="Provider">Owning provider (e.g. <c>OpenAI</c>, <c>Anthropic</c>), when known.</param>
-/// <param name="ContextWindow">Context-window size in tokens, when known.</param>
+/// <param name="ContextWindow">Native/catalog context-window size in tokens, when known.</param>
+/// <param name="ContextTokens">Effective runtime context budget in tokens, when known.</param>
 /// <param name="IsConfigured">True when the provider is configured on the gateway.</param>
 /// <param name="IsAvailable">
 /// True when the model can be selected right now. When false the picker shows it
@@ -25,6 +26,7 @@ public sealed record ChatModelChoice(
     string DisplayName,
     string? Provider = null,
     int? ContextWindow = null,
+    int? ContextTokens = null,
     bool IsConfigured = true,
     bool IsAvailable = true,
     bool RequiresAuth = false,
@@ -64,6 +66,7 @@ public sealed record ChatModelChoice(
                 DisplayName: m.DisplayName,
                 Provider: m.Provider,
                 ContextWindow: m.ContextWindow,
+                ContextTokens: m.ContextTokens,
                 IsConfigured: m.IsConfigured,
                 IsAvailable: m.IsAvailable,
                 RequiresAuth: m.RequiresAuth,
@@ -161,7 +164,10 @@ public static class ChatModelLabels
     /// Compact token-count label: 272000 → "272K", 1_048_576 → "1M",
     /// 200000 → "200K". Falls back to the raw number for small values.
     /// </summary>
-    public static string FormatContextWindow(int contextWindow)
+    public static string FormatContextWindow(int contextWindow) =>
+        FormatContextWindow(contextWindow, "0.#");
+
+    private static string FormatContextWindow(int contextWindow, string fractionalFormat)
     {
         if (contextWindow <= 0) return string.Empty;
         if (contextWindow >= 1_000_000)
@@ -170,26 +176,73 @@ public static class ChatModelLabels
             // Trim a trailing ".0" so 2_000_000 → "2M" not "2.0M".
             return millions == Math.Floor(millions)
                 ? $"{(int)millions}M"
-                : $"{millions.ToString("0.#", CultureInfo.InvariantCulture)}M";
+                : $"{millions.ToString(fractionalFormat, CultureInfo.InvariantCulture)}M";
         }
         if (contextWindow >= 1_000)
         {
             var thousands = contextWindow / 1_000.0;
             return thousands == Math.Floor(thousands)
                 ? $"{(int)thousands}K"
-                : $"{thousands.ToString("0.#", CultureInfo.InvariantCulture)}K";
+                : $"{thousands.ToString(fractionalFormat, CultureInfo.InvariantCulture)}K";
         }
-        return contextWindow.ToString();
+        return contextWindow.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static (string Runtime, string Native) FormatDistinctContextValues(
+        int runtimeTokens,
+        int nativeTokens)
+    {
+        var runtime = FormatContextWindow(runtimeTokens);
+        var native = FormatContextWindow(nativeTokens);
+        if (!string.Equals(runtime, native, StringComparison.Ordinal))
+            return (runtime, native);
+
+        runtime = FormatContextWindow(runtimeTokens, "0.###");
+        native = FormatContextWindow(nativeTokens, "0.###");
+        if (!string.Equals(runtime, native, StringComparison.Ordinal))
+            return (runtime, native);
+
+        return (
+            runtimeTokens.ToString("N0", CultureInfo.InvariantCulture),
+            nativeTokens.ToString("N0", CultureInfo.InvariantCulture));
     }
 
     /// <summary>
-    /// Builds the secondary metadata segment ("OpenAI · 272K") from provider and
-    /// context window, or an empty string when neither is known.
+    /// Builds the secondary metadata segment from provider and context metadata.
+    /// Runtime budget is shown first when available; a differing native/catalog
+    /// window follows it. Older gateways that only expose a context window keep
+    /// the original unqualified display.
     /// </summary>
     public static string BuildMetaSegment(ChatModelChoice choice)
     {
         var hasProvider = !string.IsNullOrWhiteSpace(choice.Provider);
-        var ctx = choice.ContextWindow is { } cw ? FormatContextWindow(cw) : string.Empty;
+        var runtimeTokens = choice.ContextTokens is > 0 ? choice.ContextTokens : null;
+        var nativeTokens = choice.ContextWindow is > 0 ? choice.ContextWindow : null;
+        string ctx;
+
+        if (runtimeTokens is { } runtime)
+        {
+            if (nativeTokens is { } native)
+            {
+                if (runtime == native)
+                {
+                    ctx = FormatContextWindow(runtime);
+                }
+                else
+                {
+                    var labels = FormatDistinctContextValues(runtime, native);
+                    ctx = $"{labels.Runtime} runtime · {labels.Native} native";
+                }
+            }
+            else
+            {
+                ctx = $"{FormatContextWindow(runtime)} runtime";
+            }
+        }
+        else
+        {
+            ctx = nativeTokens is { } native ? FormatContextWindow(native) : string.Empty;
+        }
         var hasCtx = ctx.Length > 0;
 
         if (hasProvider && hasCtx) return $"{choice.Provider} · {ctx}";
