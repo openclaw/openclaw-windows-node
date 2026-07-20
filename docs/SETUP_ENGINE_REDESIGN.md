@@ -87,9 +87,12 @@ New WSL distros use a 1-64 character name containing ASCII letters, digits,
 periods, underscores, or hyphens, beginning and ending with a letter or digit.
 Uninstall also accepts older names with spaces or Unicode when the name is one
 safe Windows path segment and resolves to an immediate child of the app-owned
-`LocalDataDir\wsl` root. To replace such a legacy distro, uninstall it first,
-using `--uninstall --confirm-destructive` and the same distro name, then rerun
-setup with a supported new name.
+`LocalDataDir\wsl` root. Teardown rejects filesystem aliases, case or Unicode
+normalization collisions, and reparse points at either the root or managed
+child. It also preserves the VHD directory unless WSL confirms the distro is
+absent or unregister succeeds. To replace such a legacy distro, uninstall it
+first, using `--uninstall --confirm-destructive` and the same distro name, then
+rerun setup with a supported new name.
 
 ```json
 {

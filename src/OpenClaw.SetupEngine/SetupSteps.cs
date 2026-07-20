@@ -900,7 +900,7 @@ public sealed class CreateWslInstanceStep : SetupStep
     {
         var terminate = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
         if (terminate.ExitCode != 0 && !IsMissingDistroResult(terminate))
-            cleanupErrors.Add($"terminate exit {terminate.ExitCode}: {FirstNonEmpty(terminate.Stderr, terminate.Stdout)}");
+            ctx.Logger.Warn($"Targeted terminate for '{distro}' failed before unregister (exit {terminate.ExitCode}): {FirstNonEmpty(terminate.Stderr, terminate.Stdout)}");
 
         var unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
         if (unregister.ExitCode == 0 || IsMissingDistroResult(unregister))
@@ -909,7 +909,7 @@ public sealed class CreateWslInstanceStep : SetupStep
         ctx.Logger.Warn($"Partial install unregister failed (exit {unregister.ExitCode}); retrying targeted termination");
         terminate = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
         if (terminate.ExitCode != 0 && !IsMissingDistroResult(terminate))
-            cleanupErrors.Add($"retry terminate exit {terminate.ExitCode}: {FirstNonEmpty(terminate.Stderr, terminate.Stdout)}");
+            ctx.Logger.Warn($"Targeted terminate retry for '{distro}' failed (exit {terminate.ExitCode}): {FirstNonEmpty(terminate.Stderr, terminate.Stdout)}");
 
         unregister = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
         if (unregister.ExitCode == 0 || IsMissingDistroResult(unregister))
@@ -939,22 +939,20 @@ public sealed class CreateWslInstanceStep : SetupStep
         if (!DistroInstallPathPolicy.TryGetManagedInstallPath(ctx.LocalDataDir, distro, out var vhdDir, out var pathError))
             throw new IOException($"[Uninstall] Refusing WSL rollback filesystem cleanup: {pathError}");
 
-        // Unregister before filesystem cleanup so WSL releases the VHD.
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--terminate", distro], TimeSpan.FromSeconds(30), ct: ct);
-        await Task.Delay(2000, ct); // Let port/VHD locks release
-        await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--unregister", distro], TimeSpan.FromSeconds(60), ct: ct);
+        var cleanupError = await CleanupPartialInstall(ctx, distro, vhdDir, ct);
+        if (cleanupError.Length > 0)
+            throw new IOException($"[Uninstall] Refusing unsafe WSL rollback cleanup.{cleanupError}");
 
-        // VHD parent dir cleanup (mirrors old uninstall step 5a)
-        var localDataPath = ctx.LocalDataDir;
-        if (Directory.Exists(vhdDir))
+        if (!DistroInstallPathPolicy.TryGetManagedInstallPath(
+                ctx.LocalDataDir,
+                distro,
+                out var revalidatedPath,
+                out pathError))
         {
-            var delete = await CleanupStaleDistroStep.DeleteDistroDirectoryWithRetries(ctx, distro, vhdDir, ct);
-            if (!delete.IsSuccess)
-                throw new IOException($"[Uninstall] Failed to delete VHD parent directory: {delete.Message}");
+            throw new IOException($"[Uninstall] Refusing WSL parent cleanup: {pathError}");
         }
 
-        // WSL parent dir cleanup — remove empty wsl\ directory (mirrors old step 5b)
-        var wslDir = Path.Combine(localDataPath, "wsl");
+        var wslDir = Path.GetDirectoryName(revalidatedPath)!;
         if (Directory.Exists(wslDir) &&
             !new DirectoryInfo(wslDir).Attributes.HasFlag(FileAttributes.ReparsePoint) &&
             !Directory.EnumerateFileSystemEntries(wslDir).Any())
