@@ -728,4 +728,72 @@ public sealed class TrayDashboardSummaryBuilderTests
         Assert.Same(main, TrayDashboardSummaryBuilder.SelectActiveSession([heartbeat, main]));
         Assert.Null(TrayDashboardSummaryBuilder.SelectActiveSession([heartbeat]));
     }
+
+    [Fact]
+    public void SelectActiveSession_PrefersNonEndedOverEndedFallback()
+    {
+        // When no session is "active" or "main", ended sessions should not
+        // appear as the dashboard's current session if non-ended ones exist.
+        var ended = new SessionInfo
+        {
+            Key = "agent:main:explicit:old-task",
+            Status = "completed",
+            UpdatedAt = new DateTime(2024, 1, 15, 10, 30, 0, DateTimeKind.Utc),
+        };
+        var idle = new SessionInfo
+        {
+            Key = "agent:main:explicit:current",
+            Status = "idle",
+            UpdatedAt = new DateTime(2024, 1, 15, 10, 0, 0, DateTimeKind.Utc),
+        };
+
+        // idle is older but non-ended, so it wins over the more recent ended one
+        var result = TrayDashboardSummaryBuilder.SelectActiveSession([ended, idle]);
+        Assert.Same(idle, result);
+    }
+
+    [Fact]
+    public void SelectActiveSession_FallsBackToEndedWhenAllEnded()
+    {
+        // When every session is ended, still return the most recent one
+        // rather than null (the tray should show something if sessions exist).
+        var failed = new SessionInfo
+        {
+            Key = "agent:main:explicit:task-a",
+            Status = "failed",
+            UpdatedAt = new DateTime(2024, 1, 15, 9, 0, 0, DateTimeKind.Utc),
+        };
+        var done = new SessionInfo
+        {
+            Key = "agent:main:explicit:task-b",
+            Status = "done",
+            UpdatedAt = new DateTime(2024, 1, 15, 10, 0, 0, DateTimeKind.Utc),
+        };
+
+        var result = TrayDashboardSummaryBuilder.SelectActiveSession([failed, done]);
+        Assert.Same(done, result);
+    }
+
+    [Fact]
+    public void SelectActiveSession_AbortedLastRunNotTreatedAsEnded()
+    {
+        // AbortedLastRun sessions must NOT be classified as ended (#1017 invariant)
+        var aborted = new SessionInfo
+        {
+            Key = "agent:main:explicit:retrying",
+            Status = "failed",
+            AbortedLastRun = true,
+            UpdatedAt = new DateTime(2024, 1, 15, 10, 30, 0, DateTimeKind.Utc),
+        };
+        var idle = new SessionInfo
+        {
+            Key = "agent:main:explicit:other",
+            Status = "idle",
+            UpdatedAt = new DateTime(2024, 1, 15, 9, 0, 0, DateTimeKind.Utc),
+        };
+
+        // aborted is more recent and not ended, so it wins
+        var result = TrayDashboardSummaryBuilder.SelectActiveSession([aborted, idle]);
+        Assert.Same(aborted, result);
+    }
 }

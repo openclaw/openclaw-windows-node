@@ -276,7 +276,24 @@ public class SessionInfo
 {
     /// <summary>Defensive copy so a snapshot handed to a SessionsUpdated subscriber does not
     /// alias the live tracked instance (whose fields are mutated in place under _sessionsLock).</summary>
-    public SessionInfo Clone() => (SessionInfo)MemberwiseClone();
+    public SessionInfo Clone()
+    {
+        var copy = (SessionInfo)MemberwiseClone();
+        if (copy.Presentation is { } p)
+            copy.Presentation = new SessionPresentationInfo
+            {
+                Title = p.Title, TitleSource = p.TitleSource, Subtitle = p.Subtitle,
+                Family = p.Family, AgentId = p.AgentId, Channel = p.Channel,
+                AccountId = p.AccountId, PeerKind = p.PeerKind,
+                IsMain = p.IsMain, IsBackground = p.IsBackground,
+            };
+        if (copy.Worktree is { } w)
+            copy.Worktree = new SessionWorktreeInfo
+            {
+                Id = w.Id, Branch = w.Branch, RepoRoot = w.RepoRoot,
+            };
+        return copy;
+    }
 
     public string Key { get; set; } = "";
     public bool IsMain { get; set; }

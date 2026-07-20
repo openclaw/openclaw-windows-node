@@ -230,6 +230,14 @@ internal sealed class TrayDashboardSummaryBuilder
         var main = sessions.FirstOrDefault(s => s.IsMain);
         if (main != null) return main;
 
+        // Prefer non-ended sessions as the dashboard fallback so a completed/failed
+        // session does not appear as "current" when live sessions remain.
+        var nonEnded = sessions
+            .Where(s => !SessionVisibilityFilter.IsEnded(s))
+            .OrderByDescending(s => s.UpdatedAt ?? s.LastSeen)
+            .FirstOrDefault();
+        if (nonEnded != null) return nonEnded;
+
         return sessions.OrderByDescending(s => s.UpdatedAt ?? s.LastSeen).First();
     }
 
