@@ -4,7 +4,7 @@
   The list of supported commands below is checked at CI time against the live
   capability surface (see SkillMdDriftTests). When a capability is added,
   removed, or renamed in src/OpenClaw.Shared/Mcp/McpToolBridge.cs
-  (CommandDescriptions), update this document so the drift test stays green —
+  (CommandDescriptions), update this document so the drift test stays green -
   the test compares command identifiers, so prose can still be tweaked by hand.
 -->
 
@@ -27,25 +27,25 @@ winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>] [--i
 winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev]
 ```
 
-- `--command` (required) — node command (e.g. `system.which`, `canvas.a2ui.push`).
-- `--list-tools` — query the live MCP server's `tools/list` method and print the
+- `--command` (required) - node command (e.g. `system.which`, `canvas.a2ui.push`).
+- `--list-tools` - query the live MCP server's `tools/list` method and print the
   advertised tools. Useful when settings-gated capabilities differ from this
   static reference.
-- `--params` — single JSON **object** string, default `{}`. Must be a JSON object,
+- `--params` - single JSON **object** string, default `{}`. Must be a JSON object,
   not an array or scalar. **`--params @<path>`** loads the JSON object from a
   file on disk (useful for big A2UI payloads / `canvas.eval` scripts).
-- `--invoke-timeout` — milliseconds, default 15000, max 600000 (10 min). HTTP
+- `--invoke-timeout` - milliseconds, default 15000, max 600000 (10 min). HTTP
   timeout adds a 5s buffer.
-- `--node` — accepted for parity with `openclaw nodes invoke`; **ignored**
+- `--node` - accepted for parity with `openclaw nodes invoke`; **ignored**
   locally. Safe to copy/paste from gateway-side commands.
-- `--idempotency-key` — accepted for parity; **ignored**, and the CLI emits a
-  `[winnode] WARN` to stderr because local MCP does *not* dedupe retries —
+- `--idempotency-key` - accepted for parity; **ignored**, and the CLI emits a
+  `[winnode] WARN` to stderr because local MCP does *not* dedupe retries -
   re-running a command after a transient failure can double-execute side
   effects. If you need idempotency, target the gateway, not winnode.
-- `--mcp-url <url>` / `--mcp-port <port>` — override the endpoint. Falls back to
+- `--mcp-url <url>` / `--mcp-port <port>` - override the endpoint. Falls back to
   `OPENCLAW_MCP_PORT` env var, then port 8765. `--mcp-port` must be in
   `[1, 65535]`; out of range fails with exit code 2.
-- `--mcp-token <token>` — bearer token override (testing / explicit only). The
+- `--mcp-token <token>` - bearer token override (testing / explicit only). The
   literal value is **visible to other same-user processes via the OS process
   listing** (`Get-CimInstance Win32_Process | Select CommandLine`,
   Process Explorer, etc.). The CLI emits a stderr warning when this flag is
@@ -53,12 +53,12 @@ winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev
   `%APPDATA%\OpenClawTray\mcp-token.txt`** which the release tray writes when
   MCP is enabled. Both `OPENCLAW_MCP_TOKEN` and the on-disk file should
   themselves be treated as sensitive operational secrets.
-- `--identity release|dev` — selects which tray profile supplies the default
+- `--identity release|dev` - selects which tray profile supplies the default
   on-disk MCP token. Defaults to `OPENCLAW_APP_IDENTITY`, then `release`.
   Use `--identity dev` for a side-by-side dev tray; its default token path is
   `%APPDATA%\OpenClawTray-Dev\mcp-token.txt`. `OPENCLAW_TRAY_DATA_DIR` still
   wins for isolated runs and points directly at the data folder.
-- `--verbose` — log endpoint + ignored flags to stderr. Without `--verbose`,
+- `--verbose` - log endpoint + ignored flags to stderr. Without `--verbose`,
   HTTP error bodies are emitted only as the first line; with `--verbose`, the
   full body is shown (after sanitization + token-shape redaction).
 
@@ -163,7 +163,7 @@ Returns `{ format, base64 }`.
 
 ### canvas.a2ui.push
 Render an A2UI v0.8 surface in the canvas. The canvas window opens
-automatically — no `canvas.present` required.
+automatically - no `canvas.present` required.
 ```
 {
   "jsonl":     "string",   // OR jsonlPath
@@ -182,7 +182,7 @@ No params. Clears any rendered surfaces. Returns `{ "reset": true }`.
 
 ### canvas.a2ui.dump
 No params. Returns the current surface graph for introspection. **Read-all:**
-this exposes every currently-rendered surface — operators should treat it as
+this exposes every currently-rendered surface - operators should treat it as
 equivalent to a screenshot of every open A2UI surface.
 
 ### canvas.caps
@@ -232,7 +232,7 @@ Returns `{ format, durationMs, base64 }`.
 
 ## Speech-to-text (stt.*)
 
-Local Whisper.net runs on this device — no audio leaves the box. The
+Local Whisper.net runs on this device - no audio leaves the box. The
 model is downloaded on first use; until then every `stt.*` call returns
 a clear error pointing the caller at the Voice Settings page.
 **Privacy-sensitive: requires `NodeSttEnabled` in tray Settings.**
@@ -242,7 +242,7 @@ Bounded fixed-duration mic capture + transcription.
 ```
 {
   "maxDurationMs": 5000,      // required, > 0, max 30000
-  "language": "en"            // optional BCP-47 tag or "auto" — falls back to SttLanguage setting
+  "language": "en"            // optional BCP-47 tag or "auto" - falls back to SttLanguage setting
 }
 ```
 Returns `{ transcribed, text, durationMs, language, engineEffective: "whisper" }`.
@@ -268,7 +268,7 @@ where `readiness` ∈ `"ready" | "initializing" | "model-downloading" | "model-n
 
 ## Text-to-speech (tts.*)
 
-Three providers — Piper (local neural via Sherpa-ONNX, default), Windows
+Three providers - Piper (local neural via Sherpa-ONNX, default), Windows
 built-in speech, and ElevenLabs (cloud). Provider + per-provider voice
 are configured in tray Settings.
 
@@ -560,7 +560,7 @@ Agents should request only the sections they need.
 Proxy an HTTP request to the local OpenClaw browser control host (Chrome DevTools Protocol server) running on gateway port + 2.
 ```
 {
-  "path": "/json/list",        // required — local control path
+  "path": "/json/list",        // required - local control path
   "method": "GET",             // optional, default GET; allowed: GET|POST|DELETE
   "body": {},                  // JSON object, for POST/DELETE
   "query": {},                 // appended as query-string params
@@ -568,7 +568,7 @@ Proxy an HTTP request to the local OpenClaw browser control host (Chrome DevTool
   "timeoutMs": 20000           // optional, max 120000
 }
 ```
-Returns `{ result, files? }` — `files` is an array of `{ path, base64, mimeType }` if the response referenced local file paths.
+Returns `{ result, files? }` - `files` is an array of `{ path, base64, mimeType }` if the response referenced local file paths.
 
 Requires the gateway URL to have an explicit port (e.g. `ws://localhost:8080`).
 The browser control host must be running locally on `127.0.0.1:<gatewayPort + 2>`.
@@ -664,21 +664,21 @@ Pass this as the `jsonl` value (a single JSON string with `\n` between messages)
 
 ## Token-efficient call patterns
 
-1. **Skip `--node` / `--idempotency-key`** — they're ignored locally; including
+1. **Skip `--node` / `--idempotency-key`** - they're ignored locally; including
    them just costs tokens. `--idempotency-key` triggers a stderr warning.
 2. **Omit `--params` when the command takes no args** (`camera.list`,
    `canvas.hide`, `canvas.a2ui.reset`, `canvas.a2ui.dump`, `canvas.caps`,
    `system.execApprovals.get`).
-3. **Large A2UI payloads** — write the JSONL to a file under the system temp
+3. **Large A2UI payloads** - write the JSONL to a file under the system temp
    directory and pass `{"jsonlPath": "<path>"}`. The capability rejects paths
    outside `%TEMP%`. Or pass `--params @<path>` to load the entire JSON
    argument object from disk.
-4. **Big binary results (snapshots, captures)** — output is base64 in stdout.
+4. **Big binary results (snapshots, captures)** - output is base64 in stdout.
    Pipe to a file (`> capture.json`) instead of letting the agent read it
    inline.
-5. **Errors are exit-code-driven** — check `$LASTEXITCODE` (or `$?` in bash)
+5. **Errors are exit-code-driven** - check `$LASTEXITCODE` (or `$?` in bash)
    first, then read stderr only on non-zero. Exit 2 = your call is malformed.
-6. **Debug with `--verbose`, not by sharing transcripts** — without
+6. **Debug with `--verbose`, not by sharing transcripts** - without
    `--verbose` the CLI shows only the first line of an HTTP error body and
    redacts long base64url runs. With `--verbose` it shows the full sanitized
    body. Treat any verbose output as containing potentially sensitive paths
@@ -686,7 +686,7 @@ Pass this as the `jsonl` value (a single JSON string with `\n` between messages)
 
 ## What's NOT exposed
 - Pairing / device approval (gateway concept; doesn't apply locally).
-- `chat.send`, `sessions.list`, `usage.list`, `node.list` — these belong to the
+- `chat.send`, `sessions.list`, `usage.list`, `node.list` - these belong to the
   operator-side `OpenClaw.Cli.exe`, not `winnode.exe`.
 - Idempotency. The gateway de-dupes retries against `--idempotency-key`; local
   MCP does not. Retrying a `system.run` / `system.notify` / `canvas.present`

@@ -298,7 +298,7 @@ internal static class CliRunner
                 return 1;
             }
 
-            // F-02: refuse 3xx — no legitimate redirect from this server.
+            // F-02: refuse 3xx - no legitimate redirect from this server.
             if ((int)response.StatusCode >= 300 && (int)response.StatusCode < 400)
             {
                 stderr.WriteLine($"MCP server returned unexpected redirect {(int)response.StatusCode}; refusing to follow.");
@@ -416,7 +416,7 @@ internal static class CliRunner
     ///    secrets (F-21: catches the local MCP token shape, most API keys).
     /// 3. Cap length at <see cref="MaxStderrEchoBytes"/> (F-16, F-21).
     /// 4. When not in <paramref name="verbose"/>, return only the first line
-    ///    (F-21: matches gh / kubectl posture — full body on --verbose only).
+    ///    (F-21: matches gh / kubectl posture - full body on --verbose only).
     /// </summary>
     internal static string SanitizeForStderr(string input, bool verbose)
     {
@@ -542,9 +542,9 @@ internal static class CliRunner
     ///   <item><c>--mcp-token &lt;literal&gt;</c> flag (matches <c>gh --token</c>,
     ///   <c>az login --service-principal --password</c>, etc.).</item>
     ///   <item><c>OPENCLAW_MCP_TOKEN</c> env var (literal). Standard
-    ///   per-tool secret env-var convention — same shape as <c>GITHUB_TOKEN</c>,
+    ///   per-tool secret env-var convention - same shape as <c>GITHUB_TOKEN</c>,
     ///   <c>ANTHROPIC_API_KEY</c>, <c>NUGET_API_KEY</c>.</item>
-    ///   <item>The on-disk token file the tray writes when MCP is enabled —
+    ///   <item>The on-disk token file the tray writes when MCP is enabled -
     ///   <c>%APPDATA%\OpenClawTray\mcp-token.txt</c> by default,
     ///   <c>%APPDATA%\OpenClawTray-Dev\mcp-token.txt</c> when
     ///   <c>--identity dev</c> or <c>OPENCLAW_APP_IDENTITY=dev</c> is set, or
@@ -553,7 +553,7 @@ internal static class CliRunner
     /// </list>
     /// When the token is loaded from disk, mirror the tray's own startup hygiene
     /// check by running <see cref="McpAuthToken.VerifyAcl"/> and surfacing any
-    /// warning to stderr — owner mismatch or DACL grants outside {current user,
+    /// warning to stderr - owner mismatch or DACL grants outside {current user,
     /// SYSTEM, Administrators} mean the file should be treated as compromised
     /// and the user told to rotate it via the Settings UI.
     /// </summary>
@@ -613,7 +613,7 @@ internal static class CliRunner
             return new AuthTokenResult(null, "none");
         }
 
-        // Same hygiene check the tray runs at startup. Warning-only — broken
+        // Same hygiene check the tray runs at startup. Warning-only - broken
         // ACLs don't prevent the call (a malicious local user can already
         // read whatever they like under the user profile), but the operator
         // should see it.
@@ -637,7 +637,7 @@ internal static class CliRunner
         try
         {
             // Path.GetFullPath normalizes . / .. / mixed separators. It does
-            // not resolve symlinks — ResolveLinkTarget does that, but only
+            // not resolve symlinks - ResolveLinkTarget does that, but only
             // for actual link entries, so we run it on both the file and the
             // directory and fall back to the unresolved form when nothing's
             // a link.
