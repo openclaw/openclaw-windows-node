@@ -7,6 +7,8 @@
   },
   "authority": {
     "designSource": "self",
+    "owner": "OpenClaw Windows (openclaw/openclaw-windows-node)",
+    "syncProcess": "Tokens are captured by manual inspection of the app's WinUI 3 XAML/C# Fluent resources; re-inspect and update this file when the app's ThemeResource mappings or SystemAccentColor usage change.",
     "port": {
       "authoritySource": "Native WinUI 3 / C# (Windows Fluent)",
       "syncSource": "https://github.com/microsoft/win-dev-skills",
@@ -38,18 +40,18 @@
     ]
   },
   "colors": [
-    { "name": "ink",       "value": "#1b1b1b", "usage": "Primary text, headings. Fluent TextFillColorPrimary on light." },
-    { "name": "paper",     "value": "#f3f3f3", "usage": "App / page background. Mica base / ApplicationPageBackground (light)." },
-    { "name": "surface",   "value": "#fbfbfb", "usage": "Cards, flyouts, inputs. Fluent CardBackgroundFillColorDefault." },
-    { "name": "muted",     "value": "#5d5d5d", "usage": "Secondary text, captions. Fluent TextFillColorSecondary/Tertiary." },
-    { "name": "line",      "value": "#e5e5e5", "usage": "Borders, dividers. Fluent CardStrokeColorDefault / DividerStroke." },
-    { "name": "accent",    "value": "#0067c0", "usage": "Primary actions, links, selection, focus. Follows SystemAccentColor (default AccentDark1 on light)." },
-    { "name": "accentInk", "value": "#ffffff", "usage": "Text/glyphs on accent fills." },
-    { "name": "positive",  "value": "#0f7b0f", "usage": "Success / connected states. Fluent SystemFillColorSuccess." },
-    { "name": "warning",   "value": "#9d5d00", "usage": "Warnings / attention. Fluent SystemFillColorCaution." },
-    { "name": "critical",  "value": "#c42b1c", "usage": "Errors, disconnected, destructive. Fluent SystemFillColorCritical." },
-    { "name": "subtleHover",   "value": "rgba(0,0,0,0.037)", "usage": "Hover fill for subtle/transparent controls (icon buttons, inline pickers). Fluent SubtleFillColorSecondary (light #09000000)." },
-    { "name": "subtlePressed", "value": "rgba(0,0,0,0.024)", "usage": "Pressed fill for subtle/transparent controls. Fluent SubtleFillColorTertiary (light #06000000)." }
+    { "name": "ink",       "value": "#1b1b1b", "resource": "TextFillColorPrimaryBrush",         "themes": { "dark": "#ffffff", "highContrast": "#ffffff" }, "usage": "Primary text, headings. Fluent TextFillColorPrimary on light." },
+    { "name": "paper",     "value": "#f3f3f3", "resource": "ApplicationPageBackgroundThemeBrush", "themes": { "dark": "#202020", "highContrast": "#000000" }, "usage": "App / page background. Mica base / ApplicationPageBackground (light)." },
+    { "name": "surface",   "value": "#fbfbfb", "resource": "CardBackgroundFillColorDefaultBrush", "themes": { "dark": "#2b2b2b", "highContrast": "#000000" }, "usage": "Cards, flyouts, inputs. Fluent CardBackgroundFillColorDefault." },
+    { "name": "muted",     "value": "#5d5d5d", "resource": "TextFillColorSecondaryBrush",        "themes": { "dark": "#c8c8c8", "highContrast": "#ffffff" }, "usage": "Secondary text, captions. Fluent TextFillColorSecondary/Tertiary." },
+    { "name": "line",      "value": "#e5e5e5", "resource": "CardStrokeColorDefaultBrush",        "themes": { "dark": "#303030", "highContrast": "#ffffff" }, "usage": "Borders, dividers. Fluent CardStrokeColorDefault / DividerStroke." },
+    { "name": "accent",    "value": "#0067c0", "resource": "AccentFillColorDefaultBrush",         "themes": { "dark": "#4cc2ff", "highContrast": "#ffff00" }, "usage": "Primary actions, links, selection, focus. Follows SystemAccentColor (default AccentDark1 on light)." },
+    { "name": "accentInk", "value": "#ffffff", "resource": "TextOnAccentFillColorPrimaryBrush",   "themes": { "dark": "#000000", "highContrast": "#000000" }, "usage": "Text/glyphs on accent fills." },
+    { "name": "positive",  "value": "#0f7b0f", "resource": "SystemFillColorSuccessBrush",         "themes": { "dark": "#6ccb5f", "highContrast": "#3ff23f" }, "usage": "Success / connected states. Fluent SystemFillColorSuccess." },
+    { "name": "warning",   "value": "#9d5d00", "resource": "SystemFillColorCautionBrush",         "themes": { "dark": "#fcd116", "highContrast": "#ffb000" }, "usage": "Warnings / attention. Fluent SystemFillColorCaution." },
+    { "name": "critical",  "value": "#c42b1c", "resource": "SystemFillColorCriticalBrush",        "themes": { "dark": "#ff99a4", "highContrast": "#ff5449" }, "usage": "Errors, disconnected, destructive. Fluent SystemFillColorCritical." },
+    { "name": "subtleHover",   "value": "rgba(0,0,0,0.037)", "resource": "SubtleFillColorSecondaryBrush", "themes": { "dark": "rgba(255,255,255,0.0605)", "highContrast": "transparent" }, "usage": "Hover fill for subtle/transparent controls (icon buttons, inline pickers). Fluent SubtleFillColorSecondary (light #09000000)." },
+    { "name": "subtlePressed", "value": "rgba(0,0,0,0.024)", "resource": "SubtleFillColorTertiaryBrush",  "themes": { "dark": "rgba(255,255,255,0.0419)", "highContrast": "transparent" }, "usage": "Pressed fill for subtle/transparent controls. Fluent SubtleFillColorTertiary (light #06000000)." }
   ],
   "typography": {
     "display": {
