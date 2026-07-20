@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClawTray.FunctionalUI;
 using OpenClawTray.FunctionalUI.Core;
 using OpenClawTray.FunctionalUI.Hosting;
+using Windows.Graphics;
 using static OpenClaw.Tray.UITests.TestSupport;
 using static OpenClawTray.FunctionalUI.Factories;
 
@@ -13,6 +14,8 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class FunctionalUiFlyoutIdentityTests
 {
+    private static readonly TimeSpan UiOperationTimeout = TimeSpan.FromSeconds(10);
+
     private static readonly SessionRow[] InitialSessions =
     [
         new("alpha", "Alpha"),
@@ -46,9 +49,10 @@ public sealed class FunctionalUiFlyoutIdentityTests
 
         try
         {
-            await _ui.RunOnUIAsync(() =>
+            await RunOnUIAsync(() =>
             {
                 TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+                _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 640, 480));
                 _ui.Container.Width = 600;
                 _ui.Container.Height = 400;
 
@@ -64,7 +68,7 @@ public sealed class FunctionalUiFlyoutIdentityTests
 
             await loaded.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            await _ui.RunOnUIAsync(() =>
+            await RunOnUIAsync(() =>
             {
                 initialPicker = FindPicker(initialRoot!);
                 initialFlyout = Assert.IsType<Flyout>(initialPicker.Flyout);
@@ -80,7 +84,7 @@ public sealed class FunctionalUiFlyoutIdentityTests
             for (var render = 1; render <= 3; render++)
             {
                 var status = $"Agent thinking {render}";
-                await _ui.RunOnUIAsync(() =>
+                await RunOnUIAsync(() =>
                 {
                     var rerenderedRoot = Render(
                         renderer!,
@@ -101,7 +105,7 @@ public sealed class FunctionalUiFlyoutIdentityTests
             await _ui.PauseAsync("Session picker still open after thinking renders", ms: 15_000);
 
             var selections = new List<string>();
-            await _ui.RunOnUIAsync(() =>
+            await RunOnUIAsync(() =>
             {
                 var updatedRoot = Render(
                     renderer!,
@@ -135,7 +139,7 @@ public sealed class FunctionalUiFlyoutIdentityTests
 
             await _ui.PauseAsync("Updated session selected from the open picker", ms: 1_000);
 
-            await _ui.RunOnUIAsync(() =>
+            await RunOnUIAsync(() =>
             {
                 _ = Render(
                     renderer!,
@@ -144,27 +148,42 @@ public sealed class FunctionalUiFlyoutIdentityTests
 
             await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            await _ui.RunOnUIAsync(() =>
+            await RunOnUIAsync(() =>
             {
                 Assert.False(initialFlyout!.IsOpen);
-
-                var restoredRoot = Render(
-                    renderer!,
-                    BuildTree("Ready", UpdatedSessions, "beta", _ => { }, includePicker: true));
-                var restoredPicker = FindPicker(restoredRoot);
-                Assert.NotSame(initialFlyout, restoredPicker.Flyout);
+                Assert.Null(initialFlyout.Content);
             });
         }
         finally
         {
-            await _ui.RunOnUIAsync(() =>
+            var closeRequested = false;
+            await RunOnUIAsync(() =>
             {
-                initialFlyout?.Hide();
+                if (initialFlyout?.IsOpen == true)
+                {
+                    closeRequested = true;
+                    initialFlyout.Hide();
+                }
+            });
+            if (closeRequested)
+                await closed.Task.WaitAsync(UiOperationTimeout);
+
+            await RunOnUIAsync(() =>
+            {
+                if (initialPicker is not null)
+                    initialPicker.Flyout = null;
+                if (initialFlyout is not null)
+                    initialFlyout.Content = null;
                 renderer?.Dispose();
                 _ui.Container.Children.Clear();
+                _ui.Container.UpdateLayout();
+                _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 1, 1));
             });
         }
     }
+
+    private async Task RunOnUIAsync(Action work) =>
+        await _ui.RunOnUIAsync(work).WaitAsync(UiOperationTimeout);
 
     private static UIElement Render(UiRenderer renderer, Element tree)
     {
