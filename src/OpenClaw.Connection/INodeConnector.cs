@@ -25,7 +25,7 @@ public interface INodeConnector : IDisposable
     /// but BEFORE its <c>ConnectAsync()</c> call. Subscribers (typically
     /// <c>NodeService</c>) must register the node's capabilities on the new
     /// client synchronously so the outbound "connect" handshake includes
-    /// populated <c>caps</c>/<c>commands</c> arrays — otherwise the gateway
+    /// populated <c>caps</c>/<c>commands</c> arrays - otherwise the gateway
     /// sees the node as having no advertised commands.
     ///
     /// Fires on first connect AND on every reconnect (the connector destroys

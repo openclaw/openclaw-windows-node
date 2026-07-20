@@ -166,7 +166,7 @@ public static class Program
 
         if (dryRun && !uninstall)
         {
-            Console.WriteLine("DRY RUN — config validated, exiting.");
+            Console.WriteLine("DRY RUN - config validated, exiting.");
             return 0;
         }
 

@@ -23,7 +23,7 @@ public interface IGatewayClientLifecycle : IDisposable
 
 /// <summary>
 /// Factory for creating configured gateway client instances.
-/// Stateless — creates instances but does not manage their lifecycle.
+/// Stateless - creates instances but does not manage their lifecycle.
 /// </summary>
 public interface IGatewayClientFactory
 {

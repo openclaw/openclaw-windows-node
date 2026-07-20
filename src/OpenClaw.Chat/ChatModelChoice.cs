@@ -152,7 +152,7 @@ public static class ChatModelLabels
 {
     /// <summary>
     /// True when <paramref name="modelId"/> represents "no explicit model
-    /// override" — i.e. the session is tracking the gateway/agent default.
+    /// override" - i.e. the session is tracking the gateway/agent default.
     /// This predicate only describes the <em>current</em> state, derived from an
     /// empty/absent session model. Clearing an override (so a session tracks the
     /// default again) is performed via the tri-state <c>SessionPatch.Clear</c>
@@ -255,7 +255,7 @@ public static class ChatModelLabels
     /// Trailing state marker for a model: "default", "auth needed",
     /// "unavailable", or empty. Unavailable takes precedence over auth-needed,
     /// which takes precedence over default. Only explicit gateway signals drive
-    /// the markers — a missing <see cref="ChatModelChoice.IsConfigured"/> flag is
+    /// the markers - a missing <see cref="ChatModelChoice.IsConfigured"/> flag is
     /// not treated as "auth needed" because the gateway's <c>configured</c> view
     /// often omits the field entirely.
     /// </summary>

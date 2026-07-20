@@ -24,7 +24,7 @@ internal static class LogFileLauncher
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var packageRoot = Path.Combine(localAppData, "Packages", pfn);
 
-        // Already inside the package container — nothing to translate.
+        // Already inside the package container - nothing to translate.
         if (logPath.StartsWith(packageRoot, StringComparison.OrdinalIgnoreCase))
             return logPath;
 
@@ -67,7 +67,7 @@ internal static class LogFileLauncher
         }
         catch (Exception ex)
         {
-            // best effort — the link is informational; if shell open fails
+            // best effort - the link is informational; if shell open fails
             // the user can navigate to the log path manually.
             System.Diagnostics.Trace.WriteLine($"LogFileLauncher.OpenContainingFolder: {ex.GetType().Name}: {ex.Message}");
         }
@@ -95,7 +95,7 @@ internal static class LogFileLauncher
         }
         catch
         {
-            // Unpackaged process — no virtualization in play.
+            // Unpackaged process - no virtualization in play.
             return null;
         }
     }

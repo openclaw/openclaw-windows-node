@@ -126,7 +126,7 @@ public static class TrayArtifactCleanup
         var settingsPath = Path.Combine(appDataDir, "settings.json");
         if (!File.Exists(settingsPath))
         {
-            logger.Info("[Uninstall] settings.json not found — nothing to reset");
+            logger.Info("[Uninstall] settings.json not found - nothing to reset");
             return;
         }
 

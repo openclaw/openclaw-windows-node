@@ -13,7 +13,7 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 /// Shared definition + passive status checks for the Windows OS permissions surfaced
 /// during setup. Used by CapabilitiesPage so each capability shows its matching
 /// Windows permission inline.
-/// All checks are passive — they read current OS state and never trigger a consent dialog.
+/// All checks are passive - they read current OS state and never trigger a consent dialog.
 /// </summary>
 internal sealed record PermDef(
     string Id,
@@ -81,12 +81,12 @@ internal static class SetupPermissionHelper
         FrameworkElement actionCol;
         if (string.IsNullOrEmpty(perm.SettingsUri))
         {
-            // No standing OS grant (screen capture) — the user picks what to share each time
+            // No standing OS grant (screen capture) - the user picks what to share each time
             // via the Windows Graphics Capture picker, so there's nothing to pre-allow here.
             var pill = Pill(granted ? "Ask every time" : "Unavailable", subFg);
             if (granted)
                 ToolTipService.SetToolTip(pill,
-                    "Windows has no on/off setting for screen capture. Each time the agent captures your screen, Windows shows a picker so you choose exactly what to share — there's nothing to allow in advance.");
+                    "Windows has no on/off setting for screen capture. Each time the agent captures your screen, Windows shows a picker so you choose exactly what to share - there's nothing to allow in advance.");
             actionCol = pill;
         }
         else if (granted)

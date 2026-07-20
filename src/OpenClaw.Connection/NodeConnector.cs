@@ -102,7 +102,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             nodeLogger,
             bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
 
-        // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
+        // Share v2 signature flag from operator - avoid wasting a roundtrip on v3
         if (useV2Signature)
             client.UseV2Signature = true;
 
@@ -129,7 +129,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
         // CRITICAL: fire ClientCreated BEFORE await _client.ConnectAsync() so subscribers
         // (NodeService) can register capabilities synchronously. WindowsNodeClient
         // serializes _registration.Capabilities/Commands into the outbound "connect"
-        // message during the connect handshake — registering after that point means
+        // message during the connect handshake - registering after that point means
         // the gateway sees an empty caps array for this session.
         try
         {

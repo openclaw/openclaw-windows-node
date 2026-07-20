@@ -6,7 +6,7 @@ using OpenClaw.Shared.Telemetry;
 namespace OpenClaw.Connection;
 
 /// <summary>
-/// GatewayConnectionManager — single owner of connection lifecycle.
+/// GatewayConnectionManager - single owner of connection lifecycle.
 /// Phase 2.1: Shell with state machine, diagnostics, and stub lifecycle methods.
 /// Real client creation is added in Step 2.2a.
 /// </summary>
@@ -235,7 +235,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 GatewayName = record.FriendlyName
             };
 
-            // Per-gateway identity directory — each gateway has its own keypair + tokens
+            // Per-gateway identity directory - each gateway has its own keypair + tokens
             var perGatewayIdentityDir = _registry.GetIdentityDirectory(record.Id);
             if (!Directory.Exists(perGatewayIdentityDir))
                 Directory.CreateDirectory(perGatewayIdentityDir);
@@ -293,7 +293,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _diagnostics.RecordStateChange(prevState, _stateMachine.Current.OverallState);
             EmitStateChanged();
 
-            // Create client via factory — use a diagnostic-tee logger so client handshake
+            // Create client via factory - use a diagnostic-tee logger so client handshake
             // logs appear in the Connection Status window timeline.
             // When SSH tunnel is configured, start the tunnel and connect to the local URL.
             var connectUrl = record.Url;
@@ -334,7 +334,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
             else if (record.SshTunnel != null)
             {
-                // Tunnel config present but no tunnel manager — use local URL directly
+                // Tunnel config present but no tunnel manager - use local URL directly
                 connectUrl = $"ws://localhost:{record.SshTunnel.LocalPort}";
             }
             var diagLogger = new DiagnosticTeeLogger(_logger, _diagnostics);
@@ -387,7 +387,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _ = HandleV2SignatureFallbackAsync(gen, subscribedGatewayId);
             };
 
-            // Local gateways only support v2 signatures — skip the v3 attempt entirely
+            // Local gateways only support v2 signatures - skip the v3 attempt entirely
             // to avoid a spurious "metadata-upgrade" re-pairing triggered by the v3→v2 fallback.
             if (record.IsLocal || record.RequiresV2Signature)
                 _gatewayNeedsV2Signature = true;
@@ -396,7 +396,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (_gatewayNeedsV2Signature)
                 lifecycle.DataClient.UseV2Signature = true;
 
-            // Connect (fire and forget — the event handlers will drive state transitions)
+            // Connect (fire and forget - the event handlers will drive state transitions)
             var ct = _operationCts!.Token;
             TransitionOperatorTelemetryPhase(gen, OperatorTransportSpanName);
             _ = Task.Run(async () =>
@@ -599,7 +599,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (_registry.GetById(gatewayId) == null)
             {
-                _logger.Warn($"[ConnMgr] Cannot switch gateway — record {gatewayId} not found");
+                _logger.Warn($"[ConnMgr] Cannot switch gateway - record {gatewayId} not found");
                 _diagnostics.Record("state", "Switch gateway failed", $"Gateway record not found: {gatewayId}");
                 return;
             }
@@ -620,7 +620,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
 
             await DisconnectCoreAsync();
-            // Stop tunnel when switching gateways — the new one may not need it.
+            // Stop tunnel when switching gateways - the new one may not need it.
             // Use a bounded timeout to avoid blocking all connection transitions.
             if (_tunnelManager?.IsActive == true)
             {
@@ -701,7 +701,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 Directory.CreateDirectory(identityDir);
 
             // Clear stored device tokens so we start fresh with the bootstrap token.
-            // The keypair (device ID) stays — only the tokens are wiped.
+            // The keypair (device ID) stays - only the tokens are wiped.
             DeviceIdentityStore.ClearStoredTokens(identityDir, _logger);
             _diagnostics.Record("setup", $"Setup code applied for {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
 
@@ -873,7 +873,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     break;
                 case ConnectionStatus.Disconnected:
                     _diagnostics.RecordWebSocketEvent("WebSocket disconnected");
-                    // Don't overwrite PairingRequired — gateway closes socket after pairing required
+                    // Don't overwrite PairingRequired - gateway closes socket after pairing required
                     if (_stateMachine.Current.OperatorState != RoleConnectionState.PairingRequired)
                         _stateMachine.TryTransition(ConnectionTrigger.WebSocketDisconnected);
                     CompleteOperatorTelemetryAttempt(
@@ -1125,7 +1125,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             _registry.Save();
-            _diagnostics.Record("credential", "Cleared bootstrap token — operator and node tokens are durable");
+            _diagnostics.Record("credential", "Cleared bootstrap token - operator and node tokens are durable");
         }
         catch (Exception ex)
         {
@@ -1163,7 +1163,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             ? "using persisted operator device token"
             : "using preserved shared gateway token";
         RememberGatewayNeedsV2Signature(gatewayRecordId, markActiveAttempt: true);
-        _diagnostics.Record("credential", "Bootstrap handoff complete — reconnecting operator role", detail);
+        _diagnostics.Record("credential", "Bootstrap handoff complete - reconnecting operator role", detail);
 
         ScheduleDelayedReconnect(
             gen,
@@ -1239,7 +1239,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (Interlocked.Read(ref _generation) != gen) return;
 
             var prev = _stateMachine.Current.OverallState;
-            _diagnostics.Record("pairing", $"Pairing required — waiting for approval (requestId={requestId})");
+            _diagnostics.Record("pairing", $"Pairing required - waiting for approval (requestId={requestId})");
             _stateMachine.TryTransition(ConnectionTrigger.PairingPending);
             CompleteOperatorTelemetryAttempt(
                 gen,
@@ -1282,7 +1282,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (_activeGatewayRecordId == null || _activeIdentityPath == null)
             throw new InvalidOperationException("No active gateway is configured.");
 
-        // Already paired? short-circuit. (Idempotent — safe to call repeatedly.)
+        // Already paired? short-circuit. (Idempotent - safe to call repeatedly.)
         if (snapshot.NodeState == RoleConnectionState.Connected
             && snapshot.NodePairingStatus == PairingStatus.Paired)
         {
@@ -1307,7 +1307,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     tcs.TrySetException(new InvalidOperationException(
                         s.NodeError ?? "Node connection failed."));
                     break;
-                // PairingRequired / Connecting / Idle — keep waiting. Gateway-owned
+                // PairingRequired / Connecting / Idle - keep waiting. Gateway-owned
                 // node command trust requires explicit operator approval. Explicitly
                 // typed device-pair role upgrades may auto-approve; other pending
                 // device-pair cases surface as a timeout so the caller can run the
@@ -1323,7 +1323,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (!startAttempted)
             {
                 tcs.TrySetException(new InvalidOperationException(
-                    "Node connection could not be started — see ConnectionDiagnostics for the credential/record-resolution failure."));
+                    "Node connection could not be started - see ConnectionDiagnostics for the credential/record-resolution failure."));
             }
             else
             {
@@ -1609,7 +1609,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var record = _registry.GetById(activeGatewayRecordId);
         if (record == null)
         {
-            _logger.Warn("[ConnMgr] Cannot start node — gateway record not found");
+            _logger.Warn("[ConnMgr] Cannot start node - gateway record not found");
             await BlockNodeStartAsync(MissingGatewayRecordForNodeMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
             CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.InternalError);
             return false;
@@ -1640,7 +1640,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var nodeCredential = nodeCredentialResolution.Credential;
         if (nodeCredential == null)
         {
-            _logger.Warn("[ConnMgr] No node credential available — skipping node connection");
+            _logger.Warn("[ConnMgr] No node credential available - skipping node connection");
             _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
             await _transitionSemaphore.WaitAsync(cancellationToken);
             try
@@ -1770,7 +1770,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         _diagnostics.Record("node", $"Node status: {status}");
 
-        // Check connector's pairing status directly — it's set synchronously
+        // Check connector's pairing status directly - it's set synchronously
         // before this handler runs, so it's always up-to-date
         var connectorPairingStatus = _nodeConnector?.PairingStatus;
         var isPairingPending = connectorPairingStatus == PairingStatus.Pending;
@@ -1975,7 +1975,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     // Auto-approve only explicitly typed device-pair role upgrades. Gateway-owned
     // node command trust always remains pending for explicit operator approval.
-    // _devicePairAutoApproveInFlight is a CAS guard scoped to JUST the approve RPC —
+    // _devicePairAutoApproveInFlight is a CAS guard scoped to JUST the approve RPC -
     // we release it before the reconnect delay so unrelated approvals
     // (different requestIds) aren't starved while we wait for the gateway
     // and node-reconnect handshake to settle (which can take 5–30s on
@@ -2175,7 +2175,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         long approvalGeneration,
         long approvalNodeGeneration)
     {
-        _diagnostics.Record("node", "Device role-upgrade pairing approved — reconnecting node");
+        _diagnostics.Record("node", "Device role-upgrade pairing approved - reconnecting node");
         await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
         return await StartNodeConnectionAsync(approvalGeneration, approvalNodeGeneration);
     }
@@ -2191,7 +2191,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     {
         var snapshot = _stateMachine.Current;
         RecordTelemetryStateTransitions(snapshot);
-        // Always fire when any part of the snapshot changed — not just OverallState.
+        // Always fire when any part of the snapshot changed - not just OverallState.
         // Node sub-state changes (e.g. Idle→PairingRequired) may not change OverallState
         // but the UI still needs to update.
         StateChanged?.Invoke(this, snapshot);
@@ -2769,7 +2769,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
         }
         // Acquire semaphore briefly to ensure no in-flight reconnect/switch is mid-transition.
-        // Use a short timeout — if something is stuck, proceed with disposal anyway,
+        // Use a short timeout - if something is stuck, proceed with disposal anyway,
         // but do not dispose the semaphore out from under the holder.
         var semaphoreEntered = false;
         try

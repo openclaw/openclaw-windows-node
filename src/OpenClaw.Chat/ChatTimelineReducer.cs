@@ -108,7 +108,7 @@ public static class ChatTimelineReducer
     /// waiting for the gateway round-trip.</para>
     /// <para>Gateway-side terminal events (the legacy ClearPermission
     /// path) call this with <see cref="ChatPermissionDecision.Expired"/>
-    /// as a backstop in case the user never clicked — visually
+    /// as a backstop in case the user never clicked - visually
     /// distinguishes "decided by user" from "decided elsewhere or timed
     /// out".</para>
     /// <para>If <paramref name="requestId"/> is null or no matching entry
@@ -116,7 +116,7 @@ public static class ChatTimelineReducer
     /// <see cref="ChatTimelineState.PendingPermission"/> is cleared (mirrors
     /// the prior ClearPermission contract).</para>
     /// <para>Entries whose <see cref="ChatTimelineItem.PermissionDecision"/>
-    /// is already non-Pending are not overwritten — once the user has made
+    /// is already non-Pending are not overwritten - once the user has made
     /// a choice locally, a later gateway "Expired" event won't downgrade it.</para>
     /// </remarks>
     public static ChatTimelineState ResolvePermission(ChatTimelineState state, string? requestId, ChatPermissionDecision decision)
@@ -148,7 +148,7 @@ public static class ChatTimelineReducer
     {
         // A second exec-approval can arrive before the first is resolved.
         // Mark any still-Pending prior approval entry as Expired so the
-        // timeline doesn't show two live Allow/Deny prompts at once — the
+        // timeline doesn't show two live Allow/Deny prompts at once - the
         // gateway has implicitly superseded the earlier one by issuing a
         // new approval. This mirrors the prior single-slot PendingPermission
         // behavior, which silently replaced the older request.
@@ -284,7 +284,7 @@ public static class ChatTimelineReducer
             Entries = entries,
             ActiveToolCallId = (entryId == state.ActiveToolCallId) ? null : state.ActiveToolCallId,
             ActiveToolCalls = e.ToolCallId is { } k ? state.ActiveToolCalls.Remove(k) : state.ActiveToolCalls,
-            // PendingPermission preserved — see ApplyToolOutput note.
+            // PendingPermission preserved - see ApplyToolOutput note.
         };
     }
 
@@ -316,7 +316,7 @@ public static class ChatTimelineReducer
             // Only take the fast-path when the active assistant entry is still
             // the timeline frontier (the last entry). If a tool call (or any
             // other entry kind) has been appended after it, the active
-            // assistant belongs to a closed intra-turn segment — merging into
+            // assistant belongs to a closed intra-turn segment - merging into
             // it would silently overwrite the prior segment's bubble when the
             // model resumes speaking after a tool call (assistant₁ → tool →
             // assistant₂ within a single turn). Fall through to the scan-back
@@ -328,7 +328,7 @@ public static class ChatTimelineReducer
                 var existing = state.Entries[idx];
                 // Even on the fast-path, if the incoming text is cumulative-
                 // for-turn (replace=true) it may carry an EARLIER assistant
-                // bubble's text as a prefix — the bubble whose final arrived
+                // bubble's text as a prefix - the bubble whose final arrived
                 // AFTER a tool call within the same turn. Stripping the LCP of
                 // that earlier bubble keeps the post-tool segment alone in
                 // this bubble. Without this, the second cumulative chat.message
@@ -339,7 +339,7 @@ public static class ChatTimelineReducer
                 // concatenation: if the existing bubble already ends with
                 // (any prefix of) the incoming delta, only append the
                 // non-overlapping suffix. This collapses the gateway's
-                // redundant tail-emissions — e.g. a final chat.message
+                // redundant tail-emissions - e.g. a final chat.message
                 // carrying "...mounted here." followed by an
                 // agent.message.delta carrying " D: is mounted here." that
                 // would otherwise produce "...mounted here. D: is mounted here.".
@@ -368,14 +368,14 @@ public static class ChatTimelineReducer
         //    final text even though the immediate last entry is a ToolCall.
         //
         //  • Identical-text safety net: if the most recent Assistant entry
-        //    (within the same turn — i.e. before any User boundary) has
+        //    (within the same turn - i.e. before any User boundary) has
         //    byte-equal text to the incoming message, collapse them
         //    regardless of any flag. This catches duplicate ChatMessageEvent
         //    emissions from the gateway (see the duplicate-bubble screenshot
         //    bug where the same final text was rendered twice in a row).
         if (replace && state.Entries.Count > 0)
         {
-            // Scan backward for the most recent Assistant entry — not just
+            // Scan backward for the most recent Assistant entry - not just
             // the very last one (see reasons above).
             for (var li = state.Entries.Count - 1; li >= 0; li--)
             {
@@ -388,7 +388,7 @@ public static class ChatTimelineReducer
                     // assistant entry (IsStreaming=false, left behind by a
                     // prior final chat.message or ApplyTurnEnd) belongs to a
                     // completed turn and must NOT be overwritten by a new
-                    // turn's reply — doing so silently swaps an older bubble's
+                    // turn's reply - doing so silently swaps an older bubble's
                     // text in place and the new reply appears nowhere (see
                     // the system.run-denied repro: user → reply → tool →
                     // tool-output → reply, where the second reply was
@@ -400,7 +400,7 @@ public static class ChatTimelineReducer
                     // candidate, the candidate belongs to a closed intra-turn
                     // segment. The next chat.message in the same turn is a
                     // NEW block (e.g. text₁ → tool → text₂ within one turn)
-                    // and must create a new bubble — otherwise text₂ silently
+                    // and must create a new bubble - otherwise text₂ silently
                     // merges into the text₁ bubble and the two-bubble split
                     // visible in the HTML UI disappears.
                     //
@@ -408,7 +408,7 @@ public static class ChatTimelineReducer
                     // !hasInterveningEntries: identical short replies
                     // ("Done.", "OK.") across a tool entry are legitimately
                     // distinct assistant turns and must NOT collapse back
-                    // into one bubble — that would reintroduce the symptom
+                    // into one bubble - that would reintroduce the symptom
                     // this PR fixes for the exact-match case.
                     var hasInterveningEntries = (li < state.Entries.Count - 1);
                     var shouldMerge = !hasInterveningEntries &&
@@ -422,14 +422,14 @@ public static class ChatTimelineReducer
                     // When reconciling into a still-streaming assistant bubble
                     // whose stored text is already the STRIPPED tail (because
                     // earlier fast-path SetItems stripped prior segments), we
-                    // must apply the same strip here — otherwise we silently
+                    // must apply the same strip here - otherwise we silently
                     // overwrite the bubble with the full cumulative, re-
                     // introducing every earlier intra-turn segment as a prefix
                     // on this bubble (live repro: B3 appears correctly
                     // initially, then later cumulative frames that arrive
                     // after ActiveAssistantId has been cleared by
                     // ApplyTurnEnd come through this reconcile path and
-                    // prepend B1+B2's content to B3 — see the
+                    // prepend B1+B2's content to B3 - see the
                     // IntraTurnLateReconcile_AfterTurnEnd_DoesNotPrependPriorSegments
                     // test).
                     var mergedText = string.Equals(candidate.Text, text, StringComparison.Ordinal)
@@ -439,7 +439,7 @@ public static class ChatTimelineReducer
                     // Duplicate-resend / gateway-regression guard: if the
                     // incoming cumulative is fully consumed by the OTHER
                     // priors in this turn (strip returned ""), the frame
-                    // carries no new content for the candidate — treat as
+                    // carries no new content for the candidate - treat as
                     // no-op rather than blanking the bubble. Mirrors the
                     // symmetric guard on the new-bubble path below.
                     if (!string.IsNullOrEmpty(text) && string.IsNullOrEmpty(mergedText))
@@ -454,7 +454,7 @@ public static class ChatTimelineReducer
                         })
                     };
                 }
-                // Stop scanning once we hit a User entry — that's a turn
+                // Stop scanning once we hit a User entry - that's a turn
                 // boundary, the assistant entry above it belongs to a
                 // previous turn and must not be reconciled into.
                 if (candidate.Kind == ChatTimelineItemKind.User)
@@ -464,7 +464,7 @@ public static class ChatTimelineReducer
 
         // The text we received may be CUMULATIVE-for-the-turn (the gateway's
         // chat.message events carry block-streamed content where every frame
-        // includes all prior blocks in this turn — see the comment in
+        // includes all prior blocks in this turn - see the comment in
         // OpenClawChatDataProvider.OnChatMessageReceived). When we fall
         // through to "create a new bubble" because a tool call was appended
         // mid-turn, naïvely persisting the cumulative text would duplicate
@@ -493,7 +493,7 @@ public static class ChatTimelineReducer
         {
             Entries = state.Entries.Add(new(id, ChatTimelineItemKind.Assistant, effectiveText, IsStreaming: streaming)),
             NextId = state.NextId + 1,
-            // INVARIANT: ActiveAssistantId is only ever assigned here — it is
+            // INVARIANT: ActiveAssistantId is only ever assigned here - it is
             // always the id of the most recently *created* Assistant entry.
             // Do NOT reassign it from the scan-back merge target above; the
             // frontier gate at the top of this method relies on this invariant
@@ -509,8 +509,8 @@ public static class ChatTimelineReducer
     /// already present as a suffix of the existing text. This collapses
     /// duplicate-tail emissions where the gateway sends an
     /// agent.message.delta carrying content the prior chat.message already
-    /// committed — e.g. existing = "...mounted here.", delta =
-    /// " D: is mounted here." — without the dedup the bubble would render
+    /// committed - e.g. existing = "...mounted here.", delta =
+    /// " D: is mounted here." - without the dedup the bubble would render
     /// "...mounted here. D: is mounted here.".
     ///
     /// A minimum overlap of <see cref="MinOverlapForDedup"/> characters is
@@ -562,7 +562,7 @@ public static class ChatTimelineReducer
     /// have been mutated by a late `agent.message.delta` append; the LCP
     /// still matches everything up to the divergence point.
     ///
-    /// CALLER CONTRACT — <paramref name="excludeIndex"/>: when this strip is
+    /// CALLER CONTRACT - <paramref name="excludeIndex"/>: when this strip is
     /// applied to compute the merged text for an EXISTING assistant entry
     /// (the scan-back-reconcile merge target), the caller MUST pass that
     /// entry's index as excludeIndex. The candidate's stored text is the
@@ -574,7 +574,7 @@ public static class ChatTimelineReducer
     static string StripCumulativeTurnPrefix(System.Collections.Immutable.ImmutableList<ChatTimelineItem> entries, string cumulativeText, int excludeIndex)
     {
         // The gateway emits cumulative text spanning the ENTIRE current
-        // turn — including ALL prior post-tool assistant segments:
+        // turn - including ALL prior post-tool assistant segments:
         //   cumulative = A1.Text + sep + A2.Text + sep + ... + An.Text + sep + new
         // The original implementation only stripped against the
         // most-recent prior assistant, which left a 3+ segment turn
@@ -625,7 +625,7 @@ public static class ChatTimelineReducer
             if (lcp >= 8 && lcp * 2 >= prior.Text.Length)
             {
                 // Strip the prior text and the boundary newline(s)
-                // introduced by cumulative framing — but NOT
+                // introduced by cumulative framing - but NOT
                 // spaces/tabs, which may be legitimate indentation in
                 // the post-tool segment (code blocks, nested lists,
                 // ASCII art).
@@ -643,7 +643,7 @@ public static class ChatTimelineReducer
 
             // This prior didn't match at the front of remaining. If
             // we've already stripped at least one ancestor the cumulative
-            // prefix is exhausted — stop. Otherwise this assistant may
+            // prefix is exhausted - stop. Otherwise this assistant may
             // simply not have been included in the cumulative (or was
             // mutated post-strip); skip and try the next chronological
             // assistant in the turn.
@@ -710,7 +710,7 @@ public static class ChatTimelineReducer
             }
         }
 
-        // Demote assistant entries that became "closed segments" mid-turn —
+        // Demote assistant entries that became "closed segments" mid-turn -
         // i.e. an assistant entry that is no longer the most recent assistant
         // because the model continued with a tool call (and possibly more
         // text) afterwards. Without this, the abandoned pre-tool bubble keeps
@@ -730,7 +730,7 @@ public static class ChatTimelineReducer
         // it). The late cross-lifecycle final-reconcile contract
         // (FinalAssistant_UpdatesStreamingAssistantAfterTurnEnd) requires
         // the streaming flag to remain set so a delayed reconcile can
-        // collapse into it — but if there's a Tool between this Assistant
+        // collapse into it - but if there's a Tool between this Assistant
         // and the timeline tail, the scan-back's hasInterveningEntries
         // gate will block any merge anyway, so preserving the flag would
         // leave a stranded typing indicator on an orphaned pre-tool bubble.
@@ -761,7 +761,7 @@ public static class ChatTimelineReducer
             ActiveReasoningId = null,
             ActiveToolCallId = null,
             ActiveToolCalls = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty,
-            // PendingPermission preserved — exec approvals may outlive their
+            // PendingPermission preserved - exec approvals may outlive their
             // originating turn (gateway emits phase=resolved to clear).
         };
     }

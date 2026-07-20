@@ -2,7 +2,7 @@ namespace OpenClaw.Connection;
 
 /// <summary>
 /// Pure-logic state machine enforcing valid operator sub-FSM transitions.
-/// Not thread-safe — callers must serialize access via a semaphore.
+/// Not thread-safe - callers must serialize access via a semaphore.
 /// Owns no I/O, no events, no async methods.
 /// </summary>
 internal sealed class ConnectionStateMachine
@@ -298,7 +298,7 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.ConnectRequestSent:
             case ConnectionTrigger.ChallengeReceived:
             case ConnectionTrigger.WebSocketConnected:
-                // Stay in Connecting — these are sub-steps of the connect sequence
+                // Stay in Connecting - these are sub-steps of the connect sequence
                 break;
 
             case ConnectionTrigger.HandshakeSucceeded:
@@ -332,7 +332,7 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.WebSocketDisconnected:
                 if (_operatorState == RoleConnectionState.PairingRequired)
                 {
-                    // Gateway closes WebSocket after PAIRING_REQUIRED — stay in PairingRequired
+                    // Gateway closes WebSocket after PAIRING_REQUIRED - stay in PairingRequired
                     // (don't transition to Error; user needs to approve then reconnect)
                 }
                 else

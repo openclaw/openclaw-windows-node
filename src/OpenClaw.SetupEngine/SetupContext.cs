@@ -28,7 +28,7 @@ public sealed class SetupConfig
     [JsonIgnore]
     public bool UsesBundledDefaultConfig { get; set; }
 
-    // Nested config sections — everything is configurable
+    // Nested config sections - everything is configurable
     public WslConfig Wsl { get; set; } = new();
     public GatewayConfig Gateway { get; set; } = new();
     public CapabilitiesConfig Capabilities { get; set; } = new();
@@ -220,7 +220,7 @@ public sealed class TraySettingsConfig
 
     /// <summary>
     /// Merges these settings into an existing settings.json (or creates a new one).
-    /// Only overwrites the fields we control — preserves all other user settings.
+    /// Only overwrites the fields we control - preserves all other user settings.
     /// </summary>
     public void MergeIntoSettingsFile(string settingsPath)
     {

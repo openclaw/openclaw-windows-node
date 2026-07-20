@@ -136,7 +136,7 @@ public sealed partial class CapabilitiesPage : Page
             _ => "What setup will install on this PC",
         };
         PrimaryButton.Content = step == 3 ? "Install & set up" : "Next";
-        // Back is always available — from step 1 it returns to the Welcome screen.
+        // Back is always available - from step 1 it returns to the Welcome screen.
         BackButton.Visibility = Visibility.Visible;
 
         ScrollActiveIntoView();
@@ -152,7 +152,7 @@ public sealed partial class CapabilitiesPage : Page
     {
         // The Windows-permission checks run on entry as a background task. They are fast
         // local reads (registry / device enumeration), but make sure they have finished
-        // before any step that reads their results — step 2's rows and step 3's summary —
+        // before any step that reads their results - step 2's rows and step 3's summary -
         // so a fast click-through can't render empty rows or an undercounted summary.
         if (_permissionsTask is { } permissionsTask && !permissionsTask.IsCompletedSuccessfully)
         {
@@ -182,7 +182,7 @@ public sealed partial class CapabilitiesPage : Page
     {
         if (_step <= 1)
         {
-            // First capability step — step back to the Welcome screen.
+            // First capability step - step back to the Welcome screen.
             SetupWindow.Active?.NavigateToWelcome(back: true);
             return;
         }

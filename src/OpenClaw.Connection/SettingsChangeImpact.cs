@@ -8,15 +8,15 @@ public enum SettingsChangeImpact
 {
     /// <summary>No meaningful change.</summary>
     NoOp,
-    /// <summary>UI-only change (nav pane, notifications, etc.) — no reconnect.</summary>
+    /// <summary>UI-only change (nav pane, notifications, etc.) - no reconnect.</summary>
     UiOnly,
-    /// <summary>Node capability toggled — reload capabilities, no full reconnect.</summary>
+    /// <summary>Node capability toggled - reload capabilities, no full reconnect.</summary>
     CapabilityReload,
-    /// <summary>EnableNodeMode toggled — reconnect node only.</summary>
+    /// <summary>EnableNodeMode toggled - reconnect node only.</summary>
     NodeReconnectRequired,
-    /// <summary>SSH tunnel config changed — full reconnect.</summary>
+    /// <summary>SSH tunnel config changed - full reconnect.</summary>
     OperatorReconnectRequired,
-    /// <summary>Gateway URL changed — full tear down and reconnect.</summary>
+    /// <summary>Gateway URL changed - full tear down and reconnect.</summary>
     FullReconnectRequired
 }
 

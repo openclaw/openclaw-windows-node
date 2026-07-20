@@ -393,7 +393,7 @@ public sealed class CleanupStaleGatewayStep : SetupStep
         var existing = registry.FindByUrl(ctx.GatewayUrl!);
         if (existing != null)
         {
-            // Preserve non-local records and SSH-tunneled gateways — they may be
+            // Preserve non-local records and SSH-tunneled gateways - they may be
             // remote gateways that happen to use localhost as a forwarded port.
             if (!PairOperatorStep.IsSetupManagedLocalRecord(existing, ctx))
             {
@@ -631,7 +631,7 @@ public sealed class PreflightPortStep : SetupStep
     /// <summary>
     /// Polls until all required addresses for <paramref name="port"/> can be bound,
     /// or until <paramref name="maxWaitSeconds"/> elapses.  Silently returns if the
-    /// port never frees — <see cref="ExecuteAsync"/> will still hard-fail in that case.
+    /// port never frees - <see cref="ExecuteAsync"/> will still hard-fail in that case.
     /// </summary>
     internal static async Task WaitForPortFreeAsync(
         int port, string bind, SetupLogger logger, CancellationToken ct,
@@ -659,7 +659,7 @@ public sealed class PreflightPortStep : SetupStep
             await Task.Delay(500, ct);
         }
 
-        logger.Warn($"Port {port} still in use after {maxWaitSeconds}s poll — proceeding to hard check");
+        logger.Warn($"Port {port} still in use after {maxWaitSeconds}s poll - proceeding to hard check");
     }
 
     internal static bool CanBind(IPAddress address, int port, out SocketException error)
@@ -904,7 +904,7 @@ public sealed class CreateWslInstanceStep : SetupStep
             ctx.Logger.Info($"[Uninstall] Deleted VHD parent directory: {vhdDir}");
         }
 
-        // WSL parent dir cleanup — remove empty wsl\ directory (mirrors old step 5b)
+        // WSL parent dir cleanup - remove empty wsl\ directory (mirrors old step 5b)
         var wslDir = Path.Combine(localDataPath, "wsl");
         if (Directory.Exists(wslDir) && !Directory.EnumerateFileSystemEntries(wslDir).Any())
         {
@@ -1026,7 +1026,7 @@ public sealed class ValidateWslLockdownStep : SetupStep
         // `wsl.exe -- bash -c <script>` performs shell-variable expansion on argv
         // before bash sees it, so any $var that isn't defined in the Windows env
         // gets dropped. This step works around the issue by C#-interpolating every
-        // value into the script string (no bash variables) — that pattern is fine
+        // value into the script string (no bash variables) - that pattern is fine
         // for short scripts with a small fixed value set and no spaces in values.
         // New multi-line callers should prefer the stdin path:
         //   ctx.Commands.RunInWslAsync(..., inputViaStdin: true)
@@ -1330,7 +1330,7 @@ public sealed class ConfigureGatewayStep : SetupStep
         var port = ctx.Config.GatewayPort;
         var gw = ctx.Config.Gateway;
 
-        // Validate bind value — Tailscale Serve deliberately keeps the gateway loopback-bound.
+        // Validate bind value - Tailscale Serve deliberately keeps the gateway loopback-bound.
         if (gw.Bind is not ("loopback" or "lan"))
             return StepResult.Terminal($"Invalid Gateway.Bind value '{gw.Bind}'. Must be 'loopback' or 'lan'.");
         if (TailscaleSetupPolicy.ValidateConfig(ctx.Config) is { } tailscaleConfigError)
@@ -1532,7 +1532,7 @@ public sealed class StartGatewayStep : SetupStep
                     $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
             }
 
-            ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+            ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw - proceeding");
         }
 
         // Start the service
@@ -1624,11 +1624,11 @@ public sealed class StartGatewayStep : SetupStep
         var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
         if (!WslInstallSupport.ContainsDistro(list.Stdout, distro))
         {
-            ctx.Logger.Info("[Uninstall] Distro not registered — skipping gateway stop");
+            ctx.Logger.Info("[Uninstall] Distro not registered - skipping gateway stop");
             return;
         }
 
-        // Check distro state — only stop if Running
+        // Check distro state - only stop if Running
         var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
         var isRunning = WslInstallSupport.Normalize(verbose.Stdout)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
@@ -1637,7 +1637,7 @@ public sealed class StartGatewayStep : SetupStep
 
         if (!isRunning)
         {
-            ctx.Logger.Info("[Uninstall] Distro not running — skipping systemctl stop");
+            ctx.Logger.Info("[Uninstall] Distro not running - skipping systemctl stop");
             return;
         }
 
@@ -1653,7 +1653,7 @@ public sealed class StartGatewayStep : SetupStep
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            ctx.Logger.Warn("[Uninstall] systemctl stop timed out (5s); distro may be wedged — wsl --unregister will force-terminate");
+            ctx.Logger.Warn("[Uninstall] systemctl stop timed out (5s); distro may be wedged - wsl --unregister will force-terminate");
         }
     }
 }
@@ -1777,7 +1777,7 @@ public sealed class PairOperatorStep : SetupStep
         if (string.IsNullOrEmpty(token))
             return StepResult.Terminal("No credential available for operator pairing");
 
-        // Register gateway in registry (only once — reuse across retries)
+        // Register gateway in registry (only once - reuse across retries)
         var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
         registry.Load();
 
@@ -1825,7 +1825,7 @@ public sealed class PairOperatorStep : SetupStep
         if (!reachability.IsSuccess)
             return reachability;
 
-        // Connect operator WebSocket — handle pairing-required flow
+        // Connect operator WebSocket - handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         OpenClawGatewayClient? client = null;
 
@@ -1847,7 +1847,7 @@ public sealed class PairOperatorStep : SetupStep
                 if (!ctx.Config.AutoApprovePairing)
                     return StepResult.Fail("Pairing required but auto-approve is disabled");
 
-                ctx.Logger.Info("Pairing required — auto-approving via CLI");
+                ctx.Logger.Info("Pairing required - auto-approving via CLI");
                 var requestId = client.PairingRequiredRequestId;
                 await client.DisconnectAsync();
                 client.Dispose();
@@ -1861,7 +1861,7 @@ public sealed class PairOperatorStep : SetupStep
                 // Wait for gateway to process the approval
                 await Task.Delay(2000, ct);
 
-                // Phase 2: Reconnect — the device should now be approved
+                // Phase 2: Reconnect - the device should now be approved
                 client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
                 client.UseV2Signature = true;
                 var phase2Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(20), ct);
@@ -1874,10 +1874,10 @@ public sealed class PairOperatorStep : SetupStep
                     client.Dispose();
                     client = null;
 
-                    // Phase 3: Skip operator finalization here — it must happen AFTER node pairing.
+                    // Phase 3: Skip operator finalization here - it must happen AFTER node pairing.
                     // The node pairing changes the device's "current metadata" to node/node-host,
                     // so operator finalization (as cli/cli) must come last to match what the tray sends.
-                    ctx.Logger.Info("Operator paired — finalization deferred to after node pairing");
+                    ctx.Logger.Info("Operator paired - finalization deferred to after node pairing");
                     return StepResult.Ok("Operator paired (finalization deferred)");
                 }
 
@@ -1917,7 +1917,7 @@ public sealed class PairOperatorStep : SetupStep
 
         if (string.IsNullOrEmpty(deviceToken))
         {
-            ctx.Logger.Warn("No device token stored after pairing — skipping finalization");
+            ctx.Logger.Warn("No device token stored after pairing - skipping finalization");
             return StepResult.Ok("Operator paired (no finalization needed)");
         }
 
@@ -1937,13 +1937,13 @@ public sealed class PairOperatorStep : SetupStep
 
             if (result == ConnectionOutcome.Connected)
             {
-                ctx.Logger.Info("Finalization connected — tray will connect seamlessly");
+                ctx.Logger.Info("Finalization connected - tray will connect seamlessly");
                 return StepResult.Ok("Operator paired and finalized for tray");
             }
 
             if (result == ConnectionOutcome.PairingRequired)
             {
-                ctx.Logger.Info("Metadata-upgrade detected during finalization — auto-approving");
+                ctx.Logger.Info("Metadata-upgrade detected during finalization - auto-approving");
                 var requestId = finalClient.PairingRequiredRequestId;
                 await finalClient.DisconnectAsync();
                 finalClient.Dispose();
@@ -1963,7 +1963,7 @@ public sealed class PairOperatorStep : SetupStep
 
                 if (finalResult == ConnectionOutcome.Connected)
                 {
-                    ctx.Logger.Info("Finalization approved — tray will connect seamlessly");
+                    ctx.Logger.Info("Finalization approved - tray will connect seamlessly");
                     return StepResult.Ok("Operator paired and finalized for tray");
                 }
 
@@ -2054,7 +2054,7 @@ public sealed class PairOperatorStep : SetupStep
                 tcs.TrySetResult(ConnectionOutcome.Error);
             else if (status == ConnectionStatus.Disconnected)
             {
-                // Check if pairing was required — client sets IsPairingRequired before disconnect
+                // Check if pairing was required - client sets IsPairingRequired before disconnect
                 if (client.IsPairingRequired)
                     tcs.TrySetResult(ConnectionOutcome.PairingRequired);
                 else
@@ -2125,13 +2125,13 @@ public sealed class PairOperatorStep : SetupStep
         }
 
         // Null operator device token (mirrors old uninstall step 7)
-        // Check if external gateways remain — if so, preserve root device tokens
+        // Check if external gateways remain - if so, preserve root device tokens
         var hasExternalGateways = registry.GetAll().Any(r =>
             !r.IsLocal && !(r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)));
 
         if (hasExternalGateways)
         {
-            ctx.Logger.Info("[Uninstall] Preserving root device tokens — external gateway records remain");
+            ctx.Logger.Info("[Uninstall] Preserving root device tokens - external gateway records remain");
         }
         else
         {
@@ -2235,7 +2235,7 @@ public sealed class PairNodeStep : SetupStep
             client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
             client.UseV2Signature = true;
 
-            // Register capabilities BEFORE connect — gateway stores them from hello message
+            // Register capabilities BEFORE connect - gateway stores them from hello message
             RegisterCapabilitiesFromConfig(client, ctx);
 
             var outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(15), ct);
@@ -2252,7 +2252,7 @@ public sealed class PairNodeStep : SetupStep
                 if (!ctx.Config.AutoApprovePairing)
                     return StepResult.Fail("Node pairing required but auto-approve is disabled");
 
-                ctx.Logger.Info("Node pairing required — auto-approving via CLI");
+                ctx.Logger.Info("Node pairing required - auto-approving via CLI");
                 await client.DisconnectAsync();
                 client.Dispose();
                 client = null;
@@ -2277,10 +2277,10 @@ public sealed class PairNodeStep : SetupStep
                     client.Dispose();
                     client = null;
 
-                    // Skip node finalization — the operator finalization in VerifyEndToEndStep
+                    // Skip node finalization - the operator finalization in VerifyEndToEndStep
                     // will be the last connect, ensuring operator metadata is "current".
                     // Node finalization would rotate tokens and potentially invalidate the operator token.
-                    ctx.Logger.Info("Node paired — skipping node finalization (operator finalization is last)");
+                    ctx.Logger.Info("Node paired - skipping node finalization (operator finalization is last)");
                     return StepResult.Ok("Node paired successfully");
                 }
 
@@ -2292,7 +2292,7 @@ public sealed class PairNodeStep : SetupStep
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Let a caller-driven cancel propagate so the pipeline reports Cancelled,
-            // not a Failed step — the catch-all below would otherwise convert it back
+            // not a Failed step - the catch-all below would otherwise convert it back
             // into StepResult.Fail (same idiom as the other steps' cancel rethrow).
             throw;
         }
@@ -2325,7 +2325,7 @@ public sealed class PairNodeStep : SetupStep
 
         if (string.IsNullOrEmpty(nodeToken))
         {
-            ctx.Logger.Warn("No node device token stored after pairing — skipping node finalization");
+            ctx.Logger.Warn("No node device token stored after pairing - skipping node finalization");
             return StepResult.Ok("Node paired (no finalization needed)");
         }
 
@@ -2342,13 +2342,13 @@ public sealed class PairNodeStep : SetupStep
 
             if (result.Outcome == NodeConnectionOutcome.Connected)
             {
-                ctx.Logger.Info("Node finalization connected — tray will connect seamlessly");
+                ctx.Logger.Info("Node finalization connected - tray will connect seamlessly");
                 return StepResult.Ok("Node paired and finalized for tray");
             }
 
             if (result.Outcome == NodeConnectionOutcome.PairingRequired)
             {
-                ctx.Logger.Info("Node metadata-upgrade detected — auto-approving");
+                ctx.Logger.Info("Node metadata-upgrade detected - auto-approving");
                 await finalClient.DisconnectAsync();
                 finalClient.Dispose();
                 finalClient = null;
@@ -2365,7 +2365,7 @@ public sealed class PairNodeStep : SetupStep
 
                 if (finalResult.Outcome == NodeConnectionOutcome.Connected)
                 {
-                    ctx.Logger.Info("Node finalization approved — tray will connect seamlessly");
+                    ctx.Logger.Info("Node finalization approved - tray will connect seamlessly");
                     return StepResult.Ok("Node paired and finalized for tray");
                 }
 
@@ -2522,7 +2522,7 @@ public sealed class PairNodeStep : SetupStep
 
         if (hasExternalGateways)
         {
-            ctx.Logger.Info("[Uninstall] Preserving node device token — external gateway records remain");
+            ctx.Logger.Info("[Uninstall] Preserving node device token - external gateway records remain");
         }
         else
         {
@@ -3182,11 +3182,11 @@ public sealed class VerifyEndToEndStep : SetupStep
         var identityPath = registry.GetIdentityDirectory(record.Id);
         if (!DeviceIdentity.HasStoredDeviceToken(identityPath))
         {
-            ctx.Logger.Warn("No stored device token found — tray app may need to re-pair");
+            ctx.Logger.Warn("No stored device token found - tray app may need to re-pair");
         }
         else
         {
-            ctx.Logger.Info("Device token present — performing final operator handshake");
+            ctx.Logger.Info("Device token present - performing final operator handshake");
 
             // CRITICAL: The operator finalization must happen AFTER node pairing.
             // Node pairing changes the device's "current metadata" to node-host/node.
@@ -3363,7 +3363,7 @@ public sealed class VerifyEndToEndStep : SetupStep
     }
 
     /// <summary>
-    /// Final operator connect using device token — establishes operator/cli/cli as the
+    /// Final operator connect using device token - establishes operator/cli/cli as the
     /// device's "current metadata" so the tray can connect without metadata-upgrade.
     /// </summary>
     private static async Task<StepResult> FinalizeOperatorForTray(
@@ -3389,13 +3389,13 @@ public sealed class VerifyEndToEndStep : SetupStep
 
             if (result == PairOperatorStep.ConnectionOutcome.Connected)
             {
-                ctx.Logger.Info("Final operator handshake succeeded — tray will connect seamlessly");
+                ctx.Logger.Info("Final operator handshake succeeded - tray will connect seamlessly");
                 return StepResult.Ok("Operator finalized");
             }
 
             if (result == PairOperatorStep.ConnectionOutcome.PairingRequired)
             {
-                ctx.Logger.Info("Metadata-upgrade detected — auto-approving for tray");
+                ctx.Logger.Info("Metadata-upgrade detected - auto-approving for tray");
                 await client.DisconnectAsync();
                 client.Dispose();
                 client = null;
@@ -3420,7 +3420,7 @@ public sealed class VerifyEndToEndStep : SetupStep
 
                 if (confirmResult == PairOperatorStep.ConnectionOutcome.Connected)
                 {
-                    ctx.Logger.Info("Operator finalization approved — fresh device token stored, tray will connect seamlessly");
+                    ctx.Logger.Info("Operator finalization approved - fresh device token stored, tray will connect seamlessly");
                     return StepResult.Ok("Operator finalized after approval");
                 }
 
@@ -3502,7 +3502,7 @@ public sealed class StartKeepaliveStep : SetupStep
             catch (Exception ex) { ctx.Logger.Debug($"[Keepalive] Stale marker delete failed: {ex.Message}"); }
         }
 
-        // Launch detached keepalive process — keeps the distro alive so port forwarding
+        // Launch detached keepalive process - keeps the distro alive so port forwarding
         // remains stable until the tray starts its own keepalive.
         var psi = new System.Diagnostics.ProcessStartInfo
         {
@@ -3519,7 +3519,7 @@ public sealed class StartKeepaliveStep : SetupStep
         using var proc = System.Diagnostics.Process.Start(psi);
         if (proc == null)
         {
-            ctx.Logger.Warn("Failed to start keepalive process — tray will start its own");
+            ctx.Logger.Warn("Failed to start keepalive process - tray will start its own");
             return Task.FromResult(StepResult.Ok());
         }
 
@@ -3573,7 +3573,7 @@ public sealed class StartKeepaliveStep : SetupStep
         catch (Exception ex)
         {
             // TryGetExistingKeepalive returns false on any failure (file/process
-            // missing or unreadable). Static method — no ctx.Logger available.
+            // missing or unreadable). Static method - no ctx.Logger available.
             // Debug-level via Trace so the failure is visible in dev diagnostics.
             System.Diagnostics.Trace.WriteLine($"[Keepalive] TryGetExistingKeepalive failed: {ex.Message}");
             pid = 0;
@@ -3586,7 +3586,7 @@ public sealed class StartKeepaliveStep : SetupStep
         var distro = ctx.DistroName;
         if (string.IsNullOrEmpty(distro))
         {
-            ctx.Logger.Info("[Uninstall] No distro name — skipping keepalive cleanup");
+            ctx.Logger.Info("[Uninstall] No distro name - skipping keepalive cleanup");
             return;
         }
 

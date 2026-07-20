@@ -10,9 +10,9 @@ public enum RoleConnectionState
     Connecting,
     Connected,
     PairingRequired,
-    /// <summary>Explicitly rejected — distinct from PairingRequired.</summary>
+    /// <summary>Explicitly rejected - distinct from PairingRequired.</summary>
     PairingRejected,
-    /// <summary>Temporarily throttled — will retry after cooldown.</summary>
+    /// <summary>Temporarily throttled - will retry after cooldown.</summary>
     RateLimited,
     Error,
     /// <summary>Node mode disabled in settings.</summary>

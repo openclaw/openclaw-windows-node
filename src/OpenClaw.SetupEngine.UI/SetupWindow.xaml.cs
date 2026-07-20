@@ -98,7 +98,7 @@ public sealed partial class SetupWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarDrag);
 
-        // Mica backdrop — the signature Windows 11 material (native).
+        // Mica backdrop - the signature Windows 11 material (native).
         SystemBackdrop = new MicaBackdrop();
 
         // Load config: explicit --config arg, or bundled default-config.json (required)

@@ -19,7 +19,7 @@ public sealed class PairingApprovalDelta
 
     /// <summary>
     /// Decisions the local user submitted that the gateway has now confirmed (the request left the
-    /// pending list). These — not the send-ack — are the source of truth for "approved/rejected".
+    /// pending list). These - not the send-ack - are the source of truth for "approved/rejected".
     /// </summary>
     public IReadOnlyList<PairingApprovalResolution> ConfirmedDecisions { get; init; } = Array.Empty<PairingApprovalResolution>();
 
@@ -40,13 +40,13 @@ public sealed class PairingApprovalDelta
 /// <list type="bullet">
 ///   <item>Merge device + node pending lists into a single ordered queue (oldest first). A null
 ///         list for a kind means "no update for that kind" (its prior entries are carried forward),
-///         NOT "that kind is now empty" — so a partial snapshot never silently drops or confirms.</item>
+///         NOT "that kind is now empty" - so a partial snapshot never silently drops or confirms.</item>
 ///   <item>Filter out the local node's own pairing request (handled by the auto-approve path)
 ///         so the operator is never prompted to approve their own machine. Matches against any of
 ///         the node's advertised identifiers (device id and/or gateway node id).</item>
 ///   <item>Drop entries with no usable id and legacy fallback-id collisions that cannot be
 ///         approved/rejected unambiguously, then de-duplicate by <see cref="PendingApproval.Key"/>.</item>
-///   <item>Treat a submitted approve/reject as <em>optimistic-pending</em> — suppress it from the
+///   <item>Treat a submitted approve/reject as <em>optimistic-pending</em> - suppress it from the
 ///         actionable set, but only report it <see cref="PairingApprovalDelta.ConfirmedDecisions">
 ///         confirmed</see> once the gateway actually drops it from a provided list for that kind. If
 ///         the gateway never acts within <see cref="SubmissionResolveTimeoutMs"/>, re-surface the
@@ -103,7 +103,7 @@ public sealed class PairingApprovalQueue
         foreach (var item in incoming)
             incomingByKey[item.Key] = item; // last wins on duplicate ids
 
-        // Carry forward prior entries whose kind had NO fresh snapshot — a missing list is "no
+        // Carry forward prior entries whose kind had NO fresh snapshot - a missing list is "no
         // update", not "now empty", so we never drop or resolve a kind we didn't actually hear about.
         foreach (var kv in _current)
             if (!KindProvided(kv.Value.Kind) && !incomingByKey.ContainsKey(kv.Key))
@@ -115,7 +115,7 @@ public sealed class PairingApprovalQueue
             _submitted.Remove(key);
 
         // Confirmed resolutions: decisions we submitted whose request has now left a PROVIDED list.
-        // This — not the send-ack — is the authoritative "the gateway accepted it" signal.
+        // This - not the send-ack - is the authoritative "the gateway accepted it" signal.
         var confirmed = new List<PairingApprovalResolution>();
         foreach (var sub in _submitted.Values)
             if (KindProvided(sub.Approval.Kind) && !incomingByKey.ContainsKey(sub.Approval.Key))

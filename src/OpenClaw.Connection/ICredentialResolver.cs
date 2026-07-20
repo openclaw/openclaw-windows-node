@@ -15,7 +15,7 @@ public sealed record GatewayCredential(string Token, bool IsBootstrapToken, stri
 
 /// <summary>
 /// Resolves the best activation credential for connecting to a gateway.
-/// There is one canonical resolution path per role — no other code resolves credentials.
+/// There is one canonical resolution path per role - no other code resolves credentials.
 /// </summary>
 public interface ICredentialResolver
 {

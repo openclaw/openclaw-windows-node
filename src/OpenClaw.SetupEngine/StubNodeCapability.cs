@@ -4,7 +4,7 @@ namespace OpenClaw.SetupEngine;
 
 /// <summary>
 /// Lightweight INodeCapability stub used only during setup to advertise capabilities
-/// to the gateway. Does not handle actual command invocation — the tray app owns that.
+/// to the gateway. Does not handle actual command invocation - the tray app owns that.
 /// </summary>
 internal sealed class StubNodeCapability : INodeCapability
 {
@@ -20,5 +20,5 @@ internal sealed class StubNodeCapability : INodeCapability
     public bool CanHandle(string command) => Commands.Contains(command, StringComparer.OrdinalIgnoreCase);
 
     public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
-        => Task.FromResult(new NodeInvokeResponse { Ok = false, Error = "Setup stub — not implemented" });
+        => Task.FromResult(new NodeInvokeResponse { Ok = false, Error = "Setup stub - not implemented" });
 }

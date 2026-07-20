@@ -92,7 +92,7 @@ public sealed partial class ProgressPage : Page
 
     private void RenderProgressPreview()
     {
-        SubtitleText.Text = "Creating OpenClawGateway WSL instance — about 4 minutes left";
+        SubtitleText.Text = "Creating OpenClawGateway WSL instance - about 4 minutes left";
         var ids = StepGroups.Select(g => g.GroupId).ToArray();
         for (int i = 0; i < ids.Length; i++)
         {
@@ -180,7 +180,7 @@ public sealed partial class ProgressPage : Page
                 }
                 else
                     // Permissions are now surfaced inline on the capabilities screen, so
-                    // the standalone permissions step is skipped — go straight to done.
+                    // the standalone permissions step is skipped - go straight to done.
                     SetupWindow.Active?.NavigateToComplete(true, sw.Elapsed, config.LogPath);
             }
             else
@@ -239,7 +239,7 @@ public sealed partial class ProgressPage : Page
 
             if (e.Outcome == null)
             {
-                // Step started — mark all previous groups as done if still running
+                // Step started - mark all previous groups as done if still running
                 for (int i = 0; i < groupIndex; i++)
                 {
                     var prevRow = _rows[StepGroups[i].GroupId];
@@ -257,7 +257,7 @@ public sealed partial class ProgressPage : Page
             }
             else
             {
-                // Step succeeded/skipped — track it
+                // Step succeeded/skipped - track it
                 _completedSteps.Add(e.StepId);
 
                 // If all steps in this group are done, mark group done
@@ -376,7 +376,7 @@ internal sealed class StepRow
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        // Bare Windows spinner (no filled disc) — theme-neutral so it reads white
+        // Bare Windows spinner (no filled disc) - theme-neutral so it reads white
         // on the dark active row and dark on light, like a standard ProgressRing.
         _spinner = new ProgressRing
         {

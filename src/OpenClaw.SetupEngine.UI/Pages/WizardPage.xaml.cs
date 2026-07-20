@@ -66,8 +66,8 @@ public sealed partial class WizardPage : Page
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
         ShowRecoveryActions();
-        AppendTranscriptTurn("Welcome — let's connect your agent", null);
-        AppendTranscriptTurn("Choose your AI provider", "Anthropic — Claude");
+        AppendTranscriptTurn("Welcome - let's connect your agent", null);
+        AppendTranscriptTurn("Choose your AI provider", "Anthropic - Claude");
         AppendTranscriptTurn("Paste your API key", "••••••");
 
         if (SetupPreview.RequestedPage == "wizard-error")
@@ -677,7 +677,7 @@ public sealed partial class WizardPage : Page
             // Parse the expanded options from the response
             if (payload.TryGetProperty("step", out var step))
             {
-                // Update step ID — the gateway may issue a new one for the expanded view
+                // Update step ID - the gateway may issue a new one for the expanded view
                 if (step.TryGetProperty("id", out var expandedId))
                     _stepId = expandedId.ToString();
 
@@ -781,7 +781,7 @@ public sealed partial class WizardPage : Page
             SetBusy(skip ? "Skipping..." : "Submitting...");
             // The console banner shows output that arrived between the last payload
             // render and the user's current click. Once they answer, those messages
-            // are "consumed" — wipe so the next step starts with a clean slate.
+            // are "consumed" - wipe so the next step starts with a clean slate.
             ClearConsoleBanner();
             var answeredQuestion = TitleText.Text;
             var answeredLabel = CurrentAnswerLabel(skip);
@@ -897,7 +897,7 @@ public sealed partial class WizardPage : Page
     {
         MainScroller.UpdateLayout();
         // Bring the active step card's TITLE into view (just below the last answered
-        // step) rather than jumping to the very bottom — scrolling to the bottom hid
+        // step) rather than jumping to the very bottom - scrolling to the bottom hid
         // the step's introduction/question when it had many options (e.g. web search).
         if (MainScroller.Content is FrameworkElement content)
         {
@@ -1376,7 +1376,7 @@ public sealed partial class WizardPage : Page
 
             // Gateway is back up with the freshly-installed tool on PATH. Stay on
             // this page and re-enter the gateway config wizard (provider/model
-            // onboarding) — we do NOT return to Welcome or re-install WSL. The
+            // onboarding) - we do NOT return to Welcome or re-install WSL. The
             // gateway restart wiped its wizard session, so this resumes at the
             // first config question rather than the exact step that failed.
             await StartWizardAsync(clearTranscript: false);
