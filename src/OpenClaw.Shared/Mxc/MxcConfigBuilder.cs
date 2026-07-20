@@ -14,16 +14,16 @@ namespace OpenClaw.Shared.Mxc;
 /// <list type="bullet">
 /// <item>Translates <see cref="SandboxPolicy"/> (from the Sandbox page) and the
 ///   agent's request into the JSON shape wxc-exec consumes.</item>
-/// <item><see cref="ResolvePathDirsForShellPath"/> — reconstructs a bounded
+/// <item><see cref="ResolvePathDirsForShellPath"/> - reconstructs a bounded
 ///   <c>PATH</c> inside the launched shell and grants backend-safe PATH
 ///   directories as readonly, so user-level tools can be resolved and executed
 ///   without asking MXC's DACL fallback to prepare protected system directories.</item>
-/// <item>Scratch dir injection — adds the per-invocation scratch dir as
+/// <item>Scratch dir injection - adds the per-invocation scratch dir as
 ///   readwrite and bootstraps <c>TEMP</c>/<c>TMP</c>/<c>TMPDIR</c> inside the
 ///   launched shell. Explicit <c>process.env</c> injection is intentionally
 ///   disabled for the current Windows MXC 0.7 processcontainer backend because
 ///   non-empty env entries fail process creation.</item>
-/// <item>Cwd handling — defaults omitted cwd to the writable per-run scratch
+/// <item>Cwd handling - defaults omitted cwd to the writable per-run scratch
 ///   directory, and adds an explicit request cwd as readonly when not already
 ///   covered by an allow grant. AppContainer does NOT auto-grant cwd.</item>
 /// <item>Defensive re-filter of allow lists against the deny list.</item>
@@ -97,7 +97,7 @@ public static class MxcConfigBuilder
                 roFromPolicy.Add(dir);
         }
 
-        // commandLine — shell-quoted, with PATH/TEMP/TMP/TMPDIR bootstrapped
+        // commandLine - shell-quoted, with PATH/TEMP/TMP/TMPDIR bootstrapped
         // inside the shell because MXC 0.7 rejects non-empty process.env.
         var commandLine = ShellCommandLine.Build(shell, args.Command, args.Argv, scratchDir, pathDirs);
         var allowWindows = policy?.Ui?.AllowWindows == true;
@@ -114,7 +114,7 @@ public static class MxcConfigBuilder
         var deniedForFiltering = (policy?.Filesystem?.DeniedPaths ?? Array.Empty<string>()).ToList();
         string[]? deniedForBackend = null;
 
-        // cwd auto-grant — AppContainer does not auto-grant the working
+        // cwd auto-grant - AppContainer does not auto-grant the working
         // directory. Give ungranted cwd read access so shells can start, but
         // never silently upgrade it to write access; writes require an
         // explicit readwrite folder grant.
@@ -130,15 +130,15 @@ public static class MxcConfigBuilder
         roFromPolicy = FilterOutDenied(roFromPolicy, deniedForFiltering);
         rwFromPolicy = FilterOutDenied(rwFromPolicy, deniedForFiltering);
 
-        // process.env — intentionally empty. MXC 0.7 processcontainer currently
+        // process.env - intentionally empty. MXC 0.7 processcontainer currently
         // fails process creation when a non-empty process.env array is supplied,
         // so shell-level bootstrap above carries PATH/scratch temp instead.
         var env = BuildEnv(request.Env);
 
-        // timeout — caller-supplied or default.
+        // timeout - caller-supplied or default.
         var timeoutMs = request.TimeoutMs > 0 ? request.TimeoutMs : DefaultProcessTimeoutMs;
 
-        // capabilities — only network for now.
+        // capabilities - only network for now.
         var capabilities = new List<string>();
         if (policy?.Network?.AllowOutbound == true)
             capabilities.Add("internetClient");
@@ -510,7 +510,7 @@ internal sealed record MxcConfigBuildContext(
 }
 
 /// <summary>
-/// Shell command-line construction for the sandboxed payload — wraps the
+/// Shell command-line construction for the sandboxed payload - wraps the
 /// agent's command in <c>cmd.exe /S /C "..."</c> or
 /// <c>powershell.exe -EncodedCommand &lt;utf16le-base64&gt;</c> so it can be
 /// passed verbatim to <c>CreateProcessW</c> inside the AppContainer.
@@ -573,7 +573,7 @@ internal static class ShellCommandLine
         foreach (var arg in argv)
             ThrowIfCmdContainsLineBreak(arg, "argv");
 
-        // cmd /S /C "<command> [args]" — /S strips outer quotes so cmd treats
+        // cmd /S /C "<command> [args]" - /S strips outer quotes so cmd treats
         // everything after /C as the command line verbatim. If the payload
         // references env vars we bootstrap in this same /C line, rewrite just
         // those refs to delayed expansion; otherwise cmd expands %TEMP% before

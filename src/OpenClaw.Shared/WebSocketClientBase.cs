@@ -145,7 +145,7 @@ public abstract class WebSocketClientBase : IDisposable
                 return;
             }
 
-            // Don't reset _reconnectAttempts here — TCP connect succeeding doesn't mean
+            // Don't reset _reconnectAttempts here - TCP connect succeeding doesn't mean
             // auth will succeed. Reset only after the full application-level handshake
             // completes (subclass calls ResetReconnectAttempts after hello-ok).
             _logger.Info($"{ClientRole} connected, waiting for challenge...");
@@ -231,7 +231,7 @@ public abstract class WebSocketClientBase : IDisposable
 
     private async Task ListenForMessagesAsync(ClientWebSocket ws, long connectionGeneration)
     {
-        // Rent a pooled buffer — consistent with the SendRawAsync hot path; avoids a large
+        // Rent a pooled buffer - consistent with the SendRawAsync hot path; avoids a large
         // (16–64 KB) heap allocation per connection that would otherwise land on the LOH.
         var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         var sb = new StringBuilder();
@@ -251,7 +251,7 @@ public abstract class WebSocketClientBase : IDisposable
                 {
                     if (result.EndOfMessage && sb.Length == 0)
                     {
-                        // Fast path: single-frame message — decode directly, skip StringBuilder round-trip
+                        // Fast path: single-frame message - decode directly, skip StringBuilder round-trip
                         await ProcessMessageAsync(Encoding.UTF8.GetString(buffer, 0, result.Count));
                     }
                     else
@@ -399,8 +399,8 @@ public abstract class WebSocketClientBase : IDisposable
                 }
             }
         }
-        catch (OperationCanceledException) { /* Reconnect loop canceled during shutdown — expected. */ }
-        catch (ObjectDisposedException) { /* CTS disposed mid-loop during shutdown — expected. */ }
+        catch (OperationCanceledException) { /* Reconnect loop canceled during shutdown - expected. */ }
+        catch (ObjectDisposedException) { /* CTS disposed mid-loop during shutdown - expected. */ }
         catch (Exception ex)
         {
             _logger.Error($"{ClientRole} reconnect failed", ex);
@@ -551,7 +551,7 @@ public abstract class WebSocketClientBase : IDisposable
         try { ws?.Dispose(); }
         catch (Exception ex) { _logger.Debug($"{ClientRole} WebSocket Dispose threw: {ex.Message}"); }
 
-        // Don't dispose _cts immediately — listen loop or reconnect may still reference it.
+        // Don't dispose _cts immediately - listen loop or reconnect may still reference it.
         // It will be GC'd after all pending tasks complete.
     }
 }

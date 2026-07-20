@@ -127,7 +127,7 @@ public sealed class ExecApprovalV2Result
 
     /// <summary>
     /// Approve the command and carry the execution payload the caller must run.
-    /// An allow without a payload is not a valid state — there is intentionally
+    /// An allow without a payload is not a valid state - there is intentionally
     /// no parameterless allow: the approved argv must reach the process verbatim.
     /// </summary>
     public static ExecApprovalV2Result Allow(ExecApprovedExecution execution)

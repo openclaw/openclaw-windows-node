@@ -124,11 +124,11 @@ public sealed class GenericChannelStatus
     public ChannelProbe? Probe { get; init; }
     /// <summary>Last probe completion timestamp (epoch ms).</summary>
     public double? LastProbeAt { get; init; }
-    /// <summary>Transport mode, e.g. "polling" / "webhook" — channel plugins set this to declare how they receive events.</summary>
+    /// <summary>Transport mode, e.g. "polling" / "webhook" - channel plugins set this to declare how they receive events.</summary>
     public string? Mode { get; init; }
     /// <summary>Epoch ms when the channel last booted (entered the running state).</summary>
     public double? LastStartAt { get; init; }
-    /// <summary>Epoch ms of the channel's last upstream event (message, presence push, …) — useful as a "freshness" indicator.</summary>
+    /// <summary>Epoch ms of the channel's last upstream event (message, presence push, …) - useful as a "freshness" indicator.</summary>
     public double? LastEventAt { get; init; }
     /// <summary>Epoch ms of the last transport-layer activity (HTTP poll round-trip, WS heartbeat). Often equals <see cref="LastEventAt"/> when traffic is flowing.</summary>
     public double? LastTransportActivityAt { get; init; }
@@ -234,7 +234,7 @@ public sealed class IMessageChannelStatus
 
 // ─── Web login (QR linking) ──────────────────────────────────────────────────
 
-/// <summary>Result of <c>web.login.start</c> — a QR or status for a channel.</summary>
+/// <summary>Result of <c>web.login.start</c> - a QR or status for a channel.</summary>
 public sealed class WebLoginStartResult
 {
     public string? Message { get; init; }
@@ -285,7 +285,7 @@ public sealed class WebLoginStartResult
         Error.Contains("unknown method: web.login", System.StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>Result of <c>web.login.wait</c> — long-poll outcome.</summary>
+/// <summary>Result of <c>web.login.wait</c> - long-poll outcome.</summary>
 public sealed class WebLoginWaitResult
 {
     public string? Message { get; init; }
@@ -302,7 +302,7 @@ public sealed class WebLoginWaitResult
 /// <summary>
 /// Result of <c>channels.start</c>. Mirrors the gateway response shape
 /// (<c>{ channel, accountId, started }</c>) and adds error/raw fields so the
-/// page can surface the gateway's actual error message — including the
+/// page can surface the gateway's actual error message - including the
 /// telltale "unknown channel: foo" which means the channel plugin isn't
 /// loaded on the gateway host and the operator needs to run
 /// <c>openclaw plugins install @openclaw/&lt;id&gt;</c> on that machine.
@@ -318,7 +318,7 @@ public sealed class ChannelStartResult
     /// <summary>True when the gateway reports the channel transitioned to started.</summary>
     public bool Started { get; init; }
 
-    /// <summary>Overall wire-level success — false on transport failure or gateway ok:false.</summary>
+    /// <summary>Overall wire-level success - false on transport failure or gateway ok:false.</summary>
     public bool Ok { get; init; }
 
     /// <summary>Gateway-side error message when <see cref="Ok"/> is false. Null on success.</summary>
@@ -328,7 +328,7 @@ public sealed class ChannelStartResult
     public string? RawResponse { get; init; }
 
     /// <summary>
-    /// True when the gateway responded with "unknown channel" — a strong signal
+    /// True when the gateway responded with "unknown channel" - a strong signal
     /// the channel plugin isn't loaded on the gateway host. Used to upgrade
     /// the page's hint to "install the plugin on your gateway first".
     /// </summary>
@@ -342,7 +342,7 @@ public sealed class ChannelStartResult
 ///
 /// Distinguishes "patch dispatched" (the older fire-and-forget bool) from
 /// "patch was accepted by the gateway". Lets the inline channel save flow
-/// surface the gateway's actual error message — including the wire-format
+/// surface the gateway's actual error message - including the wire-format
 /// validation errors that fail silently with the legacy
 /// <c>config.set { path, value }</c> path on newer gateways.
 /// </summary>
@@ -363,7 +363,7 @@ public sealed class ConfigPatchResult
     /// should refresh the cached config and prompt the user to retry.
     ///
     /// The bare word "conflict" is too generic to match on its own (Hanselman
-    /// review MEDIUM-3) — a JSON schema error like "property 'conflict_mode'
+    /// review MEDIUM-3) - a JSON schema error like "property 'conflict_mode'
     /// is invalid" would otherwise trigger a spurious refresh-and-retry loop.
     /// We require "conflict" to co-occur with "hash" or "baseHash" before
     /// treating it as a stale-hash signal.

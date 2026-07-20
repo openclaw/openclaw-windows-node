@@ -49,7 +49,7 @@ internal static class ExecCommandResolver
         IReadOnlyDictionary<string, string>? env)
     {
         // Fail-closed: any env invocation with modifiers (flags or VAR=val assignments).
-        // The allowlist cannot verify which executable will actually run under a modified env —
+        // The allowlist cannot verify which executable will actually run under a modified env -
         // the resolver uses the original env while execution uses the modified one.
         // Subsumes the previous shell-wrapper-only check (Hanselman review finding #2).
         if (command.Count > 0
@@ -146,7 +146,7 @@ internal static class ExecCommandResolver
             var name = resolvedPath is not null ? Path.GetFileName(resolvedPath) : expanded;
             return new ExecCommandResolution(expanded, resolvedPath, name, cwd);
         }
-        catch { return null; } // fail-closed; intentionally broad — add diagnostic tracing here if needed
+        catch { return null; } // fail-closed; intentionally broad - add diagnostic tracing here if needed
     }
 
     // ── Shell command chain splitting ────────────────────────────────────────
@@ -237,7 +237,7 @@ internal static class ExecCommandResolver
         {
             var rest = trimmed.AsSpan(1);
             var end = rest.IndexOf(first);
-            if (end < 0) return null; // unclosed quote — fail-closed; do not guess the token
+            if (end < 0) return null; // unclosed quote - fail-closed; do not guess the token
             var inner = rest[..end].ToString();
             if (inner.Length == 0) return null;
             // Preserve any suffix after the closing quote up to the next whitespace.
@@ -295,7 +295,7 @@ internal static class ExecCommandResolver
     // ── -EncodedCommand detection ─────────────────────────────────────────────
 
     // Research doc 04 S1: if a chain segment invokes PowerShell with -EncodedCommand (or any
-    // alias / unambiguous prefix abbreviation), the payload is opaque base64 — fail-closed.
+    // alias / unambiguous prefix abbreviation), the payload is opaque base64 - fail-closed.
     // Only triggers when the first token IS a PowerShell binary AND the segment contains the flag.
     // `powershell -c 'Get-Date'` (no -enc) must NOT be fail-closed.
     private static bool SegmentUsesEncodedCommand(string segment, string firstToken)
@@ -311,7 +311,7 @@ internal static class ExecCommandResolver
             rest = rest[i..];
             if (rest.Length == 0) break;
 
-            // Extract next token — quoted strings count as one unit so `"-enc"` is detected.
+            // Extract next token - quoted strings count as one unit so `"-enc"` is detected.
             int end;
             if (rest[0] is '"' or '\'')
             {
@@ -393,10 +393,10 @@ internal static class ExecCommandResolver
         {
             if (string.IsNullOrEmpty(dir)) continue;
             var candidate = Path.Combine(dir, name);
-            // PATHEXT extensions first — matches Windows CreateProcess resolution order.
+            // PATHEXT extensions first - matches Windows CreateProcess resolution order.
             // A no-extension shadow in PATH must not shadow a PATHEXT binary of the same stem.
             // Note: PATHEXT is probed even when `name` already carries an extension (git.exe →
-            // tries git.exe.exe, git.exe.cmd, …). This matches CreateProcess behavior — the extra
+            // tries git.exe.exe, git.exe.cmd, …). This matches CreateProcess behavior - the extra
             // File.Exists calls are harmless and avoiding them would require extension detection here.
             foreach (var ext in extensions)
             {
@@ -473,15 +473,15 @@ internal static class ExecCommandResolver
     // Research doc 04 section 3 / S3.
     private static bool HasNonStandardColon(string path)
     {
-        // Extended-length prefix — strip it and evaluate the remainder (\\?\C:\ is valid).
+        // Extended-length prefix - strip it and evaluate the remainder (\\?\C:\ is valid).
         var effective = path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..] : path;
 
-        // UNC paths (\\server\share) and extended UNC (\\?\UNC\...) have no drive colon — fine.
+        // UNC paths (\\server\share) and extended UNC (\\?\UNC\...) have no drive colon - fine.
         if (effective.StartsWith(@"\\", StringComparison.Ordinal)) return false;
 
         var colonIdx = effective.IndexOf(':');
-        if (colonIdx < 0) return false; // no colon — fine
-        // Drive-letter form: single ASCII letter at index 0 followed by ':' — fine if no second colon.
+        if (colonIdx < 0) return false; // no colon - fine
+        // Drive-letter form: single ASCII letter at index 0 followed by ':' - fine if no second colon.
         // '1', '!' etc. at index 0 are not valid drive letters and must be rejected.
         if (colonIdx == 1 && char.IsAsciiLetter(effective[0]))
             return effective.IndexOf(':', 2) >= 0;
@@ -494,7 +494,7 @@ internal static class ExecCommandResolver
     private static string TryNormalizePath(string path)
     {
         // GetFullPath resolves . and .. but does not expand 8.3 short names.
-        // Full GetLongPathName P/Invoke is a known gap — short names not expanded.
+        // Full GetLongPathName P/Invoke is a known gap - short names not expanded.
         try { return Path.GetFullPath(path); }
         catch { return path; } // hostile path must not throw out of resolution
     }

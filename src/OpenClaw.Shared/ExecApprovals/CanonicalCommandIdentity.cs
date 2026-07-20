@@ -4,7 +4,7 @@ namespace OpenClaw.Shared.ExecApprovals;
 
 // Architectural barrier between raw requests and the evaluation pipeline.
 // Equivalent to ExecHostValidatedRequest in the macOS reference, extended with resolution outputs.
-// No evaluation module may accept ValidatedRunRequest as direct input — this is the canonical handoff type.
+// No evaluation module may accept ValidatedRunRequest as direct input - this is the canonical handoff type.
 // A single canonical representation reused across evaluation, logging, prompting, and execution.
 public sealed class CanonicalCommandIdentity
 {
@@ -28,7 +28,7 @@ public sealed class CanonicalCommandIdentity
     public ExecCommandResolution? Resolution { get; }
 
     // Per-segment resolutions for the allowlist matcher.
-    // Empty list means fail-closed — no allowlist satisfaction possible.
+    // Empty list means fail-closed - no allowlist satisfaction possible.
     public IReadOnlyList<ExecCommandResolution> AllowlistResolutions { get; }
 
     // Suggested allowlist patterns for prompt/UI. Not a security decision.

@@ -13,7 +13,7 @@ public sealed class TranscriptionResult
 }
 
 /// <summary>
-/// Aggregated result of a single silence-bounded utterance — i.e. all the
+/// Aggregated result of a single silence-bounded utterance - i.e. all the
 /// Whisper segments produced from one VAD-bounded speech burst, combined.
 /// Consumers that need "what the user said" (chat submission, stt.listen)
 /// should listen for this event instead of per-segment TranscriptionResult

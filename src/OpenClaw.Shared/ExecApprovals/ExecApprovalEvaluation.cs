@@ -16,7 +16,7 @@ public sealed class ExecApprovalEvaluation
     public ExecAsk Ask { get; }
     public IReadOnlyDictionary<string, string>? Env { get; }
 
-    // Singular resolution — AllowlistResolutions[0], or null if the list is empty.
+    // Singular resolution - AllowlistResolutions[0], or null if the list is empty.
     // Always the first element of AllowlistResolutions, not an independent resolver call.
     public ExecCommandResolution? Resolution { get; }
 
@@ -27,7 +27,7 @@ public sealed class ExecApprovalEvaluation
     public bool AllAllowlistResolutionsMatched { get; }
 
     // true iff security==allowlist && resolutions.Count>0 && matches.Count==resolutions.Count.
-    // Derived once in the constructor — must not be re-derived outside it.
+    // Derived once in the constructor - must not be re-derived outside it.
     public bool AllowlistSatisfied { get; }
 
     // First match when AllowlistSatisfied; null otherwise.

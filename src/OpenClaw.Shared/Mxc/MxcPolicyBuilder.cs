@@ -9,19 +9,19 @@ namespace OpenClaw.Shared.Mxc;
 ///
 /// Policy decisions:
 /// <list type="bullet">
-/// <item><c>readonlyPaths</c> — populated from user-granted folders (Documents,
+/// <item><c>readonlyPaths</c> - populated from user-granted folders (Documents,
 /// Downloads, Desktop, custom). The MXC config builder also grants
 /// backend-safe host PATH directories as readonly so PATH-resolved user tools
 /// can execute inside AppContainer.</item>
-/// <item><c>readwritePaths</c> — user-granted read+write folders. The MXC config
+/// <item><c>readwritePaths</c> - user-granted read+write folders. The MXC config
 /// builder adds a per-invocation scratch directory and bootstraps
 /// TEMP/TMP/TMPDIR inside the launched shell so the user's real %TEMP% stays
 /// out of reach.</item>
-/// <item><c>deniedPaths</c> — settings directory (protect MCP token, gateway
+/// <item><c>deniedPaths</c> - settings directory (protect MCP token, gateway
 /// credentials, ElevenLabs key), <c>~/.ssh</c>, and the common browser profile
 /// roots (Chrome / Edge / Firefox / Brave). Always blocked regardless of grants.</item>
-/// <item><c>network.allowOutbound</c> — bound by <see cref="SettingsData.SystemRunAllowOutbound"/>.</item>
-/// <item><c>ui</c> — default-deny in base policy. PowerShell-family shells
+/// <item><c>network.allowOutbound</c> - bound by <see cref="SettingsData.SystemRunAllowOutbound"/>.</item>
+/// <item><c>ui</c> - default-deny in base policy. PowerShell-family shells
 /// need an explicit <c>allowWindows</c> policy on MXC 0.7 and fail closed under
 /// the default UI-deny policy.</item>
 /// </list>
@@ -53,7 +53,7 @@ public static class MxcPolicyBuilder
             AddDeniedPath(deniedPaths, Path.Combine(userProfile, ".ssh"));
 
         // Always-blocked browser profile roots. Cookies, saved passwords, autofill,
-        // and session tokens live here — they must remain unreachable even if the
+        // and session tokens live here - they must remain unreachable even if the
         // user (or a malicious settings.json) tries to grant a parent folder.
         // Keep these paths in the logical deny list even when they do not
         // exist yet, so parent-folder grants cannot create sensitive roots. The

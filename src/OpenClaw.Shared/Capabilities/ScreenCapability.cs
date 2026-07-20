@@ -43,7 +43,7 @@ public class ScreenCapability : NodeCapabilityBase
         };
     }
     
-    // Clamp bounds — reject extreme caller values before any work starts.
+    // Clamp bounds - reject extreme caller values before any work starts.
     private const int MinDimension = 16;
     private const int MaxScreenWidth = 7680;       // 8K horizontal
     private const int MinQuality = 1;

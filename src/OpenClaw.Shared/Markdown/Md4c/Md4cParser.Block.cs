@@ -606,7 +606,7 @@ public sealed partial class Md4cParser
             case LineType.SetextUnderline:
             case LineType.TableUnderline:
             default:
-                // Spec 044 §4.3 — promoted from Debug.Fail (release no-op)
+                // Spec 044 §4.3 - promoted from Debug.Fail (release no-op)
                 // to UnreachableException so a real bug surfaces in
                 // production builds too. Reachable line types are
                 // enumerated exhaustively above.
@@ -1119,7 +1119,7 @@ public sealed partial class Md4cParser
                 return 0;
 
             default:
-                // Spec 044 §4.3 — promoted to UnreachableException.
+                // Spec 044 §4.3 - promoted to UnreachableException.
                 // htmlBlockType is bounded to {1..7} by ScanHtmlBlockType
                 // which returns 0 (filtering this entry out) for any
                 // other value.
@@ -1200,7 +1200,7 @@ public sealed partial class Md4cParser
                     break;
 
                 default:
-                    // Spec 044 §4.3 — promoted to UnreachableException.
+                    // Spec 044 §4.3 - promoted to UnreachableException.
                     // c.Ch is set only by container-opener detection
                     // which limits the alphabet to {-, +, *, ., ), >}.
                     throw new UnreachableException(
@@ -1248,7 +1248,7 @@ public sealed partial class Md4cParser
                     break;
 
                 default:
-                    // Spec 044 §4.3 — promoted to UnreachableException.
+                    // Spec 044 §4.3 - promoted to UnreachableException.
                     // c.Ch is set only by container-opener detection;
                     // any value reaching this default is a parser-state
                     // corruption that we want surfaced in Release.

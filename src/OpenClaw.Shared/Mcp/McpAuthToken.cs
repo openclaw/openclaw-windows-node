@@ -15,17 +15,17 @@ namespace OpenClaw.Shared.Mcp;
 /// The token lives next to the rest of the tray's settings, at
 /// <c>%APPDATA%\OpenClawTray\mcp-token.txt</c> (the exact path is composed by
 /// the tray from <c>SettingsManager.SettingsDirectoryPath</c> and surfaced as
-/// <c>NodeService.McpTokenPath</c> — that's the source of truth, not anything
+/// <c>NodeService.McpTokenPath</c> - that's the source of truth, not anything
 /// in this file). Co-locating with settings means the test-suite override
 /// <c>OPENCLAW_TRAY_DATA_DIR</c> isolates the token file too.
 ///
 /// The token is **created lazily on first MCP server start** (i.e. the first
-/// time the user enables Local MCP Server in Settings — until then the file
+/// time the user enables Local MCP Server in Settings - until then the file
 /// does not exist) and then **persists across tray restarts**. Local CLIs and
 /// per-user agent registrations read the file and send the contents on every
 /// request as <c>Authorization: Bearer &lt;contents&gt;</c>.
 ///
-/// Defense in depth: the file inherits the parent directory's ACL — by default
+/// Defense in depth: the file inherits the parent directory's ACL - by default
 /// only the current user (and SYSTEM/Administrators) can read it; the listener
 /// is bound to loopback so the endpoint is invisible to other machines; and
 /// Origin/Host checks block browser cross-origin attacks. The bearer is the
@@ -39,7 +39,7 @@ public static class McpAuthToken
     /// Fallback path used only when a caller doesn't supply one. The tray itself
     /// passes a path computed from <c>SettingsManager.SettingsDirectoryPath</c>
     /// (exposed as <c>NodeService.McpTokenPath</c>) so this constant is **not**
-    /// the live location for OpenClaw Tray installations — it's only a default
+    /// the live location for OpenClaw Tray installations - it's only a default
     /// for non-tray consumers (CLIs, tests) that don't want to compute one.
     /// </summary>
     public static string DefaultPath
@@ -62,7 +62,7 @@ public static class McpAuthToken
         // The previous behavior would catch any read exception and silently
         // regenerate. A transient lock or AV scan would then *rotate the
         // token*, breaking every configured MCP client. Distinguish missing
-        // (regenerate) from unreadable (throw — visible in startup logs).
+        // (regenerate) from unreadable (throw - visible in startup logs).
         if (File.Exists(path))
         {
             string existing;
@@ -88,7 +88,7 @@ public static class McpAuthToken
         // Atomic create: stage to a sibling temp file, lock its ACL, then
         // rename over the target. Without this, a power-loss / process-kill
         // mid-write would leave a zero-byte token file which the next
-        // LoadOrCreate would treat as "missing" and overwrite — silently
+        // LoadOrCreate would treat as "missing" and overwrite - silently
         // rotating the token.
         var token = Generate();
         var tempPath = Path.Combine(
@@ -102,7 +102,7 @@ public static class McpAuthToken
         }
         catch (Exception ex)
         {
-            // Capture original ex for diagnostics — even though we re-throw,
+            // Capture original ex for diagnostics - even though we re-throw,
             // tracing it here ensures the cause is visible alongside any
             // cleanup-failure trace below.
             Trace.WriteLine($"McpAuthToken.Generate: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
@@ -138,7 +138,7 @@ public static class McpAuthToken
         }
         catch (Exception ex)
         {
-            // Capture original ex for diagnostics — even though we re-throw,
+            // Capture original ex for diagnostics - even though we re-throw,
             // tracing it here ensures the cause is visible alongside any
             // cleanup-failure trace below.
             Trace.WriteLine($"McpAuthToken.Reset: write failed for '{path}': {ex.GetType().Name}: {ex.Message}");
@@ -265,7 +265,7 @@ public static class McpAuthToken
             {
                 return $"MCP token file owner is {ownerSid?.Value ?? "<unknown>"}; expected current user {current.Value}. Treat the token as compromised and reset it.";
             }
-            // Walk the ACL — anything granting read rights to a principal
+            // Walk the ACL - anything granting read rights to a principal
             // outside {current user, SYSTEM, Administrators} is broader than
             // expected.
             var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);

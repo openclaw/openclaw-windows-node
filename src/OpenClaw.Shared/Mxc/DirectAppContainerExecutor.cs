@@ -13,11 +13,11 @@ namespace OpenClaw.Shared.Mxc;
 /// Responsibilities:
 /// <list type="bullet">
 /// <item>Per-invocation scratch dir lifecycle.</item>
-/// <item>Logging the final <see cref="MxcConfig"/> before sending — structured
+/// <item>Logging the final <see cref="MxcConfig"/> before sending - structured
 ///   summary by default; full JSON when <see cref="LogFullConfigEnvVar"/> is set.</item>
 /// <item>Host-side timeout + cancel + process-tree kill via
 ///   <see cref="MxcExecutor"/>'s CancellationToken plumbing.</item>
-/// <item>Cmd-line overflow handling — falls back to <c>--config &lt;file&gt;</c>
+/// <item>Cmd-line overflow handling - falls back to <c>--config &lt;file&gt;</c>
 ///   when the base64'd config exceeds the Windows command-line limit.</item>
 /// </list>
 /// </remarks>

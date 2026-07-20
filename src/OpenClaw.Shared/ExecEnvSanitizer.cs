@@ -104,12 +104,12 @@ internal static class ExecEnvSanitizer
             return true;
 
         // Vectorized scan: any char in [0x00, 0x20] covers all ASCII control characters
-        // (0x01–0x1F) plus space (0x20) in a single SIMD pass — the common fast path for
+        // (0x01–0x1F) plus space (0x20) in a single SIMD pass - the common fast path for
         // the ASCII-only names that make up virtually all environment variable keys.
         var span = name.AsSpan();
         if (span.IndexOfAnyInRange('\x00', '\x20') >= 0)
             return true;
-        // DEL (0x7F) — control char outside the range above.
+        // DEL (0x7F) - control char outside the range above.
         if (span.IndexOf('\x7F') >= 0)
             return true;
         // Non-ASCII Unicode control / whitespace (rare; UTF-8 env var names are uncommon).

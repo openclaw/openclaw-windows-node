@@ -12,7 +12,7 @@ namespace OpenClaw.Shared;
 // only UI-facing presentation logic on top of those DTOs:
 //   • display / insertion helpers for a single GatewayCommand
 //   • ranked search + category grouping that the chat command palette needs
-//     (CommandCatalogQuery does boolean filtering only — no ranking or
+//     (CommandCatalogQuery does boolean filtering only - no ranking or
 //     grouped output).
 // Nothing here duplicates a protocol DTO.
 
@@ -113,7 +113,7 @@ public sealed record CommandCategoryGroup(string Category, IReadOnlyList<Gateway
 /// <summary>
 /// A grouped command palette: the display <see cref="Groups"/>; the same commands
 /// <see cref="Flattened"/> in group/display order (the keyboard-navigation list);
-/// and <see cref="DefaultSelectionIndex"/> — the index in <see cref="Flattened"/>
+/// and <see cref="DefaultSelectionIndex"/> - the index in <see cref="Flattened"/>
 /// of the GLOBAL best search match, i.e. the row keyboard selection should default
 /// to so that display grouping never demotes a strong later-bucket match behind a
 /// weak earlier-bucket one for Enter/Tab.
@@ -126,7 +126,7 @@ public sealed record GroupedPalette(
 /// <summary>
 /// Ranked search + category grouping over a set of gateway commands for the chat
 /// command palette. Distinct from <see cref="CommandCatalogQuery"/> (a boolean
-/// filter mirroring the gateway's server-side filtering) — this adds relevance
+/// filter mirroring the gateway's server-side filtering) - this adds relevance
 /// ranking and grouped output the UI needs. UI-only; lives in OpenClaw.Shared so
 /// it can be unit-tested directly.
 /// </summary>
@@ -199,7 +199,7 @@ public sealed class ChatCommandCatalogView
     {
         var matched = Search(query);
         // GroupBy preserves source (relevance) order within each group; do NOT
-        // re-sort the members — that would demote a strong match below a weaker
+        // re-sort the members - that would demote a strong match below a weaker
         // one and change the default Enter target.
         var groups = matched
             .GroupBy(categorySelector, StringComparer.OrdinalIgnoreCase)
@@ -228,7 +228,7 @@ public sealed class ChatCommandCatalogView
 
     /// <summary>
     /// Groups commands for the chat command palette (visual grouping) and also
-    /// computes <see cref="GroupedPalette.DefaultSelectionIndex"/> — the index,
+    /// computes <see cref="GroupedPalette.DefaultSelectionIndex"/> - the index,
     /// within the flattened group order, of the GLOBAL best <see cref="Search"/>
     /// match. Display grouping orders by bucket, which can render a strong
     /// later-bucket match after a weak earlier-bucket one; keyboard selection
@@ -291,8 +291,8 @@ public sealed class ChatCommandCatalogView
 
 /// <summary>
 /// Mac/web parity for the slash command palette grouping (slash-commands.ts):
-/// maps each command into one of four display buckets — Session, Model, Tools,
-/// Agents — via per-command name overrides first, then a raw-category fallback
+/// maps each command into one of four display buckets - Session, Model, Tools,
+/// Agents - via per-command name overrides first, then a raw-category fallback
 /// (session→Session, options→Model, management→Tools, everything else→Tools).
 /// </summary>
 public static class CommandCategories
@@ -381,7 +381,7 @@ public static class CommandCategories
     // Normalizes a command name to an override key the way Mac's normalizeUiKey
     // does (lowercase, strip a leading slash, ':' '.' '-' → '_'). Mac keys off
     // command.key; the wire command carries no key here, and the catalog is
-    // requested with text scope, so the text-surface Name is the closest analog —
+    // requested with text scope, so the text-surface Name is the closest analog -
     // fall back to the first text alias, then the native name.
     private static string NormalizeKey(GatewayCommand command)
     {

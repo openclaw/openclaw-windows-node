@@ -3,12 +3,12 @@ namespace OpenClaw.Shared.ExecApprovals;
 // Determines whether the coordinator can present a UI prompt for this request.
 // Four inputs to canPresent: requestSessionKey, activeSessionKey,
 // lastInputSeconds, desktopInteractive. Only requestSessionKey is passed by the
-// coordinator — the other three are encapsulated inside the implementation:
+// coordinator - the other three are encapsulated inside the implementation:
 //   activeSessionKey: provided by whatever tracks the active tray session.
 //   lastInputSeconds: read via Win32 GetLastInputInfo.
 //   desktopInteractive: read via OpenInputDesktop / WTSQuerySessionInformation.
 // Keeping these out of the interface keeps the coordinator UI-free and
-// testable without Win32. Must never throw — fail to false (no UI available).
+// testable without Win32. Must never throw - fail to false (no UI available).
 public interface ICanPresentEvaluator
 {
     bool CanPresent(string? requestSessionKey);

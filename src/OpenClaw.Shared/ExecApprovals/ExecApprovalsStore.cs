@@ -90,7 +90,7 @@ public sealed class ExecApprovalsStore
     // Adds a new allowlist entry for the agent. Best-effort: never throws.
     // Returns true if the entry is present after the call (added or already there),
     // false if the pattern was empty or the write was skipped/failed.
-    // Pattern validation is non-empty only — parity with macOS.
+    // Pattern validation is non-empty only - parity with macOS.
     public async Task<bool> AddAllowlistEntryAsync(string? agentId, string pattern)
     {
         var trimmed = pattern?.Trim();
@@ -110,7 +110,7 @@ public sealed class ExecApprovalsStore
                 agents[key] = agent;
             }
             var allowlist = agent.Allowlist ??= [];
-            // Dedup case-insensitive — consistent with NormalizeAllowlistEntries (OrdinalIgnoreCase HashSet).
+            // Dedup case-insensitive - consistent with NormalizeAllowlistEntries (OrdinalIgnoreCase HashSet).
             if (allowlist.Any(e => string.Equals(
                     e.Pattern?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)))
             {
@@ -133,7 +133,7 @@ public sealed class ExecApprovalsStore
     // Best-effort: never throws. No-op if the agent or pattern is not found.
     // Returns true if at least one entry was updated and saved; false otherwise.
     // Searches both the concrete agent bucket and the wildcard bucket ("*"),
-    // because ResolveReadOnly merges wildcard entries into the resolved allowlist —
+    // because ResolveReadOnly merges wildcard entries into the resolved allowlist -
     // so a hit can be authorized by either source and metadata must follow.
     public Task<bool> RecordAllowlistUseAsync(
         string? agentId, string pattern, string? resolvedPath)
@@ -444,7 +444,7 @@ public sealed class ExecApprovalsStore
         var socket = file.Socket is null ? null : NormalizeSocket(file.Socket);
 
         // Migrate agents["default"] → agents["main"]; "main" wins on conflicting fields.
-        // Null agents stays null here — EnsureFileAsync is responsible for initialization.
+        // Null agents stays null here - EnsureFileAsync is responsible for initialization.
         var defaults = CopyDefaults(file.Defaults);
 
         if (file.Agents is null)
@@ -460,7 +460,7 @@ public sealed class ExecApprovalsStore
                 : defaultAgent;
         }
 
-        // Normalize allowlist entries (dropInvalid: false — keep non-empty invalids).
+        // Normalize allowlist entries (dropInvalid: false - keep non-empty invalids).
         foreach (var key in agents.Keys.ToList())
         {
             var agent = agents[key];
@@ -517,7 +517,7 @@ public sealed class ExecApprovalsStore
 
     // Mirrors macOS normalizeAllowlistEntries.
     // dropInvalid=false: discard only null/empty patterns; keep non-empty ones regardless of validity.
-    // dropInvalid=true: same in v1 — pattern validity beyond non-empty is enforced by the allowlist
+    // dropInvalid=true: same in v1 - pattern validity beyond non-empty is enforced by the allowlist
     //   matcher, not here. The flag is preserved for API symmetry with macOS.
     internal static List<ExecAllowlistEntry> NormalizeAllowlistEntries(
         IEnumerable<ExecAllowlistEntry> entries, bool dropInvalid)

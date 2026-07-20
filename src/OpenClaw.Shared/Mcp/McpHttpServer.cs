@@ -12,7 +12,7 @@ namespace OpenClaw.Shared.Mcp;
 /// <summary>
 /// Localhost-only HTTP transport for the MCP server.
 ///
-/// Security model — three layers:
+/// Security model - three layers:
 ///   1. Loopback bind (127.0.0.1). Unreachable from another machine, regardless
 ///      of firewall configuration.
 ///   2. Defensive IsLoopback check on every request.
@@ -27,11 +27,11 @@ namespace OpenClaw.Shared.Mcp;
 ///      fails before reaching capability code.
 ///
 /// Bearer-token auth in front of request dispatch. Required on every request
-/// when constructed with a non-null token (the tray always passes one — see
+/// when constructed with a non-null token (the tray always passes one - see
 /// <c>NodeService.McpTokenPath</c> / <c>McpAuthToken.LoadOrCreate</c>; legacy
 /// callers that pass null disable the check, kept for in-process tests). The
 /// token defends against untrusted local processes that could otherwise reach
-/// the predictable 127.0.0.1:port endpoint — a process running as the same
+/// the predictable 127.0.0.1:port endpoint - a process running as the same
 /// user on the same box can read the token file and would defeat this layer,
 /// but anything sandboxed away from <c>%APPDATA%\OpenClawTray\</c> cannot.
 ///
@@ -47,7 +47,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     private const long MaxRequestBodyBytes = 4L * 1024 * 1024; // 4 MiB
     // 16 leaves headroom for parallel tool callers (e.g. an editor + Claude
     // Desktop + a CLI script) without making each connection cheap enough to
-    // become a DoS lever — request size cap + per-handler timeout still bound
+    // become a DoS lever - request size cap + per-handler timeout still bound
     // memory. Bumped from 8 after queue-stall reports under multi-IDE use.
     private const int MaxConcurrentHandlers = 16;
     // Sized to cover the longest legitimate capability: screen.record up to
@@ -67,7 +67,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     private readonly HttpListener _listener;
     /// <summary>
     /// Required bearer token for HTTP requests. Empty/null disables auth (the
-    /// pre-auth contract — kept so existing dev configs keep working). When set,
+    /// pre-auth contract - kept so existing dev configs keep working). When set,
     /// every request must carry <c>Authorization: Bearer &lt;token&gt;</c>.
     /// </summary>
     private string? _authToken;
@@ -92,7 +92,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         _port = port;
         _authToken = string.IsNullOrEmpty(authToken) ? null : authToken;
         _listener = new HttpListener();
-        // Loopback binding — not reachable from other machines. Use only the
+        // Loopback binding - not reachable from other machines. Use only the
         // numeric host on Windows so non-elevated startup does not require a
         // separate netsh http urlacl reservation for http://localhost:port/.
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
@@ -142,7 +142,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 continue;
             }
 
-            // Cap concurrent handlers — a misbehaving local client can otherwise
+            // Cap concurrent handlers - a misbehaving local client can otherwise
             // pin every threadpool thread on long-running screen/camera calls.
             // Wait briefly: a slot freed during typical request handoff is well
             // under 50ms, so a small queue here turns transient spikes into
@@ -155,7 +155,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
             // NOTE: do not pass `ct` to Task.Run. If the token is cancelled
             // between WaitAsync returning and the delegate starting, Task.Run
-            // skips the delegate and the finally never runs — leaking a
+            // skips the delegate and the finally never runs - leaking a
             // semaphore slot. Let the delegate observe cancellation itself.
             var handlerTask = Task.Run(() => RunHandlerAsync(ctx));
             TrackHandler(handlerTask);
@@ -185,7 +185,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 // Release-without-Acquire indicates a real bug (counting imbalance);
                 // promote to Warn so it surfaces in production diagnostics. Include
                 // ex.ToString() to capture the stack since Warn has no ex overload.
-                _logger.Warn($"[MCP] Handler limiter release was already at max — possible release/acquire imbalance: {ex}");
+                _logger.Warn($"[MCP] Handler limiter release was already at max - possible release/acquire imbalance: {ex}");
             }
         }
     }
@@ -205,11 +205,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         // on another thread, and reading the field separately for the null-test
         // and the comparison would let a single request observe two different
         // values (e.g. enter the auth branch with the old token, then compare
-        // against the new one — or vice versa).
+        // against the new one - or vice versa).
         var authToken = Volatile.Read(ref _authToken);
         try
         {
-            // CSRF/browser gate — reject anything carrying a browser Origin.
+            // CSRF/browser gate - reject anything carrying a browser Origin.
             // Real MCP HTTP clients (Claude Desktop, Cursor, Claude Code, curl)
             // do not set Origin. A browser fetch always does.
             var origin = ctx.Request.Headers["Origin"];
@@ -252,7 +252,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
             if (ctx.Request.HttpMethod == "GET")
             {
-                // Friendly probe response — useful for confirming the server is up
+                // Friendly probe response - useful for confirming the server is up
                 // from a curl/browser without hitting the JSON-RPC endpoint.
                 WriteText(ctx.Response, HttpStatusCode.OK,
                     $"OpenClaw MCP server. POST JSON-RPC to {Endpoint}", "text/plain");
@@ -277,7 +277,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 return;
             }
 
-            // Reject bodies that exceed our cap *before* reading them — a
+            // Reject bodies that exceed our cap *before* reading them - a
             // multi-GB POST would otherwise OOM the tray.
             if (ctx.Request.ContentLength64 > MaxRequestBodyBytes)
             {
@@ -297,7 +297,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                // Slow-body or stuck client — free the slot rather than blocking forever.
+                // Slow-body or stuck client - free the slot rather than blocking forever.
                 Reject(ctx, HttpStatusCode.RequestTimeout, "request timed out");
                 return;
             }
@@ -315,7 +315,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
             if (responseBody == null)
             {
-                // Notification — JSON-RPC says no body. 204 is the most honest signal.
+                // Notification - JSON-RPC says no body. 204 is the most honest signal.
                 ctx.Response.StatusCode = (int)HttpStatusCode.NoContent;
                 ctx.Response.Close();
                 return;
@@ -335,7 +335,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     private static bool IsAuthorized(string authToken, string? authHeader)
     {
         if (string.IsNullOrEmpty(authHeader)) return false;
-        // Accept "Bearer <token>" (RFC 6750) — case-insensitive scheme, exact token.
+        // Accept "Bearer <token>" (RFC 6750) - case-insensitive scheme, exact token.
         const string scheme = "Bearer ";
         if (!authHeader.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) return false;
         var presented = authHeader.Substring(scheme.Length).Trim();
@@ -350,7 +350,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     {
         if (string.IsNullOrEmpty(host)) return false;
         var trimmed = host.Trim();
-        // IPv6 form: [::1]:port — strip the bracketed address.
+        // IPv6 form: [::1]:port - strip the bracketed address.
         if (trimmed.StartsWith('['))
         {
             var closeBracket = trimmed.IndexOf(']');
@@ -368,11 +368,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
     private static async Task<string> ReadBodyAsync(HttpListenerRequest request, long maxBytes, CancellationToken ct)
     {
-        // Bounded read — never trust ContentLength as a sole limit; the client
+        // Bounded read - never trust ContentLength as a sole limit; the client
         // can send chunked encoding or just lie. Read up to maxBytes+1 and
         // throw if we crossed the cap. The cancellation token enforces the
         // per-request deadline so a slow-body client can't hold a handler slot.
-        // Pool the read buffer so we don't allocate 8 KiB per request — under
+        // Pool the read buffer so we don't allocate 8 KiB per request - under
         // load these are a noticeable LOH-adjacent allocation.
         var encoding = request.ContentEncoding ?? Encoding.UTF8;
         var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(8192);
@@ -442,7 +442,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         try { if (_listener.IsListening) _listener.Stop(); }
         catch (Exception ex) { _logger.Debug($"[MCP] StopCore listener.Stop threw: {ex.Message}"); }
 
-        // Snapshot before awaiting — handlers remove themselves on completion,
+        // Snapshot before awaiting - handlers remove themselves on completion,
         // and we don't want enumeration to race the continuation.
         Task[] toAwait;
         lock (_activeLock) { toAwait = new Task[_activeHandlers.Count]; _activeHandlers.CopyTo(toAwait); }

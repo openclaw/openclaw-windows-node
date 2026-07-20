@@ -6,7 +6,7 @@ namespace OpenClaw.Shared.ExecApprovals;
 public sealed class ExecApprovalV2PromptRequest
 {
     /// <summary>
-    /// Command text as received from the agent — NOT sanitized. Presenters must strip
+    /// Command text as received from the agent - NOT sanitized. Presenters must strip
     /// control characters and BiDi overrides before rendering to prevent command spoofing.
     /// </summary>
     public required string DisplayCommand { get; init; }
@@ -19,7 +19,7 @@ public sealed class ExecApprovalV2PromptRequest
     /// <summary>
     /// Opaque key scoping AllowOnce/AllowAlways decisions to a conversation session.
     /// Minted by the gateway per session; null means no session context is available.
-    /// Not safe to display — internal identifier only.
+    /// Not safe to display - internal identifier only.
     /// </summary>
     public string? SessionKey { get; init; }
     /// <summary>Short identifier propagated through logging for this approval request.</summary>

@@ -1,7 +1,7 @@
 // C# port of Martin Mitáš's md4c Markdown parser entity table.
 // Ported from md4c/src/entity.h, md4c/src/entity.c
 //
-// AI-HINT: Auto-generated lookup table — ~2100 HTML named entities mapping to Unicode codepoints.
+// AI-HINT: Auto-generated lookup table - ~2100 HTML named entities mapping to Unicode codepoints.
 // Used by the inline parser to resolve &amp; sequences. Binary search by entity name.
 // Do not edit by hand; regenerate from the md4c source if the upstream changes.
 

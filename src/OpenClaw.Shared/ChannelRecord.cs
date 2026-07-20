@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace OpenClaw.Shared;
 
 /// <summary>
-/// Aggregate view of one channel — combines the gateway-provided status snapshot
+/// Aggregate view of one channel - combines the gateway-provided status snapshot
 /// with capability flags and metadata. The page renders <see cref="ChannelRecord"/>s,
 /// not raw snapshots.
 /// </summary>
@@ -35,7 +35,7 @@ public sealed class ChannelRecord
     /// </summary>
     public bool IsRunning { get; init; }
 
-    /// <summary>Capability flags (per-channel — driven by id).</summary>
+    /// <summary>Capability flags (per-channel - driven by id).</summary>
     public ChannelCapabilities Capabilities { get; init; }
 
     /// <summary>True if Windows cannot host this channel even when configured (e.g. iMessage).</summary>
@@ -67,7 +67,7 @@ public enum ChannelCapabilities
     /// Configured-and-running non-QR channel: offer a <c>channels.stop</c>
     /// action (pause without clearing credentials). QR-link channels
     /// (WhatsApp/Signal) instead expose <see cref="CanLogout"/> in the
-    /// header — for them "logout" already means "unlink this device",
+    /// header - for them "logout" already means "unlink this device",
     /// which is the analogous lightweight pause action.
     /// </summary>
     CanStop = 1 << 5,
@@ -85,7 +85,7 @@ public static class ChannelsAggregator
 
     /// <summary>
     /// Pretty labels for the built-in channels. Used when the gateway
-    /// hasn't reported a label (typical for "preview" channels — those the
+    /// hasn't reported a label (typical for "preview" channels - those the
     /// user hasn't configured yet and the gateway doesn't have a plugin
     /// for). Without this we'd render raw lowercase ids ("discord",
     /// "googlechat") which look broken.
@@ -141,7 +141,7 @@ public static class ChannelsAggregator
 
         // Build the channel id list as the *union* of every source the gateway
         // might use to expose channels. Older gateways and plugin-only setups
-        // sometimes omit channelOrder while still populating channels/meta —
+        // sometimes omit channelOrder while still populating channels/meta -
         // iterating channelOrder alone would silently drop them.
         var order = BuildOrderedIds(snapshot, useBuiltInFallback);
         var records = new List<ChannelRecord>(order.Count);
@@ -157,20 +157,20 @@ public static class ChannelsAggregator
             var running = IsChannelRunning(raw, accounts);
 
             // Capability gating:
-            //   CanRefresh — kept for backcompat, but the page no longer renders
+            //   CanRefresh - kept for backcompat, but the page no longer renders
             //                a per-channel Refresh button; one page-level
             //                Refresh-all covers it.
-            //   CanShowQr  — QR channels (WhatsApp/Signal): available even when
+            //   CanShowQr  - QR channels (WhatsApp/Signal): available even when
             //                unconfigured because the QR scan IS how you
             //                configure them. Show-QR is the bootstrap path.
-            //   CanRelink  — QR channels, only once already configured: relink
+            //   CanRelink  - QR channels, only once already configured: relink
             //                rotates the device link; meaningless before there's
             //                a device to relink.
-            //   CanLogout  — only on channels that have a session to end, AND
+            //   CanLogout  - only on channels that have a session to end, AND
             //                only when actually configured. Hardcoding logout to
             //                the channel id alone shows a Logout button on
             //                "not configured" rows, which confuses users.
-            //   CanStart   — channel is configured but not running. Offers a
+            //   CanStart   - channel is configured but not running. Offers a
             //                channels.start action. Distinct from save-and-start
             //                in the inline form: this is the recovery affordance
             //                for an already-configured channel that didn't come
@@ -187,7 +187,7 @@ public static class ChannelsAggregator
             if (configured && !running)
                 caps |= ChannelCapabilities.CanStart;
             // CanStop: lightweight pause for non-QR running channels.
-            // For QR channels (WhatsApp/Signal) we don't set CanStop —
+            // For QR channels (WhatsApp/Signal) we don't set CanStop -
             // "Logout" is the analogous lightweight action there (unlink
             // the device; can scan a fresh QR to reconnect).
             if (configured && running && !isQrChannel)
@@ -195,7 +195,7 @@ public static class ChannelsAggregator
 
             // Label / DetailLabel fall back to BuiltInChannelLabels when
             // the gateway didn't supply a nice name (typical for preview
-            // channels — those we surface from BuiltInChannelOrder for
+            // channels - those we surface from BuiltInChannelOrder for
             // discoverability but that the gateway hasn't reported).
             var gatewayLabel = snapshot.ResolveLabel(id);
             var label = string.Equals(gatewayLabel, id, StringComparison.Ordinal)
@@ -246,12 +246,12 @@ public static class ChannelsAggregator
     /// </summary>
     /// <param name="useBuiltInFallback">
     /// When true, the built-in catalog is **always** unioned in so the
-    /// AVAILABLE section gives the user discoverable options to add — not
+    /// AVAILABLE section gives the user discoverable options to add - not
     /// just whatever the gateway has already configured. Channels reported
     /// by the gateway dedupe correctly via the OrdinalIgnoreCase HashSet
     /// and keep their gateway-provided position; pure built-in extras
     /// append at the end in BuiltInChannelOrder order.
-    /// When false, only what the gateway reported is returned — honest
+    /// When false, only what the gateway reported is returned - honest
     /// mode for callers that don't want to surface "preview" channels the
     /// gateway can't host.
     /// </param>
@@ -280,7 +280,7 @@ public static class ChannelsAggregator
         // AVAILABLE section stays populated even when the gateway is
         // only reporting the user's currently-configured channels.
         // Discoverability matters more than the small risk of surfacing
-        // a channel whose plugin isn't installed — the Save flow already
+        // a channel whose plugin isn't installed - the Save flow already
         // detects "unknown channel" responses and points the user at
         // openclaw plugins install <pkg>.
         if (useBuiltInFallback) Append(BuiltInChannelOrder);

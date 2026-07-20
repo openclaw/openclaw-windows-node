@@ -9,18 +9,18 @@ namespace OpenClaw.Shared;
 //
 // These mirror the canonical upstream gateway protocol
 // (openclaw/openclaw, packages/gateway-protocol/src/schema) for:
-//   • commands.list           — the command catalog
-//   • sessions.patch          — the extended per-session preference field set
-//   • sessions.files.list/get — session workspace file rail + browser
-//   • sessions.compaction.*   — compaction checkpoint list/get/branch/restore
+//   • commands.list           - the command catalog
+//   • sessions.patch          - the extended per-session preference field set
+//   • sessions.files.list/get - session workspace file rail + browser
+//   • sessions.compaction.*   - compaction checkpoint list/get/branch/restore
 //
 // Wire field names and value sets match the upstream TypeBox schemas exactly,
-// which use `additionalProperties: false` (strict) — so request payloads must
+// which use `additionalProperties: false` (strict) - so request payloads must
 // only carry known fields with the documented value sets.
 //
 // List/get/mutation result DTOs carry an `IsSupported` flag. Older gateways
 // that do not implement a method report "unknown method", which the client
-// surfaces as a typed result with `IsSupported = false` rather than throwing —
+// surfaces as a typed result with `IsSupported = false` rather than throwing -
 // see OpenClawGatewayClient.Protocol.cs.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ public enum SessionGroupActivation
 }
 
 /// <summary>
-/// Non-generic sentinel that clears any <see cref="PatchField{T}"/> — i.e. emits
+/// Non-generic sentinel that clears any <see cref="PatchField{T}"/> - i.e. emits
 /// an explicit JSON <c>null</c> for that field, which the gateway treats as
 /// "remove this session override". Obtain it via <see cref="SessionPatch.Clear"/>.
 /// </summary>
@@ -265,7 +265,7 @@ public readonly struct PatchField<T>
 /// it, or assign <see cref="Clear"/> to remove the session override (explicit
 /// JSON null). Field names and value sets match the upstream
 /// <c>SessionsPatchParamsSchema</c> exactly (see <see cref="ToPayload"/>), whose
-/// fields are <c>Union([&lt;value&gt;, Null])</c> — so null is a valid clear signal.
+/// fields are <c>Union([&lt;value&gt;, Null])</c> - so null is a valid clear signal.
 /// </summary>
 public sealed class SessionPatch
 {
@@ -307,7 +307,7 @@ public sealed class SessionPatch
     /// as explicit <c>null</c>; a set field uses the gateway's exact wire value.
     /// String fields map to the schema's <c>NonEmptyString</c> value type, so a
     /// blank/whitespace <i>value</i> is omitted (an empty string would be
-    /// rejected and fail the whole patch) — clearing always uses null instead.
+    /// rejected and fail the whole patch) - clearing always uses null instead.
     /// </summary>
     internal Dictionary<string, object?> ToPayload(string key)
     {

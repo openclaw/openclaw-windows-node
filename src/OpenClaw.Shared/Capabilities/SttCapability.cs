@@ -9,16 +9,16 @@ namespace OpenClaw.Shared.Capabilities;
 /// <summary>
 /// Speech-to-text node capability. Three commands:
 ///
-/// * <see cref="TranscribeCommand"/> — bounded fixed-duration capture + transcription.
+/// * <see cref="TranscribeCommand"/> - bounded fixed-duration capture + transcription.
 ///   Caller must specify <c>maxDurationMs</c> (capped at <see cref="MaxTranscribeDurationMs"/>).
 ///   Useful for quick "give me 5 seconds of audio" prompts.
 ///
-/// * <see cref="ListenCommand"/> — VAD-driven capture that returns when speech ends
+/// * <see cref="ListenCommand"/> - VAD-driven capture that returns when speech ends
 ///   or after <c>timeoutMs</c> (default <see cref="DefaultListenTimeoutMs"/>, range
 ///   <see cref="MinListenTimeoutMs"/>..<see cref="MaxListenTimeoutMs"/>).
 ///   Useful for conversational "listen until I stop talking" prompts.
 ///
-/// * <see cref="StatusCommand"/> — reports engine readiness (no PII).
+/// * <see cref="StatusCommand"/> - reports engine readiness (no PII).
 ///
 /// The actual engine lives in the tray (Whisper.net + NAudio + Silero VAD).
 /// Whisper is local-first and privacy-respecting; the legacy WinRT
@@ -137,7 +137,7 @@ public sealed class SttCapability : NodeCapabilityBase
         CancellationToken cancellationToken)
     {
         // maxDurationMs is required and bounded server-side. We deliberately
-        // reject 0/negative rather than substituting a default — callers
+        // reject 0/negative rather than substituting a default - callers
         // explicitly choose how much mic time they're spending.
         var maxDurationMs = GetIntArg(request.Args, "maxDurationMs", 0);
         if (maxDurationMs <= 0)

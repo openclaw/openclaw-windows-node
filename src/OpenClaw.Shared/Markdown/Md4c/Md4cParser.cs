@@ -1,7 +1,7 @@
 // C# port of Martin Mitáš's md4c Markdown parser.
 // Ported from md4c/src/md4c.c
 //
-// AI-HINT: Faithful C# port of md4c — a CommonMark-compliant SAX-style Markdown parser.
+// AI-HINT: Faithful C# port of md4c - a CommonMark-compliant SAX-style Markdown parser.
 // Split across 3 partial files: Md4cParser.cs (orchestration, core structs),
 // Md4cParser.Block.cs (block-level parsing: headings, lists, code blocks, HTML blocks),
 // Md4cParser.Inline.cs (inline parsing: emphasis, links, code spans, autolinks).
@@ -232,7 +232,7 @@ public sealed partial class Md4cParser
     private bool lastLineHasListLooseningEffect;
     private bool lastListItemStartsWithTwoBlankLines;
 
-    // ── Constructor (private — use Parse()) ──────────────────────────────
+    // ── Constructor (private - use Parse()) ──────────────────────────────
 
     private Md4cParser(
         string text,

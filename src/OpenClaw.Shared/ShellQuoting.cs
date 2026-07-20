@@ -11,7 +11,7 @@ internal static class ShellQuoting
 {
     // SearchValues<char> builds an optimized SIMD lookup structure once at startup,
     // allowing IndexOfAny to scan multiple characters simultaneously (SSE2/AVX2 on x64).
-    // Equivalent set to the former IsShellMetachar switch — 25 shell metacharacters.
+    // Equivalent set to the former IsShellMetachar switch - 25 shell metacharacters.
     private static readonly SearchValues<char> s_shellMetachars =
         SearchValues.Create(" \t\"'&|;<>()^%!$`*?[]{}~\n\r");
 

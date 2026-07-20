@@ -19,7 +19,7 @@ internal static class ExecAllowlistMatcher
     private static readonly ConcurrentDictionary<string, Regex> s_regexCache = new();
 
     // Returns the first entry whose pattern matches the resolution's target path, or null.
-    // Target is normalized once before iterating — not per entry.
+    // Target is normalized once before iterating - not per entry.
     internal static ExecAllowlistEntry? Match(
         IReadOnlyList<ExecAllowlistEntry> entries,
         ExecCommandResolution resolution)
@@ -63,7 +63,7 @@ internal static class ExecAllowlistMatcher
         return IsValidNormalizedPattern(NormalizeSeparators(pattern));
     }
 
-    // Inner check on an already-normalized pattern — single source of truth for the rule.
+    // Inner check on an already-normalized pattern - single source of truth for the rule.
     private static bool IsValidNormalizedPattern(string normalizedPattern)
         => normalizedPattern.Contains('/') && !HasMalformedDoubleStars(normalizedPattern);
 
@@ -90,7 +90,7 @@ internal static class ExecAllowlistMatcher
         => (value ?? string.Empty).Replace('\\', '/');
 
     // Converts a separator-normalized glob pattern to an anchored compiled regex.
-    // Called at most once per unique pattern — result is stored in s_regexCache by the caller.
+    // Called at most once per unique pattern - result is stored in s_regexCache by the caller.
     // NonBacktracking prevents catastrophic behavior on adversarial or degenerate patterns.
     private static Regex BuildPatternRegex(string pattern)
     {
@@ -103,14 +103,14 @@ internal static class ExecAllowlistMatcher
                 i += 2;
                 if (i < pattern.Length && pattern[i] == '/' && i + 1 < pattern.Length)
                 {
-                    // **/rest — rest must start at a segment boundary, not as a suffix of another name.
+                    // **/rest - rest must start at a segment boundary, not as a suffix of another name.
                     // (.*\/)? matches zero or more path segments including their trailing separator.
                     sb.Append(@"(.*\/)?");
                     i++;
                 }
                 else
                 {
-                    // trailing ** — match anything (no following segment to anchor)
+                    // trailing ** - match anything (no following segment to anchor)
                     sb.Append(".*");
                 }
             }

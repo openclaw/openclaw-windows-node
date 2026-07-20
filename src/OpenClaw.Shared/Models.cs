@@ -404,7 +404,7 @@ public class GatewayUsageInfo
             if (p0 is null && p1 is null && p2 is null && p3 is null)
                 return string.IsNullOrEmpty(ProviderSummary) ? "No usage data" : ProviderSummary!;
 
-            // Pack non-null slots into a fixed-size array and join — one allocation.
+            // Pack non-null slots into a fixed-size array and join - one allocation.
             var parts = new string?[4];
             int n = 0;
             if (p0 is not null) parts[n++] = p0;
@@ -554,7 +554,7 @@ public class GatewayNodeInfo
     public string? LastSeenReason { get; set; }
 
     // True when the node is in the gateway's paired set (regardless of current
-    // connection state). Distinct from IsOnline — a paired node can be offline.
+    // connection state). Distinct from IsOnline - a paired node can be offline.
     public bool IsPaired { get; set; }
 
     // True when the gateway provided an explicit displayName/name/label.
@@ -1732,7 +1732,7 @@ public static class ModelFormatting
     /// <summary>
     /// Formats a UTC timestamp as a human-readable age string.
     /// Examples: "just now", "5m ago", "12h ago", "3d ago", "2026-03-12".
-    /// Public so all UI surfaces share one canonical formatter — divergent
+    /// Public so all UI surfaces share one canonical formatter - divergent
     /// thresholds between callers can otherwise show the same timestamp as
     /// "1d ago" in one place and "36h ago" in another for the same node.
     /// </summary>
@@ -1869,7 +1869,7 @@ public class AgentEventInfo
 
     public string FormattedTime => Timestamp.ToString("HH:mm:ss.fff");
 
-    /// <summary>Resolved event kind — for "item" stream events, uses data.kind instead.</summary>
+    /// <summary>Resolved event kind - for "item" stream events, uses data.kind instead.</summary>
     public string ResolvedStream
     {
         get

@@ -2937,7 +2937,7 @@ public sealed partial class Md4cParser
                        ((marks[markIndex].Flags & MARK_RESOLVED) == 0 || marks[markIndex].Beg < off))
                     markIndex++;
 
-                // Refresh line ref — the ']' closer may have advanced lineIndex.
+                // Refresh line ref - the ']' closer may have advanced lineIndex.
                 line = ref lines[lineOffset + lineIndex];
             }
 

@@ -18,7 +18,7 @@ public enum PresenceStatus
     /// <summary>Node is paired with the gateway but no presence beacon was received.</summary>
     Offline,
 
-    /// <summary>Row represents the gateway itself — status dot is suppressed in UI.</summary>
+    /// <summary>Row represents the gateway itself - status dot is suppressed in UI.</summary>
     Gateway,
 }
 
@@ -29,7 +29,7 @@ public enum PresenceStatus
 /// </summary>
 /// <remarks>
 /// Either <see cref="Presence"/> or <see cref="Node"/> is always non-null. When both are
-/// set, the row represents a paired Windows node that is currently online — the page may
+/// set, the row represents a paired Windows node that is currently online - the page may
 /// expose Rename/Forget and capability/command/permission expanders. When only
 /// <see cref="Node"/> is set, the node is paired-but-offline and we still render a row
 /// so the user can manage (rename/forget) it.
@@ -112,7 +112,7 @@ public sealed class InstanceMergeOptions
 {
     /// <summary>
     /// Stable local node identity (e.g. from the registered gateway record). Preferred
-    /// over <see cref="LocalHost"/> when set — avoids hostname collisions in multi-machine
+    /// over <see cref="LocalHost"/> when set - avoids hostname collisions in multi-machine
     /// scenarios with the same Windows hostname.
     /// </summary>
     public string? LocalNodeId { get; init; }

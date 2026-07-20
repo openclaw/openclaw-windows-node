@@ -134,7 +134,7 @@ public static class TokenSanitizer
     // Catches IPv6 literals outside of URLs (e.g. fe80::1234, 2001:db8::1, ::1, full 8-group form, ::ffff:N.N.N.N).
     // Seven alternatives, ordered so .NET's leftmost-first NFA backtracking picks the most-specific
     // form (e.g. embedded-IPv4) before the plain hex form when both could match at the same position:
-    //   1. Bracketed — requires IPv6 structure inside (`::` or 4+ colons) so [14:58:46], [abc], [face] are NOT matched.
+    //   1. Bracketed - requires IPv6 structure inside (`::` or 4+ colons) so [14:58:46], [abc], [face] are NOT matched.
     //   2. Compressed (contains `::`) with embedded IPv4 tail (e.g. 2001:db8::ffff:192.0.2.1).
     //   3. Compressed (contains `::`) hex-only (e.g. fe80::1234). Timestamps lack `::` so HH:MM:SS is safe.
     //   4. Leading `::` followed by hex groups and an embedded IPv4 (e.g. ::ffff:192.0.2.1, ::192.0.2.1).
@@ -533,7 +533,7 @@ public static class TokenSanitizer
             return $"{schemePart}://<host>{trailing}";
 
         var portPart = uri.Port > 0 && !uri.IsDefaultPort ? $":{uri.Port}" : string.Empty;
-        // Unescape so percent-encoded slashes (%2F, %2f) become real path boundaries — otherwise
+        // Unescape so percent-encoded slashes (%2F, %2f) become real path boundaries - otherwise
         // an attacker-controlled URL like https://host/path%2Fsecret%2Ftoken would keep the full
         // encoded tail as a single "first segment" and leak past the truncation.
         // Then strip control characters: UnescapeDataString also decodes %0A/%0D/%00/%1B/%09 into
