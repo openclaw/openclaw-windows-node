@@ -816,7 +816,7 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void SetupWelcomePage_ScrollsChoicesAndRestoresTheSelectedPath()
+    public void SetupWelcomePage_KeepsNavigationOutsideScrollableSemanticChoices()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml"));
@@ -825,6 +825,13 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("<ScrollViewer Grid.Row=\"1\"", xaml);
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", xaml);
+        Assert.Contains("<RadioButtons x:Name=\"GatewayChoiceSelector\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"WelcomeInstallLocalGatewayChoice\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"WelcomeConnectExistingGatewayChoice\"", xaml);
+        Assert.DoesNotContain("PointerPressed=", xaml);
+        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<Grid Grid.Row=\"2\"");
+        Assert.DoesNotContain("GatewayChoiceSelector.SelectedIndex = 0;", welcomePage);
+        Assert.Contains("_suppressSelectionWrite = true", welcomePage);
         Assert.Contains("SetupWindow.Active?.IsWelcomeInstallSelected ?? true", welcomePage);
         Assert.Contains("SetupWindow.Active?.SetWelcomeInstallSelected(installSelected)", welcomePage);
         Assert.Contains("private bool _isWelcomeInstallSelected = true", setupWindow);

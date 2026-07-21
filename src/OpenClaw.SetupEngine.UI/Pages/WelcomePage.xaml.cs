@@ -2,7 +2,6 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
@@ -18,11 +17,13 @@ public sealed partial class WelcomePage : Page
     private const string CheckingButtonText = "Checking existing setup...";
     private SetupConfig? _config;
     private bool _installSelected = true; // default selection
+    private bool _suppressSelectionWrite;
 
     public WelcomePage()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        ActualThemeChanged += (_, _) => UpdateCardSelection();
         UpdateCardSelection();
     }
 
@@ -30,6 +31,15 @@ public sealed partial class WelcomePage : Page
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
         _installSelected = SetupWindow.Active?.IsWelcomeInstallSelected ?? true;
+        _suppressSelectionWrite = true;
+        try
+        {
+            GatewayChoiceSelector.SelectedIndex = _installSelected ? 0 : 1;
+        }
+        finally
+        {
+            _suppressSelectionWrite = false;
+        }
         UpdateCardSelection();
     }
 
@@ -56,14 +66,10 @@ public sealed partial class WelcomePage : Page
         visual.StartAnimation("Scale", pulse);
     }
 
-    private void InstallCard_Pressed(object sender, PointerRoutedEventArgs e)
+    private void GatewayChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        SetInstallSelected(true);
-    }
-
-    private void ConnectCard_Pressed(object sender, PointerRoutedEventArgs e)
-    {
-        SetInstallSelected(false);
+        if (!_suppressSelectionWrite && GatewayChoiceSelector.SelectedIndex is 0 or 1)
+            SetInstallSelected(GatewayChoiceSelector.SelectedIndex == 0);
     }
 
     private void SetInstallSelected(bool installSelected)
