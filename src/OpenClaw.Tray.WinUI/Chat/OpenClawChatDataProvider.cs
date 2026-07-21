@@ -98,6 +98,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly string _lastChatStateFilePath;
     private readonly TimeSpan _lastChatStateSaveDelay;
     private readonly Func<TimeSpan, CancellationToken, Func<Task>, Task> _scheduleHistoryRetry;
+    private readonly Action? _historyFailureReservedForTesting;
     private System.Threading.Timer? _toolMetaSaveTimer; // debounce cache writes
     private long _toolMetaSaveVersion;
     private bool _toolMetaCacheDirty;
@@ -253,7 +254,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string? attachmentMetaCacheFilePath = null,
         string? lastChatStateFilePath = null,
         TimeSpan? lastChatStateSaveDelay = null,
-        Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null)
+        Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
+        Action? historyFailureReservedForTesting = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _post = post;
@@ -272,6 +274,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             await retry().ConfigureAwait(false);
         });
+        _historyFailureReservedForTesting = historyFailureReservedForTesting;
         _status = bridge.CurrentStatus;
         _persistedAbortedIds = LoadAbortedIds();
         _toolMetaCache = LoadToolMetaCache(_toolMetaCacheFilePath);
@@ -823,7 +826,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// the timeline; subsequent calls are no-ops unless <paramref name="force"/>
     /// is true. Safe to call from any thread.
     /// </summary>
-    public async Task LoadHistoryAsync(string threadId, bool force = false, CancellationToken cancellationToken = default)
+    public Task LoadHistoryAsync(string threadId, bool force = false, CancellationToken cancellationToken = default)
+        => LoadHistoryCoreAsync(threadId, force, cancellationToken, expectedConnectionVersion: null);
+
+    private async Task LoadHistoryCoreAsync(
+        string threadId,
+        bool force,
+        CancellationToken cancellationToken,
+        long? expectedConnectionVersion)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(threadId)) return;
@@ -831,19 +841,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         long requestResetVersion;
         long requestConnectionVersion;
         CancellationToken generationCancellationToken;
+        CancellationTokenSource requestCancellation;
         lock (_gate)
         {
             if (_disposed) return;
+            if (expectedConnectionVersion is { } expected &&
+                (_historyConnectionVersion != expected || _status != ConnectionStatus.Connected))
+            {
+                return;
+            }
             if (!force && _historyLoaded.Contains(threadId)) return;
             if (!_historyInFlight.Add(threadId)) return; // another loader already in progress
             requestResetVersion = GetResetVersionLocked(threadId);
             requestConnectionVersion = _historyConnectionVersion;
             generationCancellationToken = _historyGenerationCancellation.Token;
+            requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                generationCancellationToken);
         }
 
-        using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            generationCancellationToken);
+        using var requestCancellationScope = requestCancellation;
         var historyOperation = _telemetry.StartHistoryLoad(
             force ? ChatHistoryTelemetrySource.Forced : ChatHistoryTelemetrySource.Initial);
         var historyOutcome = ChatTelemetryOutcome.Success;
@@ -1308,8 +1325,25 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     _historyRetryCount[threadId] = retries + 1;
             }
 
-            RaiseNotification(new ChatProviderNotification(
-                ChatProviderNotificationKind.Error, threadId, LocalizationHelper.GetString("Chat_Notification_LoadHistoryFailed"), ex.Message));
+            _historyFailureReservedForTesting?.Invoke();
+            lock (_gate)
+            {
+                if (_disposed || _historyConnectionVersion != requestConnectionVersion)
+                {
+                    historyOutcome = ChatTelemetryOutcome.Canceled;
+                    historyException = null;
+                    shouldRetry = false;
+                    return;
+                }
+            }
+
+            RaiseHistoryNotificationIfCurrent(
+                new ChatProviderNotification(
+                    ChatProviderNotificationKind.Error,
+                    threadId,
+                    LocalizationHelper.GetString("Chat_Notification_LoadHistoryFailed"),
+                    ex.Message),
+                requestConnectionVersion);
 
             lock (_gate)
             {
@@ -1331,16 +1365,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     generationCancellationToken,
                     async () =>
                 {
-                    lock (_gate)
-                    {
-                        if (_disposed ||
-                            _historyConnectionVersion != requestConnectionVersion ||
-                            _status != ConnectionStatus.Connected)
-                        {
-                            return;
-                        }
-                    }
-                    await LoadHistoryAsync(threadId, force: true);
+                    await LoadHistoryCoreAsync(
+                        threadId,
+                        force: true,
+                        CancellationToken.None,
+                        expectedConnectionVersion: requestConnectionVersion);
                 }));
             }
         }
@@ -1398,11 +1427,34 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     return;
 
                 snapshot = BuildSnapshotLocked();
-                Changed?.Invoke(this, new ChatDataChangedEventArgs(snapshot));
             }
 
+            Changed?.Invoke(this, new ChatDataChangedEventArgs(snapshot));
             if (snapshot.Threads.Length > 0 || snapshot.AvailableModels.Length > 0)
                 DebounceSaveLastChatState(snapshot);
+        }
+
+        if (_post is null)
+            Deliver();
+        else
+            _post(Deliver);
+    }
+
+    private void RaiseHistoryNotificationIfCurrent(
+        ChatProviderNotification notification,
+        long requestConnectionVersion)
+    {
+        var args = new ChatProviderNotificationEventArgs(notification);
+
+        void Deliver()
+        {
+            lock (_gate)
+            {
+                if (_disposed || _historyConnectionVersion != requestConnectionVersion)
+                    return;
+            }
+
+            NotificationRequested?.Invoke(this, args);
         }
 
         if (_post is null)
@@ -1865,11 +1917,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         System.Threading.Timer? timerToDispose;
         System.Threading.Timer? chatStateTimerToDispose;
         List<LocalInlineApproval> pendingLocalApprovals;
+        CancellationTokenSource historyGenerationToCancel;
         lock (_gate)
         {
             if (_disposed) return ValueTask.CompletedTask;
             _disposed = true;
-            CancelHistoryGenerationLocked(clearLoaded: false);
+            historyGenerationToCancel = AdvanceHistoryGenerationLocked(clearLoaded: false);
             _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disposed);
             timerToDispose = _toolMetaSaveTimer;
             _toolMetaSaveTimer = null;
@@ -1887,6 +1940,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _locallyInitiatedThreads.Clear();
             _resetSubmittedLocalEchoTexts.Clear();
         }
+        CancelAndDisposeHistoryGeneration(historyGenerationToCancel);
         foreach (var approval in pendingLocalApprovals)
             approval.Response.TrySetResult(ExecApprovalPromptDecision.Deny());
         timerToDispose?.Dispose();
@@ -1924,8 +1978,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         ChatDataSnapshot snapshot;
         bool justReconnected;
         string[] threadsToInterrupt;
+        CancellationTokenSource? historyGenerationToCancel = null;
         lock (_gate)
         {
+            if (_disposed)
+                return;
+
             justReconnected = status == ConnectionStatus.Connected
                               && _status != ConnectionStatus.Connected;
             // MEDIUM 5: detect Connected → Disconnected/Error transitions so
@@ -1968,7 +2026,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (justReconnected)
             {
                 _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disconnected);
-                CancelHistoryGenerationLocked(clearLoaded: true);
+                historyGenerationToCancel = AdvanceHistoryGenerationLocked(clearLoaded: true);
                 _locallyInitiatedThreads.Clear();
                 _localSentTexts.Clear();
                 _queuedMessages.Clear();
@@ -1986,7 +2044,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
             if (justDisconnected)
             {
-                CancelHistoryGenerationLocked(clearLoaded: false);
+                historyGenerationToCancel = AdvanceHistoryGenerationLocked(clearLoaded: false);
                 _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disconnected);
                 var list = new List<string>();
                 foreach (var (key, tl) in _timelines)
@@ -2007,6 +2065,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             snapshot = BuildSnapshotLocked();
         }
+        CancelAndDisposeHistoryGeneration(historyGenerationToCancel);
         Publish(snapshot);
 
         // MEDIUM 5: synthesize the turn-end + status note for any threads
@@ -2020,16 +2079,32 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     }
 
-    private void CancelHistoryGenerationLocked(bool clearLoaded)
+    private CancellationTokenSource AdvanceHistoryGenerationLocked(bool clearLoaded)
     {
+        var previousCancellation = _historyGenerationCancellation;
         _historyConnectionVersion++;
-        _historyGenerationCancellation.Cancel();
         if (!_disposed)
             _historyGenerationCancellation = new CancellationTokenSource();
         _historyInFlight.Clear();
         _historyRetryCount.Clear();
         if (clearLoaded)
             _historyLoaded.Clear();
+        return previousCancellation;
+    }
+
+    private static void CancelAndDisposeHistoryGeneration(CancellationTokenSource? cancellation)
+    {
+        if (cancellation is null)
+            return;
+
+        try
+        {
+            cancellation.Cancel();
+        }
+        finally
+        {
+            cancellation.Dispose();
+        }
     }
 
     private void OnSessionsUpdated(object? sender, SessionInfo[] sessions)
