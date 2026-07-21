@@ -287,6 +287,9 @@ public sealed class CleanupStaleDistroStep : SetupStep
                     return delete;
             }
             ctx.Logger.Decision("No stale distro found", "skip cleanup");
+            var recoveryResult = DiscardRecoveryForRemovedDistro(ctx);
+            if (!recoveryResult.IsSuccess)
+                return recoveryResult;
             return StepResult.Ok("No stale distro to clean");
         }
 
@@ -315,10 +318,37 @@ public sealed class CleanupStaleDistroStep : SetupStep
             // Wait for port to be released
             ctx.Logger.Info("Waiting for port release after distro termination...");
             await PreflightPortStep.WaitForPortFreeAsync(ctx.Config.GatewayPort, ctx.Config.Gateway.Bind, ctx.Logger, ct);
+            var recoveryResult = DiscardRecoveryForRemovedDistro(ctx);
+            if (!recoveryResult.IsSuccess)
+                return recoveryResult;
             return StepResult.Ok($"Unregistered stale distro '{distro}'");
         }
 
         return StepResult.Fail($"Failed to unregister distro: {unregister.Stderr}");
+    }
+
+    private static StepResult DiscardRecoveryForRemovedDistro(SetupContext ctx)
+    {
+        GatewayReloadRecoveryState? recovery;
+        try
+        {
+            recovery = GatewayReloadRecoveryStore.Load(ctx);
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Cannot inspect gateway reload recovery state during cleanup: {ex.Message}", ex);
+        }
+
+        if (recovery is not null &&
+            !string.Equals(recovery.DistroName, ctx.DistroName, StringComparison.OrdinalIgnoreCase))
+        {
+            return StepResult.Fail(
+                $"Gateway reload recovery marker targets distro '{recovery.DistroName}', " +
+                $"but cleanup targets '{ctx.DistroName}'. Refusing to discard recovery state.");
+        }
+
+        GatewayReloadRecoveryStore.Clear(ctx);
+        return StepResult.Ok("Gateway reload recovery state discarded for removed distro");
     }
 
     internal static async Task<StepResult> DeleteDistroDirectoryWithRetries(
@@ -1357,6 +1387,16 @@ public sealed class InstallCliStep : SetupStep
     }
 }
 
+public sealed class RecoverGatewayReloadStep : SetupStep
+{
+    public override string Id => "recover-gateway-reload";
+    public override string DisplayName => "Recover gateway reload state";
+    public override bool CanRetry => false;
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+        new SetupWizardRunner(ctx).ReconcilePendingReloadRecoveryAsync();
+}
+
 public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
@@ -1451,7 +1491,6 @@ public sealed class ConfigureGatewayStep : SetupStep
             openclaw config set gateway.bind {gw.Bind}
             openclaw config set gateway.auth.mode {gw.AuthMode}
             openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
-            openclaw config set gateway.reload.mode {gw.ReloadMode}
             openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
             """;
 
@@ -1501,6 +1540,11 @@ public sealed class ConfigureGatewayStep : SetupStep
             }
         }
 
+        if (gw.ExtraConfig?.ContainsKey("gateway.reload.mode") != true)
+        {
+            configCommands += $"\n            openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(gw.ReloadMode)}";
+        }
+
         return configCommands;
     }
 
@@ -1527,6 +1571,11 @@ public sealed class ConfigureGatewayStep : SetupStep
 
     internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port, bool tailscaleEnabled = false) =>
         gw.Bind == "loopback" && !tailscaleEnabled ? $"http://127.0.0.1:{port}" : null;
+
+    internal static string GetEffectiveReloadMode(GatewayConfig gw) =>
+        gw.ExtraConfig?.TryGetValue("gateway.reload.mode", out var overrideMode) == true
+            ? overrideMode
+            : gw.ReloadMode;
 
     internal static bool IsSafeExtraConfigKey(string value)
         => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
@@ -1556,37 +1605,49 @@ public sealed class InstallGatewayServiceStep : SetupStep
     }
 }
 
+public sealed class WaitForGatewayHealthStep : SetupStep
+{
+    public override string Id => "wait-gateway-health";
+    public override string DisplayName => "Wait for gateway health";
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var portConflict = await StartGatewayStep.CheckPortOwnershipAsync(ctx, ct);
+        return portConflict ?? await StartGatewayStep.WaitForHealthAsync(ctx, ct);
+    }
+}
+
 public sealed class StartGatewayStep : SetupStep
 {
     public override string Id => "start-gateway";
     public override string DisplayName => "Start gateway";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
 
-    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: false, ct);
+
+    internal static Task<StepResult> RestartAndWaitForHealthAsync(SetupContext ctx, CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: true, ct);
+
+    private static async Task<StepResult> StartOrRestartAndWaitForHealthAsync(
+        SetupContext ctx,
+        bool restart,
+        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var pathCmd = ctx.WslPathPrefix;
+        var action = restart ? "restart" : "start";
 
-        // Check for port conflicts before starting
-        var portCheck = await ctx.Commands.RunInWslAsync(
-            distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
-            TimeSpan.FromSeconds(10), ct: ct);
-
-        if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+        // A restart intentionally targets the service already holding this port.
+        if (!restart)
         {
-            if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
-            {
-                ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
-                return StepResult.Fail(
-                    $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
-            }
-
-            ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+            var portConflict = await CheckPortOwnershipAsync(ctx, ct);
+            if (portConflict is not null)
+                return portConflict;
         }
 
-        // Start the service
         var start = await ctx.Commands.RunInWslAsync(
-            distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+            distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
 
         if (start.ExitCode != 0)
         {
@@ -1600,17 +1661,42 @@ public sealed class StartGatewayStep : SetupStep
                     TimeSpan.FromSeconds(10),
                     ct: ct);
                 await Task.Delay(2000, ct);
-                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
                 if (start.ExitCode != 0)
-                    return StepResult.Fail($"Gateway start failed after reset: {start.Stderr}");
+                    return StepResult.Fail($"Gateway {action} failed after reset: {start.Stderr}");
             }
             else
             {
-                return StepResult.Fail($"Gateway start failed (exit {start.ExitCode}): {start.Stderr}");
+                return StepResult.Fail($"Gateway {action} failed (exit {start.ExitCode}): {start.Stderr}");
             }
         }
 
-        // Wait for health endpoint
+        return await WaitForHealthAsync(ctx, ct);
+    }
+
+    internal static async Task<StepResult?> CheckPortOwnershipAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var portCheck = await ctx.Commands.RunInWslAsync(
+            ctx.DistroName!, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
+            TimeSpan.FromSeconds(10), ct: ct);
+
+        if (string.IsNullOrWhiteSpace(portCheck.Stdout) || !portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+            return null;
+
+        if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
+            return StepResult.Fail(
+                $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
+        }
+
+        ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+        return null;
+    }
+
+    internal static async Task<StepResult> WaitForHealthAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
         ctx.Logger.Info("Waiting for gateway health endpoint...");
         var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(ctx.Config.Gateway.HealthTimeoutSeconds));
 
@@ -2090,25 +2176,24 @@ public sealed class PairOperatorStep : SetupStep
     internal enum ConnectionOutcome { Connected, PairingRequired, Error, Timeout }
 
     internal static async Task<ConnectionOutcome> WaitForConnectionOrPairing(
-        OpenClawGatewayClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
+        OpenClawGatewayClient client,
+        SetupContext ctx,
+        TimeSpan timeout,
+        CancellationToken ct,
+        bool waitThroughTransientErrors = false)
     {
         var tcs = new TaskCompletionSource<ConnectionOutcome>();
 
         void OnStatusChanged(object? sender, ConnectionStatus status)
         {
             ctx.Logger.Debug($"Operator connection status: {status}");
-            if (status == ConnectionStatus.Connected)
-                tcs.TrySetResult(ConnectionOutcome.Connected);
-            else if (status == ConnectionStatus.Error)
-                tcs.TrySetResult(ConnectionOutcome.Error);
-            else if (status == ConnectionStatus.Disconnected)
-            {
-                // Check if pairing was required — client sets IsPairingRequired before disconnect
-                if (client.IsPairingRequired)
-                    tcs.TrySetResult(ConnectionOutcome.PairingRequired);
-                else
-                    tcs.TrySetResult(ConnectionOutcome.Error);
-            }
+            var outcome = ConnectionOutcomeForStatus(
+                status,
+                client.IsPairingRequired,
+                client.IsAuthFailed,
+                waitThroughTransientErrors);
+            if (outcome is not null)
+                tcs.TrySetResult(outcome.Value);
         }
 
         client.StatusChanged += OnStatusChanged;
@@ -2140,6 +2225,23 @@ public sealed class PairOperatorStep : SetupStep
             client.StatusChanged -= OnStatusChanged;
             client.DeviceTokenReceived -= onDeviceToken;
         }
+    }
+
+    internal static ConnectionOutcome? ConnectionOutcomeForStatus(
+        ConnectionStatus status,
+        bool pairingRequired,
+        bool authFailed,
+        bool waitThroughTransientErrors)
+    {
+        return status switch
+        {
+            ConnectionStatus.Connected => ConnectionOutcome.Connected,
+            ConnectionStatus.Disconnected when pairingRequired => ConnectionOutcome.PairingRequired,
+            ConnectionStatus.Error or ConnectionStatus.Disconnected when authFailed => ConnectionOutcome.Error,
+            ConnectionStatus.Error or ConnectionStatus.Disconnected when waitThroughTransientErrors => null,
+            ConnectionStatus.Error or ConnectionStatus.Disconnected => ConnectionOutcome.Error,
+            _ => null,
+        };
     }
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)

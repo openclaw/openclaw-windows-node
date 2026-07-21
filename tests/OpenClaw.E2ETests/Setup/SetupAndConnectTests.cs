@@ -8,7 +8,7 @@ namespace OpenClaw.E2ETests.Setup;
 /// Defines the xUnit test collection that shares the E2ESetupFixture.
 /// All tests in this collection run against a single setup pipeline execution.
 /// </summary>
-[CollectionDefinition("E2E Setup")]
+[CollectionDefinition("E2E Setup", DisableParallelization = true)]
 public class E2ESetupCollection : ICollectionFixture<E2ESetupFixture> { }
 
 /// <summary>
