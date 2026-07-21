@@ -91,12 +91,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     // with window size while never dipping below the floor on short viewports.
     const double FollowToBottomMinAbandonGap = 900;
     const double FollowToBottomAbandonViewportFactor = 1.5;
-    // Timer-tick-level moderate-scroll detection threshold. After a PinToBottom is confirmed
-    // (offset reached the pin target within FollowThreshold), the timer abandons if offset
-    // drops below the confirmed position by more than this delta. The delta must exceed the
-    // maximum between-tick re-estimation drift observed during ItemsRepeater settling (~140px)
-    // to avoid false-positive abandonment during normal extent convergence.
-    const double FollowToBottomModerateAbandonDelta = 200;
     // Follow-to-bottom during in-place streaming growth is handled by WinUI ScrollViewer scroll
     // anchoring (sv.VerticalAnchorRatio = 1.0), NOT by a reactive post-layout re-pin. With the
     // bottom row pinned as an anchor, the ScrollViewer keeps it glued to the viewport bottom
@@ -778,13 +772,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                 var ticks = 0;
                 var stableTicks = 0;
-                // Gate for moderate-scroll detection: only check after we confirm PinToBottom's
-                // ChangeView actually applied (offset reached the target). WinUI re-estimation
-                // during initial ItemsRepeater settling causes the offset to lag/drift from the
-                // pin target by > FollowThreshold for the first few ticks, which without this
-                // gate would false-positive as a "user scroll."
-                var pinConfirmed = false;
-                var lastConfirmedOffset = 0.0;
                 var timer = new Microsoft.UI.Xaml.DispatcherTimer
                 {
                     Interval = TimeSpan.FromMilliseconds(FollowToBottomSettleTickMs)
@@ -804,9 +791,10 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                     ticks++;
 
-                    // If ViewChanged already processed the user's scroll between ticks
-                    // (via UpdateScrollMetrics setting isFollowing=false), honor it immediately.
-                    // This catches the common case where ChangeView applied before this tick.
+                    // Honor user-scroll intent detected by ViewChanged between ticks.
+                    // When the user scrolls, their ChangeView fires ViewChanged which calls
+                    // UpdateScrollMetrics → sets isFollowingRef=false (gap > FollowThreshold).
+                    // Check BEFORE UpdateLayout so we never call PinToBottom after a user scroll.
                     if (!isFollowingRef.Current)
                     {
                         timer.Stop();
@@ -815,54 +803,16 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         return;
                     }
 
-                    // Detect a user scroll that landed BETWEEN ticks. A user's
-                    // ChangeView(disableAnimation:true) takes effect immediately, so
-                    // sv.VerticalOffset reflects it BEFORE our UpdateLayout. Re-estimation
-                    // (which shifts the offset as ItemsRepeater adjusts row heights) happens
-                    // DURING UpdateLayout, so reading pre-layout avoids false positives.
-                    var offsetPreLayout = sv.VerticalOffset;
                     sv.UpdateLayout();
 
-                    // Re-check after layout: UpdateLayout can flush pending ChangeView events,
-                    // causing ViewChanged → UpdateScrollMetrics → isFollowing=false.
+                    // Re-check after layout: UpdateLayout can flush pending ViewChanged events
+                    // (e.g. a user ChangeView that was queued but not yet dispatched).
                     if (!isFollowingRef.Current)
                     {
                         timer.Stop();
                         scrollSettleTimerRef.Current = null;
                         sv.VerticalAnchorRatio = double.NaN;
                         return;
-                    }
-
-                    // Confirm pin: once offset is near ScrollableHeight (the pin target),
-                    // record it. Only then start watching for user scrolls via delta detection.
-                    var currentBottom = sv.ScrollableHeight;
-                    if (!pinConfirmed)
-                    {
-                        if (currentBottom - sv.VerticalOffset <= FollowThreshold)
-                        {
-                            pinConfirmed = true;
-                            lastConfirmedOffset = sv.VerticalOffset;
-                        }
-                    }
-                    else
-                    {
-                        // Pin previously confirmed. If offset dropped significantly from
-                        // the last confirmed position, the user scrolled between ticks.
-                        // The delta is larger than FollowThreshold to account for WinUI
-                        // re-estimation drift (~140px max observed). This catches scrolls
-                        // > 200px immediately; smaller moderate scrolls (61-200px) are
-                        // still caught by the ViewChanged handler's moderate-cancel clause
-                        // within 1-2 ticks. Either way the user is not persistently re-pinned.
-                        if (offsetPreLayout < lastConfirmedOffset - FollowToBottomModerateAbandonDelta)
-                        {
-                            isFollowingRef.Current = false;
-                            timer.Stop();
-                            scrollSettleTimerRef.Current = null;
-                            sv.VerticalAnchorRatio = double.NaN;
-                            return;
-                        }
-                        // Track drift: update confirmed offset for next comparison
-                        lastConfirmedOffset = sv.VerticalOffset;
                     }
 
                     // Yield to a real user scroll away from the bottom (bounded-band vs. many-
