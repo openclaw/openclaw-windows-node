@@ -58,7 +58,7 @@ public record OpenClawComposerProps(
     string? CurrentModelProvider,
     string? CurrentThinkingLevel,
     bool MessageOptionsDisabled,
-    Action<string, IReadOnlyList<ChatAttachment>> OnSend,
+    Func<string, IReadOnlyList<ChatAttachment>, Task<bool>> OnSend,
     Action OnStop,
     Action<string> OnChannelChanged,
     Action<string> OnModelChanged,
@@ -111,6 +111,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // send button accent styling updates correctly (at most 2 re-renders
         // per compose cycle instead of one per keypress).
         var inputRef = UseRef("");
+        var inputRevisionRef = UseRef(0L);
         var hasTextState = UseState(false, threadSafe: true);
         // Slash-command menu state. Active when the composer holds a "/token"
         // (a leading slash with no whitespace yet); Query is the text after the
@@ -193,6 +194,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         inputRef.Current = string.IsNullOrEmpty(existing)
                             ? text
                             : existing + " " + text;
+                        inputRevisionRef.Current++;
                         hasTextState.Set(true);
                         sendVersion.Set(sendVersion.Value + 1);
                     }
@@ -229,17 +231,44 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // Register the voice starter so external callers (e.g. hotkey) can trigger recording
         Props.RegisterVoiceStarter?.Invoke(startVoiceRecording);
 
-        var sendAction = () =>
+        var sendInFlightRef = UseRef(false);
+        Action sendAction = async () =>
         {
-            var msg = inputRef.Current?.Trim();
+            if (sendInFlightRef.Current)
+                return;
+
+            var submittedInput = inputRef.Current ?? "";
+            var submittedRevision = inputRevisionRef.Current;
+            var msg = submittedInput.Trim();
             if (string.IsNullOrEmpty(msg) && pendingAttachments.Count == 0) return;
-            Props.OnSend(msg ?? "", pendingAttachments.ToArray());
-            inputRef.Current = "";
-            hasTextState.Set(false);
-            // Clear any open slash menu so it doesn't re-open over the now-empty
-            // composer (programmatic text reset doesn't fire TextChanged).
-            slashMenuState.Set((false, "", 0, false));
-            sendVersion.Set(sendVersion.Value + 1);
+            var submittedAttachments = pendingAttachments.ToArray();
+            sendInFlightRef.Current = true;
+            try
+            {
+                if (!await Props.OnSend(msg, submittedAttachments))
+                    return;
+
+                if (!ChatComposerSubmissionPolicy.ShouldClearInput(
+                        submittedRevision,
+                        inputRevisionRef.Current))
+                    return;
+
+                inputRef.Current = "";
+                inputRevisionRef.Current++;
+                hasTextState.Set(false);
+                // Clear any open slash menu so it doesn't re-open over the now-empty
+                // composer (programmatic text reset doesn't fire TextChanged).
+                slashMenuState.Set((false, "", 0, false));
+                sendVersion.Set(sendVersion.Value + 1);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine($"[chat] composer send failed: {ex}");
+            }
+            finally
+            {
+                sendInFlightRef.Current = false;
+            }
         };
         var sendActionRef = UseRef<Action>(sendAction);
         sendActionRef.Current = sendAction;
@@ -571,6 +600,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         Action<string> commitSlashText = insert =>
         {
             inputRef.Current = insert;
+            inputRevisionRef.Current++;
             hasTextState.Set(!string.IsNullOrWhiteSpace(insert));
             sendVersion.Set(sendVersion.Value + 1);
             var tbox = textBoxRef.Current;
@@ -609,6 +639,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         var textbox = TextField(displayText, v =>
             {
                 inputRef.Current = v;
+                inputRevisionRef.Current++;
                 hasTextState.Set(!string.IsNullOrWhiteSpace(v));
                 var (active, query, argsMode) = ComputeSlashState(v, Props.AvailableCommands);
                 var cur = slashMenuState.Value;
@@ -776,6 +807,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         tb.SelectionStart = safePos + 1;
                         tb.SelectionLength = 0;
                         inputRef.Current = tb.Text;
+                        inputRevisionRef.Current++;
                         hasTextState.Set(!string.IsNullOrWhiteSpace(tb.Text));
                     }
                     else

@@ -12,6 +12,7 @@ namespace OpenClaw.Shared;
 // Typed client methods for the richer gateway protocol, matching the canonical
 // openclaw/openclaw schemas exactly:
 //   • commands.list             — command catalog
+//   • sessions.create           — distinct session creation
 //   • sessions.patch            — extended per-session field set
 //   • sessions.files.list/get   — workspace file rail + browser (param: sessionKey)
 //   • sessions.compaction.*     — compaction checkpoints (param: key, checkpointId)
@@ -21,7 +22,7 @@ namespace OpenClaw.Shared;
 // (logged at warn) instead of throwing. Genuine protocol errors are NOT
 // swallowed: read methods propagate the gateway error (e.g. not-found / too-large
 // on sessions.files.get), and mutation methods surface it in the result's Error
-// field. Timeouts propagate as TimeoutException from the request helper.
+// field. Lifecycle RPCs convert request timeouts into action-specific results.
 //
 // Parsing is factored into internal static methods so the JSON contract is unit
 // testable directly (InternalsVisibleTo OpenClaw.Shared.Tests), reusing the
@@ -29,6 +30,302 @@ namespace OpenClaw.Shared;
 // ─────────────────────────────────────────────────────────────────────────────
 public partial class OpenClawGatewayClient
 {
+    // ── sessions.reset ──
+
+    public async Task<SessionResetResult> ResetSessionDetailedAsync(
+        string key,
+        int timeoutMs = 15000)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return new SessionResetResult
+            {
+                Ok = false,
+                Error = "Session key is required"
+            };
+        }
+        if (!IsConnected)
+        {
+            return new SessionResetResult
+            {
+                Ok = false,
+                Error = "Gateway connection is not open"
+            };
+        }
+
+        try
+        {
+            var payload = await SendWizardRequestAsync(
+                "sessions.reset",
+                new { key },
+                timeoutMs).ConfigureAwait(false);
+            return ParseSessionResetResult(payload);
+        }
+        catch (TimeoutException ex)
+        {
+            _logger.Warn($"sessions.reset timed out: {ex.Message}");
+            return CreateSessionResetTimeoutResult();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.Warn($"sessions.reset failed: {ex.Message}");
+            return new SessionResetResult
+            {
+                Ok = false,
+                Error = ex.Message
+            };
+        }
+    }
+
+    internal static SessionResetResult CreateSessionResetTimeoutResult() => new()
+    {
+        Ok = false,
+        Error = "The gateway did not respond before the reset timed out. Refresh the session before trying again."
+    };
+
+    internal static SessionResetResult ParseSessionResetResult(JsonElement payload)
+    {
+        var ok = !payload.TryGetProperty("ok", out var okElement) ||
+                 okElement.ValueKind == JsonValueKind.True;
+        var reason = GetString(payload, "reason");
+        return new SessionResetResult
+        {
+            Ok = ok,
+            Key = GetString(payload, "key"),
+            Reason = reason,
+            Error = ok ? null : reason ?? "The gateway could not reset the session."
+        };
+    }
+
+    // ── sessions.compact ──
+
+    public async Task<SessionCompactResult> CompactSessionDetailedAsync(
+        string key,
+        int timeoutMs = 120000)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return new SessionCompactResult
+            {
+                Ok = false,
+                Error = "Session key is required"
+            };
+        }
+        if (!IsConnected)
+        {
+            return new SessionCompactResult
+            {
+                Ok = false,
+                Error = "Gateway connection is not open"
+            };
+        }
+
+        try
+        {
+            var payload = await SendWizardRequestAsync(
+                "sessions.compact",
+                new { key },
+                timeoutMs).ConfigureAwait(false);
+            return ParseSessionCompactResult(payload);
+        }
+        catch (TimeoutException ex)
+        {
+            _logger.Warn($"sessions.compact timed out: {ex.Message}");
+            return CreateSessionCompactTimeoutResult();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.Warn($"sessions.compact failed: {ex.Message}");
+            return new SessionCompactResult
+            {
+                Ok = false,
+                Error = ex.Message
+            };
+        }
+    }
+
+    internal static SessionCompactResult CreateSessionCompactTimeoutResult() => new()
+    {
+        Ok = false,
+        Error = "The gateway did not respond before compaction timed out. Refresh the conversation to check whether compaction completed."
+    };
+
+    internal static SessionCompactResult ParseSessionCompactResult(JsonElement payload)
+    {
+        var ok = !payload.TryGetProperty("ok", out var okElement) ||
+                 okElement.ValueKind == JsonValueKind.True;
+        var compacted = payload.TryGetProperty("compacted", out var compactedElement) &&
+                        compactedElement.ValueKind == JsonValueKind.True;
+        long? tokensBefore = null;
+        long? tokensAfter = null;
+        if (payload.TryGetProperty("result", out var result) &&
+            result.ValueKind == JsonValueKind.Object)
+        {
+            if (result.TryGetProperty("tokensBefore", out var before) &&
+                before.TryGetInt64(out var beforeValue))
+            {
+                tokensBefore = beforeValue;
+            }
+            if (result.TryGetProperty("tokensAfter", out var after) &&
+                after.TryGetInt64(out var afterValue))
+            {
+                tokensAfter = afterValue;
+            }
+        }
+
+        var reason = GetString(payload, "reason");
+        return new SessionCompactResult
+        {
+            Ok = ok,
+            Key = GetString(payload, "key"),
+            Compacted = compacted,
+            Reason = reason,
+            TokensBefore = tokensBefore,
+            TokensAfter = tokensAfter,
+            Error = ok ? null : reason ?? "The gateway could not compact the session."
+        };
+    }
+
+    // ── sessions.create ──
+
+    /// <summary>
+    /// Creates a distinct gateway session. Unsupported gateways return a typed
+    /// result with <see cref="SessionCreateResult.IsSupported"/> = false.
+    /// Other gateway errors are surfaced in <see cref="SessionCreateResult.Error"/>.
+    /// </summary>
+    public async Task<SessionCreateResult> CreateSessionAsync(
+        SessionCreateRequest request,
+        int timeoutMs = 15000)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!IsConnected)
+        {
+            return new SessionCreateResult
+            {
+                Ok = false,
+                Error = "Gateway connection is not open"
+            };
+        }
+
+        try
+        {
+            JsonElement payload;
+            try
+            {
+                payload = await SendWizardRequestAsync(
+                    "sessions.create",
+                    BuildSessionCreateParameters(request),
+                    timeoutMs).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException ex) when (
+                request.SucceedsParent.HasValue &&
+                IsLegacySucceedsParentError(ex.Message))
+            {
+                _logger.Warn("sessions.create retrying with legacy lifecycle parameters");
+                payload = await SendWizardRequestAsync(
+                    "sessions.create",
+                    BuildSessionCreateParameters(request, legacyLifecycleFallback: true),
+                    timeoutMs).ConfigureAwait(false);
+            }
+
+            return ParseSessionCreateResult(payload);
+        }
+        catch (TimeoutException ex)
+        {
+            _logger.Warn($"sessions.create timed out: {ex.Message}");
+            return CreateSessionCreationTimeoutResult();
+        }
+        catch (InvalidOperationException ex) when (IsUnknownMethodError(ex.Message))
+        {
+            _logger.Warn("sessions.create unsupported on gateway");
+            return new SessionCreateResult
+            {
+                Ok = false,
+                IsSupported = false,
+                Error = ex.Message
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.Warn($"sessions.create failed: {ex.Message}");
+            return new SessionCreateResult
+            {
+                Ok = false,
+                Error = ex.Message
+            };
+        }
+    }
+
+    internal static SessionCreateResult CreateSessionCreationTimeoutResult() => new()
+    {
+        Ok = false,
+        Error = "The gateway did not respond before session creation timed out. Check the session list to see whether a new session was created before trying again."
+    };
+
+    internal static Dictionary<string, object?> BuildSessionCreateParameters(
+        SessionCreateRequest request,
+        bool legacyLifecycleFallback = false)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var parameters = new Dictionary<string, object?>();
+        if (!string.IsNullOrWhiteSpace(request.Key))
+            parameters["key"] = request.Key;
+        if (!string.IsNullOrWhiteSpace(request.AgentId))
+            parameters["agentId"] = request.AgentId;
+
+        var unlinkLegacyParallelChild =
+            legacyLifecycleFallback && request.SucceedsParent == false;
+        if (!unlinkLegacyParallelChild)
+        {
+            parameters["emitCommandHooks"] = request.EmitCommandHooks;
+            if (!string.IsNullOrWhiteSpace(request.ParentSessionKey))
+                parameters["parentSessionKey"] = request.ParentSessionKey;
+        }
+
+        if (!legacyLifecycleFallback && request.SucceedsParent.HasValue)
+            parameters["succeedsParent"] = request.SucceedsParent.Value;
+
+        return parameters;
+    }
+
+    private static bool IsLegacySucceedsParentError(string? message) =>
+        message?.Contains(
+            "invalid sessions.create params",
+            StringComparison.OrdinalIgnoreCase) == true &&
+        message.Contains("succeedsParent", StringComparison.OrdinalIgnoreCase);
+
+    internal static SessionCreateResult ParseSessionCreateResult(JsonElement payload)
+    {
+        var ok = !payload.TryGetProperty("ok", out var okElement) ||
+                 okElement.ValueKind == JsonValueKind.True;
+        if (!ok)
+        {
+            return new SessionCreateResult
+            {
+                Ok = false,
+                Error = GetString(payload, "reason") ?? "The gateway could not create a new session."
+            };
+        }
+
+        var key = GetString(payload, "key")?.Trim();
+        if (string.IsNullOrEmpty(key))
+        {
+            return new SessionCreateResult
+            {
+                Ok = false,
+                Error = "sessions.create returned no session key"
+            };
+        }
+
+        return new SessionCreateResult
+        {
+            Ok = true,
+            Key = key,
+            SessionId = GetString(payload, "sessionId")
+        };
+    }
+
     // ── commands.list ──
 
     /// <summary>

@@ -48,6 +48,28 @@ public interface IChatGatewayBridge : IDisposable
     /// does not implement the method. Request/response — no event subscription.
     /// </summary>
     Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null);
+    Task<SessionCreateResult> CreateSessionAsync(SessionCreateRequest request) =>
+        Task.FromResult(new SessionCreateResult
+        {
+            Ok = false,
+            IsSupported = false,
+            Error = "sessions.create is not supported by this chat bridge."
+        });
+    Task<bool> ResetSessionAsync(string sessionKey) => Task.FromResult(false);
+    Task<SessionResetResult> ResetSessionDetailedAsync(string sessionKey) =>
+        Task.FromResult(new SessionResetResult
+        {
+            Ok = false,
+            Error = "Response-aware sessions.reset is not supported by this chat bridge."
+        });
+    Task<bool> CompactSessionAsync(string sessionKey, int maxLines = 400) => Task.FromResult(false);
+    Task<SessionCompactResult> CompactSessionDetailedAsync(string sessionKey) =>
+        Task.FromResult(new SessionCompactResult
+        {
+            Ok = false,
+            Error = "Response-aware sessions.compact is not supported by this chat bridge."
+        });
+    Task RequestSessionsAsync() => Task.CompletedTask;
     Task PatchSessionModelAsync(string sessionKey, string model);
     /// <summary>
     /// Clears the session's model override (tri-state <c>sessions.patch</c> with
@@ -194,6 +216,24 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
         _client.ListCommandsAsync(query);
+
+    public Task<SessionCreateResult> CreateSessionAsync(SessionCreateRequest request) =>
+        _client.CreateSessionAsync(request);
+
+    public Task<bool> ResetSessionAsync(string sessionKey) =>
+        _client.ResetSessionAsync(sessionKey);
+
+    public Task<SessionResetResult> ResetSessionDetailedAsync(string sessionKey) =>
+        _client.ResetSessionDetailedAsync(sessionKey);
+
+    public Task<bool> CompactSessionAsync(string sessionKey, int maxLines = 400) =>
+        _client.CompactSessionAsync(sessionKey, maxLines);
+
+    public Task<SessionCompactResult> CompactSessionDetailedAsync(string sessionKey) =>
+        _client.CompactSessionDetailedAsync(sessionKey);
+
+    public Task RequestSessionsAsync() =>
+        _client.RequestSessionsAsync();
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);

@@ -33,6 +33,9 @@ public class GatewayProtocolModelsTests
             ("GetCompactionCheckpointAsync", new[] { typeof(string), typeof(string), typeof(int) }),
             ("BranchCompactionCheckpointAsync", new[] { typeof(string), typeof(string), typeof(int) }),
             ("RestoreCompactionCheckpointAsync", new[] { typeof(string), typeof(string), typeof(int) }),
+            ("CreateSessionAsync", new[] { typeof(SessionCreateRequest), typeof(int) }),
+            ("ResetSessionDetailedAsync", new[] { typeof(string), typeof(int) }),
+            ("CompactSessionDetailedAsync", new[] { typeof(string), typeof(int) }),
         };
 
         foreach (var (name, args) in newMembers)
@@ -45,6 +48,142 @@ public class GatewayProtocolModelsTests
     }
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public void ParseSessionCreateResult_RequiresAndPreservesGatewayKey()
+    {
+        var result = OpenClawGatewayClient.ParseSessionCreateResult(Parse("""
+        {
+          "ok": true,
+          "key": " agent:main:new-session ",
+          "sessionId": "session-123"
+        }
+        """));
+
+        Assert.True(result.Ok);
+        Assert.Equal("agent:main:new-session", result.Key);
+        Assert.Equal("session-123", result.SessionId);
+
+        var missing = OpenClawGatewayClient.ParseSessionCreateResult(Parse("""{"ok":true}"""));
+        Assert.False(missing.Ok);
+        Assert.Null(missing.Key);
+        Assert.Contains("no session key", missing.Error);
+    }
+
+    [Fact]
+    public void ParseSessionCreateResult_RejectsPayloadFailureEvenWhenKeyIsPresent()
+    {
+        var result = OpenClawGatewayClient.ParseSessionCreateResult(Parse("""
+        {
+          "ok": false,
+          "key": "agent:main:unchanged",
+          "reason": "session creation was rejected"
+        }
+        """));
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Key);
+        Assert.Equal("session creation was rejected", result.Error);
+    }
+
+    [Fact]
+    public void BuildSessionCreateParameters_LegacyParallelFallbackUnlinksParent()
+    {
+        var request = new SessionCreateRequest
+        {
+            ParentSessionKey = "agent:main:main",
+            EmitCommandHooks = true,
+            SucceedsParent = false
+        };
+
+        var current = OpenClawGatewayClient.BuildSessionCreateParameters(request);
+        Assert.Equal("agent:main:main", current["parentSessionKey"]);
+        Assert.Equal(true, current["emitCommandHooks"]);
+        Assert.Equal(false, current["succeedsParent"]);
+
+        var legacy = OpenClawGatewayClient.BuildSessionCreateParameters(
+            request,
+            legacyLifecycleFallback: true);
+        Assert.DoesNotContain("parentSessionKey", legacy);
+        Assert.DoesNotContain("emitCommandHooks", legacy);
+        Assert.DoesNotContain("succeedsParent", legacy);
+    }
+
+    [Fact]
+    public void ParseSessionCompactResult_PreservesTerminalOutcomeAndMetrics()
+    {
+        var result = OpenClawGatewayClient.ParseSessionCompactResult(Parse("""
+        {
+          "ok": true,
+          "key": "agent:main:main",
+          "compacted": true,
+          "result": {
+            "tokensBefore": 42000,
+            "tokensAfter": 12000
+          }
+        }
+        """));
+
+        Assert.True(result.Ok);
+        Assert.True(result.Compacted);
+        Assert.Equal("agent:main:main", result.Key);
+        Assert.Equal(42000, result.TokensBefore);
+        Assert.Equal(12000, result.TokensAfter);
+
+        var large = OpenClawGatewayClient.ParseSessionCompactResult(Parse("""
+        {
+          "ok": true,
+          "compacted": true,
+          "result": {
+            "tokensBefore": 3000000000,
+            "tokensAfter": 2500000000
+          }
+        }
+        """));
+        Assert.Equal(3_000_000_000L, large.TokensBefore);
+        Assert.Equal(2_500_000_000L, large.TokensAfter);
+
+        var failed = OpenClawGatewayClient.ParseSessionCompactResult(Parse("""
+        {"ok":false,"compacted":false,"reason":"active run"}
+        """));
+        Assert.False(failed.Ok);
+        Assert.Equal("active run", failed.Error);
+    }
+
+    [Fact]
+    public void ParseSessionResetResult_PreservesTerminalFailure()
+    {
+        var succeeded = OpenClawGatewayClient.ParseSessionResetResult(Parse("""
+        {"ok":true,"key":"agent:main:main"}
+        """));
+        Assert.True(succeeded.Ok);
+        Assert.Equal("agent:main:main", succeeded.Key);
+
+        var failed = OpenClawGatewayClient.ParseSessionResetResult(Parse("""
+        {"ok":false,"reason":"active run"}
+        """));
+        Assert.False(failed.Ok);
+        Assert.Equal("active run", failed.Error);
+    }
+
+    [Fact]
+    public void LifecycleTimeoutResults_UseActionSpecificRecoveryGuidance()
+    {
+        var create = OpenClawGatewayClient.CreateSessionCreationTimeoutResult();
+        Assert.False(create.Ok);
+        Assert.Contains("session creation timed out", create.Error);
+        Assert.Contains("Check the session list", create.Error);
+
+        var reset = OpenClawGatewayClient.CreateSessionResetTimeoutResult();
+        Assert.False(reset.Ok);
+        Assert.Contains("reset timed out", reset.Error);
+        Assert.Contains("Refresh the session", reset.Error);
+
+        var compact = OpenClawGatewayClient.CreateSessionCompactTimeoutResult();
+        Assert.False(compact.Ok);
+        Assert.Contains("compaction timed out", compact.Error);
+        Assert.Contains("check whether compaction completed", compact.Error);
+    }
 
     // ── commands.list ──
 
