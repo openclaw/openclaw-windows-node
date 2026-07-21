@@ -199,6 +199,6 @@ public sealed class MxcExecutor
     private static string Truncate(string text, int maxLength)
     {
         if (text.Length <= maxLength) return text;
-        return text[..maxLength] + $"\n\n... [TRUNCATED - showing first {maxLength} of {text.Length} chars]";
+        return text[..maxLength] + $"\n\n... [TRUNCATED: showing first {maxLength} of {text.Length} chars]";
     }
 }

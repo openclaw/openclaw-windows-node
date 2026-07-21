@@ -18,7 +18,7 @@
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center"
-                       Text="We'll open Companion Settings next - nothing gets installed. Here's what you'll do there:" />
+                       Text="We'll open Companion Settings next: nothing gets installed. Here's what you'll do there:" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Spacing="16" MaxWidth="520" VerticalAlignment="Top"
@@ -44,7 +44,7 @@
                     <TextBlock Text="Point it at your gateway" Style="{StaticResource BodyStrongTextBlockStyle}" />
                     <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="Connect to a gateway running here, on another PC, or remote - for example ws://host.local:18790." />
+                               Text="Connect to a gateway running here, on another PC, or remote. For example: ws://host.local:18790." />
                 </StackPanel>
             </Grid>
 

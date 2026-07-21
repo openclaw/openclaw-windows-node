@@ -235,7 +235,7 @@ public class McpToolBridge
         ["canvas.hide"] =
             "Hide the Canvas window without destroying its state.",
         ["canvas.navigate"] =
-            "Navigate the existing Canvas to a new location. Args: url (string, required) - accepts http(s), file://, or local canvas paths.",
+            "Navigate the existing Canvas to a new location. Args: url (string, required): accepts http(s), file://, or local canvas paths.",
         ["canvas.eval"] =
             "Evaluate a JavaScript expression inside the Canvas WebView and return its result. Args: script | javaScript | javascript (string, required).",
         ["canvas.snapshot"] =
@@ -245,7 +245,7 @@ public class McpToolBridge
         ["canvas.a2ui.reset"] =
             "Reset the Canvas A2UI state, clearing any rendered surfaces.",
         ["canvas.a2ui.dump"] =
-            "READ-ALL: Return the full state of every currently-rendered A2UI surface - the component tree, every data-model entry, and any registered secret paths (values redacted). Operators granting MCP access should treat this as equivalent to a screenshot of every open surface, not a normal observability tool.",
+            "READ-ALL: Return the full state of every currently-rendered A2UI surface: the component tree, every data-model entry, and any registered secret paths (values redacted). Operators granting MCP access should treat this as equivalent to a screenshot of every open surface, not a normal observability tool.",
         ["canvas.caps"] =
             "Report the A2UI feature flags this canvas runtime supports (component catalog, max surfaces, render depth, value-size caps). Diagnostic; no side effects.",
         ["canvas.a2ui.pushJSONL"] =
@@ -264,14 +264,14 @@ public class McpToolBridge
         ["camera.list"] =
             "List cameras attached to the Windows node. Returns { cameras: [{ deviceId, name, isDefault }, ...] }.",
         ["camera.snap"] =
-            "Capture a still photo from a camera. Args: deviceId (string, optional - defaults to system default camera), format ('jpeg'|'png', default 'jpeg'), maxWidth (int, default 1280), quality (int 1-100, default 80). Returns { format, width, height, base64 }.",
+            "Capture a still photo from a camera. Args: deviceId (string, optional: defaults to system default camera), format ('jpeg'|'png', default 'jpeg'), maxWidth (int, default 1280), quality (int 1-100, default 80). Returns { format, width, height, base64 }.",
         ["camera.clip"] =
             "Record a short clip from a camera. Args: deviceId (string, optional), durationMs (int, required, max 60000), format ('mp4'|'webm', default 'mp4'), maxWidth (int, default 1280). Returns { format, durationMs, base64 }.",
 
         // stt.* — microphone capture → text. Default-off; privacy-sensitive.
         // Single engine: Whisper.net runs locally on the device.
         ["stt.transcribe"] =
-            "Capture microphone audio for a bounded duration and return the transcribed text. Args: maxDurationMs (int, required, > 0, max 30000), language (string, optional BCP-47 tag like 'en-US' or 'auto' - falls back to the configured SttLanguage setting). Returns { transcribed, text, durationMs, language, engineEffective ('whisper') }. Whisper model is downloaded on first use; until then this returns an error pointing to Voice Settings. Requires NodeSttEnabled.",
+            "Capture microphone audio for a bounded duration and return the transcribed text. Args: maxDurationMs (int, required, > 0, max 30000), language (string, optional BCP-47 tag like 'en-US' or 'auto': falls back to the configured SttLanguage setting). Returns { transcribed, text, durationMs, language, engineEffective ('whisper') }. Whisper model is downloaded on first use; until then this returns an error pointing to Voice Settings. Requires NodeSttEnabled.",
         ["stt.listen"] =
             "Capture microphone audio with voice-activity detection and return when the user stops speaking, or after timeoutMs. Args: timeoutMs (int, optional, default 30000, range 1000..120000), language (string, optional BCP-47 tag or 'auto', default 'auto'). Returns { text, language, durationMs, segments[{ text, startMs, endMs }], engineEffective ('whisper') }. Result is the full silence-bounded utterance (all Whisper segments concatenated), not a partial first segment. Requires NodeSttEnabled.",
         ["stt.status"] =
@@ -279,7 +279,7 @@ public class McpToolBridge
 
         // tts.*
         ["tts.speak"] =
-            "Speak text aloud on the Windows node. Args: text (string, required), provider ('piper'|'windows'|'elevenlabs', optional - omit to use the configured TtsProvider setting, default 'piper' for fresh installs), voiceId (string, optional - overrides the per-provider configured voice), model (string, optional, ElevenLabs only), interrupt (bool, default false - interrupts any in-progress playback). When provider is omitted and the configured provider isn't usable (no ElevenLabs key, Piper voice not downloaded), the node falls back to Windows TTS so playback still happens. Explicit provider requests stay strict and do not silently reroute. Returns { spoken, provider (the provider that actually spoke), requestedProvider, fellBack, contentType, durationMs }.",
+            "Speak text aloud on the Windows node. Args: text (string, required), provider ('piper'|'windows'|'elevenlabs', optional: omit to use the configured TtsProvider setting, default 'piper' for fresh installs), voiceId (string, optional: overrides the per-provider configured voice), model (string, optional, ElevenLabs only), interrupt (bool, default false: interrupts any in-progress playback). When provider is omitted and the configured provider isn't usable (no ElevenLabs key, Piper voice not downloaded), the node falls back to Windows TTS so playback still happens. Explicit provider requests stay strict and do not silently reroute. Returns { spoken, provider (the provider that actually spoke), requestedProvider, fellBack, contentType, durationMs }.",
         ["tts.status"] =
             "Report TTS provider readiness. No args. Returns { configuredProvider, effectiveProvider (the provider that would run now after fallback), willFallBack (bool), providers: [{ provider ('piper'|'windows'|'elevenlabs'), readiness ('ready'|'needs-api-key'|'needs-voice'|'voice-not-downloaded'|'unavailable'), isReady (bool) }] }. Carries no PII (no voice ids, no key fragments, no device names). Requires NodeTtsEnabled.",
 
@@ -341,17 +341,17 @@ public class McpToolBridge
 
         // location.*
         ["location.get"] =
-            "Get the current device location via Windows.Devices.Geolocation. Args: accuracy ('default'|'high', optional, default 'default'), maxAge (int ms, optional, default 30000 - return a cached fix if it is younger than this), locationTimeout (int ms, optional, default 10000). Returns { latitude, longitude, accuracy (meters), timestamp (ms since epoch) }. Requires Location capability to be enabled and the user to have granted location permission to the app.",
+            "Get the current device location via Windows.Devices.Geolocation. Args: accuracy ('default'|'high', optional, default 'default'), maxAge (int ms, optional, default 30000: return a cached fix if it is younger than this), locationTimeout (int ms, optional, default 10000). Returns { latitude, longitude, accuracy (meters), timestamp (ms since epoch) }. Requires Location capability to be enabled and the user to have granted location permission to the app.",
 
         // device.*
         ["device.info"] =
             "Get static device metadata. No args. Returns { deviceName, modelIdentifier, systemName, systemVersion, appVersion, appBuild, locale }.",
         ["device.status"] =
-            "Get live system health data. Args: sections (string[], optional - subset of ['os','cpu','memory','disk','battery']; omit for all). Returns a map with a 'collectedAt' timestamp and one key per requested section. Each section may contain an 'error' field if collection failed. Also includes legacy fields: thermal, storage, network, uptimeSeconds.",
+            "Get live system health data. Args: sections (string[], optional: subset of ['os','cpu','memory','disk','battery']; omit for all). Returns a map with a 'collectedAt' timestamp and one key per requested section. Each section may contain an 'error' field if collection failed. Also includes legacy fields: thermal, storage, network, uptimeSeconds.",
 
         // browser.*
         ["browser.proxy"] =
-            "Proxy an HTTP request to the local OpenClaw browser control host (CDP server) running on gateway port + 2. Args: path (string, required - a local control path like '/json/list' or '/json/activate/<id>'), method ('GET'|'POST'|'DELETE', default 'GET'), body (JSON object, POST/DELETE only), query (object, appended as query params), profile (string, optional browser profile), timeoutMs (int, default 20000, max 120000). Returns { result, files? } where files is present if the response included local file paths. Requires the gateway URL to have an explicit port and the browser control host to be running.",
+            "Proxy an HTTP request to the local OpenClaw browser control host (CDP server) running on gateway port + 2. Args: path (string, required: a local control path like '/json/list' or '/json/activate/<id>'), method ('GET'|'POST'|'DELETE', default 'GET'), body (JSON object, POST/DELETE only), query (object, appended as query params), profile (string, optional browser profile), timeoutMs (int, default 20000, max 120000). Returns { result, files? } where files is present if the response included local file paths. Requires the gateway URL to have an explicit port and the browser control host to be running.",
     };
 
     private object? HandleCancelledNotification(JsonElement parameters)

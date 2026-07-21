@@ -73,7 +73,7 @@
                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                             <TextBlock x:Uid="SandboxPage_WhatGetsContained" x:Name="ScopeExpanderLabel" Text="What gets contained"
                                        Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock x:Uid="SandboxPage_SeeWhichCommandsThis" Text="See which commands this page covers - and which need different controls."
+                            <TextBlock x:Uid="SandboxPage_SeeWhichCommandsThis" Text="See which commands this page covers and which need different controls."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -112,7 +112,7 @@
                                   VerticalAlignment="Top"
                                   Margin="0,2,0,0" />
                         <TextBlock x:Uid="SandboxPage_GatewayCommandsNote" Grid.Column="1"
-                                   Text="Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network - check your gateway's configuration."
+                                   Text="Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network: check your gateway's configuration."
                                    TextWrapping="Wrap" />
                     </Grid>
                 </StackPanel>
@@ -358,8 +358,8 @@
                                    TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <RadioButton x:Uid="SandboxPage_NoneDefault" x:Name="ClipboardNoneRadio" Content="None (default)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="None" />
-                        <RadioButton x:Uid="SandboxPage_ReadAgentCanSee" x:Name="ClipboardReadRadio" Content="Read - agent can see what you copied" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Read" />
-                        <RadioButton x:Uid="SandboxPage_WriteAgentCanReplace" x:Name="ClipboardWriteRadio" Content="Write - agent can replace your clipboard (cannot read it)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Write" />
+                        <RadioButton x:Uid="SandboxPage_ReadAgentCanSee" x:Name="ClipboardReadRadio" Content="Read: agent can see what you copied" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Read" />
+                        <RadioButton x:Uid="SandboxPage_WriteAgentCanReplace" x:Name="ClipboardWriteRadio" Content="Write: agent can replace your clipboard (cannot read it)" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Write" />
                         <RadioButton x:Uid="SandboxPage_ReadAmpWrite5" x:Name="ClipboardBothRadio" Content="Read &amp; write" GroupName="Clipboard" Checked="OnClipboardChanged" Tag="Both" />
                     </StackPanel>
                 </Expander>
@@ -372,8 +372,8 @@
                     <StackPanel Spacing="12" Padding="4">
                         <ToggleSwitch x:Uid="SandboxPage_AllowInternet" x:Name="NetInternetToggle"
                                       Header="Allow internet"
-                                      OffContent="Off - agent cannot reach the internet"
-                                      OnContent="On - agent can connect to public internet endpoints"
+                                      OffContent="Off: agent cannot reach the internet"
+                                      OnContent="On: agent can connect to public internet endpoints"
                                       Toggled="OnNetInternetToggled" />
                         <TextBlock x:Uid="SandboxPage_IfFileOrClipboard" Text="If file or clipboard read access is enabled, the agent may send that data over the internet."
                                    TextWrapping="Wrap"

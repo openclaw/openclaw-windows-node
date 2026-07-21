@@ -645,13 +645,13 @@ public sealed partial class DebugPage : Page
             else
             {
                 DeviceIdText.Text = "No device key file";
-                PublicKeyText.Text = "-";
+                PublicKeyText.Text = "Not available";
             }
         }
         catch (Exception ex)
         {
             DeviceIdText.Text = $"Error: {ex.Message}";
-            PublicKeyText.Text = "-";
+            PublicKeyText.Text = "Not available";
         }
     }
 

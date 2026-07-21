@@ -276,16 +276,16 @@
     <value>Fermer</value>
   </data>
   <data name="WindowTitle_Settings" xml:space="preserve">
-    <value>Paramètres - OpenClaw Tray</value>
+    <value>Paramètres: OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_Status" xml:space="preserve">
-    <value>État - OpenClaw Tray</value>
+    <value>État: OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_ActivityStream" xml:space="preserve">
-    <value>Flux d'activités - OpenClaw Tray</value>
+    <value>Flux d'activités: OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
-    <value>Historique de notifications - OpenClaw Tray</value>
+    <value>Historique de notifications: OpenClaw Tray</value>
   </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>Discussion OpenClaw</value>
@@ -691,7 +691,7 @@ Utilisez l'une de ces options :
     <value>Accès demandé</value>
   </data>
   <data name="PairingApproval_RepairBadge" xml:space="preserve">
-    <value>Demande de réappairage - le jeton de l'appareil sera renouvelé.</value>
+    <value>Demande de réappairage: le jeton de l'appareil sera renouvelé.</value>
   </data>
   <data name="PairingApproval_Approve" xml:space="preserve">
     <value>Approuver</value>
@@ -899,7 +899,7 @@ Utilisez l'une de ces options :
     <value>Masquer</value>
   </data>
   <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
-    <value>(non généré - activez le serveur MCP et cliquez sur Enregistrer)</value>
+    <value>(non généré: activez le serveur MCP et cliquez sur Enregistrer)</value>
   </data>
   <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
     <value>Stocké à {0}</value>
@@ -935,7 +935,7 @@ Utilisez l'une de ces options :
     <value>Téléchargement en cours...</value>
   </data>
   <data name="UrlApproval_Caption" xml:space="preserve">
-    <value>OpenClaw - Approuver l'URL</value>
+    <value>OpenClaw: Approuver l'URL</value>
   </data>
   <data name="UrlApproval_Body" xml:space="preserve">
     <value>Un agent souhaite ouvrir une destination à haut risque dans votre navigateur.</value>
@@ -956,10 +956,10 @@ Utilisez l'une de ces options :
     <value>Raisons :</value>
   </data>
   <data name="UrlApproval_YesHint" xml:space="preserve">
-    <value>Oui - ouvrir cette URL.</value>
+    <value>Oui: ouvrir cette URL.</value>
   </data>
   <data name="UrlApproval_NoHint" xml:space="preserve">
-    <value>Non - la bloquer.</value>
+    <value>Non: la bloquer.</value>
   </data>
   <data name="Onboarding_Title" xml:space="preserve">
     <value>Configuration d’OpenClaw</value>
@@ -1094,10 +1094,10 @@ Utilisez l'une de ces options :
     <value>L'appareil nécessite une approbation</value>
   </data>
   <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
-    <value>Token incorrect - vérifiez votre token d'amorçage</value>
+    <value>Token incorrect: vérifiez votre token d'amorçage</value>
   </data>
   <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
-    <value>Connexion expirée (15 s) - vérifiez que la passerelle est en cours d'exécution</value>
+    <value>Connexion expirée (15 s): vérifiez que la passerelle est en cours d'exécution</value>
   </data>
   <data name="Onboarding_Permissions_Title" xml:space="preserve">
     <value>Accorder les autorisations</value>
@@ -1169,19 +1169,19 @@ Utilisez l'une de ces options :
     <value>Désactivé par la stratégie</value>
   </data>
   <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
-    <value>Désactivé - ouvrir les paramètres pour activer</value>
+    <value>Désactivé: ouvrir les paramètres pour activer</value>
   </data>
   <data name="Onboarding_Perm_Allowed" xml:space="preserve">
     <value>Autorisé</value>
   </data>
   <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
-    <value>Refusé - ouvrir les paramètres pour autoriser</value>
+    <value>Refusé: ouvrir les paramètres pour autoriser</value>
   </data>
   <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
     <value>Refusé par la stratégie système</value>
   </data>
   <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
-    <value>Non déterminé - ouvrir les paramètres</value>
+    <value>Non déterminé: ouvrir les paramètres</value>
   </data>
   <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
     <value>Impossible à vérifier</value>
@@ -1193,7 +1193,7 @@ Utilisez l'une de ces options :
     <value>Aucun microphone détecté</value>
   </data>
   <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
-    <value>Disponible - utilise un sélecteur par capture</value>
+    <value>Disponible: utilise un sélecteur par capture</value>
   </data>
   <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
     <value>Non pris en charge sur cet appareil</value>
@@ -1223,10 +1223,10 @@ Utilisez l'une de ces options :
     <value>Paramètres → Compétences</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
-    <value>Origine non autorisée - la passerelle rejette cette connexion</value>
+    <value>Origine non autorisée: la passerelle rejette cette connexion</value>
   </data>
   <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
-    <value>Limite de débit atteinte - attendez un moment et réessayez</value>
+    <value>Limite de débit atteinte: attendez un moment et réessayez</value>
   </data>
   <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
     <value>Exécutez sur votre passerelle :</value>
@@ -1235,13 +1235,13 @@ Utilisez l'une de ces options :
     <value>Cliquer pour copier</value>
   </data>
   <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
-    <value>Échec de la copie - cliquez pour réessayer</value>
+    <value>Échec de la copie: cliquez pour réessayer</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>Copié !</value>
   </data>
   <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
-    <value>Échec de la connexion - vérifiez l'URL et le jeton, puis réessayez</value>
+    <value>Échec de la connexion: vérifiez l'URL et le jeton, puis réessayez</value>
   </data>
   <data name="Onboarding_Wizard_StepError" xml:space="preserve">
     <value>Une erreur est survenue lors du traitement de cette étape</value>
@@ -1378,7 +1378,7 @@ Utilisez l'une de ces options :
     <value>Tous les agents</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Flux en temps réel de l'activité des agents - appels d'outils, réponses, erreurs et événements de cycle de vie.</value>
+    <value>Flux en temps réel de l'activité des agents: appels d'outils, réponses, erreurs et événements de cycle de vie.</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>Tous les agents</value>
@@ -1576,7 +1576,7 @@ Utilisez l'une de ces options :
     <value>Reconnecter</value>
   </data>
   <data name="OperatorStatusText.Text" xml:space="preserve">
-    <value>Opérateur : -</value>
+    <value>Opérateur : …</value>
   </data>
   <data name="ConnectToggle.Header" xml:space="preserve">
     <value>Connexion</value>
@@ -1696,7 +1696,7 @@ Utilisez l'une de ces options :
     <value>Store: ~/.openclaw/cron.db</value>
   </data>
   <data name="NextWakeText.Text" xml:space="preserve">
-    <value>Prochain réveil : -</value>
+    <value>Prochain réveil : …</value>
   </data>
   <data name="CronPage_Button_80.Content" xml:space="preserve">
     <value>Exécuter maintenant</value>
@@ -1855,7 +1855,7 @@ Utilisez l'une de ces options :
     <value>Oublier le nœud</value>
   </data>
   <data name="NodesPage_Forget_Error_Generic" xml:space="preserve">
-    <value>Impossible d'oublier le nœud - passerelle inaccessible ou autorisation refusée.</value>
+    <value>Impossible d'oublier le nœud: passerelle inaccessible ou autorisation refusée.</value>
   </data>
   <data name="NodesPage_Common_Cancel" xml:space="preserve">
     <value>Annuler</value>
@@ -1903,7 +1903,7 @@ Utilisez l'une de ces options :
     <value>Liste d’autorisation des nœuds</value>
   </data>
   <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
-    <value>Commandes autorisées par la passerelle pour les nœuds connectés. Cette liste est en lecture seule - modifiez-la depuis la page Configuration.</value>
+    <value>Commandes autorisées par la passerelle pour les nœuds connectés. Cette liste est en lecture seule: modifiez-la depuis la page Configuration.</value>
   </data>
   <data name="AllowlistEmpty.Text" xml:space="preserve">
     <value>Aucune donnée de liste d’autorisation disponible. Connectez-vous d’abord à une passerelle.</value>
@@ -2545,13 +2545,13 @@ Utilisez l'une de ces options :
     <value>Taille du modèle</value>
   </data>
   <data name="VoiceSettingsPage_ModelTiny.Content" xml:space="preserve">
-    <value>Tiny (~75 Mo) - Rapide, précision de base</value>
+    <value>Tiny (~75 Mo): Rapide, précision de base</value>
   </data>
   <data name="VoiceSettingsPage_ModelBase.Content" xml:space="preserve">
-    <value>Base (~142 Mo) - Bon équilibre</value>
+    <value>Base (~142 Mo): Bon équilibre</value>
   </data>
   <data name="VoiceSettingsPage_ModelSmall.Content" xml:space="preserve">
-    <value>Small (~466 Mo) - Haute précision</value>
+    <value>Small (~466 Mo): Haute précision</value>
   </data>
   <data name="VoiceSettingsPage_DownloadButtonText.Text" xml:space="preserve">
     <value>Télécharger le modèle</value>
@@ -2785,7 +2785,7 @@ Utilisez l'une de ces options :
     <value>🗣️ Écoute en cours...</value>
   </data>
   <data name="VoiceOverlayWindow_StatusSpeakNow" xml:space="preserve">
-    <value>Parlez maintenant - j'écoute</value>
+    <value>Parlez maintenant: j'écoute</value>
   </data>
   <data name="VoiceOverlayWindow_StateInitializing" xml:space="preserve">
     <value>Initialisation...</value>
@@ -2974,7 +2974,7 @@ Utilisez l'une de ces options :
     <value>Non connecté</value>
   </data>
   <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
-    <value>Gateway update required - incompatible version</value>
+    <value>Gateway update required: incompatible version</value>
   </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>Joindre</value>
@@ -3127,13 +3127,13 @@ Utilisez l'une de ces options :
     <value>La passerelle signale {0} comme {1}.</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Le Sandbox du nœud est désactivé - les commandes s'exécutent sans confinement</value>
+    <value>Le Sandbox du nœud est désactivé: les commandes s'exécutent sans confinement</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
     <value>Les commandes Windows lancées par l'agent s'exécuteront sans confinement jusqu'à ce que le Sandbox du nœud soit réactivé.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox indisponible - repli sur l'hôte</value>
+    <value>Sandbox indisponible: repli sur l'hôte</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3141,7 +3141,7 @@ Utilisez l'une de ces options :
 Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le sandboxing est indisponible.</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
-    <value>Sandbox indisponible - commandes bloquées</value>
+    <value>Sandbox indisponible: commandes bloquées</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3302,7 +3302,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>L'assistant a répondu</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Connexion perdue - réponse interrompue.</value>
+    <value>Connexion perdue: réponse interrompue.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Événement de chronologie de passerelle ignoré</value>
@@ -3323,7 +3323,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Browser control</value>
   </data>
   <data name="PermissionsPage_Cap_Browser_Description" xml:space="preserve">
-    <value>Lets agents drive a Chromium browser on this PC - open pages, click, and read content.</value>
+    <value>Lets agents drive a Chromium browser on this PC: open pages, click, and read content.</value>
   </data>
   <data name="PermissionsPage_Cap_Camera_Label" xml:space="preserve">
     <value>Camera</value>
@@ -3401,16 +3401,16 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Connect to a gateway to start providing device capabilities.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReady" xml:space="preserve">
-    <value>Server enabled - token ready</value>
+    <value>Server enabled: token ready</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenPending" xml:space="preserve">
-    <value>Server enabled - token will be created on next start</value>
+    <value>Server enabled: token will be created on next start</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenCopied" xml:space="preserve">
     <value>Token copied to clipboard</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenNotFound" xml:space="preserve">
-    <value>Token file not found - start the MCP server first</value>
+    <value>Token file not found: start the MCP server first</value>
   </data>
   <data name="PermissionsPage_McpStatus_UrlCopied" xml:space="preserve">
     <value>URL copied to clipboard</value>
@@ -3515,19 +3515,19 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected - no active presence</value>
+    <value>Disconnected: no active presence</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active - last seen {0}</value>
+    <value>Active: last seen {0}</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle - last seen {0}</value>
+    <value>Idle: last seen {0}</value>
   </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive - last seen {0}</value>
+    <value>Inactive: last seen {0}</value>
   </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
@@ -3635,7 +3635,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789 - visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789: visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -3764,7 +3764,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Your gateway didn't list any channels</value>
   </data>
   <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials - the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
+    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
   </data>
   <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
     <value>Read the channels guide</value>
@@ -4121,7 +4121,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Ajouter une passerelle</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Title" xml:space="preserve">
-    <value>Pour commencer - installer une passerelle locale</value>
+    <value>Pour commencer: installer une passerelle locale</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Message" xml:space="preserve">
     <value>La méthode la plus rapide : configure une passerelle hébergée sur WSL sur ce PC et en fait la connexion active.</value>
@@ -4205,7 +4205,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Installer la passerelle locale</value>
   </data>
   <data name="ConnectionPage_LocalWSLSetupIsn.Text" xml:space="preserve">
-    <value>La configuration WSL locale n'est pas disponible sur cette machine - l'assistant d'installation n'a pas pu être initialisé.</value>
+    <value>La configuration WSL locale n'est pas disponible sur cette machine: l'assistant d'installation n'a pas pu être initialisé.</value>
   </data>
   <data name="ConnectionPage_UseSSHTunnelOptional.Text" xml:space="preserve">
     <value>Utiliser un tunnel SSH (facultatif)</value>
@@ -4508,7 +4508,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Ce qui est confiné</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
-    <value>Découvrez quelles commandes cette page couvre - et lesquelles nécessitent d'autres contrôles.</value>
+    <value>Découvrez quelles commandes cette page couvre: et lesquelles nécessitent d'autres contrôles.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns.Text" xml:space="preserve">
     <value>Les commandes que l'agent exécute via le nœud Windows (</value>
@@ -4520,7 +4520,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>) sont confinées par les paramètres ci-dessous.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
-    <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle est sur WSL sur ce PC, elles peuvent accéder à vos fichiers Windows, votre presse-papiers et votre réseau - utilisez les approbations d'exécution de la passerelle.</value>
+    <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle est sur WSL sur ce PC, elles peuvent accéder à vos fichiers Windows, votre presse-papiers et votre réseau: utilisez les approbations d'exécution de la passerelle.</value>
   </data>
   <data name="SandboxPage_SandboxUnavailable.Title" xml:space="preserve">
     <value>Bac à sable indisponible</value>
@@ -4631,10 +4631,10 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Aucun (par défaut)</value>
   </data>
   <data name="SandboxPage_ReadAgentCanSee.Content" xml:space="preserve">
-    <value>Lecture - l'agent peut voir ce que vous avez copié</value>
+    <value>Lecture: l'agent peut voir ce que vous avez copié</value>
   </data>
   <data name="SandboxPage_WriteAgentCanReplace.Content" xml:space="preserve">
-    <value>Écriture - l'agent peut remplacer votre presse-papiers (sans pouvoir le lire)</value>
+    <value>Écriture: l'agent peut remplacer votre presse-papiers (sans pouvoir le lire)</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
     <value>Lecture &amp;amp; écriture</value>
@@ -5105,7 +5105,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Aperçu de la voix</value>
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
-    <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle se trouve sur ce PC, elles peuvent toujours accéder à vos fichiers Windows, au presse-papiers et au réseau - vérifiez la configuration de votre passerelle.</value>
+    <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle se trouve sur ce PC, elles peuvent toujours accéder à vos fichiers Windows, au presse-papiers et au réseau: vérifiez la configuration de votre passerelle.</value>
   </data>
   <data name="AgentEventsPage_AllAgents" xml:space="preserve">
     <value>Tous les agents</value>
@@ -5247,7 +5247,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>En attente d'approbation</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalApproveThenConnect" xml:space="preserve">
-    <value>🔐 En attente d'approbation - approuvez puis cliquez sur Connecter</value>
+    <value>🔐 En attente d'approbation: approuvez puis cliquez sur Connecter</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalFromGateway" xml:space="preserve">
     <value>🔐 En attente d'approbation de la passerelle</value>
@@ -5571,7 +5571,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Application en cours…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>Appliqué - passerelle : {0}</value>
+    <value>Appliqué: passerelle : {0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>Code de configuration invalide</value>
@@ -5688,19 +5688,19 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Paramètres</value>
   </data>
   <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>Dissocier cet appareil du canal. Scannez un nouveau QR pour vous reconnecter - votre compte reste associé sur votre téléphone.</value>
+    <value>Dissocier cet appareil du canal. Scannez un nouveau QR pour vous reconnecter: votre compte reste associé sur votre téléphone.</value>
   </data>
   <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>Mettre le canal en pause temporairement - les identifiants sont conservés pour pouvoir le redémarrer. Ou déconnectez-vous entièrement pour les effacer.</value>
+    <value>Mettre le canal en pause temporairement: les identifiants sont conservés pour pouvoir le redémarrer. Ou déconnectez-vous entièrement pour les effacer.</value>
   </data>
   <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>Démarrer le canal - il commencera à traiter les messages avec les identifiants enregistrés. Ou déconnectez-vous entièrement pour les effacer.</value>
+    <value>Démarrer le canal: il commencera à traiter les messages avec les identifiants enregistrés. Ou déconnectez-vous entièrement pour les effacer.</value>
   </data>
   <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>Mettre le canal en pause - les identifiants sont conservés pour pouvoir le redémarrer.</value>
+    <value>Mettre le canal en pause: les identifiants sont conservés pour pouvoir le redémarrer.</value>
   </data>
   <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>Démarrer le canal - il commencera à traiter les messages avec les identifiants enregistrés.</value>
+    <value>Démarrer le canal: il commencera à traiter les messages avec les identifiants enregistrés.</value>
   </data>
   <data name="ChannelsPage_Start" xml:space="preserve">
     <value>Démarrer</value>
@@ -5940,7 +5940,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Impossible de charger la configuration de la passerelle</value>
   </data>
   <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>La passerelle n’a pas renvoyé sa configuration actuelle - impossible d’enregistrer en toute sécurité sans elle. Essayez d’actualiser et d’enregistrer à nouveau.</value>
+    <value>La passerelle n’a pas renvoyé sa configuration actuelle: impossible d’enregistrer en toute sécurité sans elle. Essayez d’actualiser et d’enregistrer à nouveau.</value>
   </data>
   <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
     <value>La configuration de la passerelle a été effacée en cours d’enregistrement. Essayez d’actualiser et d’enregistrer à nouveau.</value>
@@ -5955,7 +5955,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Échec de l’enregistrement pour {0}</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>La configuration de votre passerelle a été modifiée ailleurs (p. ex., depuis la page de configuration). Nous avons actualisé le cache - réessayez d’enregistrer. Détails : {0}</value>
+    <value>La configuration de votre passerelle a été modifiée ailleurs (p. ex., depuis la page de configuration). Nous avons actualisé le cache: réessayez d’enregistrer. Détails : {0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} Si cela ressemble à une incompatibilité de format filaire, ouvrez la page de configuration pour modifier directement le JSON.</value>
@@ -6435,19 +6435,19 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>{0} copié dans le presse-papiers.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>Sandbox du nœud indisponible - repli sur l'hôte</value>
+    <value>Sandbox du nœud indisponible: repli sur l'hôte</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
     <value>Le confinement n'est pas disponible sur ce PC ; les commandes lancées par l'agent s'exécutent donc sur l'hôte sans protection de sandbox.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
-    <value>Sandbox du nœud indisponible - commandes bloquées</value>
+    <value>Sandbox du nœud indisponible: commandes bloquées</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
     <value>Le confinement n'est pas disponible sur ce PC et le blocage strict du repli est activé ; les commandes lancées par l'agent sont donc bloquées.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
-    <value>Le Sandbox du nœud est désactivé - exécution sur l'hôte</value>
+    <value>Le Sandbox du nœud est désactivé: exécution sur l'hôte</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
     <value>Le confinement n'est pas disponible et le Sandbox du nœud est désactivé ; les commandes lancées par l'agent s'exécutent donc sur l'hôte sans protection de sandbox.</value>
@@ -6459,7 +6459,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Les programmes exécutés par l'agent sur ce PC sont confinés.</value>
   </data>
   <data name="SandboxPage_StatusOffTitle" xml:space="preserve">
-    <value>Le Sandbox du nœud est désactivé - risque élevé</value>
+    <value>Le Sandbox du nœud est désactivé: risque élevé</value>
   </data>
   <data name="SandboxPage_StatusOffSubtext" xml:space="preserve">
     <value>Les programmes exécutés par l'agent sur ce PC ne sont pas confinés.</value>
@@ -6482,7 +6482,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
     <value>{0}
 
-{1} La vérification des capacités du sandbox ne s'est pas terminée. C'est généralement transitoire (vérification lente ou bloquée) - réessayez, et si le problème persiste, vérifiez si un logiciel de sécurité bloque wxc-exec.</value>
+{1} La vérification des capacités du sandbox ne s'est pas terminée. C'est généralement transitoire (vérification lente ou bloquée): réessayez, et si le problème persiste, vérifiez si un logiciel de sécurité bloque wxc-exec.</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Réessayer</value>
@@ -6510,10 +6510,10 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
     <value>Afficher les instructions d'installation</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>Sandbox indisponible - repli sur l'hôte</value>
+    <value>Sandbox indisponible: repli sur l'hôte</value>
   </data>
   <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
-    <value>Sandbox indisponible - commandes bloquées</value>
+    <value>Sandbox indisponible: commandes bloquées</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>Passerelle locale supprimée</value>
@@ -6687,7 +6687,7 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
     <value>Connexion non chiffrée</value>
   </data>
   <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
-    <value>Cette gateway distante utilise ws:// - votre token serait envoyé en clair. Utilisez wss:// (TLS), un tunnel SSH, ou un proxy de confiance / Tailscale.</value>
+    <value>Cette gateway distante utilise ws://. Votre token serait envoyé en clair. Utilisez wss:// (TLS), un tunnel SSH, ou un proxy de confiance / Tailscale.</value>
   </data>
   <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
     <value>Chiffré (TLS)</value>

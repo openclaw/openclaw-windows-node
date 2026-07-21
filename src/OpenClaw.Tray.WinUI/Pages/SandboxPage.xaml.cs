@@ -249,7 +249,7 @@ public sealed partial class SandboxPage : Page
             {
                 // Contained, but only via a weaker, last-resort isolation tier
                 // (e.g. DACL augmentation). Surface as a caution rather than a block.
-                SandboxStatusTitle.Text = "Node Sandbox is on - limited containment";
+                SandboxStatusTitle.Text = "Node Sandbox is on: limited containment";
                 SandboxStatusSubtext.Text =
                     "Programs the agent runs are contained, but this PC only supports a fallback isolation tier" +
                     $"{(string.IsNullOrEmpty(availability.IsolationTier) ? "" : $" ({availability.IsolationTier})")}. " +

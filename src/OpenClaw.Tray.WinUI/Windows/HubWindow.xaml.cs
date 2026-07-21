@@ -221,7 +221,7 @@ public sealed partial class HubWindow : WindowEx
         {
             AppNotificationMessageText.Inlines.Add(new Run
             {
-                Text = $" - {notification.Message}"
+                Text = $": {notification.Message}"
             });
         }
 

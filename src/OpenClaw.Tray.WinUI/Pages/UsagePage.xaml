@@ -29,7 +29,7 @@
                     <TextBlock x:Uid="UsagePage_TextBlock_21" Text="Total Cost" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="TotalCostText" Text="-"
+                    <TextBlock x:Name="TotalCostText" Text="Not available"
                                Style="{StaticResource TitleLargeTextBlockStyle}"
                                HorizontalAlignment="Center"/>
                 </StackPanel>
@@ -49,7 +49,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_35" Text="Requests" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="RequestCountText" Text="-"
+                        <TextBlock x:Name="RequestCountText" Text="Not available"
                                    Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
@@ -61,7 +61,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_45" Text="Tokens" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="TokenCountText" Text="-"
+                        <TextBlock x:Name="TokenCountText" Text="Not available"
                                    Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>
@@ -73,7 +73,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock x:Uid="UsagePage_TextBlock_55" Text="Providers" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="ProviderCountText" Text="-"
+                        <TextBlock x:Name="ProviderCountText" Text="Not available"
                                    Style="{StaticResource SubtitleTextBlockStyle}"/>
                     </StackPanel>
                 </Border>

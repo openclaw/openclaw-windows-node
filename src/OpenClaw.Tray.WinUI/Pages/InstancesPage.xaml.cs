@@ -411,7 +411,7 @@ public sealed partial class InstancesPage : Page
                 Foreground = StatusForeground(row.Status),
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            var ageText = row.Timestamp is { } ts ? FormatAge(ts, nowUtc) : "-";
+            var ageText = row.Timestamp is { } ts ? FormatAge(ts, nowUtc) : "Not available";
             ToolTipService.SetToolTip(statusLabel, StatusTooltip(row.Status, ageText));
             AutomationProperties.SetName(statusLabel,
                 string.Format(

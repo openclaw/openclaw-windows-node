@@ -796,7 +796,7 @@
                              IsOpen="True"
                              IsClosable="False"
                              Visibility="Collapsed"
-                             Title="Get started - install a local gateway"
+                             Title="Get started: install a local gateway"
                              Message="The fastest way to start: sets up a WSL-hosted gateway on this PC and makes it the active connection.">
                         <InfoBar.ActionButton>
                             <Button x:Uid="ConnectionPage_Install" Content="Install"
@@ -1090,7 +1090,7 @@
                                 Click="OnInstallLocalWslGateway"
                                 AutomationProperties.AutomationId="AddInstallLocalGateway"/>
                         <TextBlock x:Uid="ConnectionPage_LocalWSLSetupIsn" x:Name="AddLocalWslUnavailableText"
-                                   Text="Local-WSL setup isn't available on this machine - the install wizard couldn't be initialized."
+                                   Text="Local-WSL setup isn't available on this machine: the install wizard couldn't be initialized."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                    TextWrapping="Wrap"

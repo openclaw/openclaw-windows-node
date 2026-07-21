@@ -1627,7 +1627,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             if (TryStartLocalMcpOnlyNode())
                 return;
 
-            Logger.Info("Gateway URL not configured - skipping client initialization");
+            Logger.Info("Gateway URL not configured: skipping client initialization");
             return;
         }
 
@@ -1649,7 +1649,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 if (TryStartLocalMcpOnlyNode())
                     return;
 
-                Logger.Info("No stored device token - skipping startup connect (use Setup Code)");
+                Logger.Info("No stored device token: skipping startup connect (use Setup Code)");
                 return;
             }
 
@@ -1729,7 +1729,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return true;
             }
 
-            Logger.Info($"Active gateway has no usable credential - skipping {context} connect");
+            Logger.Info($"Active gateway has no usable credential: skipping {context} connect");
             return false;
         }
 
@@ -1999,7 +1999,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             var concreteClient = client as OpenClawGatewayClient;
             if (concreteClient == null)
-                Logger.Warn("[ConnMgr] NewClient is not OpenClawGatewayClient - chat coordinator disabled");
+                Logger.Warn("[ConnMgr] NewClient is not OpenClawGatewayClient: chat coordinator disabled");
             _chatCoordinator?.SetOperatorClient(concreteClient);
         }
         else

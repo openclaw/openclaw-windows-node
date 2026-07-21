@@ -33,7 +33,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
             <TextBlock x:Uid="AgentEventsPage_IntroText"
-                       Text="Real-time stream of agent activity - tool calls, responses, errors, and lifecycle events."
+                       Text="Real-time stream of agent activity: tool calls, responses, errors, and lifecycle events."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap"/>

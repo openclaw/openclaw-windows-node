@@ -633,7 +633,7 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="GatewayVersionText"
                                        Grid.Row="0" Grid.Column="1"
-                                       Text="-"
+                                       Text="Not available"
                                        Style="{StaticResource BodyTextBlockStyle}"
                                        IsTextSelectionEnabled="True"
                                        TextWrapping="Wrap"/>
@@ -645,7 +645,7 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="GatewayProtocolText"
                                        Grid.Row="1" Grid.Column="1"
-                                       Text="-"
+                                       Text="Not available"
                                        Style="{StaticResource BodyTextBlockStyle}"
                                        IsTextSelectionEnabled="True"
                                        TextWrapping="Wrap"/>
@@ -657,7 +657,7 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="GatewayAuthText"
                                        Grid.Row="2" Grid.Column="1"
-                                       Text="-"
+                                       Text="Not available"
                                        Style="{StaticResource BodyTextBlockStyle}"
                                        IsTextSelectionEnabled="True"
                                        TextWrapping="Wrap"/>
@@ -669,7 +669,7 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <TextBlock x:Name="GatewayUptimeText"
                                        Grid.Row="3" Grid.Column="1"
-                                       Text="-"
+                                       Text="Not available"
                                        Style="{StaticResource BodyTextBlockStyle}"
                                        IsTextSelectionEnabled="True"
                                        TextWrapping="Wrap"/>

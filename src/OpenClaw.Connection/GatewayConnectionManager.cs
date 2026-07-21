@@ -599,7 +599,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (_registry.GetById(gatewayId) == null)
             {
-                _logger.Warn($"[ConnMgr] Cannot switch gateway - record {gatewayId} not found");
+                _logger.Warn($"[ConnMgr] Cannot switch gateway: record {gatewayId} not found");
                 _diagnostics.Record("state", "Switch gateway failed", $"Gateway record not found: {gatewayId}");
                 return;
             }
@@ -1125,7 +1125,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             _registry.Save();
-            _diagnostics.Record("credential", "Cleared bootstrap token - operator and node tokens are durable");
+            _diagnostics.Record("credential", "Cleared bootstrap token: operator and node tokens are durable");
         }
         catch (Exception ex)
         {
@@ -1163,7 +1163,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             ? "using persisted operator device token"
             : "using preserved shared gateway token";
         RememberGatewayNeedsV2Signature(gatewayRecordId, markActiveAttempt: true);
-        _diagnostics.Record("credential", "Bootstrap handoff complete - reconnecting operator role", detail);
+        _diagnostics.Record("credential", "Bootstrap handoff complete: reconnecting operator role", detail);
 
         ScheduleDelayedReconnect(
             gen,
@@ -1239,7 +1239,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (Interlocked.Read(ref _generation) != gen) return;
 
             var prev = _stateMachine.Current.OverallState;
-            _diagnostics.Record("pairing", $"Pairing required - waiting for approval (requestId={requestId})");
+            _diagnostics.Record("pairing", $"Pairing required: waiting for approval (requestId={requestId})");
             _stateMachine.TryTransition(ConnectionTrigger.PairingPending);
             CompleteOperatorTelemetryAttempt(
                 gen,
@@ -1323,7 +1323,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (!startAttempted)
             {
                 tcs.TrySetException(new InvalidOperationException(
-                    "Node connection could not be started - see ConnectionDiagnostics for the credential/record-resolution failure."));
+                    "Node connection could not be started: see ConnectionDiagnostics for the credential/record-resolution failure."));
             }
             else
             {
@@ -1609,7 +1609,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var record = _registry.GetById(activeGatewayRecordId);
         if (record == null)
         {
-            _logger.Warn("[ConnMgr] Cannot start node - gateway record not found");
+            _logger.Warn("[ConnMgr] Cannot start node: gateway record not found");
             await BlockNodeStartAsync(MissingGatewayRecordForNodeMessage, cancellationToken, expectedLifecycleGeneration, nodeGeneration);
             CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.InternalError);
             return false;
@@ -1640,7 +1640,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var nodeCredential = nodeCredentialResolution.Credential;
         if (nodeCredential == null)
         {
-            _logger.Warn("[ConnMgr] No node credential available - skipping node connection");
+            _logger.Warn("[ConnMgr] No node credential available: skipping node connection");
             _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
             await _transitionSemaphore.WaitAsync(cancellationToken);
             try
@@ -2175,7 +2175,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         long approvalGeneration,
         long approvalNodeGeneration)
     {
-        _diagnostics.Record("node", "Device role-upgrade pairing approved - reconnecting node");
+        _diagnostics.Record("node", "Device role-upgrade pairing approved: reconnecting node");
         await _reconnectDelay(TimeSpan.FromMilliseconds(1000)); // brief delay for gateway to process
         return await StartNodeConnectionAsync(approvalGeneration, approvalNodeGeneration);
     }

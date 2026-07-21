@@ -103,7 +103,7 @@
                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Spacing="2">
                         <TextBlock Text="Up next: OpenClaw onboard" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                        <TextBlock Text="A few quick questions - choose your AI provider, model, and key - to connect your agent."
+                        <TextBlock Text="A few quick questions. Choose your AI provider, model, and key to connect your agent."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                     </StackPanel>

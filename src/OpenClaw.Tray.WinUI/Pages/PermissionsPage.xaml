@@ -341,7 +341,7 @@
             <TextBlock x:Uid="PermissionsPage_TextBlock_69" Text="Node allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
             <TextBlock x:Uid="PermissionsPage_TextBlock_72"
-                       Text="Commands the gateway will accept from connected nodes. Read-only - edit via the Config page."
+                       Text="Commands the gateway will accept from connected nodes. Read-only: edit via the Config page."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                        Margin="4,0,4,4"/>

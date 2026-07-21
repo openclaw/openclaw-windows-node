@@ -149,7 +149,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 if (promptResult == ExecApprovalPromptOutcome.Allow)
                 {
                     _logger.Error($"[EXEC-APPROVALS] [{correlationId}] invariant: " +
-                        "prompt returned Allow - treating as invariant violation deny");
+                        "prompt returned Allow: treating as invariant violation deny");
                     return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-returned-allow"),
                         correlationId, promptAttempted: true, fallbackUsed: false,
                         canonical: context.DisplayCommand);

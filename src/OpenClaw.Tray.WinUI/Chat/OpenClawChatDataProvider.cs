@@ -774,7 +774,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         else
         {
-            Logger.Info($"[ABORT] No runId yet - queued pending abort for threadId='{threadId}'");
+            Logger.Info($"[ABORT] No runId yet: queued pending abort for threadId='{threadId}'");
         }
 
         // Persist is handled by the deferred abort path (lifecycle.start or
@@ -883,7 +883,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     return nextState;
                 }
 
-                Logger.Info($"[ChatHistory] Loading thread '{threadId}' - {ordered.Count} messages from gateway");
+                Logger.Info($"[ChatHistory] Loading thread '{threadId}': {ordered.Count} messages from gateway");
 
                 // Load cached tool metadata for this session to restore tool names
                 // that the gateway strips from history responses.
@@ -1094,7 +1094,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 // the "Response was stopped" indicator so the user sees it.
                 if (nextAssistantIsAborted)
                 {
-                    Logger.Debug("[ChatHistory] Trailing aborted user message with no assistant response - synthesizing abort indicator");
+                    Logger.Debug("[ChatHistory] Trailing aborted user message with no assistant response: synthesizing abort indicator");
                     rebuilt = ApplyAndCaptureMeta(
                         rebuilt,
                         new ChatStatusEvent("Response was stopped", ChatTone.Warning),
@@ -1734,7 +1734,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (expectedRequestId is not null
                 && !string.Equals(current.PendingPermission.RequestId, expectedRequestId, System.StringComparison.Ordinal))
             {
-                Logger.Info($"[Approval] clear skipped - pending is '{current.PendingPermission.RequestId}', expected '{expectedRequestId}' (newer approval superseded)");
+                Logger.Info($"[Approval] clear skipped: pending is '{current.PendingPermission.RequestId}', expected '{expectedRequestId}' (newer approval superseded)");
                 return;
             }
             Logger.Info($"[Approval] clearing PendingPermission requestId='{current.PendingPermission.RequestId}' on thread='{threadId}' decision={decision}");
@@ -2576,7 +2576,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     if (string.IsNullOrEmpty(pendingId))
                     {
                         // No live banner — nothing to clear, nothing to log loudly.
-                        Logger.Debug($"[Approval] terminal phase='{phase}' for slug='{evtSlug}' approvalId='{evtApprovalId}' - no PendingPermission");
+                        Logger.Debug($"[Approval] terminal phase='{phase}' for slug='{evtSlug}' approvalId='{evtApprovalId}': no PendingPermission");
                     }
                     else if (ApprovalIdMatches(pendingId!, evtSlug, evtApprovalId))
                     {
@@ -2596,7 +2596,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         // Either the event carried no id (gateway protocol drift)
                         // or ids didn't match the live banner. Either way we must
                         // not clear — preserving the banner is the safer default.
-                        Logger.Info($"[Approval] terminal phase='{phase}' slug='{evtSlug}' approvalId='{evtApprovalId}' did not match pending '{pendingId}' - banner preserved");
+                        Logger.Info($"[Approval] terminal phase='{phase}' slug='{evtSlug}' approvalId='{evtApprovalId}' did not match pending '{pendingId}': banner preserved");
                     }
                 }
             }
@@ -2728,7 +2728,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             _abortedRunIds.Add(evt.RunId);
                             deferredAbortRunId = evt.RunId;
                             deferredAbortCount = pendingCount;
-                            Logger.Info($"[ABORT] Deferred abort fired - lifecycle.start arrived with runId='{evt.RunId}' for threadId='{threadId}' (pendingCount={pendingCount})");
+                            Logger.Info($"[ABORT] Deferred abort fired: lifecycle.start arrived with runId='{evt.RunId}' for threadId='{threadId}' (pendingCount={pendingCount})");
                         }
                     }
                 }
@@ -2774,7 +2774,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         _pendingAbortCounts.Remove(threadId);
                         deferredAbortRunId = evt.RunId; // may be null, that's ok — persist doesn't need it
                         deferredAbortCount = lateCount;
-                        Logger.Info($"[ABORT] Late deferred abort - lifecycle.end arrived with pending aborts for threadId='{threadId}' (pendingCount={lateCount})");
+                        Logger.Info($"[ABORT] Late deferred abort: lifecycle.end arrived with pending aborts for threadId='{threadId}' (pendingCount={lateCount})");
                     }
                 }
             }
@@ -5922,7 +5922,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 ConnectionStatus.Connected => "Connected",
                 ConnectionStatus.Connecting => "Connecting…",
                 ConnectionStatus.Disconnected => "Disconnected",
-                ConnectionStatus.Error => "Disconnected - error",
+                ConnectionStatus.Error => "Disconnected: error",
                 _ => _status.ToString()
             };
 

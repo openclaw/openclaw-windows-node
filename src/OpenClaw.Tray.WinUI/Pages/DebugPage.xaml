@@ -258,7 +258,7 @@
                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                                 </toolkit:SettingsCard.ActionIcon>
                                 <TextBlock x:Name="DeviceIdText"
-                                           Text="-"
+                                           Text="Not available"
                                            FontFamily="Consolas"
                                            FontSize="12"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -273,7 +273,7 @@
                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                                 </toolkit:SettingsCard.ActionIcon>
                                 <TextBlock x:Name="PublicKeyText"
-                                           Text="-"
+                                           Text="Not available"
                                            FontFamily="Consolas"
                                            FontSize="11"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"

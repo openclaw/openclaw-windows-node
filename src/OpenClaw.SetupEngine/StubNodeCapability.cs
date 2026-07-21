@@ -20,5 +20,5 @@ internal sealed class StubNodeCapability : INodeCapability
     public bool CanHandle(string command) => Commands.Contains(command, StringComparer.OrdinalIgnoreCase);
 
     public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
-        => Task.FromResult(new NodeInvokeResponse { Ok = false, Error = "Setup stub - not implemented" });
+        => Task.FromResult(new NodeInvokeResponse { Ok = false, Error = "Setup stub: not implemented" });
 }

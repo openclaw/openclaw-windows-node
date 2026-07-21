@@ -92,7 +92,7 @@ public sealed partial class ProgressPage : Page
 
     private void RenderProgressPreview()
     {
-        SubtitleText.Text = "Creating OpenClawGateway WSL instance - about 4 minutes left";
+        SubtitleText.Text = "Creating OpenClawGateway WSL instance: about 4 minutes left";
         var ids = StepGroups.Select(g => g.GroupId).ToArray();
         for (int i = 0; i < ids.Length; i++)
         {

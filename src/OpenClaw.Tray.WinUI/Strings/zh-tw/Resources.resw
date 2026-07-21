@@ -276,16 +276,16 @@
     <value>關閉</value>
   </data>
   <data name="WindowTitle_Settings" xml:space="preserve">
-    <value>設定 - OpenClaw 設定</value>
+    <value>設定: OpenClaw 設定</value>
   </data>
   <data name="WindowTitle_Status" xml:space="preserve">
-    <value>狀態 - OpenClaw 設定</value>
+    <value>狀態: OpenClaw 設定</value>
   </data>
   <data name="WindowTitle_ActivityStream" xml:space="preserve">
-    <value>串流活動 - OpenClaw 設定</value>
+    <value>串流活動: OpenClaw 設定</value>
   </data>
   <data name="WindowTitle_NotificationHistory" xml:space="preserve">
-    <value>通知歷史 - OpenClaw 設定</value>
+    <value>通知歷史: OpenClaw 設定</value>
   </data>
   <data name="WindowTitle_WebChat" xml:space="preserve">
     <value>OpenClaw 聊天</value>
@@ -691,7 +691,7 @@
     <value>要求的存取權限</value>
   </data>
   <data name="PairingApproval_RepairBadge" xml:space="preserve">
-    <value>重新配對要求--裝置權杖將輪替。</value>
+    <value>重新配對要求……裝置權杖將輪替。</value>
   </data>
   <data name="PairingApproval_Approve" xml:space="preserve">
     <value>核准</value>
@@ -899,7 +899,7 @@
     <value>隱藏</value>
   </data>
   <data name="SettingsMcpToken_NotGenerated" xml:space="preserve">
-    <value>(尚未產生 - 啟用 MCP 伺服器並按儲存)</value>
+    <value>(尚未產生: 啟用 MCP 伺服器並按儲存)</value>
   </data>
   <data name="SettingsMcpToken_StoredAtFormat" xml:space="preserve">
     <value>儲存於 {0}</value>
@@ -935,7 +935,7 @@
     <value>正在下載更新...</value>
   </data>
   <data name="UrlApproval_Caption" xml:space="preserve">
-    <value>OpenClaw - 核准 URL</value>
+    <value>OpenClaw: 核准 URL</value>
   </data>
   <data name="UrlApproval_Body" xml:space="preserve">
     <value>代理想在您的瀏覽器中開啟高風險目標。</value>
@@ -956,10 +956,10 @@
     <value>原因：</value>
   </data>
   <data name="UrlApproval_YesHint" xml:space="preserve">
-    <value>是 - 開啟此 URL。</value>
+    <value>是: 開啟此 URL。</value>
   </data>
   <data name="UrlApproval_NoHint" xml:space="preserve">
-    <value>否 - 封鎖此項。</value>
+    <value>否: 封鎖此項。</value>
   </data>
   <data name="Onboarding_Title" xml:space="preserve">
     <value>OpenClaw 設定</value>
@@ -1094,10 +1094,10 @@
     <value>裝置需要核准</value>
   </data>
   <data name="Onboarding_Connection_StatusTokenMismatch" xml:space="preserve">
-    <value>Token 不符 - 請檢查您的引導 Token</value>
+    <value>Token 不符: 請檢查您的引導 Token</value>
   </data>
   <data name="Onboarding_Connection_StatusTimeout" xml:space="preserve">
-    <value>連線逾時 (15s) - 請確認閘道正在執行</value>
+    <value>連線逾時 (15s): 請確認閘道正在執行</value>
   </data>
   <data name="Onboarding_Permissions_Title" xml:space="preserve">
     <value>授予權限</value>
@@ -1169,19 +1169,19 @@
     <value>被原則停用</value>
   </data>
   <data name="Onboarding_Perm_DisabledUser" xml:space="preserve">
-    <value>已停用 - 開啟設定以啟用</value>
+    <value>已停用: 開啟設定以啟用</value>
   </data>
   <data name="Onboarding_Perm_Allowed" xml:space="preserve">
     <value>已允許</value>
   </data>
   <data name="Onboarding_Perm_DeniedUser" xml:space="preserve">
-    <value>被拒絕 - 開啟設定以允許</value>
+    <value>被拒絕: 開啟設定以允許</value>
   </data>
   <data name="Onboarding_Perm_DeniedSystem" xml:space="preserve">
     <value>被系統原則拒絕</value>
   </data>
   <data name="Onboarding_Perm_NotDetermined" xml:space="preserve">
-    <value>未確定 - 開啟設定</value>
+    <value>未確定: 開啟設定</value>
   </data>
   <data name="Onboarding_Perm_UnableToCheck" xml:space="preserve">
     <value>無法檢查</value>
@@ -1193,7 +1193,7 @@
     <value>未偵測到麥克風</value>
   </data>
   <data name="Onboarding_Perm_ScreenCaptureAvailable" xml:space="preserve">
-    <value>可用 - 每次擷取使用選擇器</value>
+    <value>可用: 每次擷取使用選擇器</value>
   </data>
   <data name="Onboarding_Perm_NotSupported" xml:space="preserve">
     <value>此裝置不支援</value>
@@ -1223,10 +1223,10 @@
     <value>設定 → 技能</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
-    <value>來源不允許 - 閘道拒絕此連線</value>
+    <value>來源不允許: 閘道拒絕此連線</value>
   </data>
   <data name="Onboarding_Connection_StatusRateLimited" xml:space="preserve">
-    <value>速率限制 - 請稍候再試</value>
+    <value>速率限制: 請稍候再試</value>
   </data>
   <data name="Onboarding_Connection_RunOnGateway" xml:space="preserve">
     <value>在您的閘道上執行：</value>
@@ -1235,13 +1235,13 @@
     <value>點擊複製</value>
   </data>
   <data name="Onboarding_Connection_CopyFailed" xml:space="preserve">
-    <value>複製失敗 - 點擊重試</value>
+    <value>複製失敗: 點擊重試</value>
   </data>
   <data name="Onboarding_Connection_Copied" xml:space="preserve">
     <value>已複製！</value>
   </data>
   <data name="Onboarding_Connection_StatusFailed" xml:space="preserve">
-    <value>連線失敗 - 請檢查 URL 和權杖，然後重試</value>
+    <value>連線失敗: 請檢查 URL 和權杖，然後重試</value>
   </data>
   <data name="Onboarding_Wizard_StepError" xml:space="preserve">
     <value>處理此步驟時發生錯誤</value>
@@ -1378,7 +1378,7 @@
     <value>所有代理程式</value>
   </data>
   <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>代理程式活動的即時串流--工具呼叫、回應、錯誤和生命週期事件。</value>
+    <value>代理程式活動的即時串流……工具呼叫、回應、錯誤和生命週期事件。</value>
   </data>
   <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
     <value>所有代理程式</value>
@@ -1576,7 +1576,7 @@
     <value>重新連線</value>
   </data>
   <data name="OperatorStatusText.Text" xml:space="preserve">
-    <value>操作員：-</value>
+    <value>操作員：…</value>
   </data>
   <data name="ConnectToggle.Header" xml:space="preserve">
     <value>連線</value>
@@ -1696,7 +1696,7 @@
     <value>Store: ~/.openclaw/cron.db</value>
   </data>
   <data name="NextWakeText.Text" xml:space="preserve">
-    <value>下次喚醒：-</value>
+    <value>下次喚醒：…</value>
   </data>
   <data name="CronPage_Button_80.Content" xml:space="preserve">
     <value>立即執行</value>
@@ -1855,7 +1855,7 @@
     <value>忘記節點</value>
   </data>
   <data name="NodesPage_Forget_Error_Generic" xml:space="preserve">
-    <value>無法忘記節點 - 閘道無法連線或權限遭拒。</value>
+    <value>無法忘記節點: 閘道無法連線或權限遭拒。</value>
   </data>
   <data name="NodesPage_Common_Cancel" xml:space="preserve">
     <value>取消</value>
@@ -1903,7 +1903,7 @@
     <value>節點允許清單</value>
   </data>
   <data name="PermissionsPage_TextBlock_72.Text" xml:space="preserve">
-    <value>閘道允許已連線節點執行的命令。此清單為唯讀 - 請透過「設定」頁面編輯。</value>
+    <value>閘道允許已連線節點執行的命令。此清單為唯讀: 請透過「設定」頁面編輯。</value>
   </data>
   <data name="AllowlistEmpty.Text" xml:space="preserve">
     <value>沒有可用的允許清單資料。請先連線到閘道。</value>
@@ -2545,13 +2545,13 @@
     <value>模型大小</value>
   </data>
   <data name="VoiceSettingsPage_ModelTiny.Content" xml:space="preserve">
-    <value>Tiny (~75 MB) - 快速,基本精確度</value>
+    <value>Tiny (~75 MB): 快速,基本精確度</value>
   </data>
   <data name="VoiceSettingsPage_ModelBase.Content" xml:space="preserve">
-    <value>Base (~142 MB) - 良好平衡</value>
+    <value>Base (~142 MB): 良好平衡</value>
   </data>
   <data name="VoiceSettingsPage_ModelSmall.Content" xml:space="preserve">
-    <value>Small (~466 MB) - 高精確度</value>
+    <value>Small (~466 MB): 高精確度</value>
   </data>
   <data name="VoiceSettingsPage_DownloadButtonText.Text" xml:space="preserve">
     <value>下載模型</value>
@@ -2785,7 +2785,7 @@
     <value>🗣️ 正在聆聽...</value>
   </data>
   <data name="VoiceOverlayWindow_StatusSpeakNow" xml:space="preserve">
-    <value>現在請說話 - 我在聆聽</value>
+    <value>現在請說話: 我在聆聽</value>
   </data>
   <data name="VoiceOverlayWindow_StateInitializing" xml:space="preserve">
     <value>正在初始化...</value>
@@ -2974,7 +2974,7 @@
     <value>未連線</value>
   </data>
   <data name="Chat_Composer_Placeholder_IncompatibleGateway" xml:space="preserve">
-    <value>Gateway update required - incompatible version</value>
+    <value>Gateway update required: incompatible version</value>
   </data>
   <data name="Chat_Composer_Tooltip_Attach" xml:space="preserve">
     <value>附加</value>
@@ -3127,13 +3127,13 @@
     <value>閘道回報 {0} 為 {1}。</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>節點沙箱已關閉 - 命令將不受限制地執行</value>
+    <value>節點沙箱已關閉: 命令將不受限制地執行</value>
   </data>
   <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
     <value>在重新啟用節點沙箱之前，代理程式啟動的 Windows 命令將在沒有沙箱隔離的情況下執行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙箱無法使用 - 回退到主機</value>
+    <value>沙箱無法使用: 回退到主機</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3141,7 +3141,7 @@
 在沙箱無法使用期間，命令將在主機上執行，且沒有沙箱保護。</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
-    <value>沙箱無法使用 - 命令已封鎖</value>
+    <value>沙箱無法使用: 命令已封鎖</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
@@ -3302,7 +3302,7 @@
     <value>助理已回覆</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>連線已中斷 - 回覆已中斷。</value>
+    <value>連線已中斷: 回覆已中斷。</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>已捨棄閘道時間軸事件</value>
@@ -3323,7 +3323,7 @@
     <value>Browser control</value>
   </data>
   <data name="PermissionsPage_Cap_Browser_Description" xml:space="preserve">
-    <value>Lets agents drive a Chromium browser on this PC - open pages, click, and read content.</value>
+    <value>Lets agents drive a Chromium browser on this PC: open pages, click, and read content.</value>
   </data>
   <data name="PermissionsPage_Cap_Camera_Label" xml:space="preserve">
     <value>Camera</value>
@@ -3401,16 +3401,16 @@
     <value>Connect to a gateway to start providing device capabilities.</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenReady" xml:space="preserve">
-    <value>Server enabled - token ready</value>
+    <value>Server enabled: token ready</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenPending" xml:space="preserve">
-    <value>Server enabled - token will be created on next start</value>
+    <value>Server enabled: token will be created on next start</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenCopied" xml:space="preserve">
     <value>Token copied to clipboard</value>
   </data>
   <data name="PermissionsPage_McpStatus_TokenNotFound" xml:space="preserve">
-    <value>Token file not found - start the MCP server first</value>
+    <value>Token file not found: start the MCP server first</value>
   </data>
   <data name="PermissionsPage_McpStatus_UrlCopied" xml:space="preserve">
     <value>URL copied to clipboard</value>
@@ -3515,19 +3515,19 @@
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected - no active presence</value>
+    <value>Disconnected: no active presence</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active - last seen {0}</value>
+    <value>Active: last seen {0}</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle - last seen {0}</value>
+    <value>Idle: last seen {0}</value>
   </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
   <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive - last seen {0}</value>
+    <value>Inactive: last seen {0}</value>
   </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
@@ -3635,7 +3635,7 @@
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789 - visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789: visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -3764,7 +3764,7 @@
     <value>Your gateway didn't list any channels</value>
   </data>
   <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials - the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
+    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
   </data>
   <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
     <value>Read the channels guide</value>
@@ -4121,7 +4121,7 @@
     <value>新增閘道</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Title" xml:space="preserve">
-    <value>開始使用 - 安裝本機閘道</value>
+    <value>開始使用: 安裝本機閘道</value>
   </data>
   <data name="ConnectionPage_GetStartedInstallA.Message" xml:space="preserve">
     <value>最快的入門方式:在這台電腦上設定由 WSL 託管的閘道,並將其設為使用中的連線。</value>
@@ -4205,7 +4205,7 @@
     <value>安裝本機閘道</value>
   </data>
   <data name="ConnectionPage_LocalWSLSetupIsn.Text" xml:space="preserve">
-    <value>這台電腦無法進行本機 WSL 設定 - 安裝精靈無法初始化。</value>
+    <value>這台電腦無法進行本機 WSL 設定: 安裝精靈無法初始化。</value>
   </data>
   <data name="ConnectionPage_UseSSHTunnelOptional.Text" xml:space="preserve">
     <value>使用 SSH 通道(選用)</value>
@@ -4508,7 +4508,7 @@
     <value>哪些內容受隔離</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
-    <value>檢視此頁面涵蓋的命令 - 以及需要其他控制項的命令。</value>
+    <value>檢視此頁面涵蓋的命令: 以及需要其他控制項的命令。</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns.Text" xml:space="preserve">
     <value>代理透過 Windows 節點執行的命令 (</value>
@@ -4520,7 +4520,7 @@
     <value>) 受下方設定隔離。</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
-    <value>代理直接在閘道上執行的命令則不受隔離。如果閘道位於這台電腦的 WSL 上,它們可能會存取您的 Windows 檔案、剪貼簿和網路 - 請使用閘道的執行核准。</value>
+    <value>代理直接在閘道上執行的命令則不受隔離。如果閘道位於這台電腦的 WSL 上,它們可能會存取您的 Windows 檔案、剪貼簿和網路: 請使用閘道的執行核准。</value>
   </data>
   <data name="SandboxPage_SandboxUnavailable.Title" xml:space="preserve">
     <value>沙箱無法使用</value>
@@ -4631,10 +4631,10 @@
     <value>無(預設)</value>
   </data>
   <data name="SandboxPage_ReadAgentCanSee.Content" xml:space="preserve">
-    <value>讀取 - 代理可以看到您複製的內容</value>
+    <value>讀取: 代理可以看到您複製的內容</value>
   </data>
   <data name="SandboxPage_WriteAgentCanReplace.Content" xml:space="preserve">
-    <value>寫入 - 代理可以取代您的剪貼簿(無法讀取)</value>
+    <value>寫入: 代理可以取代您的剪貼簿(無法讀取)</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
     <value>讀取與寫入</value>
@@ -5105,7 +5105,7 @@
     <value>語音預覽</value>
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
-    <value>代理直接在閘道上執行的命令不受此限制。如果閘道在此電腦上，它們仍可能存取您的 Windows 檔案、剪貼簿和網路--請檢查閘道的設定。</value>
+    <value>代理直接在閘道上執行的命令不受此限制。如果閘道在此電腦上，它們仍可能存取您的 Windows 檔案、剪貼簿和網路……請檢查閘道的設定。</value>
   </data>
   <data name="AgentEventsPage_AllAgents" xml:space="preserve">
     <value>所有代理</value>
@@ -5247,7 +5247,7 @@
     <value>等待核准</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalApproveThenConnect" xml:space="preserve">
-    <value>🔐 等待核准 - 核准後請點擊連線</value>
+    <value>🔐 等待核准: 核准後請點擊連線</value>
   </data>
   <data name="ConnectionStatus_AwaitingApprovalFromGateway" xml:space="preserve">
     <value>🔐 等待閘道核准</value>
@@ -5571,7 +5571,7 @@
     <value>正在套用…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>已套用 - 閘道：{0}</value>
+    <value>已套用: 閘道：{0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>設定碼無效</value>
@@ -5688,19 +5688,19 @@
     <value>設定</value>
   </data>
   <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>將此裝置與頻道取消連結。掌描新的 QR 碼以重新連線--您的帳戶仍會在手機上保持配對。</value>
+    <value>將此裝置與頻道取消連結。掌描新的 QR 碼以重新連線……您的帳戶仍會在手機上保持配對。</value>
   </data>
   <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>暫時暫停頻道--憑證會被保留，以便您可以重新啟動。或完全中斷連線以清除憑證。</value>
+    <value>暫時暫停頻道……憑證會被保留，以便您可以重新啟動。或完全中斷連線以清除憑證。</value>
   </data>
   <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>啟動頻道--它將使用已儲存的憑證開始處理訊息。或完全中斷連線以清除憑證。</value>
+    <value>啟動頻道……它將使用已儲存的憑證開始處理訊息。或完全中斷連線以清除憑證。</value>
   </data>
   <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>暫停頻道--憑證會被保留，以便您可以重新啟動。</value>
+    <value>暫停頻道……憑證會被保留，以便您可以重新啟動。</value>
   </data>
   <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>啟動頻道--它將使用已儲存的憑證開始處理訊息。</value>
+    <value>啟動頻道……它將使用已儲存的憑證開始處理訊息。</value>
   </data>
   <data name="ChannelsPage_Start" xml:space="preserve">
     <value>啟動</value>
@@ -5940,7 +5940,7 @@
     <value>無法載入閘道設定</value>
   </data>
   <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>閘道未傳回其目前設定--沒有它無法安全儲存。請嘗試重新整理並再次儲存。</value>
+    <value>閘道未傳回其目前設定……沒有它無法安全儲存。請嘗試重新整理並再次儲存。</value>
   </data>
   <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
     <value>閘道設定在儲存過程中被清除。請嘗試重新整理並再次儲存。</value>
@@ -5955,7 +5955,7 @@
     <value>{0} 的儲存失敗</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>您的閘道設定已在其他位置變更（例如，從設定頁面）。我們已重新整理快取--請再次嘗試儲存。詳細資訊：{0}</value>
+    <value>您的閘道設定已在其他位置變更（例如，從設定頁面）。我們已重新整理快取……請再次嘗試儲存。詳細資訊：{0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} 如果這看起來像是線路格式不符，請開啟設定頁面進行直接 JSON 編輯。</value>
@@ -6435,19 +6435,19 @@
     <value>{0} 已複製到剪貼簿。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableTitle" xml:space="preserve">
-    <value>節點沙箱無法使用 - 回退到主機</value>
+    <value>節點沙箱無法使用: 回退到主機</value>
   </data>
   <data name="SandboxPage_StatusUnavailableSubtext" xml:space="preserve">
     <value>此電腦上無法使用隔離，因此代理程式啟動的命令會在主機上執行，且沒有沙箱保護。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedTitle" xml:space="preserve">
-    <value>節點沙箱無法使用 - 命令已封鎖</value>
+    <value>節點沙箱無法使用: 命令已封鎖</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
     <value>此電腦上無法使用隔離，且已啟用嚴格回退封鎖，因此代理程式啟動的命令會被封鎖。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
-    <value>節點沙箱已關閉 - 主機執行</value>
+    <value>節點沙箱已關閉: 主機執行</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffSubtext" xml:space="preserve">
     <value>隔離無法使用且節點沙箱已關閉，因此代理程式啟動的命令會在主機上執行，且沒有沙箱保護。</value>
@@ -6459,7 +6459,7 @@
     <value>代理程式在此電腦上執行的程式會被隔離。</value>
   </data>
   <data name="SandboxPage_StatusOffTitle" xml:space="preserve">
-    <value>節點沙箱已關閉 - 高風險</value>
+    <value>節點沙箱已關閉: 高風險</value>
   </data>
   <data name="SandboxPage_StatusOffSubtext" xml:space="preserve">
     <value>代理程式在此電腦上執行的程式不會被隔離。</value>
@@ -6482,7 +6482,7 @@
   <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
     <value>{0}
 
-{1} 沙箱功能檢查未完成。這通常是暫時性的（檢查緩慢或遭封鎖）- 請重試；如果問題仍然存在，請檢查安全性軟體是否封鎖了 wxc-exec。</value>
+{1} 沙箱功能檢查未完成。這通常是暫時性的（檢查緩慢或遭封鎖）… 請重試；如果問題仍然存在，請檢查安全性軟體是否封鎖了 wxc-exec。</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>重試</value>
@@ -6510,10 +6510,10 @@
     <value>顯示安裝指示</value>
   </data>
   <data name="SandboxPage_UnavailableTitle" xml:space="preserve">
-    <value>沙箱無法使用 - 回退到主機</value>
+    <value>沙箱無法使用: 回退到主機</value>
   </data>
   <data name="SandboxPage_UnavailableBlockedTitle" xml:space="preserve">
-    <value>沙箱無法使用 - 命令已封鎖</value>
+    <value>沙箱無法使用: 命令已封鎖</value>
   </data>
   <data name="SettingsPage_LocalGatewayRemovedTitle" xml:space="preserve">
     <value>本機閘道已移除</value>
@@ -6687,7 +6687,7 @@
     <value>未加密的連線</value>
   </data>
   <data name="ConnectionPage_AdviceCleartextMessage" xml:space="preserve">
-    <value>此遠端 gateway 使用 ws:// - 您的 token 將以明文傳送。請使用 wss://（TLS）、SSH 通道或受信任的 Proxy / Tailscale。</value>
+    <value>此遠端 gateway 使用 ws://。您的 token 將以明文傳送。請使用 wss://（TLS）、SSH 通道或受信任的 Proxy / Tailscale。</value>
   </data>
   <data name="ConnectionPage_AdviceSecureTitle" xml:space="preserve">
     <value>已加密 (TLS)</value>

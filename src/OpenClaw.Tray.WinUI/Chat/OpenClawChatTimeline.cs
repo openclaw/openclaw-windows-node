@@ -2067,7 +2067,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     snippet = detail.Substring(0, cut) + "…";
                 }
                 body = VStack(4,
-                    TextBlock($"{glyph} {kind} - {label}")
+                    TextBlock($"{glyph} {kind}: {label}")
                         .Set(t =>
                         {
                             t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
