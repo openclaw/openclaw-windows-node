@@ -185,7 +185,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 // Release-without-Acquire indicates a real bug (counting imbalance);
                 // promote to Warn so it surfaces in production diagnostics. Include
                 // ex.ToString() to capture the stack since Warn has no ex overload.
-                _logger.Warn($"[MCP] Handler limiter release was already at max: possible release/acquire imbalance: {ex}");
+                _logger.Warn($"[MCP] Handler limiter release was already at max — possible release/acquire imbalance: {ex}");
             }
         }
     }

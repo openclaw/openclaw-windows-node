@@ -258,7 +258,7 @@ public sealed class SetupPipeline
         }
 
         ctx.Journal.RecordPipelineEvent("uninstall_started", $"steps={_steps.Count}, dry_run={ctx.Config.DryRun}");
-        ctx.Logger.Info($"Uninstall starting: {_steps.Count} steps in reverse order (dry_run={ctx.Config.DryRun})");
+        ctx.Logger.Info($"Uninstall starting — {_steps.Count} steps in reverse order (dry_run={ctx.Config.DryRun})");
 
         var pipelineSw = Stopwatch.StartNew();
         var failures = new List<(string StepId, string Message)>();
@@ -314,7 +314,7 @@ public sealed class SetupPipeline
         {
             var failMsg = $"{failures.Count} rollback(s) failed: {string.Join(", ", failures.Select(f => f.StepId))}";
             ctx.Journal.RecordPipelineEvent("uninstall_completed_with_errors", failMsg);
-            ctx.Logger.Warn($"Uninstall completed with errors in {pipelineSw.Elapsed.TotalSeconds:F1}s: {failMsg}");
+            ctx.Logger.Warn($"Uninstall completed with errors in {pipelineSw.Elapsed.TotalSeconds:F1}s — {failMsg}");
             return new PipelineResult(PipelineOutcome.Failed, Message: failMsg);
         }
 

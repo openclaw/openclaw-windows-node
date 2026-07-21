@@ -136,7 +136,7 @@ internal static class DiagnosticsBundleBuilder
             builder.Append(DiagnosticsExportSanitizer.SanitizeTextBlock(evt.Message));
             if (!string.IsNullOrWhiteSpace(evt.Detail))
             {
-                builder.Append(": ");
+                builder.Append(" — ");
                 builder.Append(DiagnosticsExportSanitizer.SanitizeTextBlock(evt.Detail));
             }
             builder.AppendLine();

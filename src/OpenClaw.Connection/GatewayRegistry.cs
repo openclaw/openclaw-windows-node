@@ -349,7 +349,7 @@ public sealed class GatewayRegistry
         // Idempotent: don't duplicate if already migrated
         if (FindByUrl(gatewayUrl) != null)
         {
-            logger?.Info($"[Registry] Migration skipped: record already exists for {gatewayUrl}");
+            logger?.Info($"[Registry] Migration skipped — record already exists for {gatewayUrl}");
             return false;
         }
 

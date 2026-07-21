@@ -906,7 +906,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         {
             if (_mcpServer != null) return; // already running
 
-            _logger.Info("[MCP] SetMcpEnabled(true): starting MCP server");
+            _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
             _mcpStartupError = null;
 
             bool needsCapabilities;
@@ -935,7 +935,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
         else
         {
-            _logger.Info("[MCP] SetMcpEnabled(false): stopping MCP server");
+            _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
             // Always call StopMcpServer to clear stale startup errors even
             // if the server isn't running. StopMcpServer is lock-protected
             // and handles _mcpServer == null safely.
@@ -1580,7 +1580,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         {
             cts.Cancel();
             throw new TimeoutException(
-                $"CANVAS_TIMEOUT: {command} did not complete within {timeoutSeconds}s: the UI dispatcher may not be pumping");
+                $"CANVAS_TIMEOUT: {command} did not complete within {timeoutSeconds}s — the UI dispatcher may not be pumping");
         }
         return await task; // propagate the result or exception
     }

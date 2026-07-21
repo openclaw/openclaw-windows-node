@@ -2111,9 +2111,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 return;
             }
             // v2 also rejected — real auth error
-            _logger.Warn($"[HANDSHAKE] v2 signature also rejected: wrong key or token. Raw: {message}");
+            _logger.Warn($"[HANDSHAKE] v2 signature also rejected — wrong key or token. Raw: {message}");
             _authFailed = true;
-            RaiseAuthenticationFailed($"device signature rejected: {message}");
+            RaiseAuthenticationFailed($"device signature rejected — {message}");
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
@@ -2683,7 +2683,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "sessions.changed":
                 // Gateway broadcasts this after session mutations (patch, send, etc.).
                 // Re-request the full sessions list so we pick up model/thinking changes.
-                _logger.Info("[EVENT] sessions.changed received: refreshing sessions list");
+                _logger.Info("[EVENT] sessions.changed received — refreshing sessions list");
                 _ = RequestSessionsAsync();
                 break;
             case "cron":
@@ -2720,7 +2720,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!root.TryGetProperty("payload", out var payload) ||
             payload.ValueKind != JsonValueKind.Object)
         {
-            _logger.Warn($"[Approval] {topLevelEventType} missing/invalid payload: dropping");
+            _logger.Warn($"[Approval] {topLevelEventType} missing/invalid payload — dropping");
             return;
         }
 
@@ -2785,7 +2785,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         else
         {
             if (!string.IsNullOrEmpty(decision))
-                _logger.Warn($"[Approval] {topLevelEventType} carries unknown decision '{decision}': mapping to terminal phase='resolved'");
+                _logger.Warn($"[Approval] {topLevelEventType} carries unknown decision '{decision}' — mapping to terminal phase='resolved'");
             phase = "resolved";
         }
 

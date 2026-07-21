@@ -66,7 +66,7 @@ public sealed class SetupWizardRunner
             var connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
             if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired && _ctx.Config.AutoApprovePairing)
             {
-                _ctx.Logger.Info("Wizard operator pairing required: auto-approving");
+                _ctx.Logger.Info("Wizard operator pairing required — auto-approving");
                 await client.DisconnectAsync();
                 client.Dispose();
 
@@ -186,7 +186,7 @@ public sealed class SetupWizardRunner
 
                     var progressText = $"{parsed.Title} {parsed.Message}".Trim();
                     _ctx.Logger.Info(string.IsNullOrWhiteSpace(progressText)
-                        ? $"Wizard progress step '{parsed.StepId}': polling for next step"
+                        ? $"Wizard progress step '{parsed.StepId}' — polling for next step"
                         : $"Wizard progress: {progressText}");
 
                     await Task.Delay(WizardTimeouts.ProgressPollDelay, ct);
