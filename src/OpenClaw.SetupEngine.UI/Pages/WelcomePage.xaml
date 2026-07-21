@@ -22,8 +22,10 @@
                        Text="OpenClaw runs your agent through a gateway. Choose how to set it up on this PC. You can change this later." />
         </StackPanel>
 
-        <StackPanel Grid.Row="1" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="12"
-                    MaxWidth="560" HorizontalAlignment="Stretch">
+        <ScrollViewer Grid.Row="1" Margin="0,24,0,0"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12" MaxWidth="560" HorizontalAlignment="Stretch">
 
             <Border x:Name="InstallCard"
                     HorizontalAlignment="Stretch"
@@ -85,7 +87,8 @@
                 </Grid>
             </Border>
 
-        </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
             <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"

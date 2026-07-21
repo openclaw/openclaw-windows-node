@@ -29,6 +29,8 @@ public sealed partial class WelcomePage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        _installSelected = SetupWindow.Active?.IsWelcomeInstallSelected ?? true;
+        UpdateCardSelection();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -56,13 +58,18 @@ public sealed partial class WelcomePage : Page
 
     private void InstallCard_Pressed(object sender, PointerRoutedEventArgs e)
     {
-        _installSelected = true;
-        UpdateCardSelection();
+        SetInstallSelected(true);
     }
 
     private void ConnectCard_Pressed(object sender, PointerRoutedEventArgs e)
     {
-        _installSelected = false;
+        SetInstallSelected(false);
+    }
+
+    private void SetInstallSelected(bool installSelected)
+    {
+        _installSelected = installSelected;
+        SetupWindow.Active?.SetWelcomeInstallSelected(installSelected);
         UpdateCardSelection();
     }
 

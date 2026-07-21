@@ -12,6 +12,7 @@ namespace OpenClaw.SetupEngine.UI;
 public sealed partial class SetupWindow : Window
 {
     private SetupConfig _config = null!;
+    private bool _isWelcomeInstallSelected = true;
     private SetupRunLock? _setupLock;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private Task<StepResult>? _contextApplyTask;
@@ -182,6 +183,8 @@ public sealed partial class SetupWindow : Window
 
     public void NavigateToSecurityNotice(bool back = false) => NavigateTo(typeof(SecurityNoticePage), _config, back);
     public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
+    public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected;
+    public void SetWelcomeInstallSelected(bool installSelected) => _isWelcomeInstallSelected = installSelected;
     public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
     public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: false));

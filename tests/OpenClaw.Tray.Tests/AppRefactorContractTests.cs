@@ -816,6 +816,22 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SetupWelcomePage_ScrollsChoicesAndRestoresTheSelectedPath()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml"));
+        var welcomePage = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+
+        Assert.Contains("<ScrollViewer Grid.Row=\"1\"", xaml);
+        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", xaml);
+        Assert.Contains("SetupWindow.Active?.IsWelcomeInstallSelected ?? true", welcomePage);
+        Assert.Contains("SetupWindow.Active?.SetWelcomeInstallSelected(installSelected)", welcomePage);
+        Assert.Contains("private bool _isWelcomeInstallSelected = true", setupWindow);
+        Assert.Contains("public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected", setupWindow);
+    }
+
+    [Fact]
     public void WizardErrorState_UsesMoreOptionsAndPreservesTranscriptOnGatewayRestart()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
