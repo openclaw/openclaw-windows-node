@@ -721,6 +721,42 @@ Gebruik een van deze opties:
   <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
     <value>Onbekend platform</value>
   </data>
+  <data name="ExecApproval_WindowTitle" xml:space="preserve">
+    <value>Opdrachtgoedkeuring</value>
+  </data>
+  <data name="ExecApproval_Heading" xml:space="preserve">
+    <value>Opdracht toestaan?</value>
+  </data>
+  <data name="ExecApproval_Body" xml:space="preserve">
+    <value>De volgende opdracht vraagt toestemming om te worden uitgevoerd:</value>
+  </data>
+  <data name="ExecApproval_AgentLabel" xml:space="preserve">
+    <value>AI-agent:</value>
+  </data>
+  <data name="ExecApproval_CwdLabel" xml:space="preserve">
+    <value>Werkmap:</value>
+  </data>
+  <data name="ExecApproval_ExecutableLabel" xml:space="preserve">
+    <value>Uitvoerbaar bestand:</value>
+  </data>
+  <data name="ExecApproval_AllowOnce" xml:space="preserve">
+    <value>Eén keer toestaan</value>
+  </data>
+  <data name="ExecApproval_AllowAlways" xml:space="preserve">
+    <value>Altijd toestaan</value>
+  </data>
+  <data name="ExecApproval_Deny" xml:space="preserve">
+    <value>Weigeren</value>
+  </data>
+  <data name="ExecApproval_ArmHint" xml:space="preserve">
+    <value>Toestaan is zo dadelijk beschikbaar</value>
+  </data>
+  <data name="ExecApproval_ScrollHint" xml:space="preserve">
+    <value>Scroll naar het einde van de opdracht voordat u toestaat</value>
+  </data>
+  <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
+    <value>Deze opdracht mengt tekensets en is mogelijk niet wat het lijkt. Controleer hem zorgvuldig.</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node gekoppeld!</value>
   </data>

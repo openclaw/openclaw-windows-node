@@ -720,6 +720,42 @@ Utilisez l'une de ces options :
   <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
     <value>Plateforme inconnue</value>
   </data>
+  <data name="ExecApproval_WindowTitle" xml:space="preserve">
+    <value>Approbation de commande</value>
+  </data>
+  <data name="ExecApproval_Heading" xml:space="preserve">
+    <value>Autoriser la commande ?</value>
+  </data>
+  <data name="ExecApproval_Body" xml:space="preserve">
+    <value>La commande suivante demande l'autorisation de s'exécuter :</value>
+  </data>
+  <data name="ExecApproval_AgentLabel" xml:space="preserve">
+    <value>Agent :</value>
+  </data>
+  <data name="ExecApproval_CwdLabel" xml:space="preserve">
+    <value>Répertoire de travail :</value>
+  </data>
+  <data name="ExecApproval_ExecutableLabel" xml:space="preserve">
+    <value>Exécutable :</value>
+  </data>
+  <data name="ExecApproval_AllowOnce" xml:space="preserve">
+    <value>Autoriser une fois</value>
+  </data>
+  <data name="ExecApproval_AllowAlways" xml:space="preserve">
+    <value>Toujours autoriser</value>
+  </data>
+  <data name="ExecApproval_Deny" xml:space="preserve">
+    <value>Refuser</value>
+  </data>
+  <data name="ExecApproval_ArmHint" xml:space="preserve">
+    <value>L'autorisation sera disponible dans un instant</value>
+  </data>
+  <data name="ExecApproval_ScrollHint" xml:space="preserve">
+    <value>Faites défiler jusqu'à la fin de la commande avant d'autoriser</value>
+  </data>
+  <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
+    <value>Cette commande mélange des jeux de caractères et peut ne pas être ce qu'elle paraît. Vérifiez-la attentivement.</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Noeud appairé!</value>
   </data>

@@ -720,6 +720,42 @@
   <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
     <value>未知平台</value>
   </data>
+  <data name="ExecApproval_WindowTitle" xml:space="preserve">
+    <value>命令核准</value>
+  </data>
+  <data name="ExecApproval_Heading" xml:space="preserve">
+    <value>允許命令？</value>
+  </data>
+  <data name="ExecApproval_Body" xml:space="preserve">
+    <value>以下命令請求執行權限：</value>
+  </data>
+  <data name="ExecApproval_AgentLabel" xml:space="preserve">
+    <value>代理：</value>
+  </data>
+  <data name="ExecApproval_CwdLabel" xml:space="preserve">
+    <value>工作目錄：</value>
+  </data>
+  <data name="ExecApproval_ExecutableLabel" xml:space="preserve">
+    <value>可執行檔：</value>
+  </data>
+  <data name="ExecApproval_AllowOnce" xml:space="preserve">
+    <value>允許一次</value>
+  </data>
+  <data name="ExecApproval_AllowAlways" xml:space="preserve">
+    <value>一律允許</value>
+  </data>
+  <data name="ExecApproval_Deny" xml:space="preserve">
+    <value>拒絕</value>
+  </data>
+  <data name="ExecApproval_ArmHint" xml:space="preserve">
+    <value>允許按鈕稍後可用</value>
+  </data>
+  <data name="ExecApproval_ScrollHint" xml:space="preserve">
+    <value>請捲動至命令結尾後再允許</value>
+  </data>
+  <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
+    <value>此命令混用了不同的字元集，可能與其外觀不符。請仔細核對。</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ 節點已配對！</value>
   </data>
