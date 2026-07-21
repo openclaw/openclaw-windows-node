@@ -57,6 +57,8 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | UI-thread marshaling for presentation code | `IUiDispatcher` | authoritative |
 | Page view-model activation/deactivation + disposal lifetime | `NavigationScopeManager` | authoritative |
 | Presentation-layer DI composition root | `AppServiceRegistration` (root `ServiceProvider`, owned by `App`) | authoritative |
+| Settings snapshot read + batched save + non-echoing change notification | `ISettingsStore` | authoritative |
+| Settings page load/persist view logic | `SettingsPageViewModel` | authoritative |
 | Capability UI metadata | `NodeCapabilityUiCatalog` (planned) | planned |
 | Capability registration/gating | `NodeCapabilityRegistrationPolicy` (planned) | planned |
 | Local MCP exposure policy | `McpCapabilityPolicy` (planned) | planned |
@@ -72,6 +74,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | `src/OpenClaw.Tray.WinUI/Chat/OpenClawChatTimeline.cs` | `TimelineScrollController`, `ChatBubbleRenderer`, `ToolCallCardRenderer`, `PermissionRequestCard`, `AttachmentBubbleRenderer` |
 | `src/OpenClaw.Tray.WinUI/Chat/OpenClawComposer.cs` | `ComposerViewModel`, `SlashCommandPalette`, `AttachmentPreviewStrip`, `VoiceComposerController` |
 | `src/OpenClaw.Tray.WinUI/Pages/ConnectionPage.xaml.cs` | `ConnectionPagePlan` (pure), `ConnectionPageViewModel`, gateway row models |
+| `src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml.cs` | settings read/persist → `SettingsPageViewModel` + `ISettingsStore`; keep gateway-uninstall, uptime timer, saved-indicator, and app-info in the view |
 | `src/OpenClaw.Tray.WinUI/Services/NodeService.cs` | `McpServerHost`, `CanvasWindowManager`, `MediaCapabilityHost`, `RecordingConsentService`, `NodeCapabilityRegistry` |
 | `src/OpenClaw.Shared/OpenClawGatewayClient.cs` | `PendingRequestRegistry`, `ConnectEnvelopeBuilder`, `GatewayMessageRouter`, per-domain API facades |
 | `src/OpenClaw.Shared/Models.cs` | per-domain model files + `*Mapper` classes |
@@ -124,6 +127,8 @@ leading and trailing pipe. Columns, in order:
 | navigation-scope | authoritative | src/OpenClaw.Tray.WinUI/Windows/HubWindow.xaml.cs | page view-model activation/deactivation and disposal lifetime | NavigationScopeManager | HubWindow keeps frame navigation back-stack and rail selection | transient page view models are activated on navigation and deactivated then disposed on navigate-away | NavigationScopeManagerTests.NavigatingAway_DeactivatesAndDisposesPreviousViewModel | behavioral | - |
 | composition-root | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | presentation-layer service construction and wiring | AppServiceRegistration | App remains the composition root and owns non-DI service lifetimes | one validated root ServiceProvider; App-owned singletons registered as instances are never disposed by the container | AppServiceRegistrationTests.Dispose_DoesNotDisposeAppOwnedInstanceSingletons | behavioral | - |
 | node-summary-text | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | node-summary clipboard text formatting | NodeSummaryText | App keeps the clipboard side effect (building the DataPackage and setting clipboard content) | copied node-summary text is projected only by NodeSummaryText.Build (online/offline state, display-name fallback, short id, detail text, newline join) | NodeSummaryTextTests.Build_MultipleNodes_OneLinePerNodeJoinedByNewline | behavioral | - |
+| settings-store | authoritative | src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml.cs | hand-rolled save/echo suppression flags for two-way settings binding | ISettingsStore | PermissionsPage and other surfaces may read SettingsManager directly until migrated | a save originating from Update does not echo Changed to the caller and external saves are republished on the UI thread | SettingsStoreTests.Update_DoesNotEchoChangedToSelf | behavioral | when all settings surfaces read and write through ISettingsStore |
+| settings-page-vm | authoritative | src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml.cs | settings load, persist, echo-guard, and auto-save wiring | SettingsPageViewModel | code-behind keeps gateway-uninstall, gateway-info and uptime timer, saved-indicator visual, and app-info population | each settings control persists its field through the store preserving mutate-save-notify order and does not re-persist on external change | SettingsPageViewModelTests.ExternalChange_ReloadsWithoutRePersisting | behavioral | when the Settings page holds no settings persistence logic in code-behind |
 <!-- LEDGER:END -->
 
 ## Deferred test builders

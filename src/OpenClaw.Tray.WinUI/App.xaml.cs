@@ -64,15 +64,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private ServiceProvider? _services;
 
     /// <summary>
-    /// Page type → view-model type map used by the navigation activation hook.
-    /// Currently empty: no page resolves a view model from DI yet, so the activation
-    /// hook is a runtime no-op. Entries are added here as pages adopt view models.
+    /// Page type → view-model type map used by the navigation activation hook. The Settings
+    /// page resolves its view model from DI and binds it as the page DataContext; pages absent
+    /// from the map take the no-op activation path.
     /// </summary>
     private static readonly IReadOnlyDictionary<Type, Type> PageViewModelMap =
-        new Dictionary<Type, Type>();
+        new Dictionary<Type, Type>
+        {
+            [typeof(Pages.SettingsPage)] = typeof(SettingsPageViewModel),
+        };
 
     /// <summary>The root service provider, or null before startup / after shutdown.</summary>
     internal IServiceProvider? Services => _services;
+
+    /// <summary>The settings facade, or null before startup / after shutdown.</summary>
+    internal ISettingsStore? SettingsStore => _services?.GetService<ISettingsStore>();
 
     /// <summary>Resolves the page activator used by <c>HubWindow</c>'s navigation hook.</summary>
     internal IPageActivator? PageActivator => _services?.GetService<IPageActivator>();
@@ -4208,6 +4214,33 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         await AutoStartManager.SetAutoStartAsync(_settings.AutoStart);
     }
 
+    /// <summary>
+    /// Persists the auto-start setting and applies the Windows OS registration in the original
+    /// order (save, then await the OS write, then notify). Returns true only when the OS write
+    /// and notify complete, so the caller shows its saved confirmation only on success. The save
+    /// is marked as a store self-write so it does not echo an external-change reload.
+    /// </summary>
+    public async Task<bool> ApplyAutoStart(bool autoStart)
+    {
+        if (_settings == null) return false;
+        try
+        {
+            _settings.AutoStart = autoStart;
+            using (SettingsStore?.BeginSelfWrite())
+            {
+                _settings.Save();
+            }
+            await AutoStartManager.SetAutoStartAsync(autoStart);
+            OnSettingsSaved(this, EventArgs.Empty);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"ApplyAutoStart failed: {ex.Message}");
+            return false;
+        }
+    }
+
     private void OpenLogFile()
     {
         try
@@ -4491,6 +4524,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// <summary>Raised when speaker mute state changes from any source (composer, settings, etc.).</summary>
     public event Action<bool>? SpeakerMuteChanged;
 
+    /// <summary>
+    /// Sets speaker mute from any surface (chat window, chat page, voice settings) and persists it.
+    /// This public path is NOT store-self-write-suppressed, so an open Settings page still reflects
+    /// a mute toggled elsewhere. The Settings-page-originated call goes through the explicit
+    /// <see cref="IAppCommands.SetChatSpeakerMuted"/> below, which suppresses its own echo.
+    /// </summary>
     public void SetChatSpeakerMuted(bool muted)
     {
         if (_chatCoordinator is { } c) c.IsMuted = muted;
@@ -4503,6 +4542,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Broadcast to all subscribers
         SpeakerMuteChanged?.Invoke(muted);
     }
+
+    /// <summary>
+    /// Settings-page-originated mute: wraps the shared write in a store self-write so it does not
+    /// echo an external-change reload back to the Settings view model that triggered it.
+    /// </summary>
+    void IAppCommands.SetChatSpeakerMuted(bool muted)
+    {
+        using (SettingsStore?.BeginSelfWrite())
+        {
+            SetChatSpeakerMuted(muted);
+        }
+    }
+
+    /// <summary>
+    /// Pushes tool-call visibility into the live chat timeline. Forwards to the shared
+    /// static writer so a WinUI-free settings view model can drive it through IAppCommands
+    /// without referencing the chat UI directly.
+    /// </summary>
+    public void SetChatToolCallsVisible(bool visible) =>
+        OpenClawTray.Chat.OpenClawChatRoot.SetToolCallsVisible(visible);
 
     private static void SendDeepLinkToRunningInstance(string uri)
     {

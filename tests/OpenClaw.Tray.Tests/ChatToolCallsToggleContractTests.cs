@@ -10,7 +10,6 @@ public sealed class ChatToolCallsToggleContractTests
         var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
         var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
-        var settings = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs");
         var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
         // Root still owns the shared tool-call visibility state and feeds it to
@@ -31,10 +30,12 @@ public sealed class ChatToolCallsToggleContractTests
         Assert.DoesNotContain("ShowToolCalls", composer);
         Assert.DoesNotContain("OnShowToolCallsChanged", composer);
 
-        // Settings drives it: persists the setting and pushes it into the live
-        // timeline via the static writer.
-        Assert.Contains("OpenClawTray.Chat.OpenClawChatRoot.SetToolCallsVisible", settings);
-        Assert.Contains("ShowChatToolCalls", settings);
+        // Settings drives it: the settings view model persists the setting and pushes it into
+        // the live timeline through IAppCommands, which App forwards to the static writer.
+        var settingsVm = Read("src", "OpenClaw.Tray.WinUI", "Presentation", "SettingsPageViewModel.cs");
+        Assert.Contains("SetChatToolCallsVisible", settingsVm);
+        Assert.Contains("ShowChatToolCalls", settingsVm);
+        Assert.Contains("OpenClawTray.Chat.OpenClawChatRoot.SetToolCallsVisible", app);
 
         // Startup seeds visibility from the persisted setting.
         Assert.Contains("SetToolCallsVisible(_settings.ShowChatToolCalls)", app);

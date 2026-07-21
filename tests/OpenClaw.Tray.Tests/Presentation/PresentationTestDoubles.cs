@@ -60,10 +60,79 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public void ShowOnboarding() { }
     public void ShowGatewayWizard() { }
     public void ShowConnectionStatus() { }
-    public void NotifySettingsSaved() { }
+    public void NotifySettingsSaved() => NotifySettingsSavedCount++;
+    public Task<bool> ApplyAutoStart(bool autoStart)
+    {
+        AutoStartApplied = autoStart;
+        AutoStartApplyCount++;
+        return Task.FromResult(AutoStartResult);
+    }
+    public void SetChatSpeakerMuted(bool muted) => SpeakerMuted = muted;
+    public void SetChatToolCallsVisible(bool visible) => ToolCallsVisible = visible;
     public Task<bool> ResendOpenTelemetryProbeAsync() => Task.FromResult(true);
 
+    public bool? SpeakerMuted { get; private set; }
+    public bool? ToolCallsVisible { get; private set; }
+    public bool? AutoStartApplied { get; private set; }
+    public int AutoStartApplyCount { get; private set; }
+
+    /// <summary>Result returned by <see cref="ApplyAutoStart"/> so tests can simulate OS-write failure.</summary>
+    public bool AutoStartResult { get; set; } = true;
+    public int NotifySettingsSavedCount { get; private set; }
+
     public void Dispose() => Disposed = true;
+}
+
+/// <summary>
+/// App-commands double that mimics the real App-owned settings writes: it persists directly to a
+/// real <see cref="SettingsManager"/> and marks the save as a store self-write via
+/// <see cref="ISettingsStore.BeginSelfWrite"/>, so tests can prove those writes do not echo an
+/// external-change reload (unlike <see cref="FakeAppCommands"/>, which no-ops the save).
+/// </summary>
+internal sealed class SelfWritingAppCommands : IAppCommands
+{
+    private readonly ISettingsStore _store;
+    private readonly SettingsManager _settings;
+
+    public SelfWritingAppCommands(ISettingsStore store, SettingsManager settings)
+    {
+        _store = store;
+        _settings = settings;
+    }
+
+    public void OpenDashboard(string? path = null) { }
+    public void Navigate(string pageTag) { }
+    public void Reconnect() { }
+    public void Disconnect() { }
+    public void ShowVoiceOverlay() { }
+    public void ShowChat() { }
+    public void CheckForUpdates() { }
+    public void ShowOnboarding() { }
+    public void ShowGatewayWizard() { }
+    public void ShowConnectionStatus() { }
+    public void NotifySettingsSaved() { }
+
+    public Task<bool> ApplyAutoStart(bool autoStart)
+    {
+        _settings.AutoStart = autoStart;
+        using (_store.BeginSelfWrite())
+        {
+            _settings.Save();
+        }
+        return Task.FromResult(true);
+    }
+
+    public void SetChatSpeakerMuted(bool muted)
+    {
+        _settings.VoiceTtsEnabled = !muted;
+        using (_store.BeginSelfWrite())
+        {
+            _settings.Save();
+        }
+    }
+
+    public void SetChatToolCallsVisible(bool visible) { }
+    public Task<bool> ResendOpenTelemetryProbeAsync() => Task.FromResult(true);
 }
 
 /// <summary>Fake navigation-aware, disposable view model for scope-lifetime tests.</summary>
