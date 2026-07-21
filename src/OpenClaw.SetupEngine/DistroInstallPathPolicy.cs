@@ -1,0 +1,315 @@
+using System.Text;
+
+namespace OpenClaw.SetupEngine;
+
+internal static class DistroInstallPathPolicy
+{
+    public const string LegacyReplacementGuidance =
+        "To replace an existing distro with an unsupported legacy name, rerun SetupEngine with --uninstall --confirm-destructive and the same distro name, then rerun setup with a supported name.";
+
+    private const int MaxDistroNameLength = 64;
+    private const StringComparison PathComparison = StringComparison.OrdinalIgnoreCase;
+    private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
+    private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "COM¹", "COM²", "COM³",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "LPT¹", "LPT²", "LPT³",
+    };
+
+    public static bool TryGetNewInstallPath(
+        string localDataDir,
+        string? distroName,
+        out string installPath,
+        out string error)
+    {
+        installPath = "";
+
+        if (string.IsNullOrWhiteSpace(distroName))
+        {
+            error = "WSL distro name is required.";
+            return false;
+        }
+
+        if (!IsValidDistroName(distroName))
+        {
+            error = $"Invalid WSL distro name '{distroName}'. Use 1-{MaxDistroNameLength} ASCII letters, digits, periods, underscores, or hyphens, starting and ending with a letter or digit.";
+            return false;
+        }
+
+        return TryGetManagedInstallPath(localDataDir, distroName, out installPath, out error);
+    }
+
+    public static bool TryGetManagedInstallPath(
+        string localDataDir,
+        string? distroName,
+        out string installPath,
+        out string error)
+    {
+        installPath = "";
+
+        if (!IsSafeManagedPathSegment(distroName, out error))
+            return false;
+
+        string localDataRoot;
+        string wslRoot;
+        try
+        {
+            localDataRoot = NormalizePath(localDataDir);
+            wslRoot = NormalizePath(Path.Combine(localDataRoot, "wsl"));
+            installPath = NormalizePath(Path.Combine(wslRoot, distroName!));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            installPath = "";
+            error = $"Invalid WSL distro install path: {ex.Message}";
+            return false;
+        }
+
+        if (!PathEquals(Path.GetDirectoryName(installPath), wslRoot))
+        {
+            error = $"WSL distro install path '{installPath}' must be an immediate child of '{wslRoot}'.";
+            installPath = "";
+            return false;
+        }
+
+        if (!TryValidateAncestors(localDataRoot, wslRoot, out error))
+        {
+            installPath = "";
+            return false;
+        }
+
+        if (TryResolveUnambiguousManagedChild(wslRoot, distroName!, ref installPath, out error))
+            return true;
+
+        installPath = "";
+        return false;
+    }
+
+    public static string WithLegacyReplacementGuidance(string? distroName, string error)
+        => IsLegacyTeardownOnlyName(distroName)
+            ? $"{error} {LegacyReplacementGuidance}"
+            : error;
+
+    public static bool TryValidateDeleteTarget(
+        string localDataDir,
+        string? distroName,
+        string candidatePath,
+        out string deletePath,
+        out string error)
+    {
+        if (!TryGetManagedInstallPath(localDataDir, distroName, out deletePath, out error))
+            return false;
+
+        string candidate;
+        try
+        {
+            candidate = NormalizePath(candidatePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            error = $"Invalid WSL distro deletion path: {ex.Message}";
+            return false;
+        }
+
+        if (!PathEquals(candidate, deletePath))
+        {
+            error = $"Refusing to delete WSL path '{candidate}'; expected the app-owned distro path '{deletePath}'.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateAncestors(string localDataRoot, string wslRoot, out string error)
+    {
+        string? current = wslRoot;
+        while (current is not null)
+        {
+            if (!TryGetExistingAttributes(current, out var exists, out var attributes, out error))
+                return false;
+
+            if (exists && attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                error = $"Refusing to operate under '{current}' because it is a reparse point; remove it manually and retry setup.";
+                return false;
+            }
+
+            if (PathEquals(current, wslRoot) &&
+                exists &&
+                !attributes.HasFlag(FileAttributes.Directory))
+            {
+                error = $"App-owned WSL root '{current}' is not a directory; remove it manually and retry setup.";
+                return false;
+            }
+
+            if (PathEquals(current, localDataRoot))
+            {
+                error = "";
+                return true;
+            }
+
+            current = Path.GetDirectoryName(current);
+        }
+
+        error = $"WSL install path '{wslRoot}' is not contained within '{localDataRoot}'.";
+        return false;
+    }
+
+    private static bool TryResolveUnambiguousManagedChild(
+        string wslRoot,
+        string distroName,
+        ref string installPath,
+        out string error)
+    {
+        if (!Directory.Exists(wslRoot))
+        {
+            error = "";
+            return true;
+        }
+
+        string[] children;
+        try
+        {
+            children = Directory.GetFileSystemEntries(wslRoot);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            error = $"Cannot enumerate app-owned WSL root '{wslRoot}': {ex.Message}";
+            return false;
+        }
+
+        var requestedNormalized = distroName.Normalize(NormalizationForm.FormC);
+        var caseMatches = children
+            .Where(path => string.Equals(Path.GetFileName(path), distroName, PathComparison))
+            .ToArray();
+        var normalizationMatches = children
+            .Where(path => string.Equals(
+                Path.GetFileName(path).Normalize(NormalizationForm.FormC),
+                requestedNormalized,
+                PathComparison))
+            .ToArray();
+
+        if (caseMatches.Length > 1 || normalizationMatches.Length > 1)
+        {
+            error = $"Managed WSL distro name '{distroName}' is ambiguous because multiple app-owned path entries differ only by case or Unicode normalization.";
+            return false;
+        }
+
+        if (caseMatches.Length == 0 && normalizationMatches.Length == 1)
+        {
+            error = $"Managed WSL distro name '{distroName}' aliases existing app-owned path entry '{Path.GetFileName(normalizationMatches[0])}'; use the exact stored name.";
+            return false;
+        }
+
+        if (caseMatches.Length == 1)
+            installPath = NormalizePath(caseMatches[0]);
+
+        if (!TryGetExistingAttributes(installPath, out var exists, out var attributes, out error))
+            return false;
+
+        if (exists && caseMatches.Length == 0)
+        {
+            error = $"Managed WSL distro name '{distroName}' resolves through a filesystem alias instead of an exact app-owned path entry.";
+            return false;
+        }
+
+        if (exists && attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            error = $"App-owned WSL path '{installPath}' is a reparse point; remove it manually and retry setup.";
+            return false;
+        }
+
+        error = "";
+        return true;
+    }
+
+    private static bool TryGetExistingAttributes(
+        string path,
+        out bool exists,
+        out FileAttributes attributes,
+        out string error)
+    {
+        try
+        {
+            attributes = File.GetAttributes(path);
+            exists = true;
+            error = "";
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            attributes = default;
+            exists = false;
+            error = "";
+            return true;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            attributes = default;
+            exists = false;
+            error = "";
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            attributes = default;
+            exists = false;
+            error = $"Cannot verify managed WSL path '{path}': {ex.Message}";
+            return false;
+        }
+    }
+
+    private static bool IsValidDistroName(string name)
+        => name.Length <= MaxDistroNameLength &&
+           char.IsAsciiLetterOrDigit(name[0]) &&
+           char.IsAsciiLetterOrDigit(name[^1]) &&
+           name.All(IsAllowedDistroNameCharacter);
+
+    private static bool IsAllowedDistroNameCharacter(char value)
+        => char.IsAsciiLetterOrDigit(value) || value is '.' or '_' or '-';
+
+    private static bool IsLegacyTeardownOnlyName(string? name)
+        => !string.IsNullOrWhiteSpace(name) &&
+           !IsValidDistroName(name) &&
+           IsSafeManagedPathSegment(name, out _);
+
+    private static bool IsSafeManagedPathSegment(string? name, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            error = "WSL distro name is required.";
+            return false;
+        }
+
+        if (!string.Equals(name, name.Trim(), StringComparison.Ordinal) ||
+            name.EndsWith('.') ||
+            name is "." or ".." ||
+            Path.IsPathRooted(name) ||
+            name.IndexOfAny(InvalidFileNameChars) >= 0 ||
+            name.Contains(Path.DirectorySeparatorChar) ||
+            name.Contains(Path.AltDirectorySeparatorChar) ||
+            IsReservedDeviceName(name))
+        {
+            error = $"Invalid managed WSL distro name '{name}'. The name must be one unambiguous Windows path segment.";
+            return false;
+        }
+
+        error = "";
+        return true;
+    }
+
+    private static bool IsReservedDeviceName(string name)
+    {
+        var stem = name.Split('.')[0].TrimEnd(' ', '.');
+        return ReservedDeviceNames.Contains(stem);
+    }
+
+    private static string NormalizePath(string path)
+        => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+
+    private static bool PathEquals(string? left, string right)
+        => string.Equals(left, right, PathComparison);
+}

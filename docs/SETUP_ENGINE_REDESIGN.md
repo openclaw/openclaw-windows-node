@@ -4,7 +4,7 @@
 
 The Setup Engine is a **config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two setup projects plus the tray host:
 
-1. **`OpenClaw.SetupEngine`** — Headless pipeline library. Runs 19 steps sequentially with full JSONL logging, transaction journal, and rollback support.
+1. **`OpenClaw.SetupEngine`** — Headless pipeline library. Runs 24 steps sequentially with full JSONL logging, transaction journal, and rollback support.
 2. **`OpenClaw.SetupEngine.UI`** — WinUI3 setup window/pages that wrap the same pipeline with a fluent wizard UI.
 3. **`OpenClaw.Tray.WinUI`** — The only shipped WinUI executable. It hosts `SetupWindow` directly and self-restarts after successful setup.
 
@@ -82,6 +82,17 @@ src/OpenClaw.SetupEngine.UI/
 **Config is required.** Neither the headless exe nor the UI will run without one. The bundled `default-config.json` is auto-loaded from `AppContext.BaseDirectory` if no `--config` is specified.
 If the setup UI cannot find, read, or deserialize the selected configuration,
 it opens on the setup failure page with the load error and does not start setup.
+
+New WSL distros use a 1-64 character name containing ASCII letters, digits,
+periods, underscores, or hyphens, beginning and ending with a letter or digit.
+Uninstall also accepts older names with spaces or Unicode when the name is one
+safe Windows path segment and resolves to an immediate child of the app-owned
+`LocalDataDir\wsl` root. Teardown rejects filesystem aliases, case or Unicode
+normalization collisions, and reparse points at either the root or managed
+child. It also preserves the VHD directory unless WSL confirms the distro is
+absent or unregister succeeds. To replace such a legacy distro, uninstall it
+first, using `--uninstall --confirm-destructive` and the same distro name, then
+rerun setup with a supported new name.
 
 ```json
 {

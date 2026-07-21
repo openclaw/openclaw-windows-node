@@ -36,7 +36,7 @@ public sealed partial class ProgressPage : Page
     // Map pipeline step IDs to display groups (N:1)
     private static readonly (string GroupId, string DisplayName, string[] StepIds)[] StepGroups =
     [
-        ("preflight", "Check system", ["preflight-os", "preflight-wsl", "preflight-windows-tailscale"]),
+        ("preflight", "Check system", ["validate-distro-path", "preflight-os", "preflight-wsl", "preflight-windows-tailscale"]),
         ("cleanup", "Removing existing gateway", ["cleanup-distro", "cleanup-gateway"]),
         ("port", "Checking gateway port", ["preflight-port"]),
         ("wsl-create", "Installing clean WSL gateway", ["wsl-create"]),
